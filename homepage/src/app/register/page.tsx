@@ -384,7 +384,7 @@ export default function RegisterPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
         const data = await res.json().catch(() => null);
         const user = data && (data as any).user;
         const authed = Boolean(res.ok && user && typeof user.id === "number");

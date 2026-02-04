@@ -70,5 +70,7 @@ def logout(response: Response):
 
 
 @router.get("/me")
-def me(user: User = Depends(get_current_user)):
+def me(response: Response, user: User = Depends(get_current_user)):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Vary"] = "Cookie"
     return {"user": UserPublic.model_validate(user, from_attributes=True)}

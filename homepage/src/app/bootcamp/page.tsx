@@ -135,7 +135,7 @@ export default function BootcampPage() {
   const handleJoinNow = async () => {
     setJoinMenuLoading(true);
     try {
-      const res = await fetch("/api/auth/me", { credentials: "include" });
+      const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
       const data = await res.json().catch(() => null);
       const authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
       if (authed) {
