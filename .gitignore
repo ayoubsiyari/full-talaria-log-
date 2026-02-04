@@ -28,3 +28,6 @@ venv/
 
 # Docker
 *.pid
+
+# Accidental nested clone
+mentorship/

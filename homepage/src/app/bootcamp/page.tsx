@@ -129,6 +129,24 @@ const bootcampModulesAr = [
 
 export default function BootcampPage() {
   const { isArabic } = useLanguage();
+  const [joinMenuOpen, setJoinMenuOpen] = React.useState(false);
+  const [joinMenuLoading, setJoinMenuLoading] = React.useState(false);
+
+  const handleJoinNow = async () => {
+    setJoinMenuLoading(true);
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      if (res.ok) {
+        window.location.href = "/register/";
+        return;
+      }
+      setJoinMenuOpen(true);
+    } catch {
+      setJoinMenuOpen(true);
+    } finally {
+      setJoinMenuLoading(false);
+    }
+  };
   const t = React.useMemo(
     () =>
       isArabic
@@ -481,6 +499,49 @@ export default function BootcampPage() {
       {/* Page Content */}
       <div className="relative z-10 px-4 sm:px-6 py-10 sm:py-12">
         <div className="max-w-7xl mx-auto">
+          {joinMenuOpen && (
+            <div
+              className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4"
+              onClick={() => setJoinMenuOpen(false)}
+            >
+              <div
+                className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0b16] p-5 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-lg font-semibold text-white">
+                      {isArabic ? "تسجيل الدخول أو إنشاء حساب" : "Sign in or create an account"}
+                    </div>
+                    <div className="mt-1 text-sm text-white/70">
+                      {isArabic ? "للإكمال، اختر تسجيل الدخول أو إنشاء حساب." : "To continue, choose Sign in or Sign up."}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setJoinMenuOpen(false)}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 hover:bg-white/10"
+                  >
+                    {isArabic ? "إغلاق" : "Close"}
+                  </button>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-3">
+                  <Link href="/login/?mode=signin&next=/register/">
+                    <Button className="w-full rounded-xl bg-white text-black hover:bg-white/90">
+                      {isArabic ? "تسجيل الدخول" : "Sign in"}
+                    </Button>
+                  </Link>
+                  <Link href="/login/?mode=signup&next=/register/">
+                    <Button className="w-full rounded-xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400">
+                      {isArabic ? "إنشاء حساب" : "Sign up"}
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -515,11 +576,14 @@ export default function BootcampPage() {
               whileTap={{ scale: 0.98 }}
               className="mt-8 flex flex-col items-center"
             >
-              <Link href="/register">
-                <Button className="rounded-full text-base px-7 py-5 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
-                  {t.header.joinNow}
-                </Button>
-              </Link>
+              <Button
+                type="button"
+                onClick={handleJoinNow}
+                disabled={joinMenuLoading}
+                className="rounded-full text-base px-7 py-5 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all"
+              >
+                {joinMenuLoading ? (isArabic ? "...جاري التحقق" : "Checking...") : t.header.joinNow}
+              </Button>
               <div className="mt-2 text-center text-sm text-white/70">700$</div>
             </motion.div>
           </motion.div>
@@ -877,11 +941,14 @@ export default function BootcampPage() {
             className="mt-12 flex justify-center"
           >
             <div className="text-center">
-              <Link href="/register">
-                <Button className="rounded-full text-base px-8 py-5 sm:px-10 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
-                  {t.header.joinNow}
-                </Button>
-              </Link>
+              <Button
+                type="button"
+                onClick={handleJoinNow}
+                disabled={joinMenuLoading}
+                className="rounded-full text-base px-8 py-5 sm:px-10 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all"
+              >
+                {joinMenuLoading ? (isArabic ? "...جاري التحقق" : "Checking...") : t.header.joinNow}
+              </Button>
               <div className="mt-2 text-sm text-white/70">700$</div>
             </div>
           </motion.div>

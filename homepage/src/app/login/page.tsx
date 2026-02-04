@@ -23,7 +23,10 @@ function LoginPageContent({
   const mode = (searchParams.get("mode") || "").toLowerCase();
   const initialMode = mode === "signup" ? "signup" : "signin";
 
-  return <AuthUI initialMode={initialMode} signInContent={signInContent} signUpContent={signUpContent} />;
+  const next = searchParams.get("next") || "";
+  const nextPath = next.startsWith("/") ? next : undefined;
+
+  return <AuthUI initialMode={initialMode} nextPath={nextPath} signInContent={signInContent} signUpContent={signUpContent} />;
 }
 
 export default function LoginPage() {

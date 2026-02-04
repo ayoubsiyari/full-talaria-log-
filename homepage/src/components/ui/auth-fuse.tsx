@@ -190,7 +190,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
 );
 PasswordInput.displayName = "PasswordInput";
 
-function SignInForm({ prefillEmail, bannerMessage }: { prefillEmail?: string; bannerMessage?: string | null }) {
+function SignInForm({ prefillEmail, bannerMessage, nextPath }: { prefillEmail?: string; bannerMessage?: string | null; nextPath?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -223,7 +223,8 @@ function SignInForm({ prefillEmail, bannerMessage }: { prefillEmail?: string; ba
         return;
       }
 
-      window.location.href = "/dashboard/";
+      const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
+      window.location.href = safeNext || "/dashboard/";
     } finally {
       setLoading(false);
     }
@@ -327,14 +328,14 @@ function SignUpForm({ onSignedUp }: { onSignedUp: (email: string) => void }) {
   );
 }
 
-function AuthFormContainer({ isSignIn, onToggle, onSignedUp, prefillEmail, bannerMessage }: { isSignIn: boolean; onToggle: () => void; onSignedUp: (email: string) => void; prefillEmail?: string; bannerMessage?: string | null }) {
+function AuthFormContainer({ isSignIn, onToggle, onSignedUp, prefillEmail, bannerMessage, nextPath }: { isSignIn: boolean; onToggle: () => void; onSignedUp: (email: string) => void; prefillEmail?: string; bannerMessage?: string | null; nextPath?: string }) {
     return (
         <div className="mx-auto grid w-[350px] gap-4">
             <div className="flex flex-col items-center gap-2 mb-4">
                 <img src="/logo-08.png" alt="Talaria Log" className="h-20 w-20" />
                 <span className="text-xl font-bold text-foreground">Talaria Log</span>
             </div>
-            {isSignIn ? <SignInForm prefillEmail={prefillEmail} bannerMessage={bannerMessage} /> : <SignUpForm onSignedUp={onSignedUp} />}
+            {isSignIn ? <SignInForm prefillEmail={prefillEmail} bannerMessage={bannerMessage} nextPath={nextPath} /> : <SignUpForm onSignedUp={onSignedUp} />}
             <div className="text-center text-sm">
                 {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
                 <AuthButton variant="link" className="pl-1 text-foreground" onClick={onToggle}>
@@ -367,6 +368,7 @@ interface AuthUIProps {
     signInContent?: AuthContentProps;
     signUpContent?: AuthContentProps;
     initialMode?: "signin" | "signup";
+    nextPath?: string;
 }
 
 const defaultSignInContent = {
@@ -391,7 +393,7 @@ const defaultSignUpContent = {
     }
 };
 
-export function AuthUI({ signInContent = {}, signUpContent = {}, initialMode = "signin" }: AuthUIProps) {
+export function AuthUI({ signInContent = {}, signUpContent = {}, initialMode = "signin", nextPath }: AuthUIProps) {
   const [isSignIn, setIsSignIn] = useState(initialMode !== "signup");
   const [prefillEmail, setPrefillEmail] = useState<string>("");
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
@@ -422,6 +424,7 @@ export function AuthUI({ signInContent = {}, signUpContent = {}, initialMode = "
           onToggle={toggleForm}
           prefillEmail={prefillEmail}
           bannerMessage={bannerMessage}
+          nextPath={nextPath}
           onSignedUp={(email) => {
             setPrefillEmail(email);
             setBannerMessage("Account created successfully. Please sign in.");
