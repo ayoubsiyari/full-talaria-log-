@@ -1113,21 +1113,6 @@ export default function RegisterPage() {
                 </div>
               ) : null}
 
-              {!submitted && rulesDecision !== "agree" ? (
-                <div className="absolute inset-0 z-10 rounded-2xl bg-black/55 backdrop-blur-sm flex items-center justify-center p-6">
-                  <div className="max-w-md text-center">
-                    <div className="text-white font-semibold mb-2">
-                      {t.page.rulesGateTitle}
-                    </div>
-                    <div className="text-sm text-neutral-200">
-                      {rulesDecision === "disagree"
-                        ? t.page.rulesDisagreeNote
-                        : t.page.rulesGatePrompt}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
               {!submitted ? (
                 <form onSubmit={onSubmit} className="grid gap-4">
                   {submitError ? (
