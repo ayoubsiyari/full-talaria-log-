@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-talaria}
+      POSTGRES_USER: ${POSTGRES_USER:-talaria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-talaria}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-talaria} -d ${POSTGRES_DB:-talaria}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  trading-chart:
+    build:
+      context: ./trading-chart
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://talaria:talaria@db:5432/talaria}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@local.test}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminadmin}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  homepage:
+    build:
+      context: ./homepage
+    ports:
+      - "${HOST_PORT:-8000}:80"
+    depends_on:
+      - trading-chart
+
+volumes:
+  postgres_data:
