@@ -6,7 +6,7 @@ from fastapi import Depends
 
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import BootcampRegistration
+from ..models import BootcampRegistration, User
 from ..schemas import BootcampRegisterIn
 from ..settings import settings
 
@@ -56,7 +56,7 @@ router = APIRouter(prefix="/api/bootcamp", tags=["bootcamp"])
 def register(
     payload: BootcampRegisterIn,
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     if not payload.agree_terms or not payload.agree_rules:
         raise HTTPException(status_code=400, detail="Terms and rules must be accepted")
@@ -64,8 +64,8 @@ def register(
         raise HTTPException(status_code=400, detail="Must be 18 or older")
 
     reg = BootcampRegistration(
-        full_name=payload.full_name.strip(),
-        email=str(payload.email).lower(),
+        full_name=(user.name or "").strip() or payload.full_name.strip(),
+        email=(user.email or "").lower() or str(payload.email).lower(),
         phone=(payload.phone.strip() if payload.phone else None),
         country=payload.country.strip(),
         age=int(payload.age),

@@ -1126,9 +1126,12 @@ export default function RegisterPage() {
                       <span className={`text-red-500 ${isArabic ? "mr-1" : "ml-1"}`}>*</span>
                     </label>
                     <input
-                      className="w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                      className={`w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
+                        isAuthed ? "opacity-80 cursor-not-allowed" : ""
+                      }`}
                       value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      readOnly={isAuthed}
+                      onChange={isAuthed ? undefined : (e) => setFullName(e.target.value)}
                       placeholder={t.form.fullNamePh}
                       required
                     />
@@ -1141,9 +1144,12 @@ export default function RegisterPage() {
                       <span className={`text-red-500 ${isArabic ? "mr-1" : "ml-1"}`}>*</span>
                     </label>
                     <input
-                      className="w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                      className={`w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
+                        isAuthed ? "opacity-80 cursor-not-allowed" : ""
+                      }`}
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      readOnly={isAuthed}
+                      onChange={isAuthed ? undefined : (e) => setEmail(e.target.value)}
                       placeholder={t.form.emailPh}
                       inputMode="email"
                       required
