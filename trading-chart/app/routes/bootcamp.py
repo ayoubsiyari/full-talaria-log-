@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.orm import Session
 from fastapi import Depends
@@ -5,6 +7,46 @@ from fastapi import Depends
 from ..db import get_db
 from ..models import BootcampRegistration
 from ..schemas import BootcampRegisterIn
+from ..settings import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _append_registration_to_google_sheets(reg: BootcampRegistration) -> None:
+    if not settings.google_sheets_spreadsheet_id:
+        return
+    if not settings.google_service_account_file:
+        return
+
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+
+    creds = Credentials.from_service_account_file(
+        settings.google_service_account_file,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
+    )
+    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+    values = [
+        [
+            reg.id,
+            reg.full_name,
+            reg.email,
+            reg.country,
+            reg.phone or "",
+            reg.age,
+            reg.telegram or "",
+            reg.discord,
+            reg.instagram or "",
+            (reg.created_at.isoformat() if getattr(reg, "created_at", None) else ""),
+        ]
+    ]
+    service.spreadsheets().values().append(
+        spreadsheetId=settings.google_sheets_spreadsheet_id,
+        range=f"{settings.google_sheets_sheet_name}!A1",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        body={"values": values},
+    ).execute()
 
 router = APIRouter(prefix="/api/bootcamp", tags=["bootcamp"])
 
@@ -31,4 +73,8 @@ def register(payload: BootcampRegisterIn, db: Session = Depends(get_db)):
     db.add(reg)
     db.commit()
     db.refresh(reg)
+    try:
+        _append_registration_to_google_sheets(reg)
+    except Exception:
+        logger.exception("google_sheets_append_failed")
     return {"ok": True, "id": reg.id}

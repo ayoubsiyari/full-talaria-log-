@@ -25,6 +25,11 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@local.test}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminadmin}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-/run/secrets/google-service-account.json}
+      GOOGLE_SHEETS_SPREADSHEET_ID: ${GOOGLE_SHEETS_SPREADSHEET_ID:-}
+      GOOGLE_SHEETS_SHEET_NAME: ${GOOGLE_SHEETS_SHEET_NAME:-Registrations}
+    volumes:
+      - ./secrets:/run/secrets:ro
     depends_on:
       db:
         condition: service_healthy

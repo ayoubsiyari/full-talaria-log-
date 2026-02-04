@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     admin_password: str | None = None
     admin_name: str = "Admin"
 
+    google_service_account_file: str | None = None
+    google_sheets_spreadsheet_id: str | None = None
+    google_sheets_sheet_name: str = "Registrations"
+
     class Config:
         env_file = ".env"
         case_sensitive = False
