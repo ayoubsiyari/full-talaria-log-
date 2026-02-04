@@ -386,10 +386,21 @@ export default function RegisterPage() {
       try {
         const res = await fetch("/api/auth/me", { credentials: "include" });
         const data = await res.json().catch(() => null);
-        const authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
+        const user = data && (data as any).user;
+        const authed = Boolean(res.ok && user && typeof user.id === "number");
         if (!cancelled) {
           setIsAuthed(authed);
           setAuthChecked(true);
+        }
+        if (!cancelled && authed && user) {
+          const nextName = typeof user.name === "string" ? user.name : "";
+          const nextEmail = typeof user.email === "string" ? user.email : "";
+          if (nextName) {
+            setFullName((prev) => (prev.trim() ? prev : nextName));
+          }
+          if (nextEmail) {
+            setEmail((prev) => (prev.trim() ? prev : nextEmail));
+          }
         }
         if (!authed) {
           window.location.href = "/login/?mode=signin&next=/register/";
