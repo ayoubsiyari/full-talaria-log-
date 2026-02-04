@@ -1114,48 +1114,49 @@ export default function RegisterPage() {
               ) : null}
 
               {!submitted ? (
-                <form onSubmit={onSubmit} className="grid gap-4">
-                  {submitError ? (
-                    <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-red-200 text-sm">
-                      {submitError}
+                rulesDecision === "agree" ? (
+                  <form onSubmit={onSubmit} className="grid gap-4">
+                    {submitError ? (
+                      <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-red-200 text-sm">
+                        {submitError}
+                      </div>
+                    ) : null}
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        {t.form.fullName}
+                        <span className={`text-red-500 ${isArabic ? "mr-1" : "ml-1"}`}>*</span>
+                      </label>
+                      <input
+                        className={`w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
+                          isAuthed ? "opacity-80 cursor-not-allowed" : ""
+                        }`}
+                        value={fullName}
+                        readOnly={isAuthed}
+                        onChange={isAuthed ? undefined : (e) => setFullName(e.target.value)}
+                        placeholder={t.form.fullNamePh}
+                        required
+                      />
+                      {errors.fullName && <div className="mt-1 text-xs text-red-400">{errors.fullName}</div>}
                     </div>
-                  ) : null}
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">
-                      {t.form.fullName}
-                      <span className={`text-red-500 ${isArabic ? "mr-1" : "ml-1"}`}>*</span>
-                    </label>
-                    <input
-                      className={`w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
-                        isAuthed ? "opacity-80 cursor-not-allowed" : ""
-                      }`}
-                      value={fullName}
-                      readOnly={isAuthed}
-                      onChange={isAuthed ? undefined : (e) => setFullName(e.target.value)}
-                      placeholder={t.form.fullNamePh}
-                      required
-                    />
-                    {errors.fullName && <div className="mt-1 text-xs text-red-400">{errors.fullName}</div>}
-                  </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">
-                      {t.form.email}
-                      <span className={`text-red-500 ${isArabic ? "mr-1" : "ml-1"}`}>*</span>
-                    </label>
-                    <input
-                      className={`w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
-                        isAuthed ? "opacity-80 cursor-not-allowed" : ""
-                      }`}
-                      value={email}
-                      readOnly={isAuthed}
-                      onChange={isAuthed ? undefined : (e) => setEmail(e.target.value)}
-                      placeholder={t.form.emailPh}
-                      inputMode="email"
-                      required
-                    />
-                    {errors.email && <div className="mt-1 text-xs text-red-400">{errors.email}</div>}
-                  </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        {t.form.email}
+                        <span className={`text-red-500 ${isArabic ? "mr-1" : "ml-1"}`}>*</span>
+                      </label>
+                      <input
+                        className={`w-full rounded-lg border border-white/10 bg-[#050815] px-3 py-2 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
+                          isAuthed ? "opacity-80 cursor-not-allowed" : ""
+                        }`}
+                        value={email}
+                        readOnly={isAuthed}
+                        onChange={isAuthed ? undefined : (e) => setEmail(e.target.value)}
+                        placeholder={t.form.emailPh}
+                        inputMode="email"
+                        required
+                      />
+                      {errors.email && <div className="mt-1 text-xs text-red-400">{errors.email}</div>}
+                    </div>
 
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">
@@ -1393,9 +1394,14 @@ export default function RegisterPage() {
                   <div className="text-xs text-neutral-500">
                     {t.form.note}
                   </div>
-                </form>
+                  </form>
+                ) : (
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-white/80 text-sm">
+                    {rulesDecision === "disagree" ? t.page.rulesDisagreeNote : t.page.rulesGatePrompt}
+                  </div>
+                )
               ) : (
-                <div>
+                <div className="text-center py-6">
                   <div className="text-white text-2xl font-bold mb-2">{t.success.title}</div>
                   <div className="text-neutral-300 mb-6">
                     {t.success.thanksA}
