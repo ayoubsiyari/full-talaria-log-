@@ -377,6 +377,42 @@ function isValidPhone(phone: string, dial: string) {
 
 export default function RegisterPage() {
   const { isArabic } = useLanguage();
+  const [authChecked, setAuthChecked] = React.useState(false);
+  const [isAuthed, setIsAuthed] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        if (!cancelled) {
+          setIsAuthed(res.ok);
+          setAuthChecked(true);
+        }
+        if (!res.ok) {
+          window.location.href = "/login/?mode=signin&next=/register/";
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAuthed(false);
+          setAuthChecked(true);
+        }
+        window.location.href = "/login/?mode=signin&next=/register/";
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!authChecked || !isAuthed) {
+    return (
+      <main className="min-h-screen bg-[#030014] flex items-center justify-center">
+        <div className="text-white/80 text-sm">{isArabic ? "...جاري التحقق" : "Checking..."}</div>
+      </main>
+    );
+  }
   const t = React.useMemo(
     () =>
       isArabic
