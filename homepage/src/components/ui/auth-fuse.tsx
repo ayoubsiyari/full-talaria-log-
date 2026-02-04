@@ -224,7 +224,7 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath }: { prefillEmail?: 
       }
 
       const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
-      window.location.href = safeNext || "/dashboard/";
+      window.location.href = safeNext || "/";
     } finally {
       setLoading(false);
     }
@@ -246,7 +246,7 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath }: { prefillEmail?: 
   );
 }
 
-function SignUpForm({ onSignedUp }: { onSignedUp: (email: string) => void }) {
+function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => void; nextPath?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
@@ -290,6 +290,8 @@ function SignUpForm({ onSignedUp }: { onSignedUp: (email: string) => void }) {
         setError((body && body.detail) ? String(body.detail) : "Sign up failed");
         return;
       }
+      const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
+      window.location.href = safeNext || "/";
       onSignedUp(trimmedEmail);
     } finally {
       setLoading(false);
@@ -335,7 +337,11 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, prefillEmail, banne
                 <img src="/logo-08.png" alt="Talaria Log" className="h-20 w-20" />
                 <span className="text-xl font-bold text-foreground">Talaria Log</span>
             </div>
-            {isSignIn ? <SignInForm prefillEmail={prefillEmail} bannerMessage={bannerMessage} nextPath={nextPath} /> : <SignUpForm onSignedUp={onSignedUp} />}
+            {isSignIn ? (
+              <SignInForm prefillEmail={prefillEmail} bannerMessage={bannerMessage} nextPath={nextPath} />
+            ) : (
+              <SignUpForm onSignedUp={onSignedUp} nextPath={nextPath} />
+            )}
             <div className="text-center text-sm">
                 {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
                 <AuthButton variant="link" className="pl-1 text-foreground" onClick={onToggle}>
