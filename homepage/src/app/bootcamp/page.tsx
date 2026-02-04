@@ -136,7 +136,9 @@ export default function BootcampPage() {
     setJoinMenuLoading(true);
     try {
       const res = await fetch("/api/auth/me", { credentials: "include" });
-      if (res.ok) {
+      const data = await res.json().catch(() => null);
+      const authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
+      if (authed) {
         window.location.href = "/register/";
         return;
       }

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from fastapi import Depends
 
 from ..db import get_db
+from ..deps import get_current_user
 from ..models import BootcampRegistration
 from ..schemas import BootcampRegisterIn
 from ..settings import settings
@@ -52,7 +53,11 @@ router = APIRouter(prefix="/api/bootcamp", tags=["bootcamp"])
 
 
 @router.post("/register")
-def register(payload: BootcampRegisterIn, db: Session = Depends(get_db)):
+def register(
+    payload: BootcampRegisterIn,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
     if not payload.agree_terms or not payload.agree_rules:
         raise HTTPException(status_code=400, detail="Terms and rules must be accepted")
     if payload.age < 18:

@@ -385,11 +385,13 @@ export default function RegisterPage() {
     (async () => {
       try {
         const res = await fetch("/api/auth/me", { credentials: "include" });
+        const data = await res.json().catch(() => null);
+        const authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
         if (!cancelled) {
-          setIsAuthed(res.ok);
+          setIsAuthed(authed);
           setAuthChecked(true);
         }
-        if (!res.ok) {
+        if (!authed) {
           window.location.href = "/login/?mode=signin&next=/register/";
         }
       } catch {
@@ -837,6 +839,7 @@ export default function RegisterPage() {
     setSubmitError("");
     try {
       const res = await fetch("/api/bootcamp/register", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -852,6 +855,11 @@ export default function RegisterPage() {
           agree_rules: rulesDecision === "agree",
         }),
       });
+
+      if (res.status === 401) {
+        window.location.href = "/login/?mode=signin&next=/register/";
+        return;
+      }
 
       if (!res.ok) {
         let detail = t.submit.failed;
