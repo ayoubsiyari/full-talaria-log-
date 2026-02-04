@@ -395,12 +395,8 @@ export default function RegisterPage() {
         if (!cancelled && authed && user) {
           const nextName = typeof user.name === "string" ? user.name : "";
           const nextEmail = typeof user.email === "string" ? user.email : "";
-          if (nextName) {
-            setFullName((prev) => (prev.trim() ? prev : nextName));
-          }
-          if (nextEmail) {
-            setEmail((prev) => (prev.trim() ? prev : nextEmail));
-          }
+          setFullName(nextName);
+          setEmail(nextEmail);
         }
         if (!authed) {
           window.location.href = "/login/?mode=signin&next=/register/";
