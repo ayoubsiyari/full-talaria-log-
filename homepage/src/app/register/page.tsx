@@ -405,14 +405,6 @@ export default function RegisterPage() {
       cancelled = true;
     };
   }, []);
-
-  if (!authChecked || !isAuthed) {
-    return (
-      <main className="min-h-screen bg-[#030014] flex items-center justify-center">
-        <div className="text-white/80 text-sm">{isArabic ? "...جاري التحقق" : "Checking..."}</div>
-      </main>
-    );
-  }
   const t = React.useMemo(
     () =>
       isArabic
@@ -880,6 +872,14 @@ export default function RegisterPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (!authChecked || !isAuthed) {
+    return (
+      <main className="min-h-screen bg-[#030014] flex items-center justify-center">
+        <div className="text-white/80 text-sm">{isArabic ? "...جاري التحقق" : "Checking..."}</div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-screen bg-[#030014] overflow-x-hidden">
