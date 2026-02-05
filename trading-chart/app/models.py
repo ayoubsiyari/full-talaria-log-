@@ -22,6 +22,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     has_journal_access: Mapped[bool] = mapped_column(Boolean, default=False)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(120), nullable=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("journal_groups.id"), nullable=True)
 
     sessions: Mapped[list[TradingSession]] = relationship(back_populates="user", cascade="all, delete-orphan")

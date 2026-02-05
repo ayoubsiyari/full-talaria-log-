@@ -12,12 +12,16 @@ class UserPublic(BaseModel):
     role: str
     is_active: bool
     created_at: datetime | None = None
+    phone: str | None = None
+    country: str | None = None
 
 
 class SignupIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    phone: str | None = Field(default=None, max_length=50)
+    country: str | None = Field(default=None, max_length=120)
 
 
 class LoginIn(BaseModel):
@@ -26,7 +30,9 @@ class LoginIn(BaseModel):
 
 
 class UpdateProfileIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    phone: str | None = Field(default=None, max_length=50)
+    country: str | None = Field(default=None, max_length=120)
 
 
 class SessionPublic(BaseModel):

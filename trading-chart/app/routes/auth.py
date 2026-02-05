@@ -24,6 +24,8 @@ def signup(payload: SignupIn, response: Response, db: Session = Depends(get_db))
         password_hash=hash_password(payload.password),
         role="user",
         is_active=True,
+        phone=payload.phone.strip() if payload.phone else None,
+        country=payload.country.strip() if payload.country else None,
     )
     db.add(user)
     db.commit()
@@ -78,7 +80,12 @@ def me(response: Response, user: User = Depends(get_current_user)):
 
 @router.put("/update-profile")
 def update_profile(payload: UpdateProfileIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    user.name = payload.name.strip()
+    if payload.name is not None:
+        user.name = payload.name.strip()
+    if payload.phone is not None:
+        user.phone = payload.phone.strip() if payload.phone else None
+    if payload.country is not None:
+        user.country = payload.country.strip() if payload.country else None
     db.commit()
     db.refresh(user)
     return {"user": UserPublic.model_validate(user, from_attributes=True)}

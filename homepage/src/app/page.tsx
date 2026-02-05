@@ -35,10 +35,12 @@ const talariaBrands = [
 
 export default function HomePage() {
   const { isArabic } = useLanguage();
-  const [user, setUser] = React.useState<{ id: number; name: string; email: string } | null>(null);
+  const [user, setUser] = React.useState<{ id: number; name: string; email: string; phone?: string; country?: string } | null>(null);
   const [showProfile, setShowProfile] = React.useState(false);
   const [editMode, setEditMode] = React.useState(false);
   const [editName, setEditName] = React.useState("");
+  const [editPhone, setEditPhone] = React.useState("");
+  const [editCountry, setEditCountry] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const profileRef = React.useRef<HTMLDivElement>(null);
 
@@ -69,14 +71,17 @@ export default function HomePage() {
   };
 
   const handleSaveProfile = async () => {
-    if (!editName.trim()) return;
     setSaving(true);
     try {
       const res = await fetch("/api/auth/update-profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: editName.trim() }),
+        body: JSON.stringify({ 
+          name: editName.trim() || undefined, 
+          phone: editPhone.trim() || undefined, 
+          country: editCountry.trim() || undefined 
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -89,6 +94,8 @@ export default function HomePage() {
 
   const startEdit = () => {
     setEditName(user?.name || "");
+    setEditPhone(user?.phone || "");
+    setEditCountry(user?.country || "");
     setEditMode(true);
   };
 
@@ -340,28 +347,44 @@ export default function HomePage() {
                             {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
                           </div>
                           {editMode ? (
-                            <div className="flex items-center gap-2 w-full">
+                            <div className="flex flex-col gap-2 w-full">
                               <input
                                 type="text"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
-                                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
                                 placeholder={isArabic ? "الاسم" : "Name"}
                                 autoFocus
                               />
-                              <button
-                                onClick={handleSaveProfile}
-                                disabled={saving}
-                                className="p-1.5 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setEditMode(false)}
-                                className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
+                              <input
+                                type="text"
+                                value={editPhone}
+                                onChange={(e) => setEditPhone(e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                                placeholder={isArabic ? "رقم الهاتف" : "Phone"}
+                              />
+                              <input
+                                type="text"
+                                value={editCountry}
+                                onChange={(e) => setEditCountry(e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                                placeholder={isArabic ? "الدولة" : "Country"}
+                              />
+                              <div className="flex items-center gap-2 justify-end">
+                                <button
+                                  onClick={handleSaveProfile}
+                                  disabled={saving}
+                                  className="px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 text-sm"
+                                >
+                                  {saving ? (isArabic ? "جارٍ الحفظ..." : "Saving...") : (isArabic ? "حفظ" : "Save")}
+                                </button>
+                                <button
+                                  onClick={() => setEditMode(false)}
+                                  className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-sm"
+                                >
+                                  {isArabic ? "إلغاء" : "Cancel"}
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <div className="flex items-center gap-2">
@@ -377,6 +400,18 @@ export default function HomePage() {
                             <Mail className="w-4 h-4" />
                             <span className="truncate">{user.email}</span>
                           </div>
+                          {user.phone && (
+                            <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2">
+                              <span className="w-4 h-4 text-center">📱</span>
+                              <span className="truncate">{user.phone}</span>
+                            </div>
+                          )}
+                          {user.country && (
+                            <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2">
+                              <span className="w-4 h-4 text-center">🌍</span>
+                              <span className="truncate">{user.country}</span>
+                            </div>
+                          )}
                         </div>
                         <button
                           onClick={handleLogout}
