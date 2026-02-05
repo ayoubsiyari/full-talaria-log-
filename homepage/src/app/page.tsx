@@ -275,14 +275,15 @@ export default function HomePage() {
             <div className="flex items-center gap-1 sm:gap-2">
               {user ? (
                 <>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 text-xs sm:text-sm px-2 sm:px-4"
+                  <Link
+                    href="/dashboard/"
+                    className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 hover:bg-white/10 transition"
                   >
-                    <Link href="/dashboard/">{isArabic ? "لوحة التحكم" : "Dashboard"}</Link>
-                  </Button>
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xs font-semibold">
+                      {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-white text-xs sm:text-sm">{user.name || user.email?.split('@')[0]}</span>
+                  </Link>
                   <Button
                     onClick={handleLogout}
                     size="sm"
