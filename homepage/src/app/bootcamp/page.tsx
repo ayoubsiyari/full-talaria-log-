@@ -657,17 +657,17 @@ export default function BootcampPage() {
                       className={
                         "absolute top-0 " +
                         (isArabic ? "left-0" : "right-0") +
-                        " w-40 h-40 overflow-hidden pointer-events-none"
+                        " w-28 h-28 sm:w-40 sm:h-40 overflow-hidden pointer-events-none"
                       }
                     >
                       <div
                         className={
-                          "absolute top-3 " +
-                          (isArabic ? "-left-16 -rotate-45" : "-right-16 rotate-45")
+                          "absolute top-2 sm:top-3 " +
+                          (isArabic ? "-left-12 sm:-left-16 -rotate-45" : "-right-12 sm:-right-16 rotate-45")
                         }
                       >
                         <motion.div
-                          className="relative flex items-center justify-center rounded-sm bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-black w-56 px-0 py-3 text-[13px] font-extrabold shadow-[0_18px_55px_rgba(16,185,129,0.55)] ring-1 ring-emerald-200/50"
+                          className="relative flex items-center justify-center rounded-sm bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-black w-40 sm:w-56 px-0 py-2 sm:py-3 text-[10px] sm:text-[13px] font-extrabold shadow-[0_18px_55px_rgba(16,185,129,0.55)] ring-1 ring-emerald-200/50"
                           animate={{ scale: [1, 1.04, 1] }}
                           transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
                         >
@@ -687,7 +687,7 @@ export default function BootcampPage() {
                             }
                           >
                             <div className="flex flex-col items-center justify-center gap-0.5">
-                              <span className="relative inline-block text-[12px] font-black">
+                              <span className="relative inline-block text-[9px] sm:text-[12px] font-black">
                                 <span className="relative" dir="ltr">100$</span>
                                 <span
                                   aria-hidden="true"
@@ -709,8 +709,8 @@ export default function BootcampPage() {
                               <span
                                 className={
                                   isArabic
-                                    ? "text-[13px] font-black"
-                                    : "text-[13px] font-extrabold tracking-[0.28em]"
+                                    ? "text-[10px] sm:text-[13px] font-black"
+                                    : "text-[10px] sm:text-[13px] font-extrabold tracking-[0.28em]"
                                 }
                               >
                                 {isArabic ? "مجاني" : "FREE"}
@@ -729,7 +729,7 @@ export default function BootcampPage() {
                           alt="Talaria"
                           width={44}
                           height={44}
-                          className="h-20 w-20 object-contain"
+                          className="h-12 w-12 sm:h-20 sm:w-20 object-contain"
                         />
                       ) : (
                         <stat.icon
