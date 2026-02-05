@@ -89,6 +89,15 @@ class User(db.Model):
     @property
     def full_name(self):
         return self.name
+    
+    @property
+    def account_type(self):
+        # Return 'admin' for admins, 'group' if in a group, otherwise 'individual'
+        if self.role == 'admin':
+            return 'admin'
+        elif self.group_id:
+            return 'group'
+        return 'individual'
 
     def get_group_feature_flags(self):
         """Get feature flags for this user's group"""
