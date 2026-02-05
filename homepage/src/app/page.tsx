@@ -17,6 +17,11 @@ import {
   ChevronRight,
   ChevronDown,
   ArrowRight,
+  User,
+  Mail,
+  X,
+  Check,
+  Pencil,
 } from "lucide-react";
 
 import NinjaTraderWordmark from "../../ninjatrader/Landing-Page-Text-Images/NinjaTrader/NinjaTrader_Wordmark_color_RGB.png";
@@ -31,6 +36,11 @@ const talariaBrands = [
 export default function HomePage() {
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<{ id: number; name: string; email: string } | null>(null);
+  const [showProfile, setShowProfile] = React.useState(false);
+  const [editMode, setEditMode] = React.useState(false);
+  const [editName, setEditName] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const profileRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
@@ -39,12 +49,47 @@ export default function HomePage() {
       .catch(() => setUser(null));
   }, []);
 
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setShowProfile(false);
+        setEditMode(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } catch {}
     setUser(null);
     window.location.href = "/";
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/auth/update-profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: editName.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+        setEditMode(false);
+      }
+    } catch {}
+    setSaving(false);
+  };
+
+  const startEdit = () => {
+    setEditName(user?.name || "");
+    setEditMode(true);
   };
 
   const t = React.useMemo(
@@ -275,16 +320,73 @@ export default function HomePage() {
             <div className="flex items-center gap-1 sm:gap-2">
               {user ? (
                 <>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-sm font-semibold border border-white/20">
-                    {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
+                  <div className="relative" ref={profileRef}>
+                    <button
+                      onClick={() => setShowProfile(!showProfile)}
+                      className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-sm font-semibold border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+                    >
+                      {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
+                    </button>
+                    {showProfile && (
+                      <div className="absolute top-10 right-0 w-72 bg-[#0a0a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-4 z-50">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-white font-semibold">{isArabic ? "الملف الشخصي" : "Profile"}</h3>
+                          <button onClick={() => { setShowProfile(false); setEditMode(false); }} className="text-white/50 hover:text-white">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="flex flex-col items-center mb-4">
+                          <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-2xl font-semibold mb-3">
+                            {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
+                          </div>
+                          {editMode ? (
+                            <div className="flex items-center gap-2 w-full">
+                              <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                                placeholder={isArabic ? "الاسم" : "Name"}
+                                autoFocus
+                              />
+                              <button
+                                onClick={handleSaveProfile}
+                                disabled={saving}
+                                className="p-1.5 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditMode(false)}
+                                className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-medium">{user.name || (isArabic ? "بدون اسم" : "No name")}</span>
+                              <button onClick={startEdit} className="p-1 rounded-lg hover:bg-white/10 text-white/50 hover:text-white">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2">
+                            <Mail className="w-4 h-4" />
+                            <span className="truncate">{user.email}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full py-2 rounded-lg text-sm text-white bg-gradient-to-r from-red-600 via-pink-600 to-red-500 hover:from-red-500 hover:via-pink-500 hover:to-red-400 transition-all"
+                        >
+                          {isArabic ? "تسجيل الخروج" : "Sign out"}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <Button
-                    onClick={handleLogout}
-                    size="sm"
-                    className="rounded-full text-white bg-gradient-to-r from-red-600 via-pink-600 to-red-500 hover:from-red-500 hover:via-pink-500 hover:to-red-400 shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_14px_40px_rgba(239,68,68,0.25)] text-xs sm:text-sm px-2 sm:px-4"
-                  >
-                    {isArabic ? "تسجيل الخروج" : "Sign out"}
-                  </Button>
                 </>
               ) : (
                 <>

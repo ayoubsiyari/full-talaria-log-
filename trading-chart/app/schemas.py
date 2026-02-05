@@ -25,6 +25,10 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class UpdateProfileIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
 class SessionPublic(BaseModel):
     id: int
     name: str

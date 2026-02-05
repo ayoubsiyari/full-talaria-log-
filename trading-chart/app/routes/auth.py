@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from ..deps import get_current_user
 from ..db import get_db
 from ..models import User
-from ..schemas import LoginIn, SignupIn, UserPublic
+from ..schemas import LoginIn, SignupIn, UpdateProfileIn, UserPublic
 from ..security import create_session_token, hash_password, verify_password
 from ..settings import settings
 
@@ -73,4 +73,12 @@ def logout(response: Response):
 def me(response: Response, user: User = Depends(get_current_user)):
     response.headers["Cache-Control"] = "no-store"
     response.headers["Vary"] = "Cookie"
+    return {"user": UserPublic.model_validate(user, from_attributes=True)}
+
+
+@router.put("/update-profile")
+def update_profile(payload: UpdateProfileIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    user.name = payload.name.strip()
+    db.commit()
+    db.refresh(user)
     return {"user": UserPublic.model_validate(user, from_attributes=True)}
