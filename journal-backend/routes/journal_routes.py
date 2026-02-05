@@ -8234,6 +8234,7 @@ def update_custom_variable(var_name):
 def save_initial_balance():
     try:
         user_id = int(get_jwt_identity())
+        profile_id = get_active_profile_id(user_id)
         data = request.get_json()
         
         if not data or 'initial_balance' not in data:
@@ -8249,13 +8250,12 @@ def save_initial_balance():
         except (ValueError, TypeError):
             return jsonify({"error": "Invalid initial balance value"}), 400
         
-        # Update the user's initial balance
-        from models import User
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({"error": "User not found"}), 404
+        # Update the profile's initial balance
+        profile = Profile.query.filter_by(user_id=user_id, id=profile_id).first()
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
         
-        user.initial_balance = initial_balance
+        profile.initial_balance = initial_balance
         db.session.commit()
         
         return jsonify({
@@ -8273,14 +8273,14 @@ def save_initial_balance():
 def get_initial_balance():
     try:
         user_id = int(get_jwt_identity())
+        profile_id = get_active_profile_id(user_id)
         
-        from models import User
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({"error": "User not found"}), 404
+        profile = Profile.query.filter_by(user_id=user_id, id=profile_id).first()
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
         
         return jsonify({
-            "initial_balance": user.initial_balance or 0.0
+            "initial_balance": float(profile.initial_balance or 0.0)
         }), 200
         
     except Exception as e:

@@ -159,6 +159,9 @@ class Profile(db.Model):
     ftp_port = db.Column(db.Integer, nullable=True, default=21)
     ftp_username = db.Column(db.String(100), nullable=True)
     ftp_password = db.Column(db.String(255), nullable=True) # Note: Should be encrypted in a real application
+    
+    # Initial balance for portfolio tracking
+    initial_balance = db.Column(db.Numeric(15, 2), default=0)
 
     # Back‐reference so you can do: some_profile.user
     user = db.relationship('User', back_populates='profiles')
