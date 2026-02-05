@@ -328,7 +328,7 @@ export default function HomePage() {
                       {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
                     </button>
                     {showProfile && (
-                      <div className="absolute top-10 right-0 w-72 bg-[#0a0a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-4 z-50">
+                      <div className="fixed sm:absolute top-16 sm:top-10 left-4 right-4 sm:left-auto sm:right-0 sm:w-72 bg-[#0a0a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-4 z-50">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="text-white font-semibold">{isArabic ? "الملف الشخصي" : "Profile"}</h3>
                           <button onClick={() => { setShowProfile(false); setEditMode(false); }} className="text-white/50 hover:text-white">
