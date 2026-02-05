@@ -1,0 +1,81 @@
+{
+  "name": "talaria-trading-journal",
+  "version": "1.0.0",
+  "description": "Professional trading journal with AI-powered analytics and 200+ performance metrics",
+  "private": true,
+  "proxy": "http://localhost:5000",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@headlessui/react": "^2.2.4",
+    "@mui/material": "^7.1.2",
+    "@mui/x-date-pickers": "^8.6.0",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-tabs": "^1.1.12",
+    "@radix-ui/react-tooltip": "^1.2.7",
+    "@tanstack/react-query": "^5.81.5",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "@tiptap/extension-character-count": "^3.0.6",
+    "@tiptap/extension-task-item": "^3.0.6",
+    "@tiptap/extension-task-list": "^3.0.6",
+    "@tiptap/react": "^3.0.6",
+    "@tiptap/starter-kit": "^3.0.6",
+    "axios": "^1.10.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.23.9",
+    "html2canvas": "^1.4.1",
+    "i18next": "^25.3.2",
+    "jspdf": "^3.0.1",
+    "lucide-react": "^0.511.0",
+    "papaparse": "^5.5.3",
+    "postcss": "^8.5.6",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-grid-layout": "^1.5.1",
+    "react-i18next": "^15.6.0",
+    "react-icons": "^5.5.0",
+    "react-markdown": "^10.1.0",
+    "react-resizable": "^3.0.5",
+    "react-router-dom": "^6.22.3",
+    "react-scripts": "5.0.1",
+    "react-toastify": "^11.0.5",
+    "recharts": "2.10.4",
+    "tailwind-merge": "^3.3.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.4",
+    "postcss-loader": "^8.1.1",
+    "tailwindcss": "^4.1.8"
+  }
+}

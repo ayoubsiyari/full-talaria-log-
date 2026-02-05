@@ -42,5 +42,27 @@ services:
     depends_on:
       - trading-chart
 
+  journal-backend:
+    build:
+      context: ./journal-backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
+      FLASK_ENV: production
+      FLASK_DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-jwt-secret-change-me}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  journal-frontend:
+    build:
+      context: ./journal-frontend
+    ports:
+      - "${JOURNAL_PORT:-3001}:80"
+    depends_on:
+      - journal-backend
+
 volumes:
   postgres_data:

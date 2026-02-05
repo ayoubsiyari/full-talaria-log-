@@ -1,0 +1,546 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Import Inter font as fallback for brand fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* Global font family utility */
+.font-inter {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Talaria-Log Brand CSS Variables */
+:root {
+  /* Brand Primary Colors */
+  --brand-primary: #3090FF;
+  --brand-primary-dark: #232CF4;
+  --brand-navy: #040028;
+  --brand-white: #FFFFFF;
+  
+  /* Brand Secondary Colors */
+  --brand-light-blue: #5FACF9;
+  --brand-purple: #353089;
+  --brand-black: #000000;
+  
+  /* Light Mode Colors (keeping for compatibility) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-card: var(--brand-primary);
+  --bg-overlay: rgba(0, 0, 0, 0.1);
+  
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --text-inverse: var(--brand-white);
+  
+  --border-primary: #e2e8f0;
+  --border-secondary: #cbd5e1;
+  --border-accent: var(--brand-primary-dark);
+  
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  
+  --accent-blue: var(--brand-primary);
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-yellow: #f59e0b;
+  --accent-purple: var(--brand-purple);
+  
+  --success-light: #dcfce7;
+  --success-dark: #166534;
+  --error-light: #fef2f2;
+  --error-dark: #991b1b;
+  --warning-light: #fef3c7;
+  --warning-dark: #92400e;
+}
+
+/* Dark mode variables - Talaria-Log Brand */
+.dark {
+  /* Talaria-Log Dark Mode Colors */
+  --bg-primary: var(--brand-navy);
+  --bg-secondary: #1a1a2e;
+  --bg-tertiary: #16213e;
+  --bg-card: #1a1a2e;
+  --bg-overlay: rgba(0, 0, 0, 0.7);
+  
+  --text-primary: var(--brand-white);
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-inverse: var(--brand-navy);
+  
+  --border-primary: #2d2d3a;
+  --border-secondary: #3f3f46;
+  --border-accent: var(--brand-primary);
+  
+  /* Enhanced shadows for dark mode with brand colors */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.4);
+  
+  /* Talaria-Log brand accent colors */
+  --accent-blue: var(--brand-light-blue);
+  --accent-green: #34d399;
+  --accent-red: #f87171;
+  --accent-yellow: #fbbf24;
+  --accent-purple: var(--brand-purple);
+  --accent-purple-light: var(--brand-light-blue);
+  --accent-purple-dark: var(--brand-primary-dark);
+  
+  /* Brand gradient colors */
+  --gradient-brand-start: var(--brand-primary);
+  --gradient-brand-middle: var(--brand-primary-dark);
+  --gradient-brand-end: var(--brand-purple);
+  
+  --success-light: #064e3b;
+  --success-dark: #6ee7b7;
+  --error-light: #450a0a;
+  --error-dark: #fca5a5;
+  --warning-light: #451a03;
+  --warning-dark: #fcd34d;
+}
+
+/* Base styles with Talaria-Log brand aesthetics */
+* {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+  background: linear-gradient(135deg, var(--brand-navy) 0%, #1a1a2e 100%);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-weight: 400;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* Talaria-Log brand gradient backgrounds */
+.bg-gradient-brand {
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%);
+}
+
+.bg-gradient-brand-secondary {
+  background: linear-gradient(135deg, var(--brand-light-blue) 0%, var(--brand-purple) 100%);
+}
+
+.bg-gradient-brand-dark {
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-black) 100%);
+}
+
+.bg-gradient-brand-subtle {
+  background: linear-gradient(135deg, rgba(48, 144, 255, 0.1) 0%, rgba(35, 44, 244, 0.1) 50%, rgba(53, 48, 137, 0.1) 100%);
+}
+
+/* Glow effects with brand colors */
+.glow-brand {
+  box-shadow: 0 0 20px rgba(48, 144, 255, 0.3), 0 0 40px rgba(48, 144, 255, 0.1);
+}
+
+.glow-brand-strong {
+  box-shadow: 0 0 30px rgba(48, 144, 255, 0.5), 0 0 60px rgba(48, 144, 255, 0.2);
+}
+
+/* Custom utility classes */
+.bg-theme-primary {
+  background-color: var(--bg-primary);
+}
+
+.bg-theme-secondary {
+  background-color: var(--bg-secondary);
+}
+
+.bg-theme-tertiary {
+  background-color: var(--bg-tertiary);
+}
+
+.bg-theme-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.text-theme-primary {
+  color: var(--text-primary);
+}
+
+.text-theme-secondary {
+  color: var(--text-secondary);
+}
+
+.text-theme-muted {
+  color: var(--text-muted);
+}
+
+.border-theme-primary {
+  border-color: var(--border-primary);
+}
+
+.border-theme-secondary {
+  border-color: var(--border-secondary);
+}
+
+.border-theme-accent {
+  border-color: var(--border-accent);
+}
+
+.shadow-theme-sm {
+  box-shadow: var(--shadow-sm);
+}
+
+.shadow-theme-md {
+  box-shadow: var(--shadow-md);
+}
+
+.shadow-theme-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+.shadow-theme-xl {
+  box-shadow: var(--shadow-xl);
+}
+
+/* Enhanced card styles with brand colors */
+.card {
+  @apply bg-theme-card border border-theme-primary rounded-xl shadow-theme-lg;
+  backdrop-filter: blur(10px);
+  background: rgba(26, 26, 46, 0.8);
+}
+
+.card-hover {
+  @apply transition-all duration-300 ease-out;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--brand-primary);
+}
+
+.card-glow {
+  @apply card;
+  box-shadow: 0 0 20px rgba(48, 144, 255, 0.1), var(--shadow-lg);
+}
+
+.card-glow:hover {
+  box-shadow: 0 0 30px rgba(48, 144, 255, 0.2), var(--shadow-xl);
+}
+
+/* Talaria-Log brand button styles */
+.btn-primary {
+  @apply font-medium py-3 px-6 rounded-xl transition-all duration-300 ease-out;
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 15px rgba(48, 144, 255, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(48, 144, 255, 0.4);
+  background: linear-gradient(135deg, var(--brand-primary-dark) 0%, var(--brand-purple) 100%);
+}
+
+.btn-secondary {
+  @apply bg-theme-secondary text-theme-primary border border-theme-primary font-medium py-3 px-6 rounded-xl transition-all duration-300 ease-out;
+  backdrop-filter: blur(10px);
+}
+.btn-secondary:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--brand-primary);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  @apply bg-transparent text-theme-primary font-medium py-3 px-6 rounded-xl transition-all duration-300 ease-out;
+}
+.btn-ghost:hover {
+  background: rgba(48, 144, 255, 0.1);
+  color: var(--brand-primary);
+}
+
+.btn-outline {
+  @apply bg-transparent border font-medium py-3 px-6 rounded-xl transition-all duration-300 ease-out;
+  color: var(--brand-light-blue);
+  border-color: var(--brand-light-blue);
+}
+.btn-outline:hover {
+  background: var(--brand-primary);
+  color: white;
+  border-color: var(--brand-primary);
+  box-shadow: 0 4px 15px rgba(48, 144, 255, 0.3);
+}
+
+/* Enhanced input styles */
+.input-theme {
+  @apply bg-theme-card border border-theme-primary text-theme-primary rounded-xl px-4 py-3 transition-all duration-300;
+  backdrop-filter: blur(10px);
+}
+.input-theme:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(48, 144, 255, 0.1);
+}
+.input-theme::placeholder {
+  color: var(--text-muted);
+}
+
+/* Enhanced table styles */
+.table-theme {
+  @apply w-full bg-theme-card border border-theme-primary rounded-xl overflow-hidden;
+  backdrop-filter: blur(10px);
+}
+
+.table-theme th {
+  @apply bg-theme-secondary text-theme-primary font-semibold px-6 py-4 text-left border-b border-theme-primary;
+}
+
+.table-theme td {
+  @apply px-6 py-4 text-theme-primary border-b border-theme-primary;
+}
+
+.table-theme tr:hover {
+  background: rgba(48, 144, 255, 0.05);
+}
+
+/* Enhanced scrollbar styles with brand colors */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-dark));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--brand-primary-dark), var(--brand-purple));
+}
+
+/* Enhanced focus styles */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
+  --tw-ring-color: var(--brand-primary);
+}
+
+/* Enhanced animation utilities */
+.fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-in {
+  animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.scale-in {
+  animation: scaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Floating animation for special elements */
+.float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Loading states with brand theme */
+.loading-skeleton {
+  @apply animate-pulse rounded-xl;
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Status indicators with enhanced colors */
+.status-success {
+  @apply text-green-400;
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+}
+
+.status-error {
+  @apply text-red-400;
+  text-shadow: 0 0 10px rgba(248, 113, 113, 0.3);
+}
+
+.status-warning {
+  @apply text-yellow-400;
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+.status-info {
+  color: var(--brand-light-blue);
+  text-shadow: 0 0 10px rgba(95, 172, 249, 0.3);
+}
+
+/* Talaria-Log brand navigation styles */
+.nav-item {
+  @apply flex items-center px-4 py-3 rounded-xl transition-all duration-300 ease-out;
+}
+
+.nav-item:hover {
+  background: rgba(48, 144, 255, 0.1);
+  transform: translateX(4px);
+}
+
+.nav-item.active {
+  background: linear-gradient(135deg, rgba(48, 144, 255, 0.2) 0%, rgba(35, 44, 244, 0.1) 100%);
+  border-left: 3px solid var(--brand-primary);
+}
+
+/* Typography enhancements with brand colors */
+.heading-xl {
+  @apply text-4xl font-bold text-theme-primary;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--brand-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.heading-lg {
+  @apply text-3xl font-semibold text-theme-primary;
+}
+
+.heading-md {
+  @apply text-2xl font-semibold text-theme-primary;
+}
+
+.heading-sm {
+  @apply text-xl font-medium text-theme-primary;
+}
+
+/* Glassmorphism effects */
+.glass {
+  background: rgba(26, 26, 46, 0.3);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(48, 144, 255, 0.1);
+}
+
+.glass-strong {
+  background: rgba(26, 26, 46, 0.6);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(48, 144, 255, 0.2);
+}
+
+/* Sidebar specific styles */
+.sidebar-gradient {
+  background: linear-gradient(180deg, var(--brand-navy) 0%, #1a1a2e 50%, #16213e 100%);
+  border-right: 1px solid rgba(48, 144, 255, 0.1);
+}
+
+/* Dashboard grid enhancements */
+.dashboard-grid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+/* Metric card styles */
+.metric-card {
+  @apply card-glow p-6;
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.8) 0%, rgba(22, 33, 62, 0.6) 100%);
+}
+
+.metric-value {
+  @apply text-3xl font-bold;
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Chart container styles */
+.chart-container {
+  @apply card p-6;
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.9) 0%, rgba(22, 33, 62, 0.7) 100%);
+}
+
+/* Mobile responsiveness */
+/* Marquee Animation */
+.animate-marquee {
+  animation: marquee 40s linear infinite;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-outline {
+    @apply py-2 px-4 text-sm;
+  }
+  
+  .heading-xl {
+    @apply text-2xl;
+  }
+  
+  .heading-lg {
+    @apply text-xl;
+  }
+}
+
