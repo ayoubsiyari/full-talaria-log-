@@ -12,8 +12,7 @@ class Config:
     
     # Default to SQLite, will be overridden in production
     instance_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'instance'))
-    if not os.path.exists(instance_path):
-        os.makedirs(instance_path)
+    os.makedirs(instance_path, exist_ok=True)
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL',
         f'sqlite:///{os.path.join(instance_path, "journal.db")}')
