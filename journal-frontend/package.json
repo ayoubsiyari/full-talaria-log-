@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Professional trading journal with AI-powered analytics and 200+ performance metrics",
   "private": true,
+  "homepage": "/journal",
   "proxy": "http://localhost:5000",
   "dependencies": {
     "@emotion/react": "^11.14.0",
