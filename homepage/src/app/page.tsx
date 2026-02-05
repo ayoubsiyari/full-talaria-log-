@@ -275,11 +275,8 @@ export default function HomePage() {
             <div className="flex items-center gap-1 sm:gap-2">
               {user ? (
                 <>
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xs font-semibold">
-                      {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="text-white text-xs sm:text-sm">{user.name || user.email?.split('@')[0]}</span>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-sm font-semibold border border-white/20">
+                    {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
                   </div>
                   <Button
                     onClick={handleLogout}
