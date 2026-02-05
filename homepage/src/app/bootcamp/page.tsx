@@ -739,8 +739,8 @@ export default function BootcampPage() {
                         />
                       )}
                     </div>
-                    <div className="text-3xl sm:text-4xl leading-none font-bold text-white whitespace-nowrap tracking-tight">{stat.value}</div>
-                    <div className="text-neutral-400 text-xs sm:text-sm leading-tight whitespace-nowrap">{stat.label}</div>
+                    <div className="text-xl sm:text-3xl md:text-4xl leading-tight font-bold text-white tracking-tight">{stat.value}</div>
+                    <div className="text-neutral-400 text-[10px] sm:text-sm leading-tight">{stat.label}</div>
                   </div>
                 </div>
               </motion.div>
