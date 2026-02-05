@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from typing import Any
 
 
 class Base(DeclarativeBase):
@@ -20,8 +21,14 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(50), default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    has_journal_access: Mapped[bool] = mapped_column(Boolean, default=False)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("journal_groups.id"), nullable=True)
 
     sessions: Mapped[list[TradingSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    journal_profiles: Mapped[list[JournalProfile]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    journal_entries: Mapped[list[JournalEntry]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    strategies: Mapped[list[Strategy]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    group: Mapped[JournalGroup | None] = relationship(back_populates="users")
 
 
 class TradingSession(Base):
@@ -116,3 +123,126 @@ class BootcampRegistration(Base):
     agree_rules: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ========== JOURNAL MODELS (from old VPS) ==========
+
+class JournalGroup(Base):
+    __tablename__ = "journal_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    users: Mapped[list[User]] = relationship(back_populates="group")
+
+
+class JournalProfile(Base):
+    __tablename__ = "journal_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    mode: Mapped[str] = mapped_column(String(50))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ftp_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ftp_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ftp_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ftp_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="journal_profiles")
+    entries: Mapped[list[JournalEntry]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+    import_batches: Mapped[list[ImportBatch]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+
+
+class JournalEntry(Base):
+    __tablename__ = "journal_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("journal_profiles.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(20))
+    direction: Mapped[str] = mapped_column(String(10))
+    entry_price: Mapped[float] = mapped_column(Float)
+    exit_price: Mapped[float] = mapped_column(Float)
+    stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    low_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    variables: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    quantity: Mapped[float] = mapped_column(Float)
+    contract_size: Mapped[float | None] = mapped_column(Float, nullable=True)
+    instrument_type: Mapped[str] = mapped_column(String(20))
+    risk_amount: Mapped[float] = mapped_column(Float)
+    pnl: Mapped[float] = mapped_column(Float)
+    strategy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    setup: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rr: Mapped[float] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    date: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    commission: Mapped[float | None] = mapped_column(Float, nullable=True)
+    slippage: Mapped[float | None] = mapped_column(Float, nullable=True)
+    open_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    close_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    duration_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    entry_screenshot: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    exit_screenshot: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id"), nullable=True)
+    extra_data: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="journal_entries")
+    profile: Mapped[JournalProfile] = relationship(back_populates="entries")
+    import_batch: Mapped[ImportBatch | None] = relationship(back_populates="entries")
+
+
+class Strategy(Base):
+    __tablename__ = "strategies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_rules: Mapped[Any] = mapped_column(JSON)
+    exit_rules: Mapped[Any] = mapped_column(JSON)
+    risk_management: Mapped[Any] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="strategies")
+
+
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("journal_profiles.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(256))
+    filepath: Mapped[str] = mapped_column(String(512))
+    imported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    profile: Mapped[JournalProfile] = relationship(back_populates="import_batches")
+    entries: Mapped[list[JournalEntry]] = relationship(back_populates="import_batch")
+
+
+class FeatureFlag(Base):
+    __tablename__ = "feature_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
