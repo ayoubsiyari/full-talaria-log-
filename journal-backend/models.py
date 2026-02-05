@@ -123,6 +123,11 @@ class User(db.Model):
     def email_verified(self):
         # All migrated users are considered verified
         return True
+    
+    @property
+    def updated_at(self):
+        # Return created_at as fallback since updated_at doesn't exist
+        return self.created_at
 
     def get_group_feature_flags(self):
         """Get feature flags for this user's group"""
