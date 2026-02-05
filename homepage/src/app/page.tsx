@@ -19,6 +19,8 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+import NinjaTraderWordmark from "../../ninjatrader/Landing-Page-Text-Images/NinjaTrader/NinjaTrader_Wordmark_color_RGB.png";
+
 const talariaBrands = [
   
   { name: "Talaria-Prop", href: "#" },
@@ -295,7 +297,7 @@ export default function HomePage() {
               <Link href="/ninjatrader">
                 <Button variant="ghost" className="px-4 py-1 text-sm rounded-full h-8 flex items-center bg-transparent hover:bg-white/10">
                   <Image
-                    src="/assets/ninjatrader/NinjaTrader/NinjaTrader_Wordmark_color_RGB.png"
+                    src={NinjaTraderWordmark}
                     alt="NinjaTrader"
                     width={112}
                     height={16}

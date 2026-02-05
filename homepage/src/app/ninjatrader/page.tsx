@@ -2,10 +2,16 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronDown, ArrowLeft, ExternalLink } from "lucide-react";
 import { SparklesCore } from "@/components/ui/sparkles";
 import { Button } from "@/components/ui/button";
 import SiteDisclosuresFooter from "@/components/SiteDisclosuresFooter";
+
+import NinjaTraderWordmark from "../../../ninjatrader/Landing-Page-Text-Images/NinjaTrader/NinjaTrader_Wordmark_color_RGB.png";
+import NinjaTraderMonitor from "../../../ninjatrader/Landing-Page-Text-Images/NinjaTrader/NinjaTrader_Monitor_Image.png";
+import KinetickBadge from "../../../ninjatrader/Landing-Page-Text-Images/Kinetick/Kinetick_Badge.png";
+import KinetickLogo from "../../../ninjatrader/Landing-Page-Text-Images/Kinetick/Kinetick_Logo.png";
 
 const talariaBrands = [
   { name: "Talaria-Prop", href: "#" },
@@ -295,20 +301,10 @@ export default function NinjaTraderPage() {
             className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-10 items-center"
           >
             <div>
-              <img
-                src="/assets/ninjatrader/NinjaTrader/NinjaTrader_Wordmark_color_RGB.png"
-                alt="NinjaTrader"
-                className="h-10 md:h-12 w-auto mb-6"
-              />
-              <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">
-                {t.hero.title}
-              </h1>
-              <p className="text-neutral-300 leading-relaxed mb-4">
-                {t.hero.p1}
-              </p>
-              <p className="text-neutral-300 leading-relaxed mb-4">
-                {t.hero.p2}
-              </p>
+              <Image src={NinjaTraderWordmark} alt="NinjaTrader" className="h-10 md:h-12 w-auto mb-6" />
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-5">{t.hero.title}</h1>
+              <p className="text-white/80 text-lg leading-relaxed max-w-2xl">{t.hero.p1}</p>
+              <p className="text-neutral-300 leading-relaxed mb-4">{t.hero.p2}</p>
               <ul className={`list-disc ${isArabic ? "pr-5" : "pl-5"} text-neutral-300 space-y-1 mb-4`}>
                 {t.hero.bullets.map((b) => (
                   <li key={b}>{b}</li>
@@ -354,11 +350,7 @@ export default function NinjaTraderPage() {
               <div className="relative rounded-2xl p-[1px] bg-gradient-to-r from-purple-500/60 via-cyan-400/40 to-blue-500/60 shadow-[0_0_70px_rgba(59,130,246,0.14)]">
                 <div className="relative overflow-hidden rounded-2xl bg-[#070b1b]/90 backdrop-blur-xl border border-white/10">
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/10 via-white/0 to-transparent" />
-                  <img
-                    src="/assets/ninjatrader/NinjaTrader/NinjaTrader_Monitor_Image.png"
-                    alt="NinjaTrader platform"
-                    className="w-full h-auto"
-                  />
+                  <Image src={NinjaTraderMonitor} alt="NinjaTrader platform" className="w-full h-auto" />
                 </div>
               </div>
             </div>
@@ -374,16 +366,8 @@ export default function NinjaTraderPage() {
               <div className="pointer-events-none absolute -inset-6 rounded-[28px] bg-gradient-to-r from-blue-500/20 via-cyan-400/10 to-purple-500/20 blur-2xl" />
               <div className="relative rounded-2xl p-[1px] bg-gradient-to-r from-blue-500/60 via-cyan-400/40 to-purple-500/60 shadow-[0_0_70px_rgba(59,130,246,0.14)]">
                 <div className="relative overflow-hidden rounded-2xl bg-[#070b1b]/90 backdrop-blur-xl border border-white/10 p-12 md:p-14 flex flex-col items-center justify-center text-center">
-                  <img
-                    src="/assets/ninjatrader/Kinetick/Kinetick_Badge.png"
-                    alt="FREE end-of-day data"
-                    className="h-36 md:h-44 w-auto drop-shadow-[0_0_24px_rgba(255,255,255,0.18)]"
-                  />
-                  <img
-                    src="/assets/ninjatrader/Kinetick/Kinetick_Logo.png"
-                    alt="Kinetick"
-                    className="h-16 md:h-18 w-auto mt-8 drop-shadow-[0_0_18px_rgba(255,255,255,0.12)]"
-                  />
+                  <Image src={KinetickBadge} alt="FREE end-of-day data" className="h-36 md:h-44 w-auto drop-shadow-[0_0_24px_rgba(255,255,255,0.18)]" />
+                  <Image src={KinetickLogo} alt="Kinetick" className="h-16 md:h-18 w-auto mt-8 drop-shadow-[0_0_18px_rgba(255,255,255,0.12)]" />
                 </div>
               </div>
             </div>
