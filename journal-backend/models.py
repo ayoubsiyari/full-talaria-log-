@@ -103,6 +103,21 @@ class User(db.Model):
     def initial_balance(self):
         # Default initial balance - can be customized per user if needed
         return 0.0
+    
+    @property
+    def phone(self):
+        # Compatibility property - field doesn't exist in this schema
+        return None
+    
+    @property
+    def country(self):
+        # Compatibility property - field doesn't exist in this schema
+        return None
+    
+    @property
+    def profile_image(self):
+        # Compatibility property - field doesn't exist in this schema
+        return None
 
     def get_group_feature_flags(self):
         """Get feature flags for this user's group"""
