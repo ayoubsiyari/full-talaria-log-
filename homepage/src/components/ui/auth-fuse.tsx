@@ -290,8 +290,13 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
         setError((body && body.detail) ? String(body.detail) : "Sign up failed");
         return;
       }
-      const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
-      window.location.href = safeNext || "/";
+
+      try {
+        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      } catch {
+        // ignore
+      }
+
       onSignedUp(trimmedEmail);
     } finally {
       setLoading(false);
