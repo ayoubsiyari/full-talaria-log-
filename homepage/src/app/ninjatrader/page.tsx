@@ -160,11 +160,11 @@ export default function NinjaTraderPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#030014] overflow-hidden">
-      <div className="fixed inset-0 bg-gradient-to-b from-black via-[#030014] to-[#0a0a1a]" />
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent" />
+    <main className="relative min-h-screen bg-[#030014] overflow-x-hidden">
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-b from-black via-[#030014] to-[#0a0a1a]" />
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent" />
 
-      <div className="fixed inset-0 w-full h-full">
+      <div className="pointer-events-none fixed inset-0 -z-10 w-full h-full">
         <SparklesCore
           id="tsparticles-ninjatrader"
           background="transparent"
