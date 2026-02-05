@@ -77,6 +77,13 @@ def register(
         agree_rules=bool(payload.agree_rules),
     )
     db.add(reg)
+    
+    # Also save phone and country to user profile
+    if payload.phone and payload.phone.strip():
+        user.phone = payload.phone.strip()
+    if payload.country and payload.country.strip():
+        user.country = payload.country.strip()
+    
     db.commit()
     db.refresh(reg)
     try:
