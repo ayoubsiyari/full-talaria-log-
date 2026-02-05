@@ -33,6 +33,37 @@ const talariaBrands = [
   { name: "Talaria-Copy", href: "#" },
 ];
 
+const COUNTRIES = [
+  "Algeria", "Bahrain", "Comoros", "Djibouti", "Egypt", "Iraq", "Jordan", "Kuwait", 
+  "Lebanon", "Libya", "Mauritania", "Morocco", "Oman", "Palestine", "Qatar", 
+  "Saudi Arabia", "Somalia", "Sudan", "Syria", "Tunisia", "United Arab Emirates", "Yemen",
+  "Afghanistan", "Albania", "Andorra", "Angola", "Argentina", "Armenia", "Australia", 
+  "Austria", "Azerbaijan", "Bahamas", "Bangladesh", "Barbados", "Belarus", "Belgium", 
+  "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", 
+  "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cambodia", "Cameroon", "Canada", 
+  "Cape Verde", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Congo", 
+  "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Denmark", "Dominica", 
+  "Dominican Republic", "Ecuador", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", 
+  "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", 
+  "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", 
+  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Ireland", 
+  "Italy", "Jamaica", "Japan", "Kazakhstan", "Kenya", "Kiribati", "Kyrgyzstan", "Laos", 
+  "Latvia", "Lesotho", "Liberia", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", 
+  "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritius", 
+  "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Mozambique", 
+  "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", 
+  "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Pakistan", "Palau", 
+  "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", 
+  "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", 
+  "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", 
+  "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", 
+  "Solomon Islands", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", 
+  "Suriname", "Sweden", "Switzerland", "Taiwan", "Tajikistan", "Tanzania", "Thailand", 
+  "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Turkey", "Turkmenistan", "Tuvalu", 
+  "Uganda", "Ukraine", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", 
+  "Vatican City", "Venezuela", "Vietnam", "Zambia", "Zimbabwe"
+];
+
 export default function HomePage() {
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<{ id: number; name: string; email: string; phone?: string; country?: string } | null>(null);
@@ -41,8 +72,17 @@ export default function HomePage() {
   const [editName, setEditName] = React.useState("");
   const [editPhone, setEditPhone] = React.useState("");
   const [editCountry, setEditCountry] = React.useState("");
+  const [countryQuery, setCountryQuery] = React.useState("");
+  const [countryDropdownOpen, setCountryDropdownOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const profileRef = React.useRef<HTMLDivElement>(null);
+  const countryDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  const filteredCountries = React.useMemo(() => {
+    const q = countryQuery.toLowerCase().trim();
+    if (!q) return COUNTRIES;
+    return COUNTRIES.filter(c => c.toLowerCase().includes(q));
+  }, [countryQuery]);
 
   React.useEffect(() => {
     fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
@@ -56,6 +96,10 @@ export default function HomePage() {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setShowProfile(false);
         setEditMode(false);
+        setCountryDropdownOpen(false);
+      }
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
+        setCountryDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -96,7 +140,15 @@ export default function HomePage() {
     setEditName(user?.name || "");
     setEditPhone(user?.phone || "");
     setEditCountry(user?.country || "");
+    setCountryQuery(user?.country || "");
+    setCountryDropdownOpen(false);
     setEditMode(true);
+  };
+
+  const onCountrySelect = (country: string) => {
+    setEditCountry(country);
+    setCountryQuery(country);
+    setCountryDropdownOpen(false);
   };
 
   const t = React.useMemo(
@@ -363,13 +415,42 @@ export default function HomePage() {
                                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
                                 placeholder={isArabic ? "رقم الهاتف" : "Phone"}
                               />
-                              <input
-                                type="text"
-                                value={editCountry}
-                                onChange={(e) => setEditCountry(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
-                                placeholder={isArabic ? "الدولة" : "Country"}
-                              />
+                              <div ref={countryDropdownRef} className="relative">
+                                <input
+                                  type="text"
+                                  value={countryQuery}
+                                  onFocus={() => setCountryDropdownOpen(true)}
+                                  onChange={(e) => {
+                                    setCountryQuery(e.target.value);
+                                    setCountryDropdownOpen(true);
+                                    if (editCountry && e.target.value !== editCountry) {
+                                      setEditCountry("");
+                                    }
+                                  }}
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                                  placeholder={isArabic ? "ابحث عن دولة" : "Search country"}
+                                />
+                                {countryDropdownOpen && (
+                                  <div className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-[#0a0a1a] shadow-xl">
+                                    {filteredCountries.length > 0 ? (
+                                      filteredCountries.slice(0, 20).map((c) => (
+                                        <button
+                                          key={c}
+                                          type="button"
+                                          className="w-full px-3 py-1.5 text-sm text-white hover:bg-white/10 text-left"
+                                          onClick={() => onCountrySelect(c)}
+                                        >
+                                          {c}
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <div className="px-3 py-2 text-sm text-white/50">
+                                        {isArabic ? "لا توجد نتائج" : "No results"}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                               <div className="flex items-center gap-2 justify-end">
                                 <button
                                   onClick={handleSaveProfile}
