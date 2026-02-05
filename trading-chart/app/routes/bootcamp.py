@@ -29,16 +29,17 @@ def _append_registration_to_google_sheets(reg: BootcampRegistration) -> None:
     service = build("sheets", "v4", credentials=creds, cache_discovery=False)
     values = [
         [
-            reg.id,
+            (reg.created_at.isoformat() if getattr(reg, "created_at", None) else ""),
             reg.full_name,
             reg.email,
-            reg.country,
             reg.phone or "",
+            reg.country,
             reg.age,
             reg.telegram or "",
             reg.discord,
             reg.instagram or "",
-            (reg.created_at.isoformat() if getattr(reg, "created_at", None) else ""),
+            reg.agree_terms,
+            reg.agree_rules,
         ]
     ]
     service.spreadsheets().values().append(

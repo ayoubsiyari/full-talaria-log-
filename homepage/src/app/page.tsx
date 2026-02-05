@@ -132,6 +132,18 @@ export default function HomePage() {
     }, 300);
   };
 
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (dropdownOpen && !target.closest('[data-dropdown-container]')) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [dropdownOpen]);
+
   return (
     <main className="min-h-screen bg-[#030014] overflow-hidden">
       {/* Hero Section */}
@@ -155,32 +167,32 @@ export default function HomePage() {
         </div>
 
         {/* Navigation */}
-        <nav className="absolute top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4">
+        <nav className="absolute top-0 left-0 right-0 z-50 px-2 sm:px-6 py-3 sm:py-4">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div
               className="relative"
+              data-dropdown-container
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
             >
-              <Link href="/">
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="flex items-center gap-2 cursor-pointer select-none"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDropdownOpen(!dropdownOpen);
-                  }}
-                >
-                  <Image src="/logo-04.png" alt="Talaria" width={40} height={40} className="h-10 w-10" />
-                  <span className="text-lg sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5 }}
+                className="flex items-center gap-2 cursor-pointer select-none"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDropdownOpen(!dropdownOpen);
+                }}
+              >
+                  <Image src="/logo-04.png" alt="Talaria" width={40} height={40} className="h-8 w-8 sm:h-10 sm:w-10" />
+                  <span className="text-base sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
                   <ChevronDown 
                     className={`h-5 w-5 text-white/80 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} 
                     strokeWidth={2.5}
                   />
                 </motion.div>
-              </Link>
               {dropdownOpen && (
                 <motion.div 
                   initial={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -244,64 +256,66 @@ export default function HomePage() {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <Button
                 asChild
                 variant="ghost"
-                className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                size="sm"
+                className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 text-xs sm:text-sm px-2 sm:px-4"
               >
-                <Link href="/login/?mode=signin">{isArabic ? "تسجيل الدخول" : "Login"}</Link>
+                <Link href="/login/?mode=signin">{isArabic ? "دخول" : "Login"}</Link>
               </Button>
               <Button
                 asChild
-                className="rounded-full text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 shadow-[0_0_0_1px_rgba(99,102,241,0.25),0_14px_40px_rgba(59,130,246,0.25)]"
+                size="sm"
+                className="rounded-full text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 shadow-[0_0_0_1px_rgba(99,102,241,0.25),0_14px_40px_rgba(59,130,246,0.25)] text-xs sm:text-sm px-2 sm:px-4"
               >
-                <Link href="/login/?mode=signup">{isArabic ? "إنشاء حساب" : "Sign up"}</Link>
+                <Link href="/login/?mode=signup">{isArabic ? "حساب جديد" : "Sign up"}</Link>
               </Button>
             </div>
           </div>
         </nav>
 
         {/* Tabs Section */}
-        <div className="absolute top-20 left-0 right-0 z-40 px-3 sm:px-6">
+        <div className="absolute top-16 sm:top-20 left-0 right-0 z-40 px-2 sm:px-6">
           <div className="max-w-7xl mx-auto flex justify-center">
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.3 }}
-              className="flex items-center justify-center gap-7 flex-wrap"
+              className="flex items-center justify-center gap-2 sm:gap-7 flex-wrap"
             >
               <Link href="/bootcamp">
-                <Button className="rounded-full text-base px-7 py-5 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
+                <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                   {t.tabs.bootcamp}
                 </Button>
               </Link>
               <div className="relative group">
-                <Button variant="ghost" className="text-white/50 cursor-not-allowed px-4 py-1 text-sm rounded-full h-8">
+                <Button variant="ghost" className="text-white/50 cursor-not-allowed px-2 sm:px-4 py-1 text-xs sm:text-sm rounded-full h-6 sm:h-8">
                   <span className="tg-mask" aria-hidden="true" />
                 </Button>
-                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
               </div>
               <div className="relative group">
-                <Button variant="ghost" className="text-white/50 cursor-not-allowed px-4 py-1 text-sm rounded-full h-8">
+                <Button variant="ghost" className="text-white/50 cursor-not-allowed px-2 sm:px-4 py-1 text-xs sm:text-sm rounded-full h-6 sm:h-8">
                   <span className="tg-mask" aria-hidden="true" />
                 </Button>
-                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
               </div>
               <div className="relative group">
-                <Button variant="ghost" className="text-white/50 cursor-not-allowed px-4 py-1 text-sm rounded-full h-8">
+                <Button variant="ghost" className="text-white/50 cursor-not-allowed px-2 sm:px-4 py-1 text-xs sm:text-sm rounded-full h-6 sm:h-8">
                   <span className="tg-mask" aria-hidden="true" />
                 </Button>
-                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
               </div>
               <Link href="/ninjatrader">
-                <Button variant="ghost" className="px-4 py-1 text-sm rounded-full h-8 flex items-center bg-transparent hover:bg-white/10">
+                <Button variant="ghost" className="px-2 sm:px-4 py-1 text-sm rounded-full h-6 sm:h-8 flex items-center bg-transparent hover:bg-white/10">
                   <Image
                     src={NinjaTraderWordmark}
                     alt="NinjaTrader"
                     width={112}
                     height={16}
-                    className="h-4 w-auto object-contain mix-blend-screen"
+                    className="h-3 sm:h-4 w-auto object-contain mix-blend-screen"
                   />
                 </Button>
               </Link>
