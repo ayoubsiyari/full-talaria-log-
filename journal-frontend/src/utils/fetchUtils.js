@@ -4,10 +4,18 @@ import { API_BASE_URL, STORAGE_KEYS } from '../config';
 // Helper function to fetch data with error handling and authentication
 export const fetchWithAuth = async (url, options = {}) => {
   try {
-    // Prepend API_BASE_URL only if the URL is not absolute and does not already start with /api
+    // Prepend API_BASE_URL for relative URLs
+    // Handle legacy /api/... paths by converting them to use API_BASE_URL
     let fullUrl = url;
-    if (!url.startsWith('http') && !url.startsWith('/api')) {
-      fullUrl = `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+    if (!url.startsWith('http')) {
+      // If URL starts with /api/, replace it with API_BASE_URL
+      if (url.startsWith('/api/')) {
+        fullUrl = `${API_BASE_URL}${url.slice(4)}`; // Remove /api prefix, API_BASE_URL already has it
+      } else if (url.startsWith('/')) {
+        fullUrl = `${API_BASE_URL}${url}`;
+      } else {
+        fullUrl = `${API_BASE_URL}/${url}`;
+      }
     }
     
     // Get token from localStorage
