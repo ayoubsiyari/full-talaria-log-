@@ -7,10 +7,10 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 // For local development, use relative paths to leverage the proxy
 // The proxy is configured in package.json to forward requests to the backend
-// In production, use the full domain with /api prefix
+// In production, use /journal/api since the app is hosted at /journal/
 export const API_BASE_URL = isDev
   ? '/api'  // Uses the proxy in development (configured in package.json)  
-  : '/api';  // Production - use relative path to leverage Nginx proxy
+  : '/journal/api';  // Production - app is hosted at /journal/
 
 console.log('🔧 Config - Environment:', process.env.NODE_ENV);
 console.log('🌐 API Base URL:', API_BASE_URL);
