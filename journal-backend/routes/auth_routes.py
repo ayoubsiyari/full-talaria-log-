@@ -27,12 +27,16 @@ def login_user():
     if not user:
         return jsonify({"error": "No account found with this email. Please check your email or register for a new account."}), 401
 
-    # Enforce email verification
-    if not user.email_verified:
+    # Check if user has journal access
+    if not user.has_journal_access:
         return jsonify({
-            "error": "Your email address has not been verified. Please check your inbox for a verification link or click 'Resend Verification Email' to receive a new one.",
-            "action": "verify_email"
+            "error": "You don't have access to the trading journal. Please contact support.",
+            "action": "no_access"
         }), 403
+
+    # Check if user is active
+    if not user.is_active:
+        return jsonify({"error": "Your account is disabled. Please contact support."}), 403
 
     try:
         pw_matches = check_password_hash(user.password, password)
@@ -62,7 +66,7 @@ def login_user():
         "user": {
             "id": user.id,
             "email": user.email,
-            "email_verified": user.email_verified,
+            "email_verified": True,
             "is_admin": user.is_admin,
             "has_active_profile": has_active_profile
         }
@@ -72,73 +76,9 @@ def login_user():
 @auth_bp.route('/register', methods=['POST'])
 def register_user():
     """
-    Expect JSON: { "email": "...", "password": "...", "full_name": "...", "phone": "...", "country": "..." }
-    Creates a new user and sends verification email with code.
+    Registration is disabled - users should register through the main platform.
     """
-    data = request.get_json() or {}
-    email = data.get('email', '').strip().lower()
-    password = data.get('password', '')
-    full_name = data.get('full_name', '').strip()
-    phone = data.get('phone', '').strip()
-    country = data.get('country', '').strip()
-
-    if not email or not password:
-        return jsonify({"error": "Must include email and password"}), 400
-
-    if User.query.filter_by(email=email).first():
-        return jsonify({"error": "Email already in use"}), 400
-
-    hashed_pw = generate_password_hash(password)
-
-    new_user = User()
-    new_user.email = email
-    new_user.password = hashed_pw
-    new_user.profile_image = None
-    new_user.email_verified = False
-    new_user.full_name = full_name
-    new_user.phone = phone
-    new_user.country = country
-
-    # Generate verification code
-    verification_code = new_user.generate_verification_code()
-
-    db.session.add(new_user)
-    db.session.commit()
-
-    # Create default backtest profile for the new user
-    try:
-        default_profile = Profile(
-            user_id=new_user.id,
-            name="Backtest Profile",
-            description="Default backtest profile for trading analysis",
-            is_active=True,
-            mode="backtest"
-        )
-        db.session.add(default_profile)
-        db.session.commit()
-        print(f"✅ Created default backtest profile for new user: {new_user.email}")
-    except Exception as e:
-        print(f"❌ Error creating default profile for {new_user.email}: {e}")
-        # Don't fail registration if profile creation fails
-        db.session.rollback()
-        # Re-add user without profile
-        db.session.add(new_user)
-        db.session.commit()
-
-    # Send verification email
-    email_sent = send_verification_email(new_user, verification_code)
-    
-    if not email_sent:
-        # If email fails, we should still create the user but notify them
-        return jsonify({
-            "message": "Account created successfully, but verification email could not be sent. Please contact support.",
-            "user_id": new_user.id
-        }), 201
-
-    return jsonify({
-        "message": "Account created successfully! Please check your email for a verification code.",
-        "user_id": new_user.id
-    }), 201
+    return jsonify({"error": "Registration is disabled. Please register through the main platform at talaria-log.com"}), 403
 
 
 @auth_bp.route('/verify-email', methods=['POST'])
@@ -288,23 +228,18 @@ def reset_password():
 @auth_bp.route('/profile', methods=['PUT'])
 @jwt_required()
 def update_profile():
-    user_id_str = get_jwt_identity()               # → this is a string
-    user_id = int(user_id_str)                     # ← convert it to int
+    user_id_str = get_jwt_identity()
+    user_id = int(user_id_str)
     data = request.get_json()
     user = User.query.get_or_404(user_id)
 
-    if data.get('email'):
-        user.email = data['email']
     if data.get('password'):
         user.password = generate_password_hash(data['password'])
-    if data.get('profile_image') is not None:
-        user.profile_image = data['profile_image']
 
     db.session.commit()
     return jsonify({
         'msg': 'Profile updated',
-        'email': user.email,
-        'profile_image': user.profile_image
+        'email': user.email
     }), 200
 
 
@@ -316,7 +251,8 @@ def get_profile():
     user = User.query.get_or_404(user_id)
     return jsonify({
         'email': user.email,
-        'profile_image': user.profile_image or ""
+        'name': user.name,
+        'profile_image': ""
     }), 200
 
 
@@ -361,7 +297,7 @@ def validate_token():
                 "id": user.id,
                 "email": user.email,
                 "is_admin": user.is_admin,
-                "email_verified": user.email_verified
+                "email_verified": True
             }
         }), 200
     except Exception as e:
@@ -382,4 +318,4 @@ def check_email_verified():
     user = User.query.filter_by(email=email).first()
     if not user:
         return jsonify({"error": "No account found with this email."}), 404
-    return jsonify({"verified": bool(user.email_verified)}), 200
+    return jsonify({"verified": True, "has_journal_access": user.has_journal_access}), 200

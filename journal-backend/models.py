@@ -10,7 +10,7 @@ db = SQLAlchemy()
 
 
 class Group(db.Model):
-    __tablename__ = 'group'
+    __tablename__ = 'journal_groups'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
     description = db.Column(db.Text, nullable=True)
@@ -31,7 +31,7 @@ class Group(db.Model):
 class GroupFeatureFlags(db.Model):
     __tablename__ = 'group_feature_flags'
     id = db.Column(db.Integer, primary_key=True)
-    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
+    group_id = db.Column(db.Integer, db.ForeignKey('journal_groups.id'), nullable=False)
     feature_name = db.Column(db.String(100), nullable=False)
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -47,10 +47,10 @@ class GroupFeatureFlags(db.Model):
 class GroupVariable(db.Model):
     __tablename__ = 'group_variable'
     id = db.Column(db.Integer, primary_key=True)
-    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
+    group_id = db.Column(db.Integer, db.ForeignKey('journal_groups.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     values = db.Column(JSON, nullable=False, default=list)
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -62,35 +62,33 @@ class GroupVariable(db.Model):
 
 
 class User(db.Model):
-    __tablename__ = 'user'
+    __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(256), nullable=False)
-    profile_image = db.Column(db.String(256), nullable=True)
-    is_admin = db.Column(db.Boolean, default=False)
-    email_verified = db.Column(db.Boolean, default=False)
-    account_type = db.Column(db.String(20), default='individual')  # 'individual', 'group', 'admin'
-    verification_code = db.Column(db.String(6), unique=True, nullable=True)
-    verification_code_expires = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    full_name = db.Column(db.String(120), nullable=True)
-    phone = db.Column(db.String(32), nullable=True)
-    country = db.Column(db.String(64), nullable=True)
-    initial_balance = db.Column(db.Float, nullable=True, default=0.0)
-    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
-
-    def generate_verification_code(self):
-        """Generate a new 6-digit verification code"""
-        self.verification_code = f"{random.randint(100000, 999999)}"
-        self.verification_code_expires = datetime.utcnow() + timedelta(minutes=10)  # 10 minutes expiry
-        return self.verification_code
-
-    def is_verification_code_expired(self):
-        """Check if verification code has expired"""
-        if not self.verification_code_expires:
-            return True
-        return datetime.utcnow() > self.verification_code_expires
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(50), nullable=False, default='user')
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    has_journal_access = db.Column(db.Boolean, default=False)
+    group_id = db.Column(db.Integer, db.ForeignKey('journal_groups.id'), nullable=True)
+    
+    # Alias for compatibility with journal backend auth
+    @property
+    def password(self):
+        return self.password_hash
+    
+    @password.setter
+    def password(self, value):
+        self.password_hash = value
+    
+    @property
+    def is_admin(self):
+        return self.role == 'admin'
+    
+    @property
+    def full_name(self):
+        return self.name
 
     def get_group_feature_flags(self):
         """Get feature flags for this user's group"""
@@ -132,9 +130,9 @@ class User(db.Model):
 
 
 class Profile(db.Model):
-    __tablename__ = 'profile'
+    __tablename__ = 'journal_profiles'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     mode = db.Column(db.String(50), nullable=False, default='journal') # backtest, journal, journal_live
     description = db.Column(db.Text, nullable=True)
@@ -169,13 +167,13 @@ class Profile(db.Model):
 
 
 class ImportBatch(db.Model):
-    __tablename__ = 'import_batch'
+    __tablename__ = 'import_batches'
 
     id = db.Column(db.Integer, primary_key=True)
 
     # This must match what your routes expect (they do batch = ImportBatch(user_id=…, filename=…, imported_at=…, filepath=…))
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    profile_id = db.Column(db.Integer, db.ForeignKey('profile.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    profile_id = db.Column(db.Integer, db.ForeignKey('journal_profiles.id'), nullable=False)
     filename = db.Column(db.String(256), nullable=False)
     imported_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     filepath = db.Column(db.String(512), nullable=False)
@@ -195,12 +193,12 @@ class ImportBatch(db.Model):
 
 
 class JournalEntry(db.Model):
-    __tablename__ = 'journal_entry'
+    __tablename__ = 'journal_entries'
     id = db.Column(db.Integer, primary_key=True)
 
     # Every JournalEntry belongs to a user and profile
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    profile_id = db.Column(db.Integer, db.ForeignKey('profile.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    profile_id = db.Column(db.Integer, db.ForeignKey('journal_profiles.id'), nullable=False)
 
     symbol = db.Column(db.String(20), nullable=False)
     direction = db.Column(db.String(10), nullable=False)
@@ -244,7 +242,7 @@ class JournalEntry(db.Model):
     exit_screenshot = db.Column(db.String(512), nullable=True)
 
     # If this entry was imported via Excel, store the batch_id
-    import_batch_id = db.Column(db.Integer, db.ForeignKey('import_batch.id'), nullable=True)
+    import_batch_id = db.Column(db.Integer, db.ForeignKey('import_batches.id'), nullable=True)
     import_batch = db.relationship('ImportBatch', back_populates='trades')
 
     extra_data = db.Column(JSON, default={})
@@ -257,9 +255,9 @@ class JournalEntry(db.Model):
 
 
 class Strategy(db.Model):
-    __tablename__ = 'strategy'
+    __tablename__ = 'strategies'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     entry_rules = db.Column(JSON, nullable=False, default=list)
