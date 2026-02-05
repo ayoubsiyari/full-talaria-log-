@@ -159,6 +159,18 @@ export default function NinjaTraderPage() {
     }, 300);
   };
 
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (dropdownOpen && !target.closest('[data-dropdown-container]')) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [dropdownOpen]);
+
   return (
     <main className="relative min-h-screen bg-[#030014] overflow-x-hidden">
       <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-b from-black via-[#030014] to-[#0a0a1a]" />
@@ -177,20 +189,21 @@ export default function NinjaTraderPage() {
         />
       </div>
 
-      <nav className="relative z-50 px-4 sm:px-6 py-4 border-b border-white/5">
+      <nav className="relative z-50 px-2 sm:px-6 py-3 sm:py-4 border-b border-white/5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div
             className="relative"
+            data-dropdown-container
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
           >
-            <Link href="/">
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5 }}
                 className="flex items-center gap-2 cursor-pointer select-none"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   setDropdownOpen(!dropdownOpen);
                 }}
@@ -198,9 +211,9 @@ export default function NinjaTraderPage() {
                 <img
                   src="/logo-04.png"
                   alt="Talaria"
-                  className="h-10 w-10"
+                  className="h-8 w-8 sm:h-10 sm:w-10"
                 />
-                <span className="text-lg sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
+                <span className="text-base sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
                 <ChevronDown
                   className={`h-5 w-5 text-white/80 transition-transform duration-200 ${
                     dropdownOpen ? "rotate-180" : ""
@@ -208,8 +221,6 @@ export default function NinjaTraderPage() {
                   strokeWidth={2.5}
                 />
               </motion.div>
-            </Link>
-
             {dropdownOpen && (
               <motion.div
                 initial={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -218,7 +229,7 @@ export default function NinjaTraderPage() {
                 transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                 className="absolute top-full left-0 pt-2 z-[100]"
               >
-                <div className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#08080f]/98 backdrop-blur-xl border border-purple-500/20 shadow-2xl shadow-purple-900/30 p-4">
+                <div className="w-72 sm:w-80 max-w-[calc(100vw-1rem)] rounded-2xl bg-[#08080f]/98 backdrop-blur-xl border border-purple-500/20 shadow-2xl shadow-purple-900/30 p-3 sm:p-4">
                   <div className="flex flex-col gap-3">
                     {talariaBrands.map((brand, index) => {
                       const cardStyles = [

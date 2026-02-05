@@ -350,31 +350,30 @@ export default function BootcampPage() {
       />
 
       {/* Navigation */}
-      <nav className="relative z-50 px-4 sm:px-6 py-4 border-b border-white/5">
+      <nav className="relative z-50 px-2 sm:px-6 py-3 sm:py-4 border-b border-white/5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div
             className="relative"
             ref={dropdownRef}
           >
-            <Link href="/">
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5 }}
                 className="flex items-center gap-2 cursor-pointer select-none"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   setDropdownOpen(!dropdownOpen);
                 }}
               >
-                <Image src="/logo-04.png" alt="Talaria" width={40} height={40} className="h-10 w-10" />
-                <span className="text-lg sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
+                <Image src="/logo-04.png" alt="Talaria" width={40} height={40} className="h-8 w-8 sm:h-10 sm:w-10" />
+                <span className="text-base sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
                 <ChevronDown 
                   className={`h-5 w-5 text-white/80 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} 
                   strokeWidth={2.5}
                 />
               </motion.div>
-            </Link>
             {dropdownOpen && (
               <motion.div 
                 initial={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -383,7 +382,7 @@ export default function BootcampPage() {
                 transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                 className="absolute top-full left-0 pt-2 z-[100]"
               >
-                <div className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#08080f]/98 backdrop-blur-xl border border-purple-500/20 shadow-2xl shadow-purple-900/30 p-4">
+                <div className="w-72 sm:w-80 max-w-[calc(100vw-1rem)] rounded-2xl bg-[#08080f]/98 backdrop-blur-xl border border-purple-500/20 shadow-2xl shadow-purple-900/30 p-3 sm:p-4">
                   <div className="flex flex-col gap-3">
                   {talariaBrands.map((brand, index) => {
                     const cardStyles = [
@@ -454,45 +453,45 @@ export default function BootcampPage() {
       </nav>
 
       {/* Tabs Section */}
-      <div className="relative z-40 px-3 sm:px-6 py-4 border-b border-white/5">
+      <div className="relative z-40 px-2 sm:px-6 py-3 sm:py-4 border-b border-white/5">
         <div className="max-w-7xl mx-auto flex justify-center">
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className="flex items-center justify-center gap-7 flex-wrap"
+            className="flex items-center justify-center gap-2 sm:gap-7 flex-wrap"
           >
             <Link href="/bootcamp">
-              <Button className="rounded-full text-base px-7 py-5 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
+              <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                 {t.tabs.bootcamp}
               </Button>
             </Link>
             <div className="relative group">
-              <Button variant="ghost" className="text-white/50 cursor-not-allowed px-4 py-1 text-sm rounded-full h-8">
+              <Button variant="ghost" className="text-white/50 cursor-not-allowed px-2 sm:px-4 py-1 text-xs sm:text-sm rounded-full h-6 sm:h-8">
                 <span className="tg-mask" aria-hidden="true" />
               </Button>
-              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
+              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
             </div>
             <div className="relative group">
-              <Button variant="ghost" className="text-white/50 cursor-not-allowed px-4 py-1 text-sm rounded-full h-8">
+              <Button variant="ghost" className="text-white/50 cursor-not-allowed px-2 sm:px-4 py-1 text-xs sm:text-sm rounded-full h-6 sm:h-8">
                 <span className="tg-mask" aria-hidden="true" />
               </Button>
-              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
+              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
             </div>
             <div className="relative group">
-              <Button variant="ghost" className="text-white/50 cursor-not-allowed px-4 py-1 text-sm rounded-full h-8">
+              <Button variant="ghost" className="text-white/50 cursor-not-allowed px-2 sm:px-4 py-1 text-xs sm:text-sm rounded-full h-6 sm:h-8">
                 <span className="tg-mask" aria-hidden="true" />
               </Button>
-              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
+              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
             </div>
             <Link href="/ninjatrader">
-              <Button variant="ghost" className="px-4 py-1 text-sm rounded-full h-8 flex items-center bg-transparent hover:bg-white/10">
+              <Button variant="ghost" className="px-2 sm:px-4 py-1 text-sm rounded-full h-6 sm:h-8 flex items-center bg-transparent hover:bg-white/10">
                 <Image
                   src={NinjaTraderWordmark}
                   alt="NinjaTrader"
                   width={112}
                   height={16}
-                  className="h-4 w-auto object-contain mix-blend-screen"
+                  className="h-3 sm:h-4 w-auto object-contain mix-blend-screen"
                 />
               </Button>
             </Link>

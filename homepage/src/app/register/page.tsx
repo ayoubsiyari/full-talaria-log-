@@ -914,11 +914,11 @@ export default function RegisterPage() {
         />
       </div>
 
-      <nav className="relative z-50 px-4 sm:px-6 py-4 border-b border-white/5">
+      <nav className="relative z-50 px-2 sm:px-6 py-3 sm:py-4 border-b border-white/5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 select-none">
-            <img src="/logo-04.png" alt="Talaria" className="h-10 w-10" />
-            <span className="text-lg sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
+            <img src="/logo-04.png" alt="Talaria" className="h-8 w-8 sm:h-10 sm:w-10" />
+            <span className="text-base sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
           </Link>
 
           <div className="flex items-center gap-3" />

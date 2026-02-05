@@ -201,7 +201,7 @@ export default function HomePage() {
                   transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                   className="absolute top-full left-0 pt-2 z-[100]"
                 >
-                  <div className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#08080f]/98 backdrop-blur-xl border border-purple-500/20 shadow-2xl shadow-purple-900/30 p-4">
+                  <div className="w-72 sm:w-80 max-w-[calc(100vw-1rem)] rounded-2xl bg-[#08080f]/98 backdrop-blur-xl border border-purple-500/20 shadow-2xl shadow-purple-900/30 p-3 sm:p-4">
                     <div className="flex flex-col gap-3">
                     {talariaBrands.map((brand, index) => {
                       const cardStyles = [
