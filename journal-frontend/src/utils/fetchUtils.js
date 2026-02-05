@@ -4,13 +4,16 @@ import { API_BASE_URL, STORAGE_KEYS } from '../config';
 // Helper function to fetch data with error handling and authentication
 export const fetchWithAuth = async (url, options = {}) => {
   try {
-    // Prepend API_BASE_URL for relative URLs
-    // Handle legacy /api/... paths by converting them to use API_BASE_URL
+    // Determine the full URL for the request
     let fullUrl = url;
     if (!url.startsWith('http')) {
-      // If URL starts with /api/, replace it with API_BASE_URL
-      if (url.startsWith('/api/')) {
-        fullUrl = `${API_BASE_URL}${url.slice(4)}`; // Remove /api prefix, API_BASE_URL already has it
+      // Check if URL already contains API_BASE_URL to avoid double-prefixing
+      if (url.startsWith(API_BASE_URL) || url.includes('/journal/api/')) {
+        // URL already has the base path, use as-is
+        fullUrl = url;
+      } else if (url.startsWith('/api/')) {
+        // Legacy /api/... path - replace /api with API_BASE_URL
+        fullUrl = `${API_BASE_URL}${url.slice(4)}`;
       } else if (url.startsWith('/')) {
         fullUrl = `${API_BASE_URL}${url}`;
       } else {
