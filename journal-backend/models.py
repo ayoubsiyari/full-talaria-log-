@@ -118,6 +118,11 @@ class User(db.Model):
     def profile_image(self):
         # Compatibility property - field doesn't exist in this schema
         return None
+    
+    @property
+    def email_verified(self):
+        # All migrated users are considered verified
+        return True
 
     def get_group_feature_flags(self):
         """Get feature flags for this user's group"""
