@@ -308,6 +308,7 @@ export default function HomePage() {
                 </Button>
                 <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
               </div>
+              {/* NinjaTrader tab hidden for now
               <Link href="/ninjatrader">
                 <Button variant="ghost" className="px-2 sm:px-4 py-1 text-sm rounded-full h-6 sm:h-8 flex items-center bg-transparent hover:bg-white/10">
                   <Image
@@ -319,6 +320,7 @@ export default function HomePage() {
                   />
                 </Button>
               </Link>
+              */}
             </motion.div>
           </div>
         </div>

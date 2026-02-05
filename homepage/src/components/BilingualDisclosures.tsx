@@ -27,24 +27,26 @@ export function BilingualDisclosures({
         (className ? className : "text-neutral-400")
       }
     >
-      <div>
-        <div className="text-white font-semibold mb-2">{en.riskTitle}</div>
-        <p>{en.riskText}</p>
-      </div>
+      <div dir="ltr" className="space-y-8 text-left">
+        <div>
+          <div className="text-white font-semibold mb-2">{en.riskTitle}</div>
+          <p>{en.riskText}</p>
+        </div>
 
-      <div>
-        <div className="text-white font-semibold mb-2">{en.hypoTitle}</div>
-        <p>{en.hypoText}</p>
-      </div>
+        <div>
+          <div className="text-white font-semibold mb-2">{en.hypoTitle}</div>
+          <p>{en.hypoText}</p>
+        </div>
 
-      <div>
-        <div className="text-white font-semibold mb-2">{en.liveTitle}</div>
-        <p>{en.liveText}</p>
-      </div>
+        <div>
+          <div className="text-white font-semibold mb-2">{en.liveTitle}</div>
+          <p>{en.liveText}</p>
+        </div>
 
-      <div>
-        <div className="text-white font-semibold mb-2">{en.testTitle}</div>
-        <p>{en.testText}</p>
+        <div>
+          <div className="text-white font-semibold mb-2">{en.testTitle}</div>
+          <p>{en.testText}</p>
+        </div>
       </div>
 
       <div className="h-px bg-white/10" />
