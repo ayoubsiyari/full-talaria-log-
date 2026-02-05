@@ -98,6 +98,11 @@ class User(db.Model):
         elif self.group_id:
             return 'group'
         return 'individual'
+    
+    @property
+    def initial_balance(self):
+        # Default initial balance - can be customized per user if needed
+        return 0.0
 
     def get_group_feature_flags(self):
         """Get feature flags for this user's group"""
