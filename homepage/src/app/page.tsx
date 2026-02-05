@@ -30,6 +30,22 @@ const talariaBrands = [
 
 export default function HomePage() {
   const { isArabic } = useLanguage();
+  const [user, setUser] = React.useState<{ id: number; name: string; email: string } | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => setUser(data.user))
+      .catch(() => setUser(null));
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {}
+    setUser(null);
+    window.location.href = "/";
+  };
 
   const t = React.useMemo(
     () =>
@@ -257,21 +273,43 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2">
-              <Button
-                asChild
-                variant="ghost"
-                size="sm"
-                className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 text-xs sm:text-sm px-2 sm:px-4"
-              >
-                <Link href="/login/?mode=signin">{isArabic ? "دخول" : "Login"}</Link>
-              </Button>
-              <Button
-                asChild
-                size="sm"
-                className="rounded-full text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 shadow-[0_0_0_1px_rgba(99,102,241,0.25),0_14px_40px_rgba(59,130,246,0.25)] text-xs sm:text-sm px-2 sm:px-4"
-              >
-                <Link href="/login/?mode=signup">{isArabic ? "حساب جديد" : "Sign up"}</Link>
-              </Button>
+              {user ? (
+                <>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 text-xs sm:text-sm px-2 sm:px-4"
+                  >
+                    <Link href="/dashboard/">{isArabic ? "لوحة التحكم" : "Dashboard"}</Link>
+                  </Button>
+                  <Button
+                    onClick={handleLogout}
+                    size="sm"
+                    className="rounded-full text-white bg-gradient-to-r from-red-600 via-pink-600 to-red-500 hover:from-red-500 hover:via-pink-500 hover:to-red-400 shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_14px_40px_rgba(239,68,68,0.25)] text-xs sm:text-sm px-2 sm:px-4"
+                  >
+                    {isArabic ? "تسجيل الخروج" : "Sign out"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 text-xs sm:text-sm px-2 sm:px-4"
+                  >
+                    <Link href="/login/?mode=signin">{isArabic ? "دخول" : "Login"}</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    size="sm"
+                    className="rounded-full text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 shadow-[0_0_0_1px_rgba(99,102,241,0.25),0_14px_40px_rgba(59,130,246,0.25)] text-xs sm:text-sm px-2 sm:px-4"
+                  >
+                    <Link href="/login/?mode=signup">{isArabic ? "حساب جديد" : "Sign up"}</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </nav>
