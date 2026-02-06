@@ -682,34 +682,20 @@ export default function BootcampPage() {
                               "relative z-10 font-black leading-none text-center"
                             }
                           >
-                            <div className="flex flex-col items-center justify-center gap-0.5">
-                              <span className="relative inline-block text-[9px] sm:text-[12px] font-black">
+                            <div className="flex flex-row items-center justify-center gap-2">
+                              <span className="relative inline-block text-[9px] sm:text-[12px] font-black text-gray-400">
                                 <span className="relative" dir="ltr">100$</span>
                                 <span
                                   aria-hidden="true"
                                   className={
-                                    "pointer-events-none absolute left-1/2 top-1/2 h-[2px] w-[125%] -translate-x-1/2 -translate-y-1/2 " +
-                                    "rotate-12" +
-                                    " bg-black/90"
-                                  }
-                                />
-                                <span
-                                  aria-hidden="true"
-                                  className={
-                                    "pointer-events-none absolute left-1/2 top-1/2 h-px w-[125%] -translate-x-1/2 -translate-y-1/2 " +
-                                    "rotate-12" +
-                                    " bg-purple-600"
+                                    "pointer-events-none absolute left-1/2 top-1/2 h-[1.5px] w-[130%] -translate-x-1/2 -translate-y-1/2 " +
+                                    "rotate-[-8deg]" +
+                                    " bg-gray-500"
                                   }
                                 />
                               </span>
-                              <span
-                                className={
-                                  isArabic
-                                    ? "text-[10px] sm:text-[13px] font-black"
-                                    : "text-[10px] sm:text-[13px] font-extrabold tracking-[0.28em]"
-                                }
-                              >
-                                {isArabic ? "مجاني" : "FREE"}
+                              <span className="text-[12px] sm:text-[16px] font-black text-black" dir="ltr">
+                                0$
                               </span>
                             </div>
                           </div>
