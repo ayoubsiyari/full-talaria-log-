@@ -32,40 +32,45 @@ def send_verification_email(email: str, code: str, name: str) -> None:
         logger.warning("SMTP not configured, skipping verification email")
         return
 
-    subject = f"Your Talaria Verification Code: {code}"
+    subject = f"رمز التحقق من Talaria: {code}"
     
     html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3;">
+    <html dir="rtl">
+    <body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3; direction: rtl; text-align: right;">
             <div style="text-align: center; margin-bottom: 25px;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 28px;">🎓 Talaria</h1>
-                <p style="color: #a5b4fc; margin-top: 5px;">Email Verification</p>
+                <p style="color: #a5b4fc; margin-top: 5px;">التحقق من البريد الإلكتروني</p>
             </div>
             
-            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.6;">
-                Hi <strong style="color: #ffffff;">{name}</strong>,
+            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.8;">
+                مرحباً <strong style="color: #ffffff;">{name}</strong>،
             </p>
             
-            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.6;">
-                Thank you for signing up! Please use the verification code below to complete your registration:
+            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.8;">
+                شكراً لتسجيلك! يرجى استخدام رمز التحقق أدناه لإكمال التسجيل:
             </p>
             
             <div style="background-color: #1e1b4b; border-radius: 10px; padding: 30px; margin: 25px 0; border: 1px solid #3730a3; text-align: center;">
-                <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">Your verification code:</p>
-                <h2 style="color: #60a5fa; font-size: 36px; letter-spacing: 8px; margin: 0; font-family: monospace;">{code}</h2>
+                <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">رمز التحقق الخاص بك:</p>
+                <h2 style="color: #60a5fa; font-size: 36px; letter-spacing: 8px; margin: 0; font-family: monospace; direction: ltr;">{code}</h2>
             </div>
             
-            <p style="color: #fbbf24; font-size: 14px; line-height: 1.6;">
-                ⚠️ This code will expire in <strong>10 minutes</strong>.
+            <p style="color: #fbbf24; font-size: 14px; line-height: 1.8;">
+                ⚠️ سينتهي هذا الرمز خلال <strong>10 دقائق</strong>.
             </p>
             
+            <div style="background-color: #1e1b4b; border-radius: 10px; padding: 15px; margin: 20px 0; border: 1px solid #3730a3; text-align: center;">
+                <p style="color: #94a3b8; font-size: 13px; margin: 0 0 10px 0;">لقراءة الشروط والأحكام:</p>
+                <a href="https://talaria-log.com/terms" style="color: #60a5fa; font-size: 14px; text-decoration: none;">https://talaria-log.com/terms</a>
+            </div>
+            
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                If you didn't create an account, you can safely ignore this email.
+                إذا لم تقم بإنشاء حساب، يمكنك تجاهل هذا البريد الإلكتروني.
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
-                © 2024 Talaria-Log. All rights reserved.
+                © 2026 Talaria-Log. جميع الحقوق محفوظة.
             </p>
         </div>
     </body>
@@ -91,40 +96,45 @@ def send_password_reset_email(email: str, code: str, name: str) -> None:
         logger.warning("SMTP not configured, skipping password reset email")
         return
 
-    subject = f"Your Talaria Password Reset Code: {code}"
+    subject = f"رمز إعادة تعيين كلمة المرور من Talaria: {code}"
     
     html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3;">
+    <html dir="rtl">
+    <body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3; direction: rtl; text-align: right;">
             <div style="text-align: center; margin-bottom: 25px;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 28px;">🔐 Talaria</h1>
-                <p style="color: #a5b4fc; margin-top: 5px;">Password Reset</p>
+                <p style="color: #a5b4fc; margin-top: 5px;">إعادة تعيين كلمة المرور</p>
             </div>
             
-            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.6;">
-                Hi <strong style="color: #ffffff;">{name}</strong>,
+            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.8;">
+                مرحباً <strong style="color: #ffffff;">{name}</strong>،
             </p>
             
-            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.6;">
-                We received a request to reset your password. Use the code below to set a new password:
+            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.8;">
+                لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. استخدم الرمز أدناه لتعيين كلمة مرور جديدة:
             </p>
             
             <div style="background-color: #1e1b4b; border-radius: 10px; padding: 30px; margin: 25px 0; border: 1px solid #3730a3; text-align: center;">
-                <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">Your reset code:</p>
-                <h2 style="color: #f87171; font-size: 36px; letter-spacing: 8px; margin: 0; font-family: monospace;">{code}</h2>
+                <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">رمز إعادة التعيين:</p>
+                <h2 style="color: #f87171; font-size: 36px; letter-spacing: 8px; margin: 0; font-family: monospace; direction: ltr;">{code}</h2>
             </div>
             
-            <p style="color: #fbbf24; font-size: 14px; line-height: 1.6;">
-                ⚠️ This code will expire in <strong>10 minutes</strong>.
+            <p style="color: #fbbf24; font-size: 14px; line-height: 1.8;">
+                ⚠️ سينتهي هذا الرمز خلال <strong>10 دقائق</strong>.
             </p>
             
+            <div style="background-color: #1e1b4b; border-radius: 10px; padding: 15px; margin: 20px 0; border: 1px solid #3730a3; text-align: center;">
+                <p style="color: #94a3b8; font-size: 13px; margin: 0 0 10px 0;">لقراءة الشروط والأحكام:</p>
+                <a href="https://talaria-log.com/terms" style="color: #60a5fa; font-size: 14px; text-decoration: none;">https://talaria-log.com/terms</a>
+            </div>
+            
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                If you didn't request a password reset, you can safely ignore this email.
+                إذا لم تطلب إعادة تعيين كلمة المرور، يمكنك تجاهل هذا البريد الإلكتروني.
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
-                © 2024 Talaria-Log. All rights reserved.
+                © 2026 Talaria-Log. جميع الحقوق محفوظة.
             </p>
         </div>
     </body>

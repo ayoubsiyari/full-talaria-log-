@@ -93,77 +93,80 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
         logger.info("Email settings not configured, skipping user confirmation")
         return
 
-    subject = "Welcome to Talaria Mentorship Program - Registration Confirmed"
+    subject = "مرحباً بك في برنامج Talaria للمنتورشيب - تم تأكيد التسجيل"
     
     html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3;">
+    <html dir="rtl">
+    <body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3; direction: rtl; text-align: right;">
             <div style="text-align: center; margin-bottom: 25px;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 28px;">🎓 Talaria Mentorship 2026</h1>
-                <p style="color: #a5b4fc; margin-top: 5px;">Registration Confirmed</p>
+                <p style="color: #a5b4fc; margin-top: 5px;">تم تأكيد التسجيل</p>
             </div>
             
-            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.6;">
-                Dear <strong style="color: #ffffff;">{reg.full_name}</strong>,
+            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.8;">
+                عزيزي <strong style="color: #ffffff;">{reg.full_name}</strong>،
             </p>
             
-            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.6;">
-                Thank you for registering for the Talaria Mentorship Program! Your application has been received and is being reviewed.
+            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.8;">
+                شكراً لتسجيلك في برنامج Talaria للمنتورشيب! تم استلام طلبك وهو قيد المراجعة.
             </p>
             
             <div style="background-color: #1e1b4b; border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid #3730a3;">
-                <h3 style="color: #a5b4fc; margin-top: 0; font-size: 16px;">Your Registration Details</h3>
+                <h3 style="color: #a5b4fc; margin-top: 0; font-size: 16px;">تفاصيل التسجيل</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
-                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px; width: 100px;">Name:</td>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px; width: 100px;">الاسم:</td>
                         <td style="padding: 8px 0; color: #ffffff; font-size: 14px;"><strong>{reg.full_name}</strong></td>
                     </tr>
                     <tr>
-                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Email:</td>
-                        <td style="padding: 8px 0; color: #60a5fa; font-size: 14px;"><strong>{reg.email}</strong></td>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">البريد:</td>
+                        <td style="padding: 8px 0; color: #60a5fa; font-size: 14px; direction: ltr; text-align: right;"><strong>{reg.email}</strong></td>
                     </tr>
                     <tr>
-                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Phone:</td>
-                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px;"><strong>{reg.phone or 'Not provided'}</strong></td>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">الهاتف:</td>
+                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px; direction: ltr; text-align: right;"><strong>{reg.phone or 'غير متوفر'}</strong></td>
                     </tr>
                     <tr>
-                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Country:</td>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">الدولة:</td>
                         <td style="padding: 8px 0; color: #ffffff; font-size: 14px;"><strong>{reg.country}</strong></td>
                     </tr>
                     <tr>
                         <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Discord:</td>
-                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px;"><strong>{reg.discord}</strong></td>
+                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px; direction: ltr; text-align: right;"><strong>{reg.discord}</strong></td>
                     </tr>
                 </table>
             </div>
             
             <div style="background-color: #422006; border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid #ca8a04;">
-                <h3 style="color: #fbbf24; margin-top: 0; font-size: 16px;">✅ Terms & Conditions You Agreed To</h3>
-                <ul style="color: #fef3c7; font-size: 13px; line-height: 1.8; padding-left: 20px; margin: 0;">
-                    <li>I commit to attending all scheduled mentorship sessions</li>
-                    <li>I understand this is an educational program and results may vary</li>
-                    <li>I will respect other participants and maintain professionalism</li>
-                    <li>I agree to keep all shared materials confidential</li>
-                    <li>I understand that trading involves risk and I am responsible for my own decisions</li>
-                    <li>I will complete all assigned tasks and homework</li>
-                    <li>I agree to provide feedback to help improve the program</li>
+                <h3 style="color: #fbbf24; margin-top: 0; font-size: 16px;">✅ الشروط والأحكام التي وافقت عليها</h3>
+                <ul style="color: #fef3c7; font-size: 13px; line-height: 2; padding-right: 20px; margin: 0;">
+                    <li>ألتزم بحضور جميع جلسات المنتورشيب المجدولة</li>
+                    <li>أفهم أن هذا برنامج تعليمي وقد تختلف النتائج</li>
+                    <li>سأحترم المشاركين الآخرين وأحافظ على الاحترافية</li>
+                    <li>أوافق على الحفاظ على سرية جميع المواد المشتركة</li>
+                    <li>أفهم أن التداول ينطوي على مخاطر وأنا مسؤول عن قراراتي</li>
+                    <li>سأكمل جميع المهام والواجبات المحددة</li>
+                    <li>أوافق على تقديم ملاحظات للمساعدة في تحسين البرنامج</li>
                 </ul>
+                <div style="text-align: center; margin-top: 15px;">
+                    <a href="https://talaria-log.com/terms" style="color: #60a5fa; font-size: 14px; text-decoration: none;">📖 اقرأ الشروط والأحكام الكاملة</a>
+                </div>
             </div>
             
             <div style="background-color: #052e16; border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid #16a34a;">
-                <h3 style="color: #4ade80; margin-top: 0; font-size: 16px;">📌 What's Next?</h3>
-                <p style="color: #bbf7d0; font-size: 14px; line-height: 1.6; margin: 0;">
-                    Our team will review your application and contact you soon via Discord or email with further instructions. Make sure to check your inbox and Discord messages regularly.
+                <h3 style="color: #4ade80; margin-top: 0; font-size: 16px;">📌 ما التالي؟</h3>
+                <p style="color: #bbf7d0; font-size: 14px; line-height: 1.8; margin: 0;">
+                    سيقوم فريقنا بمراجعة طلبك والتواصل معك قريباً عبر Discord أو البريد الإلكتروني مع تعليمات إضافية. تأكد من متابعة بريدك ورسائل Discord بانتظام.
                 </p>
             </div>
             
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                If you have any questions, reply to this email or contact us at manager@talaria-log.com
+                إذا كان لديك أي أسئلة، رد على هذا البريد أو تواصل معنا على support@talaria-log.com
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
-                © 2026 Talaria-Log. All rights reserved.
+                © 2026 Talaria-Log. جميع الحقوق محفوظة.
             </p>
         </div>
     </body>
