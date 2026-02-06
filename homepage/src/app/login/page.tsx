@@ -38,7 +38,7 @@ export default function LoginPage() {
       alt: isArabic ? "رسوم بيانية وتحليلات للتداول" : "Trading charts and analytics",
     },
     quote: {
-      text: isArabic ? "مرحباً بعودتك! رحلتك في التداول مستمرة." : "Welcome Back! Your trading journey continues.",
+      text: isArabic ? "مرحباً بعودتك! رحلتك في التداول مستمرة" : "Welcome Back! Your trading journey continues.",
       author: "Talaria Log",
     },
   };

@@ -150,6 +150,9 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
                     <li>أوافق على تقديم ملاحظات للمساعدة في تحسين البرنامج</li>
                 </ul>
                 <div style="text-align: center; margin-top: 15px;">
+                    <a href="https://talaria-log.com/files/mentorship-agreement.pdf" style="display: inline-block; background-color: #fbbf24; color: #422006; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; text-decoration: none; margin-bottom: 10px;">📥 تحميل إقرار واتفاقية الانتساب (PDF)</a>
+                </div>
+                <div style="text-align: center; margin-top: 10px;">
                     <a href="https://talaria-log.com/terms" style="color: #60a5fa; font-size: 14px; text-decoration: none;">📖 اقرأ الشروط والأحكام الكاملة</a>
                 </div>
             </div>
