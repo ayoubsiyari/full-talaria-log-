@@ -824,7 +824,11 @@ export default function RegisterPage() {
     if (!fullName.trim()) next.fullName = t.validation.fullNameRequired;
     if (!email.trim() || !isValidEmail(email.trim())) next.email = t.validation.emailInvalid;
     if (!country.trim()) next.country = t.validation.countryRequired;
-    if (phone.trim() && country.trim() && !isValidPhone(phone.trim(), selectedDial)) next.phone = t.validation.phoneInvalid;
+    // Only validate phone if user entered more than just the dial code
+    const phoneCompact = (phone || "").replace(/\s+/g, "");
+    const dialCompact = (selectedDial || "").replace(/\s+/g, "");
+    const hasRealPhone = phoneCompact && dialCompact && phoneCompact !== dialCompact;
+    if (hasRealPhone && !isValidPhone(phone.trim(), selectedDial)) next.phone = t.validation.phoneInvalid;
     if (!age.trim()) next.age = t.validation.ageRequired;
     if (age.trim() && (!Number.isFinite(Number(age.trim())) || Number(age.trim()) <= 0)) next.age = t.validation.ageInvalid;
     if (
@@ -852,6 +856,10 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     setSubmitError("");
     try {
+      // Only send phone if it's more than just the dial code
+      const submitPhoneCompact = (phone || "").replace(/\s+/g, "");
+      const submitDialCompact = (selectedDial || "").replace(/\s+/g, "");
+      const hasSubmitPhone = submitPhoneCompact && submitDialCompact && submitPhoneCompact !== submitDialCompact;
       const res = await fetch("/api/bootcamp/register", {
         credentials: "include",
         method: "POST",
@@ -859,7 +867,7 @@ export default function RegisterPage() {
         body: JSON.stringify({
           full_name: fullName,
           email,
-          ...(phone.trim() ? { phone } : {}),
+          ...(hasSubmitPhone ? { phone } : {}),
           country,
           age: Number(age),
           ...(telegram.trim() ? { telegram } : {}),
