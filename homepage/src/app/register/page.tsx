@@ -921,7 +921,13 @@ export default function RegisterPage() {
             <span className="text-base sm:text-2xl font-bold text-white whitespace-nowrap">Talaria-Log</span>
           </Link>
 
-          <div className="flex items-center gap-3" />
+          <Link 
+            href="/bootcamp" 
+            className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white transition-colors px-3 py-1.5 rounded-full border border-white/10 hover:border-white/20 bg-white/5"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>{isArabic ? "رجوع" : "Back"}</span>
+          </Link>
         </div>
       </nav>
 
