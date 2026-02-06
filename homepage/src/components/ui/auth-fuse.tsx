@@ -743,7 +743,7 @@ export function AuthUI({ signInContent = {}, signUpContent = {}, initialMode = "
   const currentContent = isSignIn ? finalSignInContent : finalSignUpContent;
 
   return (
-    <div className="w-full min-h-screen md:grid md:grid-cols-2">
+    <div dir="ltr" className="w-full min-h-screen md:grid md:grid-cols-2">
       <style>{`
         input[type="password"]::-ms-reveal,
         input[type="password"]::-ms-clear {
