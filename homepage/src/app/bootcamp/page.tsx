@@ -682,16 +682,16 @@ export default function BootcampPage() {
                               "relative z-10 font-black leading-none text-center"
                             }
                           >
-                            <div className="flex flex-row items-center justify-center gap-3 w-full">
-                              <span className="text-[14px] sm:text-[18px] font-black text-black drop-shadow-sm" dir="ltr">
-                                $0
-                              </span>
+                            <div className="flex flex-row items-center justify-center gap-2 w-full pl-2">
                               <span className="relative inline-block text-[10px] sm:text-[12px] font-bold text-black/50">
                                 <span className="relative" dir="ltr">$100</span>
                                 <span
                                   aria-hidden="true"
                                   className="pointer-events-none absolute left-0 top-1/2 h-[1px] w-full -translate-y-1/2 bg-black/50"
                                 />
+                              </span>
+                              <span className="text-[14px] sm:text-[18px] font-black text-black drop-shadow-sm" dir="ltr">
+                                $0
                               </span>
                             </div>
                           </div>
