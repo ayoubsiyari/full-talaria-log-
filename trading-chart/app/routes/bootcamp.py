@@ -141,7 +141,7 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
             <div style="background-color: #422006; border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid #ca8a04;">
                 <h3 style="color: #fbbf24; margin-top: 0; font-size: 16px;">✅ الشروط والأحكام التي وافقت عليها</h3>
                 <ul style="color: #fef3c7; font-size: 13px; line-height: 2; padding-right: 20px; margin: 0;">
-                   iukyjh   </ul>
+                </ul>
                 <div style="text-align: center; margin-top: 15px;">
                     <a href="https://talaria-log.com/files/mentorship-agreement.pdf" style="display: inline-block; background-color: #fbbf24; color: #422006; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; text-decoration: none; margin-bottom: 10px;">📥 تحميل إقرار واتفاقية  (PDF)</a>
                 </div>
