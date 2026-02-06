@@ -1,4 +1,7 @@
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.orm import Session
@@ -11,6 +14,77 @@ from ..schemas import BootcampRegisterIn
 from ..settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _send_registration_email(reg: BootcampRegistration) -> None:
+    """Send email notification for new registration."""
+    if not all([settings.smtp_host, settings.smtp_user, settings.smtp_password, settings.notification_email]):
+        logger.info("Email settings not configured, skipping notification")
+        return
+
+    subject = f"New Mentorship Registration: {reg.full_name}"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
+        <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color: #1a1a2e; border-bottom: 2px solid #4f46e5; padding-bottom: 10px;">🎓 New Mentorship Registration</h2>
+            
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Name:</td>
+                    <td style="padding: 12px; color: #1a1a2e;">{reg.full_name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Email:</td>
+                    <td style="padding: 12px; color: #1a1a2e;"><a href="mailto:{reg.email}">{reg.email}</a></td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Phone:</td>
+                    <td style="padding: 12px; color: #1a1a2e;">{reg.phone or 'Not provided'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Country:</td>
+                    <td style="padding: 12px; color: #1a1a2e;">{reg.country}</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Age:</td>
+                    <td style="padding: 12px; color: #1a1a2e;">{reg.age}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Discord:</td>
+                    <td style="padding: 12px; color: #1a1a2e;">{reg.discord}</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Telegram:</td>
+                    <td style="padding: 12px; color: #1a1a2e;">{reg.telegram or 'Not provided'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px; font-weight: bold; color: #666;">Instagram:</td>
+                    <td style="padding: 12px; color: #1a1a2e;">{reg.instagram or 'Not provided'}</td>
+                </tr>
+            </table>
+            
+            <p style="margin-top: 25px; padding: 15px; background: #e8f4f8; border-radius: 5px; color: #1a1a2e;">
+                <strong>Reply directly to this email</strong> to contact the applicant at <a href="mailto:{reg.email}">{reg.email}</a>
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.smtp_from_email or settings.smtp_user
+    msg["To"] = settings.notification_email
+    msg["Reply-To"] = reg.email  # Allow replying directly to the applicant
+
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+        server.starttls()
+        server.login(settings.smtp_user, settings.smtp_password)
+        server.send_message(msg)
 
 
 def _append_registration_to_google_sheets(reg: BootcampRegistration) -> None:
@@ -90,4 +164,8 @@ def register(
         _append_registration_to_google_sheets(reg)
     except Exception:
         logger.exception("google_sheets_append_failed")
+    try:
+        _send_registration_email(reg)
+    except Exception:
+        logger.exception("email_notification_failed")
     return {"ok": True, "id": reg.id}

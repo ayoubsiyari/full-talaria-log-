@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     google_sheets_spreadsheet_id: str | None = None
     google_sheets_sheet_name: str = "Registrations"
 
+    # Email settings
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    notification_email: str | None = None  # Email to receive registration notifications
+
     class Config:
         env_file = ".env"
         case_sensitive = False
