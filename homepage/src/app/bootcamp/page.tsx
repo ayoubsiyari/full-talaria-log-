@@ -682,8 +682,11 @@ export default function BootcampPage() {
                               "relative z-10 font-black leading-none text-center"
                             }
                           >
-                            <div className="flex flex-row items-center justify-center gap-2">
-                              <span className="relative inline-block text-[11px] sm:text-[14px] font-black text-black/70">
+                            <div className="flex flex-row items-center justify-center gap-1.5 w-full">
+                              <span className="text-[11px] sm:text-[14px] font-black text-black" dir="ltr">
+                                0$
+                              </span>
+                              <span className="relative inline-block text-[11px] sm:text-[14px] font-black text-black/60">
                                 <span className="relative" dir="ltr">100$</span>
                                 <span
                                   aria-hidden="true"
@@ -693,9 +696,6 @@ export default function BootcampPage() {
                                     " bg-gray-600"
                                   }
                                 />
-                              </span>
-                              <span className="text-[11px] sm:text-[14px] font-black text-black" dir="ltr">
-                                0$
                               </span>
                             </div>
                           </div>
