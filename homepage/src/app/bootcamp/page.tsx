@@ -662,28 +662,13 @@ export default function BootcampPage() {
                           (isArabic ? "-left-12 sm:-left-16 -rotate-45" : "-right-12 sm:-right-16 rotate-45")
                         }
                       >
-                        <motion.div
-                          className="relative flex items-center justify-center rounded-sm bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-black w-40 sm:w-56 px-0 py-2 sm:py-3 text-[10px] sm:text-[13px] font-extrabold ring-1 ring-emerald-200/50"
-                          animate={{ scale: [1, 1.04, 1] }}
-                          transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-                        >
-                          <motion.div
-                            className="absolute inset-0 opacity-40"
-                            style={{
-                              background:
-                                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)",
-                            }}
-                            animate={{ x: ["-130%", "130%"] }}
-                            transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
-                          />
+                        <div className="relative flex items-center justify-center rounded-sm bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 text-black w-40 sm:w-56 px-0 py-2 sm:py-3 text-[10px] sm:text-[13px] font-extrabold">
                           <div
                             dir={isArabic ? "rtl" : "ltr"}
-                            className={
-                              "relative z-10 font-black leading-none text-center"
-                            }
+                            className="relative z-10 leading-none text-center"
                           >
                             <div className="flex flex-row items-center justify-center gap-1.5 w-full font-zain">
-                              <span className="relative inline-block text-[12px] sm:text-[14px] font-semibold text-gray-600 line-through decoration-gray-600" dir="ltr">
+                              <span className="text-[12px] sm:text-[14px] font-semibold text-gray-600 line-through decoration-gray-600" dir="ltr">
                                 $100
                               </span>
                               <span className="text-[12px] sm:text-[14px] font-semibold text-black" dir="ltr">
@@ -691,7 +676,7 @@ export default function BootcampPage() {
                               </span>
                             </div>
                           </div>
-                        </motion.div>
+                        </div>
                       </div>
                     </div>
                   ) : null}
