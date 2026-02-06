@@ -25,6 +25,9 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     country: Mapped[str | None] = mapped_column(String(120), nullable=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("journal_groups.id"), nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    verification_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    verification_code_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     sessions: Mapped[list[TradingSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
     journal_profiles: Mapped[list[JournalProfile]] = relationship(back_populates="user", cascade="all, delete-orphan")

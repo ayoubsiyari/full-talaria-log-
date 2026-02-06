@@ -14,6 +14,16 @@ class UserPublic(BaseModel):
     created_at: datetime | None = None
     phone: str | None = None
     country: str | None = None
+    email_verified: bool = False
+
+
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
+
+class ResendCodeIn(BaseModel):
+    email: EmailStr
 
 
 class SignupIn(BaseModel):
