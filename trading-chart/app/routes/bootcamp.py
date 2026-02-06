@@ -141,31 +141,22 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
             <div style="background-color: #422006; border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid #ca8a04;">
                 <h3 style="color: #fbbf24; margin-top: 0; font-size: 16px;">✅ الشروط والأحكام التي وافقت عليها</h3>
                 <ul style="color: #fef3c7; font-size: 13px; line-height: 2; padding-right: 20px; margin: 0;">
-                    <li>ألتزم بحضور جميع جلسات المنتورشيب المجدولة</li>
-                    <li>أفهم أن هذا برنامج تعليمي وقد تختلف النتائج</li>
-                    <li>سأحترم المشاركين الآخرين وأحافظ على الاحترافية</li>
-                    <li>أوافق على الحفاظ على سرية جميع المواد المشتركة</li>
-                    <li>أفهم أن التداول ينطوي على مخاطر وأنا مسؤول عن قراراتي</li>
-                    <li>سأكمل جميع المهام والواجبات المحددة</li>
-                    <li>أوافق على تقديم ملاحظات للمساعدة في تحسين البرنامج</li>
-                </ul>
+                   iukyjh   </ul>
                 <div style="text-align: center; margin-top: 15px;">
-                    <a href="https://talaria-log.com/files/mentorship-agreement.pdf" style="display: inline-block; background-color: #fbbf24; color: #422006; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; text-decoration: none; margin-bottom: 10px;">📥 تحميل إقرار واتفاقية الانتساب (PDF)</a>
+                    <a href="https://talaria-log.com/files/mentorship-agreement.pdf" style="display: inline-block; background-color: #fbbf24; color: #422006; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; text-decoration: none; margin-bottom: 10px;">📥 تحميل إقرار واتفاقية  (PDF)</a>
                 </div>
-                <div style="text-align: center; margin-top: 10px;">
-                    <a href="https://talaria-log.com/terms" style="color: #60a5fa; font-size: 14px; text-decoration: none;">📖 اقرأ الشروط والأحكام الكاملة</a>
-                </div>
+                
             </div>
             
             <div style="background-color: #052e16; border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid #16a34a;">
                 <h3 style="color: #4ade80; margin-top: 0; font-size: 16px;">📌 ما التالي؟</h3>
                 <p style="color: #bbf7d0; font-size: 14px; line-height: 1.8; margin: 0;">
-                    سيقوم فريقنا بمراجعة طلبك والتواصل معك قريباً عبر Discord أو البريد الإلكتروني مع تعليمات إضافية. تأكد من متابعة بريدك ورسائل Discord بانتظام.
+                    سيقوم فريقنا بمراجعة طلبك والتواصل معك قريباً عبر البريد الإلكتروني مع تعليمات إضافية خلال 48h 
                 </p>
             </div>
             
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                إذا كان لديك أي أسئلة، رد على هذا البريد أو تواصل معنا على support@talaria-log.com
+                إذا كان لديك أي أسئلة، رد على هذا البريد أو تواصل معنا على help@talaria-log.com
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
