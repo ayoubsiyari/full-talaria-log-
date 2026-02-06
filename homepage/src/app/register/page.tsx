@@ -397,6 +397,13 @@ export default function RegisterPage() {
           const nextEmail = typeof user.email === "string" ? user.email : "";
           setFullName(nextName);
           setEmail(nextEmail);
+          if (typeof user.phone === "string" && user.phone) {
+            setPhone(user.phone);
+          }
+          if (typeof user.country === "string" && user.country) {
+            setCountry(user.country);
+            setCountryQuery(user.country);
+          }
         }
         if (!authed) {
           window.location.href = "/login/?mode=signin&next=/register/";
