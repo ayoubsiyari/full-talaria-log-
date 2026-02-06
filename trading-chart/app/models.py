@@ -28,6 +28,8 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verification_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
     verification_code_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reset_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    reset_code_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     sessions: Mapped[list[TradingSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
     journal_profiles: Mapped[list[JournalProfile]] = relationship(back_populates="user", cascade="all, delete-orphan")

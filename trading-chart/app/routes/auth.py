@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..deps import get_current_user
 from ..db import get_db
 from ..models import User
-from ..schemas import LoginIn, SignupIn, UpdateProfileIn, UserPublic, VerifyEmailIn, ResendCodeIn
+from ..schemas import LoginIn, SignupIn, UpdateProfileIn, UserPublic, VerifyEmailIn, ResendCodeIn, ForgotPasswordIn, ResetPasswordIn
 from ..security import create_session_token, hash_password, verify_password
 from ..settings import settings
 
@@ -62,6 +62,65 @@ def send_verification_email(email: str, code: str, name: str) -> None:
             
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
                 If you didn't create an account, you can safely ignore this email.
+            </p>
+            
+            <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
+                © 2024 Talaria-Log. All rights reserved.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.smtp_from_email or settings.smtp_user
+    msg["To"] = email
+
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+        server.starttls()
+        server.login(settings.smtp_user, settings.smtp_password)
+        server.send_message(msg)
+
+
+def send_password_reset_email(email: str, code: str, name: str) -> None:
+    """Send password reset code email to user."""
+    if not all([settings.smtp_host, settings.smtp_user, settings.smtp_password]):
+        logger.warning("SMTP not configured, skipping password reset email")
+        return
+
+    subject = f"Your Talaria Password Reset Code: {code}"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3;">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 28px;">🔐 Talaria</h1>
+                <p style="color: #a5b4fc; margin-top: 5px;">Password Reset</p>
+            </div>
+            
+            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.6;">
+                Hi <strong style="color: #ffffff;">{name}</strong>,
+            </p>
+            
+            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.6;">
+                We received a request to reset your password. Use the code below to set a new password:
+            </p>
+            
+            <div style="background-color: #1e1b4b; border-radius: 10px; padding: 30px; margin: 25px 0; border: 1px solid #3730a3; text-align: center;">
+                <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">Your reset code:</p>
+                <h2 style="color: #f87171; font-size: 36px; letter-spacing: 8px; margin: 0; font-family: monospace;">{code}</h2>
+            </div>
+            
+            <p style="color: #fbbf24; font-size: 14px; line-height: 1.6;">
+                ⚠️ This code will expire in <strong>10 minutes</strong>.
+            </p>
+            
+            <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
+                If you didn't request a password reset, you can safely ignore this email.
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
@@ -252,3 +311,52 @@ def update_profile(payload: UpdateProfileIn, db: Session = Depends(get_db), user
     db.commit()
     db.refresh(user)
     return {"user": UserPublic.model_validate(user, from_attributes=True)}
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordIn, db: Session = Depends(get_db)):
+    user = db.execute(select(User).where(User.email == payload.email.lower())).scalar_one_or_none()
+    
+    # Always return success to prevent email enumeration
+    if not user:
+        return {"message": "If an account exists, a reset code has been sent"}
+    
+    if not user.email_verified:
+        return {"message": "If an account exists, a reset code has been sent"}
+    
+    code = generate_verification_code()
+    user.reset_code = code
+    user.reset_code_expires = datetime.utcnow() + timedelta(minutes=10)
+    db.commit()
+    
+    try:
+        send_password_reset_email(user.email, code, user.name)
+    except Exception:
+        logger.exception("Failed to send password reset email")
+    
+    return {"message": "If an account exists, a reset code has been sent", "email": payload.email.lower()}
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordIn, db: Session = Depends(get_db)):
+    user = db.execute(select(User).where(User.email == payload.email.lower())).scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid reset request")
+    
+    if not user.reset_code:
+        raise HTTPException(status_code=400, detail="No reset code found. Please request a new one.")
+    
+    if user.reset_code_expires and datetime.utcnow() > user.reset_code_expires:
+        raise HTTPException(status_code=400, detail="Reset code expired. Please request a new one.")
+    
+    if user.reset_code != payload.code:
+        raise HTTPException(status_code=400, detail="Invalid reset code")
+    
+    # Update password
+    user.password_hash = hash_password(payload.new_password)
+    user.reset_code = None
+    user.reset_code_expires = None
+    db.commit()
+    
+    return {"message": "Password reset successfully"}

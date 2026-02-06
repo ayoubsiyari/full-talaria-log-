@@ -26,6 +26,16 @@ class ResendCodeIn(BaseModel):
     email: EmailStr
 
 
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class SignupIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
