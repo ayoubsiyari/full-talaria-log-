@@ -87,6 +87,102 @@ def _send_registration_email(reg: BootcampRegistration) -> None:
         server.send_message(msg)
 
 
+def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
+    """Send confirmation email to the user who registered."""
+    if not all([settings.smtp_host, settings.smtp_user, settings.smtp_password]):
+        logger.info("Email settings not configured, skipping user confirmation")
+        return
+
+    subject = "Welcome to Talaria Mentorship Program - Registration Confirmed"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #030014;">
+        <div style="max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%); border-radius: 15px; padding: 30px; box-shadow: 0 4px 20px rgba(79, 70, 229, 0.3); border: 1px solid rgba(99, 102, 241, 0.2);">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <h1 style="color: #fff; margin: 0; font-size: 28px;">🎓 Talaria Mentorship</h1>
+                <p style="color: #a5b4fc; margin-top: 5px;">Registration Confirmed</p>
+            </div>
+            
+            <p style="color: #e0e7ff; font-size: 16px; line-height: 1.6;">
+                Dear <strong style="color: #fff;">{reg.full_name}</strong>,
+            </p>
+            
+            <p style="color: #c7d2fe; font-size: 15px; line-height: 1.6;">
+                Thank you for registering for the Talaria Mentorship Program! Your application has been received and is being reviewed.
+            </p>
+            
+            <div style="background: rgba(79, 70, 229, 0.1); border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid rgba(99, 102, 241, 0.2);">
+                <h3 style="color: #a5b4fc; margin-top: 0; font-size: 16px;">📋 Your Registration Details</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Name:</td>
+                        <td style="padding: 8px 0; color: #fff; font-size: 14px;">{reg.full_name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Email:</td>
+                        <td style="padding: 8px 0; color: #fff; font-size: 14px;">{reg.email}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Phone:</td>
+                        <td style="padding: 8px 0; color: #fff; font-size: 14px;">{reg.phone or 'Not provided'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Country:</td>
+                        <td style="padding: 8px 0; color: #fff; font-size: 14px;">{reg.country}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Discord:</td>
+                        <td style="padding: 8px 0; color: #fff; font-size: 14px;">{reg.discord}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="background: rgba(234, 179, 8, 0.1); border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid rgba(234, 179, 8, 0.3);">
+                <h3 style="color: #fbbf24; margin-top: 0; font-size: 16px;">✅ Terms & Conditions You Agreed To</h3>
+                <ul style="color: #fef3c7; font-size: 13px; line-height: 1.8; padding-left: 20px; margin: 0;">
+                    <li>I commit to attending all scheduled mentorship sessions</li>
+                    <li>I understand this is an educational program and results may vary</li>
+                    <li>I will respect other participants and maintain professionalism</li>
+                    <li>I agree to keep all shared materials confidential</li>
+                    <li>I understand that trading involves risk and I am responsible for my own decisions</li>
+                    <li>I will complete all assigned tasks and homework</li>
+                    <li>I agree to provide feedback to help improve the program</li>
+                </ul>
+            </div>
+            
+            <div style="background: rgba(34, 197, 94, 0.1); border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid rgba(34, 197, 94, 0.3);">
+                <h3 style="color: #4ade80; margin-top: 0; font-size: 16px;">📌 What's Next?</h3>
+                <p style="color: #bbf7d0; font-size: 14px; line-height: 1.6; margin: 0;">
+                    Our team will review your application and contact you soon via Discord or email with further instructions. Make sure to check your inbox and Discord messages regularly.
+                </p>
+            </div>
+            
+            <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(99, 102, 241, 0.2);">
+                If you have any questions, reply to this email or contact us at manager@talaria-log.com
+            </p>
+            
+            <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
+                © 2024 Talaria-Log. All rights reserved.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.smtp_from_email or settings.smtp_user
+    msg["To"] = reg.email
+
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+        server.starttls()
+        server.login(settings.smtp_user, settings.smtp_password)
+        server.send_message(msg)
+
+
 def _append_registration_to_google_sheets(reg: BootcampRegistration) -> None:
     if not settings.google_sheets_spreadsheet_id:
         return
@@ -168,4 +264,8 @@ def register(
         _send_registration_email(reg)
     except Exception:
         logger.exception("email_notification_failed")
+    try:
+        _send_user_confirmation_email(reg)
+    except Exception:
+        logger.exception("user_confirmation_email_failed")
     return {"ok": True, "id": reg.id}
