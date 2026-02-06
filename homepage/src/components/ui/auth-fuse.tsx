@@ -659,14 +659,14 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification
                     </AuthButton>
                 </div>
                 <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
-                    <span className="relative z-10 bg-background px-2 text-muted-foreground">Journal Users</span>
+                    <span className="relative z-10 bg-background px-2 text-muted-foreground">2025 Mentorship</span>
                 </div>
                 <a href="/journal/" className="inline-block w-full">
                     <AuthButton variant="outline" type="button" className="w-full">
                         <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
                         </svg>
-                        Go to Trading Journal
+                        2025 Mentorship Login
                     </AuthButton>
                 </a>
               </>
