@@ -166,7 +166,7 @@ export default function HomePage() {
                 "",
             },
             footer: {
-              brandLine: "أدوات تداول احترافية للمتداولين الجادّين.",
+              brandLine: "أدوات تداول احترافية للمتداولين الجادّين",
               legal: "",
               privacy: "سياسة الخصوصية",
               terms: "شروط الخدمة",
@@ -174,7 +174,7 @@ export default function HomePage() {
               disclaimer: "إخلاء مسؤولية التداول",
               contact: "تواصل",
               emailSupport: "دعم عبر البريد الإلكتروني",
-              rights: "© 2026 Talaria Log جميع الحقوق محفوظة.",
+              rights: "© 2026 Talaria Log جميع الحقوق محفوظة",
               riskLine:
                 "",
             },
