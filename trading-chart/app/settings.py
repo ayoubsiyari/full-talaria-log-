@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: str
 
     secret_key: str
+    jwt_secret_key: str = "your-jwt-secret-key-change-this-in-production"
     session_cookie_name: str = "session"
     session_ttl_seconds: int = 60 * 60 * 24 * 14
 
