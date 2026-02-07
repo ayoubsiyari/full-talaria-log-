@@ -14,6 +14,15 @@ export default function Login() {
   const [msg, setMsg] = useState('');
   const [mounted, setMounted] = useState(false);
   const [shake, setShake] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [forgotStep, setForgotStep] = useState(1); // 1: enter email, 2: enter code + new password
+  const [forgotMsg, setForgotMsg] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const navigate = useNavigate();
   const formRef = useRef(null);
 
@@ -43,6 +52,19 @@ export default function Login() {
       createAccount: 'Sign up',
       loginFailed: 'Login failed',
       networkError: 'Network error, please try again',
+      forgotPassword: 'Forgot password?',
+      forgotTitle: 'Reset Password',
+      forgotSubtitle: 'Enter your email to receive a reset code',
+      sendCode: 'Send Reset Code',
+      enterCode: 'Enter the code sent to your email',
+      resetCodeLabel: 'Reset Code',
+      newPasswordLabel: 'New Password',
+      confirmPasswordLabel: 'Confirm Password',
+      resetPassword: 'Reset Password',
+      backToLogin: 'Back to Login',
+      codeSent: 'Reset code sent! Check your email.',
+      passwordReset: 'Password reset successfully! You can now login.',
+      passwordMismatch: 'Passwords do not match',
       dir: 'ltr',
     },
     ar: {
@@ -59,6 +81,19 @@ export default function Login() {
       createAccount: 'إنشاء حساب',
       loginFailed: 'فشل تسجيل الدخول',
       networkError: 'خطأ في الاتصال، حاول مرة أخرى',
+      forgotPassword: 'نسيت كلمة المرور؟',
+      forgotTitle: 'إعادة تعيين كلمة المرور',
+      forgotSubtitle: 'أدخل بريدك الإلكتروني لاستلام رمز إعادة التعيين',
+      sendCode: 'إرسال رمز إعادة التعيين',
+      enterCode: 'أدخل الرمز المرسل إلى بريدك الإلكتروني',
+      resetCodeLabel: 'رمز إعادة التعيين',
+      newPasswordLabel: 'كلمة المرور الجديدة',
+      confirmPasswordLabel: 'تأكيد كلمة المرور',
+      resetPassword: 'إعادة تعيين كلمة المرور',
+      backToLogin: 'العودة لتسجيل الدخول',
+      codeSent: 'تم إرسال الرمز! تحقق من بريدك الإلكتروني.',
+      passwordReset: 'تم إعادة تعيين كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول.',
+      passwordMismatch: 'كلمتا المرور غير متطابقتين',
       dir: 'rtl',
     },
   };
@@ -156,6 +191,96 @@ export default function Login() {
 
   const toggleLang = () => {
     setLang((prev) => (prev === 'en' ? 'ar' : 'en'));
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotMsg('');
+    setForgotLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setForgotStep(2);
+        setForgotMsg(texts.codeSent);
+        setForgotSuccess(true);
+      } else {
+        setForgotMsg(data.detail || 'Failed to send reset code');
+        setForgotSuccess(false);
+      }
+    } catch (err) {
+      setForgotMsg(texts.networkError);
+      setForgotSuccess(false);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setForgotMsg('');
+
+    if (newPassword !== confirmPassword) {
+      setForgotMsg(texts.passwordMismatch);
+      setForgotSuccess(false);
+      return;
+    }
+
+    setForgotLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmail.trim().toLowerCase(),
+          code: resetCode.trim(),
+          new_password: newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setForgotMsg(texts.passwordReset);
+        setForgotSuccess(true);
+        setTimeout(() => {
+          setShowForgotPassword(false);
+          setForgotStep(1);
+          setForgotEmail('');
+          setResetCode('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setForgotMsg('');
+        }, 2000);
+      } else {
+        setForgotMsg(data.detail || 'Failed to reset password');
+        setForgotSuccess(false);
+      }
+    } catch (err) {
+      setForgotMsg(texts.networkError);
+      setForgotSuccess(false);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const closeForgotPassword = () => {
+    setShowForgotPassword(false);
+    setForgotStep(1);
+    setForgotEmail('');
+    setResetCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setForgotMsg('');
+    setForgotSuccess(false);
   };
 
   return (
@@ -317,6 +442,15 @@ export default function Login() {
                 required
               />
             </div>
+            <div className="text-right mt-1">
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                className="text-blue-400 hover:text-blue-300 text-xs transition-colors"
+              >
+                {texts.forgotPassword}
+              </button>
+            </div>
           </div>
 
           <button
@@ -335,6 +469,137 @@ export default function Login() {
           </span>
         </p>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div 
+            dir={texts.dir}
+            className="bg-[#0f0f1a] rounded-xl p-6 w-full max-w-md border border-white/10 shadow-2xl"
+          >
+            <h2 className="text-xl font-semibold text-white mb-2">{texts.forgotTitle}</h2>
+            <p className="text-white/60 text-sm mb-6">
+              {forgotStep === 1 ? texts.forgotSubtitle : texts.enterCode}
+            </p>
+
+            {forgotMsg && (
+              <div className={`px-4 py-3 rounded-md text-sm mb-4 ${
+                forgotSuccess 
+                  ? 'bg-green-500/20 border border-green-500/50 text-green-300' 
+                  : 'bg-red-500/20 border border-red-500/50 text-red-300'
+              }`}>
+                {forgotMsg}
+              </div>
+            )}
+
+            {forgotStep === 1 ? (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div>
+                  <label className="block text-white/70 text-sm font-medium mb-2">
+                    {texts.emailLabel}
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+                    <input
+                      type="email"
+                      placeholder={texts.emailPlaceholder}
+                      className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeForgotPassword}
+                    className="flex-1 bg-white/10 text-white py-2 rounded-md text-sm font-medium hover:bg-white/20 transition-colors"
+                  >
+                    {texts.backToLogin}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 bg-blue-600 text-white py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {forgotLoading ? '...' : texts.sendCode}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <label className="block text-white/70 text-sm font-medium mb-2">
+                    {texts.resetCodeLabel}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="123456"
+                    className="w-full px-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm text-center tracking-widest font-mono"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    maxLength={6}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-white/70 text-sm font-medium mb-2">
+                    {texts.newPasswordLabel}
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-white/70 text-sm font-medium mb-2">
+                    {texts.confirmPasswordLabel}
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeForgotPassword}
+                    className="flex-1 bg-white/10 text-white py-2 rounded-md text-sm font-medium hover:bg-white/20 transition-colors"
+                  >
+                    {texts.backToLogin}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 bg-green-600 text-white py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
+                  >
+                    {forgotLoading ? '...' : texts.resetPassword}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
