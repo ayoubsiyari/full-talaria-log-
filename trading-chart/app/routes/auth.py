@@ -53,11 +53,11 @@ def send_verification_email(email: str, code: str, name: str) -> None:
             
             <div style="background-color: #1e1b4b; border-radius: 10px; padding: 30px; margin: 25px 0; border: 1px solid #3730a3; text-align: center;">
                 <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">رمز التحقق الخاص بك:</p>
-                <h2 style="color: #60a5fa; font-size: 36px; letter-spacing: 8px; margin: 0; font-family: monospace; direction: ltr;">{code}</h2>
+                <h2 style="color: #60a5fa; font-size: 32px; letter-spacing: 6px; margin: 0; font-family: monospace; direction: ltr; white-space: nowrap;">{code}</h2>
             </div>
             
             <p style="color: #fbbf24; font-size: 14px; line-height: 1.8;">
-                ⚠️ سينتهي هذا الرمز خلال <strong>10 دقائق</strong>.
+                  <strong>ستنتهي صلاحية هذا الرمز خلال ١٠ دقائق </strong>
             </p>
             
             <div style="background-color: #1e1b4b; border-radius: 10px; padding: 15px; margin: 20px 0; border: 1px solid #3730a3; text-align: center;">
@@ -117,7 +117,7 @@ def send_password_reset_email(email: str, code: str, name: str) -> None:
             
             <div style="background-color: #1e1b4b; border-radius: 10px; padding: 30px; margin: 25px 0; border: 1px solid #3730a3; text-align: center;">
                 <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">رمز إعادة التعيين:</p>
-                <h2 style="color: #f87171; font-size: 36px; letter-spacing: 8px; margin: 0; font-family: monospace; direction: ltr;">{code}</h2>
+                <h2 style="color: #f87171; font-size: 32px; letter-spacing: 6px; margin: 0; font-family: monospace; direction: ltr; white-space: nowrap;">{code}</h2>
             </div>
             
             <p style="color: #fbbf24; font-size: 14px; line-height: 1.8;">
