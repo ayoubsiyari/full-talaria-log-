@@ -111,6 +111,7 @@ export default function Settings() {
   const [flagsMessage, setFlagsMessage] = useState('');
   const [showSystemModal, setShowSystemModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [userTypeFilter, setUserTypeFilter] = useState('all'); // 'all', 'journal', 'mentorship'
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [refreshInterval, setRefreshInterval] = useState(30000);
@@ -1740,6 +1741,46 @@ export default function Settings() {
                       </div>
                     </div>
 
+                    {/* User Type Filter Tabs */}
+                    <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
+                      <button
+                        onClick={() => setUserTypeFilter('all')}
+                        className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all ${
+                          userTypeFilter === 'all'
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        All Users ({users.length})
+                      </button>
+                      <button
+                        onClick={() => setUserTypeFilter('journal')}
+                        className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all ${
+                          userTypeFilter === 'journal'
+                            ? 'bg-white text-green-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          Journal ({users.filter(u => u.has_journal_access).length})
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setUserTypeFilter('mentorship')}
+                        className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all ${
+                          userTypeFilter === 'mentorship'
+                            ? 'bg-white text-purple-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <Award className="w-4 h-4" />
+                          2026 Mentorship ({users.filter(u => !u.has_journal_access).length})
+                        </span>
+                      </button>
+                    </div>
+
                     {/* Users List */}
                     {loadingUsers ? (
                       <div className="text-center py-16">
@@ -1753,7 +1794,13 @@ export default function Settings() {
                       </div>
                     ) : (
                       <div className="space-y-4 max-h-96 overflow-y-auto">
-                        {users.map(user => (
+                        {users
+                          .filter(user => {
+                            if (userTypeFilter === 'journal') return user.has_journal_access;
+                            if (userTypeFilter === 'mentorship') return !user.has_journal_access;
+                            return true;
+                          })
+                          .map(user => (
                           <div key={user.id} className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all duration-300">
                             <div className="flex items-start justify-between">
                               <div className="flex items-start gap-4 flex-1">
@@ -1800,6 +1847,17 @@ export default function Settings() {
                                       <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
                                         <CheckCircle className="w-3 h-3" />
                                         Verified
+                                      </span>
+                                    )}
+                                    {user.has_journal_access ? (
+                                      <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                                        <FileText className="w-3 h-3" />
+                                        Journal
+                                      </span>
+                                    ) : (
+                                      <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                                        <Award className="w-3 h-3" />
+                                        2026 Mentorship
                                       </span>
                                     )}
                                   </div>
