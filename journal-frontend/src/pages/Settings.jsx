@@ -62,6 +62,7 @@ import {
 } from 'lucide-react';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend as ReLegend } from 'recharts';
 import BulkUserImport from '../components/BulkUserImport';
+import BulkEmailManager from '../components/BulkEmailManager';
 
 export default function Settings() {
   const [email, setEmail] = useState('');
@@ -1122,6 +1123,7 @@ export default function Settings() {
                   { id: 'health', label: 'Health', icon: Activity, color: 'orange' },
                   { id: 'analytics', label: 'Analytics', icon: TrendingUp, color: 'indigo' },
                   { id: 'feature-flags', label: 'Feature Flags', icon: Zap, color: 'yellow' },
+                  { id: 'bulk-email', label: 'Bulk Email', icon: Mail, color: 'pink' },
                   { id: 'settings', label: 'Settings', icon: SettingsIcon, color: 'gray' }
                 ].map(tab => {
                   const Icon = tab.icon;
@@ -2311,6 +2313,11 @@ export default function Settings() {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* Bulk Email Tab */}
+                {activeAdminTab === 'bulk-email' && (
+                  <BulkEmailManager users={users} />
                 )}
 
                 {/* Settings Tab */}
