@@ -122,7 +122,7 @@ export default function Login() {
       
       console.log('Login request body:', requestBody); // Debug log
       
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/journal/api/auth/login', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -157,9 +157,8 @@ export default function Login() {
         if (data.user && !data.user.email_verified) {
           setMsg('Please verify your email address before logging in. Check your inbox for a verification link.');
           setShake(true);
-        } else if (data.user) {
-          // Backend uses cookie-based auth, token may not be present
-          login(data.user, data.token || 'cookie-auth', data.user.is_admin);
+        } else if (data.user && data.token) {
+          login(data.user, data.token, data.user.is_admin);
           // Check if user has an active profile, if so go to dashboard, otherwise to profile selection
           if (data.user.has_active_profile) {
             navigate('/dashboard');
