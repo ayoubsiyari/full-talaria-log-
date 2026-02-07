@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { fetchWithAuth } from '../utils/fetchUtils';
-import { Users, User, Crown, FileText, BarChart3, Activity, TrendingUp, PieChart, Shield, CheckCircle, Mail, Phone, MapPin, Calendar, Clock, Settings } from 'lucide-react';
+import { Users, User, Crown, FileText, BarChart3, Activity, TrendingUp, PieChart, Shield, CheckCircle, Mail, Phone, MapPin, Calendar, Clock, Settings, Send } from 'lucide-react';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend as ReLegend } from 'recharts';
 import GroupFeatureFlagManager from '../components/GroupFeatureFlagManager';
 
@@ -297,7 +297,8 @@ const AdminDashboard = () => {
               { id: 'users', label: 'Users', icon: <Users className="h-5 w-5 text-indigo-600" /> },
               { id: 'logs', label: 'Logs', icon: <FileText className="h-5 w-5 text-indigo-600" /> },
               { id: 'health', label: 'System Health', icon: <Shield className="h-5 w-5 text-indigo-600" /> },
-              { id: 'feature-flags', label: 'Feature Flags', icon: <Settings className="h-5 w-5 text-indigo-600" /> }
+              { id: 'feature-flags', label: 'Feature Flags', icon: <Settings className="h-5 w-5 text-indigo-600" /> },
+              { id: 'bulk-email', label: 'Bulk Email', icon: <Send className="h-5 w-5 text-indigo-600" /> }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -620,6 +621,11 @@ const AdminDashboard = () => {
               <GroupFeatureFlagManager />
             )}
 
+            {/* Bulk Email Tab */}
+            {activeTab === 'bulk-email' && (
+              <BulkEmailManager token={token} />
+            )}
+
             {/* System Health Tab */}
             {activeTab === 'health' && systemHealth && (
               <div className="space-y-6">
@@ -774,6 +780,302 @@ const CreateUserModal = ({ onCreateUser }) => {
         </div>
       )}
     </>
+  );
+};
+
+// Bulk Email Manager Component
+const BulkEmailManager = ({ token }) => {
+  const [allUsers, setAllUsers] = useState([]);
+  const [selectedEmails, setSelectedEmails] = useState([]);
+  const [subject, setSubject] = useState('');
+  const [content, setContent] = useState('');
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // Fetch all users on mount
+  useEffect(() => {
+    const fetchAllUsers = async () => {
+      try {
+        const response = await fetch('/api/admin/users', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAllUsers(data.users || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch users:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAllUsers();
+  }, [token]);
+
+  // Filter users based on search
+  const filteredUsers = allUsers.filter(user => 
+    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.name && user.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  // Toggle user selection
+  const toggleUser = (email) => {
+    setSelectedEmails(prev => 
+      prev.includes(email) 
+        ? prev.filter(e => e !== email)
+        : [...prev, email]
+    );
+  };
+
+  // Select all filtered users
+  const selectAll = () => {
+    const filteredEmails = filteredUsers.map(u => u.email);
+    setSelectedEmails(prev => {
+      const newSelection = new Set([...prev, ...filteredEmails]);
+      return Array.from(newSelection);
+    });
+  };
+
+  // Deselect all
+  const deselectAll = () => {
+    setSelectedEmails([]);
+  };
+
+  // Select users with journal access
+  const selectJournalUsers = () => {
+    const journalEmails = allUsers.filter(u => u.has_journal_access).map(u => u.email);
+    setSelectedEmails(journalEmails);
+  };
+
+  // Send bulk email
+  const handleSendEmail = async () => {
+    if (selectedEmails.length === 0) {
+      setResult({ success: false, message: 'Please select at least one user' });
+      return;
+    }
+    if (!subject.trim()) {
+      setResult({ success: false, message: 'Please enter a subject' });
+      return;
+    }
+    if (!content.trim()) {
+      setResult({ success: false, message: 'Please enter email content' });
+      return;
+    }
+
+    setSending(true);
+    setResult(null);
+
+    try {
+      const response = await fetch('/api/admin/send-bulk-email', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          emails: selectedEmails,
+          subject: subject,
+          content: content
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult({
+          success: true,
+          message: `Successfully sent ${data.sent} emails`,
+          details: data
+        });
+        // Clear form after success
+        setSubject('');
+        setContent('');
+        setSelectedEmails([]);
+      } else {
+        setResult({
+          success: false,
+          message: data.detail || 'Failed to send emails'
+        });
+      }
+    } catch (err) {
+      setResult({
+        success: false,
+        message: 'Network error: ' + err.message
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Email Composer */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+          <Send className="w-5 h-5 text-indigo-600" />
+          Compose Bulk Email
+        </h3>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Subject
+            </label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Enter email subject..."
+              className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Content (HTML supported)
+            </label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="<p>Enter your email content here...</p>"
+              rows={8}
+              className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono text-sm"
+            />
+          </div>
+
+          <div className="bg-gray-50 rounded-md p-3">
+            <p className="text-sm text-gray-600">
+              <strong>Selected:</strong> {selectedEmails.length} user(s)
+            </p>
+          </div>
+
+          <button
+            onClick={handleSendEmail}
+            disabled={sending || selectedEmails.length === 0}
+            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {sending ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Send Email to {selectedEmails.length} User(s)
+              </>
+            )}
+          </button>
+
+          {result && (
+            <div className={`p-4 rounded-md ${result.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+              <p className={result.success ? 'text-green-800' : 'text-red-800'}>
+                {result.message}
+              </p>
+              {result.details && result.details.failed > 0 && (
+                <p className="text-sm text-red-600 mt-2">
+                  Failed: {result.details.failed} emails
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* User Selection */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+          <Users className="w-5 h-5 text-indigo-600" />
+          Select Recipients
+        </h3>
+
+        {/* Quick Actions */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={selectAll}
+            className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-md text-sm hover:bg-indigo-200"
+          >
+            Select All Visible
+          </button>
+          <button
+            onClick={selectJournalUsers}
+            className="px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm hover:bg-green-200"
+          >
+            Select Journal Users
+          </button>
+          <button
+            onClick={deselectAll}
+            className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200"
+          >
+            Deselect All
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="mb-4">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search users by email or name..."
+            className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+          />
+        </div>
+
+        {/* Users List */}
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+          </div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto border rounded-md divide-y">
+            {filteredUsers.map((user) => (
+              <label
+                key={user.id}
+                className={`flex items-center p-3 cursor-pointer hover:bg-gray-50 ${
+                  selectedEmails.includes(user.email) ? 'bg-indigo-50' : ''
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedEmails.includes(user.email)}
+                  onChange={() => toggleUser(user.email)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <div className="ml-3 flex-1">
+                  <p className="text-sm font-medium text-gray-900">{user.email}</p>
+                  {user.name && (
+                    <p className="text-xs text-gray-500">{user.name}</p>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  {user.has_journal_access && (
+                    <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">
+                      Journal
+                    </span>
+                  )}
+                  {user.is_admin && (
+                    <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">
+                      Admin
+                    </span>
+                  )}
+                </div>
+              </label>
+            ))}
+            {filteredUsers.length === 0 && (
+              <div className="p-4 text-center text-gray-500">
+                No users found
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
