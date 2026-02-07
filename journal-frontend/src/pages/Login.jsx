@@ -122,7 +122,7 @@ export default function Login() {
       
       console.log('Login request body:', requestBody); // Debug log
       
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
