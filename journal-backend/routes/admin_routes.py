@@ -225,6 +225,7 @@ def list_users():
                 "profile_image": user.profile_image,
                 "is_admin": user.is_admin,
                 "email_verified": user.email_verified,
+                "has_journal_access": user.has_journal_access,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
                 "updated_at": user.updated_at.isoformat() if user.updated_at else None,
                 # Additional computed fields
