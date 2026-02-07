@@ -79,7 +79,7 @@ def send_verification_email(email: str, code: str, name: str) -> None:
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"Talaria <{settings.smtp_from_email or settings.smtp_user}>"
+    msg["From"] = f"Mentorship Registration 2026 <{settings.smtp_from_email or settings.smtp_user}>"
     msg["To"] = email
 
     msg.attach(MIMEText(html_body, "html"))
@@ -143,7 +143,7 @@ def send_password_reset_email(email: str, code: str, name: str) -> None:
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"Talaria <{settings.smtp_from_email or settings.smtp_user}>"
+    msg["From"] = f"Mentorship Registration 2026 <{settings.smtp_from_email or settings.smtp_user}>"
     msg["To"] = email
 
     msg.attach(MIMEText(html_body, "html"))
