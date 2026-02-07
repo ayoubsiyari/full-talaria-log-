@@ -20,6 +20,12 @@ class SendJournalEmailIn(BaseModel):
     email: EmailStr
 
 
+class BulkEmailIn(BaseModel):
+    emails: list[EmailStr]
+    subject: str
+    content: str  # HTML content
+
+
 def _send_journal_access_email(email: str, name: str) -> None:
     """Send journal access instructions email to user."""
     subject = "🎓 دليل الوصول إلى منصة Talaria Journal"
@@ -116,6 +122,71 @@ def send_journal_email(
     
     _send_journal_access_email(user.email, user.name)
     return {"message": f"Journal access email sent to {user.email}"}
+
+
+def _send_bulk_email(email: str, subject: str, html_content: str) -> None:
+    """Send a custom email to a user."""
+    html_body = f"""
+    <html dir="rtl">
+    <body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3; direction: rtl; text-align: right;">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 28px;">🎓 Talaria Mentorship</h1>
+            </div>
+            
+            <div style="color: #e0e7ff; font-size: 15px; line-height: 1.8;">
+                {html_content}
+            </div>
+            
+            <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
+                إذا واجهت أي مشكلة، تواصل معنا على info@talaria-log.com
+            </p>
+            
+            <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
+                © 2026 Talaria-Log. جميع الحقوق محفوظة.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"Talaria Mentorship <{settings.smtp_from_email or settings.smtp_user}>"
+    msg["To"] = email
+
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+        server.starttls()
+        server.login(settings.smtp_user, settings.smtp_password)
+        server.send_message(msg)
+
+
+@router.post("/send-bulk-email")
+def send_bulk_email(
+    payload: BulkEmailIn,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Send a custom email to multiple users at once."""
+    sent_count = 0
+    errors = []
+    
+    for email in payload.emails:
+        try:
+            _send_bulk_email(email, payload.subject, payload.content)
+            sent_count += 1
+        except Exception as e:
+            errors.append({"email": email, "error": str(e)})
+    
+    return {
+        "message": f"Email sent to {sent_count} users",
+        "total": len(payload.emails),
+        "sent": sent_count,
+        "failed": len(errors),
+        "errors": errors
+    }
 
 
 @router.post("/send-journal-email-all")
