@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Mail, Users, Send, CheckCircle, AlertCircle, Search } from 'lucide-react';
-import { API_BASE_URL } from '../config';
 
 const BulkEmailManager = ({ users = [] }) => {
   const [selectedEmails, setSelectedEmails] = useState([]);
@@ -65,7 +64,7 @@ const BulkEmailManager = ({ users = [] }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/admin/send-bulk-email`, {
+      const response = await fetch('/api/admin/send-bulk-email', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
