@@ -36,7 +36,7 @@ export default function RefundsPage() {
             s4t: "4. كيفية طلب الاسترجاع",
             s4p: "لطلب الاسترجاع:",
             s4l: [
-              "راسلنا على support@talaria-log.com بعنوان \"طلب استرجاع\"",
+              "راسلنا على info@talaria-log.com بعنوان \"طلب استرجاع\"",
               "ضمّن بريد حسابك ورقم الطلب/المعاملة",
               "قدم شرحاً مختصراً لسبب الطلب",
               "اترك 3-5 أيام عمل لمراجعة الطلب",
@@ -81,7 +81,7 @@ export default function RefundsPage() {
             s4t: "4. How to Request a Refund",
             s4p: "To request a refund:",
             s4l: [
-              "Email us at support@talaria-log.com with the subject \"Refund Request\"",
+              "Email us at info@talaria-log.com with the subject \"Refund Request\"",
               "Include your account email and order/transaction ID",
               "Provide a brief explanation for your refund request",
               "Allow 3-5 business days for our team to review your request",
@@ -170,7 +170,7 @@ export default function RefundsPage() {
           <h2 className="text-2xl font-semibold text-white mb-4">{t.s8t}</h2>
           <p className="text-neutral-300 leading-relaxed">{t.s8p}</p>
           <p className="text-blue-400 mt-2">
-            <a href="mailto:support@talaria-log.com">support@talaria-log.com</a>
+            <a href="mailto:info@talaria-log.com">info@talaria-log.com</a>
           </p>
         </section>
       </div>
