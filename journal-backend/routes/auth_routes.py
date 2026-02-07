@@ -5,7 +5,29 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 from models import db, User, Profile
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email
+from passlib.context import CryptContext
 import os
+
+# Support both werkzeug and passlib password hashing (for compatibility with trading-chart backend)
+_pwd_passlib = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+def verify_password_compat(stored_hash, password):
+    """Verify password against both werkzeug and passlib hash formats."""
+    # Try werkzeug first
+    try:
+        if check_password_hash(stored_hash, password):
+            return True
+    except (ValueError, TypeError):
+        pass
+    
+    # Try passlib (used by trading-chart backend)
+    try:
+        if _pwd_passlib.verify(password, stored_hash):
+            return True
+    except (ValueError, TypeError):
+        pass
+    
+    return False
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -38,10 +60,7 @@ def login_user():
     if not user.is_active:
         return jsonify({"error": "Your account is disabled. Please contact support."}), 403
 
-    try:
-        pw_matches = check_password_hash(user.password, password)
-    except ValueError:
-        return jsonify({"error": "Invalid credentials. Please try again."}), 401
+    pw_matches = verify_password_compat(user.password, password)
 
     if not pw_matches:
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
