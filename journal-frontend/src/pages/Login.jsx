@@ -461,13 +461,6 @@ export default function Login() {
             <ChevronRight className="w-4 h-4" />
           </button>
         </form>
-
-        <p className="text-center text-white/60 text-sm mt-6">
-          {texts.noAccount}{' '}
-          <span className="text-blue-400">
-            {texts.createAccount} (Temporarily disabled)
-          </span>
-        </p>
       </div>
 
       {/* Forgot Password Modal */}
