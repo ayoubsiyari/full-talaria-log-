@@ -114,14 +114,14 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
             
             <div style="background-color: #1e1b4b; border-radius: 10px; padding: 20px; margin: 25px 0; border: 1px solid #3730a3;">
                 <h3 style="color: #a5b4fc; margin-top: 0; font-size: 16px;">تفاصيل التسجيل</h3>
-                <table style="width: 100%; border-collapse: collapse;">
+                <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
                     <tr>
-                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px; width: 100px;">الاسم:</td>
-                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px;"><strong>{reg.full_name}</strong></td>
+                        <td style="padding: 8px 0; color: #94a3b8; font-size: 14px; width: 80px;">الاسم:</td>
+                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px; word-break: break-word;"><strong>{reg.full_name}</strong></td>
                     </tr>
                     <tr>
                         <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">البريد:</td>
-                        <td style="padding: 8px 0; color: #60a5fa; font-size: 14px; direction: ltr; text-align: right;"><strong>{reg.email}</strong></td>
+                        <td style="padding: 8px 0; color: #60a5fa; font-size: 14px; direction: ltr; text-align: right; word-break: break-all;"><strong>{reg.email}</strong></td>
                     </tr>
                     <tr>
                         <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">الهاتف:</td>
@@ -129,11 +129,11 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
                     </tr>
                     <tr>
                         <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">الدولة:</td>
-                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px;"><strong>{reg.country}</strong></td>
+                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px; word-break: break-word;"><strong>{reg.country}</strong></td>
                     </tr>
                     <tr>
                         <td style="padding: 8px 0; color: #94a3b8; font-size: 14px;">Discord:</td>
-                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px; direction: ltr; text-align: right;"><strong>{reg.discord}</strong></td>
+                        <td style="padding: 8px 0; color: #ffffff; font-size: 14px; direction: ltr; text-align: right; word-break: break-all;"><strong>{reg.discord}</strong></td>
                     </tr>
                 </table>
             </div>
