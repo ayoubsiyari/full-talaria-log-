@@ -504,22 +504,21 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={closeForgotPassword}
-                    className="flex-1 bg-white/10 text-white py-2 rounded-md text-sm font-medium hover:bg-white/20 transition-colors"
-                  >
-                    {texts.backToLogin}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={forgotLoading}
-                    className="flex-1 bg-blue-600 text-white py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    {forgotLoading ? '...' : texts.sendCode}
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                >
+                  <span>{forgotLoading ? '...' : texts.sendCode}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={closeForgotPassword}
+                  className="w-full text-white/60 hover:text-white text-sm mt-3 transition-colors"
+                >
+                  {texts.backToLogin}
+                </button>
               </form>
             ) : (
               <form onSubmit={handleResetPassword} className="space-y-4">
@@ -572,22 +571,21 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={closeForgotPassword}
-                    className="flex-1 bg-white/10 text-white py-2 rounded-md text-sm font-medium hover:bg-white/20 transition-colors"
-                  >
-                    {texts.backToLogin}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={forgotLoading}
-                    className="flex-1 bg-green-600 text-white py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
-                  >
-                    {forgotLoading ? '...' : texts.resetPassword}
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                >
+                  <span>{forgotLoading ? '...' : texts.resetPassword}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={closeForgotPassword}
+                  className="w-full text-white/60 hover:text-white text-sm mt-3 transition-colors"
+                >
+                  {texts.backToLogin}
+                </button>
               </form>
             )}
           </div>
