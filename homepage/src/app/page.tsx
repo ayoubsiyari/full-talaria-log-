@@ -477,20 +477,20 @@ export default function HomePage() {
                           )}
                         </div>
                         <div className="space-y-2 mb-4">
-                          <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2" dir="ltr">
                             <Mail className="w-4 h-4" />
-                            <span className="truncate">{user.email}</span>
+                            <span className="truncate text-left">{user.email}</span>
                           </div>
                           {user.phone && (
-                            <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2" dir="ltr">
                               <span className="w-4 h-4 text-center">📱</span>
-                              <span className="truncate">{user.phone}</span>
+                              <span className="truncate text-left">{user.phone}</span>
                             </div>
                           )}
                           {user.country && (
-                            <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-3 text-sm text-white/70 bg-white/5 rounded-lg px-3 py-2" dir="ltr">
                               <span className="w-4 h-4 text-center">🌍</span>
-                              <span className="truncate">{user.country}</span>
+                              <span className="truncate text-left">{user.country}</span>
                             </div>
                           )}
                         </div>
