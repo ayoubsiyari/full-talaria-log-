@@ -408,13 +408,6 @@ export default function HomePage() {
                                 placeholder={isArabic ? "الاسم" : "Name"}
                                 autoFocus
                               />
-                              <input
-                                type="text"
-                                value={editPhone}
-                                onChange={(e) => setEditPhone(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
-                                placeholder={isArabic ? "رقم الهاتف" : "Phone"}
-                              />
                               <div ref={countryDropdownRef} className="relative">
                                 <input
                                   type="text"
@@ -429,6 +422,7 @@ export default function HomePage() {
                                   }}
                                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
                                   placeholder={isArabic ? "ابحث عن دولة" : "Search country"}
+                                  dir="ltr"
                                 />
                                 {countryDropdownOpen && (
                                   <div className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-[#0a0a1a] shadow-xl">
@@ -451,6 +445,14 @@ export default function HomePage() {
                                   </div>
                                 )}
                               </div>
+                              <input
+                                type="text"
+                                value={editPhone}
+                                onChange={(e) => setEditPhone(e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                                placeholder={isArabic ? "رقم الهاتف" : "Phone"}
+                                dir="ltr"
+                              />
                               <div className="flex items-center gap-2 justify-end">
                                 <button
                                   onClick={handleSaveProfile}
