@@ -226,6 +226,15 @@ const BulkEmailManager = ({ users = [] }) => {
               Select Journal Users
             </button>
             <button
+              onClick={() => {
+                const mentorshipEmails = users.filter(u => !u.has_journal_access).map(u => u.email);
+                setSelectedEmails(mentorshipEmails);
+              }}
+              className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-200 transition-colors"
+            >
+              Select 2026 Mentorship
+            </button>
+            <button
               onClick={deselectAll}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
             >
@@ -246,7 +255,7 @@ const BulkEmailManager = ({ users = [] }) => {
           </div>
 
           {/* Users List */}
-          <div className="max-h-96 overflow-y-auto border-2 border-gray-200 rounded-xl divide-y bg-white">
+          <div className="max-h-[600px] overflow-y-auto border-2 border-gray-200 rounded-xl divide-y bg-white">
             {filteredUsers.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
