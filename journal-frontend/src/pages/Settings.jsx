@@ -143,6 +143,10 @@ export default function Settings() {
   const [emailCountResult, setEmailCountResult] = useState(null);
   const [emailCountLoading, setEmailCountLoading] = useState(false);
 
+  // Server monitoring state
+  const [serverMonitoring, setServerMonitoring] = useState(null);
+  const [serverMonitoringLoading, setServerMonitoringLoading] = useState(false);
+
   // Feature flags context
   const { refreshFeatureFlags } = useFeatureFlags();
 
@@ -235,6 +239,7 @@ export default function Settings() {
           fetchDashboardData();
           fetchLogs();
           fetchSystemHealth();
+          fetchServerMonitoring();
         }
         
         setMsg('');
@@ -580,6 +585,29 @@ export default function Settings() {
       }
     } catch (err) {
       console.error('Error fetching system health:', err);
+    }
+  };
+
+  const fetchServerMonitoring = async () => {
+    setServerMonitoringLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/admin/monitoring/overview`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setServerMonitoring(data);
+      }
+    } catch (err) {
+      console.error('Error fetching server monitoring:', err);
+    } finally {
+      setServerMonitoringLoading(false);
     }
   };
 
@@ -2037,54 +2065,281 @@ export default function Settings() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-orange-100 rounded-xl">
-                          <Activity className="w-6 h-6 text-orange-600" />
+                          <Server className="w-6 h-6 text-orange-600" />
                         </div>
-                        <h3 className="text-xl font-bold text-gray-900">System Health</h3>
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900">Server Monitoring</h3>
+                          <p className="text-sm text-gray-500">Real-time VPS health & security</p>
+                        </div>
                       </div>
                       <button
-                        onClick={fetchSystemHealth}
-                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition-colors font-semibold"
+                        onClick={() => { fetchSystemHealth(); fetchServerMonitoring(); }}
+                        disabled={serverMonitoringLoading}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition-colors font-semibold disabled:opacity-50"
                       >
-                        <RefreshCw className="w-4 h-4" />
+                        <RefreshCw className={`w-4 h-4 ${serverMonitoringLoading ? 'animate-spin' : ''}`} />
                         Refresh
                       </button>
                     </div>
-                    {systemHealth ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <div className="bg-green-50 rounded-xl p-6 border border-green-200">
-                          <div className="flex items-center gap-3 mb-4">
-                            <Activity className="w-6 h-6 text-green-600" />
-                            <span className="text-sm font-semibold text-green-800">Status</span>
-                          </div>
-                          <p className="text-2xl font-bold text-green-900">
-                            {systemHealth.status || 'Healthy'}
-                          </p>
-                        </div>
-                        <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
-                          <div className="flex items-center gap-3 mb-4">
-                            <Clock className="w-6 h-6 text-blue-600" />
-                            <span className="text-sm font-semibold text-blue-800">Uptime</span>
-                          </div>
-                          <p className="text-2xl font-bold text-blue-900">
-                            {systemHealth.uptime || '0 days'}
-                          </p>
-                        </div>
-                        {systemHealth.database && (
-                          <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
-                            <div className="flex items-center gap-3 mb-4">
-                              <Database className="w-6 h-6 text-purple-600" />
-                              <span className="text-sm font-semibold text-purple-800">Database</span>
+
+                    {/* Overall Health Status */}
+                    {serverMonitoring && (
+                      <div className={`rounded-xl p-6 border-2 ${
+                        serverMonitoring.health_status === 'healthy' ? 'bg-green-50 border-green-300' :
+                        serverMonitoring.health_status === 'warning' ? 'bg-yellow-50 border-yellow-300' :
+                        'bg-red-50 border-red-300'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-3 rounded-full ${
+                              serverMonitoring.health_status === 'healthy' ? 'bg-green-200' :
+                              serverMonitoring.health_status === 'warning' ? 'bg-yellow-200' :
+                              'bg-red-200'
+                            }`}>
+                              {serverMonitoring.health_status === 'healthy' ? 
+                                <CheckCircle className="w-8 h-8 text-green-600" /> :
+                                <AlertCircle className="w-8 h-8 text-red-600" />
+                              }
                             </div>
-                            <p className="text-2xl font-bold text-purple-900">
-                              {systemHealth.database.status || 'Connected'}
+                            <div>
+                              <p className="text-2xl font-bold capitalize">{serverMonitoring.health_status}</p>
+                              <p className="text-sm text-gray-600">Last updated: {new Date(serverMonitoring.timestamp).toLocaleTimeString()}</p>
+                            </div>
+                          </div>
+                          {serverMonitoring.issues && serverMonitoring.issues.length > 0 && (
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-red-600">{serverMonitoring.issues.length} Issue(s)</p>
+                              {serverMonitoring.issues.map((issue, idx) => (
+                                <p key={idx} className="text-xs text-red-500">{issue}</p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* System Resources */}
+                    {serverMonitoring?.system && (
+                      <div>
+                        <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                          <Cpu className="w-5 h-5" /> System Resources
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* CPU */}
+                          <div className={`rounded-xl p-5 border ${
+                            serverMonitoring.system.cpu?.status === 'ok' ? 'bg-green-50 border-green-200' :
+                            serverMonitoring.system.cpu?.status === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                            'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="font-semibold text-gray-700">CPU</span>
+                              <Cpu className="w-5 h-5 text-gray-500" />
+                            </div>
+                            <p className="text-3xl font-bold">{serverMonitoring.system.cpu?.percent?.toFixed(1) || 0}%</p>
+                            <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${
+                                  serverMonitoring.system.cpu?.percent > 90 ? 'bg-red-500' :
+                                  serverMonitoring.system.cpu?.percent > 70 ? 'bg-yellow-500' : 'bg-green-500'
+                                }`}
+                                style={{ width: `${serverMonitoring.system.cpu?.percent || 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Memory */}
+                          <div className={`rounded-xl p-5 border ${
+                            serverMonitoring.system.memory?.status === 'ok' ? 'bg-green-50 border-green-200' :
+                            serverMonitoring.system.memory?.status === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                            'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="font-semibold text-gray-700">Memory</span>
+                              <Memory className="w-5 h-5 text-gray-500" />
+                            </div>
+                            <p className="text-3xl font-bold">{serverMonitoring.system.memory?.percent?.toFixed(1) || 0}%</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {serverMonitoring.system.memory?.used_mb || 0} / {serverMonitoring.system.memory?.total_mb || 0} MB
                             </p>
+                            <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${
+                                  serverMonitoring.system.memory?.percent > 90 ? 'bg-red-500' :
+                                  serverMonitoring.system.memory?.percent > 70 ? 'bg-yellow-500' : 'bg-green-500'
+                                }`}
+                                style={{ width: `${serverMonitoring.system.memory?.percent || 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Disk */}
+                          <div className={`rounded-xl p-5 border ${
+                            serverMonitoring.system.disk?.status === 'ok' ? 'bg-green-50 border-green-200' :
+                            serverMonitoring.system.disk?.status === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                            'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="font-semibold text-gray-700">Disk</span>
+                              <HardDrive className="w-5 h-5 text-gray-500" />
+                            </div>
+                            <p className="text-3xl font-bold">{serverMonitoring.system.disk?.percent || '0%'}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {serverMonitoring.system.disk?.used || '0'} / {serverMonitoring.system.disk?.total || '0'}
+                            </p>
+                            <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${
+                                  parseInt(serverMonitoring.system.disk?.percent) > 90 ? 'bg-red-500' :
+                                  parseInt(serverMonitoring.system.disk?.percent) > 70 ? 'bg-yellow-500' : 'bg-green-500'
+                                }`}
+                                style={{ width: serverMonitoring.system.disk?.percent || '0%' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Uptime & Load */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                          <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Clock className="w-5 h-5 text-blue-600" />
+                              <span className="font-semibold text-blue-800">Uptime</span>
+                            </div>
+                            <p className="text-xl font-bold text-blue-900">{serverMonitoring.system.uptime || 'N/A'}</p>
+                          </div>
+                          <div className="bg-purple-50 rounded-xl p-5 border border-purple-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Activity className="w-5 h-5 text-purple-600" />
+                              <span className="font-semibold text-purple-800">Load Average</span>
+                            </div>
+                            <p className="text-xl font-bold text-purple-900">{serverMonitoring.system.load_average || 'N/A'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Security Status */}
+                    {serverMonitoring?.security && (
+                      <div>
+                        <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                          <Shield className="w-5 h-5" /> Security Status
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Fail2Ban */}
+                          <div className={`rounded-xl p-5 border ${
+                            serverMonitoring.security.fail2ban?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="font-semibold text-gray-700">Fail2Ban</span>
+                              <Shield className={`w-5 h-5 ${serverMonitoring.security.fail2ban?.status === 'active' ? 'text-green-600' : 'text-red-600'}`} />
+                            </div>
+                            <p className={`text-xl font-bold capitalize ${serverMonitoring.security.fail2ban?.status === 'active' ? 'text-green-700' : 'text-red-700'}`}>
+                              {serverMonitoring.security.fail2ban?.status || 'Unknown'}
+                            </p>
+                            <p className="text-sm text-gray-600 mt-2">
+                              <span className="font-semibold">{serverMonitoring.security.fail2ban?.banned_count || 0}</span> IPs banned
+                            </p>
+                            {serverMonitoring.security.fail2ban?.banned_ips?.length > 0 && (
+                              <div className="mt-3 space-y-1">
+                                {serverMonitoring.security.fail2ban.banned_ips.slice(0, 5).map((item, idx) => (
+                                  <div key={idx} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
+                                    {item.ip} ({item.jail})
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Firewall */}
+                          <div className={`rounded-xl p-5 border ${
+                            serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="font-semibold text-gray-700">Firewall (UFW)</span>
+                              <Wifi className={`w-5 h-5 ${serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'text-green-600' : 'text-yellow-600'}`} />
+                            </div>
+                            <p className="text-xl font-bold text-gray-900">
+                              {serverMonitoring.security.firewall?.ufw_status || 'Unknown'}
+                            </p>
+                            <p className="text-sm text-gray-600 mt-2">
+                              Nginx errors today: <span className="font-semibold">{serverMonitoring.security.nginx_errors_today || 0}</span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Services Status */}
+                    {serverMonitoring?.services && (
+                      <div>
+                        <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                          <Power className="w-5 h-5" /> Services
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {serverMonitoring.services.services?.map((service, idx) => (
+                            <div key={idx} className={`rounded-xl p-4 border text-center ${
+                              service.ok ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+                            }`}>
+                              <div className={`w-3 h-3 rounded-full mx-auto mb-2 ${service.ok ? 'bg-green-500' : 'bg-red-500'}`} />
+                              <p className="font-semibold text-gray-900 capitalize">{service.name}</p>
+                              <p className={`text-xs ${service.ok ? 'text-green-600' : 'text-red-600'}`}>{service.status}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Docker Containers */}
+                        {serverMonitoring.services.docker_containers?.length > 0 && (
+                          <div className="mt-4">
+                            <h5 className="font-semibold text-gray-700 mb-2">Docker Containers</h5>
+                            <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm text-green-400 max-h-40 overflow-y-auto">
+                              {serverMonitoring.services.docker_containers.map((container, idx) => (
+                                <div key={idx}>{container}</div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
-                    ) : (
+                    )}
+
+                    {/* App Health (existing) */}
+                    {systemHealth && (
+                      <div>
+                        <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                          <Database className="w-5 h-5" /> Application Health
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-green-50 rounded-xl p-5 border border-green-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Activity className="w-5 h-5 text-green-600" />
+                              <span className="font-semibold text-green-800">API Status</span>
+                            </div>
+                            <p className="text-xl font-bold text-green-900">{systemHealth.status || 'Healthy'}</p>
+                          </div>
+                          <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Clock className="w-5 h-5 text-blue-600" />
+                              <span className="font-semibold text-blue-800">App Uptime</span>
+                            </div>
+                            <p className="text-xl font-bold text-blue-900">{systemHealth.uptime || 'N/A'}</p>
+                          </div>
+                          {systemHealth.database && (
+                            <div className="bg-purple-50 rounded-xl p-5 border border-purple-200">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Database className="w-5 h-5 text-purple-600" />
+                                <span className="font-semibold text-purple-800">Database</span>
+                              </div>
+                              <p className="text-xl font-bold text-purple-900">{systemHealth.database.status || 'Connected'}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Loading/Empty State */}
+                    {!serverMonitoring && !systemHealth && (
                       <div className="text-center py-16">
-                        <Activity className="w-16 h-16 text-gray-400 mx-auto mb-6" />
-                        <p className="text-gray-500 text-lg">System health data not available.</p>
+                        <Server className="w-16 h-16 text-gray-400 mx-auto mb-6" />
+                        <p className="text-gray-500 text-lg">Click Refresh to load server monitoring data</p>
                       </div>
                     )}
                   </div>
