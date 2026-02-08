@@ -159,7 +159,7 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
             </div>
             
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                إذا كان لديك أي أسئلة، رد على هذا البريد أو تواصل معنا على info@talaria-log.com
+                إذا كان لديك أي أسئلة، رد على هذا البريد أو تواصل معنا على support-center@talaria-log.com
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">

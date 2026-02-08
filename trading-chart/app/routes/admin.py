@@ -81,7 +81,7 @@ def _send_journal_access_email(email: str, name: str) -> None:
             </div>
             
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                إذا واجهت أي مشكلة، تواصل معنا على info@talaria-log.com
+                إذا واجهت أي مشكلة، تواصل معنا على support-center@talaria-log.com
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
@@ -141,7 +141,7 @@ def _send_bulk_email(email: str, subject: str, html_content: str) -> None:
             </div>
             
             <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                إذا واجهت أي مشكلة، تواصل معنا على info@talaria-log.com
+                إذا واجهت أي مشكلة، تواصل معنا على support-center@talaria-log.com
             </p>
             
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">

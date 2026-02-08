@@ -188,7 +188,7 @@ export default function SiteDisclosuresFooter({
               <ul className="space-y-2">
                 <li>
                   <a
-                    href="mailto:info@talaria-log.com"
+                    href="mailto:support-center@talaria-log.com"
                     className="text-neutral-400 hover:text-white text-sm"
                   >
                     {t.footer.emailSupport}
@@ -196,10 +196,10 @@ export default function SiteDisclosuresFooter({
                 </li>
               </ul>
               <a
-                href="mailto:info@talaria-log.com"
+                href="mailto:support-center@talaria-log.com"
                 className="text-blue-400 hover:text-blue-300 text-sm"
               >
-                info@talaria-log.com
+                support-center@talaria-log.com
               </a>
             </div>
           </div>

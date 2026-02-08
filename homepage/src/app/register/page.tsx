@@ -502,7 +502,7 @@ export default function RegisterPage() {
                 "\t•\tالقرار المستنير: ننصح بمتابعة الكورس المجاني على يوتيوب أولاً، وعلى المنتسب التأكد من حاجته الفعليه للمنتورشيب قبل التسجيل.",
                 "\t•\tاكتمال العدد: يتم إغلاق باب القبول فور اكتمال العدد المحدد لضمان جودة الإدارة، ولا تُقبل أي طلبات إضافية بعدها.",
                 "\t•\tحجية الاتفاق: يعتبر ملء هذه الاستمارة وإرسالها موافقة نهائية و ملزمة ، ولا يجوز الطعن فيها.",
-                "\t•\tآلية الرد: يتم الرد على الطلبات خلال 72 ساعة عبر البريد الرسمي (manager@talaria-log.com) ، مع تفاصيل الدفع (بالعملات الرقمية فقط).",
+                "\t•\tآلية الرد: يتم الرد على الطلبات خلال 72 ساعة عبر البريد الرسمي (support-center@talaria-log.com) ، مع تفاصيل الدفع (بالعملات الرقمية فقط).",
               ],
               rulesNote:
                 "بإرسال هذه الاستمارة، فأنت تقر بموافقتك على البنود أعلاه وتقبل سياساتنا القانونية.",
@@ -616,7 +616,7 @@ export default function RegisterPage() {
                 "Acceptance & registration — Informed decision: We strongly recommend following the free YouTube course first and ensuring you truly need the mentorship before enrolling.",
                 "Acceptance & registration — Capacity: Admissions will close once capacity is reached to ensure quality. No additional applications will be accepted after closure.",
                 "Acceptance & registration — Binding agreement: Submitting this form constitutes final and legally binding acceptance. It may be relied upon in court and may not be contested.",
-                "Acceptance & registration — Response: Applications are reviewed periodically. You will receive a reply within 72 hours from our official email (info@talaria-log.com) with crypto-only payment details.",
+                "Acceptance & registration — Response: Applications are reviewed periodically. You will receive a reply within 72 hours from our official email (support-center@talaria-log.com) with crypto-only payment details.",
               ],
               rulesNote:
                 "By submitting this form, you confirm your acceptance of the terms above and our legal policies.",
