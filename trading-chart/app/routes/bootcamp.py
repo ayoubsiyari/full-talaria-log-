@@ -2,6 +2,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.orm import Session
@@ -78,6 +79,8 @@ def _send_registration_email(reg: BootcampRegistration) -> None:
     msg["From"] = f"Talaria <{settings.smtp_from_email or settings.smtp_user}>"
     msg["To"] = settings.notification_email
     msg["Reply-To"] = reg.email  # Allow replying directly to the applicant
+    msg["Message-ID"] = make_msgid(domain="talaria-log.com")
+    msg["Date"] = formatdate(localtime=True)
 
     msg.attach(MIMEText(html_body, "html"))
 
@@ -171,6 +174,8 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
     msg["Subject"] = subject
     msg["From"] = f"Talaria <{settings.smtp_from_email or settings.smtp_user}>"
     msg["To"] = reg.email
+    msg["Message-ID"] = make_msgid(domain="talaria-log.com")
+    msg["Date"] = formatdate(localtime=True)
 
     msg.attach(MIMEText(html_body, "html"))
 

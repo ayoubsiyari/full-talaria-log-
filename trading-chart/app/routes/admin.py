@@ -1,6 +1,8 @@
 import smtplib
+import uuid
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -154,6 +156,8 @@ def _send_bulk_email(email: str, subject: str, html_content: str) -> None:
     msg["Subject"] = subject
     msg["From"] = f"Talaria Mentorship <{settings.smtp_from_email or settings.smtp_user}>"
     msg["To"] = email
+    msg["Message-ID"] = make_msgid(domain="talaria-log.com")
+    msg["Date"] = formatdate(localtime=True)
 
     msg.attach(MIMEText(html_body, "html"))
 
