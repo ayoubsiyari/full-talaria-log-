@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
@@ -30,6 +31,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" className="dark" suppressHydrationWarning>
+      <head>
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-2S8BJ30FJE"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-2S8BJ30FJE');
+          `}
+        </Script>
+      </head>
       <body className={`${zain.variable} font-sans antialiased`}>
         <LanguageProvider>
           {children}
