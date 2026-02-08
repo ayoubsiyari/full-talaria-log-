@@ -99,7 +99,7 @@ export default function Settings() {
   const [logs, setLogs] = useState([]);
   const [systemHealth, setSystemHealth] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [pagination, setPagination] = useState({ page: 1, per_page: 20, total: 0 });
+  const [pagination, setPagination] = useState({ page: 1, per_page: 500, total: 0 });
   
   // Advanced admin features
   const [selectedUser, setSelectedUser] = useState(null);
@@ -1793,7 +1793,7 @@ export default function Settings() {
                         <p className="text-gray-500 text-lg">No users found.</p>
                       </div>
                     ) : (
-                      <div className="space-y-4 max-h-96 overflow-y-auto">
+                      <div className="space-y-4 max-h-[700px] overflow-y-auto">
                         {users
                           .filter(user => {
                             if (userTypeFilter === 'journal') return user.has_journal_access;
