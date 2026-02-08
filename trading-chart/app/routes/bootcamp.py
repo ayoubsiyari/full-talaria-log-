@@ -75,7 +75,7 @@ def _send_registration_email(reg: BootcampRegistration) -> None:
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"Mentorship Registration 2026 <{settings.smtp_from_email or settings.smtp_user}>"
+    msg["From"] = f"Talaria Info <info@talaria-log.com>"
     msg["To"] = settings.notification_email
     msg["Reply-To"] = reg.email  # Allow replying directly to the applicant
 
@@ -169,7 +169,7 @@ def _send_user_confirmation_email(reg: BootcampRegistration) -> None:
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"Mentorship Registration 2026<{settings.smtp_from_email or settings.smtp_user}>"
+    msg["From"] = f"Talaria Info <info@talaria-log.com>"
     msg["To"] = reg.email
 
     msg.attach(MIMEText(html_body, "html"))
