@@ -71,8 +71,8 @@ const EMAIL_TEMPLATES = [
                                             <tr>
                                                 <td style="padding: 12px;">
                                                     <span style="color: #000000; font-size: 14px;">عنوان المحفظة:</span>
-                                                    <div style="background-color: #f5f5f5; padding: 10px; border-radius: 4px; margin-top: 8px; text-align: center;">
-                                                        <span style="font-size: 11px; color: #000000; word-break: break-all; font-family: 'Courier New', monospace;">0xe25D96504c2106a243dc93D948d19640Cf6F4800</span>
+                                                    <div style="background-color: #f5f5f5; padding: 8px; border-radius: 4px; margin-top: 8px; text-align: center; overflow-x: auto;">
+                                                        <span style="font-size: 9px; color: #000000; white-space: nowrap; font-family: 'Courier New', monospace;">0xe25D96504c2106a243dc93D948d19640Cf6F4800</span>
                                                     </div>
                                                     <p style="color: #cc0000; font-size: 12px; margin: 8px 0 0 0; text-align: center;">⚠️ تأكد من نسخ العنوان بشكل صحيح وكامل</p>
                                                 </td>
