@@ -225,6 +225,44 @@ def _append_registration_to_google_sheets(reg: BootcampRegistration) -> None:
 router = APIRouter(prefix="/api/bootcamp", tags=["bootcamp"])
 
 
+@router.get("/registrations/emails")
+def get_registration_emails(
+    db: Session = Depends(get_db),
+):
+    """Get all bootcamp registration emails for bulk email filtering."""
+    registrations = db.query(BootcampRegistration.email).all()
+    return {
+        "emails": [r.email.lower() for r in registrations],
+        "count": len(registrations)
+    }
+
+
+@router.get("/registrations")
+def get_registrations(
+    db: Session = Depends(get_db),
+):
+    """Get all bootcamp registrations with details."""
+    registrations = db.query(BootcampRegistration).order_by(BootcampRegistration.created_at.desc()).all()
+    return {
+        "registrations": [
+            {
+                "id": r.id,
+                "full_name": r.full_name,
+                "email": r.email,
+                "phone": r.phone,
+                "country": r.country,
+                "age": r.age,
+                "discord": r.discord,
+                "telegram": r.telegram,
+                "instagram": r.instagram,
+                "created_at": r.created_at.isoformat() if r.created_at else None
+            }
+            for r in registrations
+        ],
+        "count": len(registrations)
+    }
+
+
 @router.post("/register")
 def register(
     payload: BootcampRegisterIn,

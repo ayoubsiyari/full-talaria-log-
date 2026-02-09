@@ -99,7 +99,7 @@ export default function Settings() {
   const [logs, setLogs] = useState([]);
   const [systemHealth, setSystemHealth] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [pagination, setPagination] = useState({ page: 1, per_page: 500, total: 0 });
+  const [pagination, setPagination] = useState({ page: 1, per_page: 10000, total: 0 });
   
   // Advanced admin features
   const [selectedUser, setSelectedUser] = useState(null);

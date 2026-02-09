@@ -337,6 +337,7 @@ const BulkEmailManager = ({ users = [] }) => {
   const [sentEmails, setSentEmails] = useState([]);
   const [hideSentUsers, setHideSentUsers] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [bootcampEmails, setBootcampEmails] = useState([]);
 
   // Load template
   const loadTemplate = (template) => {
@@ -345,12 +346,26 @@ const BulkEmailManager = ({ users = [] }) => {
     setShowTemplates(false);
   };
 
-  // Load sent emails from localStorage on mount
+  // Load sent emails from localStorage and fetch bootcamp registrations on mount
   useEffect(() => {
     const saved = localStorage.getItem('bulkEmailSentList');
     if (saved) {
       setSentEmails(JSON.parse(saved));
     }
+    
+    // Fetch bootcamp registration emails
+    const fetchBootcampEmails = async () => {
+      try {
+        const response = await fetch('/api/bootcamp/registrations/emails');
+        if (response.ok) {
+          const data = await response.json();
+          setBootcampEmails(data.emails || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch bootcamp registrations:', err);
+      }
+    };
+    fetchBootcampEmails();
   }, []);
 
   // Save sent emails to localStorage
@@ -512,10 +527,13 @@ const BulkEmailManager = ({ users = [] }) => {
               Select All ({filteredUsers.length})
             </button>
             <button
-              onClick={selectJournalUsers}
+              onClick={() => {
+                const journalEmails = users.filter(u => u.has_journal_access && (hideSentUsers ? !sentEmails.includes(u.email) : true)).map(u => u.email);
+                setSelectedEmails(journalEmails);
+              }}
               className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-all"
             >
-              Journal Users
+              Journal Users ({users.filter(u => u.has_journal_access).length})
             </button>
             <button
               onClick={() => {
@@ -524,7 +542,19 @@ const BulkEmailManager = ({ users = [] }) => {
               }}
               className="px-4 py-2 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-100 transition-all"
             >
-              2026 Mentorship
+              No Journal ({users.filter(u => !u.has_journal_access).length})
+            </button>
+            <button
+              onClick={() => {
+                const applicantEmails = users.filter(u => 
+                  bootcampEmails.includes(u.email?.toLowerCase()) && 
+                  (hideSentUsers ? !sentEmails.includes(u.email) : true)
+                ).map(u => u.email);
+                setSelectedEmails(applicantEmails);
+              }}
+              className="px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100 transition-all"
+            >
+              Mentorship Applicants ({users.filter(u => bootcampEmails.includes(u.email?.toLowerCase())).length})
             </button>
             <button
               onClick={deselectAll}
