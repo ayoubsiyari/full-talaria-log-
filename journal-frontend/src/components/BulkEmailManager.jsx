@@ -69,12 +69,12 @@ const EMAIL_TEMPLATES = [
                                             <tr><td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><span style="color: #000000; font-size: 14px;">المبلغ: <strong style="color: #1e3a5f;">$700</strong></span></td></tr>
                                             <tr><td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><span style="color: #000000; font-size: 14px;">الشبكة: <strong>BEP20</strong></span></td></tr>
                                             <tr>
-                                                <td style="padding: 12px 0;">
-                                                    <p style="color: #000000; font-size: 14px; margin: 0 0 8px 12px;">عنوان المحفظة:</p>
-                                                    <div style="background-color: #f5f5f5; padding: 12px 5px; text-align: center; width: 100%;">
-                                                        <span style="font-size: 12px; color: #000000; word-break: break-all; font-family: 'Courier New', monospace; letter-spacing: -0.5px;">0xe25D96504c2106a243dc93D948d19640Cf6F4800</span>
+                                                <td style="padding: 0;">
+                                                    <p style="color: #000000; font-size: 14px; margin: 0 0 8px 0; padding: 0 12px;">عنوان المحفظة:</p>
+                                                    <div style="background-color: #e8e8e8; padding: 15px 0; text-align: center; margin: 0; width: 100%;">
+                                                        <span style="font-size: 11px; color: #000000; word-break: break-all; font-family: monospace;">0xe25D96504c2106a243dc93D948d19640Cf6F4800</span>
                                                     </div>
-                                                    <p style="color: #cc0000; font-size: 12px; margin: 8px 12px 0 12px; text-align: center;">⚠️ تأكد من نسخ العنوان بشكل صحيح وكامل</p>
+                                                    <p style="color: #cc0000; font-size: 11px; margin: 8px 0 12px 0; padding: 0 12px; text-align: center;">⚠️ تأكد من نسخ العنوان بشكل صحيح وكامل</p>
                                                 </td>
                                             </tr>
                                         </table>
