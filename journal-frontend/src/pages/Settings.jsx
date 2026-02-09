@@ -1175,7 +1175,7 @@ export default function Settings() {
               </div>
 
               {/* Tab Content */}
-              <div className="p-8">
+              <div className={activeAdminTab === 'bulk-email' ? 'p-0' : 'p-8'}>
                 {/* Dashboard Tab */}
                 {activeAdminTab === 'dashboard' && (
                   <div className="space-y-8">
@@ -2646,7 +2646,8 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Profile Information Section - Now at the top */}
+        {/* Profile Information Section - Hidden when bulk-email tab is active */}
+        {!(isAdmin && activeAdminTab === 'bulk-email') && (
         <div className="max-w-4xl mx-auto mb-12">
             <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
               {/* Card Header */}
@@ -2817,7 +2818,7 @@ export default function Settings() {
               </div>
             </div>
           </div>
-
+        )}
         {/* Footer */}
         <div className="text-center mt-12 p-6 bg-white/50 backdrop-blur-sm rounded-2xl border border-white/50">
           <p className="text-gray-600 text-lg">Your data is encrypted and secure. We never share your information.</p>
