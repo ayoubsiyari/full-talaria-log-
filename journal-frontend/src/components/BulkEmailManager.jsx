@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Mail, Users, Send, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mail, Users, Send, CheckCircle, AlertCircle, Search, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
 
 const BulkEmailManager = ({ users = [] }) => {
   const [selectedEmails, setSelectedEmails] = useState([]);
@@ -8,12 +8,37 @@ const BulkEmailManager = ({ users = [] }) => {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [sentEmails, setSentEmails] = useState([]);
+  const [hideSentUsers, setHideSentUsers] = useState(true);
 
-  // Filter users based on search
-  const filteredUsers = users.filter(user => 
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.full_name && user.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Load sent emails from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('bulkEmailSentList');
+    if (saved) {
+      setSentEmails(JSON.parse(saved));
+    }
+  }, []);
+
+  // Save sent emails to localStorage
+  const saveSentEmails = (emails) => {
+    localStorage.setItem('bulkEmailSentList', JSON.stringify(emails));
+    setSentEmails(emails);
+  };
+
+  // Reset sent emails list
+  const resetSentList = () => {
+    localStorage.removeItem('bulkEmailSentList');
+    setSentEmails([]);
+  };
+
+  // Filter users based on search and sent status
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.full_name && user.full_name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const notSent = hideSentUsers ? !sentEmails.includes(user.email) : true;
+    return matchesSearch && notSent;
+  });
 
   // Toggle user selection
   const toggleUser = (email) => {
@@ -85,6 +110,9 @@ const BulkEmailManager = ({ users = [] }) => {
           message: `Successfully sent ${data.sent} emails`,
           details: data
         });
+        // Add sent emails to the sent list
+        const newSentEmails = [...new Set([...sentEmails, ...selectedEmails])];
+        saveSentEmails(newSentEmails);
         // Clear form after success
         setSubject('');
         setContent('');
@@ -140,17 +168,42 @@ const BulkEmailManager = ({ users = [] }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Content (HTML supported)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Content (HTML supported)
+                </label>
+                <button
+                  onClick={() => setShowPreview(!showPreview)}
+                  className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-pink-600 hover:text-pink-700 hover:bg-pink-50 rounded-lg transition-colors"
+                >
+                  {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPreview ? 'Hide Preview' : 'Show Preview'}
+                </button>
+              </div>
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="<p>Enter your email content here...</p>&#10;&#10;You can use HTML tags for formatting."
-                rows={10}
+                rows={showPreview ? 5 : 10}
                 className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-400 focus:ring-4 focus:ring-pink-100 transition-all font-mono text-sm"
               />
             </div>
+
+            {/* HTML Preview */}
+            {showPreview && content && (
+              <div className="bg-white rounded-xl border-2 border-pink-200 overflow-hidden">
+                <div className="bg-pink-100 px-4 py-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-pink-700">📧 Email Preview</span>
+                  <button onClick={() => setShowPreview(false)} className="text-pink-600 hover:text-pink-800">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div 
+                  className="p-4 max-h-[300px] overflow-y-auto prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: content }}
+                />
+              </div>
+            )}
 
             <div className="bg-white rounded-xl p-4 border border-pink-200">
               <p className="text-sm text-gray-600">
@@ -227,7 +280,7 @@ const BulkEmailManager = ({ users = [] }) => {
             </button>
             <button
               onClick={() => {
-                const mentorshipEmails = users.filter(u => !u.has_journal_access).map(u => u.email);
+                const mentorshipEmails = users.filter(u => !u.has_journal_access && (hideSentUsers ? !sentEmails.includes(u.email) : true)).map(u => u.email);
                 setSelectedEmails(mentorshipEmails);
               }}
               className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-200 transition-colors"
@@ -240,6 +293,33 @@ const BulkEmailManager = ({ users = [] }) => {
             >
               Deselect All
             </button>
+          </div>
+
+          {/* Sent Filter Toggle */}
+          <div className="flex items-center justify-between mb-4 p-3 bg-white rounded-xl border border-blue-200">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setHideSentUsers(!hideSentUsers)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  hideSentUsers 
+                    ? 'bg-orange-100 text-orange-700' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {hideSentUsers ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {hideSentUsers ? 'Hiding Sent Users' : 'Showing All Users'}
+              </button>
+              <span className="text-xs text-gray-500">({sentEmails.length} sent)</span>
+            </div>
+            {sentEmails.length > 0 && (
+              <button
+                onClick={resetSentList}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset List
+              </button>
+            )}
           </div>
 
           {/* Search */}
@@ -282,6 +362,11 @@ const BulkEmailManager = ({ users = [] }) => {
                     )}
                   </div>
                   <div className="flex gap-2">
+                    {sentEmails.includes(user.email) && (
+                      <span className="px-2 py-1 text-xs bg-orange-100 text-orange-700 rounded-full font-medium">
+                        Sent ✓
+                      </span>
+                    )}
                     {user.has_journal_access && (
                       <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-full font-medium">
                         Journal
