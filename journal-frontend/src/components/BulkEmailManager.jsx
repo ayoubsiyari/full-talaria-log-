@@ -338,6 +338,7 @@ const BulkEmailManager = ({ users = [] }) => {
   const [hideSentUsers, setHideSentUsers] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false);
   const [bootcampEmails, setBootcampEmails] = useState([]);
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'journal', 'no-journal', 'mentorship'
 
   // Load template
   const loadTemplate = (template) => {
@@ -380,12 +381,23 @@ const BulkEmailManager = ({ users = [] }) => {
     setSentEmails([]);
   };
 
-  // Filter users based on search and sent status
+  // Filter users based on search, sent status, and active filter
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.full_name && user.full_name.toLowerCase().includes(searchTerm.toLowerCase()));
     const notSent = hideSentUsers ? !sentEmails.includes(user.email) : true;
-    return matchesSearch && notSent;
+    
+    // Apply active filter
+    let matchesFilter = true;
+    if (activeFilter === 'journal') {
+      matchesFilter = user.has_journal_access === true;
+    } else if (activeFilter === 'no-journal') {
+      matchesFilter = user.has_journal_access !== true;
+    } else if (activeFilter === 'mentorship') {
+      matchesFilter = bootcampEmails.includes(user.email?.toLowerCase());
+    }
+    
+    return matchesSearch && notSent && matchesFilter;
   });
 
   // Toggle user selection
@@ -521,43 +533,68 @@ const BulkEmailManager = ({ users = [] }) => {
         <div className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <button
-              onClick={selectAll}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+              onClick={() => {
+                setActiveFilter('all');
+                selectAll();
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm ${
+                activeFilter === 'all' 
+                  ? 'bg-slate-800 border border-slate-800 text-white' 
+                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400'
+              }`}
             >
-              Select All ({filteredUsers.length})
+              Select All ({users.length})
             </button>
             <button
               onClick={() => {
+                setActiveFilter('journal');
                 const journalEmails = users.filter(u => u.has_journal_access && (hideSentUsers ? !sentEmails.includes(u.email) : true)).map(u => u.email);
                 setSelectedEmails(journalEmails);
               }}
-              className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-all"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeFilter === 'journal'
+                  ? 'bg-emerald-600 border border-emerald-600 text-white'
+                  : 'bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+              }`}
             >
               Journal Users ({users.filter(u => u.has_journal_access).length})
             </button>
             <button
               onClick={() => {
+                setActiveFilter('no-journal');
                 const mentorshipEmails = users.filter(u => !u.has_journal_access && (hideSentUsers ? !sentEmails.includes(u.email) : true)).map(u => u.email);
                 setSelectedEmails(mentorshipEmails);
               }}
-              className="px-4 py-2 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-100 transition-all"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeFilter === 'no-journal'
+                  ? 'bg-purple-600 border border-purple-600 text-white'
+                  : 'bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100'
+              }`}
             >
               No Journal ({users.filter(u => !u.has_journal_access).length})
             </button>
             <button
               onClick={() => {
+                setActiveFilter('mentorship');
                 const applicantEmails = users.filter(u => 
                   bootcampEmails.includes(u.email?.toLowerCase()) && 
                   (hideSentUsers ? !sentEmails.includes(u.email) : true)
                 ).map(u => u.email);
                 setSelectedEmails(applicantEmails);
               }}
-              className="px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100 transition-all"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeFilter === 'mentorship'
+                  ? 'bg-orange-600 border border-orange-600 text-white'
+                  : 'bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100'
+              }`}
             >
               Mentorship Applicants ({users.filter(u => bootcampEmails.includes(u.email?.toLowerCase())).length})
             </button>
             <button
-              onClick={deselectAll}
+              onClick={() => {
+                setActiveFilter('all');
+                deselectAll();
+              }}
               className="px-4 py-2 bg-white border border-gray-300 text-gray-500 rounded-lg text-sm font-medium hover:bg-gray-50 transition-all"
             >
               Clear
