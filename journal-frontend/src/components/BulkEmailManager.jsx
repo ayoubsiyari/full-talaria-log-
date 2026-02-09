@@ -20,7 +20,7 @@ const EMAIL_TEMPLATES = [
                 <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; direction: rtl; text-align: right;">
                     <tr>
                         <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo.png" alt="Talaria" width="120" style="display: inline-block;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120" style="display: inline-block;">
                             <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0; font-weight: 700;">🎉 تهانينا!</h1>
                             <p style="color: #ffffff; font-size: 14px; margin: 10px 0 0 0;">تم قبول طلبك للانضمام</p>
                         </td>
@@ -133,7 +133,7 @@ const EMAIL_TEMPLATES = [
                 <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
                         <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo.png" alt="Talaria" width="120">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
                             <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">✅ تم استلام الدفع</h1>
                         </td>
                     </tr>
@@ -173,7 +173,7 @@ const EMAIL_TEMPLATES = [
                 <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
                         <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo.png" alt="Talaria" width="120">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
                             <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">🎮 مرحباً بك في الديسكورد!</h1>
                         </td>
                     </tr>
@@ -221,7 +221,7 @@ const EMAIL_TEMPLATES = [
                 <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
                         <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo.png" alt="Talaria" width="120">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
                             <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">⏰ تذكير بالدفع</h1>
                         </td>
                     </tr>
@@ -261,7 +261,7 @@ const EMAIL_TEMPLATES = [
                 <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
                         <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo.png" alt="Talaria" width="120">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
                             <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">📢 إعلان هام</h1>
                         </td>
                     </tr>
@@ -298,7 +298,7 @@ const EMAIL_TEMPLATES = [
                 <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
                         <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo.png" alt="Talaria" width="120">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
                             <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">بخصوص طلبك</h1>
                         </td>
                     </tr>
