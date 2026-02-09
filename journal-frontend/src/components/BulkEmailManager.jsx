@@ -106,7 +106,7 @@ const EMAIL_TEMPLATES = [
                         <td style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e0e0e0;">
                             <p style="color: #000000; font-size: 14px; margin: 0 0 8px 0;">للاستفسارات، تواصل معنا عبر</p>
                             <a href="mailto:support-center@talaria-log.com" style="color: #1e3a5f; font-size: 14px; font-weight: 600;">support-center@talaria-log.com</a>
-                            <p style="color: #000000; font-size: 14px; margin: 15px 0 0 0;">© 2026 Talaria Trading<br>جميع الحقوق محفوظة</p>
+                            <p style="color: #000000; font-size: 14px; margin: 15px 0 0 0;">© 2026 Talaria-Log <br>جميع الحقوق محفوظة</p>
                         </td>
                     </tr>
                 </table>
@@ -131,7 +131,7 @@ const EMAIL_TEMPLATES = [
                     <tr>
                         <td style="background-color: #1e3a5f; padding: 30px 20px; text-align: center;">
                             <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="100" style="display: block; margin: 0 auto; max-width: 100px;">
-                            <h1 style="color: #ffffff; font-size: 22px; margin: 15px 0 0 0;">✅ تم استلام الدفع</h1>
+                            <h1 style="color: #ffffff; font-size: 22px; margin: 15px 0 0 0;">✅ تم إستلام رسوم الإشتراك</h1>
                         </td>
                     </tr>
                     <tr>
@@ -141,7 +141,7 @@ const EMAIL_TEMPLATES = [
 شكراً لثقتك بنا
 !</p>
                             <div style="background-color: #e8f4fd; border-right: 4px solid #1e3a5f; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
-                                <p style="color: #000000; font-size: 14px; margin: 0;">📌 ستتلقى تفاصيل الدخول إلى سيرفر الديسكورد خلال الأيام القادمة.</p>
+                                <p style="color: #000000; font-size: 14px; margin: 0;">📌 ستتلقى تفاصيل الدخول إلى سيرفر الديسكورد بين ٣ و ٥ يوليو</p>
                             </div>
                             <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0;">للاستفسارات: <a href="mailto:support-center@talaria-log.com" style="color: #1e3a5f;">support-center@talaria-log.com</a></p>
                         </td>
