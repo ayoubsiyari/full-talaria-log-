@@ -16,17 +16,17 @@ const EMAIL_TEMPLATES = [
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl; text-align: right;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5; direction: rtl;">
         <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; direction: rtl; text-align: right;">
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden; direction: rtl; text-align: right;">
                     <tr>
-                        <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120" style="display: inline-block;">
+                        <td style="background-color: #1e3a5f; padding: 30px 20px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="100" style="display: block; margin: 0 auto; max-width: 100px;">
                             <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0; font-weight: 700;">🎉 تهانينا!</h1>
                             <p style="color: #ffffff; font-size: 14px; margin: 10px 0 0 0;">تم قبول طلبك للانضمام</p>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding: 30px; direction: rtl; text-align: right;">
+                        <td style="padding: 20px; direction: rtl; text-align: right;">
                             <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 25px;">
                                 <tr>
                                     <td style="background-color: #e8f4fd; border-right: 4px solid #1e3a5f; padding: 15px; border-radius: 6px;">
@@ -125,16 +125,16 @@ const EMAIL_TEMPLATES = [
     subject: 'تم استلام الدفع بنجاح - Talaria Trading',
     content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
-<head><meta charset="UTF-8"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5;">
         <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
-                        <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
-                            <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">✅ تم استلام الدفع</h1>
+                        <td style="background-color: #1e3a5f; padding: 30px 20px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="100" style="display: block; margin: 0 auto; max-width: 100px;">
+                            <h1 style="color: #ffffff; font-size: 22px; margin: 15px 0 0 0;">✅ تم استلام الدفع</h1>
                         </td>
                     </tr>
                     <tr>
@@ -165,16 +165,16 @@ const EMAIL_TEMPLATES = [
     subject: 'تفاصيل الدخول إلى سيرفر الديسكورد - Talaria Trading',
     content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
-<head><meta charset="UTF-8"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5;">
         <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
-                        <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
-                            <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">🎮 مرحباً بك في الديسكورد!</h1>
+                        <td style="background-color: #1e3a5f; padding: 30px 20px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="100" style="display: block; margin: 0 auto; max-width: 100px;">
+                            <h1 style="color: #ffffff; font-size: 22px; margin: 15px 0 0 0;">🎮 مرحباً بك في الديسكورد!</h1>
                         </td>
                     </tr>
                     <tr>
@@ -213,16 +213,16 @@ const EMAIL_TEMPLATES = [
     subject: 'تذكير: موعد الدفع يقترب - Talaria Trading',
     content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
-<head><meta charset="UTF-8"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5;">
         <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
-                        <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
-                            <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">⏰ تذكير بالدفع</h1>
+                        <td style="background-color: #1e3a5f; padding: 30px 20px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="100" style="display: block; margin: 0 auto; max-width: 100px;">
+                            <h1 style="color: #ffffff; font-size: 22px; margin: 15px 0 0 0;">⏰ تذكير بالدفع</h1>
                         </td>
                     </tr>
                     <tr>
@@ -253,16 +253,16 @@ const EMAIL_TEMPLATES = [
     subject: 'إعلان هام - Talaria Trading',
     content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
-<head><meta charset="UTF-8"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5;">
         <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
-                        <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
-                            <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">📢 إعلان هام</h1>
+                        <td style="background-color: #1e3a5f; padding: 30px 20px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="100" style="display: block; margin: 0 auto; max-width: 100px;">
+                            <h1 style="color: #ffffff; font-size: 22px; margin: 15px 0 0 0;">📢 إعلان هام</h1>
                         </td>
                     </tr>
                     <tr>
@@ -290,16 +290,16 @@ const EMAIL_TEMPLATES = [
     subject: 'بخصوص طلب الانضمام - Talaria Trading',
     content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
-<head><meta charset="UTF-8"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5;">
         <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                     <tr>
-                        <td style="background-color: #1e3a5f; padding: 40px 30px; text-align: center;">
-                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="120">
-                            <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 0 0;">بخصوص طلبك</h1>
+                        <td style="background-color: #1e3a5f; padding: 30px 20px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="100" style="display: block; margin: 0 auto; max-width: 100px;">
+                            <h1 style="color: #ffffff; font-size: 22px; margin: 15px 0 0 0;">بخصوص طلبك</h1>
                         </td>
                     </tr>
                     <tr>
