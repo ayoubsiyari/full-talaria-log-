@@ -71,8 +71,8 @@ const EMAIL_TEMPLATES = [
                                             <tr>
                                                 <td style="padding: 0;">
                                                     <p style="color: #000000; font-size: 12px; margin: 0 0 8px 0; padding: 0 12px;">عنوان المحفظة:</p>
-                                                    <div style="background-color: #e8e8e8; padding: 12px 0; text-align: center; margin: 0; width: 100%;">
-                                                        <span style="font-size: 8px; color: #000000; white-space: nowrap; font-family: monospace; letter-spacing: 0px;">0xe25D96504c2106a243dc93D948d19640Cf6F4800</span>
+                                                    <div style="background-color: #e8e8e8; padding: 12px 2px; text-align: center; margin: 0; width: 100%;">
+                                                        <span style="font-size: 7px; color: #000000; font-family: Arial, sans-serif; letter-spacing: -0.3px;">0xe25D96504c2106a243dc93D948d19640Cf6F4800</span>
                                                     </div>
                                                     <p style="color: #cc0000; font-size: 11px; margin: 8px 0 12px 0; padding: 0 12px; text-align: center;">⚠️ تأكد من نسخ العنوان بشكل صحيح وكامل</p>
                                                 </td>
@@ -106,7 +106,7 @@ const EMAIL_TEMPLATES = [
                         <td style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e0e0e0;">
                             <p style="color: #000000; font-size: 14px; margin: 0 0 8px 0;">للاستفسارات، تواصل معنا عبر</p>
                             <a href="mailto:support-center@talaria-log.com" style="color: #1e3a5f; font-size: 14px; font-weight: 600;">support-center@talaria-log.com</a>
-                            <p style="color: #000000; font-size: 14px; margin: 15px 0 0 0;">© 2026 Talaria Trading. جميع الحقوق محفوظة.</p>
+                            <p style="color: #000000; font-size: 14px; margin: 15px 0 0 0;">© 2026 Talaria Trading<br>جميع الحقوق محفوظة</p>
                         </td>
                     </tr>
                 </table>
