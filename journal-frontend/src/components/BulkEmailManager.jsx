@@ -137,7 +137,9 @@ const EMAIL_TEMPLATES = [
                     <tr>
                         <td style="padding: 30px; text-align: right;">
                             <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">مرحباً،</p>
-                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">نود إعلامك بأننا استلمنا دفعتك بنجاح. شكراً لثقتك بنا!</p>
+                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">نود اعلامك بأننا استلمنا رسوم اشتراكك في منتورشيب 2026 بنجاح
+شكراً لثقتك بنا
+!</p>
                             <div style="background-color: #e8f4fd; border-right: 4px solid #1e3a5f; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
                                 <p style="color: #000000; font-size: 14px; margin: 0;">📌 ستتلقى تفاصيل الدخول إلى سيرفر الديسكورد خلال الأيام القادمة.</p>
                             </div>
