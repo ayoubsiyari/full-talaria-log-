@@ -119,7 +119,7 @@ const EMAIL_TEMPLATES = [
   {
     id: 'payment-confirmation',
     name: '✅ Payment Confirmation (Arabic)',
-    subject: 'تم استلام الدفع بنجاح - Talaria Trading',
+    subject: 'تم استلام رسوم اشتراكك بنجاح',
     content: `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -136,19 +136,19 @@ const EMAIL_TEMPLATES = [
                     </tr>
                     <tr>
                         <td style="padding: 30px; text-align: right;">
-                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">مرحباً،</p>
+                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">مرحباً</p>
                             <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">نود اعلامك بأننا استلمنا رسوم اشتراكك في منتورشيب 2026 بنجاح
 شكراً لثقتك بنا
-!</p>
+</p>
                             <div style="background-color: #e8f4fd; border-right: 4px solid #1e3a5f; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
                                 <p style="color: #000000; font-size: 14px; margin: 0;">📌 ستتلقى تفاصيل الدخول إلى سيرفر الديسكورد بين ٣ و ٥ يوليو</p>
                             </div>
-                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0;">للاستفسارات: <a href="mailto:support-center@talaria-log.com" style="color: #1e3a5f;">support-center@talaria-log.com</a></p>
+                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0; text-align: right; direction: rtl;">للاستفسارات: <a href="mailto:support-center@talaria-log.com" style="color: #1e3a5f;">support-center@talaria-log.com</a></p>
                         </td>
                     </tr>
                     <tr>
                         <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
-                            <p style="color: #000000; font-size: 12px; margin: 0;">© 2026 Talaria Trading</p>
+                            <p style="color: #000000; font-size: 12px; margin: 0;">© 2026 Talaria-Log<br>جميع الحقوق محفوظة</p>
                         </td>
                     </tr>
                 </table>
@@ -231,12 +231,12 @@ const EMAIL_TEMPLATES = [
                             <div style="background-color: #fff3cd; border-right: 4px solid #ffc107; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
                                 <p style="color: #856404; font-size: 14px; margin: 0;">⚠️ في حال عدم الدفع خلال المهلة المحددة، سيتم إلغاء حجزك تلقائياً.</p>
                             </div>
-                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0;">للاستفسارات: <a href="mailto:support-center@talaria-log.com" style="color: #1e3a5f;">support-center@talaria-log.com</a></p>
+                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0; text-align: right; direction: rtl;">للاستفسارات: <a href="mailto:support-center@talaria-log.com" style="color: #1e3a5f;">support-center@talaria-log.com</a></p>
                         </td>
                     </tr>
                     <tr>
                         <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
-                            <p style="color: #000000; font-size: 12px; margin: 0;">© 2026 Talaria Trading</p>
+                            <p style="color: #000000; font-size: 12px; margin: 0;">© 2026 Talaria-Log<br>جميع الحقوق محفوظة</p>
                         </td>
                     </tr>
                 </table>
