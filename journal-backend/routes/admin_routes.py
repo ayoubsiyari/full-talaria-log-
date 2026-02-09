@@ -4,6 +4,8 @@ from flask import Blueprint, request, jsonify, current_app, send_file, make_resp
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, create_access_token, create_refresh_token
 from werkzeug.security import generate_password_hash
 from models import db, User, Profile, JournalEntry, Group
+from email_service import mail
+from flask_mail import Message
 import logging
 from datetime import datetime, timedelta
 from functools import wraps
@@ -1327,3 +1329,68 @@ def login_as_user(user_id):
     except Exception as e:
         current_app.logger.error(f"Error generating login token: {str(e)}")
         return jsonify({"error": "Failed to generate login token"}), 500
+
+
+# ─── BULK EMAIL SENDING ──────────────────────────────────────────────────────
+
+@admin_bp.route('/send-bulk-email', methods=['POST'])
+@jwt_required()
+@admin_required
+@rate_limit_admin(max_requests=5, window_seconds=60)
+def send_bulk_email():
+    """
+    Admin-only: Send bulk emails to multiple recipients.
+    Expects JSON: { emails: [...], subject: "...", content: "..." (HTML content) }
+    """
+    try:
+        data = request.get_json() or {}
+        emails = data.get('emails', [])
+        subject = data.get('subject', '').strip()
+        content = data.get('content', '').strip()
+        
+        if not emails:
+            return jsonify({"error": "No recipients specified"}), 400
+        if not subject:
+            return jsonify({"error": "Subject is required"}), 400
+        if not content:
+            return jsonify({"error": "Email content is required"}), 400
+        
+        # Remove duplicates while preserving order
+        unique_emails = list(dict.fromkeys([e.lower().strip() for e in emails if e and '@' in e]))
+        
+        if not unique_emails:
+            return jsonify({"error": "No valid email addresses provided"}), 400
+        
+        sent_count = 0
+        failed_emails = []
+        
+        # Get sender email from config
+        sender_email = current_app.config.get('MAIL_DEFAULT_SENDER') or current_app.config.get('MAIL_USERNAME')
+        
+        for email in unique_emails:
+            try:
+                msg = Message(
+                    subject=subject,
+                    recipients=[email],
+                    html=content,
+                    sender=f"Talaria <{sender_email}>"
+                )
+                mail.send(msg)
+                sent_count += 1
+            except Exception as e:
+                current_app.logger.error(f"Failed to send email to {email}: {str(e)}")
+                failed_emails.append({"email": email, "error": str(e)})
+        
+        log_admin_action("SEND_BULK_EMAIL", f"Sent {sent_count}/{len(unique_emails)} emails with subject: {subject[:50]}...")
+        
+        return jsonify({
+            "success": True,
+            "sent": sent_count,
+            "total": len(unique_emails),
+            "failed": len(failed_emails),
+            "failed_emails": failed_emails[:10]  # Return first 10 failed emails
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in bulk email: {str(e)}")
+        return jsonify({"error": f"Failed to send bulk email: {str(e)}"}), 500

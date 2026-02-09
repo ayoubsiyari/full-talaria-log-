@@ -127,39 +127,16 @@ def send_journal_email(
 
 
 def _send_bulk_email(email: str, subject: str, html_content: str) -> None:
-    """Send a custom email to a user."""
-    html_body = f"""
-    <html dir="rtl">
-    <body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; background-color: #1a1a2e; margin: 0;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #0f0f23; border-radius: 15px; padding: 30px; border: 1px solid #3730a3; direction: rtl; text-align: right;">
-            <div style="text-align: center; margin-bottom: 25px;">
-                <h1 style="color: #ffffff; margin: 0; font-size: 28px;">🎓 Talaria Mentorship</h1>
-            </div>
-            
-            <div style="color: #e0e7ff; font-size: 15px; line-height: 1.8;">
-                {html_content}
-            </div>
-            
-            <p style="color: #94a3b8; font-size: 13px; text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #3730a3;">
-                إذا واجهت أي مشكلة، تواصل معنا على support-center@talaria-log.com
-            </p>
-            
-            <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 15px;">
-                © 2026 Talaria-Log. جميع الحقوق محفوظة.
-            </p>
-        </div>
-    </body>
-    </html>
-    """
-
+    """Send a custom HTML email to a user. Content is sent as-is without wrapping."""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"Talaria Mentorship <{settings.smtp_from_email or settings.smtp_user}>"
+    msg["From"] = f"Talaria <{settings.smtp_from_email or settings.smtp_user}>"
     msg["To"] = email
     msg["Message-ID"] = make_msgid(domain="talaria-log.com")
     msg["Date"] = formatdate(localtime=True)
 
-    msg.attach(MIMEText(html_body, "html"))
+    # Send the HTML content as-is without wrapping (templates already have complete structure)
+    msg.attach(MIMEText(html_content, "html"))
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
         server.starttls()
@@ -177,7 +154,10 @@ def send_bulk_email(
     sent_count = 0
     errors = []
     
-    for email in payload.emails:
+    # Remove duplicates while preserving order
+    unique_emails = list(dict.fromkeys([e.lower().strip() for e in payload.emails if e and '@' in e]))
+    
+    for email in unique_emails:
         try:
             _send_bulk_email(email, payload.subject, payload.content)
             sent_count += 1
@@ -186,7 +166,7 @@ def send_bulk_email(
     
     return {
         "message": f"Email sent to {sent_count} users",
-        "total": len(payload.emails),
+        "total": len(unique_emails),
         "sent": sent_count,
         "failed": len(errors),
         "errors": errors
