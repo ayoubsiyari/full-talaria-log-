@@ -85,7 +85,7 @@ const EMAIL_TEMPLATES = [
                                 <tr>
                                     <td style="background-color: #f8f9fa; border-radius: 8px; padding: 20px; border: 1px solid #e0e0e0;">
                                         <h3 style="color: #1e3a5f; font-size: 14px; margin: 0 0 12px 0; font-weight: 700;">3️⃣ عند إتمام الدفع</h3>
-                                        <p style="color: #000000; font-size: 14px; line-height: 1.6; margin: 0 0 12px 0;">عند قيامك باتمام عملية الدفع، قم بإرسال المعلومات أدناه لنا عبر بريدنا الالكتروني: <strong style="color: #1e3a5f;">support-center@talaria-log.com</strong> متضمناً:</p>
+                                        <p style="color: #000000; font-size: 14px; line-height: 1.6; margin: 0 0 12px 0;">عند قيامك باتمام عملية الدفع، قم بإرسال المعلومات أدناه لنا عبر بريدنا الالكتروني:<br><strong style="color: #1e3a5f;">support-center@talaria-log.com</strong><br>متضمناً:</p>
                                         <ul style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0; padding-right: 20px; padding-left: 0;">
                                             <li><strong>1.</strong> اسم معرف الديسكورد (USER NAME)</li>
                                             <li><strong>2.</strong> كود عملية التحويل (TXID) - <strong>لن يتم قبول طلبك بدونه</strong></li>
@@ -137,9 +137,7 @@ const EMAIL_TEMPLATES = [
                     <tr>
                         <td style="padding: 30px; text-align: right;">
                             <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">مرحباً</p>
-                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">نود اعلامك بأننا استلمنا رسوم اشتراكك في منتورشيب 2026 بنجاح
-شكراً لثقتك بنا
-</p>
+                            <p style="color: #000000; font-size: 14px; line-height: 1.8; margin: 0 0 20px 0;">نود اعلامك بأننا استلمنا رسوم اشتراكك في منتورشيب 2026 بنجاح<br>شكراً لثقتك بنا</p>
                             <div style="background-color: #e8f4fd; border-right: 4px solid #1e3a5f; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
                                 <p style="color: #000000; font-size: 14px; margin: 0;">📌 ستتلقى تفاصيل الدخول إلى سيرفر الديسكورد بين ٣ و ٥ يوليو</p>
                             </div>
