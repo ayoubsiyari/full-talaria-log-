@@ -201,7 +201,7 @@ def list_users():
 
     try:
         page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 20, type=int), 100)  # Max 100 per page
+        per_page = min(request.args.get('per_page', 20, type=int), 1000)  # Max 1000 per page
         search = request.args.get('search', '').strip()
         
         query = User.query
