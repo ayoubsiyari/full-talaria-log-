@@ -19,6 +19,7 @@ except ImportError:
 import os
 import csv
 import io
+import subprocess
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -1394,3 +1395,180 @@ def send_bulk_email():
     except Exception as e:
         current_app.logger.error(f"Error in bulk email: {str(e)}")
         return jsonify({"error": f"Failed to send bulk email: {str(e)}"}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Server Monitoring Endpoints
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_shell_command(cmd, timeout=5):
+    """Run a shell command and return output."""
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        return result.stdout.strip()
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+@admin_bp.route('/monitoring/overview', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def monitoring_overview():
+    """
+    Admin-only: Get complete server monitoring overview including system, security, and services.
+    """
+    if not is_admin_user():
+        return jsonify({"error": "Only admins can view monitoring data"}), 403
+
+    try:
+        # ─── System Metrics ───────────────────────────────────────────────────────
+        # CPU usage
+        cpu_output = run_shell_command("top -bn1 | grep 'Cpu(s)' | awk '{print $2}'")
+        try:
+            cpu_percent = float(cpu_output.replace(",", "."))
+        except:
+            cpu_percent = 0.0
+        
+        # Memory usage
+        mem_output = run_shell_command("free -m | awk 'NR==2{printf \"%s %s %.1f\", $3, $2, $3*100/$2}'")
+        mem_parts = mem_output.split()
+        try:
+            mem_used = int(mem_parts[0])
+            mem_total = int(mem_parts[1])
+            mem_percent = float(mem_parts[2])
+        except:
+            mem_used, mem_total, mem_percent = 0, 0, 0.0
+        
+        # Disk usage
+        disk_output = run_shell_command("df -h / | awk 'NR==2{print $3, $2, $5}'")
+        disk_parts = disk_output.split()
+        try:
+            disk_used = disk_parts[0]
+            disk_total = disk_parts[1]
+            disk_percent = disk_parts[2]
+        except:
+            disk_used, disk_total, disk_percent = "0", "0", "0%"
+        
+        # Uptime
+        uptime_output = run_shell_command("uptime -p")
+        
+        # Load average
+        load_output = run_shell_command("cat /proc/loadavg | awk '{print $1, $2, $3}'")
+        
+        system_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "cpu": {
+                "percent": cpu_percent,
+                "status": "critical" if cpu_percent > 90 else "warning" if cpu_percent > 70 else "ok"
+            },
+            "memory": {
+                "used_mb": mem_used,
+                "total_mb": mem_total,
+                "percent": mem_percent,
+                "status": "critical" if mem_percent > 90 else "warning" if mem_percent > 70 else "ok"
+            },
+            "disk": {
+                "used": disk_used,
+                "total": disk_total,
+                "percent": disk_percent,
+                "status": "critical" if int(disk_percent.replace("%", "")) > 90 else "warning" if int(disk_percent.replace("%", "")) > 70 else "ok"
+            },
+            "uptime": uptime_output,
+            "load_average": load_output
+        }
+        
+        # ─── Security Status ──────────────────────────────────────────────────────
+        # Fail2Ban status
+        fail2ban_status = run_shell_command("systemctl is-active fail2ban 2>/dev/null || echo 'not installed'")
+        
+        # Banned IPs from fail2ban
+        banned_ips = []
+        if fail2ban_status == "active":
+            banned_output = run_shell_command("fail2ban-client banned 2>/dev/null || echo '[]'")
+            try:
+                import ast
+                banned_data = ast.literal_eval(banned_output)
+                if banned_data and isinstance(banned_data, list):
+                    for jail in banned_data:
+                        if isinstance(jail, dict):
+                            for jail_name, ips in jail.items():
+                                for ip in ips:
+                                    banned_ips.append({"ip": ip, "jail": jail_name})
+            except:
+                pass
+        
+        # Recent failed SSH attempts
+        failed_ssh = run_shell_command("grep 'Failed password' /var/log/auth.log 2>/dev/null | tail -5 | awk '{print $1, $2, $3, $11}' || echo 'No data'")
+        
+        # UFW status
+        ufw_status = run_shell_command("ufw status 2>/dev/null | head -1 || echo 'not installed'")
+        
+        # Recent 4xx/5xx errors count
+        error_count = run_shell_command("grep -a ' 4[0-9][0-9] \\| 5[0-9][0-9] ' /var/log/nginx/access.log 2>/dev/null | wc -l || echo '0'")
+        
+        security_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "fail2ban": {
+                "status": fail2ban_status,
+                "banned_count": len(banned_ips),
+                "banned_ips": banned_ips[:10]
+            },
+            "firewall": {
+                "ufw_status": ufw_status
+            },
+            "recent_failed_ssh": failed_ssh.split("\n") if failed_ssh != "No data" else [],
+            "nginx_errors_today": int(error_count) if error_count.isdigit() else 0
+        }
+        
+        # ─── Services Status ──────────────────────────────────────────────────────
+        services = ["nginx", "docker", "fail2ban", "ufw"]
+        status_list = []
+        
+        for service in services:
+            status = run_shell_command(f"systemctl is-active {service} 2>/dev/null || echo 'not found'")
+            status_list.append({
+                "name": service,
+                "status": status,
+                "ok": status == "active"
+            })
+        
+        # Docker containers
+        docker_ps = run_shell_command("docker ps --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -10 || echo 'Docker not running'")
+        
+        services_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "services": status_list,
+            "docker_containers": docker_ps.split("\n") if docker_ps and "not" not in docker_ps.lower() else []
+        }
+        
+        # ─── Calculate Overall Health ─────────────────────────────────────────────
+        issues = []
+        if system_data["cpu"]["status"] == "critical":
+            issues.append("High CPU usage")
+        if system_data["memory"]["status"] == "critical":
+            issues.append("High memory usage")
+        if system_data["disk"]["status"] == "critical":
+            issues.append("Low disk space")
+        if security_data["fail2ban"]["status"] != "active":
+            issues.append("Fail2Ban not running")
+        
+        for svc in services_data["services"]:
+            if svc["name"] in ["nginx", "docker"] and not svc["ok"]:
+                issues.append(f"{svc['name']} is down")
+        
+        health_status = "critical" if len(issues) > 2 else "warning" if len(issues) > 0 else "healthy"
+        
+        log_admin_action("VIEW_MONITORING", f"Server monitoring check - Status: {health_status}")
+        
+        return jsonify({
+            "timestamp": datetime.utcnow().isoformat(),
+            "health_status": health_status,
+            "issues": issues,
+            "system": system_data,
+            "security": security_data,
+            "services": services_data
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in monitoring overview: {str(e)}")
+        return jsonify({"error": f"Failed to get monitoring data: {str(e)}"}), 500
