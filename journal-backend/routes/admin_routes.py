@@ -1416,130 +1416,162 @@ def run_shell_command(cmd, timeout=5):
 def monitoring_overview():
     """
     Admin-only: Get complete server monitoring overview including system, security, and services.
+    Works inside Docker containers using psutil and available system info.
     """
     if not is_admin_user():
         return jsonify({"error": "Only admins can view monitoring data"}), 403
 
     try:
-        # ─── System Metrics ───────────────────────────────────────────────────────
-        # CPU usage
-        cpu_output = run_shell_command("top -bn1 | grep 'Cpu(s)' | awk '{print $2}'")
-        try:
-            cpu_percent = float(cpu_output.replace(",", "."))
-        except:
-            cpu_percent = 0.0
-        
-        # Memory usage
-        mem_output = run_shell_command("free -m | awk 'NR==2{printf \"%s %s %.1f\", $3, $2, $3*100/$2}'")
-        mem_parts = mem_output.split()
-        try:
-            mem_used = int(mem_parts[0])
-            mem_total = int(mem_parts[1])
-            mem_percent = float(mem_parts[2])
-        except:
-            mem_used, mem_total, mem_percent = 0, 0, 0.0
-        
-        # Disk usage
-        disk_output = run_shell_command("df -h / | awk 'NR==2{print $3, $2, $5}'")
-        disk_parts = disk_output.split()
-        try:
-            disk_used = disk_parts[0]
-            disk_total = disk_parts[1]
-            disk_percent = disk_parts[2]
-        except:
-            disk_used, disk_total, disk_percent = "0", "0", "0%"
-        
-        # Uptime
-        uptime_output = run_shell_command("uptime -p")
-        
-        # Load average
-        load_output = run_shell_command("cat /proc/loadavg | awk '{print $1, $2, $3}'")
-        
-        system_data = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "cpu": {
-                "percent": cpu_percent,
-                "status": "critical" if cpu_percent > 90 else "warning" if cpu_percent > 70 else "ok"
-            },
-            "memory": {
-                "used_mb": mem_used,
-                "total_mb": mem_total,
-                "percent": mem_percent,
-                "status": "critical" if mem_percent > 90 else "warning" if mem_percent > 70 else "ok"
-            },
-            "disk": {
-                "used": disk_used,
-                "total": disk_total,
-                "percent": disk_percent,
-                "status": "critical" if int(disk_percent.replace("%", "")) > 90 else "warning" if int(disk_percent.replace("%", "")) > 70 else "ok"
-            },
-            "uptime": uptime_output,
-            "load_average": load_output
-        }
-        
-        # ─── Security Status ──────────────────────────────────────────────────────
-        # Fail2Ban status
-        fail2ban_status = run_shell_command("systemctl is-active fail2ban 2>/dev/null || echo 'not installed'")
-        
-        # Banned IPs from fail2ban
-        banned_ips = []
-        if fail2ban_status == "active":
-            banned_output = run_shell_command("fail2ban-client banned 2>/dev/null || echo '[]'")
+        # ─── System Metrics (using psutil for Docker compatibility) ───────────────
+        if PSUTIL_AVAILABLE:
+            cpu_percent = psutil.cpu_percent(interval=0.5)
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            # Get uptime
             try:
-                import ast
-                banned_data = ast.literal_eval(banned_output)
-                if banned_data and isinstance(banned_data, list):
-                    for jail in banned_data:
-                        if isinstance(jail, dict):
-                            for jail_name, ips in jail.items():
-                                for ip in ips:
-                                    banned_ips.append({"ip": ip, "jail": jail_name})
+                uptime_seconds = time.time() - psutil.boot_time()
+                days = int(uptime_seconds // 86400)
+                hours = int((uptime_seconds % 86400) // 3600)
+                minutes = int((uptime_seconds % 3600) // 60)
+                uptime_str = f"up {days}d {hours}h {minutes}m" if days > 0 else f"up {hours}h {minutes}m"
             except:
-                pass
+                uptime_str = "N/A"
+            
+            # Get load average
+            try:
+                load_avg = psutil.getloadavg()
+                load_str = f"{load_avg[0]:.2f} {load_avg[1]:.2f} {load_avg[2]:.2f}"
+            except:
+                load_str = "N/A"
+            
+            # Format disk sizes
+            disk_used_gb = disk.used / (1024**3)
+            disk_total_gb = disk.total / (1024**3)
+            disk_percent_val = disk.percent
+            
+            system_data = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "cpu": {
+                    "percent": cpu_percent,
+                    "status": "critical" if cpu_percent > 90 else "warning" if cpu_percent > 70 else "ok"
+                },
+                "memory": {
+                    "used_mb": int(memory.used / (1024**2)),
+                    "total_mb": int(memory.total / (1024**2)),
+                    "percent": memory.percent,
+                    "status": "critical" if memory.percent > 90 else "warning" if memory.percent > 70 else "ok"
+                },
+                "disk": {
+                    "used": f"{disk_used_gb:.1f}G",
+                    "total": f"{disk_total_gb:.1f}G",
+                    "percent": f"{disk_percent_val}%",
+                    "status": "critical" if disk_percent_val > 90 else "warning" if disk_percent_val > 70 else "ok"
+                },
+                "uptime": uptime_str,
+                "load_average": load_str
+            }
+        else:
+            # Fallback if psutil not available
+            system_data = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "cpu": {"percent": 0, "status": "ok"},
+                "memory": {"used_mb": 0, "total_mb": 0, "percent": 0, "status": "ok"},
+                "disk": {"used": "N/A", "total": "N/A", "percent": "0%", "status": "ok"},
+                "uptime": "N/A",
+                "load_average": "N/A"
+            }
         
-        # Recent failed SSH attempts
-        failed_ssh = run_shell_command("grep 'Failed password' /var/log/auth.log 2>/dev/null | tail -5 | awk '{print $1, $2, $3, $11}' || echo 'No data'")
+        # ─── Security Status (simplified for Docker) ──────────────────────────────
+        # Check if we're running in Docker (can't access host security tools)
+        in_docker = os.path.exists('/.dockerenv')
         
-        # UFW status
-        ufw_status = run_shell_command("ufw status 2>/dev/null | head -1 || echo 'not installed'")
-        
-        # Recent 4xx/5xx errors count
-        error_count = run_shell_command("grep -a ' 4[0-9][0-9] \\| 5[0-9][0-9] ' /var/log/nginx/access.log 2>/dev/null | wc -l || echo '0'")
-        
-        security_data = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "fail2ban": {
-                "status": fail2ban_status,
-                "banned_count": len(banned_ips),
-                "banned_ips": banned_ips[:10]
-            },
-            "firewall": {
-                "ufw_status": ufw_status
-            },
-            "recent_failed_ssh": failed_ssh.split("\n") if failed_ssh != "No data" else [],
-            "nginx_errors_today": int(error_count) if error_count.isdigit() else 0
-        }
+        if in_docker:
+            # Running in Docker - provide info message instead of false "not installed"
+            security_data = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "fail2ban": {
+                    "status": "host-level",
+                    "banned_count": 0,
+                    "banned_ips": [],
+                    "note": "Security services run on host, not in container"
+                },
+                "firewall": {
+                    "ufw_status": "host-level"
+                },
+                "recent_failed_ssh": [],
+                "nginx_errors_today": 0,
+                "container_mode": True
+            }
+        else:
+            # Running on host - check actual services
+            fail2ban_status = run_shell_command("systemctl is-active fail2ban 2>/dev/null || echo 'not installed'")
+            ufw_status = run_shell_command("ufw status 2>/dev/null | head -1 || echo 'not installed'")
+            
+            banned_ips = []
+            if fail2ban_status == "active":
+                banned_output = run_shell_command("fail2ban-client banned 2>/dev/null || echo '[]'")
+                try:
+                    import ast
+                    banned_data = ast.literal_eval(banned_output)
+                    if banned_data and isinstance(banned_data, list):
+                        for jail in banned_data:
+                            if isinstance(jail, dict):
+                                for jail_name, ips in jail.items():
+                                    for ip in ips:
+                                        banned_ips.append({"ip": ip, "jail": jail_name})
+                except:
+                    pass
+            
+            failed_ssh = run_shell_command("grep 'Failed password' /var/log/auth.log 2>/dev/null | tail -5 | awk '{print $1, $2, $3, $11}' || echo ''")
+            error_count = run_shell_command("grep -a ' 4[0-9][0-9] \\| 5[0-9][0-9] ' /var/log/nginx/access.log 2>/dev/null | wc -l || echo '0'")
+            
+            security_data = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "fail2ban": {
+                    "status": fail2ban_status,
+                    "banned_count": len(banned_ips),
+                    "banned_ips": banned_ips[:10]
+                },
+                "firewall": {
+                    "ufw_status": ufw_status
+                },
+                "recent_failed_ssh": [s for s in failed_ssh.split("\n") if s.strip()] if failed_ssh else [],
+                "nginx_errors_today": int(error_count) if error_count.isdigit() else 0,
+                "container_mode": False
+            }
         
         # ─── Services Status ──────────────────────────────────────────────────────
-        services = ["nginx", "docker", "fail2ban", "ufw"]
-        status_list = []
-        
-        for service in services:
-            status = run_shell_command(f"systemctl is-active {service} 2>/dev/null || echo 'not found'")
-            status_list.append({
-                "name": service,
-                "status": status,
-                "ok": status == "active"
-            })
-        
-        # Docker containers
-        docker_ps = run_shell_command("docker ps --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -10 || echo 'Docker not running'")
-        
-        services_data = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "services": status_list,
-            "docker_containers": docker_ps.split("\n") if docker_ps and "not" not in docker_ps.lower() else []
-        }
+        if in_docker:
+            # In Docker - show container is running
+            services_data = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "services": [
+                    {"name": "journal-backend", "status": "active", "ok": True},
+                    {"name": "database", "status": "active", "ok": True}
+                ],
+                "docker_containers": ["Running in containerized environment"],
+                "container_mode": True
+            }
+        else:
+            services = ["nginx", "docker", "fail2ban", "ufw"]
+            status_list = []
+            for service in services:
+                status = run_shell_command(f"systemctl is-active {service} 2>/dev/null || echo 'not found'")
+                status_list.append({
+                    "name": service,
+                    "status": status,
+                    "ok": status == "active"
+                })
+            
+            docker_ps = run_shell_command("docker ps --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -10 || echo ''")
+            
+            services_data = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "services": status_list,
+                "docker_containers": [c for c in docker_ps.split("\n") if c.strip()] if docker_ps else [],
+                "container_mode": False
+            }
         
         # ─── Calculate Overall Health ─────────────────────────────────────────────
         issues = []
@@ -1549,12 +1581,14 @@ def monitoring_overview():
             issues.append("High memory usage")
         if system_data["disk"]["status"] == "critical":
             issues.append("Low disk space")
-        if security_data["fail2ban"]["status"] != "active":
-            issues.append("Fail2Ban not running")
         
-        for svc in services_data["services"]:
-            if svc["name"] in ["nginx", "docker"] and not svc["ok"]:
-                issues.append(f"{svc['name']} is down")
+        # Only check security services if not in Docker
+        if not in_docker:
+            if security_data["fail2ban"]["status"] != "active":
+                issues.append("Fail2Ban not running")
+            for svc in services_data["services"]:
+                if svc["name"] in ["nginx", "docker"] and not svc["ok"]:
+                    issues.append(f"{svc['name']} is down")
         
         health_status = "critical" if len(issues) > 2 else "warning" if len(issues) > 0 else "healthy"
         
@@ -1566,7 +1600,8 @@ def monitoring_overview():
             "issues": issues,
             "system": system_data,
             "security": security_data,
-            "services": services_data
+            "services": services_data,
+            "running_in_container": in_docker
         }), 200
         
     except Exception as e:

@@ -1822,86 +1822,102 @@ export default function Settings() {
                       <div className="bg-[#0a1628] rounded-lg p-5 border border-[#2d4a6f]">
                         <div className="flex items-center justify-between mb-4">
                           <h4 className="text-sm font-medium text-white flex items-center gap-2">
-                            <Shield className="w-4 h-4 text-red-400" />
+                            <Shield className="w-4 h-4 text-blue-400" />
                             Security & Threat Protection
                           </h4>
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            serverMonitoring.security.fail2ban?.status === 'active' && 
-                            serverMonitoring.security.firewall?.ufw_status?.includes('active') 
-                              ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                          }`}>
-                            {serverMonitoring.security.fail2ban?.status === 'active' ? 'Protected' : 'At Risk'}
-                          </span>
+                          {serverMonitoring.security.container_mode ? (
+                            <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">
+                              Host-Level Security
+                            </span>
+                          ) : (
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              serverMonitoring.security.fail2ban?.status === 'active' 
+                                ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                            }`}>
+                              {serverMonitoring.security.fail2ban?.status === 'active' ? 'Protected' : 'At Risk'}
+                            </span>
+                          )}
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                          {/* Fail2Ban Status */}
-                          <div className={`rounded-lg p-4 border ${
-                            serverMonitoring.security.fail2ban?.status === 'active' 
-                              ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'
-                          }`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className={`w-2 h-2 rounded-full ${
-                                serverMonitoring.security.fail2ban?.status === 'active' ? 'bg-green-500' : 'bg-red-500'
-                              }`} />
-                              <span className="text-xs text-gray-400">Fail2Ban</span>
-                            </div>
-                            <p className={`text-lg font-bold capitalize ${
-                              serverMonitoring.security.fail2ban?.status === 'active' ? 'text-green-400' : 'text-red-400'
+                        {serverMonitoring.security.container_mode ? (
+                          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-center">
+                            <p className="text-blue-400 text-sm">
+                              Security services (Fail2Ban, UFW) run on the host server, not inside containers.
+                            </p>
+                            <p className="text-gray-500 text-xs mt-2">
+                              Container isolation provides additional security layer.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                            {/* Fail2Ban Status */}
+                            <div className={`rounded-lg p-4 border ${
+                              serverMonitoring.security.fail2ban?.status === 'active' 
+                                ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'
                             }`}>
-                              {serverMonitoring.security.fail2ban?.status || 'Unknown'}
-                            </p>
-                          </div>
-
-                          {/* Firewall Status */}
-                          <div className={`rounded-lg p-4 border ${
-                            serverMonitoring.security.firewall?.ufw_status?.includes('active') 
-                              ? 'bg-green-500/10 border-green-500/30' : 'bg-yellow-500/10 border-yellow-500/30'
-                          }`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className={`w-2 h-2 rounded-full ${
-                                serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'bg-green-500' : 'bg-yellow-500'
-                              }`} />
-                              <span className="text-xs text-gray-400">Firewall</span>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  serverMonitoring.security.fail2ban?.status === 'active' ? 'bg-green-500' : 'bg-red-500'
+                                }`} />
+                                <span className="text-xs text-gray-400">Fail2Ban</span>
+                              </div>
+                              <p className={`text-lg font-bold capitalize ${
+                                serverMonitoring.security.fail2ban?.status === 'active' ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                {serverMonitoring.security.fail2ban?.status || 'Unknown'}
+                              </p>
                             </div>
-                            <p className={`text-lg font-bold ${
-                              serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'text-green-400' : 'text-yellow-400'
+
+                            {/* Firewall Status */}
+                            <div className={`rounded-lg p-4 border ${
+                              serverMonitoring.security.firewall?.ufw_status?.includes('active') 
+                                ? 'bg-green-500/10 border-green-500/30' : 'bg-yellow-500/10 border-yellow-500/30'
                             }`}>
-                              {serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'Active' : 'Inactive'}
-                            </p>
-                          </div>
-
-                          {/* Banned IPs Count */}
-                          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <AlertTriangle className="w-3 h-3 text-red-400" />
-                              <span className="text-xs text-gray-400">Banned IPs</span>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'bg-green-500' : 'bg-yellow-500'
+                                }`} />
+                                <span className="text-xs text-gray-400">Firewall</span>
+                              </div>
+                              <p className={`text-lg font-bold ${
+                                serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'text-green-400' : 'text-yellow-400'
+                              }`}>
+                                {serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'Active' : 'Inactive'}
+                              </p>
                             </div>
-                            <p className="text-lg font-bold text-red-400">
-                              {serverMonitoring.security.fail2ban?.banned_count || 0}
-                            </p>
-                          </div>
 
-                          {/* Nginx Errors */}
-                          <div className={`rounded-lg p-4 border ${
-                            (serverMonitoring.security.nginx_errors_today || 0) > 100 
-                              ? 'bg-red-500/10 border-red-500/30' 
-                              : (serverMonitoring.security.nginx_errors_today || 0) > 20 
-                                ? 'bg-yellow-500/10 border-yellow-500/30' 
-                                : 'bg-[#1e3a5f] border-[#2d4a6f]'
-                          }`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <Globe className="w-3 h-3 text-gray-400" />
-                              <span className="text-xs text-gray-400">HTTP Errors</span>
+                            {/* Banned IPs Count */}
+                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <AlertTriangle className="w-3 h-3 text-red-400" />
+                                <span className="text-xs text-gray-400">Banned IPs</span>
+                              </div>
+                              <p className="text-lg font-bold text-red-400">
+                                {serverMonitoring.security.fail2ban?.banned_count || 0}
+                              </p>
                             </div>
-                            <p className={`text-lg font-bold ${
-                              (serverMonitoring.security.nginx_errors_today || 0) > 100 ? 'text-red-400' :
-                              (serverMonitoring.security.nginx_errors_today || 0) > 20 ? 'text-yellow-400' : 'text-white'
+
+                            {/* Nginx Errors */}
+                            <div className={`rounded-lg p-4 border ${
+                              (serverMonitoring.security.nginx_errors_today || 0) > 100 
+                                ? 'bg-red-500/10 border-red-500/30' 
+                                : (serverMonitoring.security.nginx_errors_today || 0) > 20 
+                                  ? 'bg-yellow-500/10 border-yellow-500/30' 
+                                  : 'bg-[#1e3a5f] border-[#2d4a6f]'
                             }`}>
-                              {serverMonitoring.security.nginx_errors_today || 0}
-                            </p>
+                              <div className="flex items-center gap-2 mb-2">
+                                <Globe className="w-3 h-3 text-gray-400" />
+                                <span className="text-xs text-gray-400">HTTP Errors</span>
+                              </div>
+                              <p className={`text-lg font-bold ${
+                                (serverMonitoring.security.nginx_errors_today || 0) > 100 ? 'text-red-400' :
+                                (serverMonitoring.security.nginx_errors_today || 0) > 20 ? 'text-yellow-400' : 'text-white'
+                              }`}>
+                                {serverMonitoring.security.nginx_errors_today || 0}
+                              </p>
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         {/* Blocked IPs Table */}
                         {serverMonitoring.security.fail2ban?.banned_ips?.length > 0 && (
