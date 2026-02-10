@@ -164,6 +164,11 @@ export default function Settings() {
   const [securitySettingsLoading, setSecuritySettingsLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Geography analytics state
+  const [geographyData, setGeographyData] = useState(null);
+  const [geographyLoading, setGeographyLoading] = useState(false);
+  const [geographyFilter, setGeographyFilter] = useState('all');
+
   // Analytics state
   const [analyticsOverview, setAnalyticsOverview] = useState(null);
   const [userGrowth, setUserGrowth] = useState([]);
@@ -853,6 +858,25 @@ export default function Settings() {
     }));
   };
 
+  // Fetch geography analytics
+  const fetchGeographyData = async (filter = 'all') => {
+    setGeographyLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/admin/analytics/geography?filter=${filter}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGeographyData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching geography data:', err);
+    } finally {
+      setGeographyLoading(false);
+    }
+  };
+
   // Advanced admin functions
   const fetchSystemMetrics = async () => {
     try {
@@ -1343,6 +1367,7 @@ export default function Settings() {
                   { id: 'logs', label: 'Logs' },
                   { id: 'health', label: 'Health' },
                   { id: 'analytics', label: 'Analytics' },
+                  { id: 'geography', label: 'Geography' },
                   { id: 'feature-flags', label: 'Features' },
                   { id: 'bulk-email', label: 'Email' },
                   { id: 'settings', label: 'Settings' }
@@ -2514,6 +2539,136 @@ export default function Settings() {
                         ))}
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Geography Tab */}
+                {activeAdminTab === 'geography' && (
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-gradient-to-br from-[#1e3a5f] to-[#2d4a6f] rounded-xl">
+                          <Globe className="w-6 h-6 text-blue-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-white">User Geography & Demographics</h3>
+                          <p className="text-gray-400 text-sm">Analyze user distribution by location</p>
+                        </div>
+                      </div>
+                      <button onClick={() => fetchGeographyData(geographyFilter)} disabled={geographyLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 disabled:opacity-50">
+                        {geographyLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        Refresh
+                      </button>
+                    </div>
+
+                    {/* Filter Buttons */}
+                    <div className="flex flex-wrap gap-2">
+                      {[{ id: 'all', label: 'All Users' }, { id: 'journal', label: 'Journal Users' }, { id: 'no-journal', label: 'No Journal' }, { id: 'mentorship', label: 'Mentorship' }].map(filter => (
+                        <button key={filter.id} onClick={() => { setGeographyFilter(filter.id); fetchGeographyData(filter.id); }} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${geographyFilter === filter.id ? 'bg-blue-600 text-white' : 'bg-[#1e3a5f] text-gray-400 hover:bg-[#2d4a6f] border border-[#2d4a6f]'}`}>
+                          {filter.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {!geographyData && !geographyLoading && (
+                      <div className="text-center py-12">
+                        <Globe className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-400 mb-4">Click refresh to load geography data</p>
+                        <button onClick={() => fetchGeographyData(geographyFilter)} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Load Data</button>
+                      </div>
+                    )}
+
+                    {geographyLoading && (
+                      <div className="text-center py-12">
+                        <RefreshCw className="w-10 h-10 text-blue-400 animate-spin mx-auto" />
+                        <p className="text-gray-400 mt-4">Loading...</p>
+                      </div>
+                    )}
+
+                    {geographyData && !geographyLoading && (
+                      <>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-[#0d1f35] rounded-xl p-5 border border-[#2d4a6f]">
+                            <p className="text-gray-500 text-xs uppercase">Total Users</p>
+                            <p className="text-3xl font-bold text-white mt-2">{geographyData.total_users}</p>
+                          </div>
+                          <div className="bg-[#0d1f35] rounded-xl p-5 border border-[#2d4a6f]">
+                            <p className="text-gray-500 text-xs uppercase">Countries</p>
+                            <p className="text-3xl font-bold text-blue-400 mt-2">{geographyData.all_countries?.length || 0}</p>
+                          </div>
+                          <div className="bg-[#0d1f35] rounded-xl p-5 border border-[#2d4a6f]">
+                            <p className="text-gray-500 text-xs uppercase">Active (30d)</p>
+                            <p className="text-3xl font-bold text-green-400 mt-2">{geographyData.user_breakdown?.active_users || 0}</p>
+                          </div>
+                          <div className="bg-[#0d1f35] rounded-xl p-5 border border-[#2d4a6f]">
+                            <p className="text-gray-500 text-xs uppercase">Journal Users</p>
+                            <p className="text-3xl font-bold text-purple-400 mt-2">{geographyData.user_breakdown?.journal_users || 0}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-blue-400" />Top Countries</h4>
+                            <div className="space-y-3 max-h-80 overflow-y-auto">
+                              {geographyData.countries?.map((country, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-gray-500 text-sm w-6">{idx + 1}.</span>
+                                    <span className="text-white font-medium">{country.country}</span>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-24 bg-[#0a1628] rounded-full h-2"><div className="bg-blue-500 h-2 rounded-full" style={{ width: `${country.percentage}%` }}></div></div>
+                                    <span className="text-gray-400 text-sm w-20 text-right">{country.count} ({country.percentage}%)</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><Users className="w-5 h-5 text-green-400" />User Breakdown</h4>
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">Journal Users</span><span className="text-green-400 font-bold">{geographyData.user_breakdown?.journal_users || 0}</span></div>
+                              <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">No Journal</span><span className="text-purple-400 font-bold">{geographyData.user_breakdown?.no_journal_users || 0}</span></div>
+                              <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">Admins</span><span className="text-red-400 font-bold">{geographyData.user_breakdown?.admin_users || 0}</span></div>
+                              <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">Active (30d)</span><span className="text-blue-400 font-bold">{geographyData.user_breakdown?.active_users || 0}</span></div>
+                            </div>
+                          </div>
+
+                          <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><Mail className="w-5 h-5 text-purple-400" />Top Email Domains</h4>
+                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                              {geographyData.email_domains?.map((domain, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-2 bg-[#1e3a5f] rounded-lg">
+                                  <span className="text-gray-300 text-sm">@{domain.domain}</span>
+                                  <span className="text-white font-medium">{domain.count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-yellow-400" />Age Distribution</h4>
+                            <div className="space-y-3">
+                              {geographyData.age_distribution?.map((age, idx) => {
+                                const total = geographyData.age_distribution.reduce((sum, a) => sum + a.count, 0);
+                                const pct = total > 0 ? Math.round((age.count / total) * 100) : 0;
+                                return (
+                                  <div key={idx} className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg">
+                                    <span className="text-white font-medium">{age.range}</span>
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-20 bg-[#0a1628] rounded-full h-2"><div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${pct}%` }}></div></div>
+                                      <span className="text-gray-400 text-sm w-16 text-right">{age.count} ({pct}%)</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 

@@ -2384,3 +2384,135 @@ def get_security_setting(key, default=None):
     if setting:
         return setting.value
     return DEFAULT_SECURITY_SETTINGS.get(key, {}).get('value', default)
+
+
+# ==================== Geography/Demographics Analytics ====================
+
+@admin_bp.route('/analytics/geography', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_geography_analytics():
+    """Get geography and demographics analytics for users"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func, case
+        
+        # Get filter parameter
+        user_filter = request.args.get('filter', 'all')  # all, journal, no-journal, mentorship
+        
+        # Base query
+        query = User.query
+        
+        # Apply filters
+        if user_filter == 'journal':
+            query = query.filter(User.has_journal_access == True)
+        elif user_filter == 'no-journal':
+            query = query.filter(User.has_journal_access == False)
+        elif user_filter == 'mentorship':
+            # Get mentorship applicants from bootcamp_registrations or a specific criteria
+            # For now, filter users who registered recently and don't have journal access
+            query = query.filter(User.has_journal_access == False)
+        
+        # Get all users matching filter
+        users = query.all()
+        total_users = len(users)
+        
+        # Country distribution
+        country_counts = {}
+        for user in users:
+            country = user.country if hasattr(user, 'country') and user.country else 'Unknown'
+            country_counts[country] = country_counts.get(country, 0) + 1
+        
+        # Sort by count and get top countries
+        sorted_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)
+        top_countries = [{"country": c, "count": n, "percentage": round(n/total_users*100, 1) if total_users > 0 else 0} for c, n in sorted_countries[:15]]
+        
+        # Get profile data for age calculation
+        profiles = Profile.query.join(User).filter(User.id.in_([u.id for u in users])).all()
+        
+        # Age distribution (from birth_date in profile)
+        age_distribution = {"18-24": 0, "25-34": 0, "35-44": 0, "45-54": 0, "55+": 0, "Unknown": 0}
+        current_year = datetime.utcnow().year
+        
+        for profile in profiles:
+            if hasattr(profile, 'birth_date') and profile.birth_date:
+                try:
+                    age = current_year - profile.birth_date.year
+                    if age < 18:
+                        age_distribution["18-24"] += 1
+                    elif age < 25:
+                        age_distribution["18-24"] += 1
+                    elif age < 35:
+                        age_distribution["25-34"] += 1
+                    elif age < 45:
+                        age_distribution["35-44"] += 1
+                    elif age < 55:
+                        age_distribution["45-54"] += 1
+                    else:
+                        age_distribution["55+"] += 1
+                except:
+                    age_distribution["Unknown"] += 1
+            else:
+                age_distribution["Unknown"] += 1
+        
+        # Registration trends (last 12 months)
+        twelve_months_ago = datetime.utcnow() - timedelta(days=365)
+        monthly_registrations = db.session.query(
+            func.date_trunc('month', User.created_at).label('month'),
+            func.count(User.id).label('count')
+        ).filter(
+            User.created_at >= twelve_months_ago,
+            User.id.in_([u.id for u in users])
+        ).group_by(
+            func.date_trunc('month', User.created_at)
+        ).order_by('month').all()
+        
+        registration_trend = [
+            {"month": m.strftime('%Y-%m') if m else 'Unknown', "count": c}
+            for m, c in monthly_registrations
+        ]
+        
+        # User type breakdown
+        journal_users = sum(1 for u in users if u.has_journal_access)
+        no_journal_users = total_users - journal_users
+        admin_users = sum(1 for u in users if u.role == 'admin')
+        
+        # Active users (logged in last 30 days) - approximate by checking recent entries
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        active_user_ids = db.session.query(JournalEntry.user_id).filter(
+            JournalEntry.created_at >= thirty_days_ago,
+            JournalEntry.user_id.in_([u.id for u in users])
+        ).distinct().all()
+        active_users = len(active_user_ids)
+        
+        # Email domain distribution
+        email_domains = {}
+        for user in users:
+            if user.email and '@' in user.email:
+                domain = user.email.split('@')[1].lower()
+                email_domains[domain] = email_domains.get(domain, 0) + 1
+        
+        sorted_domains = sorted(email_domains.items(), key=lambda x: x[1], reverse=True)
+        top_domains = [{"domain": d, "count": n} for d, n in sorted_domains[:10]]
+        
+        return jsonify({
+            "total_users": total_users,
+            "filter": user_filter,
+            "countries": top_countries,
+            "all_countries": [{"country": c, "count": n} for c, n in sorted_countries],
+            "age_distribution": [{"range": k, "count": v} for k, v in age_distribution.items()],
+            "registration_trend": registration_trend,
+            "user_breakdown": {
+                "journal_users": journal_users,
+                "no_journal_users": no_journal_users,
+                "admin_users": admin_users,
+                "active_users": active_users
+            },
+            "email_domains": top_domains
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Geography analytics error: {str(e)}")
+        return jsonify({"error": "Failed to fetch geography analytics"}), 500
