@@ -1887,3 +1887,378 @@ def get_security_stats():
     except Exception as e:
         current_app.logger.error(f"Error fetching security stats: {str(e)}")
         return jsonify({"error": "Failed to fetch security stats"}), 500
+
+
+# ============== ANALYTICS ENDPOINTS ==============
+
+@admin_bp.route('/analytics/overview', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_analytics_overview():
+    """Get comprehensive analytics overview"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        now = datetime.utcnow()
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_ago = now - timedelta(days=7)
+        month_ago = now - timedelta(days=30)
+        
+        # User Stats
+        total_users = User.query.count()
+        active_users = User.query.filter_by(is_active=True).count()
+        new_users_today = User.query.filter(User.created_at >= today).count()
+        new_users_week = User.query.filter(User.created_at >= week_ago).count()
+        new_users_month = User.query.filter(User.created_at >= month_ago).count()
+        
+        # Users with journal access
+        journal_users = User.query.filter_by(has_journal_access=True).count()
+        
+        # Trade Stats
+        total_trades = JournalEntry.query.count()
+        trades_today = JournalEntry.query.filter(JournalEntry.created_at >= today).count()
+        trades_week = JournalEntry.query.filter(JournalEntry.created_at >= week_ago).count()
+        trades_month = JournalEntry.query.filter(JournalEntry.created_at >= month_ago).count()
+        
+        # Win rate calculation
+        winning_trades = JournalEntry.query.filter(JournalEntry.pnl > 0).count()
+        losing_trades = JournalEntry.query.filter(JournalEntry.pnl < 0).count()
+        win_rate = round((winning_trades / total_trades * 100), 1) if total_trades > 0 else 0
+        
+        # Total PnL
+        total_pnl = db.session.query(func.sum(JournalEntry.pnl)).scalar() or 0
+        
+        # Profile Stats
+        total_profiles = Profile.query.count()
+        active_profiles = Profile.query.filter_by(is_active=True).count()
+        
+        # Group Stats
+        total_groups = Group.query.count()
+        active_groups = Group.query.filter_by(is_active=True).count()
+        
+        return jsonify({
+            "users": {
+                "total": total_users,
+                "active": active_users,
+                "inactive": total_users - active_users,
+                "with_journal_access": journal_users,
+                "new_today": new_users_today,
+                "new_this_week": new_users_week,
+                "new_this_month": new_users_month
+            },
+            "trades": {
+                "total": total_trades,
+                "today": trades_today,
+                "this_week": trades_week,
+                "this_month": trades_month,
+                "winning": winning_trades,
+                "losing": losing_trades,
+                "win_rate": win_rate,
+                "total_pnl": round(float(total_pnl), 2)
+            },
+            "profiles": {
+                "total": total_profiles,
+                "active": active_profiles
+            },
+            "groups": {
+                "total": total_groups,
+                "active": active_groups
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Analytics overview error: {str(e)}")
+        return jsonify({"error": "Failed to fetch analytics"}), 500
+
+
+@admin_bp.route('/analytics/user-growth', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_user_growth():
+    """Get user registration data over time"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        days = request.args.get('days', 30, type=int)
+        days = min(days, 365)  # Max 1 year
+        
+        start_date = datetime.utcnow() - timedelta(days=days)
+        
+        # Get daily registrations
+        daily_data = db.session.query(
+            func.date(User.created_at).label('date'),
+            func.count(User.id).label('count')
+        ).filter(
+            User.created_at >= start_date
+        ).group_by(
+            func.date(User.created_at)
+        ).order_by(
+            func.date(User.created_at)
+        ).all()
+        
+        # Format for chart
+        chart_data = []
+        for row in daily_data:
+            chart_data.append({
+                "date": str(row.date),
+                "registrations": row.count
+            })
+        
+        # Calculate cumulative growth
+        cumulative = 0
+        for item in chart_data:
+            cumulative += item['registrations']
+            item['cumulative'] = cumulative
+        
+        return jsonify({
+            "period_days": days,
+            "data": chart_data,
+            "total_new_users": sum(item['registrations'] for item in chart_data)
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"User growth error: {str(e)}")
+        return jsonify({"error": "Failed to fetch user growth data"}), 500
+
+
+@admin_bp.route('/analytics/trade-activity', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_trade_activity():
+    """Get trading activity over time"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        days = request.args.get('days', 30, type=int)
+        days = min(days, 365)
+        
+        start_date = datetime.utcnow() - timedelta(days=days)
+        
+        # Daily trades
+        daily_trades = db.session.query(
+            func.date(JournalEntry.date).label('date'),
+            func.count(JournalEntry.id).label('trades'),
+            func.sum(JournalEntry.pnl).label('pnl'),
+            func.sum(db.case((JournalEntry.pnl > 0, 1), else_=0)).label('wins'),
+            func.sum(db.case((JournalEntry.pnl < 0, 1), else_=0)).label('losses')
+        ).filter(
+            JournalEntry.date >= start_date
+        ).group_by(
+            func.date(JournalEntry.date)
+        ).order_by(
+            func.date(JournalEntry.date)
+        ).all()
+        
+        chart_data = []
+        for row in daily_trades:
+            total = row.wins + row.losses
+            chart_data.append({
+                "date": str(row.date),
+                "trades": row.trades,
+                "pnl": round(float(row.pnl or 0), 2),
+                "wins": row.wins,
+                "losses": row.losses,
+                "win_rate": round((row.wins / total * 100), 1) if total > 0 else 0
+            })
+        
+        return jsonify({
+            "period_days": days,
+            "data": chart_data
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Trade activity error: {str(e)}")
+        return jsonify({"error": "Failed to fetch trade activity"}), 500
+
+
+@admin_bp.route('/analytics/top-symbols', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_top_symbols():
+    """Get most traded symbols"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        limit = request.args.get('limit', 10, type=int)
+        
+        # Top traded symbols
+        top_symbols = db.session.query(
+            JournalEntry.symbol,
+            func.count(JournalEntry.id).label('trade_count'),
+            func.sum(JournalEntry.pnl).label('total_pnl'),
+            func.avg(JournalEntry.pnl).label('avg_pnl'),
+            func.sum(db.case((JournalEntry.pnl > 0, 1), else_=0)).label('wins')
+        ).group_by(
+            JournalEntry.symbol
+        ).order_by(
+            func.count(JournalEntry.id).desc()
+        ).limit(limit).all()
+        
+        symbols_data = []
+        for row in top_symbols:
+            win_rate = round((row.wins / row.trade_count * 100), 1) if row.trade_count > 0 else 0
+            symbols_data.append({
+                "symbol": row.symbol,
+                "trades": row.trade_count,
+                "total_pnl": round(float(row.total_pnl or 0), 2),
+                "avg_pnl": round(float(row.avg_pnl or 0), 2),
+                "win_rate": win_rate
+            })
+        
+        return jsonify({"symbols": symbols_data}), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Top symbols error: {str(e)}")
+        return jsonify({"error": "Failed to fetch top symbols"}), 500
+
+
+@admin_bp.route('/analytics/user-activity', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_user_activity():
+    """Get most active users by trade count"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        limit = request.args.get('limit', 10, type=int)
+        
+        # Most active traders
+        active_users = db.session.query(
+            User.id,
+            User.name,
+            User.email,
+            func.count(JournalEntry.id).label('trade_count'),
+            func.sum(JournalEntry.pnl).label('total_pnl')
+        ).join(
+            JournalEntry, User.id == JournalEntry.user_id
+        ).group_by(
+            User.id, User.name, User.email
+        ).order_by(
+            func.count(JournalEntry.id).desc()
+        ).limit(limit).all()
+        
+        users_data = []
+        for row in active_users:
+            users_data.append({
+                "id": row.id,
+                "name": row.name,
+                "email": row.email,
+                "trades": row.trade_count,
+                "total_pnl": round(float(row.total_pnl or 0), 2)
+            })
+        
+        return jsonify({"users": users_data}), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"User activity error: {str(e)}")
+        return jsonify({"error": "Failed to fetch user activity"}), 500
+
+
+@admin_bp.route('/analytics/system-stats', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_system_stats():
+    """Get system and database statistics"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        # Database table sizes
+        table_stats = {
+            "users": User.query.count(),
+            "journal_entries": JournalEntry.query.count(),
+            "profiles": Profile.query.count(),
+            "groups": Group.query.count(),
+            "blocked_ips": BlockedIP.query.count(),
+            "security_logs": SecurityLog.query.count(),
+            "failed_logins": FailedLoginAttempt.query.count()
+        }
+        
+        # System metrics if psutil available
+        system_metrics = {}
+        if PSUTIL_AVAILABLE:
+            system_metrics = {
+                "cpu_percent": psutil.cpu_percent(interval=0.1),
+                "memory_percent": psutil.virtual_memory().percent,
+                "disk_percent": psutil.disk_usage('/').percent
+            }
+        
+        # Recent activity (last 24h)
+        since_24h = datetime.utcnow() - timedelta(hours=24)
+        recent_stats = {
+            "new_users_24h": User.query.filter(User.created_at >= since_24h).count(),
+            "new_trades_24h": JournalEntry.query.filter(JournalEntry.created_at >= since_24h).count(),
+            "security_events_24h": SecurityLog.query.filter(SecurityLog.created_at >= since_24h).count()
+        }
+        
+        return jsonify({
+            "database": table_stats,
+            "system": system_metrics,
+            "recent_activity": recent_stats
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"System stats error: {str(e)}")
+        return jsonify({"error": "Failed to fetch system stats"}), 500
+
+
+@admin_bp.route('/analytics/groups', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_group_analytics():
+    """Get analytics per group"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        # Group stats with user counts
+        groups_data = db.session.query(
+            Group.id,
+            Group.name,
+            Group.is_active,
+            func.count(User.id).label('user_count')
+        ).outerjoin(
+            User, Group.id == User.group_id
+        ).group_by(
+            Group.id, Group.name, Group.is_active
+        ).all()
+        
+        result = []
+        for group in groups_data:
+            # Get trade count for this group
+            trade_count = db.session.query(func.count(JournalEntry.id)).join(
+                User, JournalEntry.user_id == User.id
+            ).filter(User.group_id == group.id).scalar() or 0
+            
+            result.append({
+                "id": group.id,
+                "name": group.name,
+                "is_active": group.is_active,
+                "user_count": group.user_count,
+                "trade_count": trade_count
+            })
+        
+        return jsonify({"groups": result}), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Group analytics error: {str(e)}")
+        return jsonify({"error": "Failed to fetch group analytics"}), 500

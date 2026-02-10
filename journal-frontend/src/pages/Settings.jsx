@@ -159,6 +159,15 @@ export default function Settings() {
   const [newBlockReason, setNewBlockReason] = useState('');
   const [blockingIP, setBlockingIP] = useState(false);
 
+  // Analytics state
+  const [analyticsOverview, setAnalyticsOverview] = useState(null);
+  const [userGrowth, setUserGrowth] = useState([]);
+  const [tradeActivity, setTradeActivity] = useState([]);
+  const [topSymbols, setTopSymbols] = useState([]);
+  const [topUsers, setTopUsers] = useState([]);
+  const [groupAnalytics, setGroupAnalytics] = useState([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
   // Feature flags context
   const { refreshFeatureFlags } = useFeatureFlags();
 
@@ -707,6 +716,49 @@ export default function Settings() {
       }
     } catch (err) {
       console.error('Error unblocking IP:', err);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+      
+      const [overviewRes, growthRes, tradesRes, symbolsRes, usersRes, groupsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/analytics/overview`, { headers }),
+        fetch(`${API_BASE_URL}/admin/analytics/user-growth?days=30`, { headers }),
+        fetch(`${API_BASE_URL}/admin/analytics/trade-activity?days=30`, { headers }),
+        fetch(`${API_BASE_URL}/admin/analytics/top-symbols?limit=10`, { headers }),
+        fetch(`${API_BASE_URL}/admin/analytics/user-activity?limit=10`, { headers }),
+        fetch(`${API_BASE_URL}/admin/analytics/groups`, { headers })
+      ]);
+      
+      if (overviewRes.ok) setAnalyticsOverview(await overviewRes.json());
+      if (growthRes.ok) {
+        const data = await growthRes.json();
+        setUserGrowth(data.data || []);
+      }
+      if (tradesRes.ok) {
+        const data = await tradesRes.json();
+        setTradeActivity(data.data || []);
+      }
+      if (symbolsRes.ok) {
+        const data = await symbolsRes.json();
+        setTopSymbols(data.symbols || []);
+      }
+      if (usersRes.ok) {
+        const data = await usersRes.json();
+        setTopUsers(data.users || []);
+      }
+      if (groupsRes.ok) {
+        const data = await groupsRes.json();
+        setGroupAnalytics(data.groups || []);
+      }
+    } catch (err) {
+      console.error('Error fetching analytics:', err);
+    } finally {
+      setAnalyticsLoading(false);
     }
   };
 
@@ -2112,10 +2164,158 @@ export default function Settings() {
 
                 {/* Analytics Tab */}
                 {activeAdminTab === 'analytics' && (
-                  <div className="text-center py-16">
-                    <TrendingUp className="w-16 h-16 text-gray-400 mx-auto mb-6" />
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Analytics Dashboard</h3>
-                    <p className="text-gray-500 text-lg">Advanced analytics and reporting features coming soon.</p>
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-bold text-white">Analytics Dashboard</h3>
+                      <button
+                        onClick={fetchAnalytics}
+                        disabled={analyticsLoading}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${analyticsLoading ? 'animate-spin' : ''}`} />
+                        {analyticsLoading ? 'Loading...' : 'Load Analytics'}
+                      </button>
+                    </div>
+
+                    {analyticsOverview ? (
+                      <>
+                        {/* Overview Stats */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-xl p-5 border border-blue-500/30">
+                            <div className="flex items-center gap-3 mb-3">
+                              <Users className="w-5 h-5 text-blue-400" />
+                              <span className="text-xs text-gray-400">Total Users</span>
+                            </div>
+                            <p className="text-3xl font-bold text-white">{analyticsOverview.users?.total || 0}</p>
+                            <p className="text-xs text-green-400 mt-1">+{analyticsOverview.users?.new_this_month || 0} this month</p>
+                          </div>
+                          <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-xl p-5 border border-green-500/30">
+                            <div className="flex items-center gap-3 mb-3">
+                              <BarChart3 className="w-5 h-5 text-green-400" />
+                              <span className="text-xs text-gray-400">Total Trades</span>
+                            </div>
+                            <p className="text-3xl font-bold text-white">{analyticsOverview.trades?.total || 0}</p>
+                            <p className="text-xs text-green-400 mt-1">+{analyticsOverview.trades?.this_month || 0} this month</p>
+                          </div>
+                          <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 rounded-xl p-5 border border-purple-500/30">
+                            <div className="flex items-center gap-3 mb-3">
+                              <Target className="w-5 h-5 text-purple-400" />
+                              <span className="text-xs text-gray-400">Win Rate</span>
+                            </div>
+                            <p className="text-3xl font-bold text-white">{analyticsOverview.trades?.win_rate || 0}%</p>
+                            <p className="text-xs text-gray-400 mt-1">{analyticsOverview.trades?.winning || 0}W / {analyticsOverview.trades?.losing || 0}L</p>
+                          </div>
+                          <div className={`bg-gradient-to-br rounded-xl p-5 border ${(analyticsOverview.trades?.total_pnl || 0) >= 0 ? 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/30' : 'from-red-500/20 to-red-600/10 border-red-500/30'}`}>
+                            <div className="flex items-center gap-3 mb-3">
+                              <TrendingUp className={`w-5 h-5 ${(analyticsOverview.trades?.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
+                              <span className="text-xs text-gray-400">Total PnL</span>
+                            </div>
+                            <p className={`text-3xl font-bold ${(analyticsOverview.trades?.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              ${(analyticsOverview.trades?.total_pnl || 0).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Secondary Stats */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                            <span className="text-xs text-gray-400">Active Users</span>
+                            <p className="text-xl font-bold text-white mt-1">{analyticsOverview.users?.active || 0}</p>
+                          </div>
+                          <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                            <span className="text-xs text-gray-400">Journal Access</span>
+                            <p className="text-xl font-bold text-white mt-1">{analyticsOverview.users?.with_journal_access || 0}</p>
+                          </div>
+                          <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                            <span className="text-xs text-gray-400">Active Profiles</span>
+                            <p className="text-xl font-bold text-white mt-1">{analyticsOverview.profiles?.active || 0}</p>
+                          </div>
+                          <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                            <span className="text-xs text-gray-400">Active Groups</span>
+                            <p className="text-xl font-bold text-white mt-1">{analyticsOverview.groups?.active || 0}</p>
+                          </div>
+                        </div>
+
+                        {/* Top Symbols & Users */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          <div className="bg-[#0a1628] rounded-xl p-5 border border-[#2d4a6f]">
+                            <h4 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+                              <Star className="w-4 h-4 text-yellow-400" />
+                              Top Traded Symbols
+                            </h4>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {topSymbols.length > 0 ? topSymbols.map((symbol, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg">
+                                  <div className="flex items-center gap-3">
+                                    <span className="w-6 h-6 flex items-center justify-center bg-blue-500/20 text-blue-400 rounded text-xs font-bold">{idx + 1}</span>
+                                    <span className="font-medium text-white">{symbol.symbol}</span>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-sm">
+                                    <span className="text-gray-400">{symbol.trades} trades</span>
+                                    <span className="text-blue-400">{symbol.total_pnl}</span>
+                                  </div>
+                                </div>
+                              )) : <p className="text-gray-500 text-center py-4">No trade data</p>}
+                            </div>
+                          </div>
+                          <div className="bg-[#0a1628] rounded-xl p-5 border border-[#2d4a6f]">
+                            <h4 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+                              <Award className="w-4 h-4 text-orange-400" />
+                              Most Active Traders
+                            </h4>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {topUsers.length > 0 ? topUsers.map((user, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg">
+                                  <div className="flex items-center gap-3">
+                                    <span className={`w-6 h-6 flex items-center justify-center rounded text-xs font-bold ${idx === 0 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'}`}>{idx + 1}</span>
+                                    <div>
+                                      <p className="font-medium text-white text-sm">{user.name}</p>
+                                      <p className="text-xs text-gray-500">{user.email}</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm text-white">{user.trades} trades</p>
+                                    <p className="text-xs text-blue-400">{user.total_pnl}</p>
+                                  </div>
+                                </div>
+                              )) : <p className="text-gray-500 text-center py-4">No user activity</p>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Groups */}
+                        {groupAnalytics.length > 0 && (
+                          <div className="bg-[#0a1628] rounded-xl p-5 border border-[#2d4a6f]">
+                            <h4 className="text-sm font-medium text-white mb-4">Group Performance</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              {groupAnalytics.map((group, idx) => (
+                                <div key={idx} className="p-4 bg-[#1e3a5f] rounded-lg border border-[#2d4a6f]">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h5 className="font-medium text-white">{group.name}</h5>
+                                    <span className={`text-xs px-2 py-0.5 rounded ${group.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                                      {group.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">{group.user_count} users</span>
+                                    <span className="text-blue-400">{group.trade_count} trades</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center py-16 bg-[#0a1628] rounded-xl border border-[#2d4a6f]">
+                        <TrendingUp className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-500 mb-4">Click "Load Analytics" to view data</p>
+                        <button onClick={fetchAnalytics} disabled={analyticsLoading} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                          {analyticsLoading ? 'Loading...' : 'Load Analytics'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
