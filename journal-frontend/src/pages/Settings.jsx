@@ -1502,7 +1502,7 @@ export default function Settings() {
                     <div className="flex gap-1 bg-[#0a1628] p-1 rounded-lg border border-[#2d4a6f]">
                       <button
                         onClick={() => setUserTypeFilter('all')}
-                        className={`flex-1 px-3 py-2 rounded text-sm transition-all ${
+                        className={`flex-1 px-2 py-2 rounded text-xs transition-all ${
                           userTypeFilter === 'all' ? 'bg-[#1e3a5f] text-white' : 'text-gray-500 hover:text-white'
                         }`}
                       >
@@ -1510,15 +1510,23 @@ export default function Settings() {
                       </button>
                       <button
                         onClick={() => setUserTypeFilter('journal')}
-                        className={`flex-1 px-3 py-2 rounded text-sm transition-all ${
+                        className={`flex-1 px-2 py-2 rounded text-xs transition-all ${
                           userTypeFilter === 'journal' ? 'bg-[#1e3a5f] text-white' : 'text-gray-500 hover:text-white'
                         }`}
                       >
                         Journal ({users.filter(u => u.has_journal_access).length})
                       </button>
                       <button
+                        onClick={() => setUserTypeFilter('no-journal')}
+                        className={`flex-1 px-2 py-2 rounded text-xs transition-all ${
+                          userTypeFilter === 'no-journal' ? 'bg-[#1e3a5f] text-white' : 'text-gray-500 hover:text-white'
+                        }`}
+                      >
+                        No Journal ({users.filter(u => !u.has_journal_access).length})
+                      </button>
+                      <button
                         onClick={() => setUserTypeFilter('mentorship')}
-                        className={`flex-1 px-3 py-2 rounded text-sm transition-all ${
+                        className={`flex-1 px-2 py-2 rounded text-xs transition-all ${
                           userTypeFilter === 'mentorship' ? 'bg-[#1e3a5f] text-white' : 'text-gray-500 hover:text-white'
                         }`}
                       >
@@ -1541,6 +1549,7 @@ export default function Settings() {
                         {users
                           .filter(user => {
                             if (userTypeFilter === 'journal') return user.has_journal_access;
+                            if (userTypeFilter === 'no-journal') return !user.has_journal_access;
                             if (userTypeFilter === 'mentorship') return !user.has_journal_access;
                             return true;
                           })
