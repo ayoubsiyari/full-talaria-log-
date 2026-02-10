@@ -3,10 +3,90 @@
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
-from models import db, User, Profile
+from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email
 from passlib.context import CryptContext
+from datetime import datetime, timedelta
 import os
+
+# Security settings
+MAX_FAILED_ATTEMPTS = 10  # Block after 10 failed attempts
+BLOCK_DURATION_HOURS = 24  # Block for 24 hours
+FAILED_ATTEMPT_WINDOW_HOURS = 1  # Count attempts within 1 hour
+
+
+def get_client_ip():
+    """Get the real client IP address."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    if request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP')
+    return request.remote_addr or 'unknown'
+
+
+def is_ip_blocked(ip_address):
+    """Check if an IP is blocked."""
+    blocked = BlockedIP.query.filter_by(ip_address=ip_address).first()
+    if blocked and blocked.is_active():
+        return True
+    return False
+
+
+def record_failed_login(ip_address, email_attempted=None):
+    """Record a failed login attempt and auto-block if threshold exceeded."""
+    try:
+        # Record the failed attempt
+        attempt = FailedLoginAttempt(
+            ip_address=ip_address,
+            email_attempted=email_attempted,
+            user_agent=request.headers.get('User-Agent', '')[:500]
+        )
+        db.session.add(attempt)
+        
+        # Count recent failed attempts from this IP
+        since = datetime.utcnow() - timedelta(hours=FAILED_ATTEMPT_WINDOW_HOURS)
+        recent_attempts = FailedLoginAttempt.query.filter(
+            FailedLoginAttempt.ip_address == ip_address,
+            FailedLoginAttempt.attempted_at >= since
+        ).count()
+        
+        # Auto-block if too many failures
+        if recent_attempts >= MAX_FAILED_ATTEMPTS:
+            existing_block = BlockedIP.query.filter_by(ip_address=ip_address).first()
+            if not existing_block:
+                new_block = BlockedIP(
+                    ip_address=ip_address,
+                    reason=f"Auto-blocked: {recent_attempts} failed login attempts",
+                    blocked_until=datetime.utcnow() + timedelta(hours=BLOCK_DURATION_HOURS),
+                    failed_attempts=recent_attempts,
+                    blocked_by='system'
+                )
+                db.session.add(new_block)
+                
+                # Log security event
+                log_entry = SecurityLog(
+                    ip_address=ip_address,
+                    event_type='auto_block',
+                    details=f"Auto-blocked after {recent_attempts} failed login attempts",
+                    endpoint='/auth/login'
+                )
+                db.session.add(log_entry)
+        
+        db.session.commit()
+        return recent_attempts
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error recording failed login: {str(e)}")
+        return 0
+
+
+def clear_failed_attempts(ip_address):
+    """Clear failed login attempts after successful login."""
+    try:
+        FailedLoginAttempt.query.filter_by(ip_address=ip_address).delete()
+        db.session.commit()
+    except:
+        db.session.rollback()
 
 # Support both werkzeug and passlib password hashing (for compatibility with trading-chart backend)
 _pwd_passlib = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -38,6 +118,13 @@ def login_user():
     Expect JSON: { "email": "...", "password": "..." }
     If credentials match, returns { token, refresh_token, user: { id, email, email_verified } }.
     """
+    # Get client IP for security checks
+    client_ip = get_client_ip()
+    
+    # Check if IP is blocked
+    if is_ip_blocked(client_ip):
+        return jsonify({"error": "Access denied. Your IP has been temporarily blocked due to too many failed attempts. Please try again later."}), 403
+    
     data = request.get_json() or {}
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
@@ -47,6 +134,8 @@ def login_user():
 
     user = User.query.filter_by(email=email).first()
     if not user:
+        # Record failed attempt
+        record_failed_login(client_ip, email)
         return jsonify({"error": "No account found with this email. Please check your email or register for a new account."}), 401
 
     # Check if user has journal access
@@ -63,7 +152,12 @@ def login_user():
     pw_matches = verify_password_compat(user.password, password)
 
     if not pw_matches:
+        # Record failed attempt
+        record_failed_login(client_ip, email)
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
+    
+    # Successful login - clear failed attempts for this IP
+    clear_failed_attempts(client_ip)
 
     # Check if user has an active profile
     active_profile = Profile.query.filter_by(user_id=user.id, is_active=True).first()

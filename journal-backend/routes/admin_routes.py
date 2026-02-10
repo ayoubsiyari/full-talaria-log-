@@ -3,7 +3,7 @@
 from flask import Blueprint, request, jsonify, current_app, send_file, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, create_access_token, create_refresh_token
 from werkzeug.security import generate_password_hash
-from models import db, User, Profile, JournalEntry, Group
+from models import db, User, Profile, JournalEntry, Group, BlockedIP, SecurityLog, FailedLoginAttempt
 from email_service import mail
 from flask_mail import Message
 import logging
@@ -1607,3 +1607,251 @@ def monitoring_overview():
     except Exception as e:
         current_app.logger.error(f"Error in monitoring overview: {str(e)}")
         return jsonify({"error": f"Failed to get monitoring data: {str(e)}"}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Application-Level Security Endpoints
+# ══════════════════════════════════════════════════════════════════════════════
+
+@admin_bp.route('/security/blocked-ips', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_blocked_ips():
+    """Get all blocked IP addresses."""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        blocked = BlockedIP.query.order_by(BlockedIP.blocked_at.desc()).all()
+        return jsonify({
+            "blocked_ips": [{
+                "id": ip.id,
+                "ip_address": ip.ip_address,
+                "reason": ip.reason,
+                "blocked_at": ip.blocked_at.isoformat() if ip.blocked_at else None,
+                "blocked_until": ip.blocked_until.isoformat() if ip.blocked_until else None,
+                "failed_attempts": ip.failed_attempts,
+                "is_permanent": ip.is_permanent,
+                "is_active": ip.is_active(),
+                "blocked_by": ip.blocked_by
+            } for ip in blocked],
+            "total": len(blocked),
+            "active_count": sum(1 for ip in blocked if ip.is_active())
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching blocked IPs: {str(e)}")
+        return jsonify({"error": "Failed to fetch blocked IPs"}), 500
+
+
+@admin_bp.route('/security/block-ip', methods=['POST'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def block_ip():
+    """Manually block an IP address."""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        data = request.get_json()
+        ip_address = data.get('ip_address', '').strip()
+        reason = data.get('reason', 'Manually blocked by admin')
+        is_permanent = data.get('is_permanent', False)
+        duration_hours = data.get('duration_hours', 24)
+        
+        if not ip_address:
+            return jsonify({"error": "IP address is required"}), 400
+        
+        # Check if already blocked
+        existing = BlockedIP.query.filter_by(ip_address=ip_address).first()
+        if existing:
+            existing.reason = reason
+            existing.is_permanent = is_permanent
+            existing.blocked_until = None if is_permanent else datetime.utcnow() + timedelta(hours=duration_hours)
+            existing.blocked_by = get_jwt_identity()
+            db.session.commit()
+            log_admin_action("UPDATE_BLOCKED_IP", f"Updated block for IP: {ip_address}")
+            return jsonify({"message": f"Updated block for {ip_address}"}), 200
+        
+        # Create new block
+        blocked_until = None if is_permanent else datetime.utcnow() + timedelta(hours=duration_hours)
+        new_block = BlockedIP(
+            ip_address=ip_address,
+            reason=reason,
+            is_permanent=is_permanent,
+            blocked_until=blocked_until,
+            blocked_by=get_jwt_identity()
+        )
+        db.session.add(new_block)
+        
+        # Log security event
+        log_entry = SecurityLog(
+            ip_address=ip_address,
+            event_type='manual_block',
+            details=f"Blocked by admin: {reason}"
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        
+        log_admin_action("BLOCK_IP", f"Blocked IP: {ip_address} - {reason}")
+        return jsonify({"message": f"Successfully blocked {ip_address}"}), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error blocking IP: {str(e)}")
+        return jsonify({"error": "Failed to block IP"}), 500
+
+
+@admin_bp.route('/security/unblock-ip/<int:block_id>', methods=['DELETE'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def unblock_ip(block_id):
+    """Unblock an IP address."""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        blocked = BlockedIP.query.get(block_id)
+        if not blocked:
+            return jsonify({"error": "Blocked IP not found"}), 404
+        
+        ip_address = blocked.ip_address
+        db.session.delete(blocked)
+        
+        # Log security event
+        log_entry = SecurityLog(
+            ip_address=ip_address,
+            event_type='unblock',
+            details=f"Unblocked by admin: {get_jwt_identity()}"
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        
+        log_admin_action("UNBLOCK_IP", f"Unblocked IP: {ip_address}")
+        return jsonify({"message": f"Successfully unblocked {ip_address}"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error unblocking IP: {str(e)}")
+        return jsonify({"error": "Failed to unblock IP"}), 500
+
+
+@admin_bp.route('/security/logs', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_security_logs():
+    """Get security event logs."""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        event_type = request.args.get('event_type', None)
+        
+        query = SecurityLog.query
+        if event_type:
+            query = query.filter_by(event_type=event_type)
+        
+        logs = query.order_by(SecurityLog.created_at.desc()).limit(limit).all()
+        
+        return jsonify({
+            "logs": [{
+                "id": log.id,
+                "ip_address": log.ip_address,
+                "event_type": log.event_type,
+                "details": log.details,
+                "endpoint": log.endpoint,
+                "created_at": log.created_at.isoformat() if log.created_at else None
+            } for log in logs],
+            "total": len(logs)
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching security logs: {str(e)}")
+        return jsonify({"error": "Failed to fetch security logs"}), 500
+
+
+@admin_bp.route('/security/failed-logins', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_failed_logins():
+    """Get failed login attempts summary."""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        # Get failed attempts in last 24 hours
+        since = datetime.utcnow() - timedelta(hours=24)
+        
+        # Group by IP address
+        from sqlalchemy import func
+        failed_by_ip = db.session.query(
+            FailedLoginAttempt.ip_address,
+            func.count(FailedLoginAttempt.id).label('count'),
+            func.max(FailedLoginAttempt.attempted_at).label('last_attempt')
+        ).filter(
+            FailedLoginAttempt.attempted_at >= since
+        ).group_by(
+            FailedLoginAttempt.ip_address
+        ).order_by(
+            func.count(FailedLoginAttempt.id).desc()
+        ).limit(50).all()
+        
+        return jsonify({
+            "failed_logins": [{
+                "ip_address": row[0],
+                "attempts": row[1],
+                "last_attempt": row[2].isoformat() if row[2] else None
+            } for row in failed_by_ip],
+            "total_failed_24h": sum(row[1] for row in failed_by_ip)
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching failed logins: {str(e)}")
+        return jsonify({"error": "Failed to fetch failed login data"}), 500
+
+
+@admin_bp.route('/security/stats', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_security_stats():
+    """Get security statistics for dashboard."""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        from sqlalchemy import func
+        
+        # Count blocked IPs
+        blocked_count = BlockedIP.query.count()
+        active_blocks = sum(1 for ip in BlockedIP.query.all() if ip.is_active())
+        
+        # Failed logins in last 24 hours
+        since_24h = datetime.utcnow() - timedelta(hours=24)
+        failed_24h = FailedLoginAttempt.query.filter(
+            FailedLoginAttempt.attempted_at >= since_24h
+        ).count()
+        
+        # Security events in last 24 hours
+        events_24h = SecurityLog.query.filter(
+            SecurityLog.created_at >= since_24h
+        ).count()
+        
+        # Unique IPs with failed logins
+        unique_failed_ips = db.session.query(
+            func.count(func.distinct(FailedLoginAttempt.ip_address))
+        ).filter(
+            FailedLoginAttempt.attempted_at >= since_24h
+        ).scalar() or 0
+        
+        return jsonify({
+            "blocked_ips_total": blocked_count,
+            "blocked_ips_active": active_blocks,
+            "failed_logins_24h": failed_24h,
+            "security_events_24h": events_24h,
+            "unique_threat_ips": unique_failed_ips,
+            "protection_status": "active"
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching security stats: {str(e)}")
+        return jsonify({"error": "Failed to fetch security stats"}), 500

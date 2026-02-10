@@ -323,4 +323,48 @@ class FeatureFlags(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class BlockedIP(db.Model):
+    """Tracks blocked IP addresses for application-level security."""
+    __tablename__ = 'blocked_ips'
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), unique=True, nullable=False)  # IPv6 can be up to 45 chars
+    reason = db.Column(db.String(255), nullable=False)
+    blocked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    blocked_until = db.Column(db.DateTime, nullable=True)  # None = permanent
+    failed_attempts = db.Column(db.Integer, default=0)
+    is_permanent = db.Column(db.Boolean, default=False)
+    blocked_by = db.Column(db.String(100), default='system')  # 'system' or admin email
+    
+    def is_active(self):
+        """Check if the block is still active."""
+        if self.is_permanent:
+            return True
+        if self.blocked_until is None:
+            return True
+        return datetime.utcnow() < self.blocked_until
+
+
+class SecurityLog(db.Model):
+    """Logs security events for monitoring."""
+    __tablename__ = 'security_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), nullable=False)
+    event_type = db.Column(db.String(50), nullable=False)  # failed_login, blocked, suspicious_request, etc.
+    details = db.Column(db.Text, nullable=True)
+    user_agent = db.Column(db.String(500), nullable=True)
+    endpoint = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+
+class FailedLoginAttempt(db.Model):
+    """Tracks failed login attempts per IP for rate limiting."""
+    __tablename__ = 'failed_login_attempts'
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), nullable=False)
+    email_attempted = db.Column(db.String(255), nullable=True)
+    attempted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_agent = db.Column(db.String(500), nullable=True)
+
+
 

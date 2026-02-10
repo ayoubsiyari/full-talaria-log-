@@ -150,6 +150,14 @@ export default function Settings() {
   const [serverMonitoring, setServerMonitoring] = useState(null);
   const [serverMonitoringLoading, setServerMonitoringLoading] = useState(false);
 
+  // Application security state
+  const [securityStats, setSecurityStats] = useState(null);
+  const [blockedIPs, setBlockedIPs] = useState([]);
+  const [failedLogins, setFailedLogins] = useState([]);
+  const [newBlockIP, setNewBlockIP] = useState('');
+  const [newBlockReason, setNewBlockReason] = useState('');
+  const [blockingIP, setBlockingIP] = useState(false);
+
   // Feature flags context
   const { refreshFeatureFlags } = useFeatureFlags();
 
@@ -610,7 +618,6 @@ export default function Settings() {
       }
     } catch (err) {
       console.error('Error fetching server monitoring:', err);
-    } finally {
       setServerMonitoringLoading(false);
     }
   };
@@ -627,9 +634,74 @@ export default function Settings() {
     }
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    fetchUsers(1, searchTerm);
+  const fetchSecurityData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+      
+      const [statsRes, blockedRes, failedRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/security/stats`, { headers }),
+        fetch(`${API_BASE_URL}/admin/security/blocked-ips`, { headers }),
+        fetch(`${API_BASE_URL}/admin/security/failed-logins`, { headers })
+      ]);
+      
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        setSecurityStats(data);
+      }
+      if (blockedRes.ok) {
+        const data = await blockedRes.json();
+        setBlockedIPs(data.blocked_ips || []);
+      }
+      if (failedRes.ok) {
+        const data = await failedRes.json();
+        setFailedLogins(data.failed_logins || []);
+      }
+    } catch (err) {
+      console.error('Error fetching security data:', err);
+    }
+  };
+
+  const handleBlockIP = async () => {
+    if (!newBlockIP.trim()) return;
+    setBlockingIP(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/admin/security/block-ip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          ip_address: newBlockIP.trim(),
+          reason: newBlockReason.trim() || 'Manually blocked by admin',
+          is_permanent: false,
+          duration_hours: 24
+        })
+      });
+      if (res.ok) {
+        setNewBlockIP('');
+        setNewBlockReason('');
+        fetchSecurityData();
+      }
+    } catch (err) {
+      console.error('Error blocking IP:', err);
+    } finally {
+      setBlockingIP(false);
+    }
+  };
+
+  const handleUnblockIP = async (blockId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/admin/security/unblock-ip/${blockId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchSecurityData();
+      }
+    } catch (err) {
+      console.error('Error unblocking IP:', err);
+    }
   };
 
   const handlePageChange = (newPage) => {
@@ -1818,162 +1890,130 @@ export default function Settings() {
                     )}
 
                     {/* Security & Threat Protection */}
-                    {serverMonitoring?.security && (
-                      <div className="bg-[#0a1628] rounded-lg p-5 border border-[#2d4a6f]">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-sm font-medium text-white flex items-center gap-2">
-                            <Shield className="w-4 h-4 text-blue-400" />
-                            Security & Threat Protection
-                          </h4>
-                          {serverMonitoring.security.container_mode ? (
-                            <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">
-                              Host-Level Security
-                            </span>
-                          ) : (
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              serverMonitoring.security.fail2ban?.status === 'active' 
-                                ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                            }`}>
-                              {serverMonitoring.security.fail2ban?.status === 'active' ? 'Protected' : 'At Risk'}
-                            </span>
-                          )}
-                        </div>
-
-                        {serverMonitoring.security.container_mode ? (
-                          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-center">
-                            <p className="text-blue-400 text-sm">
-                              Security services (Fail2Ban, UFW) run on the host server, not inside containers.
-                            </p>
-                            <p className="text-gray-500 text-xs mt-2">
-                              Container isolation provides additional security layer.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                            {/* Fail2Ban Status */}
-                            <div className={`rounded-lg p-4 border ${
-                              serverMonitoring.security.fail2ban?.status === 'active' 
-                                ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'
-                            }`}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className={`w-2 h-2 rounded-full ${
-                                  serverMonitoring.security.fail2ban?.status === 'active' ? 'bg-green-500' : 'bg-red-500'
-                                }`} />
-                                <span className="text-xs text-gray-400">Fail2Ban</span>
-                              </div>
-                              <p className={`text-lg font-bold capitalize ${
-                                serverMonitoring.security.fail2ban?.status === 'active' ? 'text-green-400' : 'text-red-400'
-                              }`}>
-                                {serverMonitoring.security.fail2ban?.status || 'Unknown'}
-                              </p>
-                            </div>
-
-                            {/* Firewall Status */}
-                            <div className={`rounded-lg p-4 border ${
-                              serverMonitoring.security.firewall?.ufw_status?.includes('active') 
-                                ? 'bg-green-500/10 border-green-500/30' : 'bg-yellow-500/10 border-yellow-500/30'
-                            }`}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className={`w-2 h-2 rounded-full ${
-                                  serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'bg-green-500' : 'bg-yellow-500'
-                                }`} />
-                                <span className="text-xs text-gray-400">Firewall</span>
-                              </div>
-                              <p className={`text-lg font-bold ${
-                                serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'text-green-400' : 'text-yellow-400'
-                              }`}>
-                                {serverMonitoring.security.firewall?.ufw_status?.includes('active') ? 'Active' : 'Inactive'}
-                              </p>
-                            </div>
-
-                            {/* Banned IPs Count */}
-                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <AlertTriangle className="w-3 h-3 text-red-400" />
-                                <span className="text-xs text-gray-400">Banned IPs</span>
-                              </div>
-                              <p className="text-lg font-bold text-red-400">
-                                {serverMonitoring.security.fail2ban?.banned_count || 0}
-                              </p>
-                            </div>
-
-                            {/* Nginx Errors */}
-                            <div className={`rounded-lg p-4 border ${
-                              (serverMonitoring.security.nginx_errors_today || 0) > 100 
-                                ? 'bg-red-500/10 border-red-500/30' 
-                                : (serverMonitoring.security.nginx_errors_today || 0) > 20 
-                                  ? 'bg-yellow-500/10 border-yellow-500/30' 
-                                  : 'bg-[#1e3a5f] border-[#2d4a6f]'
-                            }`}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <Globe className="w-3 h-3 text-gray-400" />
-                                <span className="text-xs text-gray-400">HTTP Errors</span>
-                              </div>
-                              <p className={`text-lg font-bold ${
-                                (serverMonitoring.security.nginx_errors_today || 0) > 100 ? 'text-red-400' :
-                                (serverMonitoring.security.nginx_errors_today || 0) > 20 ? 'text-yellow-400' : 'text-white'
-                              }`}>
-                                {serverMonitoring.security.nginx_errors_today || 0}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Blocked IPs Table */}
-                        {serverMonitoring.security.fail2ban?.banned_ips?.length > 0 && (
-                          <div className="mt-4">
-                            <h5 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
-                              <Ban className="w-3 h-3" />
-                              Blocked IP Addresses ({serverMonitoring.security.fail2ban.banned_count})
-                            </h5>
-                            <div className="bg-[#1e3a5f] rounded-lg overflow-hidden">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="border-b border-[#2d4a6f]">
-                                    <th className="text-left py-2 px-3 text-xs text-gray-400 font-medium">IP Address</th>
-                                    <th className="text-left py-2 px-3 text-xs text-gray-400 font-medium">Jail/Reason</th>
-                                    <th className="text-left py-2 px-3 text-xs text-gray-400 font-medium">Status</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {serverMonitoring.security.fail2ban.banned_ips.slice(0, 10).map((item, idx) => (
-                                    <tr key={idx} className="border-b border-[#2d4a6f]/50 last:border-0">
-                                      <td className="py-2 px-3">
-                                        <span className="text-red-400 font-mono text-xs">{item.ip}</span>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <span className="text-xs text-gray-400">{item.jail}</span>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">Blocked</span>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Failed SSH Attempts */}
-                        {serverMonitoring.security.recent_failed_ssh?.length > 0 && (
-                          <div className="mt-4">
-                            <h5 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
-                              <AlertCircle className="w-3 h-3 text-yellow-400" />
-                              Recent Failed SSH Attempts
-                            </h5>
-                            <div className="bg-[#1e3a5f] rounded-lg p-3 font-mono text-xs text-yellow-400 max-h-32 overflow-y-auto space-y-1">
-                              {serverMonitoring.security.recent_failed_ssh.map((attempt, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <span className="text-gray-500">•</span>
-                                  <span>{attempt}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                    <div className="bg-[#0a1628] rounded-lg p-5 border border-[#2d4a6f]">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-sm font-medium text-white flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-blue-400" />
+                          Security & Threat Protection
+                        </h4>
+                        <button
+                          onClick={fetchSecurityData}
+                          className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                        >
+                          Load Security Data
+                        </button>
                       </div>
-                    )}
+
+                      {/* Security Stats */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-2 h-2 rounded-full bg-green-500" />
+                            <span className="text-xs text-gray-400">Protection</span>
+                          </div>
+                          <p className="text-lg font-bold text-green-400">{securityStats?.protection_status || 'Active'}</p>
+                        </div>
+                        <div className={`rounded-lg p-4 border ${(securityStats?.blocked_ips_active || 0) > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-[#1e3a5f] border-[#2d4a6f]'}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Ban className="w-3 h-3 text-red-400" />
+                            <span className="text-xs text-gray-400">Blocked IPs</span>
+                          </div>
+                          <p className="text-lg font-bold text-white">{securityStats?.blocked_ips_active || 0}</p>
+                        </div>
+                        <div className={`rounded-lg p-4 border ${(securityStats?.failed_logins_24h || 0) > 50 ? 'bg-red-500/10 border-red-500/30' : (securityStats?.failed_logins_24h || 0) > 10 ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-[#1e3a5f] border-[#2d4a6f]'}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <AlertTriangle className="w-3 h-3 text-yellow-400" />
+                            <span className="text-xs text-gray-400">Failed Logins (24h)</span>
+                          </div>
+                          <p className="text-lg font-bold text-white">{securityStats?.failed_logins_24h || 0}</p>
+                        </div>
+                        <div className="bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Globe className="w-3 h-3 text-gray-400" />
+                            <span className="text-xs text-gray-400">Threat IPs (24h)</span>
+                          </div>
+                          <p className="text-lg font-bold text-white">{securityStats?.unique_threat_ips || 0}</p>
+                        </div>
+                      </div>
+
+                      {/* Block IP Form */}
+                      <div className="bg-[#1e3a5f] rounded-lg p-4 mb-4">
+                        <h5 className="text-xs font-medium text-gray-400 mb-3">Block IP Address</h5>
+                        <div className="flex gap-2 flex-wrap">
+                          <input
+                            type="text"
+                            value={newBlockIP}
+                            onChange={(e) => setNewBlockIP(e.target.value)}
+                            placeholder="IP Address"
+                            className="flex-1 min-w-[150px] px-3 py-2 bg-[#0a1628] border border-[#2d4a6f] rounded text-white text-sm"
+                          />
+                          <input
+                            type="text"
+                            value={newBlockReason}
+                            onChange={(e) => setNewBlockReason(e.target.value)}
+                            placeholder="Reason (optional)"
+                            className="flex-1 min-w-[150px] px-3 py-2 bg-[#0a1628] border border-[#2d4a6f] rounded text-white text-sm"
+                          />
+                          <button
+                            onClick={handleBlockIP}
+                            disabled={blockingIP || !newBlockIP.trim()}
+                            className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {blockingIP ? 'Blocking...' : 'Block IP'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Blocked IPs Table */}
+                      {blockedIPs.length > 0 && (
+                        <div className="mb-4">
+                          <h5 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                            <Ban className="w-3 h-3" />
+                            Blocked IP Addresses ({blockedIPs.length})
+                          </h5>
+                          <div className="bg-[#1e3a5f] rounded-lg overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-[#2d4a6f]">
+                                  <th className="text-left py-2 px-3 text-xs text-gray-400 font-medium">IP</th>
+                                  <th className="text-left py-2 px-3 text-xs text-gray-400 font-medium">Reason</th>
+                                  <th className="text-left py-2 px-3 text-xs text-gray-400 font-medium">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {blockedIPs.slice(0, 10).map((item) => (
+                                  <tr key={item.id} className="border-b border-[#2d4a6f]/50 last:border-0">
+                                    <td className="py-2 px-3"><span className="text-red-400 font-mono text-xs">{item.ip_address}</span></td>
+                                    <td className="py-2 px-3"><span className="text-xs text-gray-400">{item.reason}</span></td>
+                                    <td className="py-2 px-3">
+                                      <button onClick={() => handleUnblockIP(item.id)} className="text-xs text-blue-400 hover:text-blue-300">Unblock</button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Failed Logins */}
+                      {serverMonitoring.security.recent_failed_ssh?.length > 0 && (
+                        <div className="mt-4">
+                          <h5 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                            <AlertCircle className="w-3 h-3 text-yellow-400" />
+                            Recent Failed SSH Attempts
+                          </h5>
+                          <div className="bg-[#1e3a5f] rounded-lg p-3 font-mono text-xs text-yellow-400 max-h-32 overflow-y-auto space-y-1">
+                            {serverMonitoring.security.recent_failed_ssh.map((attempt, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <span className="text-gray-500">•</span>
+                                <span>{attempt}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Services Status */}
                     {serverMonitoring?.services && (
