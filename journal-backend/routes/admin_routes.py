@@ -2429,17 +2429,14 @@ def get_geography_analytics():
         sorted_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)
         top_countries = [{"country": c, "count": n, "percentage": round(n/total_users*100, 1) if total_users > 0 else 0} for c, n in sorted_countries[:15]]
         
-        # Get profile data for age calculation
-        profiles = Profile.query.join(User).filter(User.id.in_([u.id for u in users])).all()
-        
-        # Age distribution (from birth_date in profile)
+        # Age distribution (from birth_date in User model)
         age_distribution = {"18-24": 0, "25-34": 0, "35-44": 0, "45-54": 0, "55+": 0, "Unknown": 0}
         current_year = datetime.utcnow().year
         
-        for profile in profiles:
-            if hasattr(profile, 'birth_date') and profile.birth_date:
+        for user in users:
+            if user.birth_date:
                 try:
-                    age = current_year - profile.birth_date.year
+                    age = current_year - user.birth_date.year
                     if age < 18:
                         age_distribution["18-24"] += 1
                     elif age < 25:

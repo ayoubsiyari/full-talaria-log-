@@ -72,6 +72,9 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     has_journal_access = db.Column(db.Boolean, default=False)
     group_id = db.Column(db.Integer, db.ForeignKey('journal_groups.id'), nullable=True)
+    country = db.Column(db.String(100), nullable=True)
+    phone = db.Column(db.String(50), nullable=True)
+    birth_date = db.Column(db.Date, nullable=True)
     
     # Alias for compatibility with journal backend auth
     @property
@@ -103,16 +106,6 @@ class User(db.Model):
     def initial_balance(self):
         # Default initial balance - can be customized per user if needed
         return 0.0
-    
-    @property
-    def phone(self):
-        # Compatibility property - field doesn't exist in this schema
-        return None
-    
-    @property
-    def country(self):
-        # Compatibility property - field doesn't exist in this schema
-        return None
     
     @property
     def profile_image(self):
