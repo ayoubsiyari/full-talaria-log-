@@ -2222,7 +2222,7 @@ def get_system_stats():
 @admin_bp.route('/analytics/groups', methods=['GET'])
 @jwt_required()
 @rate_limit_admin(max_requests=30, window_seconds=60)
-def get_group_analytics():
+def get_groups_analytics_summary():
     """Get analytics per group"""
     if not is_admin_user():
         return jsonify({"error": "Admin access required"}), 403
