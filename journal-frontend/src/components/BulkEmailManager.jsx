@@ -249,7 +249,7 @@ const EMAIL_TEMPLATES = [
     name: '📢 General Announcement (Arabic)',
     subject: 'إعلان هام - Talaria Trading',
     content: `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl"> 
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5;">
