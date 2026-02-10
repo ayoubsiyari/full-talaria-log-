@@ -320,6 +320,418 @@ const EMAIL_TEMPLATES = [
     </table>
 </body>
 </html>`
+  },
+  // ============ NEWSLETTER TEMPLATES ============
+  {
+    id: 'newsletter-weekly-tips',
+    name: '📰 Newsletter: Weekly Trading Tips (Arabic)',
+    subject: 'نشرة Talaria الأسبوعية - نصائح وتحديثات التداول',
+    category: 'newsletter',
+    content: `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f0f4f8; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f0f4f8;">
+        <tr>
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 40px 30px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="80" style="display: block; margin: 0 auto;">
+                            <h1 style="color: #ffffff; font-size: 28px; margin: 20px 0 5px 0; font-weight: 700;">📰 النشرة الأسبوعية</h1>
+                            <p style="color: #a8c5e2; font-size: 14px; margin: 0;">نصائح وتحديثات من Talaria Trading</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <p style="color: #333; font-size: 16px; line-height: 1.8; margin: 0 0 25px 0;">مرحباً 👋</p>
+                            <p style="color: #555; font-size: 15px; line-height: 1.8; margin: 0 0 25px 0;">نتمنى لك أسبوعاً مليئاً بالنجاح! إليك أهم النصائح والتحديثات لهذا الأسبوع:</p>
+                            
+                            <!-- Tip Card 1 -->
+                            <div style="background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%); border-radius: 12px; padding: 25px; margin-bottom: 20px; border-right: 5px solid #1e3a5f;">
+                                <h3 style="color: #1e3a5f; font-size: 18px; margin: 0 0 12px 0;">💡 نصيحة الأسبوع</h3>
+                                <p style="color: #444; font-size: 14px; line-height: 1.8; margin: 0;">[أضف نصيحة التداول هنا - مثال: "التزم بخطة التداول الخاصة بك ولا تدع العواطف تتحكم في قراراتك. المتداول الناجح يتبع استراتيجية واضحة."]</p>
+                            </div>
+                            
+                            <!-- Tip Card 2 -->
+                            <div style="background: linear-gradient(135deg, #f0fdf4 0%, #f0fff4 100%); border-radius: 12px; padding: 25px; margin-bottom: 20px; border-right: 5px solid #22c55e;">
+                                <h3 style="color: #166534; font-size: 18px; margin: 0 0 12px 0;">📊 تحليل السوق</h3>
+                                <p style="color: #444; font-size: 14px; line-height: 1.8; margin: 0;">[أضف تحليل السوق أو الملاحظات المهمة هنا]</p>
+                            </div>
+                            
+                            <!-- Tip Card 3 -->
+                            <div style="background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%); border-radius: 12px; padding: 25px; margin-bottom: 20px; border-right: 5px solid #f59e0b;">
+                                <h3 style="color: #92400e; font-size: 18px; margin: 0 0 12px 0;">⚡ تذكير مهم</h3>
+                                <p style="color: #444; font-size: 14px; line-height: 1.8; margin: 0;">[أضف أي تذكيرات أو إعلانات مهمة هنا]</p>
+                            </div>
+                            
+                            <!-- CTA Button -->
+                            <div style="text-align: center; margin-top: 30px;">
+                                <a href="https://talaria-log.com/journal" style="display: inline-block; background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); color: #ffffff; padding: 15px 40px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">سجّل صفقاتك الآن 📝</a>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #1e3a5f; padding: 25px; text-align: center;">
+                            <p style="color: #a8c5e2; font-size: 13px; margin: 0 0 10px 0;">تابعنا على منصات التواصل الاجتماعي</p>
+                            <p style="color: #ffffff; font-size: 12px; margin: 15px 0 0 0;">© 2026 Talaria Trading | جميع الحقوق محفوظة</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`
+  },
+  {
+    id: 'newsletter-market-update',
+    name: '📈 Newsletter: Market Update (Arabic)',
+    subject: 'تحديث الأسواق - Talaria Trading',
+    category: 'newsletter',
+    content: `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #0f172a; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #0f172a;">
+        <tr>
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #1e293b; border-radius: 16px; overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 30px; text-align: center; border-bottom: 1px solid #334155;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="70" style="display: block; margin: 0 auto;">
+                            <h1 style="color: #ffffff; font-size: 26px; margin: 20px 0 5px 0;">📈 تحديث الأسواق</h1>
+                            <p style="color: #94a3b8; font-size: 14px; margin: 0;">[التاريخ]</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Market Stats -->
+                    <tr>
+                        <td style="padding: 25px;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td width="50%" style="padding: 10px;">
+                                        <div style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); border-radius: 12px; padding: 20px; text-align: center;">
+                                            <p style="color: rgba(255,255,255,0.8); font-size: 12px; margin: 0;">ES (S&P 500)</p>
+                                            <p style="color: #ffffff; font-size: 24px; font-weight: bold; margin: 8px 0;">+0.85%</p>
+                                            <p style="color: rgba(255,255,255,0.7); font-size: 11px; margin: 0;">5,234.50</p>
+                                        </div>
+                                    </td>
+                                    <td width="50%" style="padding: 10px;">
+                                        <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); border-radius: 12px; padding: 20px; text-align: center;">
+                                            <p style="color: rgba(255,255,255,0.8); font-size: 12px; margin: 0;">NQ (Nasdaq)</p>
+                                            <p style="color: #ffffff; font-size: 24px; font-weight: bold; margin: 8px 0;">-0.42%</p>
+                                            <p style="color: rgba(255,255,255,0.7); font-size: 11px; margin: 0;">18,456.25</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Analysis -->
+                    <tr>
+                        <td style="padding: 0 25px 25px 25px;">
+                            <div style="background-color: #0f172a; border-radius: 12px; padding: 25px; border: 1px solid #334155;">
+                                <h3 style="color: #ffffff; font-size: 18px; margin: 0 0 15px 0;">🎯 نظرة على السوق</h3>
+                                <p style="color: #cbd5e1; font-size: 14px; line-height: 1.9; margin: 0;">[أضف تحليلك للسوق هنا - مستويات الدعم والمقاومة، الاتجاه العام، نقاط الدخول المحتملة، إلخ.]</p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Key Levels -->
+                    <tr>
+                        <td style="padding: 0 25px 25px 25px;">
+                            <div style="background-color: #0f172a; border-radius: 12px; padding: 25px; border: 1px solid #334155;">
+                                <h3 style="color: #ffffff; font-size: 18px; margin: 0 0 15px 0;">📍 مستويات مهمة</h3>
+                                <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td style="padding: 10px 0; border-bottom: 1px solid #334155;">
+                                            <span style="color: #94a3b8; font-size: 13px;">مقاومة 1:</span>
+                                            <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: left;">[المستوى]</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px 0; border-bottom: 1px solid #334155;">
+                                            <span style="color: #94a3b8; font-size: 13px;">دعم 1:</span>
+                                            <span style="color: #ef4444; font-size: 14px; font-weight: 600; float: left;">[المستوى]</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px 0;">
+                                            <span style="color: #94a3b8; font-size: 13px;">دعم 2:</span>
+                                            <span style="color: #ef4444; font-size: 14px; font-weight: 600; float: left;">[المستوى]</span>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #0f172a; padding: 25px; text-align: center; border-top: 1px solid #334155;">
+                            <p style="color: #64748b; font-size: 11px; margin: 0;">⚠️ هذا التحليل للأغراض التعليمية فقط وليس نصيحة استثمارية</p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 15px 0 0 0;">© 2026 Talaria Trading</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`
+  },
+  {
+    id: 'newsletter-educational',
+    name: '📚 Newsletter: Educational Content (Arabic)',
+    subject: 'درس تعليمي جديد - Talaria Trading',
+    category: 'newsletter',
+    content: `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #fafafa; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fafafa;">
+        <tr>
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 15px rgba(0,0,0,0.08);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 40px 30px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="70" style="display: block; margin: 0 auto;">
+                            <h1 style="color: #ffffff; font-size: 26px; margin: 20px 0 5px 0;">📚 الدرس التعليمي</h1>
+                            <p style="color: rgba(255,255,255,0.85); font-size: 14px; margin: 0;">تعلّم، طبّق، تطوّر</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Lesson Title -->
+                    <tr>
+                        <td style="padding: 30px 30px 0 30px;">
+                            <div style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); border-radius: 12px; padding: 25px; border-right: 5px solid #7c3aed;">
+                                <p style="color: #7c3aed; font-size: 12px; font-weight: 600; margin: 0 0 8px 0; text-transform: uppercase;">الدرس رقم [X]</p>
+                                <h2 style="color: #1e1b4b; font-size: 22px; margin: 0;">[عنوان الدرس]</h2>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Lesson Content -->
+                    <tr>
+                        <td style="padding: 25px 30px;">
+                            <p style="color: #374151; font-size: 15px; line-height: 1.9; margin: 0 0 20px 0;">[مقدمة الدرس - اشرح ما سيتعلمه القارئ]</p>
+                            
+                            <h3 style="color: #1e1b4b; font-size: 17px; margin: 25px 0 15px 0;">🎯 النقاط الرئيسية:</h3>
+                            <ul style="color: #374151; font-size: 14px; line-height: 2; margin: 0; padding-right: 20px;">
+                                <li>[النقطة الأولى]</li>
+                                <li>[النقطة الثانية]</li>
+                                <li>[النقطة الثالثة]</li>
+                            </ul>
+                            
+                            <!-- Key Takeaway Box -->
+                            <div style="background-color: #fef3c7; border-radius: 12px; padding: 20px; margin-top: 25px;">
+                                <p style="color: #92400e; font-size: 14px; margin: 0;">
+                                    <strong>💡 الخلاصة:</strong><br>
+                                    [ملخص أهم نقطة في الدرس]
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Practice Section -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #f0fdf4; border-radius: 12px; padding: 25px; border: 1px dashed #22c55e;">
+                                <h3 style="color: #166534; font-size: 16px; margin: 0 0 12px 0;">✍️ تمرين عملي</h3>
+                                <p style="color: #374151; font-size: 14px; line-height: 1.8; margin: 0;">[أضف تمرين عملي يمكن للقارئ تطبيقه]</p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- CTA -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px; text-align: center;">
+                            <a href="https://talaria-log.com/journal" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: #ffffff; padding: 15px 40px; border-radius: 8px; text-decoration: none; font-weight: 600;">طبّق ما تعلمته الآن 🚀</a>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f5f3ff; padding: 25px; text-align: center; border-top: 1px solid #e9d5ff;">
+                            <p style="color: #6b7280; font-size: 12px; margin: 0;">© 2026 Talaria Trading | جميع الحقوق محفوظة</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`
+  },
+  {
+    id: 'newsletter-community-update',
+    name: '👥 Newsletter: Community Update (Arabic)',
+    subject: 'أخبار مجتمع Talaria - تحديثات وإنجازات',
+    category: 'newsletter',
+    content: `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc;">
+        <tr>
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #1e3a5f 0%, #0d4073 50%, #1e3a5f 100%); padding: 40px 30px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="70" style="display: block; margin: 0 auto;">
+                            <h1 style="color: #ffffff; font-size: 26px; margin: 20px 0 5px 0;">👥 أخبار المجتمع</h1>
+                            <p style="color: #a8c5e2; font-size: 14px; margin: 0;">تحديثات وإنجازات من عائلة Talaria</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Welcome Message -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <p style="color: #374151; font-size: 16px; line-height: 1.8; margin: 0 0 25px 0;">مرحباً بكم! 🎉</p>
+                            <p style="color: #6b7280; font-size: 15px; line-height: 1.8; margin: 0 0 25px 0;">إليكم آخر الأخبار والتحديثات من مجتمعنا:</p>
+                            
+                            <!-- Stats Grid -->
+                            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 25px;">
+                                <tr>
+                                    <td width="33%" style="padding: 5px;">
+                                        <div style="background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%); border-radius: 12px; padding: 20px; text-align: center;">
+                                            <p style="color: #1e40af; font-size: 28px; font-weight: 700; margin: 0;">[X]</p>
+                                            <p style="color: #6b7280; font-size: 11px; margin: 5px 0 0 0;">أعضاء جدد</p>
+                                        </div>
+                                    </td>
+                                    <td width="33%" style="padding: 5px;">
+                                        <div style="background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%); border-radius: 12px; padding: 20px; text-align: center;">
+                                            <p style="color: #166534; font-size: 28px; font-weight: 700; margin: 0;">[X]</p>
+                                            <p style="color: #6b7280; font-size: 11px; margin: 5px 0 0 0;">صفقة مسجلة</p>
+                                        </div>
+                                    </td>
+                                    <td width="33%" style="padding: 5px;">
+                                        <div style="background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%); border-radius: 12px; padding: 20px; text-align: center;">
+                                            <p style="color: #92400e; font-size: 28px; font-weight: 700; margin: 0;">[X]</p>
+                                            <p style="color: #6b7280; font-size: 11px; margin: 5px 0 0 0;">ساعة تعليم</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- News Item 1 -->
+                            <div style="background-color: #f8fafc; border-radius: 12px; padding: 20px; margin-bottom: 15px; border-right: 4px solid #1e3a5f;">
+                                <h3 style="color: #1e3a5f; font-size: 16px; margin: 0 0 10px 0;">🆕 [عنوان الخبر الأول]</h3>
+                                <p style="color: #6b7280; font-size: 14px; line-height: 1.7; margin: 0;">[تفاصيل الخبر]</p>
+                            </div>
+                            
+                            <!-- News Item 2 -->
+                            <div style="background-color: #f8fafc; border-radius: 12px; padding: 20px; margin-bottom: 15px; border-right: 4px solid #22c55e;">
+                                <h3 style="color: #166534; font-size: 16px; margin: 0 0 10px 0;">🏆 [إنجاز أو تهنئة]</h3>
+                                <p style="color: #6b7280; font-size: 14px; line-height: 1.7; margin: 0;">[تفاصيل الإنجاز]</p>
+                            </div>
+                            
+                            <!-- Upcoming Events -->
+                            <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); border-radius: 12px; padding: 25px; margin-top: 25px;">
+                                <h3 style="color: #ffffff; font-size: 17px; margin: 0 0 15px 0;">📅 الفعاليات القادمة</h3>
+                                <p style="color: #a8c5e2; font-size: 14px; line-height: 1.8; margin: 0;">[أضف الفعاليات والمواعيد المهمة]</p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8fafc; padding: 25px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #6b7280; font-size: 12px; margin: 0;">© 2026 Talaria Trading | جميع الحقوق محفوظة</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`
+  },
+  {
+    id: 'newsletter-promo',
+    name: '🎁 Newsletter: Special Offer (Arabic)',
+    subject: 'عرض خاص لفترة محدودة - Talaria Trading',
+    category: 'newsletter',
+    content: `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #1a1a2e; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #1a1a2e;">
+        <tr>
+            <td align="center" style="padding: 20px 10px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background: linear-gradient(180deg, #16213e 0%, #0f3460 100%); border-radius: 16px; overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 30px; text-align: center;">
+                            <img src="https://talaria-log.com/logo-08.png" alt="Talaria" width="70" style="display: block; margin: 0 auto;">
+                            <div style="background: linear-gradient(90deg, #f59e0b 0%, #ef4444 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                                <h1 style="font-size: 32px; margin: 20px 0 5px 0; font-weight: 800;">🎁 عرض خاص!</h1>
+                            </div>
+                            <p style="color: #fcd34d; font-size: 16px; margin: 0;">لفترة محدودة فقط</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Offer Box -->
+                    <tr>
+                        <td style="padding: 0 30px;">
+                            <div style="background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); border-radius: 16px; padding: 30px; text-align: center;">
+                                <p style="color: rgba(255,255,255,0.9); font-size: 14px; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 2px;">خصم</p>
+                                <p style="color: #ffffff; font-size: 56px; font-weight: 800; margin: 0; line-height: 1;">[X]%</p>
+                                <p style="color: rgba(255,255,255,0.9); font-size: 16px; margin: 10px 0 0 0;">[على ماذا؟]</p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Details -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <p style="color: #e2e8f0; font-size: 15px; line-height: 1.9; margin: 0 0 20px 0; text-align: center;">[تفاصيل العرض - ماذا يشمل وما هي الفوائد]</p>
+                            
+                            <!-- Features -->
+                            <div style="background-color: rgba(255,255,255,0.05); border-radius: 12px; padding: 25px; margin-bottom: 25px;">
+                                <h3 style="color: #fcd34d; font-size: 16px; margin: 0 0 15px 0;">✨ ماذا تحصل عليه؟</h3>
+                                <ul style="color: #e2e8f0; font-size: 14px; line-height: 2.2; margin: 0; padding-right: 20px;">
+                                    <li>[الميزة الأولى]</li>
+                                    <li>[الميزة الثانية]</li>
+                                    <li>[الميزة الثالثة]</li>
+                                </ul>
+                            </div>
+                            
+                            <!-- Timer Box -->
+                            <div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 25px;">
+                                <p style="color: #fca5a5; font-size: 14px; margin: 0;">⏰ ينتهي العرض خلال: <strong>[المدة المتبقية]</strong></p>
+                            </div>
+                            
+                            <!-- CTA -->
+                            <div style="text-align: center;">
+                                <a href="[LINK]" style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); color: #ffffff; padding: 18px 50px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 18px; box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4);">احصل على العرض الآن 🚀</a>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 25px; text-align: center; border-top: 1px solid rgba(255,255,255,0.1);">
+                            <p style="color: #64748b; font-size: 11px; margin: 0;">هذا العرض لفترة محدودة ولا يمكن دمجه مع عروض أخرى</p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 10px 0 0 0;">© 2026 Talaria Trading</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`
   }
 ];
 
@@ -704,11 +1116,31 @@ const BulkEmailManager = ({ users = [] }) => {
               
               {showTemplates && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-[#1e3a5f] rounded-xl shadow-2xl border border-[#2d4a6f] z-50 overflow-hidden">
-                  <div className="p-3 bg-[#0d1f35] border-b border-[#2d4a6f]">
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Available Templates</p>
-                  </div>
-                  <div className="max-h-[300px] overflow-y-auto">
-                    {EMAIL_TEMPLATES.map((template) => (
+                  <div className="max-h-[400px] overflow-y-auto">
+                    {/* Email Templates Section */}
+                    <div className="p-3 bg-[#0d1f35] border-b border-[#2d4a6f] sticky top-0">
+                      <p className="text-xs font-medium text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5" /> Email Templates
+                      </p>
+                    </div>
+                    {EMAIL_TEMPLATES.filter(t => !t.category).map((template) => (
+                      <button
+                        key={template.id}
+                        onClick={() => loadTemplate(template)}
+                        className="w-full px-4 py-3 text-left hover:bg-[#2d4a6f] transition-colors border-b border-[#2d4a6f]"
+                      >
+                        <p className="font-medium text-white">{template.name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 truncate">{template.subject}</p>
+                      </button>
+                    ))}
+                    
+                    {/* Newsletter Templates Section */}
+                    <div className="p-3 bg-[#0d1f35] border-b border-[#2d4a6f] sticky top-0">
+                      <p className="text-xs font-medium text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                        📰 Newsletter Templates
+                      </p>
+                    </div>
+                    {EMAIL_TEMPLATES.filter(t => t.category === 'newsletter').map((template) => (
                       <button
                         key={template.id}
                         onClick={() => loadTemplate(template)}

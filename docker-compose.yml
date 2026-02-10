@@ -55,7 +55,7 @@ services:
     build:
       context: ./journal-backend
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
       FLASK_ENV: production
