@@ -367,4 +367,34 @@ class FailedLoginAttempt(db.Model):
     user_agent = db.Column(db.String(500), nullable=True)
 
 
+class SystemSettings(db.Model):
+    """Stores system-wide configuration settings."""
+    __tablename__ = 'system_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.Text, nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    
+    @classmethod
+    def get_setting(cls, key, default=None):
+        """Get a setting value by key."""
+        setting = cls.query.filter_by(key=key).first()
+        return setting.value if setting else default
+    
+    @classmethod
+    def set_setting(cls, key, value, description=None, user_id=None):
+        """Set a setting value."""
+        setting = cls.query.filter_by(key=key).first()
+        if setting:
+            setting.value = str(value)
+            setting.updated_by = user_id
+        else:
+            setting = cls(key=key, value=str(value), description=description, updated_by=user_id)
+            db.session.add(setting)
+        db.session.commit()
+        return setting
+
+
 

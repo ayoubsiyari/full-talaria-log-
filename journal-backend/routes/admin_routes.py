@@ -3,7 +3,7 @@
 from flask import Blueprint, request, jsonify, current_app, send_file, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, create_access_token, create_refresh_token
 from werkzeug.security import generate_password_hash
-from models import db, User, Profile, JournalEntry, Group, BlockedIP, SecurityLog, FailedLoginAttempt
+from models import db, User, Profile, JournalEntry, Group, BlockedIP, SecurityLog, FailedLoginAttempt, SystemSettings
 from email_service import mail
 from flask_mail import Message
 import logging
@@ -2262,3 +2262,125 @@ def get_groups_analytics_summary():
     except Exception as e:
         current_app.logger.error(f"Group analytics error: {str(e)}")
         return jsonify({"error": "Failed to fetch group analytics"}), 500
+
+
+# ==================== Security Settings Endpoints ====================
+
+# Default security settings
+DEFAULT_SECURITY_SETTINGS = {
+    'max_failed_attempts': {'value': '10', 'description': 'Maximum failed login attempts before IP block'},
+    'block_duration_hours': {'value': '24', 'description': 'Duration in hours to block an IP'},
+    'alert_threshold': {'value': '5', 'description': 'Failed attempts before sending alert email'},
+    'failed_attempt_window_hours': {'value': '1', 'description': 'Time window to count failed attempts'},
+    'session_timeout_minutes': {'value': '60', 'description': 'Session timeout in minutes'},
+    'require_strong_password': {'value': 'true', 'description': 'Require strong passwords'},
+    'min_password_length': {'value': '8', 'description': 'Minimum password length'},
+    'auto_block_enabled': {'value': 'true', 'description': 'Enable automatic IP blocking'},
+    'alert_email_enabled': {'value': 'true', 'description': 'Send email alerts on security events'},
+}
+
+
+@admin_bp.route('/settings/security', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def get_security_settings():
+    """Get all security settings"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        settings = {}
+        for key, defaults in DEFAULT_SECURITY_SETTINGS.items():
+            db_setting = SystemSettings.query.filter_by(key=key).first()
+            if db_setting:
+                settings[key] = {
+                    'value': db_setting.value,
+                    'description': defaults['description'],
+                    'updated_at': db_setting.updated_at.isoformat() if db_setting.updated_at else None
+                }
+            else:
+                settings[key] = {
+                    'value': defaults['value'],
+                    'description': defaults['description'],
+                    'updated_at': None
+                }
+        
+        return jsonify({"settings": settings}), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Get security settings error: {str(e)}")
+        return jsonify({"error": "Failed to fetch security settings"}), 500
+
+
+@admin_bp.route('/settings/security', methods=['PUT'])
+@jwt_required()
+@rate_limit_admin(max_requests=10, window_seconds=60)
+def update_security_settings():
+    """Update security settings"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        updated_keys = []
+        
+        for key, value in data.items():
+            if key in DEFAULT_SECURITY_SETTINGS:
+                SystemSettings.set_setting(
+                    key=key,
+                    value=str(value),
+                    description=DEFAULT_SECURITY_SETTINGS[key]['description'],
+                    user_id=user_id
+                )
+                updated_keys.append(key)
+        
+        # Log the settings change
+        log_admin_action(user_id, 'security_settings_updated', f"Updated: {', '.join(updated_keys)}")
+        
+        return jsonify({
+            "message": "Security settings updated successfully",
+            "updated": updated_keys
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Update security settings error: {str(e)}")
+        return jsonify({"error": "Failed to update security settings"}), 500
+
+
+@admin_bp.route('/settings/security/reset', methods=['POST'])
+@jwt_required()
+@rate_limit_admin(max_requests=5, window_seconds=60)
+def reset_security_settings():
+    """Reset security settings to defaults"""
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+    
+    try:
+        user_id = get_jwt_identity()
+        
+        for key, defaults in DEFAULT_SECURITY_SETTINGS.items():
+            SystemSettings.set_setting(
+                key=key,
+                value=defaults['value'],
+                description=defaults['description'],
+                user_id=user_id
+            )
+        
+        log_admin_action(user_id, 'security_settings_reset', "Reset all security settings to defaults")
+        
+        return jsonify({"message": "Security settings reset to defaults"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Reset security settings error: {str(e)}")
+        return jsonify({"error": "Failed to reset security settings"}), 500
+
+
+def get_security_setting(key, default=None):
+    """Helper function to get a security setting value"""
+    setting = SystemSettings.query.filter_by(key=key).first()
+    if setting:
+        return setting.value
+    return DEFAULT_SECURITY_SETTINGS.get(key, {}).get('value', default)

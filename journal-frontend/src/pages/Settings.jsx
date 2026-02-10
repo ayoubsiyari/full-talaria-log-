@@ -159,6 +159,11 @@ export default function Settings() {
   const [newBlockReason, setNewBlockReason] = useState('');
   const [blockingIP, setBlockingIP] = useState(false);
 
+  // Security settings state
+  const [securitySettings, setSecuritySettings] = useState({});
+  const [securitySettingsLoading, setSecuritySettingsLoading] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
   // Analytics state
   const [analyticsOverview, setAnalyticsOverview] = useState(null);
   const [userGrowth, setUserGrowth] = useState([]);
@@ -769,6 +774,83 @@ export default function Settings() {
 
   const handlePageChange = (newPage) => {
     fetchUsers(newPage, searchTerm);
+  };
+
+  // Fetch security settings
+  const fetchSecuritySettings = async () => {
+    setSecuritySettingsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/admin/settings/security`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSecuritySettings(data.settings || {});
+      }
+    } catch (err) {
+      console.error('Error fetching security settings:', err);
+    } finally {
+      setSecuritySettingsLoading(false);
+    }
+  };
+
+  // Save security settings
+  const saveSecuritySettings = async () => {
+    setSavingSettings(true);
+    try {
+      const token = localStorage.getItem('token');
+      const settingsToSave = {};
+      Object.keys(securitySettings).forEach(key => {
+        settingsToSave[key] = securitySettings[key].value;
+      });
+      
+      const res = await fetch(`${API_BASE_URL}/admin/settings/security`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(settingsToSave)
+      });
+      
+      if (res.ok) {
+        setMsg('Security settings saved successfully!');
+        setTimeout(() => setMsg(''), 3000);
+      }
+    } catch (err) {
+      console.error('Error saving security settings:', err);
+      setMsg('Failed to save settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Reset security settings to defaults
+  const resetSecuritySettings = async () => {
+    if (!window.confirm('Reset all security settings to defaults?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/admin/settings/security/reset`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchSecuritySettings();
+        setMsg('Settings reset to defaults');
+        setTimeout(() => setMsg(''), 3000);
+      }
+    } catch (err) {
+      console.error('Error resetting settings:', err);
+    }
+  };
+
+  // Update a single security setting
+  const updateSecuritySetting = (key, value) => {
+    setSecuritySettings(prev => ({
+      ...prev,
+      [key]: { ...prev[key], value }
+    }));
   };
 
   // Advanced admin functions
@@ -2600,10 +2682,132 @@ export default function Settings() {
 
                 {/* Settings Tab */}
                 {activeAdminTab === 'settings' && (
-                  <div className="text-center py-16">
-                    <SettingsIcon className="w-16 h-16 text-gray-400 mx-auto mb-6" />
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Admin Settings</h3>
-                    <p className="text-gray-500 text-lg">System configuration and admin preferences coming soon.</p>
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-gradient-to-br from-[#1e3a5f] to-[#2d4a6f] rounded-xl">
+                          <Shield className="w-6 h-6 text-blue-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-white">Security Settings</h3>
+                          <p className="text-gray-400 text-sm">Configure security policies and thresholds</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={resetSecuritySettings}
+                          className="px-4 py-2 bg-[#1e3a5f] text-gray-300 rounded-lg hover:bg-[#2d4a6f] border border-[#2d4a6f] transition-all text-sm"
+                        >
+                          Reset to Defaults
+                        </button>
+                        <button
+                          onClick={saveSecuritySettings}
+                          disabled={savingSettings}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm flex items-center gap-2 disabled:opacity-50"
+                        >
+                          {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+
+                    {Object.keys(securitySettings).length === 0 && !securitySettingsLoading && (
+                      <div className="text-center py-8">
+                        <button onClick={fetchSecuritySettings} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all">
+                          Load Security Settings
+                        </button>
+                      </div>
+                    )}
+
+                    {securitySettingsLoading && (
+                      <div className="text-center py-8">
+                        <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
+                        <p className="text-gray-400 mt-2">Loading settings...</p>
+                      </div>
+                    )}
+
+                    {Object.keys(securitySettings).length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* IP Blocking Settings */}
+                        <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Ban className="w-5 h-5 text-red-400" />
+                            IP Blocking
+                          </h4>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">Max Failed Attempts Before Block</label>
+                              <input type="number" value={securitySettings.max_failed_attempts?.value || '10'} onChange={(e) => updateSecuritySetting('max_failed_attempts', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">Block Duration (hours)</label>
+                              <input type="number" value={securitySettings.block_duration_hours?.value || '24'} onChange={(e) => updateSecuritySetting('block_duration_hours', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                              <span className="text-gray-300">Auto-Block Enabled</span>
+                              <button onClick={() => updateSecuritySetting('auto_block_enabled', securitySettings.auto_block_enabled?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.auto_block_enabled?.value === 'true' ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${securitySettings.auto_block_enabled?.value === 'true' ? 'left-7' : 'left-1'}`} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Alert Settings */}
+                        <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Bell className="w-5 h-5 text-yellow-400" />
+                            Alerts
+                          </h4>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">Alert Threshold (attempts before alert)</label>
+                              <input type="number" value={securitySettings.alert_threshold?.value || '5'} onChange={(e) => updateSecuritySetting('alert_threshold', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                              <span className="text-gray-300">Email Alerts Enabled</span>
+                              <button onClick={() => updateSecuritySetting('alert_email_enabled', securitySettings.alert_email_enabled?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.alert_email_enabled?.value === 'true' ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${securitySettings.alert_email_enabled?.value === 'true' ? 'left-7' : 'left-1'}`} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Session Settings */}
+                        <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Clock className="w-5 h-5 text-green-400" />
+                            Session
+                          </h4>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">Session Timeout (minutes)</label>
+                              <input type="number" value={securitySettings.session_timeout_minutes?.value || '60'} onChange={(e) => updateSecuritySetting('session_timeout_minutes', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Password Policy */}
+                        <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
+                          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Lock className="w-5 h-5 text-purple-400" />
+                            Password Policy
+                          </h4>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm text-gray-400 mb-1">Minimum Password Length</label>
+                              <input type="number" value={securitySettings.min_password_length?.value || '8'} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                              <span className="text-gray-300">Require Strong Password</span>
+                              <button onClick={() => updateSecuritySetting('require_strong_password', securitySettings.require_strong_password?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.require_strong_password?.value === 'true' ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${securitySettings.require_strong_password?.value === 'true' ? 'left-7' : 'left-1'}`} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
