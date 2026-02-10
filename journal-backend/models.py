@@ -133,9 +133,9 @@ class User(db.Model):
         return {flag.feature_name: flag.enabled for flag in group_flags}
     
     def generate_verification_token(self):
-        """Generate a secure token for password reset"""
-        self.reset_token = secrets.token_urlsafe(32)
-        self.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+        """Generate a 6-digit code for password reset"""
+        self.reset_token = str(random.randint(100000, 999999))
+        self.reset_token_expires = datetime.utcnow() + timedelta(minutes=15)
         return self.reset_token
     
     def verify_reset_token(self, token):

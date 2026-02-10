@@ -114,79 +114,77 @@ def send_verification_email(user, verification_code):
         current_app.logger.error(f"Failed to send verification email to {user.email}: {str(e)}")
         return False
 
-def send_password_reset_email(user, reset_url):
-    """Send password reset email to user"""
+def send_password_reset_email(user, reset_code):
+    """Send password reset email to user with 6-digit code in Arabic"""
     try:
-        subject = "Reset Your Password - Talaria Trading Journal"
+        subject = "رمز إعادة تعيين كلمة المرور - Talaria"
         
-        # HTML email template
+        # HTML email template in Arabic
         html_template = """
         <!DOCTYPE html>
-        <html>
+        <html dir="rtl" lang="ar">
         <head>
             <meta charset="utf-8">
-            <title>Reset Your Password</title>
+            <title>إعادة تعيين كلمة المرور</title>
             <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; line-height: 1.8; color: #333; direction: rtl; }
                 .container { max-width: 600px; margin: 0 auto; padding: 20px; }
                 .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                          color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-                .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-                .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                         color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; 
-                         font-weight: bold; margin: 20px 0; }
+                .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; text-align: center; }
+                .code-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           color: white; padding: 20px 40px; font-size: 32px; font-weight: bold; 
+                           letter-spacing: 8px; border-radius: 10px; display: inline-block; margin: 20px 0; }
                 .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+                .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-top: 20px; }
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🔐 Password Reset Request</h1>
+                    <h1>🔐 إعادة تعيين كلمة المرور</h1>
                 </div>
                 <div class="content">
-                    <h2>Hi there!</h2>
-                    <p>We received a request to reset your password for your Talaria Trading Journal account. Click the button below to create a new password:</p>
+                    <h2>مرحباً!</h2>
+                    <p>لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك في Talaria Trading Journal.</p>
+                    <p>استخدم الرمز التالي لإعادة تعيين كلمة المرور:</p>
                     
-                    <div style="text-align: center;">
-                        <a href="{{ reset_url }}" class="button">Reset Password</a>
+                    <div class="code-box">{{ reset_code }}</div>
+                    
+                    <div class="warning">
+                        <p><strong>⚠️ تنبيه:</strong> هذا الرمز صالح لمدة 15 دقيقة فقط.</p>
                     </div>
                     
-                    <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
-                    <p style="word-break: break-all; color: #667eea;">{{ reset_url }}</p>
-                    
-                    <p><strong>Important:</strong> This reset link will expire in 1 hour for security reasons.</p>
-                    
-                    <p>If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+                    <p style="margin-top: 20px; color: #666;">إذا لم تطلب إعادة تعيين كلمة المرور، يمكنك تجاهل هذا البريد الإلكتروني.</p>
                 </div>
                 <div class="footer">
-                    <p>© 2024 Talaria Trading Journal. All rights reserved.</p>
-                    <p>This email was sent to {{ user_email }}</p>
+                    <p>© 2024 Talaria Trading Journal. جميع الحقوق محفوظة.</p>
                 </div>
             </div>
         </body>
         </html>
         """
         
-        # Plain text version
+        # Plain text version in Arabic
         text_template = """
-        Password Reset Request - Talaria Trading Journal
+        إعادة تعيين كلمة المرور - Talaria Trading Journal
         
-        Hi there!
+        مرحباً!
         
-        We received a request to reset your password for your Talaria Trading Journal account. Visit this link to create a new password:
+        لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك.
         
-        {{ reset_url }}
+        رمز التحقق الخاص بك هو: {{ reset_code }}
         
-        Important: This reset link will expire in 1 hour for security reasons.
+        تنبيه: هذا الرمز صالح لمدة 15 دقيقة فقط.
         
-        If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
+        إذا لم تطلب إعادة تعيين كلمة المرور، يمكنك تجاهل هذا البريد الإلكتروني.
         
-        © 2024 Talaria Trading Journal. All rights reserved.
+        © 2024 Talaria Trading Journal. جميع الحقوق محفوظة.
         """
         
         # Render templates
-        html_content = render_template_string(html_template, reset_url=reset_url, user_email=user.email)
-        text_content = render_template_string(text_template, reset_url=reset_url, user_email=user.email)
+        html_content = render_template_string(html_template, reset_code=reset_code, user_email=user.email)
+        text_content = render_template_string(text_template, reset_code=reset_code, user_email=user.email)
         
         # Create and send message
         msg = Message(

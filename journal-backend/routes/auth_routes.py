@@ -353,47 +353,45 @@ def forgot_password():
             "message": "If an account with this email exists, a password reset link has been sent."
         }), 200
 
-    # Generate reset token
-    reset_token = user.generate_verification_token()  # Reuse the same method
+    # Generate 6-digit reset code
+    reset_code = user.generate_verification_token()
     db.session.commit()
 
-    # Send password reset email
-    frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
-    reset_url = f"{frontend_url}/reset-password?token={reset_token}"
-    
-    email_sent = send_password_reset_email(user, reset_url)
+    # Send password reset email with code
+    email_sent = send_password_reset_email(user, reset_code)
     
     if not email_sent:
         return jsonify({"error": "Failed to send password reset email"}), 500
 
     return jsonify({
-        "message": "If an account with this email exists, a password reset link has been sent."
+        "message": "تم إرسال رمز التحقق إلى بريدك الإلكتروني"
     }), 200
 
 
 @auth_bp.route('/reset-password', methods=['POST'])
 def reset_password():
     """
-    Expect JSON: { "token": "...", "new_password": "..." }
-    Resets user password with the provided token.
+    Expect JSON: { "email": "...", "code": "...", "new_password": "..." }
+    Resets user password with the provided 6-digit code.
     """
     data = request.get_json() or {}
-    token = data.get('token', '')
+    email = data.get('email', '').strip().lower()
+    code = data.get('code', '').strip()
     new_password = data.get('new_password', '')
 
-    if not token or not new_password:
-        return jsonify({"error": "Token and new password are required"}), 400
+    if not email or not code or not new_password:
+        return jsonify({"error": "البريد الإلكتروني والرمز وكلمة المرور الجديدة مطلوبة"}), 400
 
     if len(new_password) < 6:
-        return jsonify({"error": "Password must be at least 6 characters long"}), 400
+        return jsonify({"error": "يجب أن تكون كلمة المرور 6 أحرف على الأقل"}), 400
 
-    user = User.query.filter_by(reset_token=token).first()
+    user = User.query.filter_by(email=email).first()
     
     if not user:
-        return jsonify({"error": "Invalid reset token"}), 400
+        return jsonify({"error": "رمز التحقق غير صحيح"}), 400
 
-    if not user.verify_reset_token(token):
-        return jsonify({"error": "Reset token has expired"}), 400
+    if not user.verify_reset_token(code):
+        return jsonify({"error": "رمز التحقق منتهي الصلاحية أو غير صحيح"}), 400
 
     # Update password and clear token
     user.password = generate_password_hash(new_password)
@@ -402,7 +400,7 @@ def reset_password():
     db.session.commit()
 
     return jsonify({
-        "message": "Password reset successfully! You can now log in with your new password."
+        "message": "تم إعادة تعيين كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول."
     }), 200
 
 
