@@ -1806,81 +1806,99 @@ export default function Settings() {
                       </div>
                     )}
 
-                    {/* System Resources */}
+                    {/* System Resources with Circular Gauges */}
                     {serverMonitoring?.system && (
                       <div className="bg-[#0a1628] rounded-lg p-5 border border-[#2d4a6f]">
                         <h4 className="text-sm font-medium text-white mb-4">System Resources</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          {/* CPU */}
-                          <div className="bg-[#1e3a5f] rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-gray-400">CPU</span>
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                serverMonitoring.system.cpu?.status === 'ok' ? 'bg-green-500/20 text-green-400' :
-                                serverMonitoring.system.cpu?.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
-                                'bg-red-500/20 text-red-400'
-                              }`}>{serverMonitoring.system.cpu?.status}</span>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {/* CPU Gauge */}
+                          <div className="bg-[#1e3a5f] rounded-xl p-5 flex flex-col items-center">
+                            <div className="relative w-32 h-32">
+                              <svg className="w-32 h-32 transform -rotate-90">
+                                <circle cx="64" cy="64" r="56" stroke="#0a1628" strokeWidth="12" fill="none" />
+                                <circle 
+                                  cx="64" cy="64" r="56" 
+                                  stroke={serverMonitoring.system.cpu?.percent > 90 ? '#ef4444' : serverMonitoring.system.cpu?.percent > 70 ? '#eab308' : '#22c55e'}
+                                  strokeWidth="12" 
+                                  fill="none"
+                                  strokeLinecap="round"
+                                  strokeDasharray={`${(serverMonitoring.system.cpu?.percent || 0) * 3.52} 352`}
+                                  className="transition-all duration-500"
+                                />
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <Cpu className="w-5 h-5 text-blue-400 mb-1" />
+                                <span className="text-2xl font-bold text-white">{serverMonitoring.system.cpu?.percent?.toFixed(0) || 0}%</span>
+                              </div>
                             </div>
-                            <p className="text-2xl font-bold text-white">{serverMonitoring.system.cpu?.percent?.toFixed(1) || 0}%</p>
-                            <div className="mt-2 h-1.5 bg-[#0a1628] rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full transition-all ${
-                                  serverMonitoring.system.cpu?.percent > 90 ? 'bg-red-500' :
-                                  serverMonitoring.system.cpu?.percent > 70 ? 'bg-yellow-500' : 'bg-green-500'
-                                }`}
-                                style={{ width: `${serverMonitoring.system.cpu?.percent || 0}%` }}
-                              />
-                            </div>
+                            <span className="text-sm font-medium text-white mt-3">CPU Usage</span>
+                            <span className={`text-xs px-2 py-1 rounded mt-1 ${
+                              serverMonitoring.system.cpu?.status === 'ok' ? 'bg-green-500/20 text-green-400' :
+                              serverMonitoring.system.cpu?.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>{serverMonitoring.system.cpu?.status}</span>
                           </div>
 
-                          {/* Memory */}
-                          <div className="bg-[#1e3a5f] rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-gray-400">Memory</span>
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                serverMonitoring.system.memory?.status === 'ok' ? 'bg-green-500/20 text-green-400' :
-                                serverMonitoring.system.memory?.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
-                                'bg-red-500/20 text-red-400'
-                              }`}>{serverMonitoring.system.memory?.status}</span>
+                          {/* Memory Gauge */}
+                          <div className="bg-[#1e3a5f] rounded-xl p-5 flex flex-col items-center">
+                            <div className="relative w-32 h-32">
+                              <svg className="w-32 h-32 transform -rotate-90">
+                                <circle cx="64" cy="64" r="56" stroke="#0a1628" strokeWidth="12" fill="none" />
+                                <circle 
+                                  cx="64" cy="64" r="56" 
+                                  stroke={serverMonitoring.system.memory?.percent > 90 ? '#ef4444' : serverMonitoring.system.memory?.percent > 70 ? '#eab308' : '#22c55e'}
+                                  strokeWidth="12" 
+                                  fill="none"
+                                  strokeLinecap="round"
+                                  strokeDasharray={`${(serverMonitoring.system.memory?.percent || 0) * 3.52} 352`}
+                                  className="transition-all duration-500"
+                                />
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <HardDrive className="w-5 h-5 text-purple-400 mb-1" />
+                                <span className="text-2xl font-bold text-white">{serverMonitoring.system.memory?.percent?.toFixed(0) || 0}%</span>
+                              </div>
                             </div>
-                            <p className="text-2xl font-bold text-white">{serverMonitoring.system.memory?.percent?.toFixed(1) || 0}%</p>
-                            <p className="text-xs text-gray-500">{serverMonitoring.system.memory?.used_mb || 0} / {serverMonitoring.system.memory?.total_mb || 0} MB</p>
-                            <div className="mt-2 h-1.5 bg-[#0a1628] rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full transition-all ${
-                                  serverMonitoring.system.memory?.percent > 90 ? 'bg-red-500' :
-                                  serverMonitoring.system.memory?.percent > 70 ? 'bg-yellow-500' : 'bg-green-500'
-                                }`}
-                                style={{ width: `${serverMonitoring.system.memory?.percent || 0}%` }}
-                              />
-                            </div>
+                            <span className="text-sm font-medium text-white mt-3">Memory</span>
+                            <span className="text-xs text-gray-400">{serverMonitoring.system.memory?.used_mb || 0} / {serverMonitoring.system.memory?.total_mb || 0} MB</span>
+                            <span className={`text-xs px-2 py-1 rounded mt-1 ${
+                              serverMonitoring.system.memory?.status === 'ok' ? 'bg-green-500/20 text-green-400' :
+                              serverMonitoring.system.memory?.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>{serverMonitoring.system.memory?.status}</span>
                           </div>
 
-                          {/* Disk */}
-                          <div className="bg-[#1e3a5f] rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-gray-400">Disk</span>
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                serverMonitoring.system.disk?.status === 'ok' ? 'bg-green-500/20 text-green-400' :
-                                serverMonitoring.system.disk?.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
-                                'bg-red-500/20 text-red-400'
-                              }`}>{serverMonitoring.system.disk?.status}</span>
+                          {/* Disk Gauge */}
+                          <div className="bg-[#1e3a5f] rounded-xl p-5 flex flex-col items-center">
+                            <div className="relative w-32 h-32">
+                              <svg className="w-32 h-32 transform -rotate-90">
+                                <circle cx="64" cy="64" r="56" stroke="#0a1628" strokeWidth="12" fill="none" />
+                                <circle 
+                                  cx="64" cy="64" r="56" 
+                                  stroke={parseInt(serverMonitoring.system.disk?.percent) > 90 ? '#ef4444' : parseInt(serverMonitoring.system.disk?.percent) > 70 ? '#eab308' : '#22c55e'}
+                                  strokeWidth="12" 
+                                  fill="none"
+                                  strokeLinecap="round"
+                                  strokeDasharray={`${(parseInt(serverMonitoring.system.disk?.percent) || 0) * 3.52} 352`}
+                                  className="transition-all duration-500"
+                                />
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <Database className="w-5 h-5 text-cyan-400 mb-1" />
+                                <span className="text-2xl font-bold text-white">{parseInt(serverMonitoring.system.disk?.percent) || 0}%</span>
+                              </div>
                             </div>
-                            <p className="text-2xl font-bold text-white">{serverMonitoring.system.disk?.percent || '0%'}</p>
-                            <p className="text-xs text-gray-500">{serverMonitoring.system.disk?.used || '0'} / {serverMonitoring.system.disk?.total || '0'}</p>
-                            <div className="mt-2 h-1.5 bg-[#0a1628] rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full transition-all ${
-                                  parseInt(serverMonitoring.system.disk?.percent) > 90 ? 'bg-red-500' :
-                                  parseInt(serverMonitoring.system.disk?.percent) > 70 ? 'bg-yellow-500' : 'bg-green-500'
-                                }`}
-                                style={{ width: serverMonitoring.system.disk?.percent || '0%' }}
-                              />
-                            </div>
+                            <span className="text-sm font-medium text-white mt-3">Disk Storage</span>
+                            <span className="text-xs text-gray-400">{serverMonitoring.system.disk?.used || '0'} / {serverMonitoring.system.disk?.total || '0'}</span>
+                            <span className={`text-xs px-2 py-1 rounded mt-1 ${
+                              serverMonitoring.system.disk?.status === 'ok' ? 'bg-green-500/20 text-green-400' :
+                              serverMonitoring.system.disk?.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>{serverMonitoring.system.disk?.status}</span>
                           </div>
                         </div>
 
-                        {/* Uptime & Load */}
+                        {/* Uptime & Load Average Cards */}
                         <div className="grid grid-cols-2 gap-4 mt-4">
                           <div className="bg-[#1e3a5f] rounded-lg p-4">
                             <span className="text-xs text-gray-400">Uptime</span>
