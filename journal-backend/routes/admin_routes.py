@@ -486,15 +486,47 @@ def get_admin_logs():
     try:
         limit = min(request.args.get('limit', 50, type=int), 100)
         
-        # Read admin logs from file
         logs = []
+        
+        # Try to read from admin_access.log file
         try:
             with open('admin_access.log', 'r') as f:
                 lines = f.readlines()
-                for line in lines[-limit:]:
-                    logs.append(line.strip())
+                for line in reversed(lines[-limit:]):
+                    line = line.strip()
+                    if line:
+                        # Parse log line: "2024-01-01 12:00:00 - ACTION_TYPE - details"
+                        parts = line.split(' - ', 2)
+                        if len(parts) >= 2:
+                            logs.append({
+                                "timestamp": parts[0],
+                                "action": parts[1] if len(parts) > 1 else "LOG",
+                                "details": parts[2] if len(parts) > 2 else line
+                            })
+                        else:
+                            logs.append({
+                                "timestamp": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                                "action": "LOG",
+                                "details": line
+                            })
         except FileNotFoundError:
-            logs = ["No admin logs found"]
+            pass
+        
+        # Also get security logs from database
+        try:
+            security_logs = SecurityLog.query.order_by(SecurityLog.created_at.desc()).limit(limit).all()
+            for log in security_logs:
+                logs.append({
+                    "timestamp": log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else 'N/A',
+                    "action": log.event_type.upper() if log.event_type else 'SECURITY',
+                    "details": f"IP: {log.ip_address} - {log.details}" if log.details else f"IP: {log.ip_address}"
+                })
+        except Exception as e:
+            current_app.logger.error(f"Error fetching security logs: {e}")
+        
+        # Sort by timestamp descending
+        logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        logs = logs[:limit]
         
         log_admin_action("VIEW_LOGS", f"Viewed {len(logs)} log entries")
         
