@@ -60,6 +60,12 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-jwt-secret-change-me}
       FRONTEND_URL: ${FRONTEND_URL:-https://talaria-log.com/journal}
       CORS_ALLOWED_ORIGINS: "https://talaria-log.com,http://88.223.95.90:8000,http://88.223.95.90:3001"
+      DOMAIN_EMAIL_SMTP_SERVER: ${DOMAIN_EMAIL_SMTP_SERVER:-smtp.gmail.com}
+      DOMAIN_EMAIL_SMTP_PORT: ${DOMAIN_EMAIL_SMTP_PORT:-587}
+      DOMAIN_EMAIL_USERNAME: ${DOMAIN_EMAIL_USERNAME:-}
+      DOMAIN_EMAIL_PASSWORD: ${DOMAIN_EMAIL_PASSWORD:-}
+      DOMAIN_EMAIL_USE_TLS: "true"
+      ADMIN_ALERT_EMAIL: ${ADMIN_ALERT_EMAIL:-contact@talaria.services}
     depends_on:
       db:
         condition: service_healthy
