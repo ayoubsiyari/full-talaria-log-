@@ -8,11 +8,12 @@ import time
 from typing import Any
 
 from passlib.context import CryptContext
+from werkzeug.security import check_password_hash as werkzeug_check
 
 from .settings import settings
 
 
-_pwd = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+_pwd = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -20,7 +21,22 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return _pwd.verify(password, password_hash)
+    """Verify password against both passlib and werkzeug hash formats."""
+    # Try passlib first
+    try:
+        if _pwd.verify(password, password_hash):
+            return True
+    except Exception:
+        pass
+    
+    # Try werkzeug format (scrypt, pbkdf2:sha256, etc.)
+    try:
+        if werkzeug_check(password_hash, password):
+            return True
+    except Exception:
+        pass
+    
+    return False
 
 
 def _b64url_encode(raw: bytes) -> str:
