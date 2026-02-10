@@ -37,6 +37,8 @@ services:
       NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL:-}
     volumes:
       - ./secrets:/run/secrets:ro
+    ports:
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -45,7 +47,7 @@ services:
     build:
       context: ./homepage
     ports:
-      - "${HOST_PORT:-8000}:80"
+      - "8080:80"
     depends_on:
       - trading-chart
 
