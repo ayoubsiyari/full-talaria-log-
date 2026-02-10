@@ -13,6 +13,53 @@ import os
 MAX_FAILED_ATTEMPTS = 10  # Block after 10 failed attempts
 BLOCK_DURATION_HOURS = 24  # Block for 24 hours
 FAILED_ATTEMPT_WINDOW_HOURS = 1  # Count attempts within 1 hour
+ALERT_THRESHOLD = 5  # Send alert after 5 failed attempts (before block)
+ADMIN_EMAIL = os.environ.get('ADMIN_ALERT_EMAIL', 'contact@talaria.services')
+
+
+def send_security_alert(subject, message, ip_address, event_type='attack_detected'):
+    """Send security alert email to admin."""
+    try:
+        from flask_mail import Message
+        from app import mail
+        
+        html_content = f'''
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 20px; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">🚨 Security Alert</h1>
+            </div>
+            <div style="background: #1e293b; padding: 30px; border-radius: 0 0 10px 10px; color: #e2e8f0;">
+                <h2 style="color: #f87171; margin-top: 0;">{subject}</h2>
+                <div style="background: #0f172a; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 0; color: #94a3b8;"><strong>IP Address:</strong> <span style="color: #ef4444; font-family: monospace;">{ip_address}</span></p>
+                    <p style="margin: 10px 0 0 0; color: #94a3b8;"><strong>Event Type:</strong> {event_type}</p>
+                    <p style="margin: 10px 0 0 0; color: #94a3b8;"><strong>Time:</strong> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+                </div>
+                <p style="color: #cbd5e1;">{message}</p>
+                <div style="margin-top: 20px; padding: 15px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                    <p style="margin: 0; color: #92400e; font-size: 14px;">
+                        <strong>Action Required:</strong> Review this activity in the Admin Dashboard → Health → Security section.
+                    </p>
+                </div>
+            </div>
+            <p style="text-align: center; color: #64748b; font-size: 12px; margin-top: 20px;">
+                Talaria Trading Journal Security System
+            </p>
+        </div>
+        '''
+        
+        msg = Message(
+            subject=f"🚨 {subject}",
+            sender=('Talaria Security', os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@talaria.services')),
+            recipients=[ADMIN_EMAIL],
+            html=html_content
+        )
+        mail.send(msg)
+        current_app.logger.info(f"Security alert sent: {subject}")
+        return True
+    except Exception as e:
+        current_app.logger.error(f"Failed to send security alert: {str(e)}")
+        return False
 
 
 def get_client_ip():
@@ -50,6 +97,17 @@ def record_failed_login(ip_address, email_attempted=None):
             FailedLoginAttempt.attempted_at >= since
         ).count()
         
+        # Send warning alert at threshold (before block)
+        if recent_attempts == ALERT_THRESHOLD:
+            send_security_alert(
+                subject="Suspicious Login Activity Detected",
+                message=f"Multiple failed login attempts ({recent_attempts}) detected from IP address {ip_address}. "
+                        f"Targeted email: {email_attempted or 'Unknown'}. "
+                        f"The IP will be automatically blocked after {MAX_FAILED_ATTEMPTS} attempts.",
+                ip_address=ip_address,
+                event_type='suspicious_activity'
+            )
+        
         # Auto-block if too many failures
         if recent_attempts >= MAX_FAILED_ATTEMPTS:
             existing_block = BlockedIP.query.filter_by(ip_address=ip_address).first()
@@ -67,10 +125,21 @@ def record_failed_login(ip_address, email_attempted=None):
                 log_entry = SecurityLog(
                     ip_address=ip_address,
                     event_type='auto_block',
-                    details=f"Auto-blocked after {recent_attempts} failed login attempts",
+                    details=f"Auto-blocked after {recent_attempts} failed login attempts. Target: {email_attempted}",
                     endpoint='/auth/login'
                 )
                 db.session.add(log_entry)
+                
+                # Send CRITICAL alert for auto-block
+                send_security_alert(
+                    subject="⛔ IP Address Auto-Blocked",
+                    message=f"IP address {ip_address} has been automatically blocked after {recent_attempts} failed login attempts. "
+                            f"Targeted email: {email_attempted or 'Unknown'}. "
+                            f"Block duration: {BLOCK_DURATION_HOURS} hours. "
+                            f"User Agent: {request.headers.get('User-Agent', 'Unknown')[:100]}",
+                    ip_address=ip_address,
+                    event_type='ip_blocked'
+                )
         
         db.session.commit()
         return recent_attempts

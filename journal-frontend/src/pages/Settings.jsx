@@ -154,6 +154,7 @@ export default function Settings() {
   const [securityStats, setSecurityStats] = useState(null);
   const [blockedIPs, setBlockedIPs] = useState([]);
   const [failedLogins, setFailedLogins] = useState([]);
+  const [securityLogs, setSecurityLogs] = useState([]);
   const [newBlockIP, setNewBlockIP] = useState('');
   const [newBlockReason, setNewBlockReason] = useState('');
   const [blockingIP, setBlockingIP] = useState(false);
@@ -639,10 +640,11 @@ export default function Settings() {
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
       
-      const [statsRes, blockedRes, failedRes] = await Promise.all([
+      const [statsRes, blockedRes, failedRes, logsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/security/stats`, { headers }),
         fetch(`${API_BASE_URL}/admin/security/blocked-ips`, { headers }),
-        fetch(`${API_BASE_URL}/admin/security/failed-logins`, { headers })
+        fetch(`${API_BASE_URL}/admin/security/failed-logins`, { headers }),
+        fetch(`${API_BASE_URL}/admin/security/logs?limit=20`, { headers })
       ]);
       
       if (statsRes.ok) {
@@ -656,6 +658,10 @@ export default function Settings() {
       if (failedRes.ok) {
         const data = await failedRes.json();
         setFailedLogins(data.failed_logins || []);
+      }
+      if (logsRes.ok) {
+        const data = await logsRes.json();
+        setSecurityLogs(data.logs || []);
       }
     } catch (err) {
       console.error('Error fetching security data:', err);
