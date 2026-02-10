@@ -75,6 +75,8 @@ class User(db.Model):
     country = db.Column(db.String(100), nullable=True)
     phone = db.Column(db.String(50), nullable=True)
     birth_date = db.Column(db.Date, nullable=True)
+    reset_token = db.Column(db.String(100), nullable=True)
+    reset_token_expires = db.Column(db.DateTime, nullable=True)
     
     # Alias for compatibility with journal backend auth
     @property
@@ -129,6 +131,27 @@ class User(db.Model):
         
         group_flags = GroupFeatureFlags.query.filter_by(group_id=self.group_id).all()
         return {flag.feature_name: flag.enabled for flag in group_flags}
+    
+    def generate_verification_token(self):
+        """Generate a secure token for password reset"""
+        self.reset_token = secrets.token_urlsafe(32)
+        self.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+        return self.reset_token
+    
+    def verify_reset_token(self, token):
+        """Verify the reset token is valid and not expired"""
+        if not self.reset_token or not self.reset_token_expires:
+            return False
+        if self.reset_token != token:
+            return False
+        if datetime.utcnow() > self.reset_token_expires:
+            return False
+        return True
+    
+    def clear_reset_token(self):
+        """Clear the reset token after use"""
+        self.reset_token = None
+        self.reset_token_expires = None
 
     # Back‐reference so you can do: some_user.import_batches
     import_batches = db.relationship(

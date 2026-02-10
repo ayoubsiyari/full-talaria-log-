@@ -387,18 +387,17 @@ def reset_password():
     if len(new_password) < 6:
         return jsonify({"error": "Password must be at least 6 characters long"}), 400
 
-    user = User.query.filter_by(verification_token=token).first()
+    user = User.query.filter_by(reset_token=token).first()
     
     if not user:
         return jsonify({"error": "Invalid reset token"}), 400
 
-    if user.is_verification_token_expired():
+    if not user.verify_reset_token(token):
         return jsonify({"error": "Reset token has expired"}), 400
 
     # Update password and clear token
     user.password = generate_password_hash(new_password)
-    user.verification_token = None
-    user.verification_token_expires = None
+    user.clear_reset_token()
     
     db.session.commit()
 
