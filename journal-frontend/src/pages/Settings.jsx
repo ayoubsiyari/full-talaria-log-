@@ -704,6 +704,11 @@ export default function Settings() {
     }
   };
 
+  const handleSearch = (e) => {
+    e.preventDefault();
+    fetchUsers(1, searchTerm);
+  };
+
   const handlePageChange = (newPage) => {
     fetchUsers(newPage, searchTerm);
   };
