@@ -111,7 +111,8 @@ export default function Settings() {
   const [flagsMessage, setFlagsMessage] = useState('');
   const [showSystemModal, setShowSystemModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [userTypeFilter, setUserTypeFilter] = useState('all'); // 'all', 'journal', 'mentorship'
+  const [userTypeFilter, setUserTypeFilter] = useState('all'); // 'all', 'journal', 'no-journal', 'mentorship'
+  const [bootcampEmails, setBootcampEmails] = useState([]);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [refreshInterval, setRefreshInterval] = useState(30000);
@@ -240,6 +241,7 @@ export default function Settings() {
           fetchLogs();
           fetchSystemHealth();
           fetchServerMonitoring();
+          fetchBootcampEmails();
         }
         
         setMsg('');
@@ -608,6 +610,18 @@ export default function Settings() {
       console.error('Error fetching server monitoring:', err);
     } finally {
       setServerMonitoringLoading(false);
+    }
+  };
+
+  const fetchBootcampEmails = async () => {
+    try {
+      const response = await fetch('/api/bootcamp/registrations/emails');
+      if (response.ok) {
+        const data = await response.json();
+        setBootcampEmails(data.emails || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch bootcamp registrations:', err);
     }
   };
 
@@ -1530,7 +1544,7 @@ export default function Settings() {
                           userTypeFilter === 'mentorship' ? 'bg-[#1e3a5f] text-white' : 'text-gray-500 hover:text-white'
                         }`}
                       >
-                        Mentorship ({users.filter(u => !u.has_journal_access).length})
+                        Mentorship ({users.filter(u => bootcampEmails.includes(u.email?.toLowerCase())).length})
                       </button>
                     </div>
 
@@ -1550,7 +1564,7 @@ export default function Settings() {
                           .filter(user => {
                             if (userTypeFilter === 'journal') return user.has_journal_access;
                             if (userTypeFilter === 'no-journal') return !user.has_journal_access;
-                            if (userTypeFilter === 'mentorship') return !user.has_journal_access;
+                            if (userTypeFilter === 'mentorship') return bootcampEmails.includes(user.email?.toLowerCase());
                             return true;
                           })
                           .map(user => (
