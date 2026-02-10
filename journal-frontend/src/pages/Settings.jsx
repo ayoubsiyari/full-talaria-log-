@@ -1048,24 +1048,9 @@ export default function Settings() {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Header Section */}
-        <div className="text-center mb-12">
-          <div className="relative inline-block">
-            <div className="absolute inset-0 bg-blue-500 rounded-full blur-lg opacity-30 animate-pulse"></div>
-            <div className="relative inline-flex items-center justify-center w-20 h-20 bg-[#1e3a5f] border-2 border-blue-400 rounded-full shadow-2xl">
-              <SettingsIcon className="w-10 h-10 text-blue-400" />
-            </div>
-          </div>
-          <h1 className="text-4xl font-bold text-white mt-6 mb-3">Account Settings</h1>
-          <p className="text-lg text-gray-400 max-w-2xl mx-auto">
-            Manage your profile, security settings, and system preferences in one centralized location
-          </p>
-          {isAdmin && (
-            <div className="mt-6 inline-flex items-center gap-3 px-6 py-3 bg-blue-500/20 border border-blue-400/50 text-blue-400 rounded-full text-sm font-semibold">
-              <Crown className="w-5 h-5" />
-              Administrator Dashboard Access
-              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-            </div>
-          )}
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-white">Settings</h1>
+          <p className="text-gray-400 mt-1">Manage your account and system preferences</p>
         </div>
 
         {/* Status Message */}
@@ -1098,47 +1083,21 @@ export default function Settings() {
           <div className="space-y-8">
             
             {/* Admin Header */}
-            <div className="bg-[#1e3a5f] rounded-xl border border-[#2d4a6f] overflow-hidden">
-              <div className="px-8 py-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-6">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-blue-500/30 rounded-xl blur-sm"></div>
-                      <div className="relative bg-blue-500/20 rounded-xl p-4 border border-blue-400/30">
-                        <Crown className="w-10 h-10 text-blue-400" />
-                      </div>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-white mb-1">Administrator Dashboard</h2>
-                      <p className="text-gray-400">Complete system management and monitoring</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => setShowNotifications(!showNotifications)}
-                      className="relative bg-[#0a1628] rounded-lg p-3 text-blue-400 hover:bg-blue-500/20 transition-all border border-[#2d4a6f]"
-                    >
-                      <Bell className="w-6 h-6" />
-                      {notifications.length > 0 && (
-                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-bold animate-bounce">
-                          {notifications.length}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setAutoRefresh(!autoRefresh)}
-                      className={`flex items-center gap-3 px-5 py-3 rounded-lg text-sm font-semibold transition-all border ${
-                        autoRefresh 
-                          ? 'bg-green-500/20 text-green-400 border-green-500/50 hover:bg-green-500/30' 
-                          : 'bg-[#0a1628] text-gray-400 border-[#2d4a6f] hover:bg-[#2d4a6f]'
-                      }`}
-                    >
-                      <RefreshCw className={`w-5 h-5 ${autoRefresh ? 'animate-spin' : ''}`} />
-                      {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
-                    </button>
-                  </div>
-                </div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-semibold text-white">Admin Dashboard</h2>
+                <p className="text-gray-500 text-sm">System management</p>
               </div>
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`px-4 py-2 rounded-lg text-sm transition-all ${
+                  autoRefresh 
+                    ? 'bg-blue-500/20 text-blue-400' 
+                    : 'bg-[#1e3a5f] text-gray-400 hover:text-white'
+                }`}
+              >
+                {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+              </button>
             </div>
 
             {/* Admin Tabs */}
@@ -1146,28 +1105,26 @@ export default function Settings() {
               {/* Tab Navigation */}
               <div className="flex overflow-x-auto border-b border-[#2d4a6f] bg-[#0a1628]">
                 {[
-                  { id: 'dashboard', label: 'Overview', icon: BarChart3 },
-                  { id: 'users', label: 'Users', icon: Users },
-                  { id: 'logs', label: 'Logs', icon: FileText },
-                  { id: 'health', label: 'Health', icon: Activity },
-                  { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-                  { id: 'feature-flags', label: 'Feature Flags', icon: Zap },
-                  { id: 'bulk-email', label: 'Bulk Email', icon: Mail },
-                  { id: 'settings', label: 'Settings', icon: SettingsIcon }
+                  { id: 'dashboard', label: 'Overview' },
+                  { id: 'users', label: 'Users' },
+                  { id: 'logs', label: 'Logs' },
+                  { id: 'health', label: 'Health' },
+                  { id: 'analytics', label: 'Analytics' },
+                  { id: 'feature-flags', label: 'Features' },
+                  { id: 'bulk-email', label: 'Email' },
+                  { id: 'settings', label: 'Settings' }
                 ].map(tab => {
-                  const Icon = tab.icon;
                   const isActive = activeAdminTab === tab.id;
                   return (
                     <button
                       key={tab.id}
                       onClick={() => setActiveAdminTab(tab.id)}
-                      className={`flex items-center gap-3 px-6 py-4 text-sm font-semibold transition-all relative whitespace-nowrap ${
+                      className={`px-5 py-3 text-sm font-medium transition-all whitespace-nowrap ${
                         isActive
-                          ? 'text-blue-400 bg-[#1e3a5f] border-b-2 border-blue-400'
-                          : 'text-gray-400 hover:text-white hover:bg-[#1e3a5f]/50'
+                          ? 'text-white border-b-2 border-blue-500'
+                          : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
-                      <Icon className="w-5 h-5" />
                       {tab.label}
                     </button>
                   );
@@ -1178,174 +1135,75 @@ export default function Settings() {
               <div className={activeAdminTab === 'bulk-email' ? 'p-0' : 'p-6'}>
                 {/* Dashboard Tab */}
                 {activeAdminTab === 'dashboard' && (
-                  <div className="space-y-8">
-                    {/* Enhanced Key Metrics */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                      <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-blue-100 text-sm font-semibold">Total Users</p>
-                            <p className="text-4xl font-bold mt-2">{dashboardData?.total_users || users.length}</p>
-                            <p className="text-blue-200 text-sm mt-2 flex items-center gap-1">
-                              <TrendingUp className="w-4 h-4" />
-                              {dashboardData?.total_users ? `${Math.round((dashboardData.total_users / Math.max(users.length, 1)) * 100)}%` : '100%'} accuracy
-                            </p>
-                          </div>
-                          <div className="bg-blue-400/30 rounded-2xl p-4">
-                            <Users className="w-8 h-8" />
-                          </div>
-                        </div>
+                  <div className="space-y-6">
+                    {/* Key Metrics */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Users</p>
+                        <p className="text-2xl font-semibold text-white mt-1">{dashboardData?.total_users || users.length}</p>
                       </div>
-                      
-                      <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-green-100 text-sm font-semibold">Active Users (30d)</p>
-                            <p className="text-4xl font-bold mt-2">{dashboardData?.active_users || 0}</p>
-                            <p className="text-green-200 text-sm mt-2 flex items-center gap-1">
-                              <Activity className="w-4 h-4" />
-                              {dashboardData?.active_users ? `${Math.round((dashboardData.active_users / Math.max(dashboardData.total_users, 1)) * 100)}%` : '0%'} of total
-                            </p>
-                          </div>
-                          <div className="bg-green-400/30 rounded-2xl p-4">
-                            <Activity className="w-8 h-8" />
-                          </div>
-                        </div>
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Active (30d)</p>
+                        <p className="text-2xl font-semibold text-white mt-1">{dashboardData?.active_users || 0}</p>
                       </div>
-                      
-                      <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-purple-100 text-sm font-semibold">Total Trades</p>
-                            <p className="text-4xl font-bold mt-2">{dashboardData?.total_trades || 0}</p>
-                            <p className="text-purple-200 text-sm mt-2 flex items-center gap-1">
-                              <BarChart3 className="w-4 h-4" />
-                              {dashboardData?.total_trades ? `${Math.round(dashboardData.total_trades / Math.max(dashboardData.total_users, 1))}` : '0'} per user
-                            </p>
-                          </div>
-                          <div className="bg-purple-400/30 rounded-2xl p-4">
-                            <BarChart3 className="w-8 h-8" />
-                          </div>
-                        </div>
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Trades</p>
+                        <p className="text-2xl font-semibold text-white mt-1">{dashboardData?.total_trades || 0}</p>
                       </div>
-                      
-                      <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-orange-100 text-sm font-semibold">Admin Users</p>
-                            <p className="text-4xl font-bold mt-2">{dashboardData?.admin_users_count || 0}</p>
-                            <p className="text-orange-200 text-sm mt-2 flex items-center gap-1">
-                              <Shield className="w-4 h-4" />
-                              {dashboardData?.admin_users_count ? `${Math.round((dashboardData.admin_users_count / Math.max(dashboardData.total_users, 1)) * 100)}%` : '0%'} of total
-                            </p>
-                          </div>
-                          <div className="bg-orange-400/30 rounded-2xl p-4">
-                            <Shield className="w-8 h-8" />
-                          </div>
-                        </div>
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Admins</p>
+                        <p className="text-2xl font-semibold text-white mt-1">{dashboardData?.admin_users_count || 0}</p>
                       </div>
                     </div>
 
-                    {/* Additional Metrics Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                      <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-indigo-100 text-sm font-semibold">Total Profiles</p>
-                            <p className="text-4xl font-bold mt-2">{dashboardData?.total_profiles || 0}</p>
-                            <p className="text-indigo-200 text-sm mt-2 flex items-center gap-1">
-                              <UserCheck className="w-4 h-4" />
-                              {dashboardData?.total_profiles ? `${Math.round(dashboardData.total_profiles / Math.max(dashboardData.total_users, 1))}` : '0'} per user
-                            </p>
-                          </div>
-                          <div className="bg-indigo-400/30 rounded-2xl p-4">
-                            <UserCheck className="w-8 h-8" />
-                          </div>
-                        </div>
+                    {/* Secondary Metrics */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Profiles</p>
+                        <p className="text-2xl font-semibold text-white mt-1">{dashboardData?.total_profiles || 0}</p>
                       </div>
-                      
-                      <div className="bg-gradient-to-br from-pink-500 to-pink-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-pink-100 text-sm font-semibold">Total Journals</p>
-                            <p className="text-4xl font-bold mt-2">{dashboardData?.total_journals || 0}</p>
-                            <p className="text-pink-200 text-sm mt-2 flex items-center gap-1">
-                              <FileText className="w-4 h-4" />
-                              {dashboardData?.total_journals ? `${Math.round(dashboardData.total_journals / Math.max(dashboardData.total_users, 1))}` : '0'} per user
-                            </p>
-                          </div>
-                          <div className="bg-pink-400/30 rounded-2xl p-4">
-                            <FileText className="w-8 h-8" />
-                          </div>
-                        </div>
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Journals</p>
+                        <p className="text-2xl font-semibold text-white mt-1">{dashboardData?.total_journals || 0}</p>
                       </div>
-                      
-                      <div className="bg-gradient-to-br from-teal-500 to-teal-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-teal-100 text-sm font-semibold">System Status</p>
-                            <p className="text-4xl font-bold mt-2">{systemHealth?.status || 'Healthy'}</p>
-                            <p className="text-teal-200 text-sm mt-2 flex items-center gap-1">
-                              <CheckCircle className="w-4 h-4" />
-                              {systemHealth?.database?.status || 'Connected'}
-                            </p>
-                          </div>
-                          <div className="bg-teal-400/30 rounded-2xl p-4">
-                            <CheckCircle className="w-8 h-8" />
-                          </div>
-                        </div>
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Status</p>
+                        <p className="text-2xl font-semibold text-green-400 mt-1">{systemHealth?.status || 'Healthy'}</p>
                       </div>
-                      
-                      <div className="bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-cyan-100 text-sm font-semibold">Feature Flags</p>
-                            <p className="text-4xl font-bold mt-2">{Object.keys(localFeatureFlags).length}</p>
-                            <p className="text-cyan-200 text-sm mt-2 flex items-center gap-1">
-                              <Zap className="w-4 h-4" />
-                              {Object.values(localFeatureFlags).filter(Boolean).length} enabled
-                            </p>
-                          </div>
-                          <div className="bg-cyan-400/30 rounded-2xl p-4">
-                            <Zap className="w-8 h-8" />
-                          </div>
-                        </div>
+                      <div className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f]">
+                        <p className="text-gray-500 text-xs uppercase tracking-wide">Features</p>
+                        <p className="text-2xl font-semibold text-white mt-1">{Object.values(localFeatureFlags).filter(Boolean).length}/{Object.keys(localFeatureFlags).length}</p>
                       </div>
                     </div>
 
                     {/* System Status & Quick Actions */}
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                       {/* System Status */}
-                      <div className="xl:col-span-2 bg-[#0a1628] rounded-xl border border-[#2d4a6f] p-6">
-                        <div className="flex items-center justify-between mb-6">
-                          <div className="flex items-center gap-3">
-                            <div className="p-3 bg-green-500/20 rounded-lg">
-                              <Activity className="w-6 h-6 text-green-400" />
-                            </div>
-                            <h3 className="text-lg font-bold text-white">System Status</h3>
-                          </div>
+                      <div className="xl:col-span-2 bg-[#0a1628] rounded-lg border border-[#2d4a6f] p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-medium text-white">System Status</h3>
                           <button
                             onClick={() => {
                               fetchSystemHealth();
                               fetchSystemMetrics();
                             }}
-                            className="text-blue-400 hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-500/20"
+                            className="text-gray-500 hover:text-white text-xs"
                           >
-                            <RefreshCw className="w-5 h-5" />
+                            Refresh
                           </button>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-3">
                           {[
-                            { name: 'Database', status: 'Connected', color: 'green' },
-                            { name: 'Email Service', status: 'Active', color: 'green' },
-                            { name: 'API Server', status: 'Running', color: 'blue' },
-                            { name: 'Frontend', status: 'Online', color: 'blue' }
+                            { name: 'Database', status: 'Connected' },
+                            { name: 'Email', status: 'Active' },
+                            { name: 'API', status: 'Running' },
+                            { name: 'Frontend', status: 'Online' }
                           ].map((service, index) => (
-                            <div key={index} className="flex items-center gap-4 p-4 bg-[#1e3a5f] rounded-lg border border-[#2d4a6f]">
-                              <div className={`w-3 h-3 rounded-full ${service.color === 'green' ? 'bg-green-400 animate-pulse' : 'bg-blue-400'}`}></div>
+                            <div key={index} className="flex items-center gap-3 p-3 bg-[#1e3a5f] rounded-lg">
+                              <div className="w-2 h-2 rounded-full bg-green-400"></div>
                               <div>
-                                <p className="text-sm font-semibold text-white">{service.name}</p>
-                                <p className="text-xs text-gray-400">{service.status}</p>
+                                <p className="text-sm text-white">{service.name}</p>
+                                <p className="text-xs text-gray-500">{service.status}</p>
                               </div>
                             </div>
                           ))}
@@ -1353,64 +1211,21 @@ export default function Settings() {
                       </div>
 
                       {/* Quick Actions */}
-                      <div className="bg-[#0a1628] rounded-xl border border-[#2d4a6f] p-6">
-                        <div className="flex items-center gap-3 mb-6">
-                          <div className="p-3 bg-blue-500/20 rounded-lg">
-                            <Zap className="w-6 h-6 text-blue-400" />
-                          </div>
-                          <h3 className="text-lg font-bold text-white">Quick Actions</h3>
-                        </div>
-                        <div className="space-y-3">
-                          {[
-                            { action: () => setActiveAdminTab('users'), icon: UserPlus, label: 'Add User', desc: 'Create new account' },
-                            { action: exportUsers, icon: Download, label: 'Export Users', desc: 'Download user data' },
-                            { action: () => setActiveAdminTab('logs'), icon: FileText, label: 'View Logs', desc: 'System activity' },
-                            { action: () => setActiveAdminTab('health'), icon: Activity, label: 'System Health', desc: 'Monitor performance' },
-                            { action: () => setActiveAdminTab('feature-flags'), icon: Zap, label: 'Feature Flags', desc: 'Manage features' },
-                            { action: () => setActiveAdminTab('bulk-import'), icon: UserPlus, label: 'Bulk Import', desc: 'Import multiple users' },
-                            { action: () => setActiveAdminTab('email-count'), icon: Mail, label: 'Email Count', desc: 'Count users by email prefix' }
-                          ].map((item, index) => {
-                            const Icon = item.icon;
-                            return (
-                              <button
-                                key={index}
-                                onClick={item.action}
-                                className="w-full flex items-center gap-4 p-3 text-left bg-[#1e3a5f] hover:bg-blue-500/20 rounded-lg transition-all border border-[#2d4a6f] hover:border-blue-400/50"
-                              >
-                                <Icon className="w-5 h-5 text-blue-400" />
-                                <div>
-                                  <p className="text-sm font-semibold text-white">{item.label}</p>
-                                  <p className="text-xs text-gray-400">{item.desc}</p>
-                                </div>
-                              </button>
-                            );
-                          })}
+                      <div className="bg-[#0a1628] rounded-lg border border-[#2d4a6f] p-5">
+                        <h3 className="text-sm font-medium text-white mb-4">Quick Actions</h3>
+                        <div className="space-y-2">
+                          <button onClick={() => setActiveAdminTab('users')} className="w-full p-2 text-left text-sm text-gray-400 hover:text-white hover:bg-[#1e3a5f] rounded">Add User</button>
+                          <button onClick={exportUsers} className="w-full p-2 text-left text-sm text-gray-400 hover:text-white hover:bg-[#1e3a5f] rounded">Export Data</button>
+                          <button onClick={() => setActiveAdminTab('logs')} className="w-full p-2 text-left text-sm text-gray-400 hover:text-white hover:bg-[#1e3a5f] rounded">View Logs</button>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Real-time Monitoring Section */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                      {/* System Performance */}
-                      <div className="bg-[#0a1628] rounded-xl border border-[#2d4a6f] p-6">
-                        <div className="flex items-center justify-between mb-6">
-                          <div className="flex items-center gap-3">
-                            <div className="p-3 bg-blue-500/20 rounded-lg">
-                              <Activity className="w-6 h-6 text-blue-400" />
-                            </div>
-                            <h3 className="text-lg font-bold text-white">System Performance</h3>
-                          </div>
-                          <button
-                            onClick={() => {
-                              fetchSystemHealth();
-                              fetchSystemMetrics();
-                            }}
-                            className="text-blue-400 hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-500/20"
-                          >
-                            <RefreshCw className="w-5 h-5" />
-                          </button>
+                      {/* Performance */}
+                      <div className="bg-[#0a1628] rounded-lg border border-[#2d4a6f] p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-medium text-white">Performance</h3>
+                          <button onClick={() => { fetchSystemHealth(); fetchSystemMetrics(); }} className="text-gray-500 hover:text-white text-xs">Refresh</button>
                         </div>
-                        
                         {systemMetrics ? (
                           <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
