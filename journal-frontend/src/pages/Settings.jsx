@@ -1043,27 +1043,27 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-[#0a1628]">
       {/* Main Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Header Section */}
         <div className="text-center mb-12">
           <div className="relative inline-block">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full blur-lg opacity-30 animate-pulse"></div>
-            <div className="relative inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl">
-              <SettingsIcon className="w-10 h-10 text-white" />
+            <div className="absolute inset-0 bg-blue-500 rounded-full blur-lg opacity-30 animate-pulse"></div>
+            <div className="relative inline-flex items-center justify-center w-20 h-20 bg-[#1e3a5f] border-2 border-blue-400 rounded-full shadow-2xl">
+              <SettingsIcon className="w-10 h-10 text-blue-400" />
             </div>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mt-6 mb-3">Account Settings</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          <h1 className="text-4xl font-bold text-white mt-6 mb-3">Account Settings</h1>
+          <p className="text-lg text-gray-400 max-w-2xl mx-auto">
             Manage your profile, security settings, and system preferences in one centralized location
           </p>
           {isAdmin && (
-            <div className="mt-6 inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-full text-sm font-semibold shadow-lg">
+            <div className="mt-6 inline-flex items-center gap-3 px-6 py-3 bg-blue-500/20 border border-blue-400/50 text-blue-400 rounded-full text-sm font-semibold">
               <Crown className="w-5 h-5" />
               Administrator Dashboard Access
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
             </div>
           )}
         </div>
@@ -1098,25 +1098,25 @@ export default function Settings() {
           <div className="space-y-8">
             
             {/* Admin Header */}
-            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-3xl shadow-2xl overflow-hidden">
-              <div className="px-8 py-8">
+            <div className="bg-[#1e3a5f] rounded-xl border border-[#2d4a6f] overflow-hidden">
+              <div className="px-8 py-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-6">
                     <div className="relative">
-                      <div className="absolute inset-0 bg-white/30 rounded-2xl blur-sm"></div>
-                      <div className="relative bg-white/20 backdrop-blur-sm rounded-2xl p-4">
-                        <Crown className="w-10 h-10 text-white" />
+                      <div className="absolute inset-0 bg-blue-500/30 rounded-xl blur-sm"></div>
+                      <div className="relative bg-blue-500/20 rounded-xl p-4 border border-blue-400/30">
+                        <Crown className="w-10 h-10 text-blue-400" />
                       </div>
                     </div>
                     <div>
-                      <h2 className="text-3xl font-bold text-white mb-2">Administrator Dashboard</h2>
-                      <p className="text-indigo-100 text-lg">Complete system management and monitoring</p>
+                      <h2 className="text-2xl font-bold text-white mb-1">Administrator Dashboard</h2>
+                      <p className="text-gray-400">Complete system management and monitoring</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
                     <button
                       onClick={() => setShowNotifications(!showNotifications)}
-                      className="relative bg-white/20 backdrop-blur-sm rounded-xl p-3 text-white hover:bg-white/30 transition-all duration-300 hover:scale-110"
+                      className="relative bg-[#0a1628] rounded-lg p-3 text-blue-400 hover:bg-blue-500/20 transition-all border border-[#2d4a6f]"
                     >
                       <Bell className="w-6 h-6" />
                       {notifications.length > 0 && (
@@ -1127,10 +1127,10 @@ export default function Settings() {
                     </button>
                     <button
                       onClick={() => setAutoRefresh(!autoRefresh)}
-                      className={`flex items-center gap-3 px-5 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                      className={`flex items-center gap-3 px-5 py-3 rounded-lg text-sm font-semibold transition-all border ${
                         autoRefresh 
-                          ? 'bg-green-500/30 text-green-100 hover:bg-green-500/40' 
-                          : 'bg-gray-500/30 text-gray-100 hover:bg-gray-500/40'
+                          ? 'bg-green-500/20 text-green-400 border-green-500/50 hover:bg-green-500/30' 
+                          : 'bg-[#0a1628] text-gray-400 border-[#2d4a6f] hover:bg-[#2d4a6f]'
                       }`}
                     >
                       <RefreshCw className={`w-5 h-5 ${autoRefresh ? 'animate-spin' : ''}`} />
@@ -1142,18 +1142,18 @@ export default function Settings() {
             </div>
 
             {/* Admin Tabs */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
+            <div className="bg-[#1e3a5f] rounded-xl border border-[#2d4a6f] overflow-hidden">
               {/* Tab Navigation */}
-              <div className="flex overflow-x-auto border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+              <div className="flex overflow-x-auto border-b border-[#2d4a6f] bg-[#0a1628]">
                 {[
-                  { id: 'dashboard', label: 'Overview', icon: BarChart3, color: 'blue' },
-                  { id: 'users', label: 'Users', icon: Users, color: 'green' },
-                  { id: 'logs', label: 'Logs', icon: FileText, color: 'purple' },
-                  { id: 'health', label: 'Health', icon: Activity, color: 'orange' },
-                  { id: 'analytics', label: 'Analytics', icon: TrendingUp, color: 'indigo' },
-                  { id: 'feature-flags', label: 'Feature Flags', icon: Zap, color: 'yellow' },
-                  { id: 'bulk-email', label: 'Bulk Email', icon: Mail, color: 'pink' },
-                  { id: 'settings', label: 'Settings', icon: SettingsIcon, color: 'gray' }
+                  { id: 'dashboard', label: 'Overview', icon: BarChart3 },
+                  { id: 'users', label: 'Users', icon: Users },
+                  { id: 'logs', label: 'Logs', icon: FileText },
+                  { id: 'health', label: 'Health', icon: Activity },
+                  { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+                  { id: 'feature-flags', label: 'Feature Flags', icon: Zap },
+                  { id: 'bulk-email', label: 'Bulk Email', icon: Mail },
+                  { id: 'settings', label: 'Settings', icon: SettingsIcon }
                 ].map(tab => {
                   const Icon = tab.icon;
                   const isActive = activeAdminTab === tab.id;
@@ -1161,13 +1161,13 @@ export default function Settings() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveAdminTab(tab.id)}
-                      className={`flex items-center gap-3 px-6 py-5 text-sm font-semibold transition-all duration-300 relative whitespace-nowrap ${
+                      className={`flex items-center gap-3 px-6 py-4 text-sm font-semibold transition-all relative whitespace-nowrap ${
                         isActive
-                          ? `text-${tab.color}-600 bg-white shadow-lg border-b-4 border-${tab.color}-600`
-                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                          ? 'text-blue-400 bg-[#1e3a5f] border-b-2 border-blue-400'
+                          : 'text-gray-400 hover:text-white hover:bg-[#1e3a5f]/50'
                       }`}
                     >
-                      <Icon className={`w-5 h-5 ${isActive ? 'animate-pulse' : ''}`} />
+                      <Icon className="w-5 h-5" />
                       {tab.label}
                     </button>
                   );
@@ -1175,7 +1175,7 @@ export default function Settings() {
               </div>
 
               {/* Tab Content */}
-              <div className={activeAdminTab === 'bulk-email' ? 'p-0' : 'p-8'}>
+              <div className={activeAdminTab === 'bulk-email' ? 'p-0' : 'p-6'}>
                 {/* Dashboard Tab */}
                 {activeAdminTab === 'dashboard' && (
                   <div className="space-y-8">
@@ -1314,22 +1314,22 @@ export default function Settings() {
                     </div>
 
                     {/* System Status & Quick Actions */}
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                       {/* System Status */}
-                      <div className="xl:col-span-2 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-gray-200 p-8">
+                      <div className="xl:col-span-2 bg-[#0a1628] rounded-xl border border-[#2d4a6f] p-6">
                         <div className="flex items-center justify-between mb-6">
                           <div className="flex items-center gap-3">
-                            <div className="p-3 bg-green-100 rounded-xl">
-                              <Activity className="w-6 h-6 text-green-600" />
+                            <div className="p-3 bg-green-500/20 rounded-lg">
+                              <Activity className="w-6 h-6 text-green-400" />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900">System Status</h3>
+                            <h3 className="text-lg font-bold text-white">System Status</h3>
                           </div>
                           <button
                             onClick={() => {
                               fetchSystemHealth();
                               fetchSystemMetrics();
                             }}
-                            className="text-blue-600 hover:text-blue-700 transition-colors p-2 rounded-lg hover:bg-blue-50"
+                            className="text-blue-400 hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-500/20"
                           >
                             <RefreshCw className="w-5 h-5" />
                           </button>
@@ -1341,11 +1341,11 @@ export default function Settings() {
                             { name: 'API Server', status: 'Running', color: 'blue' },
                             { name: 'Frontend', status: 'Online', color: 'blue' }
                           ].map((service, index) => (
-                            <div key={index} className={`flex items-center gap-4 p-4 bg-${service.color}-50 rounded-xl border border-${service.color}-100`}>
-                              <div className={`w-4 h-4 bg-${service.color}-500 rounded-full ${service.color === 'green' ? 'animate-pulse' : ''}`}></div>
+                            <div key={index} className="flex items-center gap-4 p-4 bg-[#1e3a5f] rounded-lg border border-[#2d4a6f]">
+                              <div className={`w-3 h-3 rounded-full ${service.color === 'green' ? 'bg-green-400 animate-pulse' : 'bg-blue-400'}`}></div>
                               <div>
-                                <p className="text-sm font-semibold text-gray-900">{service.name}</p>
-                                <p className="text-xs text-gray-600">{service.status}</p>
+                                <p className="text-sm font-semibold text-white">{service.name}</p>
+                                <p className="text-xs text-gray-400">{service.status}</p>
                               </div>
                             </div>
                           ))}
@@ -1353,34 +1353,34 @@ export default function Settings() {
                       </div>
 
                       {/* Quick Actions */}
-                      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-gray-200 p-8">
+                      <div className="bg-[#0a1628] rounded-xl border border-[#2d4a6f] p-6">
                         <div className="flex items-center gap-3 mb-6">
-                          <div className="p-3 bg-blue-100 rounded-xl">
-                            <Zap className="w-6 h-6 text-blue-600" />
+                          <div className="p-3 bg-blue-500/20 rounded-lg">
+                            <Zap className="w-6 h-6 text-blue-400" />
                           </div>
-                          <h3 className="text-xl font-bold text-gray-900">Quick Actions</h3>
+                          <h3 className="text-lg font-bold text-white">Quick Actions</h3>
                         </div>
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           {[
-                            { action: () => setActiveAdminTab('users'), icon: UserPlus, label: 'Add User', desc: 'Create new account', color: 'blue' },
-                            { action: exportUsers, icon: Download, label: 'Export Users', desc: 'Download user data', color: 'green' },
-                            { action: () => setActiveAdminTab('logs'), icon: FileText, label: 'View Logs', desc: 'System activity', color: 'purple' },
-                            { action: () => setActiveAdminTab('health'), icon: Activity, label: 'System Health', desc: 'Monitor performance', color: 'orange' },
-                            { action: () => setActiveAdminTab('feature-flags'), icon: Zap, label: 'Feature Flags', desc: 'Manage features', color: 'yellow' },
-                            { action: () => setActiveAdminTab('bulk-import'), icon: UserPlus, label: 'Bulk Import', desc: 'Import multiple users', color: 'indigo' },
-                            { action: () => setActiveAdminTab('email-count'), icon: Mail, label: 'Email Count', desc: 'Count users by email prefix', color: 'red' }
+                            { action: () => setActiveAdminTab('users'), icon: UserPlus, label: 'Add User', desc: 'Create new account' },
+                            { action: exportUsers, icon: Download, label: 'Export Users', desc: 'Download user data' },
+                            { action: () => setActiveAdminTab('logs'), icon: FileText, label: 'View Logs', desc: 'System activity' },
+                            { action: () => setActiveAdminTab('health'), icon: Activity, label: 'System Health', desc: 'Monitor performance' },
+                            { action: () => setActiveAdminTab('feature-flags'), icon: Zap, label: 'Feature Flags', desc: 'Manage features' },
+                            { action: () => setActiveAdminTab('bulk-import'), icon: UserPlus, label: 'Bulk Import', desc: 'Import multiple users' },
+                            { action: () => setActiveAdminTab('email-count'), icon: Mail, label: 'Email Count', desc: 'Count users by email prefix' }
                           ].map((item, index) => {
                             const Icon = item.icon;
                             return (
                               <button
                                 key={index}
                                 onClick={item.action}
-                                className={`w-full flex items-center gap-4 p-4 text-left bg-${item.color}-50 hover:bg-${item.color}-100 rounded-xl transition-all duration-300 border border-${item.color}-100 hover:border-${item.color}-200 hover:scale-105`}
+                                className="w-full flex items-center gap-4 p-3 text-left bg-[#1e3a5f] hover:bg-blue-500/20 rounded-lg transition-all border border-[#2d4a6f] hover:border-blue-400/50"
                               >
-                                <Icon className={`w-6 h-6 text-${item.color}-600`} />
+                                <Icon className="w-5 h-5 text-blue-400" />
                                 <div>
-                                  <p className="text-sm font-semibold text-gray-900">{item.label}</p>
-                                  <p className="text-xs text-gray-600">{item.desc}</p>
+                                  <p className="text-sm font-semibold text-white">{item.label}</p>
+                                  <p className="text-xs text-gray-400">{item.desc}</p>
                                 </div>
                               </button>
                             );
@@ -1390,22 +1390,22 @@ export default function Settings() {
                     </div>
 
                     {/* Real-time Monitoring Section */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                       {/* System Performance */}
-                      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-gray-200 p-8">
+                      <div className="bg-[#0a1628] rounded-xl border border-[#2d4a6f] p-6">
                         <div className="flex items-center justify-between mb-6">
                           <div className="flex items-center gap-3">
-                            <div className="p-3 bg-blue-100 rounded-xl">
-                              <Activity className="w-6 h-6 text-blue-600" />
+                            <div className="p-3 bg-blue-500/20 rounded-lg">
+                              <Activity className="w-6 h-6 text-blue-400" />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900">System Performance</h3>
+                            <h3 className="text-lg font-bold text-white">System Performance</h3>
                           </div>
                           <button
                             onClick={() => {
                               fetchSystemHealth();
                               fetchSystemMetrics();
                             }}
-                            className="text-blue-600 hover:text-blue-700 transition-colors p-2 rounded-lg hover:bg-blue-50"
+                            className="text-blue-400 hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-500/20"
                           >
                             <RefreshCw className="w-5 h-5" />
                           </button>
@@ -1414,54 +1414,54 @@ export default function Settings() {
                         {systemMetrics ? (
                           <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                              <div className="bg-[#1e3a5f] rounded-lg p-4 border border-[#2d4a6f]">
                                 <div className="flex items-center justify-between mb-2">
-                                  <span className="text-sm font-medium text-gray-600">CPU Usage</span>
-                                  <span className="text-sm font-bold text-gray-900">{systemMetrics.cpu?.percent || 0}%</span>
+                                  <span className="text-sm font-medium text-gray-400">CPU Usage</span>
+                                  <span className="text-sm font-bold text-white">{systemMetrics.cpu?.percent || 0}%</span>
                                 </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div className="w-full bg-[#0a1628] rounded-full h-2">
                                   <div 
-                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                                    className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
                                     style={{ width: `${systemMetrics.cpu?.percent || 0}%` }}
                                   ></div>
                                 </div>
                               </div>
                               
-                              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                              <div className="bg-[#1e3a5f] rounded-lg p-4 border border-[#2d4a6f]">
                                 <div className="flex items-center justify-between mb-2">
-                                  <span className="text-sm font-medium text-gray-600">Memory Usage</span>
-                                  <span className="text-sm font-bold text-gray-900">{systemMetrics.memory?.percent || 0}%</span>
+                                  <span className="text-sm font-medium text-gray-400">Memory Usage</span>
+                                  <span className="text-sm font-bold text-white">{systemMetrics.memory?.percent || 0}%</span>
                                 </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div className="w-full bg-[#0a1628] rounded-full h-2">
                                   <div 
-                                    className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                                    className="bg-green-500 h-2 rounded-full transition-all duration-300" 
                                     style={{ width: `${systemMetrics.memory?.percent || 0}%` }}
                                   ></div>
                                 </div>
                               </div>
                             </div>
                             
-                            <div className="bg-white rounded-xl p-4 border border-gray-200">
+                            <div className="bg-[#1e3a5f] rounded-lg p-4 border border-[#2d4a6f]">
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-gray-600">Disk Usage</span>
-                                <span className="text-sm font-bold text-gray-900">{Math.round(systemMetrics.disk?.percent || 0)}%</span>
+                                <span className="text-sm font-medium text-gray-400">Disk Usage</span>
+                                <span className="text-sm font-bold text-white">{Math.round(systemMetrics.disk?.percent || 0)}%</span>
                               </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div className="w-full bg-[#0a1628] rounded-full h-2">
                                 <div 
-                                  className="bg-purple-600 h-2 rounded-full transition-all duration-300" 
+                                  className="bg-purple-500 h-2 rounded-full transition-all duration-300" 
                                   style={{ width: `${systemMetrics.disk?.percent || 0}%` }}
                                 ></div>
                               </div>
                             </div>
                             
                             <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                                <div className="text-gray-600">Uptime</div>
-                                <div className="font-bold text-gray-900">{systemMetrics.uptime?.formatted || 'N/A'}</div>
+                              <div className="bg-[#1e3a5f] rounded-lg p-4 border border-[#2d4a6f]">
+                                <div className="text-gray-400">Uptime</div>
+                                <div className="font-bold text-white">{systemMetrics.uptime?.formatted || 'N/A'}</div>
                               </div>
-                              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                                <div className="text-gray-600">Load Average</div>
-                                <div className="font-bold text-gray-900">
+                              <div className="bg-[#1e3a5f] rounded-lg p-4 border border-[#2d4a6f]">
+                                <div className="text-gray-400">Load Average</div>
+                                <div className="font-bold text-white">
                                   {systemMetrics.load_average ? systemMetrics.load_average[0].toFixed(2) : 'N/A'}
                                 </div>
                               </div>
@@ -1469,52 +1469,52 @@ export default function Settings() {
                           </div>
                         ) : (
                           <div className="text-center py-8">
-                            <Activity className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                            <p className="text-gray-500">Click refresh to load system metrics</p>
+                            <Activity className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+                            <p className="text-gray-400">Click refresh to load system metrics</p>
                           </div>
                         )}
                       </div>
 
                       {/* Recent Activity */}
-                      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-gray-200 p-8">
+                      <div className="bg-[#0a1628] rounded-xl border border-[#2d4a6f] p-6">
                         <div className="flex items-center justify-between mb-6">
                           <div className="flex items-center gap-3">
-                            <div className="p-3 bg-green-100 rounded-xl">
-                              <Clock className="w-6 h-6 text-green-600" />
+                            <div className="p-3 bg-green-500/20 rounded-lg">
+                              <Clock className="w-6 h-6 text-green-400" />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900">Recent Activity</h3>
+                            <h3 className="text-lg font-bold text-white">Recent Activity</h3>
                           </div>
                           <button
                             onClick={fetchRecentActivity}
-                            className="text-green-600 hover:text-green-700 transition-colors p-2 rounded-lg hover:bg-green-50"
+                            className="text-green-400 hover:text-green-300 transition-colors p-2 rounded-lg hover:bg-green-500/20"
                           >
                             <RefreshCw className="w-5 h-5" />
                           </button>
                         </div>
                         
-                        <div className="space-y-4 max-h-80 overflow-y-auto">
+                        <div className="space-y-3 max-h-80 overflow-y-auto">
                           {recentActivity && recentActivity.length > 0 ? (
                             recentActivity.slice(0, 10).map((activity, index) => (
-                              <div key={index} className="bg-white rounded-xl p-4 border border-gray-200">
+                              <div key={index} className="bg-[#1e3a5f] rounded-lg p-4 border border-[#2d4a6f]">
                                 <div className="flex items-start justify-between">
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-sm font-semibold text-gray-900">
+                                      <span className="text-sm font-semibold text-white">
                                         {activity.action.replace(/_/g, ' ')}
                                       </span>
                                       <span className="text-xs text-gray-500">
                                         {new Date(activity.timestamp).toLocaleTimeString()}
                                       </span>
                                     </div>
-                                    <p className="text-sm text-gray-600">{activity.details}</p>
+                                    <p className="text-sm text-gray-400">{activity.details}</p>
                                     <p className="text-xs text-gray-500 mt-1">User: {activity.user}</p>
                                   </div>
                                   <div className="ml-4">
                                     <div className={`w-2 h-2 rounded-full ${
-                                      activity.action.includes('CREATE') ? 'bg-green-500' :
-                                      activity.action.includes('UPDATE') ? 'bg-blue-500' :
-                                      activity.action.includes('DELETE') ? 'bg-red-500' :
-                                      'bg-gray-500'
+                                      activity.action.includes('CREATE') ? 'bg-green-400' :
+                                      activity.action.includes('UPDATE') ? 'bg-blue-400' :
+                                      activity.action.includes('DELETE') ? 'bg-red-400' :
+                                      'bg-gray-400'
                                     }`}></div>
                                   </div>
                                 </div>
@@ -1522,8 +1522,8 @@ export default function Settings() {
                             ))
                           ) : (
                             <div className="text-center py-8">
-                              <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                              <p className="text-gray-500">No recent activity</p>
+                              <Clock className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+                              <p className="text-gray-400">No recent activity</p>
                             </div>
                           )}
                         </div>
