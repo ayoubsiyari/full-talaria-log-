@@ -240,7 +240,7 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
 
     id = Column(String, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)  # no FK — users table is managed by journal-backend
     ip_address = Column(String)
     device = Column(String)
     last_active_at = Column(DateTime, default=datetime.utcnow)
@@ -249,7 +249,7 @@ class TradingSession(Base):
     __tablename__ = "trading_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)  # no FK — users table is managed by journal-backend
     name = Column(String, nullable=False)
     session_type = Column(String, nullable=False)  # personal | propfirm
     config_json = Column(Text, nullable=False)
@@ -260,7 +260,7 @@ class TradingSessionState(Base):
     __tablename__ = "trading_session_states"
 
     session_id = Column(Integer, ForeignKey("trading_sessions.id"), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)  # no FK — users table is managed by journal-backend
     state_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
