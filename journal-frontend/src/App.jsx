@@ -51,8 +51,6 @@ import AIDashboard from './pages/AIDashboard';
 import Features from './pages/Features';
 import Pricing from './pages/Pricing';
 import Contact from './pages/Contact';
-import Auth      from './pages/Auth';
-import Register  from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
 import ResendVerification from './pages/ResendVerification';
 import ImportTrades from './pages/ImportTrades';
@@ -508,7 +506,6 @@ function AppRoutes() {
         <div className="min-h-screen bg-slate-50">
           <div className="pt-4 px-4 bg-white shadow-sm">
             <Routes>
-              {/* <Route path="/register" element={<Register />} /> */}
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/resend-verification" element={<ResendVerification />} />
               <Route path="/features" element={<Features />} />
