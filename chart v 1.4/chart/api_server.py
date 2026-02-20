@@ -171,10 +171,10 @@ connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite")
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
-# Chart-specific tables (created by this service)
+# Single Base so FK references between models resolve correctly.
+# The users table is owned by journal-backend — we declare it here for FK resolution
+# but exclude it from create_all (see CHART_TABLES below).
 Base = declarative_base()
-# Shared tables — schema is owned by journal-backend; chart only reads/writes rows
-SharedBase = declarative_base()
 
 # Upload directory
 UPLOAD_DIR = Path("uploads")
@@ -221,9 +221,10 @@ class DatasetSettings(Base):
 
 DATASET_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo']
 
-class User(SharedBase):
+class User(Base):
     """Maps to the shared 'users' table managed by journal-backend.
-    Only declare columns this service actually needs; do NOT call create_all on SharedBase.
+    Declared here so FK references in chart tables resolve correctly.
+    Excluded from create_all — journal-backend owns this schema.
     """
     __tablename__ = "users"
 
@@ -264,9 +265,16 @@ class TradingSessionState(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# Create chart-specific tables only.
-# SharedBase (User) is intentionally excluded — journal-backend owns that schema.
-Base.metadata.create_all(bind=engine)
+# Create chart-specific tables only — exclude 'users' (managed by journal-backend).
+_CHART_TABLES = [
+    CSVFile.__table__,
+    CSVAggregate.__table__,
+    DatasetSettings.__table__,
+    UserSession.__table__,
+    TradingSession.__table__,
+    TradingSessionState.__table__,
+]
+Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 
 def _normalize_password_for_bcrypt(password: str) -> str:
     b = password.encode("utf-8")
