@@ -34,7 +34,7 @@ export const fetchWithAuth = async (url, options = {}) => {
       localStorage.removeItem('token');
       // Redirect to login if not already there
       if (!window.location.pathname.includes('login')) {
-        window.location.href = '/login';
+        window.location.href = '/journal/login';
       }
       throw new Error('No authentication token found. Please log in again.');
     }
@@ -47,7 +47,7 @@ export const fetchWithAuth = async (url, options = {}) => {
       console.error('[fetch] Empty token after cleanup');
       localStorage.removeItem('token');
       if (!window.location.pathname.includes('login')) {
-        window.location.href = '/login';
+        window.location.href = '/journal/login';
       }
       throw new Error('Invalid authentication token. Please log in again.');
     }
@@ -192,7 +192,7 @@ export const fetchWithAuth = async (url, options = {}) => {
             console.error('[fetch] Token refresh failed, logging out:', refreshError);
             localStorage.removeItem('token');
             if (!window.location.pathname.includes('login')) {
-              window.location.href = '/login';
+              window.location.href = '/journal/login';
             }
             throw new Error('Your session has expired. Please log in again.');
           }

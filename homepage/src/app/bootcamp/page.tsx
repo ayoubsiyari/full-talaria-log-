@@ -137,9 +137,17 @@ export default function BootcampPage() {
   const handleJoinNow = async () => {
     setJoinMenuLoading(true);
     try {
-      const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
-      const data = await res.json().catch(() => null);
-      const authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
+      const token = localStorage.getItem("token");
+      let authed = false;
+      if (token) {
+        const res = await fetch("/journal/api/auth/validate-token", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+        authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
+      }
       if (authed) {
         window.location.href = "/register/";
         return;
@@ -156,7 +164,7 @@ export default function BootcampPage() {
       isArabic
         ? {
             nav: { backHome: "العودة للرئيسية" },
-            tabs: { bootcamp: "المنتورشيب", soon: "قريباً" },
+            tabs: { bootcamp: "المنتورشيب", journal: "الجورنال", backtest: "باكتست" },
             header: {
               a: "",
               b: "المنتورشيب",
@@ -230,7 +238,7 @@ export default function BootcampPage() {
           }
         : {
             nav: { backHome: "Back Home" },
-            tabs: { bootcamp: "Mentorship", soon: "Soon" },
+            tabs: { bootcamp: "Mentorship", journal: "Journal", backtest: "Backtest" },
             header: {
               a: "Trading",
               b: "Mentorship",
@@ -466,18 +474,16 @@ export default function BootcampPage() {
                 {t.tabs.bootcamp}
               </Button>
             </Link>
-            <div className="relative group">
-              <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white/50 bg-gradient-to-r from-black via-blue-900/50 to-blue-600/50 shadow-[0_0_0_1px_rgba(59,130,246,0.15),0_18px_45px_rgba(37,99,235,0.15)] cursor-not-allowed opacity-60">
-                <span className="tg-mask" aria-hidden="true" />
+            <Link href="/journal/login">
+              <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
+                {t.tabs.journal}
               </Button>
-              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1.5 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
-            </div>
-            <div className="relative group">
-              <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white/50 bg-gradient-to-r from-black via-blue-900/50 to-blue-600/50 shadow-[0_0_0_1px_rgba(59,130,246,0.15),0_18px_45px_rgba(37,99,235,0.15)] cursor-not-allowed opacity-60">
-                <span className="tg-mask" aria-hidden="true" />
+            </Link>
+            <Link href="/backtest">
+              <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
+                {t.tabs.backtest}
               </Button>
-              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[8px] sm:text-[10px] px-1.5 py-0.5 rounded-full font-semibold">{t.tabs.soon}</span>
-            </div>
+            </Link>
             {/* NinjaTrader tab hidden for now
             <Link href="/ninjatrader">
               <Button variant="ghost" className="px-2 sm:px-4 py-1 text-sm rounded-full h-6 sm:h-8 flex items-center bg-transparent hover:bg-white/10">

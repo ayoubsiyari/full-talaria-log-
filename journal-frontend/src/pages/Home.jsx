@@ -178,7 +178,9 @@ export default function Home() {
               <Link to="/features" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} hover:${colors.components.nav.linkBg} rounded-md transition-all duration-200 border border-transparent hover:${colors.components.nav.linkBorder}`}>
                Features
               </Link>
-             
+              <a href="#pricing" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} hover:${colors.components.nav.linkBg} rounded-md transition-all duration-200 border border-transparent hover:${colors.components.nav.linkBorder}`}>
+                Pricing
+              </a>
               <Link to="/contact" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} hover:${colors.components.nav.linkBg} rounded-md transition-all duration-200 border border-transparent hover:${colors.components.nav.linkBorder}`}>
                 Contact
               </Link>
@@ -501,6 +503,89 @@ export default function Home() {
         </div>
       </Section>
 
+      {/* Pricing Section */}
+      <Section id="pricing">
+        <div className="container mx-auto px-6">
+          <div className="text-center mb-12">
+            <div className={`inline-flex items-center space-x-2 ${colors.backgrounds.overlay} backdrop-blur-sm px-3 py-1.5 rounded-full border ${colors.borders.primary} mb-6`}>
+              <div className={`w-2 h-2 bg-green-400 rounded-full`} />
+              <span className={`text-sm ${colors.text.secondary}`}>Simple, Transparent Pricing</span>
+            </div>
+            <h2 className={`text-4xl md:text-5xl font-normal mb-4 leading-tight ${colors.text.primary}`}>
+              Choose your
+              <br />
+              <span className={colorUtils.getTextGradient()}>trading edge</span>
+            </h2>
+            <p className={`text-lg ${colors.text.secondary} font-light max-w-2xl mx-auto`}>
+              From individual traders to institutional firms, we have the perfect plan to help you achieve consistent profitability.
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Pro Plan - Recommended */}
+            <motion.div 
+              variants={itemVariants}
+              className={`${colors.components.card.background} rounded-xl p-6 border-2 border-blue-500 relative`}
+            >
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                <span className="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full">Recommended</span>
+              </div>
+              <h3 className={`text-xl font-semibold ${colors.text.primary} mb-2`}>Pro Trader</h3>
+              <p className={`text-sm ${colors.text.secondary} mb-4`}>For serious traders ready to level up</p>
+              <div className="mb-6">
+                <span className={`text-4xl font-bold ${colors.text.primary}`}>$29</span>
+                <span className={`text-sm ${colors.text.secondary}`}>/month</span>
+              </div>
+              <ul className="space-y-3 mb-6">
+                {['Unlimited trade journaling', 'Full analytics & reports', 'AI Trading Assistant', 'Strategy Builder', 'Backtesting tools', 'Priority support'].map((feature, idx) => (
+                  <li key={idx} className={`flex items-center text-sm ${colors.text.secondary}`}>
+                    <svg className="w-4 h-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/pricing?plan=pro" className="block w-full text-center py-3 px-4 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 transition-all">
+                Get Access Now
+              </Link>
+            </motion.div>
+
+            {/* Enterprise Plan */}
+            <motion.div 
+              variants={itemVariants}
+              className={`${colors.components.card.background} rounded-xl p-6 border ${colors.borders.primary}`}
+            >
+              <h3 className={`text-xl font-semibold ${colors.text.primary} mb-2`}>Enterprise</h3>
+              <p className={`text-sm ${colors.text.secondary} mb-4`}>For trading teams & prop firms</p>
+              <div className="mb-6">
+                <span className={`text-4xl font-bold ${colors.text.primary}`}>$99</span>
+                <span className={`text-sm ${colors.text.secondary}`}>/month</span>
+              </div>
+              <ul className="space-y-3 mb-6">
+                {['Everything in Pro', 'Multi-user team access', 'Custom integrations', 'Dedicated account manager', 'White-label options', 'API access'].map((feature, idx) => (
+                  <li key={idx} className={`flex items-center text-sm ${colors.text.secondary}`}>
+                    <svg className="w-4 h-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/pricing?plan=enterprise" className="block w-full text-center py-3 px-4 rounded-lg bg-white/10 text-white font-medium hover:bg-white/20 transition-all">
+                Get Access Now
+              </Link>
+            </motion.div>
+          </div>
+          
+          <div className="text-center mt-8">
+            <Link to="/pricing" className={`text-sm ${colors.text.secondary} hover:text-white transition-colors`}>
+              View full pricing details →
+            </Link>
+          </div>
+        </div>
+      </Section>
+
       <Section className="text-center">
         <div className="container mx-auto px-6">
           <div className="max-w-3xl mx-auto">
@@ -512,8 +597,8 @@ export default function Home() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-              <Link to="/login" className={colorUtils.getButtonClasses('primary')}>
-                Start free trial
+              <Link to="/pricing" className={colorUtils.getButtonClasses('primary')}>
+                Start Now
               </Link>
               <Link to="/features" className={colorUtils.getButtonClasses('secondary')}>
                 View features
@@ -521,9 +606,9 @@ export default function Home() {
             </div>
             
             <div className={`flex items-center justify-center space-x-8 text-xs ${colors.text.tertiary}`}>
-              <span>No credit card required</span>
+              <span>Instant access</span>
               <span>•</span>
-              <span>14-day free trial</span>
+              <span>Full platform features</span>
               <span>•</span>
               <span>Cancel anytime</span>
             </div>

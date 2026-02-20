@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Datasets</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #111933;
+      --panel-2: #0f1630;
+      --line: #2a355f;
+      --text: #e9eefc;
+      --muted: #97a3c9;
+      --accent: #4e8cff;
+      --danger: #ff5d7a;
+      --ok: #27c07d;
+      --warn: #f7b955;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1100px 600px at 10% -10%, #23366f44, transparent), var(--bg);
+    }
+
+    .wrap {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, #131f41, #0d1530);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 12px 24px #00000030;
+    }
+
+    h1 { margin: 0 0 6px 0; font-size: 28px; }
+    .sub { color: var(--muted); font-size: 14px; }
+
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+    input[type="text"],
+    input[type="file"],
+    textarea,
+    select {
+      width: 100%;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    textarea { min-height: 80px; resize: vertical; }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 13px;
+      background: #1a2550;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.primary { background: var(--accent); border-color: #7ea8ff; color: #fff; }
+    button.danger { background: #3f1a27; border-color: #6a2a3f; color: #ffdce4; }
+    button.warn { background: #3b2c10; border-color: #6f5522; color: #ffe8bc; }
+
+    .status {
+      border-left: 4px solid var(--accent);
+      padding: 10px 12px;
+      background: #111a37;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      display: none;
+    }
+    .status.ok { border-left-color: var(--ok); color: #c7f7e3; }
+    .status.error { border-left-color: var(--danger); color: #ffd5de; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid #243058;
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr.dataset-row { cursor: pointer; }
+    tr.dataset-row:hover { background: #182247; }
+    tr.dataset-row.active { background: #1a2a59; }
+
+    .tf-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      border: 1px solid #2f427c;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      text-align: center;
+      color: #d4ddff;
+      background: #16234d;
+      white-space: nowrap;
+    }
+    .pill.ready { border-color: #2f7c59; background: #103526; color: #b7f6d7; }
+    .pill.failed, .pill.missing { border-color: #7c2f4d; background: #351023; color: #ffd2df; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .full { grid-column: 1 / -1; }
+
+    .muted { color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
+      .tf-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Dataset Admin</h1>
+      <div class="sub">Manage uploaded CSV datasets, CSV parser settings, and binary rebuilds.</div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="card">
+      <div class="row">
+        <input id="uploadInput" type="file" accept=".csv" />
+        <button id="uploadBtn" class="primary">Upload CSV</button>
+        <button id="refreshBtn">Refresh</button>
+      </div>
+      <div class="muted" style="margin-top: 8px;">
+        Upload is admin-only and triggers background CSV-to-binary conversion for all timeframes.
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+          <strong>Datasets</strong>
+          <span id="datasetCount" class="muted"></span>
+        </div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Rows</th>
+                <th>Binary</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="datasetRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+          <strong>Dataset Settings</strong>
+          <span id="selectedLabel" class="muted">No dataset selected</span>
+        </div>
+
+        <form id="settingsForm" class="form-grid">
+          <label class="full">
+            <div class="muted">Display Name</div>
+            <input id="display_name" type="text" placeholder="Dataset label" />
+          </label>
+
+          <label>
+            <div class="muted">CSV Delimiter</div>
+            <select id="csv_delimiter">
+              <option value=",">Comma (,)</option>
+              <option value=";">Semicolon (;)</option>
+              <option value="\t">Tab (\t)</option>
+              <option value="|">Pipe (|)</option>
+            </select>
+          </label>
+
+          <label>
+            <div class="muted">CSV Timezone</div>
+            <input id="csv_timezone" type="text" placeholder="UTC" />
+          </label>
+
+          <label class="full">
+            <div class="muted">Date/Time Format (optional)</div>
+            <input id="datetime_format" type="text" placeholder="Example: %Y-%m-%d %H:%M:%S" />
+          </label>
+
+          <label>
+            <div class="muted">CSV Has Header</div>
+            <select id="csv_has_header">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+
+          <label>
+            <div class="muted">Active</div>
+            <select id="is_active">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+
+          <label class="full">
+            <div class="muted">Notes</div>
+            <textarea id="notes" placeholder="Optional notes"></textarea>
+          </label>
+
+          <div class="full row" style="justify-content: flex-end; margin-top: 6px;">
+            <button type="button" id="rebuildBtn" class="warn">Rebuild Binary</button>
+            <button type="button" id="deleteBtn" class="danger">Delete Dataset</button>
+            <button type="submit" class="primary">Save Settings</button>
+          </div>
+        </form>
+
+        <div id="tfStatus" class="tf-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      datasets: [],
+      selectedId: null,
+      me: null
+    };
+
+    const statusEl = document.getElementById('status');
+    const rowsEl = document.getElementById('datasetRows');
+    const countEl = document.getElementById('datasetCount');
+    const selectedLabelEl = document.getElementById('selectedLabel');
+    const tfStatusEl = document.getElementById('tfStatus');
+
+    function showStatus(text, kind = 'info') {
+      statusEl.style.display = 'block';
+      statusEl.className = `status ${kind === 'error' ? 'error' : kind === 'ok' ? 'ok' : ''}`;
+      statusEl.textContent = text;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    async function fetchJson(url, init = {}) {
+      const res = await fetch(url, {
+        credentials: 'include',
+        ...init
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+      }
+      return body;
+    }
+
+    async function checkAdmin() {
+      const res = await fetchJson('/api/auth/me');
+      const user = res.user;
+      state.me = user;
+      if (!user || user.role !== 'admin') {
+        throw new Error('Forbidden (admin only)');
+      }
+    }
+
+    function selectedDataset() {
+      return state.datasets.find(d => d.id === state.selectedId) || null;
+    }
+
+    function renderTimeframes(dataset) {
+      tfStatusEl.innerHTML = '';
+      if (!dataset || !dataset.timeframes) return;
+      const keys = Object.keys(dataset.timeframes);
+      keys.forEach(tf => {
+        const item = dataset.timeframes[tf] || {};
+        const status = String(item.status || 'missing').toLowerCase();
+        const chip = document.createElement('div');
+        chip.className = `pill ${status}`;
+        chip.title = `${tf} | status=${status} | rows=${item.row_count || 0}`;
+        chip.textContent = `${tf}: ${status}`;
+        tfStatusEl.appendChild(chip);
+      });
+    }
+
+    function fillSettings(dataset) {
+      if (!dataset) return;
+      const s = dataset.settings || {};
+      document.getElementById('display_name').value = s.display_name || dataset.original_name || '';
+      document.getElementById('csv_delimiter').value = s.csv_delimiter || ',';
+      document.getElementById('csv_timezone').value = s.csv_timezone || 'UTC';
+      document.getElementById('datetime_format').value = s.datetime_format || '';
+      document.getElementById('csv_has_header').value = String(s.csv_has_header !== false);
+      document.getElementById('is_active').value = String(s.is_active !== false);
+      document.getElementById('notes').value = s.notes || '';
+      selectedLabelEl.textContent = `#${dataset.id} ${dataset.original_name}`;
+      renderTimeframes(dataset);
+    }
+
+    function selectDataset(id) {
+      state.selectedId = id;
+      [...rowsEl.querySelectorAll('tr.dataset-row')].forEach(tr => {
+        tr.classList.toggle('active', Number(tr.datasetId) === Number(id));
+      });
+      fillSettings(selectedDataset());
+    }
+
+    function renderDatasets() {
+      rowsEl.innerHTML = '';
+      countEl.textContent = `${state.datasets.length} datasets`;
+
+      if (!state.datasets.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="muted">No datasets found.</td>`;
+        rowsEl.appendChild(tr);
+        return;
+      }
+
+      state.datasets.forEach(dataset => {
+        const tr = document.createElement('tr');
+        tr.className = 'dataset-row';
+        tr.datasetId = String(dataset.id);
+
+        const ready = Number(dataset.ready_timeframes || 0);
+        const total = Number(dataset.total_timeframes || 0);
+
+        tr.innerHTML = `
+          <td>#${dataset.id}</td>
+          <td>
+            <div>${escapeHtml(dataset.settings?.display_name || dataset.original_name)}</div>
+            <div class="muted">${escapeHtml(dataset.original_name)}</div>
+          </td>
+          <td>${Number(dataset.row_count || 0).toLocaleString()}</td>
+          <td>${ready}/${total}</td>
+          <td>
+            <div class="row" style="gap:6px;">
+              <button data-action="pick" data-id="${dataset.id}">Edit</button>
+              <button data-action="rebuild" data-id="${dataset.id}" class="warn">Rebuild</button>
+            </div>
+          </td>
+        `;
+
+        tr.addEventListener('click', (e) => {
+          const btn = e.target.closest('button');
+          if (btn) {
+            const action = btn.dataset.action;
+            const id = Number(btn.dataset.id);
+            if (action === 'pick') {
+              selectDataset(id);
+            } else if (action === 'rebuild') {
+              rebuildBinary(id);
+            }
+            return;
+          }
+          selectDataset(dataset.id);
+        });
+
+        rowsEl.appendChild(tr);
+      });
+
+      if (!selectedDataset() && state.datasets.length) {
+        selectDataset(state.datasets[0].id);
+      }
+    }
+
+    async function loadDatasets() {
+      const data = await fetchJson('/api/admin/datasets');
+      state.datasets = data.datasets || [];
+      renderDatasets();
+    }
+
+    async function rebuildBinary(fileId) {
+      if (!fileId) return;
+      showStatus(`Rebuilding binary for #${fileId}...`, 'info');
+      await fetchJson(`/api/admin/datasets/${fileId}/rebuild-binary`, { method: 'POST' });
+      showStatus(`Binary rebuild started for #${fileId}.`, 'ok');
+      await loadDatasets();
+    }
+
+    async function deleteDataset(fileId) {
+      if (!fileId) return;
+      if (!confirm(`Delete dataset #${fileId}? This cannot be undone.`)) return;
+      showStatus(`Deleting dataset #${fileId}...`, 'info');
+      await fetchJson(`/api/admin/datasets/${fileId}`, { method: 'DELETE' });
+      showStatus(`Dataset #${fileId} deleted.`, 'ok');
+      state.selectedId = null;
+      await loadDatasets();
+    }
+
+    async function saveSettings(e) {
+      e.preventDefault();
+      const ds = selectedDataset();
+      if (!ds) {
+        showStatus('Select a dataset first.', 'error');
+        return;
+      }
+
+      const payload = {
+        display_name: document.getElementById('display_name').value.trim(),
+        csv_delimiter: document.getElementById('csv_delimiter').value,
+        csv_timezone: document.getElementById('csv_timezone').value.trim() || 'UTC',
+        datetime_format: document.getElementById('datetime_format').value.trim() || null,
+        csv_has_header: document.getElementById('csv_has_header').value === 'true',
+        is_active: document.getElementById('is_active').value === 'true',
+        notes: document.getElementById('notes').value.trim() || null
+      };
+
+      showStatus(`Saving settings for #${ds.id}...`, 'info');
+      await fetchJson(`/api/admin/datasets/${ds.id}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      showStatus(`Settings updated for #${ds.id}.`, 'ok');
+      await loadDatasets();
+      selectDataset(ds.id);
+    }
+
+    async function uploadCsv() {
+      const input = document.getElementById('uploadInput');
+      if (!input.files || !input.files[0]) {
+        showStatus('Please select a CSV file first.', 'error');
+        return;
+      }
+
+      const file = input.files[0];
+      const formData = new FormData();
+      formData.append('csvFile', file);
+
+      showStatus(`Uploading ${file.name}...`, 'info');
+      const res = await fetch('/api/admin/datasets/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+      }
+
+      showStatus(`Upload complete: ${file.name}`, 'ok');
+      input.value = '';
+      await loadDatasets();
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', async () => {
+      try {
+        showStatus('Refreshing datasets...', 'info');
+        await loadDatasets();
+        showStatus('Datasets refreshed.', 'ok');
+      } catch (err) {
+        showStatus(err.message || 'Refresh failed', 'error');
+      }
+    });
+
+    document.getElementById('uploadBtn').addEventListener('click', async () => {
+      try {
+        await uploadCsv();
+      } catch (err) {
+        showStatus(err.message || 'Upload failed', 'error');
+      }
+    });
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      try {
+        await saveSettings(e);
+      } catch (err) {
+        showStatus(err.message || 'Save failed', 'error');
+      }
+    });
+
+    document.getElementById('rebuildBtn').addEventListener('click', async () => {
+      const ds = selectedDataset();
+      if (!ds) return showStatus('Select a dataset first.', 'error');
+      try {
+        await rebuildBinary(ds.id);
+      } catch (err) {
+        showStatus(err.message || 'Rebuild failed', 'error');
+      }
+    });
+
+    document.getElementById('deleteBtn').addEventListener('click', async () => {
+      const ds = selectedDataset();
+      if (!ds) return showStatus('Select a dataset first.', 'error');
+      try {
+        await deleteDataset(ds.id);
+      } catch (err) {
+        showStatus(err.message || 'Delete failed', 'error');
+      }
+    });
+
+    (async function init() {
+      try {
+        await checkAdmin();
+        await loadDatasets();
+        showStatus(`Signed in as ${state.me.email} (admin).`, 'ok');
+      } catch (err) {
+        showStatus(err.message || 'Access denied', 'error');
+      }
+    })();
+  </script>
+</body>
+</html>

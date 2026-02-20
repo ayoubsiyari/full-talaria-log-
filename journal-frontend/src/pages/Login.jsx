@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { colors, colorUtils } from '../config/colors';
-import { Mail, Lock, Sparkles, ChevronRight } from 'lucide-react';
+import { Mail, Lock, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { API_BASE_URL } from '../config';
 import logo from '../assets/logo4.jpg';
 
+/**
+ * Login Page - Styled to match homepage design system
+ * See DESIGN_SYSTEM.md for color and style reference
+ */
 
 export default function Login() {
   const [lang, setLang] = useState('en');
@@ -19,10 +21,11 @@ export default function Login() {
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [forgotStep, setForgotStep] = useState(1); // 1: enter email, 2: enter code + new password
+  const [forgotStep, setForgotStep] = useState(1);
   const [forgotMsg, setForgotMsg] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const formRef = useRef(null);
 
@@ -159,6 +162,23 @@ export default function Login() {
           setShake(true);
         } else if (data.user && data.token) {
           login(data.user, data.token, data.user.is_admin);
+          
+          // Check subscription status before redirecting
+          try {
+            const subRes = await fetch('/journal/api/subscriptions/my-subscription', {
+              headers: { 'Authorization': `Bearer ${data.token}` }
+            });
+            const subData = await subRes.json();
+            
+            // If user has no active subscription, redirect to pricing
+            if (!subData.has_subscription || !['active', 'trialing'].includes(subData.subscription?.status)) {
+              navigate('/pricing');
+              return;
+            }
+          } catch (subErr) {
+            console.warn('Could not check subscription, proceeding to app:', subErr);
+          }
+          
           // Check if user has an active profile, if so go to dashboard, otherwise to profile selection
           if (data.user.has_active_profile) {
             navigate('/dashboard');
@@ -199,7 +219,7 @@ export default function Login() {
     setForgotLoading(true);
 
     try {
-      const response = await fetch('/api/auth/forgot-password', {
+      const response = await fetch('/journal/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() }),
@@ -236,7 +256,7 @@ export default function Login() {
     setForgotLoading(true);
 
     try {
-      const response = await fetch('/api/auth/reset-password', {
+      const response = await fetch('/journal/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -286,121 +306,53 @@ export default function Login() {
   return (
     <div
       dir={texts.dir}
-      className="min-h-screen flex items-center justify-center bg-[#0a0a0f] text-white overflow-hidden relative"
+      className="min-h-screen flex items-center justify-center bg-[#0a0a0f] text-white"
     >
-      {/* Subtle animated background grid */}
-      <div className="fixed inset-0 opacity-[0.02]">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: '50px 50px',
-          animation: 'grid-move 20s linear infinite'
-        }} />
-      </div>
-
-      {/* Gradient orb background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div 
-          className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full opacity-20 blur-3xl"
-          style={{
-            background: `radial-gradient(circle, #8b5cf6 0%, transparent 70%)`,
-            transform: `translate(${0 * 0.01}px, ${0 * 0.01}px)`,
-            transition: 'transform 0.5s ease-out',
-            animation: 'float 8s ease-in-out infinite'
-          }}
-        />
-        <div 
-          className="absolute top-3/4 right-1/4 w-80 h-80 rounded-full opacity-15 blur-3xl"
-          style={{
-            background: `radial-gradient(circle, #06b6d4 0%, transparent 70%)`,
-            transform: `translate(${0 * -0.008}px, ${0 * -0.008}px)`,
-            transition: 'transform 0.5s ease-out',
-            animation: 'float 12s ease-in-out infinite reverse'
-          }}
-        />
-      </div>
-
-      {/* Custom CSS animations */}
-      <style jsx>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-20px); }
-        }
-        
-        @keyframes grid-move {
-          0% { transform: translate(0, 0); }
-          100% { transform: translate(50px, 50px); }
-        }
-        
-        @keyframes fade-in-up {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-fade-in-up {
-          animation: fade-in-up 0.6s ease-out forwards;
-        }
-        
+      {/* Custom CSS */}
+      <style>{`
         @keyframes shakeX {
           0%, 100% { transform: translateX(0); }
-          20%, 60% { transform: translateX(-10px); }
-          40%, 80% { transform: translateX(10px); }
+          20%, 60% { transform: translateX(-8px); }
+          40%, 80% { transform: translateX(8px); }
         }
+        .animate-shake { animation: shakeX 0.5s ease-in-out; }
       `}</style>
 
+      {/* Main Card */}
       <div
         ref={formRef}
         className={`
-          relative w-full max-w-md bg-white/5 backdrop-blur-sm rounded-xl p-8 border border-white/10 shadow-2xl
-          transform transition-all duration-1000 ease-out ${mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-          ${shake ? 'animate-shakeX' : ''}
+          w-full max-w-[350px] mx-4 p-6
+          bg-[#0f0f14] rounded-xl
+          border border-[#1f1f2e]
+          ${shake ? 'animate-shake' : ''}
         `}
       >
-        {/* Language Toggle Switch */}
-        <div className="absolute top-4 right-4 z-10">
-          <button
-            onClick={toggleLang}
-            className="px-3 py-1 text-xs font-medium rounded-md bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
-          >
-            {lang === 'en' ? 'AR' : 'EN'}
-          </button>
+        {/* Logo & Heading */}
+        <div className="flex flex-col items-center gap-2 mb-6">
+          <div className="w-14 h-14 bg-[#0a0a12] rounded-xl flex items-center justify-center border border-[#1f1f2e]">
+            <img src={logo} alt="Talaria" className="w-10 h-10 rounded-lg" />
+          </div>
+          <span className="text-xl font-bold text-white">Talaria</span>
         </div>
 
-        {/* Logo & Heading */}
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center space-x-2 mb-4">
-            <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center border border-white/10">
-              <img src={logo} alt="Journal Logo" className="w-8 h-8 rounded-sm" />
-            </div>
-            <span className="text-2xl font-semibold text-white">{texts.titleMain}</span>
-          </Link>
-          <h1 className="text-3xl font-semibold text-white mb-2 animate-fade-in-up">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-white mb-2">
             {texts.signInTitle}
           </h1>
-          <p className="text-white/60 text-sm animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+          <p className="text-[#71717a] text-sm">
             {texts.signInSub}
           </p>
         </div>
 
         {/* Login Form */}
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
           {msg && (
-            <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-md text-center text-sm">
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-2 rounded-lg text-center text-sm">
               {msg}
               {msg.includes('verify your email') && (
                 <div className="mt-2">
-                  <Link 
-                    to="/resend-verification" 
-                    className="text-blue-400 hover:underline"
-                  >
+                  <Link to="/resend-verification" className="text-blue-400 hover:text-blue-300 underline">
                     Resend verification email
                   </Link>
                 </div>
@@ -408,17 +360,17 @@ export default function Login() {
             </div>
           )}
 
-          <div>
-            <label className="block text-white/70 text-sm font-medium mb-2" htmlFor="email">
+          <div className="grid gap-2">
+            <label className="text-sm font-medium text-white" htmlFor="email">
               {texts.emailLabel}
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#71717a]" />
               <input
                 type="email"
                 id="email"
                 placeholder={texts.emailPlaceholder}
-                className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full h-10 pl-10 pr-3 rounded-lg bg-[#0a0a0f] border border-[#27272a] text-white placeholder-[#52525b] text-sm focus:outline-none focus:bg-[#18181b] transition-colors"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -426,27 +378,27 @@ export default function Login() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-white/70 text-sm font-medium mb-2" htmlFor="password">
+          <div className="grid gap-2">
+            <label className="text-sm font-medium text-white" htmlFor="password">
               {texts.passwordLabel}
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#71717a]" />
               <input
                 type="password"
                 id="password"
                 placeholder={texts.passwordPlaceholder}
-                className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full h-10 pl-10 pr-3 rounded-lg bg-[#0a0a0f] border border-[#27272a] text-white placeholder-[#52525b] text-sm focus:outline-none focus:bg-[#18181b] transition-colors"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
-            <div className="text-right mt-1">
+            <div className="text-right">
               <button
                 type="button"
                 onClick={() => setShowForgotPassword(true)}
-                className="text-blue-400 hover:text-blue-300 text-xs transition-colors"
+                className="text-blue-400 hover:underline text-xs"
               >
                 {texts.forgotPassword}
               </button>
@@ -455,48 +407,57 @@ export default function Login() {
 
           <button
             type="submit"
-            className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2"
+            disabled={loading}
+            className="h-10 mt-2 rounded-lg text-white font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>{texts.signInButton}</span>
+            <span>{loading ? '...' : texts.signInButton}</span>
             <ChevronRight className="w-4 h-4" />
           </button>
+
+          {/* Sign Up Link */}
+          <div className="text-center text-sm">
+            <span className="text-[#71717a]">{texts.noAccount} </span>
+            <Link to="/register" className="text-blue-400 hover:underline">
+              {texts.createAccount}
+            </Link>
+          </div>
         </form>
       </div>
 
       {/* Forgot Password Modal */}
       {showForgotPassword && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div 
             dir={texts.dir}
-            className="bg-[#0f0f1a] rounded-xl p-6 w-full max-w-md border border-white/10 shadow-2xl"
+            className="bg-[#0f0f14] rounded-xl p-6 w-full max-w-[350px] border border-[#1f1f2e]"
           >
-            <h2 className="text-xl font-semibold text-white mb-2">{texts.forgotTitle}</h2>
-            <p className="text-white/60 text-sm mb-6">
+            <h2 className="text-2xl font-bold text-white mb-2 text-center">{texts.forgotTitle}</h2>
+            <p className="text-[#71717a] text-sm mb-6 text-center">
               {forgotStep === 1 ? texts.forgotSubtitle : texts.enterCode}
             </p>
 
             {forgotMsg && (
-              <div className={`px-4 py-3 rounded-md text-sm mb-4 ${
+              <div className={`px-3 py-2 rounded-lg text-sm mb-4 ${
                 forgotSuccess 
-                  ? 'bg-green-500/20 border border-green-500/50 text-green-300' 
-                  : 'bg-red-500/20 border border-red-500/50 text-red-300'
+                  ? 'bg-green-500/10 border border-green-500/30 text-green-400' 
+                  : 'bg-red-500/10 border border-red-500/30 text-red-400'
               }`}>
                 {forgotMsg}
               </div>
             )}
 
             {forgotStep === 1 ? (
-              <form onSubmit={handleForgotPassword} className="space-y-4">
-                <div>
-                  <label className="block text-white/70 text-sm font-medium mb-2">
+              <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-white">
                     {texts.emailLabel}
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#71717a]" />
                     <input
                       type="email"
                       placeholder={texts.emailPlaceholder}
-                      className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                      className="w-full h-10 pl-10 pr-3 rounded-lg bg-[#0a0a0f] border border-[#27272a] text-white placeholder-[#52525b] text-sm focus:outline-none focus:bg-[#18181b] transition-colors"
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
                       required
@@ -507,7 +468,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={forgotLoading}
-                  className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                  className="h-10 mt-2 rounded-lg text-white font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <span>{forgotLoading ? '...' : texts.sendCode}</span>
                   <ChevronRight className="w-4 h-4" />
@@ -515,21 +476,21 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={closeForgotPassword}
-                  className="w-full text-white/60 hover:text-white text-sm mt-3 transition-colors"
+                  className="text-[#71717a] hover:text-white text-sm py-2 transition-colors"
                 >
-                  {texts.backToLogin}
+                  ← {texts.backToLogin}
                 </button>
               </form>
             ) : (
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                <div>
-                  <label className="block text-white/70 text-sm font-medium mb-2">
+              <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-white">
                     {texts.resetCodeLabel}
                   </label>
                   <input
                     type="text"
                     placeholder="123456"
-                    className="w-full px-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm text-center tracking-widest font-mono"
+                    className="w-full h-10 px-3 rounded-lg bg-[#0a0a0f] border border-[#27272a] text-white placeholder-[#52525b] text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:bg-[#18181b] transition-colors"
                     value={resetCode}
                     onChange={(e) => setResetCode(e.target.value)}
                     maxLength={6}
@@ -537,16 +498,16 @@ export default function Login() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-white/70 text-sm font-medium mb-2">
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-white">
                     {texts.newPasswordLabel}
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#71717a]" />
                     <input
                       type="password"
                       placeholder="••••••••"
-                      className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                      className="w-full h-10 pl-10 pr-3 rounded-lg bg-[#0a0a0f] border border-[#27272a] text-white placeholder-[#52525b] text-sm focus:outline-none focus:bg-[#18181b] transition-colors"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       required
@@ -554,16 +515,16 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-white/70 text-sm font-medium mb-2">
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-white">
                     {texts.confirmPasswordLabel}
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#71717a]" />
                     <input
                       type="password"
                       placeholder="••••••••"
-                      className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                      className="w-full h-10 pl-10 pr-3 rounded-lg bg-[#0a0a0f] border border-[#27272a] text-white placeholder-[#52525b] text-sm focus:outline-none focus:bg-[#18181b] transition-colors"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       required
@@ -574,7 +535,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={forgotLoading}
-                  className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                  className="h-10 mt-2 rounded-lg text-white font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <span>{forgotLoading ? '...' : texts.resetPassword}</span>
                   <ChevronRight className="w-4 h-4" />
@@ -582,9 +543,9 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={closeForgotPassword}
-                  className="w-full text-white/60 hover:text-white text-sm mt-3 transition-colors"
+                  className="text-[#71717a] hover:text-white text-sm py-2 transition-colors"
                 >
-                  {texts.backToLogin}
+                  ← {texts.backToLogin}
                 </button>
               </form>
             )}

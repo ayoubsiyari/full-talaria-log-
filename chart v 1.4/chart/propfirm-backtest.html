@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prop Firm Challenge Mode</title>
+    <link rel="stylesheet" href="propfirm-styles.css?v=2">
+    <script>
+        (function() {
+            function redirectToLogin() {
+                var next = window.location.pathname + window.location.search;
+                var loginUrl = '/login/?next=' + encodeURIComponent(next);
+                try {
+                    if (window.top && window.top !== window.self) {
+                        window.top.location.href = loginUrl;
+                        return;
+                    }
+                } catch (e) {}
+                window.location.href = loginUrl;
+            }
+
+            fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+                .then(function(res) {
+                    if (!res.ok) {
+                        redirectToLogin();
+                    }
+                })
+                .catch(function() {
+                    redirectToLogin();
+                });
+        })();
+    </script>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <img src="modules/LOGO-04.png" alt="Logo" class="top-bar-logo">
+        <div class="top-bar-title">🏆 Prop Firm Challenge Mode</div>
+        <div class="top-bar-actions">
+            <button type="button" class="btn btn-cancel" onclick="handleBackToSessions()">Back to Sessions</button>
+        </div>
+    </div>
+
+    
+        <div class="main-content">
+            <!-- Header -->
+            <div class="modal-header-bar">
+                <h1>Create Prop Challenge</h1>
+                <button class="close-btn" onclick="handleBackToSessions()">&times;</button>
+            </div>
+
+            <!-- Content Wrapper -->
+            
+                <!-- Configuration Form -->
+                <div class="full-panel">
+                    <form id="propfirmForm">
+                      <div class="form-grid">
+                        <!-- General Card -->
+                        <div class="form-card form-card-full">
+                            <h3><span class="card-icon card-icon-blue">📋</span> General</h3>
+                            <div class="form-group">
+                                <label>Project Name <span class="required">*</span></label>
+                                <input type="text" id="projectName" placeholder="Project Name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Symbols / Data Files <span class="required">*</span></label>
+                                <div class="helper-text" style="margin-bottom: 8px;">Select one or more files to backtest. You can switch between them on the chart.</div>
+                                
+                                <!-- Selected Files Tags -->
+                                <div id="selectedFilesContainer" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; min-height: 32px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                                    <span style="color: #64748b; font-size: 13px;" id="noFilesText">No files selected</span>
+                                </div>
+                                
+                                <!-- File Selection Dropdown -->
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <div style="flex: 1; position: relative;">
+                                        <button type="button" id="fileSelectBtn" class="btn" style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;">
+                                            <span>Click to select files...</span>
+                                            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                            </svg>
+                                        </button>
+                                        <div id="fileDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: rgba(11,11,22,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.5); backdrop-filter: blur(20px);">
+                                            <div id="fileList" style="padding: 8px;">
+                                                <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn" onclick="loadAvailableFiles()" style="padding: 10px 12px; min-width: auto;" title="Refresh file list">
+                                        <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="23 4 23 10 17 10"></polyline>
+                                            <polyline points="1 20 1 14 7 14"></polyline>
+                                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <!-- Hidden input to store selected files -->
+                                <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
+                                
+                                <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
+                                    <button type="button" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;" onclick="document.getElementById('csvFileInput').click()">
+                                        <svg style="width: 16px; height: 16px; margin-right: 6px; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                            <polyline points="17 8 12 3 7 8"></polyline>
+                                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                                        </svg>
+                                        Upload New CSV File
+                                    </button>
+                                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+                                    <span id="uploadStatus" style="font-size: 13px; color: #64748b; font-weight: 500;"></span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Balance <span class="required">*</span></label>
+                                <input type="number" id="balance" placeholder="10000" value="10000" min="1000" required>
+                                <div class="preset-buttons" id="balancePresets"></div>
+                            </div>
+                        </div>
+
+                        <!-- Testing Period Card -->
+                        <div class="form-card">
+                            <h3><span class="card-icon card-icon-green">📅</span> Testing Period</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Start Date</label>
+                                    <input type="date" id="startDate" disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label>End Date</label>
+                                    <input type="date" id="endDate" disabled>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Profit & Loss Card -->
+                        <div class="form-card">
+                            <h3><span class="card-icon card-icon-pink">💰</span> Profit & Loss</h3>
+                            <div class="form-group">
+                                <label>Profit Target</label>
+                                <div class="input-with-unit">
+                                    <input type="number" id="profitTarget" value="10" min="0" step="0.5">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <div class="preset-buttons" id="profitPresets"></div>
+                            </div>
+                            <div class="form-group">
+                                <label>Maximum Daily Loss <span class="info-tooltip">?</span></label>
+                                <div class="input-with-unit">
+                                    <input type="number" id="maxDailyLossPercent" value="5" min="0" step="0.5">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <div class="input-with-unit" style="margin-top: 8px;">
+                                    <input type="number" id="maxDailyLossDollar" value="500" min="0" step="50">
+                                    <span class="input-unit">USD</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Maximum Total Loss <span class="info-tooltip">?</span></label>
+                                <div class="input-with-unit">
+                                    <input type="number" id="maxTotalLossPercent" value="10" min="0" step="0.5">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <div class="input-with-unit" style="margin-top: 8px;">
+                                    <input type="number" id="maxTotalLossDollar" value="1000" min="0" step="100">
+                                    <span class="input-unit">USD</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Min Trading Days (Hidden) -->
+                        <div class="form-section" style="display: none;">
+                            <h3>Minimum Trading Days</h3>
+                            <div class="form-group">
+                                <input type="number" id="minTradingDays" value="1" min="0">
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="disableMinDays">
+                                <label for="disableMinDays">Disable Minimum Trading Days</label>
+                            </div>
+                        </div>
+
+                        <!-- Timezone Card -->
+                        <div class="form-card">
+                            <h3><span class="card-icon card-icon-cyan">🌍</span> Timezone</h3>
+                            
+                            <div class="form-group">
+                                <label>Select Timezone</label>
+                                <select id="timezone">
+                                    <option value="UTC">UTC</option>
+                                    <option value="UTC+1">UTC+1</option>
+                                    <option value="UTC+2">UTC+2</option>
+                                    <option value="UTC+3">UTC+3</option>
+                                    <option value="UTC-5">UTC-5 (EST)</option>
+                                    <option value="UTC-8">UTC-8 (PST)</option>
+                                    <option value="America/New_York">America/New York</option>
+                                    <option value="Europe/London">Europe/London</option>
+                                    <option value="Asia/Tokyo">Asia/Tokyo</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Session Close Time</label>
+                                <select id="sessionCloseTime">
+                                    <option value="new_york_winter">New York (winter +2)</option>
+                                    <option value="new_york_summer">New York (summer +3)</option>
+                                    <option value="london_winter">London (winter)</option>
+                                    <option value="london_summer">London (summer +1)</option>
+                                    <option value="tokyo">Tokyo</option>
+                                    <option value="sydney">Sydney</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Daylight Saving Time</label>
+                                <select id="daylightSavingTime">
+                                    <option value="us_dst">US DST</option>
+                                    <option value="eu_dst">EU DST</option>
+                                    <option value="no_dst">No DST</option>
+                                    <option value="auto">Auto Detect</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Leverage & Format Card -->
+                        <div class="form-card">
+                            <h3><span class="card-icon card-icon-amber">⚡</span> Leverage & Format</h3>
+                            <div class="form-group">
+                                <label>Bars Time Format</label>
+                                <select id="barsTimeFormat">
+                                    <option value="utc">UTC</option>
+                                    <option value="broker_time">Broker Time</option>
+                                    <option value="local_time">Local Time</option>
+                                    <option value="server_time">Server Time</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-top: 20px;">
+                                <label>Leverage Set Up</label>
+                            <div class="form-group">
+                                <div class="leverage-container">
+                                    <div class="leverage-labels">
+                                        <span>1x</span>
+                                        <span>25x</span>
+                                        <span>50x</span>
+                                        <span>75x</span>
+                                        <span>100x</span>
+                                        <span>125x</span>
+                                    </div>
+                                    <div class="leverage-slider-wrapper">
+                                        <input type="range" id="leverageSlider" min="1" max="125" value="100" step="1" class="leverage-slider">
+                                        <div class="leverage-value-display">
+                                            <input type="number" id="leverageValue" value="100" min="1" max="125" step="1">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            </div>
+                        </div>
+
+                        <!-- Protection Settings Card -->
+                        <div class="form-card form-card-full">
+                            <h3><span class="card-icon card-icon-purple">🛡️</span> Protection Settings</h3>
+                            <div class="form-group">
+                                <label>Load Protection Preset <span class="info-tooltip" title="Use protection presets created in the Place Order panel">?</span></label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <select id="protectionPresetSelect" name="protectionPreset" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; font-size: 13px; color: #fff; cursor: pointer;">
+                                        <option value="">-- None (Configure in chart) --</option>
+                                    </select>
+                                    <button type="button" class="btn" onclick="openCreatePresetModal()" style="padding: 8px 12px; min-width: auto; white-space: nowrap;" title="Create new protection preset">
+                                    <svg style="width: 16px; height: 16px; margin-right: 4px; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 5v14M5 12h14"></path>
+                                    </svg>
+                                    Create New
+                                </button>
+                                </div>
+                                <div class="helper-text">Select a protection preset to auto-apply breakeven, trailing stop, and take profit settings</div>
+                                <div id="presetDetails" style="margin-top: 12px; padding: 12px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.3); border-radius: 6px; display: none;">
+                                    <div style="font-size: 12px; color: #a78bfa; font-weight: 600; margin-bottom: 8px;">📋 Preset Details:</div>
+                                    <div id="presetDetailsContent" style="font-size: 11px; color: #9ca3af; line-height: 1.6;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                      </div><!-- end form-grid -->
+
+                        <!-- Actions -->
+                        <div class="form-actions-container">
+                            <!-- Forward Testing Only Mode Toggle -->
+                            <div class="forward-mode-toggle">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="forwardTestingOnly" name="forwardTestingOnly">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="toggle-text-wrapper">
+                                    <span class="toggle-text">Forward testing only mode</span>
+                                    <div class="info-icon-container">
+                                        <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                        </svg>
+                                        <div class="info-tooltip">
+                                            Forward Testing Only mode prevents you from going back in time, simulating real trading. Do not use this mode if you need to go back and forth.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="action-buttons-group">
+                                <button type="button" class="btn btn-cancel" onclick="handleBackToSessions()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Create project</button>
+                            </div>
+                        </div>
+
+                    </form>
+                </div>
+                
+           
+            
+        </div>
+    
+    <!-- Create Protection Preset Modal -->
+    <div id="createPresetModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>⚙️ Create Protection Preset</h2>
+                <button class="modal-close" onclick="closeCreatePresetModal()">&times;</button>
+            </div>
+            
+            <div class="form-group">
+                <label>Preset Name <span class="required">*</span></label>
+                <input type="text" id="presetName" placeholder="e.g., My Scalping Strategy" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; font-size: 13px; color: #fff;">
+            </div>
+            
+            <!-- Auto Breakeven -->
+            <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 16px; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #fff;">🛡️ Auto Breakeven</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="presetBreakevenToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="presetBreakevenSettings" style="display: none;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button type="button" class="preset-mode-btn" data-mode="rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">R:R</button>
+                        <button type="button" class="preset-mode-btn" data-mode="amount" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Dollar $</button>
+                        <button type="button" class="preset-mode-btn" data-mode="percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Percent %</button>
+                    </div>
+                    <div id="presetBreakevenRRInput" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="presetBreakevenRR" value="1" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">RR</span>
+                    </div>
+                    <div id="presetBreakevenAmountInput" style="display: none; align-items: center; gap: 8px;">
+                        <input type="number" id="presetBreakevenAmount" value="50" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">$</span>
+                    </div>
+                    <div id="presetBreakevenPercentInput" style="display: none; align-items: center; gap: 8px;">
+                        <input type="number" id="presetBreakevenPercent" value="1" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Trailing Stop Loss -->
+            <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 16px; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #fff;">📊 Trailing Stop Loss</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="presetTrailingToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="presetTrailingSettings" style="display: none;">
+                    <label style="display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Activate At</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button type="button" class="preset-trail-btn" data-mode="trail-rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">R:R</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-pips" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Pips</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-dollar" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Dollar $</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Percent %</button>
+                    </div>
+                    <div id="presetTrailingRRInput" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingRR" value="1.5" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">RR</span>
+                    </div>
+                    <div id="presetTrailingPipsInput" style="display: none; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingPips" value="10" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">Pips</span>
+                    </div>
+                    <div id="presetTrailingDollarInput" style="display: none; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingDollar" value="50" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">$</span>
+                    </div>
+                    <div id="presetTrailingPercentInput" style="display: none; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingPercent" value="1" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">%</span>
+                    </div>
+                    <label style="display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Step Size</label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="presetTrailingStep" value="4" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">Pips</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Multiple Take Profits -->
+            <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 16px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #fff;">🎯 Multiple Take Profits</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="presetMultipleTPToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="presetMultipleTPSettings" style="display: none;">
+                    <label style="display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Number of Targets</label>
+                    <input type="number" id="presetNumTPTargets" value="3" min="2" max="10" step="1" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                </div>
+            </div>
+            
+            <!-- Buttons -->
+            <div class="form-actions" style="border-top: none; padding-top: 0;">
+                <button type="button" class="btn btn-cancel" onclick="closeCreatePresetModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveNewPreset()">💾 Save Preset</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="propfirm-script.js"></script>
+    <script>
+        console.log('🔥 Prop Firm Backtest - Script loaded');
+        
+        // Helper function to parse various date formats including European format
+        function parseFlexibleDate(dateStr) {
+            // Try European format: DD.MM.YYYY HH:MM:SS.mmm
+            if (dateStr.includes('.') && dateStr.includes(' ')) {
+                const [datePart, timePart] = dateStr.split(' ');
+                const dateParts = datePart.split('.');
+                
+                // Check if it's DD.MM.YYYY format
+                if (dateParts.length === 3 && dateParts[0].length <= 2) {
+                    const [day, month, year] = dateParts;
+                    const timeComponents = timePart.split(':');
+                    const hour = parseInt(timeComponents[0]) || 0;
+                    const minute = parseInt(timeComponents[1]) || 0;
+                    const secondStr = timeComponents[2] || '0';
+                    const second = parseFloat(secondStr) || 0;
+                    
+                    const timestamp = new Date(
+                        parseInt(year), 
+                        parseInt(month) - 1, 
+                        parseInt(day), 
+                        hour, 
+                        minute, 
+                        Math.floor(second)
+                    ).getTime();
+                    
+                    if (!isNaN(timestamp)) {
+                        return timestamp;
+                    }
+                }
+            }
+            
+            // Try standard Date parsing
+            const timestamp = new Date(dateStr).getTime();
+            if (!isNaN(timestamp)) {
+                return timestamp;
+            }
+            
+            return null;
+        }
+        
+        // Selected files array
+        let selectedFilesArray = [];
+        let availableFilesCache = [];
+        
+        // Initialize file dropdown when DOM is ready
+        function initFileDropdown() {
+            const fileSelectBtn = document.getElementById('fileSelectBtn');
+            const fileDropdown = document.getElementById('fileDropdown');
+            
+            if (!fileSelectBtn || !fileDropdown) {
+                console.log('File dropdown elements not found, retrying...');
+                setTimeout(initFileDropdown, 100);
+                return;
+            }
+            
+            // Toggle file dropdown
+            fileSelectBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                fileDropdown.style.display = fileDropdown.style.display === 'none' ? 'block' : 'none';
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!fileDropdown.contains(e.target) && !fileSelectBtn.contains(e.target)) {
+                    fileDropdown.style.display = 'none';
+                }
+            });
+            
+            // Load files on init
+            loadAvailableFiles();
+            
+            console.log('✅ File dropdown initialized');
+        }
+        
+        // Run when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initFileDropdown);
+        } else {
+            initFileDropdown();
+        }
+        
+        // Toggle file selection
+        function toggleFileSelection(fileId, fileName) {
+            const index = selectedFilesArray.findIndex(f => f.id === fileId);
+            if (index === -1) {
+                selectedFilesArray.push({ id: fileId, name: fileName });
+            } else {
+                selectedFilesArray.splice(index, 1);
+            }
+            updateSelectedFilesUI();
+            updateFileListUI();
+        }
+        
+        // Remove file from selection
+        function removeSelectedFile(fileId) {
+            selectedFilesArray = selectedFilesArray.filter(f => f.id !== fileId);
+            updateSelectedFilesUI();
+            updateFileListUI();
+        }
+        
+        // Update the selected files display
+        function updateSelectedFilesUI() {
+            const container = document.getElementById('selectedFilesContainer');
+            const hiddenInput = document.getElementById('selectedFiles');
+            
+            hiddenInput.value = JSON.stringify(selectedFilesArray);
+            
+            if (selectedFilesArray.length === 0) {
+                container.innerHTML = '<span style="color: #64748b; font-size: 13px;" id="noFilesText">No files selected</span>';
+                return;
+            }
+            
+            container.innerHTML = selectedFilesArray.map(file => `
+                <span style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 16px; font-size: 12px; color: #fff;">
+                    ${file.name}
+                    <button type="button" onclick="removeSelectedFile('${file.id}')" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">&times;</button>
+                </span>
+            `).join('');
+            
+            // Load date range from first selected file
+            if (selectedFilesArray.length > 0) {
+                loadDateRangeFromFile(selectedFilesArray[0].id);
+            }
+        }
+        
+        // Update file list checkboxes
+        function updateFileListUI() {
+            const fileList = document.getElementById('fileList');
+            if (availableFilesCache.length === 0) return;
+            
+            fileList.innerHTML = availableFilesCache.map(file => {
+                const isSelected = selectedFilesArray.some(f => f.id === file.id);
+                const fileName = file.original_name || file.name || file.filename || file.symbol || `File ${file.id}`;
+                return `
+                    <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; ${isSelected ? 'background: rgba(59, 130, 246, 0.15);' : ''}" 
+                           onmouseover="this.style.background='rgba(59, 130, 246, 0.1)'" 
+                           onmouseout="this.style.background='${isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}'">
+                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleFileSelection('${file.id}', '${fileName.replace(/'/g, "\\'")}')" style="accent-color: #3b82f6; width: 16px; height: 16px;">
+                        <span style="color: #e5e7eb; font-size: 13px;">${fileName}</span>
+                    </label>
+                `;
+            }).join('');
+        }
+        
+        // Load available files from API
+        async function loadAvailableFiles() {
+            const fileList = document.getElementById('fileList');
+            
+            try {
+                console.log('🔄 Fetching files from /api/files...');
+                
+                fileList.innerHTML = '<div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>';
+                
+                const response = await fetch('/api/files');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Handle multiple response formats
+                let files = [];
+                if (Array.isArray(data)) {
+                    files = data;
+                } else if (data.files && Array.isArray(data.files)) {
+                    files = data.files;
+                } else if (typeof data === 'object') {
+                    files = Object.values(data).find(val => Array.isArray(val)) || [];
+                }
+                
+                // Add id to each file if missing
+                files = files.map((file, idx) => ({
+                    ...file,
+                    id: file.id || file.filename || file.name || `file_${idx}`
+                }));
+                
+                console.log(`📁 Found ${files.length} files`);
+                
+                if (!files || files.length === 0) {
+                    fileList.innerHTML = '<div style="color: #64748b; padding: 12px; text-align: center;">No files available - Upload one below</div>';
+                    return;
+                }
+                
+                // Sort files by name
+                files.sort((a, b) => {
+                    const nameA = (a.original_name || a.name || a.filename || '').toLowerCase();
+                    const nameB = (b.original_name || b.name || b.filename || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                
+                availableFilesCache = files;
+                updateFileListUI();
+                
+                console.log(`✅ Successfully loaded ${files.length} files`);
+            } catch (error) {
+                console.error('❌ Error loading files:', error);
+                fileList.innerHTML = '<div style="color: #ef4444; padding: 12px; text-align: center;">Error loading files - Click refresh</div>';
+            }
+        }
+        
+        // Load date range from selected file
+        async function loadDateRangeFromFile(fileId) {
+            if (!fileId) return;
+            
+            try {
+                console.log(`📅 Loading date range from file ${fileId}...`);
+                
+                const response = await fetch(`/api/file/${fileId}?offset=0&limit=1`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const responseData = await response.json();
+                if (!responseData.data) {
+                    console.warn('⚠️ No data in response');
+                    return;
+                }
+                
+                const lines = responseData.data.trim().split('\n');
+                if (lines.length < 2) {
+                    console.warn('⚠️ Not enough data');
+                    return;
+                }
+                
+                const header = lines[0].split(',');
+                const firstRowValues = lines[1].split(',');
+                
+                const firstRow = {};
+                header.forEach((key, index) => {
+                    firstRow[key] = firstRowValues[index];
+                });
+                
+                let firstTimestamp = null;
+                
+                // Try standard timestamp fields
+                if (firstRow.t) {
+                    firstTimestamp = firstRow.t;
+                } else if (firstRow.time) {
+                    firstTimestamp = firstRow.time;
+                } else if (firstRow.timestamp) {
+                    firstTimestamp = firstRow.timestamp;
+                } else if (firstRow['<DTYYYYMMDD>'] && firstRow['<TIME>']) {
+                    const dateStr = String(firstRow['<DTYYYYMMDD>']);
+                    const timeStr = String(firstRow['<TIME>']).padStart(6, '0');
+                    const year = dateStr.substring(0, 4);
+                    const month = dateStr.substring(4, 6);
+                    const day = dateStr.substring(6, 8);
+                    const hour = timeStr.substring(0, 2);
+                    const minute = timeStr.substring(2, 4);
+                    const second = timeStr.substring(4, 6);
+                    firstTimestamp = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`).getTime();
+                } else {
+                    // Search for any field with date/time
+                    const keys = Object.keys(firstRow);
+                    for (let key of keys) {
+                        if (key.toLowerCase().includes('date') || key.toLowerCase().includes('time')) {
+                            const value = firstRow[key];
+                            const timestamp = parseFlexibleDate(value);
+                            if (timestamp) {
+                                firstTimestamp = timestamp;
+                                console.log(`✅ Found date in field "${key}": ${value}`);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (!firstTimestamp) {
+                    console.error('❌ Cannot find date/time field in data');
+                    return;
+                }
+                
+                const firstDate = new Date(firstTimestamp);
+                console.log('📅 First date detected:', firstDate.toLocaleString());
+                
+                // Get last row
+                const totalRows = responseData.total || 30000;
+                const lastOffset = Math.max(0, totalRows - 1);
+                
+                const response2 = await fetch(`/api/file/${fileId}?offset=${lastOffset}&limit=1`);
+                const lastResponseData = await response2.json();
+                
+                let lastDate = firstDate;
+                if (lastResponseData.data) {
+                    const lastLines = lastResponseData.data.trim().split('\n');
+                    if (lastLines.length >= 2) {
+                        const lastRowValues = lastLines[lastLines.length - 1].split(',');
+                        const lastRow = {};
+                        header.forEach((key, index) => {
+                            lastRow[key] = lastRowValues[index];
+                        });
+                        
+                        let lastTimestamp = null;
+                        
+                        if (lastRow.t) {
+                            lastTimestamp = lastRow.t;
+                        } else if (lastRow.time) {
+                            lastTimestamp = lastRow.time;
+                        } else if (lastRow.timestamp) {
+                            lastTimestamp = lastRow.timestamp;
+                        } else if (lastRow['<DTYYYYMMDD>'] && lastRow['<TIME>']) {
+                            const dateStr = String(lastRow['<DTYYYYMMDD>']);
+                            const timeStr = String(lastRow['<TIME>']).padStart(6, '0');
+                            const year = dateStr.substring(0, 4);
+                            const month = dateStr.substring(4, 6);
+                            const day = dateStr.substring(6, 8);
+                            const hour = timeStr.substring(0, 2);
+                            const minute = timeStr.substring(2, 4);
+                            const second = timeStr.substring(4, 6);
+                            lastTimestamp = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`).getTime();
+                        } else {
+                            const keys = Object.keys(lastRow);
+                            for (let key of keys) {
+                                if (key.toLowerCase().includes('date') || key.toLowerCase().includes('time')) {
+                                    const value = lastRow[key];
+                                    const timestamp = parseFlexibleDate(value);
+                                    if (timestamp) {
+                                        lastTimestamp = timestamp;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (lastTimestamp) {
+                            lastDate = new Date(lastTimestamp);
+                            console.log('📅 Last date detected:', lastDate.toLocaleString());
+                        }
+                    }
+                }
+                
+                // Set date inputs
+                const startDateInput = document.getElementById('startDate');
+                const endDateInput = document.getElementById('endDate');
+                
+                if (startDateInput && endDateInput) {
+                    startDateInput.value = firstDate.toISOString().split('T')[0];
+                    endDateInput.value = lastDate.toISOString().split('T')[0];
+                    startDateInput.disabled = false;
+                    endDateInput.disabled = false;
+                    
+                    console.log(`✅ Date range: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error loading date range:', error);
+            }
+        }
+        
+        // Handle CSV file upload
+        document.getElementById('csvFileInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            console.log(`📤 Uploading file: ${file.name} (${file.size} bytes)`);
+            
+            const uploadStatus = document.getElementById('uploadStatus');
+            uploadStatus.textContent = 'Uploading...';
+            uploadStatus.style.color = '#7c3aed';
+            
+            try {
+                const formData = new FormData();
+                formData.append('csvFile', file);
+                
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    uploadStatus.textContent = '✓ Uploaded successfully';
+                    uploadStatus.style.color = '#10b981';
+                    
+                    await loadAvailableFiles();
+                    
+                    // Auto-select the newly uploaded file
+                    const filesData = await fetch('/api/files').then(r => r.json());
+                    const files = filesData.files || filesData;
+                    const newFile = files[files.length - 1];
+                    const newFileId = newFile.id;
+                    const newFileName = newFile.original_name || newFile.name || newFile.filename;
+                    
+                    // Add to selection
+                    if (!selectedFilesArray.find(f => f.id === newFileId)) {
+                        selectedFilesArray.push({ id: newFileId, name: newFileName });
+                        updateSelectedFilesUI();
+                        updateFileListUI();
+                    }
+                    
+                    setTimeout(() => {
+                        uploadStatus.textContent = '';
+                    }, 3000);
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Upload failed:', response.status, errorText);
+                    throw new Error(`Upload failed: ${response.status}`);
+                }
+            } catch (error) {
+                console.error('❌ Upload error:', error);
+                uploadStatus.textContent = '✗ Upload failed';
+                uploadStatus.style.color = '#ef4444';
+                setTimeout(() => {
+                    uploadStatus.textContent = '';
+                }, 3000);
+            }
+            
+            // Reset file input
+            e.target.value = '';
+        });
+        
+        // Note: Files are loaded by initFileDropdown() above
+        
+        // Handle back to sessions - close iframe if in modal, otherwise navigate
+        function handleBackToSessions() {
+            const isInIframe = window.self !== window.top;
+            if (isInIframe) {
+                // Close the iframe modal by calling parent function
+                window.parent.closePropFirmIframe();
+            } else {
+                // Navigate normally
+                window.location.href = 'sessions.html';
+            }
+        }
+        
+        // Hide top bar if in iframe
+        if (window.self !== window.top) {
+            const topBar = document.querySelector('.top-bar');
+            if (topBar) {
+                topBar.style.display = 'none';
+            }
+            // Hide the close button in modal-header-bar (we use the overlay close button)
+            const modalCloseBtn = document.querySelector('.modal-header-bar .close-btn');
+            if (modalCloseBtn) {
+                modalCloseBtn.style.display = 'none';
+            }
+            // Adjust container padding
+            const container = document.querySelector('.container');
+            if (container) {
+                container.style.paddingTop = '0';
+            }
+        }
+    </script>
+</body>
+</html>

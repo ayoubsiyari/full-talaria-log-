@@ -375,7 +375,7 @@ export default function useAnalyticsData() {
         console.error('❌ Authentication failed. Token might be invalid or expired.');
         // Redirect to login or refresh token here if needed
         localStorage.removeItem('token');
-        window.location.href = '/login';
+        window.location.href = '/journal/login';
         return;
       }
       

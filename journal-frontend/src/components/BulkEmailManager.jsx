@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 import { Mail, Users, Send, CheckCircle, AlertCircle, Search, Eye, EyeOff, RotateCcw, X, FileText, ChevronDown } from 'lucide-react';
 
 // Email Templates Library
@@ -766,7 +767,7 @@ const BulkEmailManager = ({ users = [] }) => {
     // Fetch bootcamp registration emails
     const fetchBootcampEmails = async () => {
       try {
-        const response = await fetch('/api/bootcamp/registrations/emails');
+        const response = await fetch(`${API_BASE_URL}/bootcamp/registrations/emails`);
         if (response.ok) {
           const data = await response.json();
           setBootcampEmails(data.emails || []);
@@ -858,7 +859,7 @@ const BulkEmailManager = ({ users = [] }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/admin/send-bulk-email', {
+      const response = await fetch(`${API_BASE_URL}/admin/send-bulk-email`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

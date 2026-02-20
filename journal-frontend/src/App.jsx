@@ -51,8 +51,8 @@ import AIDashboard from './pages/AIDashboard';
 import Features from './pages/Features';
 import Pricing from './pages/Pricing';
 import Contact from './pages/Contact';
-import Login     from './pages/Login';
-// import Register  from './pages/Register';  // Temporarily disabled
+import Auth      from './pages/Auth';
+import Register  from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
 import ResendVerification from './pages/ResendVerification';
 import ImportTrades from './pages/ImportTrades';
@@ -64,6 +64,9 @@ import Disclaimer from './pages/Disclaimer';
 import Legal from './pages/Legal';
 import ProfileSelectionPage from './pages/ProfileSelectionPage';
 import ManageProfilePage from './pages/ManageProfilePage';
+import SubscriptionSuccess from './pages/SubscriptionSuccess';
+import Onboarding from './pages/Onboarding';
+import SubscriptionGuard from './components/SubscriptionGuard';
 
 // Import filter components
 import { FilterProvider, useFilter } from './context/FilterContext';
@@ -121,22 +124,30 @@ function LayoutWithSidebar() {
             {/* Core Features */}
             <Route path="/dashboard" element={
               <ProtectedRoute feature="DASHBOARD">
-                <Dashboard />
+                <SubscriptionGuard feature="Dashboard">
+                  <Dashboard />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/journal" element={
               <ProtectedRoute feature="JOURNAL">
-                <Journal />
+                <SubscriptionGuard feature="Journal">
+                  <Journal />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/trades" element={
               <ProtectedRoute feature="TRADES">
-                <Trades />
+                <SubscriptionGuard feature="Trades">
+                  <Trades />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/settings" element={
               <ProtectedRoute feature="SETTINGS">
-                <Settings />
+                <SubscriptionGuard feature="Settings">
+                  <Settings />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             
@@ -145,21 +156,27 @@ function LayoutWithSidebar() {
               <ProtectedRoute feature="AI_DASHBOARD" fallbackComponent={
                 <FeatureDisabled featureName="AI Dashboard" />
               }>
-                <AIDashboard />
+                <SubscriptionGuard feature="AI Dashboard">
+                  <AIDashboard />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/import-trades" element={
               <ProtectedRoute feature="IMPORT_TRADES" fallbackComponent={
                 <FeatureDisabled featureName="Import Trades" />
               }>
-                <ImportTrades />
+                <SubscriptionGuard feature="Import Trades">
+                  <ImportTrades />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/strategy-builder" element={
               <ProtectedRoute feature="STRATEGY_BUILDER" fallbackComponent={
                 <FeatureDisabled featureName="Strategy Builder" />
               }>
-                <StrategyBuilder />
+                <SubscriptionGuard feature="Strategy Builder">
+                  <StrategyBuilder />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/notes" element={
@@ -189,35 +206,45 @@ function LayoutWithSidebar() {
               <ProtectedRoute feature="ANALYTICS" fallbackComponent={
                 <FeatureDisabled featureName="Analytics" />
               }>
-                <Analytics />
+                <SubscriptionGuard feature="Analytics">
+                  <Analytics />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/variables" element={
               <ProtectedRoute feature="ANALYTICS_VARIABLES" fallbackComponent={
                 <FeatureDisabled featureName="Variables Analysis" />
               }>
-                <VariablesAnalysis />
+                <SubscriptionGuard feature="Variables Analysis">
+                  <VariablesAnalysis />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/top-combinations" element={
               <ProtectedRoute feature="ANALYTICS_VARIABLES" fallbackComponent={
                 <FeatureDisabled featureName="Top Combinations Analysis" />
               }>
-                <TopCombinationsView />
+                <SubscriptionGuard feature="Top Combinations">
+                  <TopCombinationsView />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/exitanalysis" element={
               <ProtectedRoute feature="ANALYTICS_EXIT_ANALYSIS" fallbackComponent={
                 <FeatureDisabled featureName="Exit Analysis" />
               }>
-                <ExitAnalysisPage />
+                <SubscriptionGuard feature="Exit Analysis">
+                  <ExitAnalysisPage />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/exitanalysis-amelioration" element={
               <ProtectedRoute feature="ANALYTICS_EXIT_ANALYSIS" fallbackComponent={
                 <FeatureDisabled featureName="Exit Analysis Amelioration" />
               }>
-                <ExitAnalysisAmelioration />
+                <SubscriptionGuard feature="Exit Analysis">
+                  <ExitAnalysisAmelioration />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
 
@@ -225,77 +252,99 @@ function LayoutWithSidebar() {
               <ProtectedRoute feature="ANALYTICS_PNL_DISTRIBUTION" fallbackComponent={
                 <FeatureDisabled featureName="PNL Distribution" />
               }>
-                <PnlDistribution />
+                <SubscriptionGuard feature="PnL Distribution">
+                  <PnlDistribution />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/daily-limit-optimization" element={
               <ProtectedRoute feature="ANALYTICS_PNL_DISTRIBUTION" fallbackComponent={
                 <FeatureDisabled featureName="Daily Limit Optimization" />
               }>
-                <DailyLimitOptimization />
+                <SubscriptionGuard feature="Daily Limit Optimization">
+                  <DailyLimitOptimization />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/equity" element={
               <ProtectedRoute feature="ANALYTICS_EQUITY" fallbackComponent={
                 <FeatureDisabled featureName="Equity Analysis" />
               }>
-                <Equity />
+                <SubscriptionGuard feature="Equity Analysis">
+                  <Equity />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/calendar" element={
               <ProtectedRoute feature="ANALYTICS_CALENDAR" fallbackComponent={
                 <FeatureDisabled featureName="Calendar Analysis" />
               }>
-                <Calendar />
+                <SubscriptionGuard feature="Calendar">
+                  <Calendar />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/recent-trades" element={
               <ProtectedRoute feature="ANALYTICS_RECENT_TRADES" fallbackComponent={
                 <FeatureDisabled featureName="Recent Trades" />
               }>
-                <RecentTrades />
+                <SubscriptionGuard feature="Recent Trades">
+                  <RecentTrades />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/symbols" element={
               <ProtectedRoute feature="ANALYTICS_SYMBOL_ANALYSIS" fallbackComponent={
                 <FeatureDisabled featureName="Symbol Analysis" />
               }>
-                <SymbolAnalysis />
+                <SubscriptionGuard feature="Symbol Analysis">
+                  <SymbolAnalysis />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/performance-analysis" element={
               <ProtectedRoute feature="ANALYTICS_PERFORMANCE" fallbackComponent={
                 <FeatureDisabled featureName="Performance Analysis" />
               }>
-                <PerformanceAnalysis />
+                <SubscriptionGuard feature="Performance Analysis">
+                  <PerformanceAnalysis />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/streaks" element={
               <ProtectedRoute feature="ANALYTICS_STREAKS" fallbackComponent={
                 <FeatureDisabled featureName="Streak Analysis" />
               }>
-                <StreakAnalyzer />
+                <SubscriptionGuard feature="Streak Analysis">
+                  <StreakAnalyzer />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/trade-duration" element={
               <ProtectedRoute feature="ANALYTICS_TRADE_DURATION" fallbackComponent={
                 <FeatureDisabled featureName="Trade Duration Analysis" />
               }>
-                <TradeDuration />
+                <SubscriptionGuard feature="Trade Duration">
+                  <TradeDuration />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/trade-duration-simple" element={
               <ProtectedRoute feature="ANALYTICS_TRADE_DURATION" fallbackComponent={
                 <FeatureDisabled featureName="Trade Duration Analysis" />
               }>
-                <TradeDurationSimple />
+                <SubscriptionGuard feature="Trade Duration">
+                  <TradeDurationSimple />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             <Route path="/analytics/all-metrics" element={
               <ProtectedRoute feature="ANALYTICS_ALL_METRICS" fallbackComponent={
                 <FeatureDisabled featureName="All Metrics" />
               }>
-                <AllMetrics />
+                <SubscriptionGuard feature="All Metrics">
+                  <AllMetrics />
+                </SubscriptionGuard>
               </ProtectedRoute>
             } />
             
@@ -420,6 +469,8 @@ function AppRoutes() {
     location.pathname === '/resend-verification' ||
     location.pathname === '/features' ||
     location.pathname === '/pricing' ||
+    location.pathname === '/subscription/success' ||
+    location.pathname === '/onboarding' ||
     location.pathname === '/contact' ||
     location.pathname === '/privacy-policy' ||
     location.pathname === '/refund-policy' ||
@@ -428,9 +479,9 @@ function AppRoutes() {
     location.pathname === '/disclaimer' ||
     location.pathname === '/legal'
 
-  // Handle authenticated users visiting the home page
-  if (isInitialized && token && location.pathname === '/') {
-    console.log('🔍 AppRoutes - Authenticated user on home page, redirecting based on profile status');
+  // Handle authenticated users visiting the home page or login page
+  if (isInitialized && token && (location.pathname === '/' || location.pathname === '/login')) {
+    console.log('🔍 AppRoutes - Authenticated user on home/login page, redirecting based on profile status');
     if (activeProfile) {
       console.log('🔍 AppRoutes - User has active profile, redirecting to dashboard');
       return <Navigate to="/dashboard" replace />;
@@ -440,9 +491,18 @@ function AppRoutes() {
     }
   }
 
+  // Check if this is a full-screen auth page (login/register)
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+
   return (
     <TooltipProvider>
-      {isPublicPath || location.pathname === '/' ? (
+      {isAuthPage ? (
+        // Auth pages get full-screen dark layout (no wrapper)
+        <Routes>
+          <Route path="/login" element={<Auth />} />
+          <Route path="/register" element={<Register />} />
+        </Routes>
+      ) : isPublicPath || location.pathname === '/' ? (
         <div className="min-h-screen bg-slate-50">
           <div className="pt-4 px-4 bg-white shadow-sm">
             <Routes>
@@ -451,6 +511,8 @@ function AppRoutes() {
               <Route path="/resend-verification" element={<ResendVerification />} />
               <Route path="/features" element={<Features />} />
               <Route path="/pricing" element={<Pricing />} />
+              <Route path="/subscription/success" element={<SubscriptionSuccess />} />
+              <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/refund-policy" element={<RefundPolicy />} />
@@ -459,7 +521,6 @@ function AppRoutes() {
               <Route path="/disclaimer" element={<Disclaimer />} />
               <Route path="/legal" element={<Legal />} />
               <Route path="/" element={<Home />} />
-              <Route path="/login" element={<Login />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

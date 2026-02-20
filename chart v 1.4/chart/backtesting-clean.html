@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standard Backtesting Mode</title>
+    <link rel="stylesheet" href="propfirm-styles.css">
+    <script>
+        (function() {
+            fetch('/api/auth/me', { credentials: 'include' })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('not_authenticated');
+                    return r.json();
+                })
+                .catch(function() {
+                    window.location.href = '/login/';
+                });
+        })();
+    </script>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <img src="modules/LOGO-04.png" alt="Logo" class="top-bar-logo">
+        <div class="top-bar-title">📊 Standard Backtesting Mode</div>
+        <div class="top-bar-actions">
+            <button type="button" class="btn btn-cancel" onclick="handleCancel()">Back to Sessions</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Header -->
+            <div class="modal-header-bar">
+                <h1>Create Standard Backtest</h1>
+                <button class="close-btn" onclick="handleCancel()" type="button">&times;</button>
+            </div>
+
+            <!-- Content Wrapper -->
+            <div class="full-panel">
+                <h2 class="section-title-main">Standard Backtesting</h2>
+                <form id="backtestingForm">
+                    <!-- General -->
+                    <div class="form-section">
+                        <h3>General</h3>
+                        <div class="form-group">
+                            <label>Session name <span class="required">*</span></label>
+                            <input type="text" id="sessionName" name="sessionName" required placeholder="Enter session name">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="description" name="description" placeholder="Optional description of your backtesting session"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Playbook</label>
+                            <select id="playbook" name="playbook">
+                                <option value="">Select playbook...</option>
+                                <option value="scalping">Scalping Strategy</option>
+                                <option value="swing">Swing Trading</option>
+                                <option value="breakout">Breakout Strategy</option>
+                                <option value="momentum">Momentum Trading</option>
+                                <option value="reversal">Reversal Strategy</option>
+                            </select>
+                            <a href="#" class="link" style="margin-top: 8px; display: inline-block;">Create new playbook</a>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Symbol / Data File <span class="required">*</span></label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <select id="symbolSelect" name="symbolSelect" required style="flex: 1;">
+                                    <option value="">Select uploaded data file...</option>
+                                </select>
+                                <button type="button" class="btn" onclick="loadAvailableFiles()" style="padding: 8px 12px; min-width: auto;" title="Refresh file list">
+                                    <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="23 4 23 10 17 10"></polyline>
+                                        <polyline points="1 20 1 14 7 14"></polyline>
+                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;" onclick="document.getElementById('csvFileInput').click()">
+                                    <svg style="width: 16px; height: 16px; margin-right: 6px; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="17 8 12 3 7 8"></polyline>
+                                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                                    </svg>
+                                    Upload New CSV File
+                                </button>
+                                <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+                                <span id="uploadStatus" style="font-size: 13px; color: #64748b; font-weight: 500;"></span>
+                            </div>
+                            <div class="helper-text">Select from your uploaded data files or upload a new one</div>
+                        </div>
+                    </div>
+
+                    <!-- Testing Period -->
+                    <div class="form-section">
+                        <h3>Testing period</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Start date <span class="required">*</span></label>
+                                <input type="datetime-local" id="startDate" name="startDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label>End date <span class="required">*</span></label>
+                                <input type="datetime-local" id="endDate" name="endDate" required>
+                            </div>
+                        </div>
+                        <div class="helper-text">Select a data file to see available date range</div>
+                    </div>
+
+                    <!-- Trading Settings -->
+                    <div class="form-section">
+                        <h3>Trading Settings</h3>
+                    
+                        <!-- Market Types -->
+                        <div class="form-group">
+                            <label>Market Types <span class="required">*</span></label>
+                            <div style="display: flex; gap: 20px; margin-top: 8px;">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" class="market-checkbox" name="marketType" value="forex" checked>
+                                    <span>Forex</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" class="market-checkbox" name="marketType" value="futures">
+                                    <span>Futures</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" class="market-checkbox" name="marketType" value="crypto">
+                                    <span>Crypto</span>
+                                </label>
+                            </div>
+                            <div class="helper-text" style="margin-top: 8px;">Select one or more market types you're backtesting</div>
+                        </div>
+
+                        <div class="form-row">
+                            <!-- Default Risk Type -->
+                            <div class="form-group">
+                                <label>Risk Type</label>
+                                <select id="defaultRiskType" name="defaultRiskType">
+                                    <option value="percent" selected>Percentage (%)</option>
+                                    <option value="dollar">Dollar ($)</option>
+                                    <option value="lot">Lot</option>
+                                </select>
+                                <div class="helper-text">How to specify risk per trade</div>
+                            </div>
+
+                            <!-- Default Risk Value -->
+                            <div class="form-group">
+                                <label id="defaultRiskLabel">Default Risk Per Trade (%)</label>
+                                <input type="number" id="defaultRisk" name="defaultRisk" placeholder="1" min="0.1" step="0.1" value="1">
+                                <div class="helper-text" id="defaultRiskHelper">Percentage of account balance to risk</div>
+                            </div>
+                        </div>
+
+                        <!-- Start Balance -->
+                        <div class="form-group">
+                            <label>Start balance (Leverage is 1:1) <span class="required">*</span></label>
+                            <input type="number" id="startBalance" name="startBalance" placeholder="$ 0" min="0" step="1000" required value="10000">
+                            <div class="preset-buttons">
+                                <button type="button" class="preset-btn" data-value="5000">5K</button>
+                                <button type="button" class="preset-btn" data-value="10000">10K</button>
+                                <button type="button" class="preset-btn" data-value="20000">20K</button>
+                                <button type="button" class="preset-btn" data-value="40000">40K</button>
+                                <button type="button" class="preset-btn" data-value="50000">50K</button>
+                                <button type="button" class="preset-btn" data-value="100000">100K</button>
+                            </div>
+                            <div class="helper-text">Your starting account balance for this backtesting session</div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="form-actions-container">
+                        <!-- Enable Back Navigation Toggle -->
+                        <div class="forward-mode-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="allowBackNavigation" name="allowBackNavigation" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div class="toggle-text-wrapper">
+                                <span class="toggle-text">Enable back/forward navigation</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                    </svg>
+                                    <div class="info-tooltip">
+                                        When enabled, you can go backward in time during replay. A visible badge will appear on the chart for transparency. Disable this for forward-only testing (simulating real trading).
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    
+                        <!-- Action Buttons -->
+                        <div class="action-buttons-group">
+                            <button type="button" class="btn btn-cancel" onclick="handleCancel()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Create session</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Handle cancel button - close iframe if in modal, otherwise navigate
+        function handleCancel() {
+            const isInIframe = window.self !== window.top;
+            if (isInIframe) {
+                // Close the iframe modal by calling parent function
+                window.parent.closeBacktestingIframe();
+            } else {
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Hide top bar if in iframe (modal mode)
+        if (window.self !== window.top) {
+            const topBar = document.querySelector('.top-bar');
+            if (topBar) {
+                topBar.style.display = 'none';
+            }
+            // Hide the close button in modal-header-bar (we use the overlay close button)
+            const modalCloseBtn = document.querySelector('.modal-header-bar .close-btn');
+            if (modalCloseBtn) {
+                modalCloseBtn.style.display = 'none';
+            }
+            // Adjust container padding since top bar is hidden
+            const container = document.querySelector('.container');
+            if (container) {
+                container.style.paddingTop = '0';
+            }
+        }
+    </script>
+
+</body>
+</html>

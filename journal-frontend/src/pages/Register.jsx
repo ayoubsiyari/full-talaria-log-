@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { colors, colorUtils } from '../config/colors';
-import { Mail, Lock, User, Phone, Globe, Eye, EyeOff, ChevronDown, ChevronRight } from 'lucide-react';
+import { Mail, Lock, User, Phone, Globe, Eye, EyeOff, ChevronDown, ChevronRight, CreditCard } from 'lucide-react';
 import logo from '../assets/logo4.jpg';
 import { API_BASE_URL } from '../config';
 import { countries } from '../data/countries';
 
 export default function Register() {
+  const [searchParams] = useSearchParams();
+  const selectedPlan = searchParams.get('plan') || 'pro-monthly';
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -22,7 +25,7 @@ export default function Register() {
   const [msg, setMsg] = useState('');
   const [passwordStrengthMsg, setPasswordStrengthMsg] = useState("");
   const [mounted, setMounted] = useState(false);
-  const [registered, setRegistered] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const [countrySearch, setCountrySearch] = useState("");
   const [phoneCodeSearch, setPhoneCodeSearch] = useState("");
@@ -80,7 +83,10 @@ export default function Register() {
       return;
     }
 
+    setIsLoading(true);
+
     try {
+      // Step 1: Register the user
       const res = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,20 +95,62 @@ export default function Register() {
           password,
           full_name: fullName,
           phone: getPhoneWithCode(),
-          country
+          country,
+          selected_plan: selectedPlan
         }),
       });
       const data = await res.json();
 
-      if (res.ok) {
-        localStorage.setItem('pendingVerificationEmail', email);
-        navigate('/verify-email');
-      } else {
+      if (!res.ok) {
         setMsg(data.error || 'Registration failed');
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: Auto-login and redirect to checkout
+      const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const loginData = await loginRes.json();
+
+      if (!loginRes.ok) {
+        setMsg('Account created. Please login to continue.');
+        navigate('/login');
+        return;
+      }
+
+      // Store token
+      localStorage.setItem('token', loginData.token);
+      localStorage.setItem('user', JSON.stringify(loginData.user));
+
+      // Step 3: Create checkout session
+      const checkoutRes = await fetch(`${API_BASE_URL}/subscriptions/checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`
+        },
+        body: JSON.stringify({
+          plan_id: selectedPlan,
+          success_url: window.location.origin + '/journal/onboarding',
+          cancel_url: window.location.origin + '/journal/pricing'
+        })
+      });
+
+      const checkoutData = await checkoutRes.json();
+      
+      if (checkoutData.checkout_url) {
+        window.location.href = checkoutData.checkout_url;
+      } else {
+        setMsg('Failed to start checkout. Please try again.');
+        setIsLoading(false);
       }
     } catch (err) {
-      console.error('Network error:', err);
+      console.error('Registration error:', err);
       setMsg('Network error, please try again');
+      setIsLoading(false);
     }
   };
 
@@ -222,16 +270,23 @@ export default function Register() {
               <span className="text-2xl font-semibold text-white">Journal</span>
             </Link>
             <h1 className="text-3xl font-semibold text-white mb-2 animate-fade-in-up">
-              Sign up
+              Create Account
             </h1>
             <p className="text-white/60 text-sm animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-              Create your account to get started
+              Complete your registration to continue
             </p>
+            
+            {/* Selected Plan Indicator */}
+            <div className="mt-4 inline-flex items-center space-x-2 bg-blue-500/20 border border-blue-500/30 px-3 py-2 rounded-lg">
+              <CreditCard className="w-4 h-4 text-blue-400" />
+              <span className="text-sm text-blue-300">
+                {selectedPlan === 'enterprise' ? 'Enterprise Plan' : 'Pro Trader Plan'}
+              </span>
+            </div>
           </div>
 
           {/* Form */}
-          {!registered ? (
-            <form onSubmit={handleRegister} className="space-y-4">
+          <form onSubmit={handleRegister} className="space-y-4">
               {/* Full Name Input */}
               <div>
                 <label className="block text-white/70 text-sm font-medium mb-2" htmlFor="fullName">
@@ -464,27 +519,22 @@ export default function Register() {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2 mt-6"
+                disabled={isLoading}
+                className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2 mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Create account</span>
-                <ChevronRight className="w-4 h-4" />
+                {isLoading ? (
+                  <>
+                    <span className="animate-spin h-4 w-4 border-2 border-black border-t-transparent rounded-full" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Continue to Payment</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
-          ) : (
-            <div className="text-center space-y-6 py-8">
-              <div className="flex justify-center mb-2">
-                <Mail className="w-12 h-12 text-blue-400 animate-bounce" />
-              </div>
-              <h2 className="text-2xl font-semibold text-white mb-2">Registration Successful!</h2>
-              <p className="text-white/60 text-sm">Please check your email for a verification link before logging in.</p>
-              <button
-                className="bg-white text-black py-2 px-6 rounded-md text-sm font-medium hover:bg-white/90 transition-colors"
-                onClick={() => navigate('/login')}
-              >
-                Go to Login
-              </button>
-            </div>
-          )}
 
           {/* Login Link */}
           <div className="mt-6 text-center">

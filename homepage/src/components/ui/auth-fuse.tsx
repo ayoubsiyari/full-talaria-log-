@@ -217,14 +217,20 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
         body: JSON.stringify({ email, password }),
       });
 
+      const body = await res.json().catch(() => null);
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        setError((body && body.detail) ? String(body.detail) : "Login failed");
+        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Login failed");
         return;
       }
 
       const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
-      window.location.href = safeNext || "/";
+      if (safeNext) {
+        window.location.href = safeNext;
+        return;
+      }
+
+      const isAdmin = body?.user?.role === "admin";
+      window.location.href = isAdmin ? "/dashboard/admin/" : "/";
     } finally {
       setLoading(false);
     }
@@ -267,7 +273,7 @@ function ForgotPasswordForm({ onBack, onCodeSent }: { onBack: () => void; onCode
         return;
       }
 
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch("/journal/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
@@ -275,7 +281,7 @@ function ForgotPasswordForm({ onBack, onCodeSent }: { onBack: () => void; onCode
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setError((body && body.detail) ? String(body.detail) : "Failed to send reset code");
+        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Failed to send reset code");
         return;
       }
 
@@ -339,7 +345,7 @@ function ResetPasswordForm({ email, onBack, onSuccess }: { email: string; onBack
         return;
       }
 
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await fetch("/journal/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code, new_password: newPassword }),
@@ -347,7 +353,7 @@ function ResetPasswordForm({ email, onBack, onSuccess }: { email: string; onBack
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setError((body && body.detail) ? String(body.detail) : "Failed to reset password");
+        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Failed to reset password");
         return;
       }
 
@@ -363,7 +369,7 @@ function ResetPasswordForm({ email, onBack, onSuccess }: { email: string; onBack
     setResendSuccess(false);
 
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch("/journal/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -371,7 +377,7 @@ function ResetPasswordForm({ email, onBack, onSuccess }: { email: string; onBack
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setError((body && body.detail) ? String(body.detail) : "Failed to resend code");
+        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Failed to resend code");
         return;
       }
 
@@ -443,16 +449,15 @@ function VerificationForm({ email, onVerified, onBack, nextPath }: { email: stri
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/verify-email", {
+      const res = await fetch("/journal/api/auth/verify-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ email, code: code.trim() }),
       });
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setError((body && body.detail) ? String(body.detail) : "Verification failed");
+        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Verification failed");
         return;
       }
 
@@ -469,7 +474,7 @@ function VerificationForm({ email, onVerified, onBack, nextPath }: { email: stri
     setResendSuccess(false);
 
     try {
-      const res = await fetch("/api/auth/resend-code", {
+      const res = await fetch("/journal/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -477,7 +482,7 @@ function VerificationForm({ email, onVerified, onBack, nextPath }: { email: stri
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setError((body && body.detail) ? String(body.detail) : "Failed to resend code");
+        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Failed to resend code");
         return;
       }
 
@@ -561,17 +566,16 @@ function SignUpForm({ onSignedUp, onNeedsVerification, nextPath }: { onSignedUp:
         return;
       }
 
-      const signupRes = await fetch("/api/auth/signup", {
+      const signupRes = await fetch("/journal/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ name: trimmedName, email: trimmedEmail, password }),
       });
 
       const body = await signupRes.json().catch(() => null);
 
       if (!signupRes.ok) {
-        setError((body && body.detail) ? String(body.detail) : "Sign up failed");
+        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Sign up failed");
         return;
       }
 

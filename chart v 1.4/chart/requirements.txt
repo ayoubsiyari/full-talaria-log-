@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+sqlalchemy==2.0.23
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.2
+google-api-python-client==2.114.0
+google-auth==2.25.2
+google-auth-httplib2==0.2.0
+msgpack==1.0.7

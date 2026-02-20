@@ -11,7 +11,10 @@ type User = {
 };
 
 async function fetchMe(): Promise<User> {
-  const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+  const res = await fetch("/api/auth/me", {
+    credentials: "include",
+    cache: "no-store",
+  });
   if (!res.ok) {
     throw new Error("not_authenticated");
   }
@@ -27,7 +30,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     fetchMe()
       .then((u) => setUser(u))
       .catch(() => {
-        window.location.href = "/login/";
+        const target = `${window.location.pathname}${window.location.search || ""}`;
+        window.location.href = `/login/?next=${encodeURIComponent(target)}`;
       });
   }, []);
 
@@ -64,7 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </a>
 
           <nav className={"flex items-center gap-2 text-sm " + (isArabic ? "flex-row-reverse" : "")}> 
-            <a href="/dashboard/" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition">
+            <a href="/backtest/" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition">
               {nav.sessions}
             </a>
             <a href="/chart/index.html" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition">
@@ -74,7 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {nav.journal}
             </a>
             {user?.role === "admin" ? (
-              <a href="/dashboard/admin/users/" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition">
+              <a href="/dashboard/admin/" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition">
                 {nav.admin}
               </a>
             ) : null}
@@ -84,6 +88,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 try {
                   await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
                 } catch {}
+                localStorage.removeItem("token");
+                localStorage.removeItem("refresh_token");
+                localStorage.removeItem("talaria_current_user");
+                localStorage.removeItem("is_admin");
                 window.location.href = "/login/";
               }}
               className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition"

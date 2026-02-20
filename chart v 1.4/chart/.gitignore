@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+.venv311/
+env/
+.env
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.db
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads (keep directory structure)
+uploads/*
+!uploads/.gitkeep
+
+# Data directory
+data/*
+!data/.gitkeep
+
+# SSL certificates (sensitive)
+ssl/*
+!ssl/.gitkeep
+
+# Logs
+*.log
+
+# Backup files
+*-backup.*
+*-old.*
+backups/
+
+# Environment
+.env.local
+
+# Secrets
+secrets/
+
+# Node modules (if any)
+node_modules/

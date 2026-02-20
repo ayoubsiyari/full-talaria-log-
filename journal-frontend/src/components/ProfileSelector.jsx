@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../config';
 
 const profiles = [
   { key: 'backtest', label: 'backtest', description: 'Simulate and edit trades freely.', locked: false },
@@ -34,7 +35,7 @@ export default function ProfileSelector({ onSelect }) {
     setMetaapiMsg('');
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/broker/metaapi/connect', {
+      const res = await fetch(`${API_BASE_URL}/broker/metaapi/connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -77,6 +77,7 @@ class User(db.Model):
     birth_date = db.Column(db.Date, nullable=True)
     reset_token = db.Column(db.String(100), nullable=True)
     reset_token_expires = db.Column(db.DateTime, nullable=True)
+    stripe_customer_id = db.Column(db.String(100), nullable=True)
     
     # Alias for compatibility with journal backend auth
     @property
@@ -412,5 +413,78 @@ class SystemSettings(db.Model):
         db.session.commit()
         return setting
 
+
+class SubscriptionPlan(db.Model):
+    __tablename__ = 'subscription_plans'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    price = db.Column(db.Float, nullable=False, default=0)  # Legacy field
+    price_monthly = db.Column(db.Float, nullable=False, default=0)
+    price_yearly = db.Column(db.Float, nullable=False, default=0)
+    interval = db.Column(db.String(20), nullable=False, default='month')  # month, year
+    stripe_price_id = db.Column(db.String(100), nullable=True)
+    stripe_price_id_yearly = db.Column(db.String(100), nullable=True)
+    stripe_product_id = db.Column(db.String(100), nullable=True)
+    features = db.Column(db.Text, nullable=True)  # JSON string
+    trial_days = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Subscription(db.Model):
+    __tablename__ = 'subscriptions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    plan_id = db.Column(db.Integer, db.ForeignKey('subscription_plans.id'), nullable=True)
+    stripe_subscription_id = db.Column(db.String(100), nullable=True)
+    stripe_customer_id = db.Column(db.String(100), nullable=True)
+    status = db.Column(db.String(50), nullable=False, default='active')  # active, trialing, canceled, past_due
+    started_at = db.Column(db.DateTime, nullable=True)  # Alias: current_period_start
+    ends_at = db.Column(db.DateTime, nullable=True)  # Alias: current_period_end
+    current_period_start = db.Column(db.DateTime, nullable=True)  # Legacy
+    current_period_end = db.Column(db.DateTime, nullable=True)  # Legacy
+    cancel_at_period_end = db.Column(db.Boolean, default=False)
+    cancelled_at = db.Column(db.DateTime, nullable=True)
+    is_manual = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    user = db.relationship('User', backref=db.backref('subscriptions', lazy=True))
+    plan = db.relationship('SubscriptionPlan', backref=db.backref('subscriptions', lazy=True))
+
+
+class Payment(db.Model):
+    __tablename__ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    subscription_id = db.Column(db.Integer, db.ForeignKey('subscriptions.id'), nullable=True)
+    provider = db.Column(db.String(50), default='stripe')  # stripe, paypal
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(10), default='usd')
+    status = db.Column(db.String(50), nullable=False)  # succeeded, failed, pending
+    invoice_url = db.Column(db.String(500), nullable=True)
+    description = db.Column(db.String(255), nullable=True)
+    stripe_payment_id = db.Column(db.String(100), nullable=True)
+    stripe_invoice_id = db.Column(db.String(100), nullable=True)
+    refunded = db.Column(db.Boolean, default=False)
+    refund_amount = db.Column(db.Float, nullable=True)
+    refunded_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref=db.backref('payments', lazy=True))
+    subscription = db.relationship('Subscription', backref=db.backref('payments', lazy=True))
+
+
+class WebhookLog(db.Model):
+    __tablename__ = 'webhook_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(100), nullable=False)
+    event_id = db.Column(db.String(100), nullable=True)
+    payload = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(50), default='received')  # received, processed, failed
+    error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
 import { useFeatureFlags } from '../context/FeatureFlagsContext';
 import { Settings, Users, ToggleLeft, ToggleRight, Save, RefreshCw, Shield, ChevronDown, ChevronRight } from 'lucide-react';
@@ -21,7 +22,7 @@ const GroupFeatureFlagManager = () => {
 
   const fetchGroups = async () => {
     try {
-      const response = await fetch('/api/admin/groups', {
+      const response = await fetch(`${API_BASE_URL}/admin/groups`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

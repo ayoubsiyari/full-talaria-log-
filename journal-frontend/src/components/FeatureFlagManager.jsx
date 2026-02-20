@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 import { useFeatureFlags } from '../context/FeatureFlagsContext';
 import { useAuth } from '../context/AuthContext';
 import { Settings, ToggleLeft, ToggleRight, Save, RefreshCw, Shield } from 'lucide-react';
@@ -60,7 +61,7 @@ const FeatureFlagManager = () => {
         category: getFeatureCategory(name)
       }));
 
-      const response = await fetch('/api/feature-flags/bulk', {
+      const response = await fetch(`${API_BASE_URL}/feature-flags/bulk`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -106,7 +107,7 @@ const FeatureFlagManager = () => {
 
   const handleReset = async () => {
     try {
-      const response = await fetch('/api/feature-flags/initialize', {
+      const response = await fetch(`${API_BASE_URL}/feature-flags/initialize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

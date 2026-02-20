@@ -1,37 +1,50 @@
 module.exports = {
     content: ["./src/**/*.{js,jsx,ts,tsx}"],
-    darkMode: 'class', // enable .dark class toggling
+    darkMode: 'class',
     theme: {
       extend: {
+        fontFamily: {
+          'zain': ['Zain', 'Inter', 'system-ui', 'sans-serif'],
+          'sans': ['Zain', 'Inter', 'system-ui', 'sans-serif'],
+        },
         boxShadow: {
           'card': '0 2px 8px rgba(0,0,0,0.04)',
           'card-hover': '0 6px 20px rgba(0,0,0,0.12)',
+          'glow': '0 0 20px rgba(59,130,246,0.3)',
+          'glow-lg': '0 0 40px rgba(59,130,246,0.4)',
         },
         backdropBlur: {
           xs: '2px',
         },
         colors: {
-          primary: '#3090FF',
+          // Homepage color scheme
+          primary: '#3b82f6',
           brand: {
-            blue: '#3090FF',
-            'dark-bg': '#040028',
+            blue: '#3b82f6',
+            'blue-dark': '#1e3a8a',
+            indigo: '#6366f1',
+            purple: '#8b5cf6',
+            cyan: '#06b6d4',
+            'dark-bg': '#030014',
+            'alt-bg': '#0a0a1a',
+            'card-bg': '#0f0f14',
             white: '#FFFFFF',
           },
           theme: {
-            'bg-light': '#FFFFFF', // Light mode main background
-            'bg-dark': '#040028', // Dark mode main background from brand
+            'bg-light': '#FFFFFF',
+            'bg-dark': '#030014',
             'card-bg-light': '#FFFFFF',
-            'card-bg-dark': '#0E0C32', // A slightly lighter shade of the dark-bg for cards
+            'card-bg-dark': '#0f0f14',
             'divider-light': '#e2e8f0',
-            'divider-dark': '#2A284F', // A shade for dividers
-            'text-primary-light': '#040028', // Dark text on light background
-            'text-primary-dark': '#FFFFFF', // White text on dark background
-            'text-secondary-light': '#718096',
-            'text-secondary-dark': '#a0aec0',
+            'divider-dark': '#1f1f2e',
+            'text-primary-light': '#030014',
+            'text-primary-dark': '#FFFFFF',
+            'text-secondary-light': '#71717a',
+            'text-secondary-dark': '#a1a1aa',
             'input-bg-light': '#FFFFFF',
-            'input-bg-dark': '#0E0C32',
-            'input-border-light': '#cbd5e0',
-            'input-border-dark': '#2A284F',
+            'input-bg-dark': '#0a0a0f',
+            'input-border-light': '#e2e8f0',
+            'input-border-dark': '#27272a',
           }
         },
       },

@@ -1,232 +1,357 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { colors, colorUtils } from '../config/colors';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  CheckCircle,
-  Star,
   Sparkles,
-  Zap,
-  Shield,
-  Users,
-  ArrowRight,
-  ExternalLink,
-  Crown,
-  Award,
-  Lock,
-  Globe
+  Loader2,
+  Check,
+  ArrowRight
 } from 'lucide-react';
-import TalariaLogo from '../components/TalariaLogo';
+import { API_BASE_URL } from '../config';
+import logo from '../assets/logo4.jpg';
 
 export default function Pricing() {
   const [billingCycle, setBillingCycle] = useState('monthly');
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [checkoutLoading, setCheckoutLoading] = useState(null);
+  const [currentSubscription, setCurrentSubscription] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const navigate = useNavigate();
 
-  const plans = [
+  useEffect(() => {
+    fetchPlans();
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      setIsLoggedIn(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/subscriptions/my-subscription`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentSubscription(data);
+        }
+      } catch (err) {
+        console.error('Error fetching subscription:', err);
+      }
+    }
+  };
+
+  const fetchPlans = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/subscriptions/public/plans`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.plans && data.plans.length > 0) {
+          setPlans(data.plans);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching plans:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubscribe = async (planId) => {
+    if (!isLoggedIn) {
+      navigate(`/login`);
+      return;
+    }
+
+    if (currentSubscription?.has_subscription && 
+        ['active', 'trialing'].includes(currentSubscription?.subscription?.status)) {
+      navigate('/dashboard');
+      return;
+    }
+
+    setCheckoutLoading(planId);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/subscriptions/checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          plan_id: planId,
+          success_url: window.location.origin + '/journal/onboarding',
+          cancel_url: window.location.origin + '/journal/pricing'
+        })
+      });
+
+      const data = await res.json();
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+      } else {
+        alert(data.error || 'Failed to start checkout');
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      alert('Failed to start checkout. Please try again.');
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  const defaultPlans = [
     {
-      name: "Starter",
-      description: "Perfect for individual traders getting started",
-      price: billingCycle === 'monthly' ? 29 : 290,
-      originalPrice: billingCycle === 'monthly' ? 39 : 390,
-      features: [
-        "Up to 1,000 trades per month",
-        "50+ performance metrics",
-        "Basic AI insights",
-        "CSV/Excel import",
-        "Email support",
-        "Mobile responsive"
-      ],
-      popular: false,
-      cta: "Start Free Trial",
-      color: "border-white/10 bg-white/5"
+      id: 'pro-monthly',
+      name: "Pro Trader",
+      description: "For serious traders ready to level up",
+      price: 29,
+      interval: 'month',
+      features: ["Unlimited trade journaling", "Full analytics & reports", "AI Trading Assistant", "Strategy Builder", "Backtesting tools", "Priority support"],
+      is_popular: true
     },
     {
-      name: "Professional",
-      description: "For serious traders who demand excellence",
-      price: billingCycle === 'monthly' ? 79 : 790,
-      originalPrice: billingCycle === 'monthly' ? 99 : 990,
-      features: [
-        "Unlimited trades",
-        "200+ performance metrics",
-        "Advanced AI assistant",
-        "Multi-platform import",
-        "Advanced filtering",
-        "Calendar view",
-        "Priority support",
-        "API access"
-      ],
-      popular: true,
-      cta: "Start Free Trial",
-      color: "border-purple-500/30 bg-purple-500/5"
+      id: 'pro-yearly',
+      name: "Pro Trader Yearly",
+      description: "Best value - save 25%",
+      price: 261,
+      interval: 'year',
+      features: ["Everything in Pro Trader", "25% discount", "Early access to features"],
+      is_popular: false
     },
     {
+      id: 'enterprise',
       name: "Enterprise",
-      description: "Institutional-grade tools for professional firms",
-      price: "Custom",
-      originalPrice: null,
-      features: [
-        "Everything in Professional",
-        "Custom integrations",
-        "White-label options",
-        "Dedicated account manager",
-        "Custom reporting",
-        "Team collaboration",
-        "Advanced security",
-        "SLA guarantees"
-      ],
-      popular: false,
-      cta: "Contact Sales",
-      color: "border-white/10 bg-white/5"
+      description: "For trading teams & prop firms",
+      price: 99,
+      interval: 'month',
+      features: ["Everything in Pro", "Multi-user team access", "Custom integrations", "Dedicated account manager", "White-label options", "API access"],
+      is_popular: false
     }
   ];
 
-  const benefits = [
-    {
-      icon: Shield,
-      title: "Bank-level Security",
-      description: "End-to-end encryption and SOC 2 compliance"
-    },
-    {
-      icon: Zap,
-      title: "99.9% Uptime",
-      description: "Enterprise-grade infrastructure and reliability"
-    },
-    {
-      icon: Users,
-      title: "Expert Support",
-      description: "Dedicated support team with trading expertise"
-    },
-    {
-      icon: Globe,
-      title: "Global Access",
-      description: "Available worldwide with local data centers"
-    }
-  ];
+  const displayPlans = plans.length > 0 ? plans : defaultPlans;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
-      {/* Navigation */}
-      <nav className={`fixed top-0 w-full z-50 ${colors.components.nav.background} backdrop-blur-xl border-b ${colors.components.nav.border}`}>
-        <div className="container mx-auto px-6 py-4">
+    <div className="min-h-screen bg-[#030014] text-white relative overflow-hidden">
+      {/* Grid pattern overlay — matches homepage */}
+      <div className="fixed inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0wIDBoNjB2NjBIMHoiLz48cGF0aCBkPSJNMzAgMzBoMXYxaC0xek0zMCAwaDF2MWgtMXoiIGZpbGw9IiMxYTFhMmUiIGZpbGwtb3BhY2l0eT0iLjMiLz48L2c+PC9zdmc+')] opacity-40 pointer-events-none z-0" />
+
+      {/* Navigation — matches homepage nav */}
+      <nav className="fixed top-0 w-full z-50 bg-black/80 backdrop-blur-xl border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center space-x-3 group">
-              <TalariaLogo size="default" />
-            </Link>
+            <a href="/" className="flex items-center gap-2">
+              <img src={logo} alt="Talaria" className="w-8 h-8 rounded-lg" />
+              <span className="text-white font-bold text-lg hidden sm:inline">Talaria</span>
+            </a>
             
-            <div className="hidden md:flex items-center space-x-1">
-              <Link to="/features" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} hover:${colors.components.nav.linkBg} rounded-md transition-all duration-200 border border-transparent hover:${colors.components.nav.linkBorder}`}>
-                Features
-              </Link>
-              
-              <Link to="/contact" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} hover:${colors.components.nav.linkBg} rounded-md transition-all duration-200 border border-transparent hover:${colors.components.nav.linkBorder}`}>
-                Contact
-              </Link>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <Link to="/login" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} transition-all duration-200`}>
-                Log in
-              </Link>
-              <Link to="/login" className="px-4 py-2 bg-white text-black text-sm font-medium rounded-md hover:bg-white/90 transition-all duration-200 shadow-sm">
-                Sign up
-              </Link>
+            <div className="flex items-center gap-2 sm:gap-3">
+              {isLoggedIn ? (
+                <span className="text-sm text-neutral-400">
+                  Select your plan
+                </span>
+              ) : (
+                <>
+                  <Link to="/login" className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 transition-all">
+                    Login
+                  </Link>
+                  <Link to="/login" className="rounded-full text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 shadow-[0_0_0_1px_rgba(99,102,241,0.25),0_14px_40px_rgba(59,130,246,0.25)] text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 transition-all">
+                    Sign up
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20">
-        <div className="container mx-auto px-6">
-          <div className="text-center max-w-4xl mx-auto">
-            <div className={`inline-flex items-center space-x-2 ${colors.backgrounds.overlay} backdrop-blur-sm px-3 py-1.5 rounded-full border ${colors.borders.primary} mb-8`}>
-              <div className={`w-2 h-2 ${colors.animations.pulse} rounded-full animate-pulse`} />
-              <span className={`text-sm ${colors.text.secondary}`}>Simple, Transparent Pricing</span>
-            </div>
-            
-            <h1 className="text-5xl md:text-7xl font-normal mb-8 text-white leading-tight">
-              Choose your
-              <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
-                  trading edge
-                </span>
-            </h1>
-            
-            <p className={`text-lg md:text-xl ${colors.text.secondary} mb-12 leading-relaxed max-w-3xl mx-auto font-light`}>
-              From individual traders to institutional firms, we have the perfect plan to help you achieve 
-              consistent profitability and professional growth.
-            </p>
+      <section className="relative z-10 pt-28 sm:pt-36 pb-16 sm:pb-20">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
+          <div className="inline-flex items-center space-x-2 bg-white/5 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 mb-8">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+            <span className="text-sm text-neutral-400">Simple, Transparent Pricing</span>
+          </div>
+          
+          <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-6">
+            Choose your{" "}
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-500 via-blue-400 to-cyan-400">
+              trading edge
+            </span>
+          </h1>
+          
+          <p className="text-sm sm:text-base md:text-lg text-neutral-400 max-w-2xl mx-auto mb-10">
+            From individual traders to institutional firms, we have the perfect plan to help you achieve 
+            consistent profitability and professional growth.
+          </p>
 
-            {/* Billing Toggle */}
-            <div className="flex items-center justify-center space-x-4 mb-12">
-                              <span className={`text-sm ${billingCycle === 'monthly' ? colors.text.primary : colors.text.secondary}`}>
-                 Monthly
-                </span>
-                <button
-                  onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    billingCycle === 'yearly' ? 'bg-blue-500' : 'bg-white/20'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      billingCycle === 'yearly' ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-                <span className={`text-sm ${billingCycle === 'yearly' ? colors.text.primary : colors.text.secondary}`}>
-                  Yearly
-                  <span className="ml-1 text-green-400">Save 25%</span>
-                </span>
-            </div>
+          {/* Billing Toggle */}
+          <div className="flex items-center justify-center space-x-4 mb-12">
+            <span className={`text-sm ${billingCycle === 'monthly' ? 'text-white' : 'text-neutral-400'}`}>
+              Monthly
+            </span>
+            <button
+              onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                billingCycle === 'yearly' ? 'bg-gradient-to-r from-blue-600 to-cyan-500' : 'bg-white/20'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  billingCycle === 'yearly' ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className={`text-sm ${billingCycle === 'yearly' ? 'text-white' : 'text-neutral-400'}`}>
+              Yearly
+              <span className="ml-1 text-cyan-400 font-medium">Save 25%</span>
+            </span>
           </div>
         </div>
       </section>
 
-     
+      {/* Pricing Cards */}
+      <section className="relative z-10 pb-20 sm:pb-28">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            </div>
+          ) : (
+            <div className={`grid gap-6 sm:gap-8 max-w-5xl mx-auto ${
+              displayPlans.length === 1 ? 'md:grid-cols-1 max-w-md' :
+              displayPlans.length === 2 ? 'md:grid-cols-2 max-w-3xl' :
+              'md:grid-cols-2 lg:grid-cols-3'
+            }`}>
+              {displayPlans.map((plan, index) => {
+                const isCurrentPlan = currentSubscription?.plan?.id === plan.id;
+                const isPro = plan.is_popular || plan.name.toLowerCase().includes('pro');
+                
+                return (
+                  <div
+                    key={plan.id || index}
+                    className={`relative rounded-2xl p-6 sm:p-8 border transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_0_60px_rgba(59,130,246,0.15)] ${
+                      isPro
+                        ? 'border-blue-500/40 bg-gradient-to-b from-blue-600/15 via-indigo-600/5 to-transparent shadow-[0_0_40px_rgba(59,130,246,0.1)]'
+                        : 'border-white/10 bg-white/[0.03]'
+                    }`}
+                  >
+                    {isPro && (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                        <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white text-xs font-medium px-4 py-1 rounded-full shadow-[0_0_20px_rgba(59,130,246,0.3)]">
+                          Most Popular
+                        </span>
+                      </div>
+                    )}
 
-      {/* Benefits Section */}
-      <section className="py-20 bg-white/5">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
-              Trusted by
-              <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
-                  professionals
-                </span>
-            </h2>
-            <p className="text-lg text-white/60 max-w-2xl mx-auto">
-              Join thousands of traders who trust Talaria for their trading analytics and journaling needs.
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {benefits.map((benefit, index) => (
-              <div key={index} className="text-center">
-                                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-6">
-                  <benefit.icon className="w-8 h-8 text-white" />
+                    <div className="text-center mb-6">
+                      <h3 className="text-xl font-bold text-white mb-1">{plan.name}</h3>
+                      <p className="text-neutral-400 text-sm">{plan.description}</p>
+                    </div>
+
+                    <div className="text-center mb-8">
+                      <div className="flex items-baseline justify-center">
+                        <span className="text-5xl font-bold text-white">
+                          {plan.price === 0 ? 'Free' : `$${plan.price}`}
+                        </span>
+                        {plan.price > 0 && (
+                          <span className="text-neutral-400 ml-2">/{plan.interval}</span>
+                        )}
+                      </div>
+                      {plan.trial_days > 0 && (
+                        <p className="text-cyan-400 text-sm mt-2 font-medium">
+                          {plan.trial_days}-day free trial
+                        </p>
+                      )}
+                    </div>
+
+                    <ul className="space-y-3 mb-8">
+                      {(plan.features || []).map((feature, idx) => (
+                        <li key={idx} className="flex items-start gap-3">
+                          <Check className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+                          <span className="text-neutral-300 text-sm">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {isCurrentPlan ? (
+                      <button
+                        disabled
+                        className="w-full py-3 px-6 rounded-full bg-green-500/20 text-green-400 font-medium border border-green-500/30"
+                      >
+                        Current Plan
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleSubscribe(plan.id)}
+                        disabled={checkoutLoading === plan.id}
+                        className={`w-full py-3 px-6 rounded-full font-medium transition-all flex items-center justify-center gap-2 ${
+                          isPro
+                            ? 'text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 shadow-[0_0_0_1px_rgba(99,102,241,0.25),0_14px_40px_rgba(59,130,246,0.25)]'
+                            : 'text-white border border-white/10 bg-white/5 hover:bg-white/10'
+                        } disabled:opacity-50`}
+                      >
+                        {checkoutLoading === plan.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            {plan.trial_days > 0 ? 'Start Free Trial' : 'Subscribe Now'}
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Current Subscription Banner */}
+          {currentSubscription?.has_subscription && (
+            <div className="mt-12 max-w-2xl mx-auto">
+              <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-2xl p-6 border border-green-500/20">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <p className="text-white font-medium">
+                      You're subscribed to {currentSubscription.plan?.name}
+                    </p>
+                    <p className="text-neutral-400 text-sm">
+                      {currentSubscription.subscription?.cancel_at_period_end
+                        ? `Cancels on ${new Date(currentSubscription.subscription.current_period_end).toLocaleDateString()}`
+                        : `Renews on ${new Date(currentSubscription.subscription?.current_period_end).toLocaleDateString()}`}
+                    </p>
+                  </div>
+                  <Link
+                    to="/settings"
+                    className="px-4 py-2 rounded-full text-white text-sm border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
+                  >
+                    Manage Subscription
+                  </Link>
                 </div>
-                <h3 className="text-lg font-medium mb-3 text-white">{benefit.title}</h3>
-                <p className="text-sm text-white/60 leading-relaxed">{benefit.description}</p>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       </section>
 
       {/* FAQ Section */}
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
-              Frequently Asked
-              <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
-                  Questions
-                </span>
+      <section className="relative z-10 py-16 sm:py-24">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">
+              Frequently Asked{" "}
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-500 via-blue-400 to-cyan-400">
+                Questions
+              </span>
             </h2>
           </div>
           
-          <div className="max-w-3xl mx-auto space-y-6">
+          <div className="space-y-4">
             {[
               {
                 question: "Can I change my plan at any time?",
@@ -234,7 +359,7 @@ export default function Pricing() {
               },
               {
                 question: "Is there a free trial available?",
-                answer: "Yes, we offer a 14-day free trial on all paid plans. No credit card required to start."
+                answer: "Yes, we offer a free trial on all paid plans. No credit card required to start."
               },
               {
                 question: "What payment methods do you accept?",
@@ -245,43 +370,17 @@ export default function Pricing() {
                 answer: "Yes, you can cancel your subscription at any time. You'll continue to have access until the end of your billing period."
               }
             ].map((faq, index) => (
-              <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-                <h3 className="text-lg font-medium mb-3 text-white">{faq.question}</h3>
-                <p className="text-white/60 leading-relaxed">{faq.answer}</p>
+              <div key={index} className="bg-white/[0.03] backdrop-blur-sm rounded-xl p-5 sm:p-6 border border-white/10 hover:border-white/20 transition-all">
+                <h3 className="text-base sm:text-lg font-semibold mb-2 text-white">{faq.question}</h3>
+                <p className="text-neutral-400 text-sm leading-relaxed">{faq.answer}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <div className="text-center max-w-3xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
-              Ready to start
-              <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
-                  your journey?
-                </span>
-            </h2>
-            <p className="text-lg text-white/60 mb-8 leading-relaxed">
-              Join thousands of professional traders who trust Talaria for their trading analytics and journaling needs.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                             <Link to="/login" className="group inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-700 text-white px-8 py-4 rounded-lg hover:from-blue-600 hover:to-blue-800 transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl">
-                <Sparkles className="w-4 h-4" />
-                <span>Start Free Trial</span>
-              </Link>
-              <Link to="/contact" className="group inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm text-white px-6 py-3 rounded-lg border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all duration-200 text-sm">
-                <ExternalLink className="w-4 h-4" />
-                <span>Contact Sales</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Bottom gradient fade — matches homepage */}
+      <div className="fixed bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[#030014] via-[#030014]/80 to-transparent pointer-events-none z-0" />
     </div>
   );
 }

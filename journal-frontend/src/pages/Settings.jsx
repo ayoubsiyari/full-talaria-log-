@@ -65,6 +65,7 @@ import {
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend as ReLegend } from 'recharts';
 import BulkUserImport from '../components/BulkUserImport';
 import BulkEmailManager from '../components/BulkEmailManager';
+import SubscriptionManager from '../components/SubscriptionManager';
 
 export default function Settings() {
   const [email, setEmail] = useState('');
@@ -243,7 +244,7 @@ export default function Settings() {
 
         if (res.status === 401 || res.status === 422) {
           setMsg('Invalid or expired token. Please log in again.');
-          setTimeout(() => (window.location.href = '/login'), 2000);
+          setTimeout(() => (window.location.href = '/journal/login'), 2000);
           return;
         }
 
@@ -370,7 +371,7 @@ export default function Settings() {
     }
     localStorage.removeItem('token');
     localStorage.removeItem('is_admin');
-    window.location.href = '/login';
+    window.location.href = '/journal/login';
   };
 
   // ─── 6. Admin functions ───────────────────────────────────────────────────────
@@ -536,7 +537,7 @@ export default function Settings() {
       
       // Open new private window with the login data
       const newWindow = window.open(
-        `${window.location.origin}?admin_login=${sessionKey}`,
+        `${window.location.origin}/journal?admin_login=${sessionKey}`,
         '_blank',
         'width=1200,height=800,scrollbars=yes,resizable=yes'
       );
@@ -644,7 +645,7 @@ export default function Settings() {
 
   const fetchBootcampEmails = async () => {
     try {
-      const response = await fetch('/api/bootcamp/registrations/emails');
+      const response = await fetch(`${API_BASE_URL}/bootcamp/registrations/emails`);
       if (response.ok) {
         const data = await response.json();
         setBootcampEmails(data.emails || []);
@@ -1364,6 +1365,7 @@ export default function Settings() {
                 {[
                   { id: 'dashboard', label: 'Overview' },
                   { id: 'users', label: 'Users' },
+                  { id: 'subscriptions', label: 'Subscriptions' },
                   { id: 'logs', label: 'Logs' },
                   { id: 'health', label: 'Health' },
                   { id: 'analytics', label: 'Analytics' },
@@ -2828,6 +2830,11 @@ export default function Settings() {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* Subscriptions Tab */}
+                {activeAdminTab === 'subscriptions' && (
+                  <SubscriptionManager />
                 )}
 
                 {/* Bulk Email Tab */}

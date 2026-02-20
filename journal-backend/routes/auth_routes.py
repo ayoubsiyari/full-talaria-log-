@@ -256,26 +256,71 @@ def login_user():
 
 
 @auth_bp.route('/register', methods=['POST'])
+@auth_bp.route('/signup', methods=['POST'])
 def register_user():
     """
-    Registration is disabled - users should register through the main platform.
+    Expect JSON: { "name": "...", "email": "...", "password": "..." }
+    Creates a new user account and sends verification email.
     """
-    return jsonify({"error": "Registration is disabled. Please register through the main platform at talaria-log.com"}), 403
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+    
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+    
+    if not password or len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    # Check if email already exists
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return jsonify({"error": "An account with this email already exists"}), 400
+
+    # Create new user (auto-verified - email_verified is a property that returns True)
+    new_user = User(
+        name=name,
+        email=email,
+        password=generate_password_hash(password),
+        is_active=True,
+        has_journal_access=True
+    )
+    
+    db.session.add(new_user)
+    db.session.commit()
+
+    # Skip email verification - user is auto-verified
+    # email_sent = send_verification_email(new_user, verification_code)
+    
+    return jsonify({
+        "message": "Account created successfully! You can now log in.",
+        "requires_verification": False,
+        "email": email
+    }), 201
 
 
 @auth_bp.route('/verify-email', methods=['POST'])
 def verify_email():
     """
-    Expect JSON: { "code": "..." }
+    Expect JSON: { "email": "...", "code": "..." }
     Verifies user email with the provided 6-digit code.
     """
     data = request.get_json() or {}
+    email = data.get('email', '').strip().lower()
     code = data.get('code', '').strip()
 
     if not code:
         return jsonify({"error": "Verification code is required"}), 400
 
-    user = User.query.filter_by(verification_code=code).first()
+    # Find user by email or code
+    if email:
+        user = User.query.filter_by(email=email, verification_code=code).first()
+    else:
+        user = User.query.filter_by(verification_code=code).first()
     
     if not user:
         return jsonify({"error": "Invalid verification code"}), 400
@@ -496,5 +541,6 @@ def check_email_verified():
         return jsonify({"error": "Email is required."}), 400
     user = User.query.filter_by(email=email).first()
     if not user:
-        return jsonify({"error": "No account found with this email."}), 404
+        # Return same shape to prevent user enumeration
+        return jsonify({"verified": False, "has_journal_access": False}), 200
     return jsonify({"verified": True, "has_journal_access": user.has_journal_access}), 200
