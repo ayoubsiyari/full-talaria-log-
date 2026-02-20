@@ -170,7 +170,11 @@ if sqlite_target_path is not None:
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+
+# Chart-specific tables (created by this service)
 Base = declarative_base()
+# Shared tables — schema is owned by journal-backend; chart only reads/writes rows
+SharedBase = declarative_base()
 
 # Upload directory
 UPLOAD_DIR = Path("uploads")
@@ -217,7 +221,10 @@ class DatasetSettings(Base):
 
 DATASET_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo']
 
-class User(Base):
+class User(SharedBase):
+    """Maps to the shared 'users' table managed by journal-backend.
+    Only declare columns this service actually needs; do NOT call create_all on SharedBase.
+    """
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -225,11 +232,8 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     role = Column(String, default="user", nullable=False)
-    timezone = Column(String, default="UTC")
-    base_currency = Column(String, default="USD")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
@@ -260,7 +264,8 @@ class TradingSessionState(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# Create tables
+# Create chart-specific tables only.
+# SharedBase (User) is intentionally excluded — journal-backend owns that schema.
 Base.metadata.create_all(bind=engine)
 
 def _normalize_password_for_bcrypt(password: str) -> str:
@@ -273,7 +278,21 @@ def _hash_password(password: str) -> str:
     return pwd_context.hash(_normalize_password_for_bcrypt(password))
 
 def _verify_password(password: str, password_hash: str) -> bool:
-    return pwd_context.verify(_normalize_password_for_bcrypt(password), password_hash)
+    """Verify against bcrypt (chart-created) or werkzeug pbkdf2 (journal-created) hashes."""
+    # bcrypt (native chart format)
+    try:
+        if pwd_context.verify(_normalize_password_for_bcrypt(password), password_hash):
+            return True
+    except Exception:
+        pass
+    # werkzeug pbkdf2 (journal-backend format)
+    try:
+        from werkzeug.security import check_password_hash
+        if check_password_hash(password_hash, password):
+            return True
+    except Exception:
+        pass
+    return False
 
 def _is_https_request(request: Request | None) -> bool:
     if request is None:
@@ -1847,16 +1866,18 @@ def _append_bootcamp_registration_to_google_sheet(payload: BootcampRegistrationI
     ).execute()
 
 def _user_public_dict(user: User):
+    created = getattr(user, 'created_at', None)
+    updated = getattr(user, 'updated_at', created)
     return {
         "id": user.id,
         "name": user.name,
         "email": user.email,
         "role": user.role,
-        "timezone": user.timezone,
-        "base_currency": user.base_currency,
+        "timezone": getattr(user, 'timezone', 'UTC'),
+        "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+        "created_at": created.isoformat() if created else None,
+        "updated_at": updated.isoformat() if updated else None,
     }
 
 def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CSVFile):
@@ -1889,8 +1910,6 @@ async def auth_signup(payload: SignUpIn):
             email=email,
             password_hash=_hash_password(payload.password),
             role="user",
-            timezone="UTC",
-            base_currency="USD",
             is_active=True,
         )
         db.add(user)
