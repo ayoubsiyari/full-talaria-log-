@@ -438,8 +438,11 @@ function ProtectedLayout() {
         </div>
       );
     }
-    console.log('🔍 ProtectedLayout - No token and no admin session, redirecting to login');
-    return <Navigate to="/login" replace />;
+    console.log('🔍 ProtectedLayout - No token, redirecting to homepage login');
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search));
+    }
+    return null;
   }
 
   if (!activeProfile) {
@@ -463,7 +466,6 @@ function AppRoutes() {
 
   // Paths on which we do NOT want to render the Sidebar:
   const isPublicPath =
-    location.pathname === '/login' ||
     // location.pathname === '/register' ||  // Temporarily disabled
     location.pathname === '/verify-email' ||
     location.pathname === '/resend-verification' ||
@@ -491,18 +493,18 @@ function AppRoutes() {
     }
   }
 
-  // Check if this is a full-screen auth page (login/register)
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+  // /login redirects to homepage login (no separate journal login page)
+  if (location.pathname === '/login') {
+    const dest = new URLSearchParams(location.search).get('next') || '/journal/dashboard';
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login/?next=' + encodeURIComponent(dest));
+    }
+    return null;
+  }
 
   return (
     <TooltipProvider>
-      {isAuthPage ? (
-        // Auth pages get full-screen dark layout (no wrapper)
-        <Routes>
-          <Route path="/login" element={<Auth />} />
-          <Route path="/register" element={<Register />} />
-        </Routes>
-      ) : isPublicPath || location.pathname === '/' ? (
+      {isPublicPath || location.pathname === '/' ? (
         <div className="min-h-screen bg-slate-50">
           <div className="pt-4 px-4 bg-white shadow-sm">
             <Routes>

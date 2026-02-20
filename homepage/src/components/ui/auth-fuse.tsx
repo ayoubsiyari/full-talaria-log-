@@ -223,6 +223,22 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
         return;
       }
 
+      // Also log into journal backend so the journal app works without a separate login
+      try {
+        const journalRes = await fetch("/journal/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        if (journalRes.ok) {
+          const journalData = await journalRes.json().catch(() => null);
+          if (journalData?.token) {
+            localStorage.setItem("token", journalData.token);
+            if (journalData.refresh_token) localStorage.setItem("refresh_token", journalData.refresh_token);
+          }
+        }
+      } catch {}
+
       const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
       if (safeNext) {
         window.location.href = safeNext;

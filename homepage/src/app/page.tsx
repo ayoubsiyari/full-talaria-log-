@@ -547,17 +547,17 @@ export default function HomePage() {
               transition={{ duration: 0.5, delay: 0.3 }}
               className="flex items-center justify-center gap-2 sm:gap-7 flex-wrap"
             >
-              <Link href="/bootcamp">
+              <Link href={user ? "/bootcamp/" : "/login/?next=/bootcamp/"}>
                 <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                   {t.tabs.bootcamp}
                 </Button>
               </Link>
-              <Link href="/journal/login">
+              <Link href={user ? "/journal/dashboard" : "/login/?next=/journal/dashboard"}>
                 <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                   {t.tabs.journal}
                 </Button>
               </Link>
-              <Link href="/backtest">
+              <Link href={user ? "/backtest/" : "/login/?next=/backtest/"}>
                 <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                   {t.tabs.backtest}
                 </Button>
