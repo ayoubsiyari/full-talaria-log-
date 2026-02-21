@@ -87,7 +87,7 @@ const DEFAULT_TEXT_STYLE = {
 
 const TEXT_EDGE_PADDING = 5;
 
-const LINE_LABEL_OFFSET = 8;
+const LINE_LABEL_OFFSET = 14;
 
 const EXTENDED_LINE_TEXT_EDGE_PADDING = 10;
 
@@ -96,6 +96,7 @@ const TEXT_ALIGN_TO_ANCHOR = {
     center: 'middle',
     right: 'end'
 };
+window.TEXT_ALIGN_TO_ANCHOR = TEXT_ALIGN_TO_ANCHOR;
 
 // ============================================================================
 // Trendline Tool
@@ -516,10 +517,11 @@ class TrendlineTool extends BaseDrawing {
                 : this.style.textOffsetY;
             const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
             
+            const _hAlign = this.style.textHAlign || this.style.textAlign || 'center';
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: TEXT_ALIGN_TO_ANCHOR[_hAlign] || 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -610,7 +612,7 @@ class TrendlineTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: baseX + perpOffsetX + offsetX,
             y: baseY + perpOffsetY + offsetY,
-            anchor: 'middle',
+            anchor: TEXT_ALIGN_TO_ANCHOR[textHAlign] || 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -961,7 +963,7 @@ class HorizontalLineTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -1665,7 +1667,7 @@ class RayTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -1758,7 +1760,7 @@ class RayTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
-            anchor: 'middle',
+            anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -2114,7 +2116,7 @@ class HorizontalRayTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -2466,7 +2468,7 @@ class ExtendedLineTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -2567,7 +2569,7 @@ class ExtendedLineTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
-            anchor: 'middle',
+            anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
