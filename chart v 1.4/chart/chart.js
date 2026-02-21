@@ -157,7 +157,7 @@ class Chart {
             .attr('id', menuId)
             .style('position', 'fixed')  // Use fixed positioning for better panel support
             .style('visibility', 'hidden')
-            .style('background', 'rgba(19, 23, 34, 0.95)')
+            .style('background', 'rgba(5, 0, 40, 0.97)')
             .style('border', '1px solid #2a2e39')
             .style('border-radius', '4px')
             .style('padding', '8px 0')
@@ -363,7 +363,7 @@ class Chart {
             chartType: 'candles', // 'candles', 'hollow', 'heikinashi', 'bars', 'line', 'area', 'baseline'
             
             // Background - Dark theme as default
-            backgroundColor: '#131722',
+            backgroundColor: '#050028',
             backgroundStyle: 'Solid', // 'Solid' or 'Gradient'
             
             // Grid
@@ -1468,8 +1468,8 @@ class Chart {
             }
             
             // Always force dark theme as default on load
-            this.chartSettings.backgroundColor = '#131722';
-            this.chartSettings.scaleLinesColor = '#1e222d';
+            this.chartSettings.backgroundColor = '#050028';
+            this.chartSettings.scaleLinesColor = '#050028';
             this.chartSettings.scaleTextColor = '#ffffff';
             this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
             this.chartSettings.cursorLabelTextColor = '#d1d4dc';
@@ -1636,7 +1636,7 @@ class Chart {
 .clear-objects-menu {
     position: absolute;
     min-width: 220px;
-    background: rgba(19, 23, 34, 0.98);
+    background: rgba(5, 0, 40, 0.98);
     border: 1px solid #2a2e39;
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.45);
@@ -1999,7 +1999,7 @@ class Chart {
 .visibility-menu {
     position: absolute;
     min-width: 220px;
-    background: rgba(19, 23, 34, 0.98);
+    background: rgba(5, 0, 40, 0.98);
     border: 1px solid #2a2e39;
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.45);
@@ -2697,7 +2697,7 @@ class Chart {
             previewCtx.clearRect(0, 0, w, h);
             
             // Background
-            previewCtx.fillStyle = colors.backgroundColor || '#1e222d';
+            previewCtx.fillStyle = colors.backgroundColor || '#050028';
             previewCtx.fillRect(0, 0, w, h);
             
             // Grid lines
@@ -2765,7 +2765,7 @@ class Chart {
             });
             
             // Price scale background
-            previewCtx.fillStyle = colors.backgroundColor || '#1e222d';
+            previewCtx.fillStyle = colors.backgroundColor || '#050028';
             previewCtx.fillRect(w - 50, 0, 50, h);
             
             // Price scale text
@@ -3974,7 +3974,7 @@ class Chart {
                 wickUpColor: '#089981',
                 wickDownColor: '#f23645',
                 scaleTextColor: '#d1d4dc',
-                scaleLinesColor: '#1e222d',
+                scaleLinesColor: '#050028',
                 symbolTextColor: '#d1d4dc',
                 crosshairColor: 'rgba(120, 123, 134, 0.4)',
                 cursorLabelTextColor: '#d1d4dc',
@@ -4003,7 +4003,7 @@ class Chart {
             },
             'classic-dark': {
                 name: 'Classic Dark',
-                backgroundColor: '#131722',
+                backgroundColor: '#050028',
                 gridColor: 'rgba(255, 255, 255, 0.06)',
                 bodyUpColor: '#26a69a',
                 bodyDownColor: '#ef5350',
@@ -8236,7 +8236,7 @@ class Chart {
         if (this.w < 200 || this.h < 150) {
             // Chart is too small to render properly
             this.ctx.clearRect(0, 0, this.w, this.h);
-            this.ctx.fillStyle = '#131722';
+            this.ctx.fillStyle = '#050028';
             this.ctx.fillRect(0, 0, this.w, this.h);
             // Show message for very small size
             this.ctx.fillStyle = '#787b86';
@@ -8552,11 +8552,11 @@ class Chart {
         if (!this.xScale || !this.yScale) return;
         
         // Draw Y-axis background area (price axis on the right) - uses same background as chart
-        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#131722';
+        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
         this.ctx.fillRect(this.w - m.r, 0, m.r, this.h - m.b);
         
         // Draw X-axis background area (time axis on the bottom) - uses same background as chart
-        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#131722';
+        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
         this.ctx.fillRect(0, this.h - m.b, this.w, m.b);
         
         // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
@@ -8893,7 +8893,7 @@ class Chart {
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         
         const m = this.margin;
-        const backgroundColor = this.chartSettings?.backgroundColor || '#131722';
+        const backgroundColor = this.chartSettings?.backgroundColor || '#050028';
         const isLightTheme = this.isLightColor ? this.isLightColor(backgroundColor) : false;
         const zoneColor = isLightTheme ? '#e0e3eb' : '#2a2e39';
         
@@ -9145,7 +9145,7 @@ class Chart {
         if (!logoDark || !logoLight) return;
         
         // Check if background is light or dark based on actual backgroundColor
-        const bgColor = this.chartSettings?.backgroundColor || '#131722';
+        const bgColor = this.chartSettings?.backgroundColor || '#050028';
         const isLightTheme = this.isLightColor(bgColor);
         
         if (isLightTheme) {
@@ -13139,7 +13139,7 @@ class Chart {
             .style('top', '80px')
             .style('width', '240px')
             .style('max-height', '400px')
-            .style('background', 'rgba(19, 23, 34, 0.98)')
+            .style('background', 'rgba(5, 0, 40, 0.98)')
             .style('border', '1px solid #2a2e39')
             .style('border-radius', '6px')
             .style('box-shadow', '0 8px 24px rgba(0,0,0,0.4)')
@@ -13413,7 +13413,7 @@ class Chart {
             .style('position', 'fixed')
             .style('right', '20px')
             .style('top', '20px')
-            .style('background', 'rgba(19, 23, 34, 0.98)')
+            .style('background', 'rgba(5, 0, 40, 0.98)')
             .style('border', '1px solid #2a2e39')
             .style('border-radius', '8px')
             .style('padding', '0')
