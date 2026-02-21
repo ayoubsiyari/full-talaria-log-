@@ -2674,7 +2674,7 @@ class Chart {
             .text('THEME PREVIEW');
         
         const previewContainer = section.append('div')
-            .style('background', '#131722')
+            .style('background', '#050028')
             .style('border', '1px solid #e0e0e0')
             .style('border-radius', '8px')
             .style('padding', '12px')
@@ -13186,7 +13186,7 @@ class Chart {
                 const item = content.append('div')
                     .style('padding', '8px 10px')
                     .style('margin-bottom', '6px')
-                    .style('background', '#1e222d')
+                    .style('background', '#050028')
                     .style('border-radius', '4px')
                     .style('cursor', 'default')
                     .style('transition', 'all 0.2s')
@@ -13194,7 +13194,7 @@ class Chart {
                         d3.select(this).style('background', '#2962ff');
                     })
                     .on('mouseleave', function() {
-                        d3.select(this).style('background', '#1e222d');
+                        d3.select(this).style('background', '#050028');
                     })
                     .on('click', () => {
                         this.selectedDrawing = idx;
@@ -13424,7 +13424,7 @@ class Chart {
             .style('transition', 'all 0.2s ease-out');
             
         this.chartSettings = {
-            backgroundColor: '#1e222d',
+            backgroundColor: '#050028',
             gridColor: '#2a2e39',
             textColor: '#787b86',
             candleUpColor: '#089981',
@@ -13512,7 +13512,7 @@ class Chart {
                 .text(actualDrawing.text || 'Text')
                 .style('width', '100%')
                 .style('padding', '8px')
-                .style('background', '#1e222d')
+                .style('background', '#050028')
                 .style('border', '1px solid #2a2e39')
                 .style('border-radius', '4px')
                 .style('color', '#d1d4dc')
@@ -13555,7 +13555,7 @@ class Chart {
                 .style('margin-bottom', '12px')
                 .html(`
                     <label style="display: block; color: #787b86; font-size: 12px; margin-bottom: 4px;">Font Weight</label>
-                    <select id="fontWeightSelect" style="width: 100%; padding: 8px; background: #1e222d; border: 1px solid #2a2e39; border-radius: 4px; color: #d1d4dc; font-size: 14px;">
+                    <select id="fontWeightSelect" style="width: 100%; padding: 8px; background: #050028; border: 1px solid #2a2e39; border-radius: 4px; color: #d1d4dc; font-size: 14px;">
                         <option value="normal" ${(drawing.fontWeight || 'bold') === 'normal' ? 'selected' : ''}>Normal</option>
                         <option value="bold" ${(drawing.fontWeight || 'bold') === 'bold' ? 'selected' : ''}>Bold</option>
                     </select>
@@ -13574,7 +13574,7 @@ class Chart {
                 .style('align-items', 'center')
                 .style('justify-content', 'space-between')
                 .style('padding', '8px')
-                .style('background', '#1e222d')
+                .style('background', '#050028')
                 .style('border-radius', '4px');
             
             toggleContainer.append('span')
@@ -13794,7 +13794,7 @@ class Chart {
             .attr('class', 'color-palette')
             .style('display', 'none')
             .style('padding', '12px')
-            .style('background', '#1e222d')
+            .style('background', '#050028')
             .style('border', '1px solid #2a2e39')
             .style('border-radius', '6px')
             .style('margin-top', '8px');
