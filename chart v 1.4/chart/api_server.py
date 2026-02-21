@@ -2603,8 +2603,9 @@ async def bootcamp_register(payload: BootcampRegistrationIn):
     return {"success": True}
 
 @app.post("/api/upload")
-async def upload_csv(csvFile: UploadFile = File(...)):
-    """Upload a CSV file"""
+async def upload_csv(request: Request, csvFile: UploadFile = File(...)):
+    """Upload a CSV file — admin only"""
+    _require_admin(request)
     
     # Validate file type
     if not csvFile.filename.endswith('.csv'):

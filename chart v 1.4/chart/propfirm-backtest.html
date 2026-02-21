@@ -98,17 +98,8 @@
                                 <!-- Hidden input to store selected files -->
                                 <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
                                 
-                                <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
-                                    <button type="button" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;" onclick="document.getElementById('csvFileInput').click()">
-                                        <svg style="width: 16px; height: 16px; margin-right: 6px; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                            <polyline points="17 8 12 3 7 8"></polyline>
-                                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                                        </svg>
-                                        Upload New CSV File
-                                    </button>
-                                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
-                                    <span id="uploadStatus" style="font-size: 13px; color: #64748b; font-weight: 500;"></span>
+                                <div style="margin-top: 10px; padding: 8px 12px; background: #0f1a35; border: 1px solid #1e2f5e; border-radius: 8px; font-size: 12px; color: #64748b;">
+                                    Datasets are managed by the admin. Contact your administrator to add or update datasets.
                                 </div>
                             </div>
                             <div class="form-group">
@@ -781,66 +772,6 @@
             }
         }
         
-        // Handle CSV file upload
-        document.getElementById('csvFileInput').addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            console.log(`📤 Uploading file: ${file.name} (${file.size} bytes)`);
-            
-            const uploadStatus = document.getElementById('uploadStatus');
-            uploadStatus.textContent = 'Uploading...';
-            uploadStatus.style.color = '#7c3aed';
-            
-            try {
-                const formData = new FormData();
-                formData.append('csvFile', file);
-                
-                const response = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    uploadStatus.textContent = '✓ Uploaded successfully';
-                    uploadStatus.style.color = '#10b981';
-                    
-                    await loadAvailableFiles();
-                    
-                    // Auto-select the newly uploaded file
-                    const filesData = await fetch('/api/files').then(r => r.json());
-                    const files = filesData.files || filesData;
-                    const newFile = files[files.length - 1];
-                    const newFileId = newFile.id;
-                    const newFileName = newFile.original_name || newFile.name || newFile.filename;
-                    
-                    // Add to selection
-                    if (!selectedFilesArray.find(f => f.id === newFileId)) {
-                        selectedFilesArray.push({ id: newFileId, name: newFileName });
-                        updateSelectedFilesUI();
-                        updateFileListUI();
-                    }
-                    
-                    setTimeout(() => {
-                        uploadStatus.textContent = '';
-                    }, 3000);
-                } else {
-                    const errorText = await response.text();
-                    console.error('❌ Upload failed:', response.status, errorText);
-                    throw new Error(`Upload failed: ${response.status}`);
-                }
-            } catch (error) {
-                console.error('❌ Upload error:', error);
-                uploadStatus.textContent = '✗ Upload failed';
-                uploadStatus.style.color = '#ef4444';
-                setTimeout(() => {
-                    uploadStatus.textContent = '';
-                }, 3000);
-            }
-            
-            // Reset file input
-            e.target.value = '';
-        });
         
         // Note: Files are loaded by initFileDropdown() above
         

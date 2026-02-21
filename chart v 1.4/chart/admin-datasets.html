@@ -3,542 +3,465 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Datasets</title>
+  <title>Dataset Control Center</title>
   <style>
     :root {
-      --bg: #0b1020;
-      --panel: #111933;
-      --panel-2: #0f1630;
-      --line: #2a355f;
-      --text: #e9eefc;
-      --muted: #97a3c9;
-      --accent: #4e8cff;
-      --danger: #ff5d7a;
-      --ok: #27c07d;
-      --warn: #f7b955;
+      --bg:#080e1e; --surface:#0d1530; --surface2:#111c3a;
+      --border:#1e2d56; --border2:#253460;
+      --text:#e4eafc; --muted:#7b8db8;
+      --accent:#4e8cff; --accent2:#7ea8ff;
+      --ok:#22c07a; --warn:#f5a623; --danger:#ff4d6d;
     }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);min-height:100vh;font-size:14px}
+    .page{max-width:1380px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+    .hdr{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px}
+    .hdr h1{font-size:21px;font-weight:700;letter-spacing:-.3px;margin-bottom:3px}
+    .hdr-sub{color:var(--muted);font-size:13px}
+    .btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+    .badge-admin{background:#1a2a6e;border:1px solid #2e42a0;color:#a0b4ff}
+    #toast{position:fixed;top:18px;right:18px;z-index:9999;min-width:260px;max-width:400px;padding:12px 16px;border-radius:10px;font-size:13px;font-weight:500;border-left:4px solid var(--accent);background:#111c3a;color:var(--text);box-shadow:0 8px 32px #0009;display:none}
+    #toast.ok{border-color:var(--ok);color:#b7f6d7;background:#0d2a1e}
+    #toast.err{border-color:var(--danger);color:#ffd5de;background:#2a0d18}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px}
+    .card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+    .card-title{font-weight:700;font-size:14px}
+    .layout{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;align-items:start}
+    @media(max-width:1060px){.layout{grid-template-columns:1fr}}
 
-    * { box-sizing: border-box; }
+    /* Upload zone */
+    .drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:#090f20}
+    .drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:#0d1a40}
+    .drop-icon{font-size:30px;margin-bottom:8px}
+    .drop-title{font-size:15px;font-weight:600;margin-bottom:4px}
+    .drop-sub{color:var(--muted);font-size:12px}
+    .pbar-wrap{background:#162040;border-radius:999px;height:5px;overflow:hidden;margin:12px 0 4px}
+    .pbar{height:100%;background:var(--accent);border-radius:999px;width:0%;transition:width .3s}
+    .pbar-label{font-size:12px;color:var(--muted)}
+    #uploadProgress{display:none}
 
-    body {
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--text);
-      background: radial-gradient(1100px 600px at 10% -10%, #23366f44, transparent), var(--bg);
-    }
+    /* Table */
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:7px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+    td{padding:10px 8px;border-bottom:1px solid #0f182e;vertical-align:middle}
+    tr.drow{cursor:pointer;transition:background .1s}
+    tr.drow:hover{background:#0f1c38}
+    tr.drow.sel{background:#122040;box-shadow:inset 2px 0 0 var(--accent)}
+    .ds-name{font-weight:600;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ds-orig{color:var(--muted);font-size:11px;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tf-bar{display:flex;gap:3px;flex-wrap:wrap}
+    .tp{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700}
+    .tp.ready{background:#0d2a1e;color:#6ee7b7;border:1px solid #145c3a}
+    .tp.missing,.tp.failed{background:#2a0d18;color:#fca5b4;border:1px solid #5c1430}
+    .tp.processing,.tp.pending{background:#1a1440;color:#c4b5fd;border:1px solid #3d2a80}
+    .act-badge{padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid}
+    .act-badge.yes{background:#0d2a1e;color:#6ee7b7;border-color:#145c3a}
+    .act-badge.no{background:#1a1440;color:#a78bfa;border-color:#3d2a80}
 
-    .wrap {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 24px;
-      display: grid;
-      gap: 16px;
-    }
+    /* Buttons */
+    .btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border2);border-radius:8px;padding:7px 13px;background:#131f40;color:var(--text);cursor:pointer;font-size:13px;font-weight:600;transition:filter .15s;line-height:1}
+    .btn:hover{filter:brightness(1.15)}
+    .btn.primary{background:var(--accent);border-color:var(--accent2);color:#fff}
+    .btn.danger{background:#2a0d18;border-color:#5c1430;color:#fca5b4}
+    .btn.warn{background:#2a1806;border-color:#7a4810;color:#fcd38a}
+    .btn.sm{padding:4px 9px;font-size:12px}
 
-    .card {
-      background: linear-gradient(180deg, #131f41, #0d1530);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 12px 24px #00000030;
-    }
+    /* Settings form */
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media(max-width:1060px){.form-grid{grid-template-columns:1fr}}
+    .fg-full{grid-column:1/-1}
+    .field>label{display:block;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+    input[type=text],select,textarea{width:100%;background:#08101f;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;transition:border-color .15s}
+    input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+    select option{background:#0d1530}
+    textarea{min-height:68px;resize:vertical;font-family:inherit}
+    .toggle-row{display:flex;align-items:center;gap:10px;padding:9px 0}
+    .toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+    .toggle input{opacity:0;width:0;height:0;position:absolute}
+    .slider{position:absolute;inset:0;background:#1e2d56;border-radius:999px;cursor:pointer;transition:.2s}
+    .slider::before{content:'';position:absolute;width:16px;height:16px;background:#5a72b0;border-radius:50%;left:3px;top:3px;transition:.2s}
+    .toggle input:checked+.slider{background:var(--ok)}
+    .toggle input:checked+.slider::before{transform:translateX(18px);background:#fff}
 
-    h1 { margin: 0 0 6px 0; font-size: 28px; }
-    .sub { color: var(--muted); font-size: 14px; }
+    /* TF cards */
+    .tf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:7px;margin-top:14px}
+    .tf-card{background:#08101f;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center}
+    .tf-card .tfn{font-size:12px;font-weight:700;margin-bottom:3px}
+    .tf-card .tfr{font-size:10px;color:var(--muted)}
+    .tf-card.ready{border-color:#145c3a}.tf-card.ready .tfn{color:#6ee7b7}
+    .tf-card.missing,.tf-card.failed{border-color:#5c1430}.tf-card.missing .tfn,.tf-card.failed .tfn{color:#fca5b4}
+    .tf-card.processing,.tf-card.pending{border-color:#3d2a80}.tf-card.processing .tfn,.tf-card.pending .tfn{color:#c4b5fd}
 
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-
-    input[type="text"],
-    input[type="file"],
-    textarea,
-    select {
-      width: 100%;
-      background: var(--panel-2);
-      border: 1px solid var(--line);
-      color: var(--text);
-      border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 14px;
-      outline: none;
-    }
-
-    textarea { min-height: 80px; resize: vertical; }
-
-    button {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 9px 13px;
-      background: #1a2550;
-      color: var(--text);
-      cursor: pointer;
-      font-weight: 600;
-    }
-    button:hover { filter: brightness(1.08); }
-    button.primary { background: var(--accent); border-color: #7ea8ff; color: #fff; }
-    button.danger { background: #3f1a27; border-color: #6a2a3f; color: #ffdce4; }
-    button.warn { background: #3b2c10; border-color: #6f5522; color: #ffe8bc; }
-
-    .status {
-      border-left: 4px solid var(--accent);
-      padding: 10px 12px;
-      background: #111a37;
-      border-radius: 8px;
-      color: var(--muted);
-      font-size: 13px;
-      display: none;
-    }
-    .status.ok { border-left-color: var(--ok); color: #c7f7e3; }
-    .status.error { border-left-color: var(--danger); color: #ffd5de; }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 1.4fr 1fr;
-      gap: 16px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-    th, td {
-      border-bottom: 1px solid #243058;
-      padding: 9px 8px;
-      text-align: left;
-      vertical-align: top;
-    }
-    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
-    tr.dataset-row { cursor: pointer; }
-    tr.dataset-row:hover { background: #182247; }
-    tr.dataset-row.active { background: #1a2a59; }
-
-    .tf-grid {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 6px;
-      margin-top: 8px;
-    }
-
-    .pill {
-      border: 1px solid #2f427c;
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 11px;
-      text-align: center;
-      color: #d4ddff;
-      background: #16234d;
-      white-space: nowrap;
-    }
-    .pill.ready { border-color: #2f7c59; background: #103526; color: #b7f6d7; }
-    .pill.failed, .pill.missing { border-color: #7c2f4d; background: #351023; color: #ffd2df; }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .full { grid-column: 1 / -1; }
-
-    .muted { color: var(--muted); font-size: 12px; }
-
-    @media (max-width: 1100px) {
-      .layout { grid-template-columns: 1fr; }
-      .form-grid { grid-template-columns: 1fr; }
-      .tf-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    }
+    /* Misc */
+    .conv-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);animation:pulse 1s infinite;margin-right:4px}
+    .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:13px}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Dataset Admin</h1>
-      <div class="sub">Manage uploaded CSV datasets, CSV parser settings, and binary rebuilds.</div>
+<div class="page">
+
+  <div class="hdr">
+    <div>
+      <h1>&#128194; Dataset Control Center</h1>
+      <div class="hdr-sub">Upload CSV datasets &mdash; configure parser settings &mdash; monitor binary conversion</div>
     </div>
-
-    <div id="status" class="status"></div>
-
-    <div class="card">
-      <div class="row">
-        <input id="uploadInput" type="file" accept=".csv" />
-        <button id="uploadBtn" class="primary">Upload CSV</button>
-        <button id="refreshBtn">Refresh</button>
-      </div>
-      <div class="muted" style="margin-top: 8px;">
-        Upload is admin-only and triggers background CSV-to-binary conversion for all timeframes.
-      </div>
+    <div class="btn-row">
+      <span id="adminBadge" class="badge badge-admin" style="display:none"></span>
+      <button class="btn" id="refreshBtn">&#8635; Refresh</button>
     </div>
+  </div>
 
-    <div class="layout">
-      <div class="card">
-        <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
-          <strong>Datasets</strong>
-          <span id="datasetCount" class="muted"></span>
-        </div>
-        <div style="overflow-x: auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Rows</th>
-                <th>Binary</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="datasetRows"></tbody>
-          </table>
-        </div>
-      </div>
+  <div id="toast"></div>
 
-      <div class="card">
-        <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
-          <strong>Dataset Settings</strong>
-          <span id="selectedLabel" class="muted">No dataset selected</span>
-        </div>
-
-        <form id="settingsForm" class="form-grid">
-          <label class="full">
-            <div class="muted">Display Name</div>
-            <input id="display_name" type="text" placeholder="Dataset label" />
-          </label>
-
-          <label>
-            <div class="muted">CSV Delimiter</div>
-            <select id="csv_delimiter">
-              <option value=",">Comma (,)</option>
-              <option value=";">Semicolon (;)</option>
-              <option value="\t">Tab (\t)</option>
-              <option value="|">Pipe (|)</option>
-            </select>
-          </label>
-
-          <label>
-            <div class="muted">CSV Timezone</div>
-            <input id="csv_timezone" type="text" placeholder="UTC" />
-          </label>
-
-          <label class="full">
-            <div class="muted">Date/Time Format (optional)</div>
-            <input id="datetime_format" type="text" placeholder="Example: %Y-%m-%d %H:%M:%S" />
-          </label>
-
-          <label>
-            <div class="muted">CSV Has Header</div>
-            <select id="csv_has_header">
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </label>
-
-          <label>
-            <div class="muted">Active</div>
-            <select id="is_active">
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </label>
-
-          <label class="full">
-            <div class="muted">Notes</div>
-            <textarea id="notes" placeholder="Optional notes"></textarea>
-          </label>
-
-          <div class="full row" style="justify-content: flex-end; margin-top: 6px;">
-            <button type="button" id="rebuildBtn" class="warn">Rebuild Binary</button>
-            <button type="button" id="deleteBtn" class="danger">Delete Dataset</button>
-            <button type="submit" class="primary">Save Settings</button>
-          </div>
-        </form>
-
-        <div id="tfStatus" class="tf-grid"></div>
+  <!-- Upload -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">Upload New Dataset</span>
+      <span style="color:var(--muted);font-size:12px">Admin-only &mdash; auto-triggers binary conversion for all timeframes</span>
+    </div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".csv" style="display:none">
+      <div class="drop-icon">&#128228;</div>
+      <div class="drop-title">Drag &amp; drop a CSV file here</div>
+      <div class="drop-sub">or <span style="color:var(--accent);cursor:pointer" onclick="document.getElementById('fileInput').click()">browse to select</span> &mdash; .csv files only</div>
+      <div id="uploadProgress">
+        <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
+        <div class="pbar-label" id="pbarLabel"></div>
       </div>
     </div>
   </div>
 
-  <script>
-    const state = {
-      datasets: [],
-      selectedId: null,
-      me: null
+  <!-- Main layout -->
+  <div class="layout">
+
+    <!-- Dataset list -->
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Datasets <span id="countBadge" style="color:var(--muted);font-weight:400;font-size:12px"></span></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Rows</th><th>Timeframes</th><th>State</th><th></th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Dataset Settings</span>
+        <span id="selLabel" style="color:var(--muted);font-size:12px">No dataset selected</span>
+      </div>
+      <form id="settingsForm">
+        <div class="form-grid">
+          <div class="field fg-full"><label>Display Name</label>
+            <input type="text" id="f_name" placeholder="e.g. EURUSD M1 2022-2025"></div>
+          <div class="field"><label>CSV Delimiter</label>
+            <select id="f_delim">
+              <option value=",">Comma  ,</option>
+              <option value=";">Semicolon  ;</option>
+              <option value="">Tab  \t</option>
+              <option value="|">Pipe  |</option>
+            </select></div>
+          <div class="field"><label>Timezone</label>
+            <select id="f_tz">
+              <option value="UTC">UTC</option>
+              <option value="US/Eastern">US/Eastern (ET)</option>
+              <option value="US/Central">US/Central (CT)</option>
+              <option value="US/Pacific">US/Pacific (PT)</option>
+              <option value="Europe/London">Europe/London</option>
+              <option value="Europe/Berlin">Europe/Berlin</option>
+              <option value="Asia/Tokyo">Asia/Tokyo</option>
+              <option value="Asia/Dubai">Asia/Dubai</option>
+              <option value="Australia/Sydney">Australia/Sydney</option>
+            </select></div>
+          <div class="field fg-full"><label>Date/Time Format <span style="color:var(--muted);font-weight:400;text-transform:none">(blank = auto-detect)</span></label>
+            <input type="text" id="f_dtfmt" placeholder="%Y-%m-%d %H:%M:%S"></div>
+          <div class="field"><label>Has Header Row</label>
+            <select id="f_header"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div class="field"><label>Visible to Users</label>
+            <div class="toggle-row">
+              <label class="toggle"><input type="checkbox" id="f_active"><span class="slider"></span></label>
+              <span id="activeLabel" style="font-size:12px;color:var(--muted)">Inactive</span>
+            </div></div>
+          <div class="field fg-full"><label>Notes</label>
+            <textarea id="f_notes" placeholder="Internal notes..."></textarea></div>
+        </div>
+        <div class="btn-row" style="margin-top:14px;justify-content:flex-end">
+          <button type="button" class="btn warn sm" id="rebuildBtn">&#8635; Rebuild</button>
+          <button type="button" class="btn danger sm" id="deleteBtn">&#128465; Delete</button>
+          <button type="submit" class="btn primary">Save Settings</button>
+        </div>
+      </form>
+      <div class="tf-grid" id="tfGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const S = { datasets: [], sel: null, me: null, polling: new Set() };
+
+/* ── Toast ── */
+let _tt;
+function toast(msg, kind = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : '';
+  el.style.display = 'block';
+  clearTimeout(_tt);
+  _tt = setTimeout(() => el.style.display = 'none', 5000);
+}
+
+/* ── API helper ── */
+async function api(url, opts = {}) {
+  const r = await fetch(url, { credentials: 'include', ...opts });
+  const b = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(b.detail || b.error || 'HTTP ' + r.status);
+  return b;
+}
+
+function fmtN(n) { return Number(n || 0).toLocaleString(); }
+function esc(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function selDs() { return S.datasets.find(d => d.id === S.sel) || null; }
+
+/* ── Render table ── */
+function renderTable() {
+  const tb = document.getElementById('tbody');
+  document.getElementById('countBadge').textContent = '(' + S.datasets.length + ')';
+  if (!S.datasets.length) {
+    tb.innerHTML = '<tr><td colspan="6"><div class="empty">No datasets yet. Upload a CSV above.</div></td></tr>';
+    return;
+  }
+  tb.innerHTML = '';
+  S.datasets.forEach(ds => {
+    const ready = ds.ready_timeframes || 0;
+    const total = ds.total_timeframes || 1;
+    const converting = ready < total;
+    const active = ds.settings && ds.settings.is_active !== false;
+    const name = (ds.settings && ds.settings.display_name) || ds.original_name;
+    const tfHtml = Object.entries(ds.timeframes || {}).slice(0,9).map(([tf, info]) => {
+      const st = (info.status || 'missing').toLowerCase();
+      return '<span class="tp ' + st + '">' + tf + '</span>';
+    }).join('');
+    const tr = document.createElement('tr');
+    tr.className = 'drow' + (ds.id === S.sel ? ' sel' : '');
+    tr.innerHTML =
+      '<td style="color:var(--muted);font-size:11px">#' + ds.id + '</td>' +
+      '<td><div class="ds-name">' + esc(name) + '</div><div class="ds-orig">' + esc(ds.original_name) + '</div></td>' +
+      '<td style="white-space:nowrap">' + fmtN(ds.row_count) + '</td>' +
+      '<td><div class="tf-bar">' + tfHtml + '</div></td>' +
+      '<td>' +
+        (converting ? '<span class="conv-dot"></span><span style="font-size:11px;color:var(--warn)">' + ready + '/' + total + '</span>' : '<span style="font-size:11px;color:var(--ok)">&#10003; Ready</span>') +
+        '<br><span class="act-badge ' + (active ? 'yes' : 'no') + '">' + (active ? 'Active' : 'Hidden') + '</span>' +
+      '</td>' +
+      '<td><button class="btn sm edit-btn" data-id="' + ds.id + '">Edit</button></td>';
+    tr.querySelector('.edit-btn').addEventListener('click', e => { e.stopPropagation(); selectDs(ds.id); });
+    tr.addEventListener('click', () => selectDs(ds.id));
+    tb.appendChild(tr);
+  });
+}
+
+/* ── Timeframe cards ── */
+function renderTfCards(ds) {
+  const grid = document.getElementById('tfGrid');
+  grid.innerHTML = '';
+  if (!ds || !ds.timeframes) return;
+  Object.entries(ds.timeframes).forEach(([tf, info]) => {
+    const st = (info.status || 'missing').toLowerCase();
+    const d = document.createElement('div');
+    d.className = 'tf-card ' + st;
+    d.innerHTML = '<div class="tfn">' + tf + '</div><div class="tfr">' + fmtN(info.row_count) + ' rows</div>';
+    grid.appendChild(d);
+  });
+}
+
+/* ── Fill settings ── */
+function fillForm(ds) {
+  if (!ds) return;
+  const s = ds.settings || {};
+  document.getElementById('selLabel').textContent = '#' + ds.id + ' — ' + ds.original_name;
+  document.getElementById('f_name').value = s.display_name || ds.original_name || '';
+  document.getElementById('f_delim').value = s.csv_delimiter || ',';
+  // timezone — add custom option if not in list
+  const tzEl = document.getElementById('f_tz');
+  const tz = s.csv_timezone || 'UTC';
+  const tzExists = Array.from(tzEl.options).some(o => o.value === tz);
+  if (!tzExists) { const o = new Option(tz, tz); tzEl.insertBefore(o, tzEl.firstChild); }
+  tzEl.value = tz;
+  document.getElementById('f_dtfmt').value = s.datetime_format || '';
+  document.getElementById('f_header').value = String(s.csv_has_header !== false);
+  const act = s.is_active !== false;
+  document.getElementById('f_active').checked = act;
+  document.getElementById('activeLabel').textContent = act ? 'Active — visible to users' : 'Inactive — hidden from users';
+  document.getElementById('f_notes').value = s.notes || '';
+  renderTfCards(ds);
+}
+
+/* ── Select dataset ── */
+function selectDs(id) {
+  S.sel = id;
+  renderTable();
+  fillForm(selDs());
+}
+
+/* ── Load all datasets ── */
+async function loadDatasets(keepSel) {
+  const data = await api('/api/admin/datasets');
+  S.datasets = data.datasets || [];
+  renderTable();
+  if (S.sel && keepSel) fillForm(selDs());
+  else if (!S.sel && S.datasets.length) selectDs(S.datasets[0].id);
+  // auto-poll any still converting
+  S.datasets.forEach(ds => {
+    if ((ds.ready_timeframes || 0) < (ds.total_timeframes || 1)) startPolling(ds.id);
+  });
+}
+
+/* ── Conversion polling ── */
+function startPolling(id) {
+  if (S.polling.has(id)) return;
+  S.polling.add(id);
+  let attempts = 0;
+  const tick = async () => {
+    try {
+      const data = await api('/api/admin/datasets');
+      S.datasets = data.datasets || [];
+      renderTable();
+      if (S.sel) fillForm(selDs());
+      const ds = S.datasets.find(d => d.id === id);
+      const done = !ds || (ds.ready_timeframes || 0) >= (ds.total_timeframes || 1);
+      if (done) { S.polling.delete(id); if (done) toast('Dataset #' + id + ' binary ready!', 'ok'); return; }
+      if (++attempts < 120) setTimeout(tick, 3000);
+      else S.polling.delete(id);
+    } catch { S.polling.delete(id); }
+  };
+  setTimeout(tick, 3000);
+}
+
+/* ── Upload ── */
+async function uploadFile(file) {
+  if (!file) return;
+  if (!file.name.endsWith('.csv')) { toast('Only .csv files allowed.', 'err'); return; }
+  const prog = document.getElementById('uploadProgress');
+  const pbar = document.getElementById('pbar');
+  const label = document.getElementById('pbarLabel');
+  prog.style.display = 'block';
+  pbar.style.width = '0%';
+  label.textContent = 'Uploading ' + file.name + ' (' + (file.size/1048576).toFixed(1) + ' MB)...';
+  let pv = 0;
+  const iv = setInterval(() => { if (pv < 88) { pv += 4; pbar.style.width = pv + '%'; } }, 150);
+  try {
+    const fd = new FormData();
+    fd.append('csvFile', file);
+    const res = await api('/api/admin/datasets/upload', { method: 'POST', body: fd });
+    clearInterval(iv);
+    pbar.style.width = '100%';
+    label.textContent = '✓ Uploaded — ' + fmtN(res.file && res.file.rowCount) + ' rows. Converting to binary...';
+    toast('Uploaded: ' + file.name, 'ok');
+    await loadDatasets(false);
+    if (res.file && res.file.id) { selectDs(res.file.id); startPolling(res.file.id); }
+    setTimeout(() => { prog.style.display = 'none'; }, 8000);
+  } catch (err) {
+    clearInterval(iv);
+    pbar.style.width = '0%';
+    label.textContent = '✗ ' + err.message;
+    toast('Upload failed: ' + err.message, 'err');
+  }
+}
+
+/* ── Drag & drop ── */
+const dz = document.getElementById('dropZone');
+const fi = document.getElementById('fileInput');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); uploadFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', () => { uploadFile(fi.files[0]); fi.value = ''; });
+
+/* ── Active toggle label ── */
+document.getElementById('f_active').addEventListener('change', function() {
+  document.getElementById('activeLabel').textContent = this.checked ? 'Active — visible to users' : 'Inactive — hidden from users';
+});
+
+/* ── Save settings ── */
+document.getElementById('settingsForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const ds = selDs();
+  if (!ds) { toast('Select a dataset first.', 'err'); return; }
+  try {
+    const payload = {
+      display_name: document.getElementById('f_name').value.trim(),
+      csv_delimiter: document.getElementById('f_delim').value,
+      csv_timezone: document.getElementById('f_tz').value || 'UTC',
+      datetime_format: document.getElementById('f_dtfmt').value.trim() || null,
+      csv_has_header: document.getElementById('f_header').value === 'true',
+      is_active: document.getElementById('f_active').checked,
+      notes: document.getElementById('f_notes').value.trim() || null,
     };
-
-    const statusEl = document.getElementById('status');
-    const rowsEl = document.getElementById('datasetRows');
-    const countEl = document.getElementById('datasetCount');
-    const selectedLabelEl = document.getElementById('selectedLabel');
-    const tfStatusEl = document.getElementById('tfStatus');
-
-    function showStatus(text, kind = 'info') {
-      statusEl.style.display = 'block';
-      statusEl.className = `status ${kind === 'error' ? 'error' : kind === 'ok' ? 'ok' : ''}`;
-      statusEl.textContent = text;
-    }
-
-    function escapeHtml(value) {
-      return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-    }
-
-    async function fetchJson(url, init = {}) {
-      const res = await fetch(url, {
-        credentials: 'include',
-        ...init
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(body.detail || body.error || `HTTP ${res.status}`);
-      }
-      return body;
-    }
-
-    async function checkAdmin() {
-      const res = await fetchJson('/api/auth/me');
-      const user = res.user;
-      state.me = user;
-      if (!user || user.role !== 'admin') {
-        throw new Error('Forbidden (admin only)');
-      }
-    }
-
-    function selectedDataset() {
-      return state.datasets.find(d => d.id === state.selectedId) || null;
-    }
-
-    function renderTimeframes(dataset) {
-      tfStatusEl.innerHTML = '';
-      if (!dataset || !dataset.timeframes) return;
-      const keys = Object.keys(dataset.timeframes);
-      keys.forEach(tf => {
-        const item = dataset.timeframes[tf] || {};
-        const status = String(item.status || 'missing').toLowerCase();
-        const chip = document.createElement('div');
-        chip.className = `pill ${status}`;
-        chip.title = `${tf} | status=${status} | rows=${item.row_count || 0}`;
-        chip.textContent = `${tf}: ${status}`;
-        tfStatusEl.appendChild(chip);
-      });
-    }
-
-    function fillSettings(dataset) {
-      if (!dataset) return;
-      const s = dataset.settings || {};
-      document.getElementById('display_name').value = s.display_name || dataset.original_name || '';
-      document.getElementById('csv_delimiter').value = s.csv_delimiter || ',';
-      document.getElementById('csv_timezone').value = s.csv_timezone || 'UTC';
-      document.getElementById('datetime_format').value = s.datetime_format || '';
-      document.getElementById('csv_has_header').value = String(s.csv_has_header !== false);
-      document.getElementById('is_active').value = String(s.is_active !== false);
-      document.getElementById('notes').value = s.notes || '';
-      selectedLabelEl.textContent = `#${dataset.id} ${dataset.original_name}`;
-      renderTimeframes(dataset);
-    }
-
-    function selectDataset(id) {
-      state.selectedId = id;
-      [...rowsEl.querySelectorAll('tr.dataset-row')].forEach(tr => {
-        tr.classList.toggle('active', Number(tr.datasetId) === Number(id));
-      });
-      fillSettings(selectedDataset());
-    }
-
-    function renderDatasets() {
-      rowsEl.innerHTML = '';
-      countEl.textContent = `${state.datasets.length} datasets`;
-
-      if (!state.datasets.length) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="5" class="muted">No datasets found.</td>`;
-        rowsEl.appendChild(tr);
-        return;
-      }
-
-      state.datasets.forEach(dataset => {
-        const tr = document.createElement('tr');
-        tr.className = 'dataset-row';
-        tr.datasetId = String(dataset.id);
-
-        const ready = Number(dataset.ready_timeframes || 0);
-        const total = Number(dataset.total_timeframes || 0);
-
-        tr.innerHTML = `
-          <td>#${dataset.id}</td>
-          <td>
-            <div>${escapeHtml(dataset.settings?.display_name || dataset.original_name)}</div>
-            <div class="muted">${escapeHtml(dataset.original_name)}</div>
-          </td>
-          <td>${Number(dataset.row_count || 0).toLocaleString()}</td>
-          <td>${ready}/${total}</td>
-          <td>
-            <div class="row" style="gap:6px;">
-              <button data-action="pick" data-id="${dataset.id}">Edit</button>
-              <button data-action="rebuild" data-id="${dataset.id}" class="warn">Rebuild</button>
-            </div>
-          </td>
-        `;
-
-        tr.addEventListener('click', (e) => {
-          const btn = e.target.closest('button');
-          if (btn) {
-            const action = btn.dataset.action;
-            const id = Number(btn.dataset.id);
-            if (action === 'pick') {
-              selectDataset(id);
-            } else if (action === 'rebuild') {
-              rebuildBinary(id);
-            }
-            return;
-          }
-          selectDataset(dataset.id);
-        });
-
-        rowsEl.appendChild(tr);
-      });
-
-      if (!selectedDataset() && state.datasets.length) {
-        selectDataset(state.datasets[0].id);
-      }
-    }
-
-    async function loadDatasets() {
-      const data = await fetchJson('/api/admin/datasets');
-      state.datasets = data.datasets || [];
-      renderDatasets();
-    }
-
-    async function rebuildBinary(fileId) {
-      if (!fileId) return;
-      showStatus(`Rebuilding binary for #${fileId}...`, 'info');
-      await fetchJson(`/api/admin/datasets/${fileId}/rebuild-binary`, { method: 'POST' });
-      showStatus(`Binary rebuild started for #${fileId}.`, 'ok');
-      await loadDatasets();
-    }
-
-    async function deleteDataset(fileId) {
-      if (!fileId) return;
-      if (!confirm(`Delete dataset #${fileId}? This cannot be undone.`)) return;
-      showStatus(`Deleting dataset #${fileId}...`, 'info');
-      await fetchJson(`/api/admin/datasets/${fileId}`, { method: 'DELETE' });
-      showStatus(`Dataset #${fileId} deleted.`, 'ok');
-      state.selectedId = null;
-      await loadDatasets();
-    }
-
-    async function saveSettings(e) {
-      e.preventDefault();
-      const ds = selectedDataset();
-      if (!ds) {
-        showStatus('Select a dataset first.', 'error');
-        return;
-      }
-
-      const payload = {
-        display_name: document.getElementById('display_name').value.trim(),
-        csv_delimiter: document.getElementById('csv_delimiter').value,
-        csv_timezone: document.getElementById('csv_timezone').value.trim() || 'UTC',
-        datetime_format: document.getElementById('datetime_format').value.trim() || null,
-        csv_has_header: document.getElementById('csv_has_header').value === 'true',
-        is_active: document.getElementById('is_active').value === 'true',
-        notes: document.getElementById('notes').value.trim() || null
-      };
-
-      showStatus(`Saving settings for #${ds.id}...`, 'info');
-      await fetchJson(`/api/admin/datasets/${ds.id}/settings`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      showStatus(`Settings updated for #${ds.id}.`, 'ok');
-      await loadDatasets();
-      selectDataset(ds.id);
-    }
-
-    async function uploadCsv() {
-      const input = document.getElementById('uploadInput');
-      if (!input.files || !input.files[0]) {
-        showStatus('Please select a CSV file first.', 'error');
-        return;
-      }
-
-      const file = input.files[0];
-      const formData = new FormData();
-      formData.append('csvFile', file);
-
-      showStatus(`Uploading ${file.name}...`, 'info');
-      const res = await fetch('/api/admin/datasets/upload', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(body.detail || body.error || `HTTP ${res.status}`);
-      }
-
-      showStatus(`Upload complete: ${file.name}`, 'ok');
-      input.value = '';
-      await loadDatasets();
-    }
-
-    document.getElementById('refreshBtn').addEventListener('click', async () => {
-      try {
-        showStatus('Refreshing datasets...', 'info');
-        await loadDatasets();
-        showStatus('Datasets refreshed.', 'ok');
-      } catch (err) {
-        showStatus(err.message || 'Refresh failed', 'error');
-      }
+    await api('/api/admin/datasets/' + ds.id + '/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
+    toast('Settings saved for #' + ds.id, 'ok');
+    await loadDatasets(true);
+    selectDs(ds.id);
+  } catch (err) { toast('Save failed: ' + err.message, 'err'); }
+});
 
-    document.getElementById('uploadBtn').addEventListener('click', async () => {
-      try {
-        await uploadCsv();
-      } catch (err) {
-        showStatus(err.message || 'Upload failed', 'error');
-      }
-    });
+/* ── Rebuild ── */
+document.getElementById('rebuildBtn').addEventListener('click', async () => {
+  const ds = selDs();
+  if (!ds) { toast('Select a dataset first.', 'err'); return; }
+  try {
+    await api('/api/admin/datasets/' + ds.id + '/rebuild-binary', { method: 'POST' });
+    toast('Rebuild started for #' + ds.id, 'ok');
+    await loadDatasets(true);
+    startPolling(ds.id);
+  } catch (err) { toast('Rebuild failed: ' + err.message, 'err'); }
+});
 
-    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
-      try {
-        await saveSettings(e);
-      } catch (err) {
-        showStatus(err.message || 'Save failed', 'error');
-      }
-    });
+/* ── Delete ── */
+document.getElementById('deleteBtn').addEventListener('click', async () => {
+  const ds = selDs();
+  if (!ds) { toast('Select a dataset first.', 'err'); return; }
+  if (!confirm('Delete dataset #' + ds.id + ' "' + ds.original_name + '"?\nThis cannot be undone.')) return;
+  try {
+    await api('/api/admin/datasets/' + ds.id, { method: 'DELETE' });
+    S.sel = null;
+    S.polling.delete(ds.id);
+    toast('Dataset #' + ds.id + ' deleted.', 'ok');
+    document.getElementById('selLabel').textContent = 'No dataset selected';
+    document.getElementById('tfGrid').innerHTML = '';
+    await loadDatasets(false);
+  } catch (err) { toast('Delete failed: ' + err.message, 'err'); }
+});
 
-    document.getElementById('rebuildBtn').addEventListener('click', async () => {
-      const ds = selectedDataset();
-      if (!ds) return showStatus('Select a dataset first.', 'error');
-      try {
-        await rebuildBinary(ds.id);
-      } catch (err) {
-        showStatus(err.message || 'Rebuild failed', 'error');
-      }
-    });
+/* ── Refresh ── */
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  try { await loadDatasets(true); toast('Refreshed.', 'ok'); }
+  catch (err) { toast('Refresh failed: ' + err.message, 'err'); }
+});
 
-    document.getElementById('deleteBtn').addEventListener('click', async () => {
-      const ds = selectedDataset();
-      if (!ds) return showStatus('Select a dataset first.', 'error');
-      try {
-        await deleteDataset(ds.id);
-      } catch (err) {
-        showStatus(err.message || 'Delete failed', 'error');
-      }
-    });
-
-    (async function init() {
-      try {
-        await checkAdmin();
-        await loadDatasets();
-        showStatus(`Signed in as ${state.me.email} (admin).`, 'ok');
-      } catch (err) {
-        showStatus(err.message || 'Access denied', 'error');
-      }
-    })();
-  </script>
+/* ── Init ── */
+(async () => {
+  try {
+    const me = await api('/api/auth/me');
+    S.me = me.user;
+    if (!S.me || S.me.role !== 'admin') {
+      document.querySelector('.page').innerHTML = '<div style="text-align:center;padding:80px;color:var(--danger);font-size:18px;font-weight:700">&#128683; Admin access required</div>';
+      return;
+    }
+    const badge = document.getElementById('adminBadge');
+    badge.textContent = S.me.email;
+    badge.style.display = 'inline-block';
+    await loadDatasets(false);
+  } catch (err) {
+    toast('Auth error: ' + err.message, 'err');
+  }
+})();
+</script>
 </body>
 </html>
