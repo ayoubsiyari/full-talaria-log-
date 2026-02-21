@@ -1,3 +1,117 @@
+/**
+ * TileManager — LRU cache for binary tiles with prefetch support.
+ * Each tile = 50,000 candles, 48 bytes each (6×float64 little-endian: t,o,h,l,c,v).
+ * Tiles have Cache-Control: immutable so nginx/browser cache them automatically.
+ */
+class TileManager {
+    constructor(apiBase, maxTiles = 100) {
+        this.apiBase = apiBase;
+        this.maxTiles = maxTiles;
+        this._metaCache  = new Map();   // `${fileId}/${tf}` → meta
+        this._tileCache  = new Map();   // `${fileId}/${tf}/${idx}` → candles[]
+        this._order      = [];           // LRU order (oldest first)
+        this._inflight   = new Map();   // key → Promise (dedup concurrent fetches)
+        this._prefetchQ  = new Set();   // keys already scheduled for prefetch
+    }
+
+    async getMeta(fileId, tf) {
+        const key = `${fileId}/${tf}`;
+        if (this._metaCache.has(key)) return this._metaCache.get(key);
+        try {
+            const r = await fetch(`${this.apiBase}/file/${fileId}/tile-meta/${tf}`);
+            if (!r.ok) return null;
+            const meta = await r.json();
+            this._metaCache.set(key, meta);
+            return meta;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async getTile(fileId, tf, tileIdx) {
+        const key = `${fileId}/${tf}/${tileIdx}`;
+        if (this._tileCache.has(key)) {
+            this._lruTouch(key);
+            return this._tileCache.get(key);
+        }
+        if (this._inflight.has(key)) return this._inflight.get(key);
+
+        const promise = (async () => {
+            try {
+                const r = await fetch(`${this.apiBase}/file/${fileId}/tile/${tf}/${tileIdx}`);
+                if (!r.ok) return [];
+                const buf = await r.arrayBuffer();
+                const candles = this._decodeBinary(buf);
+                this._tileCache.set(key, candles);
+                this._order.push(key);
+                this._evictIfNeeded();
+                return candles;
+            } catch (e) {
+                return [];
+            } finally {
+                this._inflight.delete(key);
+                this._prefetchQ.delete(key);
+            }
+        })();
+
+        this._inflight.set(key, promise);
+        return promise;
+    }
+
+    prefetch(fileId, tf, tileIdxArray) {
+        for (const idx of tileIdxArray) {
+            const key = `${fileId}/${tf}/${idx}`;
+            if (!this._tileCache.has(key) && !this._inflight.has(key) && !this._prefetchQ.has(key)) {
+                this._prefetchQ.add(key);
+                this.getTile(fileId, tf, idx);
+            }
+        }
+    }
+
+    invalidate(fileId) {
+        const prefix = `${fileId}/`;
+        for (const k of [...this._tileCache.keys()]) {
+            if (k.startsWith(prefix)) this._tileCache.delete(k);
+        }
+        for (const k of [...this._metaCache.keys()]) {
+            if (k.startsWith(prefix)) this._metaCache.delete(k);
+        }
+        this._order = this._order.filter(k => !k.startsWith(prefix));
+    }
+
+    _decodeBinary(buf) {
+        const CANDLE_SIZE = 48;
+        const count = Math.floor(buf.byteLength / CANDLE_SIZE);
+        const view  = new DataView(buf);
+        const out   = new Array(count);
+        for (let i = 0; i < count; i++) {
+            const off = i * CANDLE_SIZE;
+            out[i] = {
+                t: view.getFloat64(off,      true) | 0,
+                o: view.getFloat64(off +  8, true),
+                h: view.getFloat64(off + 16, true),
+                l: view.getFloat64(off + 24, true),
+                c: view.getFloat64(off + 32, true),
+                v: view.getFloat64(off + 40, true),
+            };
+        }
+        return out;
+    }
+
+    _lruTouch(key) {
+        const i = this._order.indexOf(key);
+        if (i > -1) this._order.splice(i, 1);
+        this._order.push(key);
+    }
+
+    _evictIfNeeded() {
+        while (this._tileCache.size > this.maxTiles && this._order.length > 0) {
+            const oldest = this._order.shift();
+            this._tileCache.delete(oldest);
+        }
+    }
+}
+
 class Chart {
     constructor(canvasElement = null, svgElement = null) {
         // Support both main chart and panel instances
@@ -199,8 +313,10 @@ class Chart {
         
         // Backend API configuration
         this.apiUrl = window.CHART_API_URL || '/api';
+        this.tileManager = new TileManager(this.apiUrl, 150);
         this.currentFileId = null;
         this.currentSymbol = null; // Store detected symbol from CSV
+        this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
         
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
@@ -7582,8 +7698,49 @@ class Chart {
                     if (direction === 'backward') {
                         this.offsetX -= uniqueNew.length * this.getCandleSpacing();
                     }
-                    this.rawData = merged;
+                    // ── Ring buffer: cap rawData to avoid unbounded memory growth ──
+                    let trimmed = merged;
+                    const cap = this._RAW_DATA_CAP || 300_000;
+                    if (merged.length > cap) {
+                        if (direction === 'backward') {
+                            // Loading older data → evict from the right (newest)
+                            const evicted = merged.length - cap;
+                            trimmed = merged.slice(0, cap);
+                            this._serverCursors.hasMoreRight = true;
+                            this._serverCursors.lastTs = String(trimmed[trimmed.length - 1].t);
+                            this.offsetX += evicted * this.getCandleSpacing();
+                        } else {
+                            // Loading newer data → evict from the left (oldest)
+                            trimmed = merged.slice(merged.length - cap);
+                            this._serverCursors.hasMoreLeft = true;
+                            this._serverCursors.firstTs = String(trimmed[0].t);
+                        }
+                    }
+                    this.rawData = trimmed;
                     this.data = [...this.rawData];
+                }
+
+                // ── Prefetch next batch while user is still panning ──
+                if (this.tileManager && this.currentFileId) {
+                    const prefetchTf = tf;
+                    this.tileManager.getMeta(this.currentFileId, prefetchTf).then(meta => {
+                        if (!meta) return;
+                        const TILE_SIZE = meta.tile_size || 50000;
+                        if (direction === 'backward' && this._serverCursors.hasMoreLeft) {
+                            const cursorTs = Number(this._serverCursors.firstTs);
+                            const tileIdx = meta.tiles.findIndex(t => t.end_ts >= cursorTs);
+                            if (tileIdx > 0) this.tileManager.prefetch(this.currentFileId, prefetchTf, [tileIdx - 1]);
+                        } else if (direction === 'forward' && this._serverCursors.hasMoreRight) {
+                            const cursorTs = Number(this._serverCursors.lastTs);
+                            let tileIdx = -1;
+                            for (let ti = meta.tiles.length - 1; ti >= 0; ti--) {
+                                if (meta.tiles[ti].start_ts <= cursorTs) { tileIdx = ti; break; }
+                            }
+                            if (tileIdx >= 0 && tileIdx + 1 < meta.tile_count) {
+                                this.tileManager.prefetch(this.currentFileId, prefetchTf, [tileIdx + 1]);
+                            }
+                        }
+                    }).catch(() => {});
                 }
                 
                 if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();

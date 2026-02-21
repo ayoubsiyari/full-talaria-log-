@@ -542,11 +542,16 @@ def _backfill_binaries():
                     for tf in required_tfs
                 )
 
+                missing_tiles = any(
+                    not _tile_meta_path(f.id, tf).exists()
+                    for tf in required_tfs
+                )
+
                 # Detect older/invalid binaries (e.g., non-monotonic timestamps)
                 bin_1m = BIN_DIR / f"bin_{f.id}_1m.bin"
                 invalid_1m = bin_1m.exists() and not _bin_has_valid_time_order(bin_1m)
 
-                if not (missing_or_unready or missing_files or invalid_1m):
+                if not (missing_or_unready or missing_files or missing_tiles or invalid_1m):
                     continue
 
                 fpath = UPLOAD_DIR / f.filename
@@ -556,6 +561,8 @@ def _backfill_binaries():
                         reason.append("aggregate status")
                     if missing_files:
                         reason.append("missing bin files")
+                    if missing_tiles:
+                        reason.append("missing tiles")
                     if invalid_1m:
                         reason.append("invalid 1m timestamps")
                     print(f"📦 Backfilling binary for file {f.id} ({f.original_name}) - {', '.join(reason)}")
@@ -595,11 +602,202 @@ BIN_DIR = UPLOAD_DIR / "bin"
 BIN_DIR.mkdir(exist_ok=True)
 AGG_DIR = UPLOAD_DIR / "aggregates"
 AGG_DIR.mkdir(exist_ok=True)
+TILES_DIR = UPLOAD_DIR / "tiles"
+TILES_DIR.mkdir(exist_ok=True)
 
 import struct
+import mmap as _mmap_mod
 
 CANDLE_STRUCT = struct.Struct('<6d')  # 6 x float64 = 48 bytes per candle (t,o,h,l,c,v)
 CANDLE_SIZE = CANDLE_STRUCT.size      # 48
+TILE_SIZE   = 50_000                  # candles per tile
+
+# ── mmap LRU Cache ──────────────────────────────────────────────────────────
+class _MmapCache:
+    """Thread-safe LRU cache of memory-mapped binary tile files."""
+    def __init__(self, maxsize: int = 200):
+        import threading
+        self._lock = threading.Lock()
+        self._maxsize = maxsize
+        self._cache: dict = {}   # str(path) -> (fh, mmap)
+        self._order: list = []
+
+    def get(self, path):
+        key = str(path)
+        with self._lock:
+            if key in self._cache:
+                self._order.remove(key)
+                self._order.append(key)
+                return self._cache[key][1]
+            if not Path(path).exists():
+                return None
+            if len(self._cache) >= self._maxsize:
+                self._evict_locked()
+            try:
+                fh = open(path, 'rb')
+                mm = _mmap_mod.mmap(fh.fileno(), 0, access=_mmap_mod.ACCESS_READ)
+                self._cache[key] = (fh, mm)
+                self._order.append(key)
+                return mm
+            except Exception:
+                return None
+
+    def invalidate(self, path):
+        key = str(path)
+        with self._lock:
+            if key in self._cache:
+                fh, mm = self._cache.pop(key)
+                if key in self._order:
+                    self._order.remove(key)
+                try: mm.close()
+                except Exception: pass
+                try: fh.close()
+                except Exception: pass
+
+    def _evict_locked(self):
+        if self._order:
+            oldest = self._order.pop(0)
+            fh, mm = self._cache.pop(oldest, (None, None))
+            if mm:
+                try: mm.close()
+                except Exception: pass
+            if fh:
+                try: fh.close()
+                except Exception: pass
+
+_mmap_cache = _MmapCache(maxsize=200)
+
+def _mmap_read_range(path, start_idx: int, count: int) -> list:
+    """Read candles from a binary file via mmap — O(1) seek, OS page-cached."""
+    mm = _mmap_cache.get(path)
+    if mm is None:
+        return []
+    candles = []
+    pos = start_idx * CANDLE_SIZE
+    end = pos + count * CANDLE_SIZE
+    if end > len(mm):
+        end = len(mm)
+    data = mm[pos:end]
+    for i in range(0, len(data) - CANDLE_SIZE + 1, CANDLE_SIZE):
+        t, o, h, l, c, v = CANDLE_STRUCT.unpack_from(data, i)
+        candles.append({'t': int(t), 'o': o, 'h': h, 'l': l, 'c': c, 'v': v})
+    return candles
+
+def _mmap_total(path) -> int:
+    mm = _mmap_cache.get(path)
+    return len(mm) // CANDLE_SIZE if mm else 0
+
+def _mmap_bisect(path, target_ts: int) -> int:
+    """Binary search for first candle with t >= target_ts using mmap."""
+    mm = _mmap_cache.get(path)
+    if mm is None:
+        return 0
+    total = len(mm) // CANDLE_SIZE
+    lo, hi = 0, total
+    while lo < hi:
+        mid = (lo + hi) // 2
+        pos = mid * CANDLE_SIZE
+        t = int(struct.unpack_from('<d', mm, pos)[0])
+        if t < target_ts:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+# ── Tile helpers ─────────────────────────────────────────────────────────────
+def _tile_dir(file_id: int, tf: str) -> Path:
+    d = TILES_DIR / str(file_id) / tf
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+def _tile_path(file_id: int, tf: str, tile_idx: int) -> Path:
+    return TILES_DIR / str(file_id) / tf / f"tile_{tile_idx}.bin"
+
+def _tile_meta_path(file_id: int, tf: str) -> Path:
+    return TILES_DIR / str(file_id) / tf / "meta.json"
+
+def _write_tiles(file_id: int, tf: str, candles: list) -> dict:
+    """Split candles into TILE_SIZE chunks, write each as a .bin tile, save meta.json."""
+    _tile_dir(file_id, tf)
+    total = len(candles)
+    tile_count = math.ceil(total / TILE_SIZE) if total > 0 else 0
+    tiles_meta = []
+    for i in range(tile_count):
+        chunk = candles[i * TILE_SIZE:(i + 1) * TILE_SIZE]
+        tp = _tile_path(file_id, tf, i)
+        _write_bin(chunk, tp)
+        _mmap_cache.invalidate(tp)
+        tiles_meta.append({
+            "start_ts": chunk[0]['t'],
+            "end_ts":   chunk[-1]['t'],
+            "count":    len(chunk),
+        })
+    meta = {"tile_count": tile_count, "total": total, "tile_size": TILE_SIZE, "tiles": tiles_meta}
+    with open(_tile_meta_path(file_id, tf), 'w') as f:
+        json.dump(meta, f)
+    return meta
+
+def _load_tile_meta(file_id: int, tf: str) -> dict | None:
+    p = _tile_meta_path(file_id, tf)
+    if not p.exists():
+        return None
+    try:
+        with open(p) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def _tiles_read_window(file_id: int, tf: str, meta: dict,
+                       limit: int, anchor: str = "end",
+                       start_ts: int = None, end_ts: int = None):
+    """Read up to `limit` candles from tiles, honouring anchor + optional date filter."""
+    tiles = meta["tiles"]
+    total = meta["total"]
+
+    # Find tile range that overlaps the requested date window
+    first_tile = 0
+    last_tile  = len(tiles) - 1
+    if start_ts is not None:
+        for i, t in enumerate(tiles):
+            if t["end_ts"] >= start_ts:
+                first_tile = i
+                break
+    if end_ts is not None:
+        for i in range(len(tiles) - 1, -1, -1):
+            if tiles[i]["start_ts"] <= end_ts:
+                last_tile = i
+                break
+
+    # Collect candles from the relevant tiles
+    candles = []
+    for ti in range(first_tile, last_tile + 1):
+        tp = _tile_path(file_id, tf, ti)
+        n  = tiles[ti]["count"]
+        candles.extend(_mmap_read_range(tp, 0, n))
+
+    # Apply date filter
+    if start_ts is not None:
+        candles = [c for c in candles if c['t'] >= start_ts]
+    if end_ts is not None:
+        candles = [c for c in candles if c['t'] <= end_ts]
+
+    range_total = len(candles)
+
+    # Apply limit + anchor
+    if range_total > limit:
+        if anchor == "start":
+            has_more_left  = first_tile > 0 or (start_ts and candles[0]['t'] > start_ts)
+            has_more_right = True
+            candles = candles[:limit]
+        else:
+            has_more_left  = True
+            has_more_right = last_tile < len(tiles) - 1 or (end_ts and candles[-1]['t'] < end_ts)
+            candles = candles[-limit:]
+    else:
+        has_more_left  = first_tile > 0
+        has_more_right = last_tile < len(tiles) - 1
+
+    return candles, range_total, has_more_left, has_more_right
 
 def _csv_to_bin(csv_path, bin_path):
     """Convert a CSV file to binary format. Each candle = 48 bytes (6 x float64)."""
@@ -1262,6 +1460,7 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str):
                         resampled = _resample_candles(candles, ms)
 
                     _write_bin(resampled, bin_path)
+                    _write_tiles(file_id, tf, resampled)
 
                     start_ts = resampled[0]['t'] if resampled else None
                     end_ts = resampled[-1]['t'] if resampled else None
@@ -1277,7 +1476,8 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str):
                         "agg_filename": bin_name
                     })
                     db.commit()
-                    print(f"  ✅ {tf}: {len(resampled)} candles → {bin_name}")
+                    tile_count = math.ceil(len(resampled) / TILE_SIZE) if resampled else 0
+                    print(f"  ✅ {tf}: {len(resampled)} candles → {bin_name} + {tile_count} tiles")
                 except Exception as exc:
                     print(f"  ⚠️ {tf} failed: {exc}")
                     db.query(CSVAggregate).filter(
@@ -1303,6 +1503,57 @@ _backfill_binaries()
 @app.get("/api/status")
 async def api_status():
     return {"message": "Trading Chart API is running", "version": "1.0"}
+
+
+@app.get("/api/file/{file_id}/tile-meta/{tf}")
+async def get_tile_meta(file_id: int, tf: str):
+    """Return tile index (count, timestamps per tile) for a file+timeframe."""
+    meta = _load_tile_meta(file_id, tf)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Tiles not ready for this timeframe")
+    return meta
+
+
+@app.get("/api/file/{file_id}/tile/{tf}/{tile_idx}")
+async def get_tile(file_id: int, tf: str, tile_idx: int, response: Response):
+    """
+    Return raw binary tile — 48 bytes/candle (little-endian float64: t,o,h,l,c,v).
+    Cache-Control: immutable — nginx caches this for every user after the first request.
+    """
+    meta = _load_tile_meta(file_id, tf)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Tiles not ready")
+    if tile_idx < 0 or tile_idx >= meta["tile_count"]:
+        raise HTTPException(status_code=404, detail="Tile index out of range")
+    tp = _tile_path(file_id, tf, tile_idx)
+    if not tp.exists():
+        raise HTTPException(status_code=404, detail="Tile file missing")
+    response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+    response.headers["X-Candle-Count"] = str(meta["tiles"][tile_idx]["count"])
+    return FileResponse(str(tp), media_type="application/octet-stream")
+
+
+@app.get("/api/file/{file_id}/conversion-status")
+async def get_conversion_status(file_id: int):
+    """SSE-friendly polling endpoint for upload→binary conversion progress."""
+    db = next(get_db())
+    try:
+        aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+        if not aggs:
+            return {"status": "pending", "progress": 0, "timeframes": {}}
+        total = len(aggs)
+        ready = sum(1 for a in aggs if a.status == "ready")
+        failed = sum(1 for a in aggs if a.status == "failed")
+        overall = "ready" if ready == total else ("failed" if failed == total else "processing")
+        return {
+            "status": overall,
+            "progress": round(ready / total * 100),
+            "ready": ready,
+            "total": total,
+            "timeframes": {a.timeframe: a.status for a in aggs},
+        }
+    finally:
+        db.close()
 
 class SignUpIn(BaseModel):
     name: str
@@ -2156,6 +2407,14 @@ async def admin_delete_dataset(file_id: int, request: Request):
             if p.exists():
                 p.unlink()
 
+        # Remove tile directory for this file (also invalidate mmap handles for those tiles)
+        tile_file_dir = TILES_DIR / str(file_id)
+        if tile_file_dir.exists():
+            for tp in tile_file_dir.rglob("tile_*.bin"):
+                _mmap_cache.invalidate(tp)
+            import shutil as _shutil
+            _shutil.rmtree(tile_file_dir, ignore_errors=True)
+
         db.query(DatasetSettings).filter(DatasetSettings.file_id == file_id).delete()
         db.delete(db_file)
         db.commit()
@@ -2504,44 +2763,52 @@ async def get_file_smart(
         ).first()
         binary_ready = bool(agg and agg.status == "ready")
 
-        if binary_ready and bin_path.exists():
-            total_candles = _bin_total_candles(bin_path)
+        tile_meta = _load_tile_meta(file_id, timeframe) if binary_ready else None
+
+        if tile_meta is not None:
+            # ── Fast path: tile-based reads via mmap (OS page-cached) ──
+            source = "tiles"
+            candles, total_candles, has_more_left, has_more_right = _tiles_read_window(
+                file_id, timeframe, tile_meta,
+                limit=limit, anchor=anchor,
+                start_ts=start_ts, end_ts=end_ts
+            )
+        elif binary_ready and bin_path.exists():
+            # ── Legacy path: single .bin file via mmap ──
+            total_candles = _mmap_total(bin_path)
 
             if start_ts is not None or end_ts is not None:
-                # Date-filtered: binary search for range
-                si = _bisect_bin_for_timestamp(bin_path, start_ts) if start_ts else 0
-                ei = _bisect_bin_for_timestamp(bin_path, end_ts + 1) if end_ts else total_candles
+                si = _mmap_bisect(bin_path, start_ts) if start_ts else 0
+                ei = _mmap_bisect(bin_path, end_ts + 1) if end_ts else total_candles
                 range_count = ei - si
-
                 if range_count > limit:
                     if anchor == "start":
-                        candles = _read_bin_range(bin_path, si, limit)
+                        candles = _mmap_read_range(bin_path, si, limit)
                         has_more_left = si > 0
                         has_more_right = True
                     else:
                         start = ei - limit
-                        candles = _read_bin_range(bin_path, start, limit)
+                        candles = _mmap_read_range(bin_path, start, limit)
                         has_more_left = start > 0
                         has_more_right = ei < total_candles
                 else:
-                    candles = _read_bin_range(bin_path, si, range_count)
+                    candles = _mmap_read_range(bin_path, si, range_count)
                     has_more_left = si > 0
                     has_more_right = ei < total_candles
                 total_candles = range_count
             else:
-                # No date filter: simple index-based window
                 if total_candles > limit:
                     if anchor == "start":
-                        candles = _read_bin_range(bin_path, 0, limit)
+                        candles = _mmap_read_range(bin_path, 0, limit)
                         has_more_left = False
                         has_more_right = True
                     else:
                         start = total_candles - limit
-                        candles = _read_bin_range(bin_path, start, limit)
+                        candles = _mmap_read_range(bin_path, start, limit)
                         has_more_left = True
                         has_more_right = False
                 else:
-                    candles = _read_bin_range(bin_path, 0, total_candles)
+                    candles = _mmap_read_range(bin_path, 0, total_candles)
                     has_more_left = False
                     has_more_right = False
         else:
@@ -2641,28 +2908,49 @@ async def get_file_candles(
         ).first()
         binary_ready = bool(agg and agg.status == "ready")
 
-        if binary_ready and bin_path.exists() and cursor_ts is not None:
-            total = _bin_total_candles(bin_path)
-            cursor_idx = _bisect_bin_for_timestamp(bin_path, cursor_ts)
+        tile_meta = _load_tile_meta(file_id, timeframe) if binary_ready else None
+
+        if tile_meta is not None and cursor_ts is not None:
+            # ── Fast path: tile-based cursor pan via mmap ──
+            if direction == "backward":
+                candles, _, has_more_left, has_more_right = _tiles_read_window(
+                    file_id, timeframe, tile_meta,
+                    limit=limit, anchor="end", end_ts=cursor_ts - 1
+                )
+                has_more_right = True
+            else:
+                candles, _, has_more_left, has_more_right = _tiles_read_window(
+                    file_id, timeframe, tile_meta,
+                    limit=limit, anchor="start", start_ts=cursor_ts + 1
+                )
+                has_more_left = True
+            total = tile_meta["total"]
+        elif tile_meta is not None and cursor_ts is None:
+            candles, _, has_more_left, has_more_right = _tiles_read_window(
+                file_id, timeframe, tile_meta, limit=limit, anchor="end"
+            )
+            total = tile_meta["total"]
+        elif binary_ready and bin_path.exists() and cursor_ts is not None:
+            # ── Legacy path: mmap on single .bin ──
+            total = _mmap_total(bin_path)
+            cursor_idx = _mmap_bisect(bin_path, cursor_ts)
 
             if direction == "backward":
                 start = max(0, cursor_idx - limit)
                 count = cursor_idx - start
-                candles = _read_bin_range(bin_path, start, count)
+                candles = _mmap_read_range(bin_path, start, count)
                 has_more_left = start > 0
                 has_more_right = cursor_idx < total
             else:
-                # Forward: start after cursor
                 start = cursor_idx + 1 if cursor_idx < total else total
-                # Check if the candle at cursor_idx has exactly cursor_ts
                 if cursor_idx < total:
-                    check = _read_bin_range(bin_path, cursor_idx, 1)
+                    check = _mmap_read_range(bin_path, cursor_idx, 1)
                     if check and check[0]['t'] == cursor_ts:
                         start = cursor_idx + 1
                     else:
                         start = cursor_idx
                 count = min(limit, total - start)
-                candles = _read_bin_range(bin_path, start, count)
+                candles = _mmap_read_range(bin_path, start, count)
                 has_more_left = True
                 has_more_right = (start + count) < total
         else:
@@ -2787,6 +3075,12 @@ async def delete_file(file_id: int):
                 if p.exists():
                     p.unlink()
             db.delete(agg)
+
+        # Remove tile directory for this file
+        tile_file_dir = TILES_DIR / str(file_id)
+        if tile_file_dir.exists():
+            import shutil as _shutil2
+            _shutil2.rmtree(tile_file_dir, ignore_errors=True)
         
         # Delete from database
         db.delete(db_file)
