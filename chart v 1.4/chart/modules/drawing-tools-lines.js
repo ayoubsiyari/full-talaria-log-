@@ -569,16 +569,23 @@ class TrendlineTool extends BaseDrawing {
         let baseY = midY;
 
         // Horizontal position: place text CENTER at 15% / 50% / 85% along the line
+        // Always anchor to the visual left/right end (by x-coordinate), not draw order
         const lineDX = x2 - x1;
         const lineDY = y2 - y1;
+        const lvX = x1 <= x2 ? x1 : x2;
+        const lvY = x1 <= x2 ? y1 : y2;
+        const rvX = x1 <= x2 ? x2 : x1;
+        const rvY = x1 <= x2 ? y2 : y1;
+        const vDX = rvX - lvX;
+        const vDY = rvY - lvY;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + lineDX * 0.15;
-                baseY = y1 + lineDY * 0.15;
+                baseX = lvX + vDX * 0.15;
+                baseY = lvY + vDY * 0.15;
                 break;
             case 'right':
-                baseX = x1 + lineDX * 0.85;
-                baseY = y1 + lineDY * 0.85;
+                baseX = lvX + vDX * 0.85;
+                baseY = lvY + vDY * 0.85;
                 break;
             default:
                 baseX = midX;
