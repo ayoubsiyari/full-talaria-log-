@@ -14,6 +14,11 @@ type LanguageContextValue = {
 const LanguageContext = React.createContext<LanguageContextValue | null>(null);
 
 function readInitialLanguage(): AppLanguage {
+  if (typeof window === "undefined") return "ar";
+  try {
+    const saved = window.localStorage.getItem("talaria_language");
+    if (saved === "en" || saved === "ar") return saved;
+  } catch {}
   return "ar";
 }
 
@@ -21,11 +26,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = React.useState<AppLanguage>(readInitialLanguage);
 
   const setLanguage = React.useCallback((lang: AppLanguage) => {
-    setLanguageState("ar");
+    setLanguageState(lang);
   }, []);
 
   const toggleLanguage = React.useCallback(() => {
-    setLanguageState("ar");
+    setLanguageState(prev => (prev === "ar" ? "en" : "ar"));
   }, []);
 
   const isArabic = language === "ar";
@@ -34,7 +39,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.lang = language;
     document.documentElement.dir = isArabic ? "rtl" : "ltr";
     try {
-      window.localStorage.setItem("talaria_language", "ar");
+      window.localStorage.setItem("talaria_language", language);
     } catch {}
   }, [language, isArabic]);
 

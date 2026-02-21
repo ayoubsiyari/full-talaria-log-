@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import SiteDisclosuresFooter from "@/components/SiteDisclosuresFooter";
+import { LanguageToggle } from "@/components/LanguageToggle";
 
 export default function PrivacyPage() {
   const copy = React.useMemo(

@@ -3,6 +3,7 @@ import { AuthUI } from "@/components/ui/auth-fuse";
 import React from "react";
 import { useSearchParams } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
+import { LanguageToggle } from "@/components/LanguageToggle";
 
 function LoginPageContent({
   isArabic,
@@ -55,8 +56,13 @@ export default function LoginPage() {
   };
 
   return (
-    <React.Suspense fallback={<AuthUI initialMode="signin" signInContent={signInContent} signUpContent={signUpContent} />}>
-      <LoginPageContent isArabic={isArabic} signInContent={signInContent} signUpContent={signUpContent} />
-    </React.Suspense>
+    <>
+      <div className="fixed top-4 right-4 z-[9999]">
+        <LanguageToggle />
+      </div>
+      <React.Suspense fallback={<AuthUI initialMode="signin" signInContent={signInContent} signUpContent={signUpContent} />}>
+        <LoginPageContent isArabic={isArabic} signInContent={signInContent} signUpContent={signUpContent} />
+      </React.Suspense>
+    </>
   );
 }

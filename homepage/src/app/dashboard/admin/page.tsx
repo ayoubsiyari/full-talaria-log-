@@ -2,6 +2,7 @@
 // Unified Admin Dashboard — controls users, feature flags, security logs, system metrics
 import React, { useState, useEffect, useCallback } from "react";
 import { Shield, Users, Zap, Server, RefreshCw, Plus, Trash2, Edit, X, CheckCircle, AlertTriangle, Download, Database, BarChart3, Activity } from "lucide-react";
+import { LanguageToggle } from "@/components/LanguageToggle";
 
 // helpers
 const jwt=()=>typeof window!=="undefined"?localStorage.getItem("token")??"":"";
@@ -123,6 +124,7 @@ export default function AdminDashboard() {
           <div><h1 className="text-xl font-bold">Admin Dashboard</h1><p className="text-xs text-white/40">Full project control — users · features · security · system</p></div>
         </div>
         <div className="flex items-center gap-2">
+          <LanguageToggle className="text-xs px-3 py-1.5" />
           <a href="/dashboard/admin/datasets/" className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10 transition"><Database className="h-3.5 w-3.5"/>Datasets</a>
           <a href="/dashboard/sessions/" className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10 transition"><Activity className="h-3.5 w-3.5"/>Sessions</a>
           <button onClick={load} className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10 transition"><RefreshCw className={`h-3.5 w-3.5 ${loading?"animate-spin":""}`}/>Refresh</button>

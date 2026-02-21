@@ -65,7 +65,7 @@ const COUNTRIES = [
 ];
 
 export default function HomePage() {
-  const { isArabic } = useLanguage();
+  const { isArabic, toggleLanguage } = useLanguage();
   const [user, setUser] = React.useState<{ id: number; name: string; email: string; role?: string; phone?: string; country?: string } | null>(null);
   const [showProfile, setShowProfile] = React.useState(false);
   const [editMode, setEditMode] = React.useState(false);
@@ -386,6 +386,13 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2">
+              <button
+                onClick={toggleLanguage}
+                className="rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 text-xs sm:text-sm px-3 py-1.5 font-semibold transition-colors"
+                aria-label="Toggle language"
+              >
+                {isArabic ? "EN" : "AR"}
+              </button>
               {user ? (
                 <>
                   <div className="relative" ref={profileRef}>

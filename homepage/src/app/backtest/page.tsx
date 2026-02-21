@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Play, Trash2, BarChart3, Trophy, X } from "lucide-react";
+import { LanguageToggle } from "@/components/LanguageToggle";
 
 interface Session {
   id: number;
@@ -161,6 +162,7 @@ export default function BacktestSessions() {
             <h1 className="text-xl font-bold tracking-tight">Sessions Dashboard</h1>
           </div>
           <div className="flex items-center gap-2">
+            <LanguageToggle />
             {isAdmin ? (
               <a
                 href="/dashboard/admin/"
