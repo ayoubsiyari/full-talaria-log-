@@ -1007,9 +1007,80 @@ class Chart {
                     this._pendingReplayState = null;
                 }
             }
+
+            // Restore chart view (pan/zoom position)
+            if (state.chartView && typeof state.chartView === 'object') {
+                const v = state.chartView;
+                if (typeof v.offsetX === 'number')       this.offsetX = v.offsetX;
+                if (typeof v.candleWidth === 'number')   this.candleWidth = v.candleWidth;
+                if (typeof v.priceOffset === 'number')   this.priceOffset = v.priceOffset;
+                if (typeof v.priceZoom === 'number')     this.priceZoom = v.priceZoom;
+                if (typeof v.autoScale === 'boolean')    this.autoScale = v.autoScale;
+                if (typeof v.candleWidthIndex === 'number' && this.zoomLevel) {
+                    this.zoomLevel.candleWidthIndex = v.candleWidthIndex;
+                }
+                if (v.timeframe && v.timeframe !== this.currentTimeframe) {
+                    this.currentTimeframe = v.timeframe;
+                    // update timeframe button UI
+                    document.querySelectorAll('.timeframe-btn').forEach(b => {
+                        b.classList.toggle('active', b.dataset.timeframe === v.timeframe);
+                    });
+                }
+                this.scheduleRender();
+                console.log('📍 Restored chart view from session state');
+            }
+
+            // Restore chart settings (colors, type, etc.)
+            if (state.chartSettings && typeof state.chartSettings === 'object') {
+                this.chartSettings = { ...this.chartSettings, ...state.chartSettings };
+                if (typeof this.applyChartSettings === 'function') this.applyChartSettings();
+                console.log('🎨 Restored chart settings from session state');
+            }
+
+            // Restore tool defaults (drawing colors/styles)
+            if (state.toolDefaults && typeof state.toolDefaults === 'object') {
+                Object.keys(state.toolDefaults).forEach(tool => {
+                    if (this.toolDefaults[tool]) {
+                        this.toolDefaults[tool] = { ...this.toolDefaults[tool], ...state.toolDefaults[tool] };
+                    }
+                });
+                console.log('🖊️ Restored tool defaults from session state');
+            }
+
+            // Restore indicators
+            if (Array.isArray(state.indicators) && state.indicators.length > 0) {
+                this._pendingIndicatorsState = state.indicators;
+                // Will be applied by persistIndicators restore logic once data is ready
+                if (this.data && this.data.length > 0 && typeof this.addIndicator === 'function') {
+                    this._applyPersistedIndicators();
+                }
+            }
         } catch (e) {
             console.warn('⚠️ Failed to load trading session state', e);
         }
+    }
+
+    _applyPersistedIndicators() {
+        const list = this._pendingIndicatorsState;
+        if (!Array.isArray(list) || list.length === 0) return;
+        this._pendingIndicatorsState = null;
+        // Clear current indicators silently before restoring
+        if (this.indicators && Array.isArray(this.indicators.active)) {
+            this.indicators.active = [];
+            this.indicators.data = {};
+        }
+        list.forEach(snap => {
+            if (!snap.type) return;
+            try {
+                const p = Object.assign({}, snap.params || {}, snap.style || {});
+                const ind = this.addIndicator(snap.type, p);
+                if (ind && snap.visible === false) ind.visible = false;
+            } catch (e) {
+                console.warn('⚠️ Could not restore indicator', snap.type, e);
+            }
+        });
+        if (typeof this.render === 'function') this.render();
+        console.log(`📈 Restored ${list.length} indicators from session state`);
     }
 
     scheduleSessionStateSave(patch) {
@@ -1383,6 +1454,7 @@ class Chart {
         } catch (error) {
             console.error('❌ Failed to save settings:', error);
         }
+        this.scheduleSessionStateSave({ chartSettings: this.chartSettings });
     }
     
     loadSavedSettings() {
@@ -1411,6 +1483,23 @@ class Chart {
         }
     }
     
+    getChartViewSnapshot() {
+        return {
+            offsetX: this.offsetX,
+            candleWidth: this.candleWidth,
+            candleWidthIndex: this.zoomLevel ? this.zoomLevel.candleWidthIndex : 4,
+            priceOffset: this.priceOffset,
+            priceZoom: this.priceZoom,
+            autoScale: this.autoScale,
+            timeframe: this.currentTimeframe || '1m',
+            fileId: this.currentFileId || null,
+        };
+    }
+
+    scheduleChartViewSave() {
+        this.scheduleSessionStateSave({ chartView: this.getChartViewSnapshot() });
+    }
+
     loadToolDefaults() {
         try {
             const saved = localStorage.getItem('toolDefaults');
@@ -1436,6 +1525,7 @@ class Chart {
         } catch (e) {
             console.error('Failed to save tool defaults:', e);
         }
+        this.scheduleSessionStateSave({ toolDefaults: this.toolDefaults });
     }
     
     loadDrawingsFromStorage() {
@@ -7459,6 +7549,7 @@ class Chart {
         }
         
         this.currentTimeframe = timeframe;
+        this.scheduleChartViewSave();
         
         if (this.replaySystem && this.replaySystem.isActive) {
             this.replaySystem.onTimeframeChange();
@@ -10283,6 +10374,10 @@ class Chart {
             }
 
             // Fallback: if wheel is used outside axes, do nothing special
+
+            // Debounced save after wheel zoom stops
+            clearTimeout(this._wheelSaveTimer);
+            this._wheelSaveTimer = setTimeout(() => this.scheduleChartViewSave(), 600);
         };
 
         this.canvas.addEventListener('wheel', handleWheel, { passive: false });
@@ -10558,10 +10653,12 @@ class Chart {
             // Handle box zoom
             if (dragType === 'boxZoom' && this.boxZoom.active) {
                 this.applyBoxZoom();
+                this.scheduleChartViewSave();
             }
             // Handle pan end - no inertia, stop immediately
             else if (dragType === 'pan' && wasDragging) {
                 this.dispatchScrollSync();
+                this.scheduleChartViewSave();
             }
             
             // Reset states

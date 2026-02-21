@@ -1094,8 +1094,28 @@
         }
         
         this.updateOHLCIndicators();
+        this.persistIndicators();
         
         return indicator;
+    };
+
+    Chart.prototype.persistIndicators = function() {
+        if (!this.indicators || !Array.isArray(this.indicators.active)) return;
+        const snapshot = this.indicators.active.map(function(ind) {
+            return {
+                type: ind.type,
+                name: ind.name,
+                params: Object.assign({}, ind.params || {}),
+                style: Object.assign({}, ind.style || {}),
+                visible: ind.visible !== false,
+                overlay: ind.overlay,
+                separatePanel: ind.separatePanel,
+                isVolume: ind.isVolume || false,
+            };
+        });
+        if (typeof this.scheduleSessionStateSave === 'function') {
+            this.scheduleSessionStateSave({ indicators: snapshot });
+        }
     };
     
     Chart.prototype.updateIndicator = function(id, newParams) {
@@ -1329,6 +1349,7 @@
         }
         
         this.updateOHLCIndicators();
+        this.persistIndicators();
         
         return indicator;
     };
@@ -1624,6 +1645,7 @@
             }
             
             this.updateOHLCIndicators();
+            this.persistIndicators();
         }
     };
     
@@ -1661,6 +1683,7 @@
             this.updateOHLCIndicators();
         }
 
+        this.persistIndicators();
         console.log('🗑️ All indicators cleared');
         return true;
     };

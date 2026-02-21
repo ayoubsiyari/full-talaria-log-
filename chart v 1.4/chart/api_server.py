@@ -1589,6 +1589,10 @@ class TradingSessionStateUpdateIn(BaseModel):
     drawings: list | None = None
     journal: list | None = None
     replay: dict | None = None
+    chartView: dict | None = None
+    chartSettings: dict | None = None
+    toolDefaults: dict | None = None
+    indicators: list | None = None
 
 class AdminDatasetSettingsIn(BaseModel):
     display_name: str | None = None
@@ -2498,6 +2502,10 @@ async def get_trading_session_state(session_id: int, request: Request):
                 "drawings": state.get("drawings") if isinstance(state.get("drawings"), list) else [],
                 "journal": state.get("journal") if isinstance(state.get("journal"), list) else [],
                 "replay": state.get("replay") if isinstance(state.get("replay"), dict) else {},
+                "chartView": state.get("chartView") if isinstance(state.get("chartView"), dict) else {},
+                "chartSettings": state.get("chartSettings") if isinstance(state.get("chartSettings"), dict) else {},
+                "toolDefaults": state.get("toolDefaults") if isinstance(state.get("toolDefaults"), dict) else {},
+                "indicators": state.get("indicators") if isinstance(state.get("indicators"), list) else [],
                 "updated_at": st.updated_at.isoformat() if st.updated_at else None,
             }
         }
@@ -2524,6 +2532,14 @@ async def patch_trading_session_state(session_id: int, payload: TradingSessionSt
             state["journal"] = payload.journal
         if payload.replay is not None:
             state["replay"] = payload.replay
+        if payload.chartView is not None:
+            state["chartView"] = payload.chartView
+        if payload.chartSettings is not None:
+            state["chartSettings"] = payload.chartSettings
+        if payload.toolDefaults is not None:
+            state["toolDefaults"] = payload.toolDefaults
+        if payload.indicators is not None:
+            state["indicators"] = payload.indicators
 
         st.state_json = json.dumps(state, separators=(",", ":"))
         db.commit()
