@@ -359,10 +359,11 @@ class DrawingToolsManager {
         // Setup toolbar callbacks
         this.setupToolbarCallbacks();
         
-        // Load saved drawings
+        // Load saved drawings (may fail silently if chart data isn't ready yet)
+        this._drawingsLoaded = false;
         this.loadDrawings();
         
-        // Listen for timeframe changes to refresh drawings
+        // Listen for timeframe changes AND initial data load to refresh drawings
         let lastTimeframe = this.chart.currentTimeframe;
         window.__drawingToolsChartDataLoadedListeners = window.__drawingToolsChartDataLoadedListeners || {};
         const prevListener = window.__drawingToolsChartDataLoadedListeners[this._instanceKey];
@@ -371,6 +372,14 @@ class DrawingToolsManager {
         }
         this._chartDataLoadedListener = (event) => {
             const newTimeframe = event.detail?.timeframe;
+
+            // If drawings were not loaded yet (chart had no data during init), load them now
+            if (!this._drawingsLoaded) {
+                console.log(`📂 Chart data now available — loading drawings...`);
+                requestAnimationFrame(() => this.loadDrawings());
+                return;
+            }
+
             if (newTimeframe && newTimeframe !== lastTimeframe) {
                 console.log(`🔄 Timeframe changed: ${lastTimeframe} → ${newTimeframe}`);
                 lastTimeframe = newTimeframe;
@@ -3776,13 +3785,16 @@ class DrawingToolsManager {
         
         console.log(`📂 Loading drawings from ${key} for ${this.chart.currentTimeframe}...`);
         
-        if (!saved) {
-            console.log(`📂 No saved drawings found`);
-            return;
-        }
-        
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn(`⚠️ Cannot load drawings yet - chart has no data`);
+            return; // _drawingsLoaded stays false — listener will retry
+        }
+
+        // Mark as loaded regardless of whether there are saved drawings
+        this._drawingsLoaded = true;
+
+        if (!saved) {
+            console.log(`📂 No saved drawings found`);
             return;
         }
         
