@@ -2300,7 +2300,7 @@ async def admin_list_datasets(request: Request):
 @app.post("/api/admin/datasets/upload")
 async def admin_upload_dataset(request: Request, csvFile: UploadFile = File(...)):
     _require_admin(request)
-    return await upload_csv(csvFile)
+    return await upload_csv(request, csvFile)
 
 @app.patch("/api/admin/datasets/{file_id}/settings")
 async def admin_update_dataset_settings(file_id: int, payload: AdminDatasetSettingsIn, request: Request):
