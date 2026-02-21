@@ -580,12 +580,12 @@ class TrendlineTool extends BaseDrawing {
         const vDY = rvY - lvY;
         switch (textHAlign) {
             case 'left':
-                baseX = lvX + vDX * 0.15;
-                baseY = lvY + vDY * 0.15;
+                baseX = lvX;
+                baseY = lvY;
                 break;
             case 'right':
-                baseX = lvX + vDX * 0.85;
-                baseY = lvY + vDY * 0.85;
+                baseX = rvX;
+                baseY = rvY;
                 break;
             default:
                 baseX = midX;
