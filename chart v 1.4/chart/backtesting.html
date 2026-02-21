@@ -94,14 +94,13 @@
         .form-grid { display: flex; flex-direction: column; }
         .form-card { padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .form-card:last-of-type { border-bottom: none; }
-        .form-card-full { /* same */ }
         .card-icon { display: none; }
         .form-card h3 { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.28); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; }
         .form-group { margin-bottom: 12px; }
         .form-group:last-child { margin-bottom: 0; }
         .form-group label { display: block; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.4); margin-bottom: 5px; }
         .form-group label .required { color: #f87171; }
-        .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="datetime-local"], .form-group input[type="date"], .form-group textarea, .form-group select { width: 100%; padding: 8px 11px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #e2e8f0; font-size: 13px; font-family: inherit; transition: border-color 0.15s, background 0.15s; -webkit-appearance: none; }
+        .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="datetime-local"], .form-group input[type="date"], .form-group textarea, .form-group select { width: 100%; padding: 8px 11px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #e2e8f0; font-size: 13px; font-family: inherit; transition: border-color 0.15s, background 0.15s; -webkit-appearance: none; appearance: none; }
         .form-group input::placeholder, .form-group textarea::placeholder { color: rgba(255,255,255,0.18); }
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: rgba(59,130,246,0.4); background: rgba(255,255,255,0.06); }
         .form-group textarea { resize: vertical; min-height: 60px; }
@@ -137,10 +136,11 @@
         input:checked + .toggle-slider:before { transform: translateX(16px); background: #fff; }
         .market-checkbox { width: 14px; height: 14px; cursor: pointer; accent-color: #3b82f6; }
         .warning-box { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 10px 12px; color: #fbbf24; font-size: 12px; }
+        .info-tooltip { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: rgba(255,255,255,0.08); border-radius: 50%; font-size: 10px; color: rgba(255,255,255,0.35); cursor: help; vertical-align: middle; margin-left: 3px; }
         .info-icon-container { position: relative; display: inline-flex; align-items: center; cursor: help; }
         .info-icon { color: rgba(255,255,255,0.22); transition: all 0.15s; }
         .info-icon-container:hover .info-icon { color: #60a5fa; }
-        .info-tooltip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.95); background: rgba(10,10,20,0.98); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: normal; width: 280px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); opacity: 0; visibility: hidden; transition: all 0.2s; pointer-events: none; z-index: 1000; }
+        .info-icon-container .info-tooltip { display: block; width: 280px; height: auto; background: rgba(10,10,20,0.98); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: normal; box-shadow: 0 8px 24px rgba(0,0,0,0.5); opacity: 0; visibility: hidden; transition: all 0.2s; pointer-events: none; z-index: 1000; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.95); }
         .info-icon-container:hover .info-tooltip { opacity: 1; visibility: visible; transform: translateX(-50%) scale(1); }
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
         .modal-overlay.active { display: flex; }
