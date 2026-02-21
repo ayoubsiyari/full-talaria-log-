@@ -377,7 +377,7 @@ class ParallelChannelTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: midX,
                 y: midY - 10,
-                anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
+                anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
                 fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
@@ -999,7 +999,7 @@ class RegressionTrendTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: midX,
                 y: midY - 10,
-                anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
+                anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
                 fontFamily: this.style.fontFamily || 'Roboto, sans-serif',

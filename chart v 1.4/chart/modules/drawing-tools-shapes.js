@@ -1291,7 +1291,7 @@ class ArrowTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + (this.style.textOffsetX || 0),
                 y: this._splitInfo.textY + (this.style.textOffsetY || 0),
-                anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
+                anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
                 fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
@@ -1346,7 +1346,7 @@ class ArrowTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
             y: baseY + (this.style.textOffsetY || 0),
-            anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textHAlign || this.style.textAlign || 'center'] || 'middle',
+            anchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || 14,
             fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
