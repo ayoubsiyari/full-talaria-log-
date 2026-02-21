@@ -57,7 +57,7 @@
                       <div class="form-grid">
                         <!-- General Card -->
                         <div class="form-card form-card-full">
-                            <h3><span class="card-icon card-icon-blue">📋</span> General</h3>
+                            <h3>General</h3>
                             <div class="form-group">
                                 <label>Project Name <span class="required">*</span></label>
                                 <input type="text" id="projectName" placeholder="Project Name" required>
@@ -67,8 +67,8 @@
                                 <div class="helper-text" style="margin-bottom: 8px;">Select one or more files to backtest. You can switch between them on the chart.</div>
                                 
                                 <!-- Selected Files Tags -->
-                                <div id="selectedFilesContainer" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; min-height: 32px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08);">
-                                    <span style="color: #64748b; font-size: 13px;" id="noFilesText">No files selected</span>
+                                <div id="selectedFilesContainer" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; padding: 6px 8px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                                    <span style="color: rgba(255,255,255,0.22); font-size: 12px;" id="noFilesText">No files selected</span>
                                 </div>
                                 
                                 <!-- File Selection Dropdown -->
@@ -80,7 +80,7 @@
                                                 <polyline points="6 9 12 15 18 9"></polyline>
                                             </svg>
                                         </button>
-                                        <div id="fileDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: rgba(11,11,22,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.5); backdrop-filter: blur(20px);">
+                                        <div id="fileDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #0a0a14; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-top: 4px; max-height: 180px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
                                             <div id="fileList" style="padding: 8px;">
                                                 <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
                                             </div>
@@ -98,7 +98,7 @@
                                 <!-- Hidden input to store selected files -->
                                 <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
                                 
-                                <div style="margin-top: 10px; padding: 8px 12px; background: #0f1a35; border: 1px solid #1e2f5e; border-radius: 8px; font-size: 12px; color: #64748b;">
+                                <div style="margin-top: 8px; padding: 6px 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; font-size: 11px; color: rgba(255,255,255,0.25);">
                                     Datasets are managed by the admin. Contact your administrator to add or update datasets.
                                 </div>
                             </div>
@@ -111,7 +111,7 @@
 
                         <!-- Testing Period Card -->
                         <div class="form-card">
-                            <h3><span class="card-icon card-icon-green">📅</span> Testing Period</h3>
+                            <h3>Testing Period</h3>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Start Date</label>
@@ -126,7 +126,7 @@
 
                         <!-- Profit & Loss Card -->
                         <div class="form-card">
-                            <h3><span class="card-icon card-icon-pink">💰</span> Profit & Loss</h3>
+                            <h3>Profit & Loss</h3>
                             <div class="form-group">
                                 <label>Profit Target</label>
                                 <div class="input-with-unit">
@@ -173,7 +173,7 @@
 
                         <!-- Timezone Card -->
                         <div class="form-card">
-                            <h3><span class="card-icon card-icon-cyan">🌍</span> Timezone</h3>
+                            <h3>Timezone</h3>
                             
                             <div class="form-group">
                                 <label>Select Timezone</label>
@@ -215,7 +215,7 @@
                         
                         <!-- Leverage & Format Card -->
                         <div class="form-card">
-                            <h3><span class="card-icon card-icon-amber">⚡</span> Leverage & Format</h3>
+                            <h3>Leverage & Format</h3>
                             <div class="form-group">
                                 <label>Bars Time Format</label>
                                 <select id="barsTimeFormat">
@@ -250,11 +250,11 @@
 
                         <!-- Protection Settings Card -->
                         <div class="form-card form-card-full">
-                            <h3><span class="card-icon card-icon-purple">🛡️</span> Protection Settings</h3>
+                            <h3>Protection Settings</h3>
                             <div class="form-group">
                                 <label>Load Protection Preset <span class="info-tooltip" title="Use protection presets created in the Place Order panel">?</span></label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <select id="protectionPresetSelect" name="protectionPreset" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; font-size: 13px; color: #fff; cursor: pointer;">
+                                    <select id="protectionPresetSelect" name="protectionPreset" style="flex: 1;">
                                         <option value="">-- None (Configure in chart) --</option>
                                     </select>
                                     <button type="button" class="btn" onclick="openCreatePresetModal()" style="padding: 8px 12px; min-width: auto; white-space: nowrap;" title="Create new protection preset">
@@ -530,7 +530,7 @@
             hiddenInput.value = JSON.stringify(selectedFilesArray);
             
             if (selectedFilesArray.length === 0) {
-                container.innerHTML = '<span style="color: #64748b; font-size: 13px;" id="noFilesText">No files selected</span>';
+                container.innerHTML = '<span style="color: rgba(255,255,255,0.22); font-size: 12px;" id="noFilesText">No files selected</span>';
                 return;
             }
             
