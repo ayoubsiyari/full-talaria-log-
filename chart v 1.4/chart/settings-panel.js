@@ -1,4 +1,4 @@
-/* settings-panel.js  Part 1: core infrastructure + General + Chart */
+/* settings-panel.js – two-column layout, nav items switch content directly */
 window._spPanels = {};
 
 (function () {
@@ -16,49 +16,70 @@ window._spPanels = {};
     window._spH = { ch:ch, apply:apply, set:set, sess:sess, saveSess:saveSess, gLoad:gLoad, gSave:gSave };
 
     /* ── DOM setup ── */
-    var btn     = document.getElementById('settingsBtn');
-    var panel   = document.getElementById('settingsPanel');
-    var closeB  = document.getElementById('settingsPanelClose');
-    var menuEl  = panel && panel.querySelector('.settings-panel-menu');
-    var contEl  = document.getElementById('settingsPanelContent');
-    if (!panel) return;
+    var btn    = document.getElementById('settingsBtn');
+    var panel  = document.getElementById('settingsPanel');
+    var closeB = document.getElementById('settingsPanelClose');
+    var contEl = document.getElementById('settingsPanelContent');
+    var titleEl= document.getElementById('spContentTitle');
+    if (!panel) { console.warn('[SP] settingsPanel not found'); return; }
 
-    function openPanel()  { panel.classList.add('open');    showRoot(); }
+    var currentType = 'general';
+
+    function openPanel() {
+        panel.classList.add('open');
+        loadSection(currentType);
+    }
     function closePanel() { panel.classList.remove('open'); }
-    function showRoot()   { if(menuEl) menuEl.style.display=''; if(contEl){contEl.style.display='none'; contEl.innerHTML='';} }
 
-    /* expose global toggle so onclick fallback works */
     window._spToggle = function() { panel.classList.contains('open') ? closePanel() : openPanel(); };
-    window._spShowRoot = showRoot;
 
-    if (btn)    btn.addEventListener('click',    function(e){ e.stopPropagation(); window._spToggle(); });
-    if (closeB) closeB.addEventListener('click', closePanel);
-    document.addEventListener('click', function(e){ if(panel.classList.contains('open')&&!panel.contains(e.target)&&!(btn&&btn.contains(e.target))) closePanel(); });
+    if (btn)    btn.addEventListener('click', function(e){ e.stopPropagation(); window._spToggle(); });
+    if (closeB) closeB.addEventListener('click', function(e){ e.stopPropagation(); closePanel(); });
+    document.addEventListener('click', function(e){
+        if (panel.classList.contains('open') && !panel.contains(e.target) && !(btn && btn.contains(e.target))) closePanel();
+    });
 
-    panel.querySelectorAll('.settings-menu-item[data-settings]').forEach(function(item){
-        item.style.cursor = 'pointer';
+    /* nav item clicks */
+    panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
         item.addEventListener('click', function(e){
             e.stopPropagation();
-            try{ openSub(this.dataset.settings); }catch(err){ console.error('[SP] openSub error:', err); }
+            var type = this.dataset.settings;
+            panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
+            this.classList.add('active');
+            loadSection(type);
         });
     });
 
-    function openSub(type){
-        if(menuEl) menuEl.style.display='none';
-        if(contEl){
-            contEl.style.cssText = 'display:block !important; padding: 20px 24px; overflow-y:auto; flex:1;';
-            try{ contEl.innerHTML = buildSub(type); }catch(e){ contEl.innerHTML='<p style="color:#f23645;padding:20px;">Error: '+e.message+'</p>'; console.error('[SP] buildSub error:',e); }
+    function loadSection(type) {
+        currentType = type;
+        /* update title */
+        var titles = { general:'General Settings', chart:'Chart Settings', project:'Project Settings', leverage:'Leverage', symbol:'Symbol Properties', commissions:'Commissions' };
+        if (titleEl) titleEl.textContent = titles[type] || type;
+        /* set nav active */
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){
+            n.classList.toggle('active', n.dataset.settings === type);
+        });
+        if (!contEl) return;
+        try {
+            var p = window._spPanels[type];
+            contEl.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon.</p>';
+        } catch(e) {
+            contEl.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
+            console.error('[SP] build error:', e);
         }
-        var back=document.getElementById('spBack');
-        if(back) back.addEventListener('click', showRoot);
-        try{ wireSub(type); }catch(e){ console.error('[SP] wireSub error:',e); }
+        try {
+            var p2 = window._spPanels[type];
+            if (p2 && p2.wire) p2.wire();
+        } catch(e) { console.error('[SP] wire error:', e); }
     }
 
+    /* keep openSub alias for any legacy calls */
+    function openSub(type){ loadSection(type); }
+
     /* ── HTML builders (exposed for Part 2) ── */
-    var BSV='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>';
     var CSV='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
 
-    function hdr(t){ return '<div style="display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:8px;"><button id="spBack" style="background:none;border:none;cursor:pointer;color:#787b86;padding:5px;border-radius:5px;display:flex;" onmouseover="this.style.background=\'rgba(255,255,255,0.07)\'" onmouseout="this.style.background=\'none\'">'+BSV+'</button><span style="color:#e0e3ea;font-size:15px;font-weight:600;">'+t+'</span></div>'; }
+    function hdr(t){ return ''; /* title now lives in sp-content-header */ }
     function sec(c){ return '<div class="settings-section">'+c+'</div>'; }
     function st(t) { return '<div class="settings-section-title" style="margin-top:4px;">'+t+'</div>'; }
     function chk(label,id,on){ return '<div class="settings-checkbox-item'+(on?' checked':'')+'" id="ck_'+id+'" style="cursor:pointer;"><div class="settings-checkbox">'+CSV+'</div><span class="settings-checkbox-label">'+label+'</span></div>'; }
