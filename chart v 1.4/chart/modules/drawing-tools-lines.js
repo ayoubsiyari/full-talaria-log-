@@ -755,26 +755,20 @@ class HorizontalLineTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let textX, split1X, split2X;
-            
+            // t-based positioning with clamping
+            const hl_lineLen = xRange[1] - xRange[0];
+            const halfGapT_hl = hl_lineLen > 0 ? (gapSize / 2) / hl_lineLen : 0;
+            let t_hl = 0.5;
             switch (textHAlign) {
-                case 'left':
-                    // Position text near left edge
-                    textX = xRange[0] + (gapSize / 2) + edgePadding;
-                    split1X = xRange[0];
-                    split2X = textX + (gapSize / 2);
-                    break;
-                case 'right':
-                    // Position text near right edge
-                    textX = xRange[1] - (gapSize / 2) - edgePadding;
-                    split1X = textX - (gapSize / 2);
-                    split2X = textX + (gapSize / 2);
-                    break;
-                default: // center
-                    textX = (xRange[0] + xRange[1]) / 2;
-                    split1X = textX - (gapSize / 2);
-                    split2X = textX + (gapSize / 2);
+                case 'left':  t_hl = 0.05; break;
+                case 'right': t_hl = 0.95; break;
+                default:      t_hl = 0.5;
             }
+            const split1T_hl = Math.max(0, t_hl - halfGapT_hl);
+            const split2T_hl = Math.min(1, t_hl + halfGapT_hl);
+            const textX = xRange[0] + hl_lineLen * t_hl;
+            const split1X = xRange[0] + hl_lineLen * split1T_hl;
+            const split2X = xRange[0] + hl_lineLen * split2T_hl;
             
             this._splitInfo = {
                 textX: textX,
@@ -998,10 +992,10 @@ class HorizontalLineTool extends BaseDrawing {
 
         switch (textHAlign) {
             case 'left':
-                baseX = xRange[0] + edgePadding;
+                baseX = xRange[0] + (xRange[1] - xRange[0]) * 0.05;
                 break;
             case 'right':
-                baseX = xRange[1] - edgePadding;
+                baseX = xRange[0] + (xRange[1] - xRange[0]) * 0.95;
                 break;
             default:
                 baseX = (xRange[0] + xRange[1]) / 2;
@@ -1530,32 +1524,24 @@ class RayTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            const edgePadding = TEXT_EDGE_PADDING;
-            const edgeOffsetX = Math.cos(lineAngle) * edgePadding;
-            const edgeOffsetY = Math.sin(lineAngle) * edgePadding;
-
-            let textX, textY;
+            // Use visual left/right (by x-coord) and t-based positioning with clamping
+            const rayLineLength = Math.sqrt((extendedX - x1Screen) ** 2 + (extendedY - y1Screen) ** 2);
+            const halfGapT_ray = rayLineLength > 0 ? (gapSize / 2) / rayLineLength : 0;
+            const p1IsLeft_ray = x1Screen <= extendedX;
+            let t_ray = 0.5;
             switch (textHAlign) {
-                case 'left':
-                    textX = x1Screen + edgeOffsetX;
-                    textY = y1Screen + edgeOffsetY;
-                    break;
-                case 'right':
-                    textX = extendedX - edgeOffsetX;
-                    textY = extendedY - edgeOffsetY;
-                    break;
-                default:
-                    textX = (x1Screen + extendedX) / 2;
-                    textY = (y1Screen + extendedY) / 2;
+                case 'left':  t_ray = p1IsLeft_ray ? 0.05 : 0.95; break;
+                case 'right': t_ray = p1IsLeft_ray ? 0.95 : 0.05; break;
+                default:      t_ray = 0.5;
             }
-
-            const dx_gap = Math.cos(lineAngle) * (gapSize / 2);
-            const dy_gap = Math.sin(lineAngle) * (gapSize / 2);
-
-            const split1X = textX - dx_gap;
-            const split1Y = textY - dy_gap;
-            const split2X = textX + dx_gap;
-            const split2Y = textY + dy_gap;
+            const split1T_ray = Math.max(0, t_ray - halfGapT_ray);
+            const split2T_ray = Math.min(1, t_ray + halfGapT_ray);
+            const textX = x1Screen + (extendedX - x1Screen) * t_ray;
+            const textY = y1Screen + (extendedY - y1Screen) * t_ray;
+            const split1X = x1Screen + (extendedX - x1Screen) * split1T_ray;
+            const split1Y = y1Screen + (extendedY - y1Screen) * split1T_ray;
+            const split2X = x1Screen + (extendedX - x1Screen) * split2T_ray;
+            const split2Y = y1Screen + (extendedY - y1Screen) * split2T_ray;
 
             this._splitInfo = {
                 textX: textX,
@@ -1711,47 +1697,27 @@ class RayTool extends BaseDrawing {
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        const edgePadding = EXTENDED_LINE_TEXT_EDGE_PADDING;
-        const edgeOffsetX = Math.cos(originalAngleRad) * edgePadding;
-        const edgeOffsetY = Math.sin(originalAngleRad) * edgePadding;
-
+        // Visual left/right by x-coord, 5%/95% along the line
+        const rl_lvX = x1 <= x2 ? x1 : x2;
+        const rl_lvY = x1 <= x2 ? y1 : y2;
+        const rl_rvX = x1 <= x2 ? x2 : x1;
+        const rl_rvY = x1 <= x2 ? y2 : y1;
+        const rl_vDX = rl_rvX - rl_lvX;
+        const rl_vDY = rl_rvY - rl_lvY;
         let baseX, baseY;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + edgeOffsetX;
-                baseY = y1 + edgeOffsetY;
+                baseX = rl_lvX + rl_vDX * 0.05;
+                baseY = rl_lvY + rl_vDY * 0.05;
                 break;
             case 'right':
-                baseX = x2 - edgeOffsetX;
-                baseY = y2 - edgeOffsetY;
+                baseX = rl_lvX + rl_vDX * 0.95;
+                baseY = rl_lvY + rl_vDY * 0.95;
                 break;
             default:
                 baseX = (x1 + x2) / 2;
                 baseY = (y1 + y2) / 2;
         }
-
-        const textLines = label.split('\n');
-        const tempText = this.group.append('text')
-            .attr('font-size', fontSize)
-            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
-            .attr('font-weight', this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight)
-            .attr('font-style', this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle)
-            .attr('text-anchor', 'middle')
-            .style('visibility', 'hidden')
-            .style('pointer-events', 'none');
-
-        let maxTextWidth = 0;
-        for (const line of textLines) {
-            tempText.text(line && line.length ? line : ' ');
-            const bbox = tempText.node().getBBox();
-            maxTextWidth = Math.max(maxTextWidth, bbox.width || 0);
-        }
-        tempText.remove();
-
-        const leftEdgeX = Math.min(x1, x2);
-        const rightEdgeX = Math.max(x1, x2);
-        const halfTextWidth = maxTextWidth / 2;
-        baseX = Math.max(leftEdgeX + halfTextWidth, Math.min(rightEdgeX - halfTextWidth, baseX));
 
         const perpX = -Math.sin(originalAngleRad);
         const perpY = Math.cos(originalAngleRad);
@@ -1893,26 +1859,20 @@ class HorizontalRayTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let textX, split1X, split2X;
-            
+            // t-based positioning with clamping (x = ray start, chartRightX = ray end)
+            const hr_lineLen = chartRightX - x;
+            const halfGapT_hr = hr_lineLen > 0 ? (gapSize / 2) / hr_lineLen : 0;
+            let t_hr = 0.5;
             switch (textHAlign) {
-                case 'left':
-                    // Position text near start of ray
-                    textX = x + (gapSize / 2) + edgePadding;
-                    split1X = x;
-                    split2X = textX + (gapSize / 2);
-                    break;
-                case 'right':
-                    // Position text near end of ray
-                    textX = chartRightX - (gapSize / 2) - edgePadding;
-                    split1X = textX - (gapSize / 2);
-                    split2X = textX + (gapSize / 2);
-                    break;
-                default: // center
-                    textX = (x + chartRightX) / 2;
-                    split1X = textX - (gapSize / 2);
-                    split2X = textX + (gapSize / 2);
+                case 'left':  t_hr = 0.05; break;
+                case 'right': t_hr = 0.95; break;
+                default:      t_hr = 0.5;
             }
+            const split1T_hr = Math.max(0, t_hr - halfGapT_hr);
+            const split2T_hr = Math.min(1, t_hr + halfGapT_hr);
+            const textX = x + hr_lineLen * t_hr;
+            const split1X = x + hr_lineLen * split1T_hr;
+            const split2X = x + hr_lineLen * split2T_hr;
             
             this._splitInfo = {
                 textX: textX,
@@ -2155,10 +2115,10 @@ class HorizontalRayTool extends BaseDrawing {
 
         switch (textHAlign) {
             case 'left':
-                baseX = startX + edgePadding;
+                baseX = startX + (chartRightX - startX) * 0.05;
                 break;
             case 'right':
-                baseX = chartRightX - edgePadding;
+                baseX = startX + (chartRightX - startX) * 0.95;
                 break;
             default:
                 baseX = (startX + chartRightX) / 2;
@@ -2326,49 +2286,34 @@ class ExtendedLineTool extends BaseDrawing {
 
             // Calculate text position based on alignment
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            const edgePadding = EXTENDED_LINE_TEXT_EDGE_PADDING;
-            const edgeOffsetX = Math.cos(lineAngle) * edgePadding;
-            const edgeOffsetY = Math.sin(lineAngle) * edgePadding;
-
-            let textX, textY;
-            switch (textHAlign) {
-                case 'left':
-                    textX = leftX + edgeOffsetX;
-                    textY = leftY + edgeOffsetY;
-                    break;
-                case 'right':
-                    textX = rightX - edgeOffsetX;
-                    textY = rightY - edgeOffsetY;
-                    break;
-                default:
-                    textX = (leftX + rightX) / 2;
-                    textY = (leftY + rightY) / 2;
-            }
-
-            const leftEdgeX = Math.min(leftX, rightX);
-            const rightEdgeX = Math.max(leftX, rightX);
-            const halfTextWidth = textWidth / 2;
-            textX = Math.max(leftEdgeX + halfTextWidth, Math.min(rightEdgeX - halfTextWidth, textX));
-            
             // Check if text will be flipped
             const isFlipped = angleDeg > 90 || angleDeg < -90;
             if (isFlipped) {
                 angleDeg += 180;
             }
-            
+
             // Calculate gap size
             const padding = 10;
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
-            
-            // Calculate split points along the line
-            const dx_gap = Math.cos(lineAngle) * (gapSize / 2);
-            const dy_gap = Math.sin(lineAngle) * (gapSize / 2);
-            
-            const split1X = textX - dx_gap;
-            const split1Y = textY - dy_gap;
-            const split2X = textX + dx_gap;
-            const split2Y = textY + dy_gap;
+
+            // t-based positioning with clamping (leftX/rightX already visual L/R)
+            const el_lineLength = Math.sqrt((rightX - leftX) ** 2 + (rightY - leftY) ** 2);
+            const halfGapT_el = el_lineLength > 0 ? (gapSize / 2) / el_lineLength : 0;
+            let t_el = 0.5;
+            switch (textHAlign) {
+                case 'left':  t_el = 0.05; break;
+                case 'right': t_el = 0.95; break;
+                default:      t_el = 0.5;
+            }
+            const split1T_el = Math.max(0, t_el - halfGapT_el);
+            const split2T_el = Math.min(1, t_el + halfGapT_el);
+            const textX = leftX + (rightX - leftX) * t_el;
+            const textY = leftY + (rightY - leftY) * t_el;
+            const split1X = leftX + (rightX - leftX) * split1T_el;
+            const split1Y = leftY + (rightY - leftY) * split1T_el;
+            const split2X = leftX + (rightX - leftX) * split2T_el;
+            const split2Y = leftY + (rightY - leftY) * split2T_el;
             
             this._splitInfo = {
                 textX: textX,
@@ -2506,64 +2451,32 @@ class ExtendedLineTool extends BaseDrawing {
             angle += 180;
         }
         
-        // Settings (matching horizontal line values)
+        // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET; // Distance from line for top/bottom
+        const verticalOffset = LINE_LABEL_OFFSET;
         
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-        
-        // Calculate position along the visible line based on horizontal alignment
-        // For infinite lines, using a percent (e.g. 0.95) can still be far from the edge
-        // on long/angled lines. Use endpoint + TEXT_EDGE_PADDING along the line direction.
-        const edgePadding = EXTENDED_LINE_TEXT_EDGE_PADDING;
-        const edgeOffsetX = Math.cos(originalAngleRad) * edgePadding;
-        const edgeOffsetY = Math.sin(originalAngleRad) * edgePadding;
 
+        // x1/y1 = leftX/leftY, x2/y2 = rightX/rightY (already visual L/R from render)
         let baseX, baseY;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + edgeOffsetX;
-                baseY = y1 + edgeOffsetY;
+                baseX = x1 + (x2 - x1) * 0.05;
+                baseY = y1 + (y2 - y1) * 0.05;
                 break;
             case 'right':
-                baseX = x2 - edgeOffsetX;
-                baseY = y2 - edgeOffsetY;
+                baseX = x1 + (x2 - x1) * 0.95;
+                baseY = y1 + (y2 - y1) * 0.95;
                 break;
             default:
                 baseX = (x1 + x2) / 2;
                 baseY = (y1 + y2) / 2;
         }
 
-        const textLines = label.split('\n');
-        const tempText = this.group.append('text')
-            .attr('font-size', fontSize)
-            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
-            .attr('font-weight', this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight)
-            .attr('font-style', this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle)
-            .attr('text-anchor', 'middle')
-            .style('visibility', 'hidden')
-            .style('pointer-events', 'none');
-
-        let maxTextWidth = 0;
-        for (const line of textLines) {
-            tempText.text(line && line.length ? line : ' ');
-            const bbox = tempText.node().getBBox();
-            maxTextWidth = Math.max(maxTextWidth, bbox.width || 0);
-        }
-        tempText.remove();
-
-        const leftEdgeX = Math.min(x1, x2);
-        const rightEdgeX = Math.max(x1, x2);
-        const halfTextWidth = maxTextWidth / 2;
-        baseX = Math.max(leftEdgeX + halfTextWidth, Math.min(rightEdgeX - halfTextWidth, baseX));
-
-        // Calculate perpendicular direction
         const perpX = -Math.sin(originalAngleRad);
         const perpY = Math.cos(originalAngleRad);
         
-        // Apply vertical alignment offsets
-        // When flipped, invert the perpendicular direction
         const signUp = perpY <= 0 ? 1 : -1;
         if (textVAlign === 'top') {
             baseX += perpX * verticalOffset * signUp;
@@ -2572,7 +2485,6 @@ class ExtendedLineTool extends BaseDrawing {
             baseX -= perpX * verticalOffset * signUp;
             baseY -= perpY * verticalOffset * signUp;
         }
-        // middle = on the line, no offset
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)

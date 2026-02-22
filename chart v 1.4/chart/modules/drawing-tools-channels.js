@@ -1441,10 +1441,13 @@ class FlatTopBottomTool extends BaseDrawing {
         const ux = dx / len;
         const uy = dy / len;
 
-        // Place the label along the top segment (like the screenshot)
-        const t = 0.35;
-        const baseX = x1 + dx * t;
-        const baseY = y1 + dy * t;
+        // H-align: 5%/50%/95% along the top segment
+        const ch_p1IsLeft = x1 <= x2;
+        const ch_t = textHAlign === 'left' ? (ch_p1IsLeft ? 0.05 : 0.95)
+                   : textHAlign === 'right' ? (ch_p1IsLeft ? 0.95 : 0.05)
+                   : 0.5;
+        const baseX = x1 + dx * ch_t;
+        const baseY = y1 + dy * ch_t;
 
         // Perpendicular offset away from the filled area
         let nx = -uy;
@@ -1479,7 +1482,7 @@ class FlatTopBottomTool extends BaseDrawing {
         const labelY = shapeCenterY + ny * baseOffset + (this.style.textOffsetY || 0);
         const rotation = Math.atan2(dy, dx) * 180 / Math.PI;
 
-        const anchor = textHAlign === 'left' ? 'start' : (textHAlign === 'right' ? 'end' : 'middle');
+        const anchor = 'middle';
 
         if (typeof appendTextLabel === 'function') {
             appendTextLabel(this.group, label, {
@@ -1884,7 +1887,7 @@ class DisjointChannelTool extends BaseDrawing {
             }
         }
 
-        const anchor = textHAlign === 'left' ? 'start' : (textHAlign === 'right' ? 'end' : 'middle');
+        const anchor = 'middle';
 
         // Placement + rotation rules:
         // - top/bottom: rotated along the selected segment

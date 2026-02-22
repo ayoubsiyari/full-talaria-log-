@@ -1073,28 +1073,24 @@ class ArrowTool extends BaseDrawing {
             const padding = 10;
             const gapSize = textWidth + (padding * 2);
 
+            // visual left/right + t-based with clamping
+            const sh_p1IsLeft = origX1 <= origX2;
             let t = 0.5;
             switch (textHAlign) {
-                case 'left':
-                    t = 0.05;
-                    break;
-                case 'right':
-                    t = 0.95;
-                    break;
-                default:
-                    t = 0.5;
+                case 'left':  t = sh_p1IsLeft ? 0.05 : 0.95; break;
+                case 'right': t = sh_p1IsLeft ? 0.95 : 0.05; break;
+                default:      t = 0.5;
             }
-
+            const sh_lineLen = Math.sqrt((origX2-origX1)**2 + (origY2-origY1)**2);
+            const sh_halfGapT = sh_lineLen > 0 ? (gapSize/2) / sh_lineLen : 0;
+            const sh_t1 = Math.max(0, t - sh_halfGapT);
+            const sh_t2 = Math.min(1, t + sh_halfGapT);
             const textX = origX1 + (origX2 - origX1) * t;
             const textY = origY1 + (origY2 - origY1) * t;
-
-            const splitDx = Math.cos(lineAngle) * (gapSize / 2);
-            const splitDy = Math.sin(lineAngle) * (gapSize / 2);
-
-            const split1X = textX - splitDx;
-            const split1Y = textY - splitDy;
-            const split2X = textX + splitDx;
-            const split2Y = textY + splitDy;
+            const split1X = origX1 + (origX2 - origX1) * sh_t1;
+            const split1Y = origY1 + (origY2 - origY1) * sh_t1;
+            const split2X = origX1 + (origX2 - origX1) * sh_t2;
+            const split2Y = origY1 + (origY2 - origY1) * sh_t2;
 
             this._splitInfo = {
                 textX: textX,
@@ -1322,25 +1318,27 @@ class ArrowTool extends BaseDrawing {
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
+        const sh_mP1IsLeft = origX1 <= origX2;
         let t = 0.5;
         switch (textHAlign) {
-            case 'left':
-                t = 0.05;
-                break;
-            case 'right':
-                t = 0.95;
-                break;
-            default:
-                t = 0.5;
+            case 'left':  t = sh_mP1IsLeft ? 0.05 : 0.95; break;
+            case 'right': t = sh_mP1IsLeft ? 0.95 : 0.05; break;
+            default:      t = 0.5;
         }
         
+        const angleRad_sh = Math.atan2(origY2 - origY1, origX2 - origX1);
         let baseX = origX1 + (origX2 - origX1) * t;
         let baseY = origY1 + (origY2 - origY1) * t;
 
+        const perpX_sh = -Math.sin(angleRad_sh);
+        const perpY_sh = Math.cos(angleRad_sh);
+        const signUp_sh = perpY_sh <= 0 ? 1 : -1;
         if (textVAlign === 'top') {
-            baseY -= verticalOffset;
+            baseX += perpX_sh * verticalOffset * signUp_sh;
+            baseY += perpY_sh * verticalOffset * signUp_sh;
         } else if (textVAlign === 'bottom') {
-            baseY += verticalOffset;
+            baseX -= perpX_sh * verticalOffset * signUp_sh;
+            baseY -= perpY_sh * verticalOffset * signUp_sh;
         }
 
         appendTextLabel(this.group, label, {
