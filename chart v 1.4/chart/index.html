@@ -2479,6 +2479,21 @@
             margin-bottom: 12px;
         }
 
+        .tv-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0;
+        }
+        .tv-row .settings-checkbox-item {
+            flex: 1;
+            margin: 0;
+        }
+        .tv-row .settings-input-row {
+            margin: 0;
+            flex-shrink: 0;
+        }
+
         .settings-radio-group {
             display: flex;
             flex-direction: column;
@@ -15138,29 +15153,25 @@
                 <span>Settings</span>
             </div>
             <nav class="sp-nav">
-                <div class="sp-nav-item active" data-settings="general" onclick="event.stopPropagation();window._spLoad&&window._spLoad('general',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    <span>General</span>
-                </div>
-                <div class="sp-nav-item" data-settings="chart" onclick="event.stopPropagation();window._spLoad&&window._spLoad('chart',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                    <span>Chart</span>
-                </div>
-                <div class="sp-nav-item" data-settings="project" onclick="event.stopPropagation();window._spLoad&&window._spLoad('project',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                    <span>Project</span>
-                </div>
-                <div class="sp-nav-item" data-settings="leverage" onclick="event.stopPropagation();window._spLoad&&window._spLoad('leverage',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-                    <span>Leverage</span>
-                </div>
-                <div class="sp-nav-item" data-settings="symbol" onclick="event.stopPropagation();window._spLoad&&window._spLoad('symbol',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                <div class="sp-nav-item active" data-settings="symbol" onclick="event.stopPropagation();window._spLoad&&window._spLoad('symbol',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M18 3H6a1 1 0 0 0-1 1v4l-2 4 2 4v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4l2-4-2-4V4a1 1 0 0 0-1-1z"/></svg>
                     <span>Symbol</span>
                 </div>
-                <div class="sp-nav-item" data-settings="commissions" onclick="event.stopPropagation();window._spLoad&&window._spLoad('commissions',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-                    <span>Commissions</span>
+                <div class="sp-nav-item" data-settings="statusline" onclick="event.stopPropagation();window._spLoad&&window._spLoad('statusline',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                    <span>Status line</span>
+                </div>
+                <div class="sp-nav-item" data-settings="scales" onclick="event.stopPropagation();window._spLoad&&window._spLoad('scales',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Scales and lines</span>
+                </div>
+                <div class="sp-nav-item" data-settings="canvas" onclick="event.stopPropagation();window._spLoad&&window._spLoad('canvas',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                    <span>Canvas</span>
+                </div>
+                <div class="sp-nav-item" data-settings="trading" onclick="event.stopPropagation();window._spLoad&&window._spLoad('trading',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                    <span>Trading</span>
                 </div>
             </nav>
         </div>
@@ -24541,137 +24552,109 @@ function wNum(id,fn){ var el=document.getElementById('nr_'+id); if(el)el.addEven
 function wRng(id,fn){ var el=document.getElementById('rng_'+id),rv=document.getElementById('rv_'+id); if(el)el.addEventListener('input',function(){if(rv)rv.textContent=this.value;fn(parseFloat(this.value));}); }
 function wClr(id,fn){ var sw=document.getElementById('sw_'+id),cp=document.getElementById('cp_'+id); if(!sw||!cp)return; sw.addEventListener('click',function(){cp.style.pointerEvents='auto';cp.click();setTimeout(function(){cp.style.pointerEvents='none';},100);}); cp.addEventListener('input',function(){sw.style.background=this.value;}); cp.addEventListener('change',function(){sw.style.background=this.value;fn(this.value);}); }
 
-/* ── GENERAL ── */
-P['general']={title:'General Settings',build:function(){
-    var c=ch(), cs=(c&&c.chartSettings)||{}, g=gLoad();
-    var bgColor = cs.backgroundColor||g.backgroundColor||'#050028';
-    var gridColor = cs.gridColor||g.gridColor||'rgba(42,46,57,0.6)';
-    var crossColor = cs.crosshairColor||g.crosshairColor||'rgba(120,123,134,0.4)';
-    var scaleColor = cs.scaleTextColor||g.scaleTextColor||'#d1d4dc';
-    return sec(st('Appearance')+
-        clr('Background color','gen_bg',bgColor)+
-        sel('Price scale mode','gen_priceMode',[['linear','Linear'],['log','Logarithmic'],['percent','Percentage']],(c&&c.priceScale&&c.priceScale.mode)||'linear')+
-        sel('Scale font size','gen_scaleFont',[['10','10px'],['11','11px'],['12','12px'],['14','14px'],['16','16px']],String(cs.scaleFontSize||g.scaleFontSize||'12'))+
-        clr('Scale text color','gen_scaleText',scaleColor))+
-    sec(st('Grid')+
-        chk('Show grid lines','gen_showGrid',cs.showGrid!==false)+
-        clr('Grid color','gen_gridClr',gridColor))+
-    sec(st('Crosshair')+
-        chk('Show crosshair','gen_showCross',cs.showCrosshair!==false)+
-        clr('Crosshair color','gen_crossClr',crossColor)+
-        chk('Magnet crosshair to OHLC','gen_magnet',g.magnetCrosshair!==false))+
-    sec(st('Chart Overlays')+
-        chk('Show order history on chart','gen_orderHist',g.showOrderHistory!==false)+
-        chk('Show open orders on chart','gen_openOrders',g.showOpenOrders!==false))+
-    sec(st('Navigation')+
-        rng('Scroll speed','gen_scroll',g.scrollSpeed||5,1,10)+
-        irow('Right margin (bars)','gen_rightOff',(c&&c.timeScale&&c.timeScale.rightOffset)||50,0,200));
-},wire:function(){
-    wClr('gen_bg',function(v){gSave({backgroundColor:v});set('backgroundColor',v);var c=ch();if(c&&c.canvas)c.canvas.style.backgroundColor=v;});
-    wSel('gen_priceMode',function(v){var c=ch();if(!c)return;c.priceScale=c.priceScale||{};c.priceScale.mode=v;set('priceScaleMode',v);});
-    wSel('gen_scaleFont',function(v){var n=parseInt(v);gSave({scaleFontSize:n});set('scaleFontSize',n);set('scaleAxisFontSize',n);});
-    wClr('gen_scaleText',function(v){gSave({scaleTextColor:v});set('scaleTextColor',v);set('symbolTextColor',v);});
-    wChk('gen_showGrid',function(v){gSave({showGrid:v});set('showGrid',v);});
-    wClr('gen_gridClr',function(v){gSave({gridColor:v});set('gridColor',v);});
-    wChk('gen_showCross',function(v){gSave({showCrosshair:v});set('showCrosshair',v);});
-    wClr('gen_crossClr',function(v){gSave({crosshairColor:v});set('crosshairColor',v);});
-    wChk('gen_magnet',function(v){gSave({magnetCrosshair:v});var c=ch();if(!c)return;c.magnetMode=v?'on':'off';set('magnetToOHLC',v);});
-    wChk('gen_orderHist',function(v){gSave({showOrderHistory:v});set('showOrderHistory',v);});
-    wChk('gen_openOrders',function(v){gSave({showOpenOrders:v});set('showOpenOrders',v);});
-    wRng('gen_scroll',function(v){gSave({scrollSpeed:v});var c=ch();if(!c)return;if(c.movement)c.movement.sensitivity=v/5;});
-    wNum('gen_rightOff',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;apply();});
-}};
-
-/* ── CHART ── */
-P['chart']={title:'Chart Settings',build:function(){
-    var c=ch(),cs=(c&&c.chartSettings)||{};
-    var ro=(c&&c.timeScale)?(c.timeScale.rightOffset||50):50;
-    var pm=(c&&c.priceScale)?(c.priceScale.mode||'linear'):'linear';
-    return sec(st('Style')+sel('Chart type','chartType',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],cs.chartType||'candles')+sel('Price scale','priceMode',[['linear','Normal (linear)'],['log','Logarithmic'],['percent','Percentage']],pm))+
-    sec(st('Canvas')+clr('Background','bg',cs.backgroundColor||'#050028'))+
-    sec(st('Grid')+chk('Show grid lines','showGrid',cs.showGrid!==false)+clr('Grid color','gridClr',cs.gridColor||'rgba(42,46,57,0.6)'))+
-    sec(st('Crosshair')+chk('Show crosshair','showCross',cs.showCrosshair!==false)+clr('Crosshair color','crossClr',cs.crosshairColor||'rgba(120,123,134,0.4)'))+
-    sec(st('Candle Colors')+clr('Body – up','bodyUp',cs.bodyUpColor||'#089981')+clr('Body – down','bodyDown',cs.bodyDownColor||'#f23645')+clr('Wick – up','wickUp',cs.wickUpColor||'#089981')+clr('Wick – down','wickDown',cs.wickDownColor||'#f23645'))+
-    sec(st('Candle Visibility')+chk('Show body','showBody',cs.showCandleBody!==false)+chk('Show borders','showBdr',cs.showCandleBorders!==false)+chk('Show wicks','showWick',cs.showCandleWick!==false))+
-    sec(st('Volume')+clr('Volume up','volUp',cs.volumeUpColor||'rgba(8,153,129,0.5)')+clr('Volume down','volDown',cs.volumeDownColor||'rgba(242,54,69,0.5)'))+
-    sec(st('Scale')+clr('Scale text color','scaleText',cs.scaleTextColor||'#ffffff')+irow('Right offset (px)','rightOff',ro,0,500));
-},wire:function(){
-    wSel('chartType',function(v){set('chartType',v);});
-    wSel('priceMode',function(v){var c=ch();if(!c)return;c.priceScale=c.priceScale||{};c.priceScale.mode=v;set('priceScaleMode',v);});
-    wClr('bg',function(v){var c=ch();if(!c)return;c.chartSettings.backgroundColor=v;if(c.canvas)c.canvas.style.backgroundColor=v;apply();});
-    wChk('showGrid',function(v){set('showGrid',v);});
-    wClr('gridClr',function(v){set('gridColor',v);});
-    wChk('showCross',function(v){set('showCrosshair',v);});
-    wClr('crossClr',function(v){set('crosshairColor',v);});
-    wClr('bodyUp',function(v){set('bodyUpColor',v);set('candleUpColor',v);});
-    wClr('bodyDown',function(v){set('bodyDownColor',v);set('candleDownColor',v);});
-    wClr('wickUp',function(v){set('wickUpColor',v);});
-    wClr('wickDown',function(v){set('wickDownColor',v);});
-    wChk('showBody',function(v){set('showCandleBody',v);});
-    wChk('showBdr',function(v){set('showCandleBorders',v);});
-    wChk('showWick',function(v){set('showCandleWick',v);});
-    wClr('volUp',function(v){set('volumeUpColor',v);});
-    wClr('volDown',function(v){set('volumeDownColor',v);});
-    wClr('scaleText',function(v){set('scaleTextColor',v);set('symbolTextColor',v);});
-    wNum('rightOff',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;apply();});
-}};
-
-/* ── PROJECT ── */
-P['project']={title:'Project Settings',build:function(){
-    var s=sess();
-    var TZ=[['(UTC-12) Etc/GMT+12','UTC-12'],['(UTC-11) Etc/GMT+11','UTC-11'],['(UTC-10) Honolulu','UTC-10'],['(UTC-8) Los Angeles','UTC-8'],['(UTC-7) Denver','UTC-7'],['(UTC-6) Chicago','UTC-6'],['(UTC-5) Toronto','UTC-5'],['(UTC-4) Halifax','UTC-4'],['(UTC-3) Buenos Aires','UTC-3'],['(UTC+0) London','UTC+0'],['(UTC+1) Amsterdam','UTC+1'],['(UTC+2) Cairo','UTC+2'],['(UTC+3) Moscow','UTC+3'],['(UTC+4) Dubai','UTC+4'],['(UTC+5:30) Mumbai','UTC+5:30'],['(UTC+7) Bangkok','UTC+7'],['(UTC+8) Shanghai','UTC+8'],['(UTC+9) Tokyo','UTC+9'],['(UTC+10) Sydney','UTC+10'],['(UTC+12) Auckland','UTC+12']];
-    return sec(st('Timezone')+sel('Timezone','tz',TZ,s.timezone||'(UTC-5) Toronto')+sel('Daylight saving','dst',[['none','None DST'],['us','US DST'],['eu','EU DST'],['auto','Auto']],s.daylightSaving||'none'))+
-    sec(st('Session')+sel('Session close time','closeTime',[['never','Never'],['00:00','00:00'],['17:00','17:00 (NY Close)'],['21:00','21:00 (London)'],['23:59','23:59']],s.sessionCloseTime||'never'))+
-    sec(st('Account')+irow('Initial balance ($)','balance',s.initialBalance||s.balance||10000,100,10000000,100)+savebtn('saveBalance','Save Balance'));
-},wire:function(){
-    wSel('tz',function(v){var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
-    wSel('dst',function(v){var s=sess();s.daylightSaving=v;saveSess(s);});
-    wSel('closeTime',function(v){var s=sess();s.sessionCloseTime=v;saveSess(s);});
-    var sb=document.getElementById('saveBalance');
-    if(sb)sb.addEventListener('click',function(){var inp=document.getElementById('nr_balance');var val=inp?(parseFloat(inp.value)||10000):10000;var s=sess();s.initialBalance=val;s.balance=val;saveSess(s);document.querySelectorAll('#accountBalance,#currentBalance,.balance-value').forEach(function(el){el.textContent='$'+val.toLocaleString('en-US',{minimumFractionDigits:2});});this.textContent='Saved ✓';this.style.background='#089981';var self=this;setTimeout(function(){self.textContent='Save Balance';self.style.background='#2962ff';},1800);});
-}};
-
-/* ── LEVERAGE ── */
-P['leverage']={title:'Leverage',build:function(){
-    var lev=parseInt(sess().leverage||100,10);
-    return sec(st('Account Leverage')+'<p style="color:#787b86;font-size:12px;line-height:1.5;margin:0 0 14px;">Sets the multiplier for position sizing during backtesting.</p>'+rng('Leverage (1 : x)','lev',lev,1,500)+irow('Enter value','levVal',lev,1,500))+
-    '<div style="display:flex;gap:8px;margin-top:4px;">'+savebtn('saveLev','Save').replace('width:100%','flex:1')+cancelbtn('cancelLev','Cancel').replace('width:100%','flex:1')+'</div>';
-},wire:function(){
-    var rnEl=document.getElementById('rng_lev'),nmEl=document.getElementById('nr_levVal');
-    if(rnEl&&nmEl){rnEl.addEventListener('input',function(){nmEl.value=this.value;document.getElementById('rv_lev').textContent=this.value;});nmEl.addEventListener('change',function(){var v=Math.max(1,Math.min(500,parseInt(this.value)||1));rnEl.value=v;document.getElementById('rv_lev').textContent=v;});}
-    var savB=document.getElementById('saveLev');
-    if(savB)savB.addEventListener('click',function(){var v=parseInt((nmEl?nmEl.value:100))||100;var s=sess();s.leverage=v;saveSess(s);document.querySelectorAll('#challengeLeverage,.leverage-value').forEach(function(el){el.textContent='1:'+v;});this.textContent='Saved ✓';this.style.background='#089981';var self=this;setTimeout(function(){self.textContent='Save';self.style.background='#2962ff';},1800);});
-}};
-
 /* ── SYMBOL ── */
-P['symbol']={title:'Symbol Properties',build:function(){
-    var cs=(ch()&&ch().chartSettings)||{};
-    return sec(st('Symbol Title')+chk('Show symbol title','symTitle',cs.symbolTitle!==false)+sel('Title format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Ticker and description','Ticker + Description']],cs.symbolTitleFormat||'Description')+clr('Title text color','symText',cs.symbolTextColor||'#d1d4dc'))+
-    sec(st('OHLC Data')+chk('Show chart values (OHLC bar)','showVals',cs.showChartValues!==false)+chk('Show bar change % values','showBar',cs.showBarChangeValues!==false))+
-    sec(st('Indicators Legend')+chk('Show indicator titles','indTitles',cs.showIndicatorTitles!==false)+chk('Show indicator arguments','indArgs',cs.showIndicatorArguments!==false)+chk('Show indicator values','indVals',cs.showIndicatorValues!==false)+rng('Legend background opacity','indBgOp',cs.indicatorBackgroundOpacity||50,0,100));
+P['symbol']={title:'Symbol',build:function(){
+    var c=ch(),cs=(c&&c.chartSettings)||{};
+    var bU=cs.bodyUpColor||cs.candleUpColor||'#089981',bD=cs.bodyDownColor||cs.candleDownColor||'#f23645';
+    var brU=cs.borderUpColor||bU,brD=cs.borderDownColor||bD,wU=cs.wickUpColor||bU,wD=cs.wickDownColor||bD;
+    return sec(st('CANDLES')+
+        chk('Color bars based on previous close','colorPrev',!!cs.colorBarsOnPrevClose)+
+        '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div>'+
+        '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div>'+
+        '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div>')+
+    sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],cs.chartType||'candles'))+
+    sec(st('DATA')+
+        sel('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
+        sel('Timezone','sym_tz',[['UTC','UTC'],['America/New_York','(UTC-5) New York'],['America/Chicago','(UTC-6) Chicago'],['America/Los_Angeles','(UTC-8) Los Angeles'],['Europe/London','(UTC+0) London'],['Europe/Paris','(UTC+1) Paris'],['Europe/Moscow','(UTC+3) Moscow'],['Asia/Dubai','(UTC+4) Dubai'],['Asia/Tokyo','(UTC+9) Tokyo'],['Asia/Shanghai','(UTC+8) Shanghai'],['Australia/Sydney','(UTC+10) Sydney']],cs.timezone||sess().timezone||'America/New_York'));
 },wire:function(){
-    wChk('symTitle',function(v){set('symbolTitle',v);});wSel('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symText',function(v){set('symbolTextColor',v);});
+    wChk('colorPrev',function(v){set('colorBarsOnPrevClose',v);});
+    wChk('showBody',function(v){set('showCandleBody',v);});wChk('showBdr',function(v){set('showCandleBorders',v);});wChk('showWick',function(v){set('showCandleWick',v);});
+    wClr('bodyUp',function(v){set('bodyUpColor',v);set('candleUpColor',v);});wClr('bodyDn',function(v){set('bodyDownColor',v);set('candleDownColor',v);});
+    wClr('bdrUp',function(v){set('borderUpColor',v);});wClr('bdrDn',function(v){set('borderDownColor',v);});
+    wClr('wkUp',function(v){set('wickUpColor',v);});wClr('wkDn',function(v){set('wickDownColor',v);});
+    wSel('sym_type',function(v){set('chartType',v);});
+    wSel('sym_prec',function(v){set('pricePrecision',v);});
+    wSel('sym_tz',function(v){set('timezone',v);var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
+}};
+
+/* ── STATUS LINE ── */
+P['statusline']={title:'Status line',build:function(){
+    var cs=(ch()&&ch().chartSettings)||{};
+    return sec(st('OHLC BAR')+chk('Show OHLC values on chart','showVals',cs.showChartValues!==false)+chk('Show bar change % values','showBar',cs.showBarChangeValues!==false))+
+    sec(st('INDICATOR LEGEND')+chk('Show indicator titles','indTitles',cs.showIndicatorTitles!==false)+chk('Show indicator arguments','indArgs',cs.showIndicatorArguments!==false)+chk('Show indicator values','indVals',cs.showIndicatorValues!==false))+
+    sec(st('SYMBOL LABEL')+chk('Show symbol name','symTitle',cs.symbolTitle!==false)+sel('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc'));
+},wire:function(){
     wChk('showVals',function(v){set('showChartValues',v);});wChk('showBar',function(v){set('showBarChangeValues',v);});
     wChk('indTitles',function(v){set('showIndicatorTitles',v);});wChk('indArgs',function(v){set('showIndicatorArguments',v);});wChk('indVals',function(v){set('showIndicatorValues',v);});
-    wRng('indBgOp',function(v){set('indicatorBackgroundOpacity',v);});
+    wChk('symTitle',function(v){set('symbolTitle',v);});wSel('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symClr',function(v){set('symbolTextColor',v);});
 }};
 
-/* ── COMMISSIONS ── */
-P['commissions']={title:'Commissions',build:function(){
-    var s=sess(),inclSwap=!!s.includeSwap;
-    return sec(st('Trading Costs')+irow('Average spread (pips)','spread',s.averageSpread||0,0,100,0.1)+irow('Slippage (pips)','slip',s.slippage||0,0,100,0.1))+
-    sec(st('Commission')+sel('Commission type','commType',[['none','None'],['per_trade','Per trade (fixed)'],['per_lot','Per lot'],['percent','% of trade value']],s.commissionType||'none')+irow('Commission value','commVal',s.commissionValue||0,0,1000,0.01))+
-    sec(st('Overnight Swap')+chk('Include swap costs','inclSwap',inclSwap)+'<div id="swapFields"'+(inclSwap?'':' style="display:none;"')+'>'+irow('Swap long (per night)','swapLong',s.swapLong||0,-1000,1000,0.001)+irow('Swap short (per night)','swapShort',s.swapShort||0,-1000,1000,0.001)+'</div>')+
-    '<div style="display:flex;gap:8px;margin-top:4px;">'+savebtn('saveComm','Save').replace('width:100%','flex:1')+cancelbtn('cancelComm','Cancel').replace('width:100%','flex:1')+'</div>';
+/* ── SCALES AND LINES ── */
+P['scales']={title:'Scales and lines',build:function(){
+    var c=ch(),cs=(c&&c.chartSettings)||{};
+    var pm=(c&&c.priceScale&&c.priceScale.mode)||cs.priceScaleMode||'linear';
+    return sec(st('PRICE SCALE')+sel('Mode','sc_mode',[['linear','Normal (linear)'],['log','Logarithmic'],['percent','Percentage']],pm)+chk('Show price line','sc_priceLine',cs.showPriceLine!==false)+clr('Price line color','sc_priceClr',cs.priceLineColor||'#2962ff'))+
+    sec(st('GRID')+chk('Show grid lines','sc_grid',cs.showGrid!==false)+clr('Grid color','sc_gridClr',cs.gridColor||'rgba(42,46,57,0.6)'))+
+    sec(st('CROSSHAIR')+chk('Show crosshair','sc_cross',cs.showCrosshair!==false)+clr('Crosshair color','sc_crossClr',cs.crosshairColor||'rgba(120,123,134,0.6)')+chk('Magnet to OHLC','sc_magnet',!!(gLoad().magnetCrosshair)))+
+    sec(st('SCALE LABELS')+clr('Text color','sc_textClr',cs.scaleTextColor||'#d1d4dc')+sel('Font size','sc_font',[['10','10px'],['11','11px'],['12','12px'],['14','14px'],['16','16px']],String(cs.scaleFontSize||'12'))+irow('Right margin (bars)','sc_rOff',(c&&c.timeScale&&c.timeScale.rightOffset)||50,0,300));
 },wire:function(){
-    wChk('inclSwap',function(v){var sf=document.getElementById('swapFields');if(sf)sf.style.display=v?'':'none';});
-    var saveC=document.getElementById('saveComm');
-    if(saveC)saveC.addEventListener('click',function(){var s=sess();function nv(id){var el=document.getElementById('nr_'+id);return el?parseFloat(el.value)||0:0;}function sv(id){var el=document.getElementById('sl_'+id);return el?el.value:'none';}function cv(id){return document.getElementById('ck_'+id)&&document.getElementById('ck_'+id).classList.contains('checked');}s.averageSpread=nv('spread');s.slippage=nv('slip');s.commissionType=sv('commType');s.commissionValue=nv('commVal');s.includeSwap=cv('inclSwap');s.swapLong=nv('swapLong');s.swapShort=nv('swapShort');saveSess(s);this.textContent='Saved ✓';this.style.background='#089981';var self=this;setTimeout(function(){self.textContent='Save';self.style.background='#2962ff';},1800);});
+    wSel('sc_mode',function(v){var c=ch();if(!c)return;c.priceScale=c.priceScale||{};c.priceScale.mode=v;set('priceScaleMode',v);});
+    wChk('sc_priceLine',function(v){set('showPriceLine',v);});wClr('sc_priceClr',function(v){set('priceLineColor',v);});
+    wChk('sc_grid',function(v){set('showGrid',v);});wClr('sc_gridClr',function(v){set('gridColor',v);});
+    wChk('sc_cross',function(v){set('showCrosshair',v);});wClr('sc_crossClr',function(v){set('crosshairColor',v);});
+    wChk('sc_magnet',function(v){gSave({magnetCrosshair:v});var c=ch();if(!c)return;c.magnetMode=v?'on':'off';});
+    wClr('sc_textClr',function(v){set('scaleTextColor',v);});
+    wSel('sc_font',function(v){var n=parseInt(v);set('scaleFontSize',n);set('scaleAxisFontSize',n);});
+    wNum('sc_rOff',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;apply();});
 }};
+
+/* ── CANVAS ── */
+P['canvas']={title:'Canvas',build:function(){
+    var cs=(ch()&&ch().chartSettings)||{};
+    return sec(st('BACKGROUND')+clr('Background color','cv_bg',cs.backgroundColor||'#050028'))+
+    sec(st('VOLUME')+chk('Show volume','cv_vol',cs.showVolume!==false)+'<div class="tv-row">'+clr('Volume up','cv_volUp',cs.volumeUpColor||'rgba(8,153,129,0.5)')+clr('Volume down','cv_volDn',cs.volumeDownColor||'rgba(242,54,69,0.5)')+'</div>');
+},wire:function(){
+    wClr('cv_bg',function(v){set('backgroundColor',v);var c=ch();if(c&&c.canvas)c.canvas.style.backgroundColor=v;});
+    wChk('cv_vol',function(v){set('showVolume',v);});
+    wClr('cv_volUp',function(v){set('volumeUpColor',v);});wClr('cv_volDn',function(v){set('volumeDownColor',v);});
+}};
+
+/* ── TRADING ── */
+P['trading']={title:'Trading',build:function(){
+    var g=gLoad(),s=sess(),mode=g.orderPlacementMode||'instant',lev=parseInt(s.leverage||100,10);
+    return sec(st('ORDER PLACEMENT')+
+        '<div class="settings-radio-group">'+
+        '<div class="settings-radio-item'+(mode==='instant'?' selected':'')+'" id="rad_instant" style="cursor:pointer;"><div class="settings-radio-circle"></div><div class="settings-radio-content"><h4>Instant</h4><p>Orders placed immediately at market price</p></div></div>'+
+        '<div class="settings-radio-item'+(mode==='confirmation'?' selected':'')+'" id="rad_confirm" style="cursor:pointer;"><div class="settings-radio-circle"></div><div class="settings-radio-content"><h4>Confirmation</h4><p>Show a modal before each order is placed</p></div></div>'+
+        '</div>')+
+    sec(st('CHART OVERLAYS')+chk('Show order history on chart','tr_orderHist',g.showOrderHistory!==false)+chk('Show open orders on chart','tr_openOrders',g.showOpenOrders!==false))+
+    sec(st('LEVERAGE')+rng('Leverage (1:x)','tr_lev',lev,1,500)+irow('Enter value','tr_levVal',lev,1,500))+
+    sec(st('COMMISSIONS')+irow('Average spread (pips)','tr_spread',s.averageSpread||0,0,100,0.1)+irow('Slippage (pips)','tr_slip',s.slippage||0,0,100,0.1)+sel('Commission type','tr_commType',[['none','None'],['per_trade','Per trade (fixed)'],['per_lot','Per lot'],['percent','% of value']],s.commissionType||'none')+irow('Commission value','tr_commVal',s.commissionValue||0,0,1000,0.01))+
+    savebtn('tr_save','Save Trading Settings');
+},wire:function(){
+    ['instant','confirm'].forEach(function(v){var el=document.getElementById('rad_'+v);if(!el)return;el.addEventListener('click',function(){document.querySelectorAll('.settings-radio-item').forEach(function(r){r.classList.remove('selected');});this.classList.add('selected');var m=v==='instant'?'instant':'confirmation';gSave({orderPlacementMode:m});window.orderPlacementMode=m;var c=ch();if(c&&c.orderManager)c.orderManager.placementMode=m;});});
+    wChk('tr_orderHist',function(v){gSave({showOrderHistory:v});set('showOrderHistory',v);});
+    wChk('tr_openOrders',function(v){gSave({showOpenOrders:v});set('showOpenOrders',v);});
+    var rnEl=document.getElementById('rng_tr_lev'),nmEl=document.getElementById('nr_tr_levVal');
+    if(rnEl&&nmEl){rnEl.addEventListener('input',function(){nmEl.value=this.value;var rv=document.getElementById('rv_tr_lev');if(rv)rv.textContent=this.value;});nmEl.addEventListener('change',function(){var v=Math.max(1,Math.min(500,parseInt(this.value)||1));rnEl.value=v;var rv=document.getElementById('rv_tr_lev');if(rv)rv.textContent=v;});}
+    var sb=document.getElementById('tr_save');
+    if(sb)sb.addEventListener('click',function(){
+        var lv=parseInt((nmEl?nmEl.value:100))||100;
+        function nv(id){var el=document.getElementById('nr_'+id);return el?parseFloat(el.value)||0:0;}
+        function sv(id){var el=document.getElementById('sl_'+id);return el?el.value:'none';}
+        var s=sess();s.leverage=lv;s.averageSpread=nv('tr_spread');s.slippage=nv('tr_slip');s.commissionType=sv('tr_commType');s.commissionValue=nv('tr_commVal');saveSess(s);
+        gSave({});
+        document.querySelectorAll('#challengeLeverage,.leverage-value').forEach(function(el){el.textContent='1:'+lv;});
+        this.textContent='Saved ✓';this.style.background='#089981';var self=this;setTimeout(function(){self.textContent='Save Trading Settings';self.style.background='#2962ff';},1800);
+    });
+}};
+
+/* ── aliases for any legacy callers ── */
+P['general']=P['symbol']; P['chart']=P['scales']; P['project']=P['trading']; P['leverage']=P['trading']; P['commissions']=P['trading'];
 
 /* ── DOM wiring ── */
 function loadSection(type){
-    var titles={general:'General Settings',chart:'Chart Settings',project:'Project Settings',leverage:'Leverage',symbol:'Symbol Properties',commissions:'Commissions'};
+    var titles={symbol:'Symbol',statusline:'Status line',scales:'Scales and lines',canvas:'Canvas',trading:'Trading',general:'Symbol',chart:'Scales and lines',project:'Trading',leverage:'Trading',commissions:'Trading'};
     var titleEl=document.getElementById('spContentTitle');
     if(titleEl)titleEl.textContent=titles[type]||type;
     document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.settings===type);});
@@ -24685,7 +24668,7 @@ window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEa
 
 var panel=null,btn=null,closeB=null;
 
-function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('general');}
+function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('symbol');}
 function closePanel(){if(!panel)return;panel.classList.remove('open');}
 window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};
 window._spLoad=function(type,el){if(!panel)panel=document.getElementById('settingsPanel');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
