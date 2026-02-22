@@ -27,7 +27,11 @@ window._spPanels = {};
     function closePanel() { panel.classList.remove('open'); }
     function showRoot()   { if(menuEl) menuEl.style.display=''; if(contEl){contEl.style.display='none'; contEl.innerHTML='';} }
 
-    if (btn)    btn.addEventListener('click',    function(e){ e.stopPropagation(); panel.classList.contains('open')?closePanel():openPanel(); });
+    /* expose global toggle so onclick fallback works */
+    window._spToggle = function() { panel.classList.contains('open') ? closePanel() : openPanel(); };
+    window._spShowRoot = showRoot;
+
+    if (btn)    btn.addEventListener('click',    function(e){ e.stopPropagation(); window._spToggle(); });
     if (closeB) closeB.addEventListener('click', closePanel);
     document.addEventListener('click', function(e){ if(panel.classList.contains('open')&&!panel.contains(e.target)&&!(btn&&btn.contains(e.target))) closePanel(); });
 
@@ -226,9 +230,9 @@ window._spPanels = {};
     } // end init
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', function(){ try{ init(); }catch(e){ console.error('[SP] init error:', e); } });
     } else {
-        init();
+        try{ init(); }catch(e){ console.error('[SP] init error:', e); }
     }
 
 })();
