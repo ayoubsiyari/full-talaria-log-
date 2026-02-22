@@ -24543,28 +24543,43 @@ function wClr(id,fn){ var sw=document.getElementById('sw_'+id),cp=document.getEl
 
 /* ── GENERAL ── */
 P['general']={title:'General Settings',build:function(){
-    var g=gLoad(),mode=g.orderPlacementMode||'instant';
-    return sec(st('Order Placement')+
-        '<div class="settings-radio-group">'+
-        '<div class="settings-radio-item'+(mode==='instant'?' selected':'')+'" id="rad_instant" style="cursor:pointer;"><div class="settings-radio-circle"></div><div class="settings-radio-content"><h4>Instant</h4><p>Orders placed immediately at market price</p></div></div>'+
-        '<div class="settings-radio-item'+(mode==='confirmation'?' selected':'')+'" id="rad_confirm" style="cursor:pointer;"><div class="settings-radio-circle"></div><div class="settings-radio-content"><h4>Confirmation</h4><p>Show a modal before each order is placed</p></div></div>'+
-        '</div>')+
-    sec(st('Chart Overlays')+chk('Show order history on chart','orderHist',g.showOrderHistory!==false)+chk('Show open orders on chart','openOrders',g.showOpenOrders!==false))+
-    sec(st('Sound')+chk('Play sound on order execution','playSound',g.playSound!==false)+rng('Volume','vol',g.volume!==undefined?g.volume:100,0,100))+
-    sec(st('Navigation')+rng('Scroll speed','scroll',g.scrollSpeed||5,1,10))+
-    sec(st('Drawing & Interaction')+irow('Mouse line sensitivity','mouseSens',g.mouseSensitivity||10,1,50)+irow('Magnet bar sensitivity','magSens',g.magnetSensitivity||5,1,20)+chk('Magnet crosshair to OHLC','magnet',g.magnetCrosshair!==false))+
-    sec(st('Scale')+sel('Font size','scaleFont',[['10','10px'],['11','11px'],['12','12px'],['14','14px'],['16','16px']],String(g.scaleFontSize||'12')));
+    var c=ch(), cs=(c&&c.chartSettings)||{}, g=gLoad();
+    var bgColor = cs.backgroundColor||g.backgroundColor||'#050028';
+    var gridColor = cs.gridColor||g.gridColor||'rgba(42,46,57,0.6)';
+    var crossColor = cs.crosshairColor||g.crosshairColor||'rgba(120,123,134,0.4)';
+    var scaleColor = cs.scaleTextColor||g.scaleTextColor||'#d1d4dc';
+    return sec(st('Appearance')+
+        clr('Background color','gen_bg',bgColor)+
+        sel('Price scale mode','gen_priceMode',[['linear','Linear'],['log','Logarithmic'],['percent','Percentage']],(c&&c.priceScale&&c.priceScale.mode)||'linear')+
+        sel('Scale font size','gen_scaleFont',[['10','10px'],['11','11px'],['12','12px'],['14','14px'],['16','16px']],String(cs.scaleFontSize||g.scaleFontSize||'12'))+
+        clr('Scale text color','gen_scaleText',scaleColor))+
+    sec(st('Grid')+
+        chk('Show grid lines','gen_showGrid',cs.showGrid!==false)+
+        clr('Grid color','gen_gridClr',gridColor))+
+    sec(st('Crosshair')+
+        chk('Show crosshair','gen_showCross',cs.showCrosshair!==false)+
+        clr('Crosshair color','gen_crossClr',crossColor)+
+        chk('Magnet crosshair to OHLC','gen_magnet',g.magnetCrosshair!==false))+
+    sec(st('Chart Overlays')+
+        chk('Show order history on chart','gen_orderHist',g.showOrderHistory!==false)+
+        chk('Show open orders on chart','gen_openOrders',g.showOpenOrders!==false))+
+    sec(st('Navigation')+
+        rng('Scroll speed','gen_scroll',g.scrollSpeed||5,1,10)+
+        irow('Right margin (bars)','gen_rightOff',(c&&c.timeScale&&c.timeScale.rightOffset)||50,0,200));
 },wire:function(){
-    ['instant','confirm'].forEach(function(v){ var el=document.getElementById('rad_'+v); if(!el)return; el.addEventListener('click',function(){ ['instant','confirm'].forEach(function(x){var r=document.getElementById('rad_'+x);if(r)r.classList.remove('selected');}); this.classList.add('selected'); var mode=v==='instant'?'instant':'confirmation'; gSave({orderPlacementMode:mode}); window.orderPlacementMode=mode; var c=ch(); if(c&&c.orderManager)c.orderManager.placementMode=mode; }); });
-    wChk('orderHist',function(v){gSave({showOrderHistory:v});set('showOrderHistory',v);});
-    wChk('openOrders',function(v){gSave({showOpenOrders:v});set('showOpenOrders',v);});
-    wChk('playSound',function(v){gSave({playSound:v});window.playSoundEnabled=v;});
-    wRng('vol',function(v){gSave({volume:v});window.soundVolume=v/100;});
-    wRng('scroll',function(v){gSave({scrollSpeed:v});var c=ch();if(!c)return;c.chartSettings=c.chartSettings||{};c.chartSettings.scrollSpeed=v;if(c.movement)c.movement.sensitivity=v/5;});
-    wNum('mouseSens',function(v){gSave({mouseSensitivity:v});var c=ch();if(!c)return;c.chartSettings=c.chartSettings||{};if(c.drawingManager)c.drawingManager.hitDistance=v;});
-    wNum('magSens',function(v){gSave({magnetSensitivity:v});var c=ch();if(!c)return;c.chartSettings=c.chartSettings||{};if(c.drawingManager)c.drawingManager.magnetDistance=v;});
-    wChk('magnet',function(v){gSave({magnetCrosshair:v});var c=ch();if(!c)return;c.magnetMode=v?'on':'off';});
-    wSel('scaleFont',function(v){var n=parseInt(v);gSave({scaleFontSize:n});set('scaleFontSize',n);set('scaleAxisFontSize',n);});
+    wClr('gen_bg',function(v){gSave({backgroundColor:v});set('backgroundColor',v);var c=ch();if(c&&c.canvas)c.canvas.style.backgroundColor=v;});
+    wSel('gen_priceMode',function(v){var c=ch();if(!c)return;c.priceScale=c.priceScale||{};c.priceScale.mode=v;set('priceScaleMode',v);});
+    wSel('gen_scaleFont',function(v){var n=parseInt(v);gSave({scaleFontSize:n});set('scaleFontSize',n);set('scaleAxisFontSize',n);});
+    wClr('gen_scaleText',function(v){gSave({scaleTextColor:v});set('scaleTextColor',v);set('symbolTextColor',v);});
+    wChk('gen_showGrid',function(v){gSave({showGrid:v});set('showGrid',v);});
+    wClr('gen_gridClr',function(v){gSave({gridColor:v});set('gridColor',v);});
+    wChk('gen_showCross',function(v){gSave({showCrosshair:v});set('showCrosshair',v);});
+    wClr('gen_crossClr',function(v){gSave({crosshairColor:v});set('crosshairColor',v);});
+    wChk('gen_magnet',function(v){gSave({magnetCrosshair:v});var c=ch();if(!c)return;c.magnetMode=v?'on':'off';set('magnetToOHLC',v);});
+    wChk('gen_orderHist',function(v){gSave({showOrderHistory:v});set('showOrderHistory',v);});
+    wChk('gen_openOrders',function(v){gSave({showOpenOrders:v});set('showOpenOrders',v);});
+    wRng('gen_scroll',function(v){gSave({scrollSpeed:v});var c=ch();if(!c)return;if(c.movement)c.movement.sensitivity=v/5;});
+    wNum('gen_rightOff',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;apply();});
 }};
 
 /* ── CHART ── */
