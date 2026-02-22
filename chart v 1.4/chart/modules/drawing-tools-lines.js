@@ -282,15 +282,19 @@ class TrendlineTool extends BaseDrawing {
             const textX = origX1 + (origX2 - origX1) * t;
             const textY = origY1 + (origY2 - origY1) * t;
             
-            // Calculate direction vector along the line
-            const dx = Math.cos(lineAngle) * (gapSize / 2);
-            const dy = Math.sin(lineAngle) * (gapSize / 2);
-            
+            // Clamp split t-values so the gap never extends past the endpoints
+            const lineLength = Math.sqrt(
+                (origX2 - origX1) ** 2 + (origY2 - origY1) ** 2
+            );
+            const halfGapT = lineLength > 0 ? (gapSize / 2) / lineLength : 0;
+            const split1T = Math.max(0, t - halfGapT);
+            const split2T = Math.min(1, t + halfGapT);
+
             // Calculate split points - these define where the line segments end/start
-            const split1X = textX - dx;
-            const split1Y = textY - dy;
-            const split2X = textX + dx;
-            const split2Y = textY + dy;
+            const split1X = origX1 + (origX2 - origX1) * split1T;
+            const split1Y = origY1 + (origY2 - origY1) * split1T;
+            const split2X = origX1 + (origX2 - origX1) * split2T;
+            const split2Y = origY1 + (origY2 - origY1) * split2T;
             
             // Store split info for text rendering to use
             this._splitInfo = {
