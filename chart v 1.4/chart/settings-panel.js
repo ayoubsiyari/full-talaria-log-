@@ -57,20 +57,22 @@ window._spPanels = {};
     });
 
     function loadSection(type) {
+        console.log('[SP] loadSection:', type, '| panel registered:', !!window._spPanels[type], '| contEl:', !!contEl);
         currentType = type;
-        /* update title */
         var titles = { general:'General Settings', chart:'Chart Settings', project:'Project Settings', leverage:'Leverage', symbol:'Symbol Properties', commissions:'Commissions' };
         if (titleEl) titleEl.textContent = titles[type] || type;
-        /* set nav active */
         panel.querySelectorAll('.sp-nav-item').forEach(function(n){
             n.classList.toggle('active', n.dataset.settings === type);
         });
-        if (!contEl) return;
+        /* re-query contEl in case DOM changed */
+        var el = document.getElementById('settingsPanelContent');
+        if (!el) { console.warn('[SP] settingsPanelContent not found'); return; }
         try {
             var p = window._spPanels[type];
-            contEl.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon.</p>';
+            el.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
+            console.log('[SP] content set, length:', el.innerHTML.length);
         } catch(e) {
-            contEl.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
+            el.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
             console.error('[SP] build error:', e);
         }
         try {
