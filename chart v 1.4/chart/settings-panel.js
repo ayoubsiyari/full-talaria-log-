@@ -2,6 +2,7 @@
 window._spPanels = {};
 
 (function () {
+    function init() {
     /* ── core helpers ── */
     function ch()      { return window.chart || window.mainChart || null; }
     function apply()   { var c=ch(); if(!c) return; if(c.applyChartSettings) c.applyChartSettings(); if(c.scheduleRender) c.scheduleRender(); else if(c.render) c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){} }
@@ -220,5 +221,14 @@ window._spPanels = {};
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){setTimeout(applyStartup,800);});
     else setTimeout(applyStartup,800);
     setTimeout(applyStartup,2500);
+
+    console.log('[SP] Settings panel initialized. settingsBtn found:', !!document.getElementById('settingsBtn'));
+    } // end init
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 
 })();
