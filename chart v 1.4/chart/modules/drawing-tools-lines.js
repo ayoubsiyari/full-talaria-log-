@@ -264,13 +264,15 @@ class TrendlineTool extends BaseDrawing {
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
             
             // Calculate text position using interpolation along the line
+            // Use visual left/right (by x-coord), not draw order
+            const p1IsVisualLeft = origX1 <= origX2;
             let t = 0.5; // 0 = point1, 1 = point2, 0.5 = middle
             switch (textHAlign) {
                 case 'left':
-                    t = 0.05; // Near start point (closer to edge)
+                    t = p1IsVisualLeft ? 0.05 : 0.95;
                     break;
                 case 'right':
-                    t = 0.95; // Near end point (closer to edge)
+                    t = p1IsVisualLeft ? 0.95 : 0.05;
                     break;
                 default: // center
                     t = 0.5;
@@ -580,12 +582,12 @@ class TrendlineTool extends BaseDrawing {
         const vDY = rvY - lvY;
         switch (textHAlign) {
             case 'left':
-                baseX = lvX;
-                baseY = lvY;
+                baseX = lvX + vDX * 0.05;
+                baseY = lvY + vDY * 0.05;
                 break;
             case 'right':
-                baseX = rvX;
-                baseY = rvY;
+                baseX = lvX + vDX * 0.95;
+                baseY = lvY + vDY * 0.95;
                 break;
             default:
                 baseX = midX;
