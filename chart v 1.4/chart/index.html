@@ -24709,11 +24709,11 @@ function showIndicatorsMenu() {
                             <div class="settings-section-title">Mouse</div>
                             <div class="settings-input-row">
                                 <span class="settings-input-label">Mouse sensitivity to lines</span>
-                                <input type="number" class="settings-input" value="10" min="1" max="50">
+                                <input type="number" class="settings-input" data-setting="mouseSensitivity" value="10" min="1" max="50">
                             </div>
                             <div class="settings-input-row">
                                 <span class="settings-input-label">Magnet sensitivity to bars</span>
-                                <input type="number" class="settings-input" value="5" min="1" max="20">
+                                <input type="number" class="settings-input" data-setting="magnetSensitivity" value="5" min="1" max="20">
                             </div>
                             <div class="settings-checkbox-item checked" data-setting="magnetCrosshair">
                                 <div class="settings-checkbox">
@@ -24729,15 +24729,7 @@ function showIndicatorsMenu() {
                             <div class="settings-section-title">Scale</div>
                             <div class="settings-input-row">
                                 <span class="settings-input-label">Lock to</span>
-                                <select class="settings-select">
-                                    <option value="right">Right bar</option>
-                                    <option value="left">Left bar</option>
-                                    <option value="none">None</option>
-                                </select>
-                            </div>
-                            <div class="settings-input-row">
-                                <span class="settings-input-label">Multichart lock to</span>
-                                <select class="settings-select">
+                                <select class="settings-select" data-setting="scaleLockTo">
                                     <option value="right">Right bar</option>
                                     <option value="left">Left bar</option>
                                     <option value="none">None</option>
@@ -24745,7 +24737,7 @@ function showIndicatorsMenu() {
                             </div>
                             <div class="settings-input-row">
                                 <span class="settings-input-label">Font size</span>
-                                <select class="settings-select">
+                                <select class="settings-select" data-setting="scaleFontSize">
                                     <option value="10">10</option>
                                     <option value="11">11</option>
                                     <option value="12" selected>12</option>
@@ -24789,16 +24781,74 @@ function showIndicatorsMenu() {
                         scrollSpeedSlider.value = savedGeneral.scrollSpeed;
                     }
                     
+                    // Restore mouse sensitivity / magnet sensitivity / scale font inputs
+                    const mouseSensEl = document.querySelector('.settings-input[data-setting="mouseSensitivity"]');
+                    const magnetSensEl = document.querySelector('.settings-input[data-setting="magnetSensitivity"]');
+                    const scaleFontEl = document.querySelector('.settings-select[data-setting="scaleFontSize"]');
+                    const scaleLockEl = document.querySelector('.settings-select[data-setting="scaleLockTo"]');
+                    if (mouseSensEl && typeof savedGeneral.mouseSensitivity === 'number') mouseSensEl.value = savedGeneral.mouseSensitivity;
+                    if (magnetSensEl && typeof savedGeneral.magnetSensitivity === 'number') magnetSensEl.value = savedGeneral.magnetSensitivity;
+                    if (scaleFontEl && savedGeneral.scaleFontSize) scaleFontEl.value = String(savedGeneral.scaleFontSize);
+                    if (scaleLockEl && savedGeneral.scaleLockTo) scaleLockEl.value = savedGeneral.scaleLockTo;
+
+                    function applyGeneralSettingsToChart(settings) {
+                        const ch = getMainChartInstance();
+                        if (!ch) return;
+                        // Scroll speed (1-10) → wheel zoom/pan multiplier
+                        const spd = typeof settings.scrollSpeed === 'number' ? settings.scrollSpeed : 5;
+                        ch.chartSettings = ch.chartSettings || {};
+                        ch.chartSettings.scrollSpeed = spd;
+                        if (ch.interactionManager) ch.interactionManager.scrollSpeed = spd;
+                        if (window.chart) window.chart.scrollSpeed = spd;
+                        // Scale font size
+                        const fs = parseInt(settings.scaleFontSize, 10) || 12;
+                        ch.chartSettings.scaleFontSize = fs;
+                        ch.chartSettings.scaleAxisFontSize = fs;
+                        // Scale lock
+                        if (settings.scaleLockTo) ch.chartSettings.scaleLockTo = settings.scaleLockTo;
+                        // Magnet crosshair → OHLC snap
+                        const magnet = settings.magnetCrosshair !== false;
+                        ch.chartSettings.magnetToOHLC = magnet;
+                        ch.chartSettings.magnetCrosshair = magnet;
+                        if (ch.drawingManager) ch.drawingManager.magnetToOHLC = magnet;
+                        // Mouse line sensitivity
+                        const lineSens = typeof settings.mouseSensitivity === 'number' ? settings.mouseSensitivity : 10;
+                        ch.chartSettings.lineSensitivity = lineSens;
+                        ch.chartSettings.mouseSensitivity = lineSens;
+                        if (ch.drawingManager) ch.drawingManager.hitDistance = lineSens;
+                        // Magnet bar sensitivity
+                        const magSens = typeof settings.magnetSensitivity === 'number' ? settings.magnetSensitivity : 5;
+                        ch.chartSettings.magnetSensitivity = magSens;
+                        if (ch.drawingManager) ch.drawingManager.magnetDistance = magSens;
+                        // Show/hide order history
+                        ch.chartSettings.showOrderHistory = settings.showOrderHistory !== false;
+                        ch.chartSettings.showOpenOrders = settings.showOpenOrders !== false;
+                        if (ch.orderManager) {
+                            if (typeof ch.orderManager.setOrderHistoryVisible === 'function') ch.orderManager.setOrderHistoryVisible(settings.showOrderHistory !== false);
+                            if (typeof ch.orderManager.setOpenOrdersVisible === 'function') ch.orderManager.setOpenOrdersVisible(settings.showOpenOrders !== false);
+                        }
+                        // Order placement mode
+                        window.orderPlacementMode = settings.orderPlacementMode || 'instant';
+                        if (ch.orderManager) ch.orderManager.placementMode = window.orderPlacementMode;
+                        // Apply and re-render
+                        if (typeof ch.applyChartSettings === 'function') ch.applyChartSettings();
+                        if (typeof ch.scheduleRender === 'function') ch.scheduleRender();
+                        else if (typeof ch.render === 'function') ch.render();
+                    }
+
                     function persistGeneralSettings(patch) {
                         const current = Object.assign({}, savedGeneral, patch);
                         savedGeneral = current;
                         try {
                             localStorage.setItem('talaria_general_settings', JSON.stringify(current));
-                        } catch (e) {
-                        }
+                        } catch (e) {}
                         window.generalSettings = current;
+                        applyGeneralSettingsToChart(current);
                     }
                     
+                    // Apply immediately on open
+                    applyGeneralSettingsToChart(savedGeneral);
+
                     // Add radio item handlers
                     contentSection.querySelectorAll('.settings-radio-item').forEach(item => {
                         item.addEventListener('click', function() {
@@ -24813,9 +24863,7 @@ function showIndicatorsMenu() {
                         item.addEventListener('click', function() {
                             this.classList.toggle('checked');
                             const key = this.dataset.setting;
-                            if (key) {
-                                persistGeneralSettings({ [key]: this.classList.contains('checked') });
-                            }
+                            if (key) persistGeneralSettings({ [key]: this.classList.contains('checked') });
                         });
                     });
                     
@@ -24824,6 +24872,20 @@ function showIndicatorsMenu() {
                     });
                     document.getElementById('scrollSpeedSlider')?.addEventListener('input', function() {
                         persistGeneralSettings({ scrollSpeed: parseInt(this.value, 10) || 1 });
+                    });
+                    // Mouse / magnet sensitivity
+                    document.querySelector('.settings-input[data-setting="mouseSensitivity"]')?.addEventListener('change', function() {
+                        persistGeneralSettings({ mouseSensitivity: parseFloat(this.value) || 10 });
+                    });
+                    document.querySelector('.settings-input[data-setting="magnetSensitivity"]')?.addEventListener('change', function() {
+                        persistGeneralSettings({ magnetSensitivity: parseFloat(this.value) || 5 });
+                    });
+                    // Scale selects
+                    document.querySelector('.settings-select[data-setting="scaleFontSize"]')?.addEventListener('change', function() {
+                        persistGeneralSettings({ scaleFontSize: parseInt(this.value, 10) || 12 });
+                    });
+                    document.querySelector('.settings-select[data-setting="scaleLockTo"]')?.addEventListener('change', function() {
+                        persistGeneralSettings({ scaleLockTo: this.value });
                     });
                 }
                 
@@ -24897,7 +24959,13 @@ function showIndicatorsMenu() {
                         
                         <div class="settings-section">
                             <h3 style="color: #fff; font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">Initial Balance</h3>
-                            <div style="font-size: 24px; font-weight: 600; color: #ffffff;">$10000</div>
+                            <div class="settings-input-row">
+                                <span class="settings-input-label">Balance ($)</span>
+                                <input type="number" class="settings-input" id="initialBalanceInput" min="100" step="100" value="${(getBacktestingSession()?.initialBalance || getBacktestingSession()?.balance || 10000)}">
+                            </div>
+                            <div style="display:flex;gap:12px;margin-top:14px;">
+                                <button id="saveInitialBalance" style="flex:1;padding:10px;background:#2962ff;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Save</button>
+                            </div>
                         </div>
                     `;
              
@@ -24960,6 +25028,21 @@ function showIndicatorsMenu() {
                             saveBacktestingSession(session);
                         }
                     });
+
+                    document.getElementById('saveInitialBalance')?.addEventListener('click', function() {
+                        const val = parseFloat(document.getElementById('initialBalanceInput')?.value || '10000');
+                        const newBal = isNaN(val) || val < 1 ? 10000 : val;
+                        const session = getBacktestingSession() || {};
+                        session.initialBalance = newBal;
+                        session.balance = newBal;
+                        saveBacktestingSession(session);
+                        persistProjectSettings({ initialBalance: newBal });
+                        // Update visible balance displays
+                        const balEls = document.querySelectorAll('[data-balance-display], #accountBalance, #currentBalance, .balance-value');
+                        balEls.forEach(el => { if (el) el.textContent = '$' + newBal.toLocaleString('en-US', { minimumFractionDigits: 2 }); });
+                        this.textContent = 'Saved ✓';
+                        setTimeout(() => { this.textContent = 'Save'; }, 1500);
+                    });
                 }
                 
                 else if (type === 'chart') {
@@ -24983,6 +25066,63 @@ function showIndicatorsMenu() {
                         </div>
                         
                         <div id="chartSettingsCanvasPanel">
+                            <div class="settings-section">
+                                <div class="settings-section-title">Chart Type</div>
+                                <div class="settings-input-row">
+                                    <span class="settings-input-label">Style</span>
+                                    <select id="chartTypeSelect" class="settings-select" style="margin-left:auto;">
+                                        <option value="Candlestick">Candlestick</option>
+                                        <option value="Bar">Bar</option>
+                                        <option value="Line">Line</option>
+                                        <option value="Area">Area</option>
+                                        <option value="Baseline">Baseline</option>
+                                        <option value="Heikin Ashi">Heikin Ashi</option>
+                                        <option value="Hollow Candles">Hollow Candles</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="settings-section">
+                                <div class="settings-section-title">Price Scale</div>
+                                <div class="settings-input-row">
+                                    <span class="settings-input-label">Scale type</span>
+                                    <select id="scaleTypeSelect" class="settings-select" style="margin-left:auto;">
+                                        <option value="normal">Normal</option>
+                                        <option value="log">Logarithmic</option>
+                                        <option value="percent">Percentage</option>
+                                    </select>
+                                </div>
+                                <div class="settings-input-row">
+                                    <span class="settings-input-label">Price axis</span>
+                                    <select id="priceAxisSelect" class="settings-select" style="margin-left:auto;">
+                                        <option value="right">Right</option>
+                                        <option value="left">Left</option>
+                                        <option value="both">Both</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="settings-section">
+                                <div class="settings-section-title">Crosshair</div>
+                                <div class="settings-input-row">
+                                    <span class="settings-input-label">Style</span>
+                                    <select id="crosshairStyleSelect" class="settings-select" style="margin-left:auto;">
+                                        <option value="cross">Cross</option>
+                                        <option value="dot">Dot</option>
+                                        <option value="h-only">Horizontal only</option>
+                                        <option value="v-only">Vertical only</option>
+                                    </select>
+                                </div>
+                                <div class="settings-input-row">
+                                    <span class="settings-input-label">Line type</span>
+                                    <select id="crosshairLineTypeSelect" class="settings-select" style="margin-left:auto;">
+                                        <option value="dashed">Dashed</option>
+                                        <option value="solid">Solid</option>
+                                        <option value="dotted">Dotted</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div class="settings-section">
                                 <div class="settings-section-title">Right offset (%)</div>
                                 <div class="settings-slider-group">
@@ -25164,6 +25304,73 @@ function showIndicatorsMenu() {
                         }
 
                         refreshChartSettingsUI();
+
+                        // ── Restore & wire chart type selector ─────────────
+                        const chartTypeEl = document.getElementById('chartTypeSelect');
+                        if (chartTypeEl) {
+                            const curType = chart.chartSettings?.chartType || chart.chartType || 'Candlestick';
+                            chartTypeEl.value = curType;
+                            chartTypeEl.addEventListener('change', function() {
+                                chart.chartSettings = chart.chartSettings || {};
+                                chart.chartSettings.chartType = this.value;
+                                if (typeof chart.setChartType === 'function') chart.setChartType(this.value);
+                                else if (chart.chartType !== undefined) chart.chartType = this.value;
+                                applyAndSync();
+                            });
+                        }
+
+                        // ── Restore & wire scale type selector ─────────────
+                        const scaleTypeEl = document.getElementById('scaleTypeSelect');
+                        if (scaleTypeEl) {
+                            const curScale = chart.chartSettings?.scaleType || chart.chartSettings?.priceScaleMode || 'normal';
+                            scaleTypeEl.value = curScale;
+                            scaleTypeEl.addEventListener('change', function() {
+                                chart.chartSettings = chart.chartSettings || {};
+                                chart.chartSettings.scaleType = this.value;
+                                chart.chartSettings.priceScaleMode = this.value;
+                                if (typeof chart.setScaleType === 'function') chart.setScaleType(this.value);
+                                applyAndSync();
+                            });
+                        }
+
+                        // ── Restore & wire price axis position ─────────────
+                        const priceAxisEl = document.getElementById('priceAxisSelect');
+                        if (priceAxisEl) {
+                            const curAxis = chart.chartSettings?.priceAxis || 'right';
+                            priceAxisEl.value = curAxis;
+                            priceAxisEl.addEventListener('change', function() {
+                                chart.chartSettings = chart.chartSettings || {};
+                                chart.chartSettings.priceAxis = this.value;
+                                chart.chartSettings.showLeftAxis = (this.value === 'left' || this.value === 'both');
+                                chart.chartSettings.showRightAxis = (this.value === 'right' || this.value === 'both');
+                                applyAndSync();
+                            });
+                        }
+
+                        // ── Restore & wire crosshair style ─────────────────
+                        const crosshairStyleEl = document.getElementById('crosshairStyleSelect');
+                        if (crosshairStyleEl) {
+                            const curCH = chart.chartSettings?.crosshairStyle || 'cross';
+                            crosshairStyleEl.value = curCH;
+                            crosshairStyleEl.addEventListener('change', function() {
+                                chart.chartSettings = chart.chartSettings || {};
+                                chart.chartSettings.crosshairStyle = this.value;
+                                if (typeof chart.setCrosshairStyle === 'function') chart.setCrosshairStyle(this.value);
+                                applyAndSync();
+                            });
+                        }
+
+                        // ── Restore & wire crosshair line type ─────────────
+                        const crosshairLineEl = document.getElementById('crosshairLineTypeSelect');
+                        if (crosshairLineEl) {
+                            const curCHLine = chart.chartSettings?.crosshairLineType || 'dashed';
+                            crosshairLineEl.value = curCHLine;
+                            crosshairLineEl.addEventListener('change', function() {
+                                chart.chartSettings = chart.chartSettings || {};
+                                chart.chartSettings.crosshairLineType = this.value;
+                                applyAndSync();
+                            });
+                        }
 
                         const templateSelectEl = document.getElementById('chartTemplateSelect');
                         if (templateSelectEl) {
@@ -25785,6 +25992,17 @@ function showIndicatorsMenu() {
                         sessionToSave.leverage = newLev;
                         saveBacktestingSession(sessionToSave);
                         updateLeverageDisplays(sessionToSave);
+                        // Apply to order manager / chart
+                        const ch = getChartInstance();
+                        if (ch) {
+                            if (ch.orderManager) {
+                                ch.orderManager.leverage = newLev;
+                                if (typeof ch.orderManager.setLeverage === 'function') ch.orderManager.setLeverage(newLev);
+                                if (typeof ch.orderManager.updateLeverage === 'function') ch.orderManager.updateLeverage(newLev);
+                            }
+                            if (ch.chartSettings) ch.chartSettings.leverage = newLev;
+                        }
+                        window.sessionLeverage = newLev;
                         showMenuRoot();
                     });
                     document.getElementById('cancelLeverageSettings')?.addEventListener('click', showMenuRoot);
@@ -25897,6 +26115,69 @@ function showIndicatorsMenu() {
                     document.getElementById('cancelCommissionsSettings')?.addEventListener('click', showMenuRoot);
                 }
             }
+        })();
+
+        // ── Apply persisted General Settings to the chart on startup ──────────────
+        (function applyStartupGeneralSettings() {
+            function doApply() {
+                let settings = {};
+                try { settings = JSON.parse(localStorage.getItem('talaria_general_settings') || '{}'); } catch(e) {}
+                if (!settings || Object.keys(settings).length === 0) return;
+
+                const ch = window.chart || window.mainChart;
+                if (!ch) return;
+
+                ch.chartSettings = ch.chartSettings || {};
+
+                if (typeof settings.scrollSpeed === 'number') {
+                    ch.chartSettings.scrollSpeed = settings.scrollSpeed;
+                    if (ch.interactionManager) ch.interactionManager.scrollSpeed = settings.scrollSpeed;
+                    ch.scrollSpeed = settings.scrollSpeed;
+                }
+                if (typeof settings.scaleFontSize === 'number' || settings.scaleFontSize) {
+                    const fs = parseInt(settings.scaleFontSize, 10) || 12;
+                    ch.chartSettings.scaleFontSize = fs;
+                    ch.chartSettings.scaleAxisFontSize = fs;
+                }
+                if (settings.scaleLockTo) ch.chartSettings.scaleLockTo = settings.scaleLockTo;
+
+                const magnet = settings.magnetCrosshair !== false;
+                ch.chartSettings.magnetToOHLC = magnet;
+                ch.chartSettings.magnetCrosshair = magnet;
+                if (ch.drawingManager) ch.drawingManager.magnetToOHLC = magnet;
+
+                if (typeof settings.mouseSensitivity === 'number') {
+                    ch.chartSettings.mouseSensitivity = settings.mouseSensitivity;
+                    ch.chartSettings.lineSensitivity = settings.mouseSensitivity;
+                    if (ch.drawingManager) ch.drawingManager.hitDistance = settings.mouseSensitivity;
+                }
+                if (typeof settings.magnetSensitivity === 'number') {
+                    ch.chartSettings.magnetSensitivity = settings.magnetSensitivity;
+                    if (ch.drawingManager) ch.drawingManager.magnetDistance = settings.magnetSensitivity;
+                }
+                ch.chartSettings.showOrderHistory = settings.showOrderHistory !== false;
+                ch.chartSettings.showOpenOrders = settings.showOpenOrders !== false;
+                if (ch.orderManager) {
+                    if (typeof ch.orderManager.setOrderHistoryVisible === 'function') ch.orderManager.setOrderHistoryVisible(settings.showOrderHistory !== false);
+                    if (typeof ch.orderManager.setOpenOrdersVisible === 'function') ch.orderManager.setOpenOrdersVisible(settings.showOpenOrders !== false);
+                }
+                window.orderPlacementMode = settings.orderPlacementMode || 'instant';
+                if (ch.orderManager) ch.orderManager.placementMode = window.orderPlacementMode;
+
+                if (typeof ch.applyChartSettings === 'function') ch.applyChartSettings();
+                if (typeof ch.scheduleRender === 'function') ch.scheduleRender();
+                else if (typeof ch.render === 'function') ch.render();
+
+                window.generalSettings = settings;
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() { setTimeout(doApply, 800); });
+            } else {
+                setTimeout(doApply, 800);
+            }
+            // Retry once more after a longer delay to catch late chart init
+            setTimeout(doApply, 2500);
         })();
     </script>
     
