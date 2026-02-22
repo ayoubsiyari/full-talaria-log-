@@ -15531,6 +15531,936 @@
                 
             </div>
             
+
+        <!-- Left Sidebar with Drawing Tools - TradingView Style with Grouped Dropdowns -->
+        <div class="left-sidebar">
+            
+            <div class="drawing-tools-vertical">
+                <!-- Cursor Tool with Dropdown -->
+                <div class="divider"></div>
+                <div class="tool-group">
+                    
+                    <button class="tool-group-btn active" id="cursorTool" data-tooltip="Cursor">
+                        <svg id="cursorIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <circle cx="12" cy="12" r="4" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="cursorDropdownArrow" data-group="cursor" data-tooltip="Cursor Options">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown cursor-dropdown" id="cursor-dropdown">
+                        <button class="cursor-option" data-cursor="cross" data-tooltip="Cross">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2,2"/>
+                                <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2,2"/>
+                            </svg>
+                            <span>Cross</span>
+                        </button>
+                        <button class="cursor-option selected" data-cursor="dot" data-tooltip="Dot">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <circle cx="12" cy="12" r="4" fill="currentColor"/>
+                            </svg>
+                            <span>Dot</span>
+                        </button>
+                        <button class="cursor-option" data-cursor="arrow" data-tooltip="Arrow">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M5 3l14 9-6 1-3 6-5-16z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>
+                            </svg>
+                            <span>Arrow</span>
+                        </button>
+                        <button class="cursor-option" data-cursor="eraser" data-tooltip="Eraser">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M20 20H7L3 16c-.6-.6-.6-1.5 0-2.1l10-10c.6-.6 1.5-.6 2.1 0l7 7c.6.6.6 1.5 0 2.1L14 21"/>
+                                <path d="M6 11l7 7"/>
+                            </svg>
+                            <span>Eraser</span>
+                        </button>
+                                            </div>
+                </div>
+                
+                <!-- Lines Group -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" data-group="lines" data-tooltip="Lines">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <line x1="4" y1="18" x2="20" y2="6" stroke-linecap="round"/>
+                            <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
+                            <circle cx="20" cy="6" r="0.8" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="linesDropdownArrow" data-group="lines">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown tool-dropdown-grid" id="lines-dropdown">
+                        <span class="tool-dropdown-label">LINES</span>
+                        <button class="tool-btn" id="trendlineTool" data-tooltip="Trend Line">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="18" x2="20" y2="6" stroke-linecap="round"/>
+                                <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
+                                <circle cx="20" cy="6" r="0.8" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="horizontal-rayTool" data-tooltip="Horizontal Ray">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="12" x2="22" y2="12" stroke-linecap="round"/>
+                                <circle cx="4" cy="12" r="0.8" fill="currentColor"/>
+                                <path d="M19 9l3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="horizontalTool" data-tooltip="Horizontal Line">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="2" y1="12" x2="22" y2="12" stroke-linecap="round"/>
+                                <line x1="2" y1="12" x2="5" y2="9" stroke-linecap="round" opacity="0.5"/>
+                                <line x1="2" y1="12" x2="5" y2="15" stroke-linecap="round" opacity="0.5"/>
+                                <line x1="22" y1="12" x2="19" y2="9" stroke-linecap="round" opacity="0.5"/>
+                                <line x1="22" y1="12" x2="19" y2="15" stroke-linecap="round" opacity="0.5"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="verticalTool" data-tooltip="Vertical Line">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="12" y1="2" x2="12" y2="22" stroke-linecap="round"/>
+                                <line x1="12" y1="2" x2="9" y2="5" stroke-linecap="round" opacity="0.5"/>
+                                <line x1="12" y1="2" x2="15" y2="5" stroke-linecap="round" opacity="0.5"/>
+                                <line x1="12" y1="22" x2="9" y2="19" stroke-linecap="round" opacity="0.5"/>
+                                <line x1="12" y1="22" x2="15" y2="19" stroke-linecap="round" opacity="0.5"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="rayTool" data-tooltip="Ray">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="18" x2="20" y2="6" stroke-linecap="round"/>
+                                <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
+                                <path d="M17 4l4 2-2 4" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="extended-lineTool" data-tooltip="Extended Line">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="2" y1="20" x2="22" y2="4" stroke-linecap="round"/>
+                                <circle cx="8" cy="14" r="0.8" fill="currentColor"/>
+                                <circle cx="16" cy="8" r="0.8" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="cross-lineTool" data-tooltip="Cross Line">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="12" y1="2" x2="12" y2="22" stroke-linecap="round"/>
+                                <line x1="2" y1="12" x2="22" y2="12" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="polylineTool" data-tooltip="Polyline">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <polyline points="4,18 9,8 14,14 20,6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                                <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
+                                <circle cx="9" cy="8" r="0.8" fill="currentColor"/>
+                                <circle cx="14" cy="14" r="0.8" fill="currentColor"/>
+                                <circle cx="20" cy="6" r="0.8" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="pathTool" data-tooltip="Path">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <polyline points="2,15 6,8 10,14 14,6 18,12 22,9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                                <circle cx="2" cy="15" r="0.8" fill="currentColor"/>
+                                <circle cx="6" cy="8" r="0.8" fill="currentColor"/>
+                                <circle cx="10" cy="14" r="0.8" fill="currentColor"/>
+                                <circle cx="14" cy="6" r="0.8" fill="currentColor"/>
+                                <circle cx="18" cy="12" r="0.8" fill="currentColor"/>
+                                <circle cx="22" cy="9" r="0.8" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="curveTool" data-tooltip="Curve">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M4 16 C8 4, 16 20, 20 8" stroke-linecap="round" fill="none"/>
+                                <circle cx="4" cy="16" r="0.8" fill="currentColor"/>
+                                <circle cx="20" cy="8" r="0.8" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="double-curveTool" data-tooltip="Double Curve">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                                <path d="M4 12 C7 4, 10 20, 12 12 C14 4, 17 20, 20 12" stroke-linecap="round" fill="none"/>
+                                <circle cx="4" cy="12" r="0.8" fill="currentColor"/>
+                                <circle cx="20" cy="12" r="0.8" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">SHAPES</span>
+                        <button class="tool-btn" id="triangleTool" data-tooltip="Triangle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M12 4L21 20H3L12 4z" stroke-linejoin="round"/>
+                                <circle cx="12" cy="4" r="0.9" fill="currentColor"/>
+                                <circle cx="3" cy="20" r="0.9" fill="currentColor"/>
+                                <circle cx="21" cy="20" r="0.9" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="rectangleTool" data-tooltip="Rectangle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <rect x="4" y="6" width="16" height="12" rx="1"/>
+                                <circle cx="4" cy="6" r="0.9" fill="currentColor"/>
+                                <circle cx="20" cy="6" r="0.9" fill="currentColor"/>
+                                <circle cx="4" cy="18" r="0.9" fill="currentColor"/>
+                                <circle cx="20" cy="18" r="0.9" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        
+                        <button class="tool-btn" id="arcTool" data-tooltip="Arc">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M4 18 Q12 2 20 18" stroke-linecap="round" fill="none"/>
+                                <circle cx="4" cy="18" r="0.9" fill="currentColor"/>
+                                <circle cx="20" cy="18" r="0.9" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="ellipseTool" data-tooltip="Ellipse">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <ellipse cx="12" cy="12" rx="9" ry="6"/>
+                                <circle cx="3" cy="12" r="0.9" fill="currentColor"/>
+                                <circle cx="21" cy="12" r="0.9" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="circleTool" data-tooltip="Circle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <circle cx="12" cy="12" r="8"/>
+                                <circle cx="12" cy="4" r="0.9" fill="currentColor"/>
+                                <circle cx="12" cy="20" r="0.9" fill="currentColor"/>
+                                <circle cx="4" cy="12" r="0.9" fill="currentColor"/>
+                                <circle cx="20" cy="12" r="0.9" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Arrows Group -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" data-group="arrows" data-tooltip="Arrows & Channels">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <line x1="5" y1="19" x2="19" y2="5" stroke-linecap="round"/>
+                            <path d="M12 5h7v7" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="arrowsDropdownArrow" data-group="arrows">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown tool-dropdown-grid" id="arrows-dropdown">
+                        <span class="tool-dropdown-label">BRUSHES</span>
+                        <button class="tool-btn" id="brushTool" data-tooltip="Brush (B)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="highlighterTool" data-tooltip="Highlighter (I)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">ARROWS</span>
+                        <button class="tool-btn" id="arrow-markerTool" data-tooltip="Arrow Marker">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M12 20V8" stroke-linecap="round"/>
+                                <path d="M12 4l-5 6h10l-5-6z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="arrowTool" data-tooltip="Arrow">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="5" y1="19" x2="19" y2="5" stroke-linecap="round"/>
+                                <path d="M12 5h7v7" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="5" cy="19" r="2" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="arrow-mark-upTool" data-tooltip="Arrow Mark Up">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 13a1 1 0 0 0-1-1H5.061a1 1 0 0 1-.75-1.811l6.835-6.836a1.207 1.207 0 0 1 1.707 0l6.836 6.836a1 1 0 0 1-.75 1.811H16a1 1 0 0 0-1 1v6a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="arrow-mark-downTool" data-tooltip="Arrow Mark Down">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 11a1 1 0 0 0 1 1h2.939a1 1 0 0 1 .75 1.811l-6.835 6.836a1.207 1.207 0 0 1-1.707 0L4.31 13.81a1 1 0 0 1 .75-1.811H8a1 1 0 0 0 1-1V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1z"/>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">CHANNELS</span>
+                        <button class="tool-btn" id="parallel-channelTool" data-tooltip="Parallel Channel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="2" y1="18" x2="22" y2="10" stroke-linecap="round"/>
+                                <line x1="2" y1="12" x2="22" y2="4" stroke-linecap="round" />
+                                <circle cx="2" cy="18" r="1.5" fill="currentColor"/>
+                                <circle cx="22" cy="10" r="1.5" fill="currentColor"/>
+                                <circle cx="2" cy="12" r="1.5" fill="currentColor" />
+                                <circle cx="22" cy="4" r="1.5" fill="currentColor" />
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="regression-trendTool" data-tooltip="Regression Channel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="2" y1="18" x2="22" y2="6" stroke-linecap="round"/>
+                                <line x1="2" y1="12" x2="22" y2="0" stroke-linecap="round" stroke-dasharray="3,2" opacity="0.5"/>
+                                <line x1="2" y1="24" x2="22" y2="12" stroke-linecap="round" stroke-dasharray="3,2" opacity="0.5"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="flat-top-bottomTool" data-tooltip="Flat Top/Bottom">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="2" y1="6" x2="22" y2="6" stroke-linecap="round"/>
+                                <line x1="2" y1="18" x2="22" y2="12" stroke-linecap="round"/>
+                                <circle cx="2" cy="6" r="1.5" fill="currentColor"/>
+                                <circle cx="22" cy="6" r="1.5" fill="currentColor"/>
+                                <circle cx="2" cy="18" r="1.5" fill="currentColor"/>
+                                <circle cx="22" cy="12" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="disjoint-channelTool" data-tooltip="Disjoint Channel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="2" y1="16" x2="10" y2="10" stroke-linecap="round"/>
+                                <line x1="14" y1="14" x2="22" y2="8" stroke-linecap="round"/>
+                                <line x1="2" y1="20" x2="10" y2="14" stroke-linecap="round" opacity="0.5"/>
+                                <line x1="14" y1="18" x2="22" y2="12" stroke-linecap="round" opacity="0.5"/>
+                                <circle cx="2" cy="16" r="1.5" fill="currentColor"/>
+                                <circle cx="10" cy="10" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">PITCHFORKS</span>
+                        <button class="tool-btn" id="pitchforkTool" data-tooltip="Pitchfork">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <g transform="rotate(-12 12 12)">
+                                    <line x1="8" y1="5" x2="8" y2="19" stroke-linecap="round"/>
+                                    <line x1="8" y1="6" x2="19" y2="6" stroke-linecap="round"/>
+                                    <line x1="8" y1="12" x2="19" y2="12" stroke-linecap="round"/>
+                                    <line x1="8" y1="18" x2="19" y2="18" stroke-linecap="round"/>
+                                    <line x1="8" y1="12" x2="5" y2="14" stroke-linecap="round"/>
+                                </g>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Text Group -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" data-group="text" data-tooltip="Text & Notes">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <path d="M6 5h12M12 5v14M8 19h8" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="textDropdownArrow" data-group="text">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown tool-dropdown-grid" id="text-dropdown">
+                        <span class="tool-dropdown-label">TEXTS AND NOTES</span>
+                        <button class="tool-btn" id="textTool" data-tooltip="Text">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M5 5h14M12 5v14M8 19h8" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="noteTool" data-tooltip="Note">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+                                <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+                                <line x1="9" y1="11" x2="15" y2="11"/>
+                                <line x1="9" y1="15" x2="13" y2="15"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="price-noteTool" data-tooltip="Price Note">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <rect x="4" y="4" width="16" height="16" rx="2"/>
+                                <path d="M12 8v8M9 11c0-1.5 1.5-2 3-2s3 .5 3 2-1.5 2-3 2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="pinTool" data-tooltip="Pin">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M12 22c0 0-6-7-6-12a6 6 0 1 1 12 0c0 5-6 12-6 12z"/>
+                                <circle cx="12" cy="10" r="2"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="calloutTool" data-tooltip="Callout">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M21 5H3a2 2 0 00-2 2v10a2 2 0 002 2h4l3 3 3-3h8a2 2 0 002-2V7a2 2 0 00-2-2z" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="commentTool" data-tooltip="Comment">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="price-label-2Tool" data-tooltip="Price Label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="4" y="4" width="16" height="10" rx="3" stroke-linejoin="round"/>
+                                <path d="M7 14 L5 18" stroke-linecap="round"/>
+                                <circle cx="5" cy="18" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="signpost-2Tool" data-tooltip="Signpost">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <line x1="12" y1="4" x2="12" y2="16" stroke-linecap="round"/>
+                                <rect x="6" y="16" width="12" height="6" rx="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="4" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="flag-markTool" data-tooltip="Flag Mark">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M4 21V4" stroke-linecap="round"/>
+                                <path d="M4 4h12l-3 4 3 4H4" stroke-linejoin="round" fill="rgba(255,255,255,0.1)"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="imageTool" data-tooltip="Image">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                                <path d="M21 15l-5-5L5 21" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">EMOJIS</span>
+                        <button class="tool-btn" id="emojiTool" data-tooltip="Emojis & Stickers">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                                <line x1="9" y1="9" x2="9.01" y2="9"/>
+                                <line x1="15" y1="9" x2="15.01" y2="9"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Analysis Tools Group (Fibonacci + Positions) -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" data-group="analysis" data-tooltip="Analysis Tools">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <line x1="3" y1="20" x2="21" y2="4" stroke-linecap="round"/>
+                            <line x1="3" y1="20" x2="21" y2="20" opacity="0.4"/>
+                            <line x1="3" y1="14" x2="21" y2="14" opacity="0.4"/>
+                            <line x1="3" y1="8" x2="21" y2="8" opacity="0.4"/>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="analysisDropdownArrow" data-group="analysis">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown tool-dropdown-grid" id="analysis-dropdown">
+                        <span class="tool-dropdown-label">FIBONACCI</span>
+                        <button class="tool-btn" id="fibonacci-retracementTool" data-tooltip="Fib Retracement">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="3" y1="20" x2="21" y2="4" stroke-linecap="round"/>
+                                <line x1="3" y1="20" x2="21" y2="20" opacity="0.5" stroke="#ffd54f"/>
+                                <line x1="3" y1="14" x2="21" y2="14" opacity="0.5" stroke="#26a69a"/>
+                                <line x1="3" y1="8" x2="21" y2="8" opacity="0.5" stroke="#ef5350"/>
+                                <circle cx="3" cy="20" r="2" fill="currentColor"/>
+                                <circle cx="21" cy="4" r="2" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="trend-fib-extensionTool" data-tooltip="Trend-Based Fib Extension">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="3" y1="18" x2="12" y2="6" stroke-linecap="round"/>
+                                <line x1="12" y1="6" x2="21" y2="12" stroke-linecap="round"/>
+                                <line x1="3" y1="4" x2="21" y2="4" opacity="0.4" stroke-dasharray="2,2"/>
+                                <line x1="3" y1="8" x2="21" y2="8" opacity="0.4"/>
+                                <line x1="3" y1="14" x2="21" y2="14" opacity="0.4"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="fib-channelTool" data-tooltip="Fib Channel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="3" y1="18" x2="21" y2="10"/>
+                                <line x1="3" y1="14" x2="21" y2="6" opacity="0.5"/>
+                                <line x1="3" y1="10" x2="21" y2="2" opacity="0.3"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="fib-timezoneTool" data-tooltip="Fib Time Zone">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="3" y1="4" x2="3" y2="20"/>
+                                <line x1="6" y1="4" x2="6" y2="20" opacity="0.7"/>
+                                <line x1="11" y1="4" x2="11" y2="20" opacity="0.5"/>
+                                <line x1="19" y1="4" x2="19" y2="20" opacity="0.3"/>
+                                <circle cx="3" cy="20" r="1.5" fill="currentColor"/>
+                                <circle cx="6" cy="20" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="fib-speed-fanTool" data-tooltip="Fib Speed Resistance Fan">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="3" y1="20" x2="21" y2="4"/>
+                                <line x1="3" y1="20" x2="21" y2="8" opacity="0.6"/>
+                                <line x1="3" y1="20" x2="21" y2="12" opacity="0.4"/>
+                                <line x1="3" y1="20" x2="21" y2="16" opacity="0.3"/>
+                                <circle cx="3" cy="20" r="2" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="trend-fib-timeTool" data-tooltip="Trend-Based Fib Time">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="4" x2="4" y2="20"/>
+                                <line x1="10" y1="4" x2="10" y2="20"/>
+                                <line x1="14" y1="4" x2="14" y2="20" opacity="0.5"/>
+                                <line x1="20" y1="4" x2="20" y2="20" opacity="0.3" stroke-dasharray="2,2"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="fib-circlesTool" data-tooltip="Fib Circles">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <circle cx="12" cy="12" r="3"/>
+                                <circle cx="12" cy="12" r="6" opacity="0.6"/>
+                                <circle cx="12" cy="12" r="9" opacity="0.3"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="fib-spiralTool" data-tooltip="Fib Spiral">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M12 12 Q16 12 16 8 Q16 4 12 4 Q8 4 8 8 Q8 14 14 14 Q20 14 20 8" fill="none"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="fib-arcsTool" data-tooltip="Fib Speed Resistance Arcs">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="20" x2="20" y2="4"/>
+                                <path d="M20 20 Q20 12 12 12" fill="none" opacity="0.6"/>
+                                <path d="M20 20 Q20 8 8 8" fill="none" opacity="0.4"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="fib-wedgeTool" data-tooltip="Fib Wedge">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="12" x2="20" y2="4"/>
+                                <line x1="4" y1="12" x2="20" y2="20"/>
+                                <line x1="4" y1="12" x2="20" y2="8" opacity="0.4" stroke-dasharray="2,2"/>
+                                <line x1="4" y1="12" x2="20" y2="16" opacity="0.4" stroke-dasharray="2,2"/>
+                                <circle cx="4" cy="12" r="2" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">GANN</span>
+                        <button class="tool-btn" id="gann-boxTool" data-tooltip="Gann Box">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <rect x="3" y="3" width="18" height="18"/>
+                                <line x1="3" y1="12" x2="21" y2="12" opacity="0.5"/>
+                                <line x1="12" y1="3" x2="12" y2="21" opacity="0.5"/>
+                                <line x1="3" y1="3" x2="21" y2="21" opacity="0.5"/>
+                                <line x1="21" y1="3" x2="3" y2="21" opacity="0.5"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="gann-square-fixedTool" data-tooltip="Gann Square Fixed">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <rect x="4" y="4" width="16" height="16"/>
+                                <line x1="4" y1="8" x2="20" y2="8" opacity="0.4"/>
+                                <line x1="4" y1="12" x2="20" y2="12" opacity="0.4"/>
+                                <line x1="4" y1="16" x2="20" y2="16" opacity="0.4"/>
+                                <line x1="8" y1="4" x2="8" y2="20" opacity="0.4"/>
+                                <line x1="12" y1="4" x2="12" y2="20" opacity="0.4"/>
+                                <line x1="16" y1="4" x2="16" y2="20" opacity="0.4"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="gann-fanTool" data-tooltip="Gann Fan">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="20" x2="20" y2="4"/>
+                                <line x1="4" y1="20" x2="20" y2="8" opacity="0.6"/>
+                                <line x1="4" y1="20" x2="20" y2="12" opacity="0.5"/>
+                                <line x1="4" y1="20" x2="20" y2="16" opacity="0.4"/>
+                                <line x1="4" y1="20" x2="12" y2="20" opacity="0.3"/>
+                                <circle cx="4" cy="20" r="2" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Projections Group -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" data-group="projections" data-tooltip="Projections">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <rect x="4" y="6" width="16" height="12" rx="1" fill="none"/>
+                            <line x1="4" y1="12" x2="20" y2="12"/>
+                            <line x1="4" y1="6" x2="20" y2="6" stroke="#ef5350" stroke-dasharray="2,2"/>
+                            <line x1="4" y1="18" x2="20" y2="18" stroke="#26a69a" stroke-dasharray="2,2"/>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="projectionsDropdownArrow" data-group="projections">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown tool-dropdown-grid" id="projections-dropdown">
+                        <span class="tool-dropdown-label">PROJECTIONS</span>
+                        <button class="tool-btn" id="short-positionTool" data-tooltip="Short Position">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#ef5350" stroke-width="1">
+                                <rect x="4" y="4" width="16" height="12" rx="1" fill="rgba(239,83,80,0.15)"/>
+                                <line x1="4" y1="10" x2="20" y2="10" stroke="#ef5350"/>
+                                <line x1="4" y1="4" x2="20" y2="4" stroke="#26a69a" stroke-dasharray="2,2"/>
+                                <line x1="4" y1="16" x2="20" y2="16" stroke="#ef5350" stroke-dasharray="2,2"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="long-positionTool" data-tooltip="Long Position">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#26a69a" stroke-width="1">
+                                <rect x="4" y="8" width="16" height="12" rx="1" fill="rgba(38,166,154,0.15)"/>
+                                <line x1="4" y1="14" x2="20" y2="14" stroke="#26a69a"/>
+                                <line x1="4" y1="8" x2="20" y2="8" stroke="#ef5350" stroke-dasharray="2,2"/>
+                                <line x1="4" y1="20" x2="20" y2="20" stroke="#26a69a" stroke-dasharray="2,2"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="date-price-rangeTool" data-tooltip="Date and Price Range">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3,2"/>
+                                <line x1="4" y1="12" x2="20" y2="12"/>
+                                <line x1="12" y1="4" x2="12" y2="20"/>
+                                <circle cx="4" cy="4" r="1.5" fill="currentColor"/>
+                                <circle cx="20" cy="4" r="1.5" fill="currentColor"/>
+                                <circle cx="4" cy="20" r="1.5" fill="currentColor"/>
+                                <circle cx="20" cy="20" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="price-rangeTool" data-tooltip="Price Range">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="12" y1="4" x2="12" y2="20" stroke-linecap="round"/>
+                                <line x1="8" y1="4" x2="16" y2="4" stroke-linecap="round"/>
+                                <line x1="8" y1="20" x2="16" y2="20" stroke-linecap="round"/>
+                                <path d="M12 7l-2-3M12 7l2-3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M12 17l-2 3M12 17l2 3" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="date-rangeTool" data-tooltip="Date Range">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <line x1="4" y1="12" x2="20" y2="12" stroke-linecap="round"/>
+                                <line x1="4" y1="8" x2="4" y2="16" stroke-linecap="round"/>
+                                <line x1="20" y1="8" x2="20" y2="16" stroke-linecap="round"/>
+                                <path d="M7 12l-3-2M7 12l-3 2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M17 12l3-2M17 12l3 2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Patterns Group (includes Elliott Waves and Volume-Based) -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" data-group="patterns" data-tooltip="Patterns & Waves">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 20L5 14L8 16L11 6L14 10L17 2L20 8L22 6"/>
+                            <text x="4" y="13" font-size="4" fill="currentColor" stroke="none">1</text>
+                            <text x="10" y="5" font-size="4" fill="currentColor" stroke="none">3</text>
+                            <text x="16" y="1" font-size="4" fill="currentColor" stroke="none">5</text>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="patternsDropdownArrow" data-group="patterns">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown tool-dropdown-grid" id="patterns-dropdown">
+                        <span class="tool-dropdown-label">ELLIOTT WAVES</span>
+                        <button class="tool-btn" id="elliott-impulseTool" data-tooltip="Elliott Impulse Wave (12345)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 20L5 14L8 16L11 6L14 10L17 2L20 8L22 6"/>
+                                <text x="4" y="13" font-size="4" fill="currentColor" stroke="none">1</text>
+                                <text x="10" y="5" font-size="4" fill="currentColor" stroke="none">3</text>
+                                <text x="16" y="1" font-size="4" fill="currentColor" stroke="none">5</text>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="elliott-correctionTool" data-tooltip="Elliott Correction Wave (ABC)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 6L10 16L16 10L22 18"/>
+                                <text x="3" y="5" font-size="5" fill="currentColor" stroke="none">A</text>
+                                <text x="15" y="9" font-size="5" fill="currentColor" stroke="none">C</text>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="elliott-triangleTool" data-tooltip="Elliott Triangle Wave (ABCDE)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12L6 6L10 10L14 8L18 9L22 12"/>
+                                <text x="5" y="5" font-size="4" fill="currentColor" stroke="none">A</text>
+                                <text x="17" y="8" font-size="4" fill="currentColor" stroke="none">E</text>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="elliott-double-comboTool" data-tooltip="Elliott Double Combo Wave (WXY)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 14L7 6L12 12L17 8L22 14"/>
+                                <text x="6" y="5" font-size="4" fill="currentColor" stroke="none">W</text>
+                                <text x="16" y="7" font-size="4" fill="currentColor" stroke="none">Y</text>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="elliott-triple-comboTool" data-tooltip="Elliott Triple Combo Wave (WXYXZ)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 14L5 6L9 12L13 8L17 11L21 6L23 10"/>
+                                <text x="4" y="5" font-size="3" fill="currentColor" stroke="none">W</text>
+                                <text x="12" y="7" font-size="3" fill="currentColor" stroke="none">X</text>
+                                <text x="20" y="5" font-size="3" fill="currentColor" stroke="none">Z</text>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">PATTERNS</span>
+                        <button class="tool-btn" id="xabcd-patternTool" data-tooltip="XABCD Pattern">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 18L6 6L12 14L18 4L22 12"/>
+                                <circle cx="2" cy="18" r="1.5" fill="currentColor"/>
+                                <circle cx="6" cy="6" r="1.5" fill="currentColor"/>
+                                <circle cx="12" cy="14" r="1.5" fill="currentColor"/>
+                                <circle cx="18" cy="4" r="1.5" fill="currentColor"/>
+                                <circle cx="22" cy="12" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="cypher-patternTool" data-tooltip="Cypher Pattern">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 16L7 4L12 12L17 6L22 14"/>
+                                <circle cx="2" cy="16" r="1.5" fill="currentColor"/>
+                                <circle cx="7" cy="4" r="1.5" fill="currentColor"/>
+                                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                                <circle cx="17" cy="6" r="1.5" fill="currentColor"/>
+                                <circle cx="22" cy="14" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="head-shouldersTool" data-tooltip="Head and Shoulders">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 16L6 12L9 14L12 4L15 14L18 12L22 16"/>
+                                <circle cx="6" cy="12" r="1.5" fill="currentColor"/>
+                                <circle cx="12" cy="4" r="1.5" fill="currentColor"/>
+                                <circle cx="18" cy="12" r="1.5" fill="currentColor"/>
+                                <line x1="2" y1="18" x2="22" y2="18" stroke-dasharray="3,2" opacity="0.5"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="abcd-patternTool" data-tooltip="ABCD Pattern">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 18L9 6L15 14L20 6"/>
+                                <circle cx="4" cy="18" r="1.5" fill="currentColor"/>
+                                <circle cx="9" cy="6" r="1.5" fill="currentColor"/>
+                                <circle cx="15" cy="14" r="1.5" fill="currentColor"/>
+                                <circle cx="20" cy="6" r="1.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="triangle-patternTool" data-tooltip="Triangle Pattern">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 8L8 16L13 10L18 14L21 12"/>
+                                <line x1="3" y1="6" x2="21" y2="10" opacity="0.5" stroke-dasharray="3,2"/>
+                                <line x1="3" y1="18" x2="21" y2="14" opacity="0.5" stroke-dasharray="3,2"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="three-drivesTool" data-tooltip="Three Drives Pattern">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 20L5 14L8 16L11 8L14 12L17 4L22 10"/>
+                                <circle cx="5" cy="14" r="1" fill="currentColor"/>
+                                <circle cx="11" cy="8" r="1" fill="currentColor"/>
+                                <circle cx="17" cy="4" r="1" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <span class="tool-dropdown-label">VOLUME-BASED</span>
+                        <button class="tool-btn" id="anchored-vwapTool" data-tooltip="Anchored VWAP">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M4 16c3-4 6-2 8-6s4-2 8-4" stroke-linecap="round"/>
+                                <path d="M4 12c3-2 6-1 8-3s4-1 8-2" stroke-linecap="round" opacity="0.4"/>
+                                <path d="M4 20c3-2 6-1 8-3s4-1 8-2" stroke-linecap="round" opacity="0.4"/>
+                                <circle cx="4" cy="16" r="2.5" fill="currentColor"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="volume-profileTool" data-tooltip="Fixed Range Volume Profile">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="3" y="3" width="18" height="18" rx="1"/>
+                                <rect x="6" y="5" width="8" height="3" fill="currentColor" opacity="0.6" rx="1"/>
+                                <rect x="6" y="9" width="12" height="3" fill="currentColor" opacity="0.8" rx="1"/>
+                                <rect x="6" y="13" width="6" height="3" fill="currentColor" opacity="0.5" rx="1"/>
+                                <rect x="6" y="17" width="4" height="2" fill="currentColor" opacity="0.4" rx="1"/>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" id="anchored-volume-profileTool" data-tooltip="Anchored Volume Profile">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <line x1="6" y1="3" x2="6" y2="21" stroke-dasharray="2,2" opacity="0.7"/>
+                                <circle cx="6" cy="12" r="2.5" fill="currentColor"/>
+                                <rect x="6" y="5" width="10" height="2.5" fill="currentColor" opacity="0.6" rx="1"/>
+                                <rect x="6" y="8.5" width="14" height="2.5" fill="currentColor" opacity="0.8" rx="1"/>
+                                <rect x="6" y="12" width="8" height="2.5" fill="currentColor" opacity="0.5" rx="1"/>
+                                <rect x="6" y="15.5" width="5" height="2.5" fill="currentColor" opacity="0.4" rx="1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Ruler/Measure Tool -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" id="rulerTool" data-tooltip="Ruler">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/>
+                            <path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="tool-divider"></div>
+                
+               
+                
+                <!-- Toggle Favorites Bar (at bottom) -->
+                <div class="tool-group">
+                    <button class="tool-group-btn active" id="toggleFavoritesBar" data-tooltip="Toggle Favorites Bar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <path d="M9 4v6l-2 4v2h10v-2l-2-4V4" stroke-linecap="round" stroke-linejoin="round"/>
+                            <line x1="12" y1="16" x2="12" y2="21" stroke-linecap="round"/>
+                            <line x1="8" y1="4" x2="16" y2="4" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="divider"></div>
+            <!-- Drawing Tool Icons (moved from sidebar) -->
+                <div class="toolbar-drawing-icons">
+                    <!-- Visibility Menu -->
+                    <div class="tool-group">
+                        <button class="tool-group-btn" id="toggleAllDrawingsToolbar" data-group="visibility-toolbar" data-tooltip="Show/Hide All Drawings">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                        <button class="dropdown-arrow" id="visibilityDropdownArrowToolbar" data-group="visibility-toolbar">
+                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <div class="tool-dropdown tool-dropdown-grid" id="visibility-toolbar-dropdown">
+                            <span class="tool-dropdown-label">VISIBILITY</span>
+                            <button class="tool-btn" id="toggleAllDrawingsToolbarDropdown" data-tooltip="Show/Hide All Drawings" onclick="window.toggleDrawingsVisibility()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                                    <!-- Eye -->
+                                    <g transform="translate(0, 2) scale(0.75)">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </g>
+                                    <!-- Brush in corner -->
+                                    <g transform="translate(10, 8) scale(0.65)">
+                                        <path d="m11 10 3 3" stroke-width="2"/>
+                                        <path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z" stroke-width="2"/>
+                                        <path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031" stroke-width="2"/>
+                                    </g>
+                                </svg>
+                            </button>
+                            <button class="tool-btn" id="toggleIndicatorsToolbar" data-tooltip="Show/Hide Indicators" onclick="window.toggleIndicatorsVisibility()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                                    <!-- Eye -->
+                                    <g transform="translate(0, 2) scale(0.75)">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </g>
+                                    <!-- Indicator in corner -->
+                                    <g transform="translate(10, 8) scale(0.65)">
+                                        <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" stroke-width="2.5"/>
+                                    </g>
+                                </svg>
+                            </button>
+                            <button class="tool-btn" id="togglePositionsToolbar" data-tooltip="Show/Hide Positions" onclick="window.togglePositionsVisibility()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                                    <!-- Eye -->
+                                    <g transform="translate(0, 2) scale(0.75)">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </g>
+                                    <!-- Dollar sign in corner -->
+                                    <g transform="translate(10, 8) scale(0.65)">
+                                        <line x1="12" x2="12" y1="2" y2="22" stroke-width="2.5"/>
+                                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke-width="2.5"/>
+                                    </g>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Magnet Mode -->
+                    <div class="tool-group">
+                        <button class="tool-group-btn" id="magnetMode" data-tooltip="Magnet Mode (OFF)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m12 15 4 4"/>
+                                <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
+                                <path d="m5 8 4 4"/>
+                            </svg>
+                        </button>
+                        <button class="dropdown-arrow" id="magnetArrow" data-group="magnet">
+                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <div class="tool-dropdown" id="magnetDropdown">
+                            <span class="tool-dropdown-label">MAGNET STRENGTH</span>
+                            <button class="tool-dropdown-item" data-magnet="off">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="m12 15 4 4"/>
+                                    <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
+                                    <path d="m5 8 4 4"/>
+                                    <circle cx="18" cy="6" r="2.7"/>
+                                    <line x1="16.4" y1="4.4" x2="19.6" y2="7.6"/>
+                                </svg>
+                                <span>Off</span>
+                            </button>
+                            <button class="tool-dropdown-item" data-magnet="weak">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="m12 15 4 4"/>
+                                    <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
+                                    <path d="m5 8 4 4"/>
+                                </svg>
+                                <span>Weak</span>
+                            </button>
+                            <button class="tool-dropdown-item active" data-magnet="strong">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="m12 15 4 4"/>
+                                    <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
+                                    <path d="m5 8 4 4"/>
+                                    <polyline points="6.6,17.6 4.9,20.6 7.1,20.6 5.8,23 8.4,19.6 6.2,19.6"/>
+                                    <polyline points="17.4,17.6 15.7,20.6 17.9,20.6 16.6,23 19.2,19.6 17,19.6"/>
+                                </svg>
+                                <span>Strong</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Keep Drawing Mode -->
+                    <button class="toolbar-icon-btn" id="keepDrawingModeToolbar" data-tooltip="Keep Drawing Mode (OFF)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <path d="M12 19l7-7 3 3-7 7-3-3z" stroke-linejoin="round"/>
+                            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" stroke-linejoin="round"/>
+                            <path d="M2 2l7.586 7.586" stroke-linecap="round"/>
+                            <circle cx="11" cy="11" r="2" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    
+                    <!-- Delete Menu -->
+                    <div class="tool-group">
+                        <button class="tool-group-btn" id="deleteAllDrawingsToolbar" data-group="delete-toolbar" data-tooltip="Delete All Drawings">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M3 6h18" stroke-linecap="round"/>
+                                <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linejoin="round"/>
+                                <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                        <button class="dropdown-arrow" id="deleteDropdownArrowToolbar" data-group="delete-toolbar">
+                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <div class="tool-dropdown tool-dropdown-grid" id="delete-toolbar-dropdown">
+                            <span class="tool-dropdown-label">DELETE</span>
+                            <button class="tool-btn" id="deleteAllDrawingsToolbarDropdown" data-tooltip="Delete All Drawings" onclick="window.selectDeleteDrawings()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                                    <!-- Big Trash can -->
+                                    <path d="M3 6h18" stroke-linecap="round"/>
+                                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
+                                    <!-- Brush in corner -->
+                                    <g transform="translate(10, 8) scale(0.65)">
+                                        <path d="m11 10 3 3" stroke-width="2"/>
+                                        <path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z" stroke-width="2"/>
+                                        <path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031" stroke-width="2"/>
+                                    </g>
+                                </svg>
+                            </button>
+                            <button class="tool-btn" id="deleteAllIndicatorsToolbar" data-tooltip="Delete All Indicators" onclick="window.selectDeleteIndicators()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                                    <!-- Big Trash can -->
+                                    <path d="M3 6h18" stroke-linecap="round"/>
+                                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
+                                    <!-- Indicator in corner -->
+                                    <g transform="translate(10, 8) scale(0.65)">
+                                        <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" stroke-width="2.5"/>
+                                    </g>
+                                </svg>
+                            </button>
+                            <button class="tool-btn" id="deleteAllObjectsToolbar" data-tooltip="Delete All Objects" onclick="window.selectDeleteAllObjects()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                                    <!-- Big Trash can -->
+                                    <path d="M3 6h18" stroke-linecap="round"/>
+                                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
+                                    <!-- Star/All symbol in corner -->
+                                    <g transform="translate(10, 8) scale(0.65)">
+                                        <polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9" stroke-width="2.5"/>
+                                    </g>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+        </div>
+
             <!-- Right Section: Actions & Settings -->
             <div class="toolbar-right">
                 <!-- Layout Button (placeholder - will be managed by panel-manager) -->
@@ -16652,935 +17582,6 @@
                 </svg>
             </div>
             <div class="favorites-tools" id="favoritesTools"></div>
-        </div>
-
-        <!-- Left Sidebar with Drawing Tools - TradingView Style with Grouped Dropdowns -->
-        <div class="left-sidebar">
-            
-            <div class="drawing-tools-vertical">
-                <!-- Cursor Tool with Dropdown -->
-                <div class="divider"></div>
-                <div class="tool-group">
-                    
-                    <button class="tool-group-btn active" id="cursorTool" data-tooltip="Cursor">
-                        <svg id="cursorIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <circle cx="12" cy="12" r="4" fill="currentColor"/>
-                        </svg>
-                    </button>
-                    <button class="dropdown-arrow" id="cursorDropdownArrow" data-group="cursor" data-tooltip="Cursor Options">
-                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <div class="tool-dropdown cursor-dropdown" id="cursor-dropdown">
-                        <button class="cursor-option" data-cursor="cross" data-tooltip="Cross">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2,2"/>
-                                <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2,2"/>
-                            </svg>
-                            <span>Cross</span>
-                        </button>
-                        <button class="cursor-option selected" data-cursor="dot" data-tooltip="Dot">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <circle cx="12" cy="12" r="4" fill="currentColor"/>
-                            </svg>
-                            <span>Dot</span>
-                        </button>
-                        <button class="cursor-option" data-cursor="arrow" data-tooltip="Arrow">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M5 3l14 9-6 1-3 6-5-16z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>
-                            </svg>
-                            <span>Arrow</span>
-                        </button>
-                        <button class="cursor-option" data-cursor="eraser" data-tooltip="Eraser">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M20 20H7L3 16c-.6-.6-.6-1.5 0-2.1l10-10c.6-.6 1.5-.6 2.1 0l7 7c.6.6.6 1.5 0 2.1L14 21"/>
-                                <path d="M6 11l7 7"/>
-                            </svg>
-                            <span>Eraser</span>
-                        </button>
-                                            </div>
-                </div>
-                
-                <!-- Lines Group -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" data-group="lines" data-tooltip="Lines">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <line x1="4" y1="18" x2="20" y2="6" stroke-linecap="round"/>
-                            <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
-                            <circle cx="20" cy="6" r="0.8" fill="currentColor"/>
-                        </svg>
-                    </button>
-                    <button class="dropdown-arrow" id="linesDropdownArrow" data-group="lines">
-                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <div class="tool-dropdown tool-dropdown-grid" id="lines-dropdown">
-                        <span class="tool-dropdown-label">LINES</span>
-                        <button class="tool-btn" id="trendlineTool" data-tooltip="Trend Line">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="18" x2="20" y2="6" stroke-linecap="round"/>
-                                <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
-                                <circle cx="20" cy="6" r="0.8" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="horizontal-rayTool" data-tooltip="Horizontal Ray">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="12" x2="22" y2="12" stroke-linecap="round"/>
-                                <circle cx="4" cy="12" r="0.8" fill="currentColor"/>
-                                <path d="M19 9l3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="horizontalTool" data-tooltip="Horizontal Line">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="2" y1="12" x2="22" y2="12" stroke-linecap="round"/>
-                                <line x1="2" y1="12" x2="5" y2="9" stroke-linecap="round" opacity="0.5"/>
-                                <line x1="2" y1="12" x2="5" y2="15" stroke-linecap="round" opacity="0.5"/>
-                                <line x1="22" y1="12" x2="19" y2="9" stroke-linecap="round" opacity="0.5"/>
-                                <line x1="22" y1="12" x2="19" y2="15" stroke-linecap="round" opacity="0.5"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="verticalTool" data-tooltip="Vertical Line">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="12" y1="2" x2="12" y2="22" stroke-linecap="round"/>
-                                <line x1="12" y1="2" x2="9" y2="5" stroke-linecap="round" opacity="0.5"/>
-                                <line x1="12" y1="2" x2="15" y2="5" stroke-linecap="round" opacity="0.5"/>
-                                <line x1="12" y1="22" x2="9" y2="19" stroke-linecap="round" opacity="0.5"/>
-                                <line x1="12" y1="22" x2="15" y2="19" stroke-linecap="round" opacity="0.5"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="rayTool" data-tooltip="Ray">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="18" x2="20" y2="6" stroke-linecap="round"/>
-                                <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
-                                <path d="M17 4l4 2-2 4" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="extended-lineTool" data-tooltip="Extended Line">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="2" y1="20" x2="22" y2="4" stroke-linecap="round"/>
-                                <circle cx="8" cy="14" r="0.8" fill="currentColor"/>
-                                <circle cx="16" cy="8" r="0.8" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="cross-lineTool" data-tooltip="Cross Line">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="12" y1="2" x2="12" y2="22" stroke-linecap="round"/>
-                                <line x1="2" y1="12" x2="22" y2="12" stroke-linecap="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="polylineTool" data-tooltip="Polyline">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <polyline points="4,18 9,8 14,14 20,6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                                <circle cx="4" cy="18" r="0.8" fill="currentColor"/>
-                                <circle cx="9" cy="8" r="0.8" fill="currentColor"/>
-                                <circle cx="14" cy="14" r="0.8" fill="currentColor"/>
-                                <circle cx="20" cy="6" r="0.8" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="pathTool" data-tooltip="Path">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <polyline points="2,15 6,8 10,14 14,6 18,12 22,9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                                <circle cx="2" cy="15" r="0.8" fill="currentColor"/>
-                                <circle cx="6" cy="8" r="0.8" fill="currentColor"/>
-                                <circle cx="10" cy="14" r="0.8" fill="currentColor"/>
-                                <circle cx="14" cy="6" r="0.8" fill="currentColor"/>
-                                <circle cx="18" cy="12" r="0.8" fill="currentColor"/>
-                                <circle cx="22" cy="9" r="0.8" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="curveTool" data-tooltip="Curve">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M4 16 C8 4, 16 20, 20 8" stroke-linecap="round" fill="none"/>
-                                <circle cx="4" cy="16" r="0.8" fill="currentColor"/>
-                                <circle cx="20" cy="8" r="0.8" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="double-curveTool" data-tooltip="Double Curve">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
-                                <path d="M4 12 C7 4, 10 20, 12 12 C14 4, 17 20, 20 12" stroke-linecap="round" fill="none"/>
-                                <circle cx="4" cy="12" r="0.8" fill="currentColor"/>
-                                <circle cx="20" cy="12" r="0.8" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">SHAPES</span>
-                        <button class="tool-btn" id="triangleTool" data-tooltip="Triangle">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M12 4L21 20H3L12 4z" stroke-linejoin="round"/>
-                                <circle cx="12" cy="4" r="0.9" fill="currentColor"/>
-                                <circle cx="3" cy="20" r="0.9" fill="currentColor"/>
-                                <circle cx="21" cy="20" r="0.9" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="rectangleTool" data-tooltip="Rectangle">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <rect x="4" y="6" width="16" height="12" rx="1"/>
-                                <circle cx="4" cy="6" r="0.9" fill="currentColor"/>
-                                <circle cx="20" cy="6" r="0.9" fill="currentColor"/>
-                                <circle cx="4" cy="18" r="0.9" fill="currentColor"/>
-                                <circle cx="20" cy="18" r="0.9" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        
-                        <button class="tool-btn" id="arcTool" data-tooltip="Arc">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M4 18 Q12 2 20 18" stroke-linecap="round" fill="none"/>
-                                <circle cx="4" cy="18" r="0.9" fill="currentColor"/>
-                                <circle cx="20" cy="18" r="0.9" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="ellipseTool" data-tooltip="Ellipse">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <ellipse cx="12" cy="12" rx="9" ry="6"/>
-                                <circle cx="3" cy="12" r="0.9" fill="currentColor"/>
-                                <circle cx="21" cy="12" r="0.9" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="circleTool" data-tooltip="Circle">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <circle cx="12" cy="12" r="8"/>
-                                <circle cx="12" cy="4" r="0.9" fill="currentColor"/>
-                                <circle cx="12" cy="20" r="0.9" fill="currentColor"/>
-                                <circle cx="4" cy="12" r="0.9" fill="currentColor"/>
-                                <circle cx="20" cy="12" r="0.9" fill="currentColor"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Arrows Group -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" data-group="arrows" data-tooltip="Arrows & Channels">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <line x1="5" y1="19" x2="19" y2="5" stroke-linecap="round"/>
-                            <path d="M12 5h7v7" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <button class="dropdown-arrow" id="arrowsDropdownArrow" data-group="arrows">
-                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <div class="tool-dropdown tool-dropdown-grid" id="arrows-dropdown">
-                        <span class="tool-dropdown-label">BRUSHES</span>
-                        <button class="tool-btn" id="brushTool" data-tooltip="Brush (B)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="highlighterTool" data-tooltip="Highlighter (I)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">ARROWS</span>
-                        <button class="tool-btn" id="arrow-markerTool" data-tooltip="Arrow Marker">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M12 20V8" stroke-linecap="round"/>
-                                <path d="M12 4l-5 6h10l-5-6z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="arrowTool" data-tooltip="Arrow">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="5" y1="19" x2="19" y2="5" stroke-linecap="round"/>
-                                <path d="M12 5h7v7" stroke-linecap="round" stroke-linejoin="round"/>
-                                <circle cx="5" cy="19" r="2" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="arrow-mark-upTool" data-tooltip="Arrow Mark Up">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 13a1 1 0 0 0-1-1H5.061a1 1 0 0 1-.75-1.811l6.835-6.836a1.207 1.207 0 0 1 1.707 0l6.836 6.836a1 1 0 0 1-.75 1.811H16a1 1 0 0 0-1 1v6a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="arrow-mark-downTool" data-tooltip="Arrow Mark Down">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 11a1 1 0 0 0 1 1h2.939a1 1 0 0 1 .75 1.811l-6.835 6.836a1.207 1.207 0 0 1-1.707 0L4.31 13.81a1 1 0 0 1 .75-1.811H8a1 1 0 0 0 1-1V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1z"/>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">CHANNELS</span>
-                        <button class="tool-btn" id="parallel-channelTool" data-tooltip="Parallel Channel">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="2" y1="18" x2="22" y2="10" stroke-linecap="round"/>
-                                <line x1="2" y1="12" x2="22" y2="4" stroke-linecap="round" />
-                                <circle cx="2" cy="18" r="1.5" fill="currentColor"/>
-                                <circle cx="22" cy="10" r="1.5" fill="currentColor"/>
-                                <circle cx="2" cy="12" r="1.5" fill="currentColor" />
-                                <circle cx="22" cy="4" r="1.5" fill="currentColor" />
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="regression-trendTool" data-tooltip="Regression Channel">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="2" y1="18" x2="22" y2="6" stroke-linecap="round"/>
-                                <line x1="2" y1="12" x2="22" y2="0" stroke-linecap="round" stroke-dasharray="3,2" opacity="0.5"/>
-                                <line x1="2" y1="24" x2="22" y2="12" stroke-linecap="round" stroke-dasharray="3,2" opacity="0.5"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="flat-top-bottomTool" data-tooltip="Flat Top/Bottom">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="2" y1="6" x2="22" y2="6" stroke-linecap="round"/>
-                                <line x1="2" y1="18" x2="22" y2="12" stroke-linecap="round"/>
-                                <circle cx="2" cy="6" r="1.5" fill="currentColor"/>
-                                <circle cx="22" cy="6" r="1.5" fill="currentColor"/>
-                                <circle cx="2" cy="18" r="1.5" fill="currentColor"/>
-                                <circle cx="22" cy="12" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="disjoint-channelTool" data-tooltip="Disjoint Channel">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="2" y1="16" x2="10" y2="10" stroke-linecap="round"/>
-                                <line x1="14" y1="14" x2="22" y2="8" stroke-linecap="round"/>
-                                <line x1="2" y1="20" x2="10" y2="14" stroke-linecap="round" opacity="0.5"/>
-                                <line x1="14" y1="18" x2="22" y2="12" stroke-linecap="round" opacity="0.5"/>
-                                <circle cx="2" cy="16" r="1.5" fill="currentColor"/>
-                                <circle cx="10" cy="10" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">PITCHFORKS</span>
-                        <button class="tool-btn" id="pitchforkTool" data-tooltip="Pitchfork">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <g transform="rotate(-12 12 12)">
-                                    <line x1="8" y1="5" x2="8" y2="19" stroke-linecap="round"/>
-                                    <line x1="8" y1="6" x2="19" y2="6" stroke-linecap="round"/>
-                                    <line x1="8" y1="12" x2="19" y2="12" stroke-linecap="round"/>
-                                    <line x1="8" y1="18" x2="19" y2="18" stroke-linecap="round"/>
-                                    <line x1="8" y1="12" x2="5" y2="14" stroke-linecap="round"/>
-                                </g>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Text Group -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" data-group="text" data-tooltip="Text & Notes">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <path d="M6 5h12M12 5v14M8 19h8" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <button class="dropdown-arrow" id="textDropdownArrow" data-group="text">
-                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <div class="tool-dropdown tool-dropdown-grid" id="text-dropdown">
-                        <span class="tool-dropdown-label">TEXTS AND NOTES</span>
-                        <button class="tool-btn" id="textTool" data-tooltip="Text">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M5 5h14M12 5v14M8 19h8" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="noteTool" data-tooltip="Note">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
-                                <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
-                                <line x1="9" y1="11" x2="15" y2="11"/>
-                                <line x1="9" y1="15" x2="13" y2="15"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="price-noteTool" data-tooltip="Price Note">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <rect x="4" y="4" width="16" height="16" rx="2"/>
-                                <path d="M12 8v8M9 11c0-1.5 1.5-2 3-2s3 .5 3 2-1.5 2-3 2" stroke-linecap="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="pinTool" data-tooltip="Pin">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M12 22c0 0-6-7-6-12a6 6 0 1 1 12 0c0 5-6 12-6 12z"/>
-                                <circle cx="12" cy="10" r="2"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="calloutTool" data-tooltip="Callout">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M21 5H3a2 2 0 00-2 2v10a2 2 0 002 2h4l3 3 3-3h8a2 2 0 002-2V7a2 2 0 00-2-2z" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="commentTool" data-tooltip="Comment">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="price-label-2Tool" data-tooltip="Price Label">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <rect x="4" y="4" width="16" height="10" rx="3" stroke-linejoin="round"/>
-                                <path d="M7 14 L5 18" stroke-linecap="round"/>
-                                <circle cx="5" cy="18" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="signpost-2Tool" data-tooltip="Signpost">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <line x1="12" y1="4" x2="12" y2="16" stroke-linecap="round"/>
-                                <rect x="6" y="16" width="12" height="6" rx="2" stroke-linejoin="round"/>
-                                <circle cx="12" cy="4" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="flag-markTool" data-tooltip="Flag Mark">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M4 21V4" stroke-linecap="round"/>
-                                <path d="M4 4h12l-3 4 3 4H4" stroke-linejoin="round" fill="rgba(255,255,255,0.1)"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="imageTool" data-tooltip="Image">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
-                                <path d="M21 15l-5-5L5 21" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">EMOJIS</span>
-                        <button class="tool-btn" id="emojiTool" data-tooltip="Emojis & Stickers">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="12" cy="12" r="10"/>
-                                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-                                <line x1="9" y1="9" x2="9.01" y2="9"/>
-                                <line x1="15" y1="9" x2="15.01" y2="9"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Analysis Tools Group (Fibonacci + Positions) -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" data-group="analysis" data-tooltip="Analysis Tools">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <line x1="3" y1="20" x2="21" y2="4" stroke-linecap="round"/>
-                            <line x1="3" y1="20" x2="21" y2="20" opacity="0.4"/>
-                            <line x1="3" y1="14" x2="21" y2="14" opacity="0.4"/>
-                            <line x1="3" y1="8" x2="21" y2="8" opacity="0.4"/>
-                        </svg>
-                    </button>
-                    <button class="dropdown-arrow" id="analysisDropdownArrow" data-group="analysis">
-                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <div class="tool-dropdown tool-dropdown-grid" id="analysis-dropdown">
-                        <span class="tool-dropdown-label">FIBONACCI</span>
-                        <button class="tool-btn" id="fibonacci-retracementTool" data-tooltip="Fib Retracement">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="3" y1="20" x2="21" y2="4" stroke-linecap="round"/>
-                                <line x1="3" y1="20" x2="21" y2="20" opacity="0.5" stroke="#ffd54f"/>
-                                <line x1="3" y1="14" x2="21" y2="14" opacity="0.5" stroke="#26a69a"/>
-                                <line x1="3" y1="8" x2="21" y2="8" opacity="0.5" stroke="#ef5350"/>
-                                <circle cx="3" cy="20" r="2" fill="currentColor"/>
-                                <circle cx="21" cy="4" r="2" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="trend-fib-extensionTool" data-tooltip="Trend-Based Fib Extension">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="3" y1="18" x2="12" y2="6" stroke-linecap="round"/>
-                                <line x1="12" y1="6" x2="21" y2="12" stroke-linecap="round"/>
-                                <line x1="3" y1="4" x2="21" y2="4" opacity="0.4" stroke-dasharray="2,2"/>
-                                <line x1="3" y1="8" x2="21" y2="8" opacity="0.4"/>
-                                <line x1="3" y1="14" x2="21" y2="14" opacity="0.4"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="fib-channelTool" data-tooltip="Fib Channel">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="3" y1="18" x2="21" y2="10"/>
-                                <line x1="3" y1="14" x2="21" y2="6" opacity="0.5"/>
-                                <line x1="3" y1="10" x2="21" y2="2" opacity="0.3"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="fib-timezoneTool" data-tooltip="Fib Time Zone">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="3" y1="4" x2="3" y2="20"/>
-                                <line x1="6" y1="4" x2="6" y2="20" opacity="0.7"/>
-                                <line x1="11" y1="4" x2="11" y2="20" opacity="0.5"/>
-                                <line x1="19" y1="4" x2="19" y2="20" opacity="0.3"/>
-                                <circle cx="3" cy="20" r="1.5" fill="currentColor"/>
-                                <circle cx="6" cy="20" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="fib-speed-fanTool" data-tooltip="Fib Speed Resistance Fan">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="3" y1="20" x2="21" y2="4"/>
-                                <line x1="3" y1="20" x2="21" y2="8" opacity="0.6"/>
-                                <line x1="3" y1="20" x2="21" y2="12" opacity="0.4"/>
-                                <line x1="3" y1="20" x2="21" y2="16" opacity="0.3"/>
-                                <circle cx="3" cy="20" r="2" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="trend-fib-timeTool" data-tooltip="Trend-Based Fib Time">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="4" x2="4" y2="20"/>
-                                <line x1="10" y1="4" x2="10" y2="20"/>
-                                <line x1="14" y1="4" x2="14" y2="20" opacity="0.5"/>
-                                <line x1="20" y1="4" x2="20" y2="20" opacity="0.3" stroke-dasharray="2,2"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="fib-circlesTool" data-tooltip="Fib Circles">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <circle cx="12" cy="12" r="3"/>
-                                <circle cx="12" cy="12" r="6" opacity="0.6"/>
-                                <circle cx="12" cy="12" r="9" opacity="0.3"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="fib-spiralTool" data-tooltip="Fib Spiral">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M12 12 Q16 12 16 8 Q16 4 12 4 Q8 4 8 8 Q8 14 14 14 Q20 14 20 8" fill="none"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="fib-arcsTool" data-tooltip="Fib Speed Resistance Arcs">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="20" x2="20" y2="4"/>
-                                <path d="M20 20 Q20 12 12 12" fill="none" opacity="0.6"/>
-                                <path d="M20 20 Q20 8 8 8" fill="none" opacity="0.4"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="fib-wedgeTool" data-tooltip="Fib Wedge">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="12" x2="20" y2="4"/>
-                                <line x1="4" y1="12" x2="20" y2="20"/>
-                                <line x1="4" y1="12" x2="20" y2="8" opacity="0.4" stroke-dasharray="2,2"/>
-                                <line x1="4" y1="12" x2="20" y2="16" opacity="0.4" stroke-dasharray="2,2"/>
-                                <circle cx="4" cy="12" r="2" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">GANN</span>
-                        <button class="tool-btn" id="gann-boxTool" data-tooltip="Gann Box">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <rect x="3" y="3" width="18" height="18"/>
-                                <line x1="3" y1="12" x2="21" y2="12" opacity="0.5"/>
-                                <line x1="12" y1="3" x2="12" y2="21" opacity="0.5"/>
-                                <line x1="3" y1="3" x2="21" y2="21" opacity="0.5"/>
-                                <line x1="21" y1="3" x2="3" y2="21" opacity="0.5"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="gann-square-fixedTool" data-tooltip="Gann Square Fixed">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <rect x="4" y="4" width="16" height="16"/>
-                                <line x1="4" y1="8" x2="20" y2="8" opacity="0.4"/>
-                                <line x1="4" y1="12" x2="20" y2="12" opacity="0.4"/>
-                                <line x1="4" y1="16" x2="20" y2="16" opacity="0.4"/>
-                                <line x1="8" y1="4" x2="8" y2="20" opacity="0.4"/>
-                                <line x1="12" y1="4" x2="12" y2="20" opacity="0.4"/>
-                                <line x1="16" y1="4" x2="16" y2="20" opacity="0.4"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="gann-fanTool" data-tooltip="Gann Fan">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="20" x2="20" y2="4"/>
-                                <line x1="4" y1="20" x2="20" y2="8" opacity="0.6"/>
-                                <line x1="4" y1="20" x2="20" y2="12" opacity="0.5"/>
-                                <line x1="4" y1="20" x2="20" y2="16" opacity="0.4"/>
-                                <line x1="4" y1="20" x2="12" y2="20" opacity="0.3"/>
-                                <circle cx="4" cy="20" r="2" fill="currentColor"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Projections Group -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" data-group="projections" data-tooltip="Projections">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <rect x="4" y="6" width="16" height="12" rx="1" fill="none"/>
-                            <line x1="4" y1="12" x2="20" y2="12"/>
-                            <line x1="4" y1="6" x2="20" y2="6" stroke="#ef5350" stroke-dasharray="2,2"/>
-                            <line x1="4" y1="18" x2="20" y2="18" stroke="#26a69a" stroke-dasharray="2,2"/>
-                        </svg>
-                    </button>
-                    <button class="dropdown-arrow" id="projectionsDropdownArrow" data-group="projections">
-                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <div class="tool-dropdown tool-dropdown-grid" id="projections-dropdown">
-                        <span class="tool-dropdown-label">PROJECTIONS</span>
-                        <button class="tool-btn" id="short-positionTool" data-tooltip="Short Position">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="#ef5350" stroke-width="1">
-                                <rect x="4" y="4" width="16" height="12" rx="1" fill="rgba(239,83,80,0.15)"/>
-                                <line x1="4" y1="10" x2="20" y2="10" stroke="#ef5350"/>
-                                <line x1="4" y1="4" x2="20" y2="4" stroke="#26a69a" stroke-dasharray="2,2"/>
-                                <line x1="4" y1="16" x2="20" y2="16" stroke="#ef5350" stroke-dasharray="2,2"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="long-positionTool" data-tooltip="Long Position">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="#26a69a" stroke-width="1">
-                                <rect x="4" y="8" width="16" height="12" rx="1" fill="rgba(38,166,154,0.15)"/>
-                                <line x1="4" y1="14" x2="20" y2="14" stroke="#26a69a"/>
-                                <line x1="4" y1="8" x2="20" y2="8" stroke="#ef5350" stroke-dasharray="2,2"/>
-                                <line x1="4" y1="20" x2="20" y2="20" stroke="#26a69a" stroke-dasharray="2,2"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="date-price-rangeTool" data-tooltip="Date and Price Range">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3,2"/>
-                                <line x1="4" y1="12" x2="20" y2="12"/>
-                                <line x1="12" y1="4" x2="12" y2="20"/>
-                                <circle cx="4" cy="4" r="1.5" fill="currentColor"/>
-                                <circle cx="20" cy="4" r="1.5" fill="currentColor"/>
-                                <circle cx="4" cy="20" r="1.5" fill="currentColor"/>
-                                <circle cx="20" cy="20" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="price-rangeTool" data-tooltip="Price Range">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="12" y1="4" x2="12" y2="20" stroke-linecap="round"/>
-                                <line x1="8" y1="4" x2="16" y2="4" stroke-linecap="round"/>
-                                <line x1="8" y1="20" x2="16" y2="20" stroke-linecap="round"/>
-                                <path d="M12 7l-2-3M12 7l2-3" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M12 17l-2 3M12 17l2 3" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="date-rangeTool" data-tooltip="Date Range">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="12" x2="20" y2="12" stroke-linecap="round"/>
-                                <line x1="4" y1="8" x2="4" y2="16" stroke-linecap="round"/>
-                                <line x1="20" y1="8" x2="20" y2="16" stroke-linecap="round"/>
-                                <path d="M7 12l-3-2M7 12l-3 2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M17 12l3-2M17 12l3 2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Patterns Group (includes Elliott Waves and Volume-Based) -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" data-group="patterns" data-tooltip="Patterns & Waves">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M2 20L5 14L8 16L11 6L14 10L17 2L20 8L22 6"/>
-                            <text x="4" y="13" font-size="4" fill="currentColor" stroke="none">1</text>
-                            <text x="10" y="5" font-size="4" fill="currentColor" stroke="none">3</text>
-                            <text x="16" y="1" font-size="4" fill="currentColor" stroke="none">5</text>
-                        </svg>
-                    </button>
-                    <button class="dropdown-arrow" id="patternsDropdownArrow" data-group="patterns">
-                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <div class="tool-dropdown tool-dropdown-grid" id="patterns-dropdown">
-                        <span class="tool-dropdown-label">ELLIOTT WAVES</span>
-                        <button class="tool-btn" id="elliott-impulseTool" data-tooltip="Elliott Impulse Wave (12345)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 20L5 14L8 16L11 6L14 10L17 2L20 8L22 6"/>
-                                <text x="4" y="13" font-size="4" fill="currentColor" stroke="none">1</text>
-                                <text x="10" y="5" font-size="4" fill="currentColor" stroke="none">3</text>
-                                <text x="16" y="1" font-size="4" fill="currentColor" stroke="none">5</text>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="elliott-correctionTool" data-tooltip="Elliott Correction Wave (ABC)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M4 6L10 16L16 10L22 18"/>
-                                <text x="3" y="5" font-size="5" fill="currentColor" stroke="none">A</text>
-                                <text x="15" y="9" font-size="5" fill="currentColor" stroke="none">C</text>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="elliott-triangleTool" data-tooltip="Elliott Triangle Wave (ABCDE)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 12L6 6L10 10L14 8L18 9L22 12"/>
-                                <text x="5" y="5" font-size="4" fill="currentColor" stroke="none">A</text>
-                                <text x="17" y="8" font-size="4" fill="currentColor" stroke="none">E</text>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="elliott-double-comboTool" data-tooltip="Elliott Double Combo Wave (WXY)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 14L7 6L12 12L17 8L22 14"/>
-                                <text x="6" y="5" font-size="4" fill="currentColor" stroke="none">W</text>
-                                <text x="16" y="7" font-size="4" fill="currentColor" stroke="none">Y</text>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="elliott-triple-comboTool" data-tooltip="Elliott Triple Combo Wave (WXYXZ)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M1 14L5 6L9 12L13 8L17 11L21 6L23 10"/>
-                                <text x="4" y="5" font-size="3" fill="currentColor" stroke="none">W</text>
-                                <text x="12" y="7" font-size="3" fill="currentColor" stroke="none">X</text>
-                                <text x="20" y="5" font-size="3" fill="currentColor" stroke="none">Z</text>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">PATTERNS</span>
-                        <button class="tool-btn" id="xabcd-patternTool" data-tooltip="XABCD Pattern">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 18L6 6L12 14L18 4L22 12"/>
-                                <circle cx="2" cy="18" r="1.5" fill="currentColor"/>
-                                <circle cx="6" cy="6" r="1.5" fill="currentColor"/>
-                                <circle cx="12" cy="14" r="1.5" fill="currentColor"/>
-                                <circle cx="18" cy="4" r="1.5" fill="currentColor"/>
-                                <circle cx="22" cy="12" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="cypher-patternTool" data-tooltip="Cypher Pattern">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 16L7 4L12 12L17 6L22 14"/>
-                                <circle cx="2" cy="16" r="1.5" fill="currentColor"/>
-                                <circle cx="7" cy="4" r="1.5" fill="currentColor"/>
-                                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-                                <circle cx="17" cy="6" r="1.5" fill="currentColor"/>
-                                <circle cx="22" cy="14" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="head-shouldersTool" data-tooltip="Head and Shoulders">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 16L6 12L9 14L12 4L15 14L18 12L22 16"/>
-                                <circle cx="6" cy="12" r="1.5" fill="currentColor"/>
-                                <circle cx="12" cy="4" r="1.5" fill="currentColor"/>
-                                <circle cx="18" cy="12" r="1.5" fill="currentColor"/>
-                                <line x1="2" y1="18" x2="22" y2="18" stroke-dasharray="3,2" opacity="0.5"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="abcd-patternTool" data-tooltip="ABCD Pattern">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M4 18L9 6L15 14L20 6"/>
-                                <circle cx="4" cy="18" r="1.5" fill="currentColor"/>
-                                <circle cx="9" cy="6" r="1.5" fill="currentColor"/>
-                                <circle cx="15" cy="14" r="1.5" fill="currentColor"/>
-                                <circle cx="20" cy="6" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="triangle-patternTool" data-tooltip="Triangle Pattern">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M3 8L8 16L13 10L18 14L21 12"/>
-                                <line x1="3" y1="6" x2="21" y2="10" opacity="0.5" stroke-dasharray="3,2"/>
-                                <line x1="3" y1="18" x2="21" y2="14" opacity="0.5" stroke-dasharray="3,2"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="three-drivesTool" data-tooltip="Three Drives Pattern">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 20L5 14L8 16L11 8L14 12L17 4L22 10"/>
-                                <circle cx="5" cy="14" r="1" fill="currentColor"/>
-                                <circle cx="11" cy="8" r="1" fill="currentColor"/>
-                                <circle cx="17" cy="4" r="1" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <span class="tool-dropdown-label">VOLUME-BASED</span>
-                        <button class="tool-btn" id="anchored-vwapTool" data-tooltip="Anchored VWAP">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M4 16c3-4 6-2 8-6s4-2 8-4" stroke-linecap="round"/>
-                                <path d="M4 12c3-2 6-1 8-3s4-1 8-2" stroke-linecap="round" opacity="0.4"/>
-                                <path d="M4 20c3-2 6-1 8-3s4-1 8-2" stroke-linecap="round" opacity="0.4"/>
-                                <circle cx="4" cy="16" r="2.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="volume-profileTool" data-tooltip="Fixed Range Volume Profile">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <rect x="3" y="3" width="18" height="18" rx="1"/>
-                                <rect x="6" y="5" width="8" height="3" fill="currentColor" opacity="0.6" rx="1"/>
-                                <rect x="6" y="9" width="12" height="3" fill="currentColor" opacity="0.8" rx="1"/>
-                                <rect x="6" y="13" width="6" height="3" fill="currentColor" opacity="0.5" rx="1"/>
-                                <rect x="6" y="17" width="4" height="2" fill="currentColor" opacity="0.4" rx="1"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="anchored-volume-profileTool" data-tooltip="Anchored Volume Profile">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <line x1="6" y1="3" x2="6" y2="21" stroke-dasharray="2,2" opacity="0.7"/>
-                                <circle cx="6" cy="12" r="2.5" fill="currentColor"/>
-                                <rect x="6" y="5" width="10" height="2.5" fill="currentColor" opacity="0.6" rx="1"/>
-                                <rect x="6" y="8.5" width="14" height="2.5" fill="currentColor" opacity="0.8" rx="1"/>
-                                <rect x="6" y="12" width="8" height="2.5" fill="currentColor" opacity="0.5" rx="1"/>
-                                <rect x="6" y="15.5" width="5" height="2.5" fill="currentColor" opacity="0.4" rx="1"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Ruler/Measure Tool -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" id="rulerTool" data-tooltip="Ruler">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/>
-                            <path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/>
-                        </svg>
-                    </button>
-                </div>
-                
-                <div class="tool-divider"></div>
-                
-               
-                
-                <!-- Toggle Favorites Bar (at bottom) -->
-                <div class="tool-group">
-                    <button class="tool-group-btn active" id="toggleFavoritesBar" data-tooltip="Toggle Favorites Bar">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <path d="M9 4v6l-2 4v2h10v-2l-2-4V4" stroke-linecap="round" stroke-linejoin="round"/>
-                            <line x1="12" y1="16" x2="12" y2="21" stroke-linecap="round"/>
-                            <line x1="8" y1="4" x2="16" y2="4" stroke-linecap="round"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <div class="divider"></div>
-            <!-- Drawing Tool Icons (moved from sidebar) -->
-                <div class="toolbar-drawing-icons">
-                    <!-- Visibility Menu -->
-                    <div class="tool-group">
-                        <button class="tool-group-btn" id="toggleAllDrawingsToolbar" data-group="visibility-toolbar" data-tooltip="Show/Hide All Drawings">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/>
-                                <circle cx="12" cy="12" r="3"/>
-                            </svg>
-                        </button>
-                        <button class="dropdown-arrow" id="visibilityDropdownArrowToolbar" data-group="visibility-toolbar">
-                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <div class="tool-dropdown tool-dropdown-grid" id="visibility-toolbar-dropdown">
-                            <span class="tool-dropdown-label">VISIBILITY</span>
-                            <button class="tool-btn" id="toggleAllDrawingsToolbarDropdown" data-tooltip="Show/Hide All Drawings" onclick="window.toggleDrawingsVisibility()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
-                                    <!-- Eye -->
-                                    <g transform="translate(0, 2) scale(0.75)">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                        <circle cx="12" cy="12" r="3"/>
-                                    </g>
-                                    <!-- Brush in corner -->
-                                    <g transform="translate(10, 8) scale(0.65)">
-                                        <path d="m11 10 3 3" stroke-width="2"/>
-                                        <path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z" stroke-width="2"/>
-                                        <path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031" stroke-width="2"/>
-                                    </g>
-                                </svg>
-                            </button>
-                            <button class="tool-btn" id="toggleIndicatorsToolbar" data-tooltip="Show/Hide Indicators" onclick="window.toggleIndicatorsVisibility()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
-                                    <!-- Eye -->
-                                    <g transform="translate(0, 2) scale(0.75)">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                        <circle cx="12" cy="12" r="3"/>
-                                    </g>
-                                    <!-- Indicator in corner -->
-                                    <g transform="translate(10, 8) scale(0.65)">
-                                        <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" stroke-width="2.5"/>
-                                    </g>
-                                </svg>
-                            </button>
-                            <button class="tool-btn" id="togglePositionsToolbar" data-tooltip="Show/Hide Positions" onclick="window.togglePositionsVisibility()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
-                                    <!-- Eye -->
-                                    <g transform="translate(0, 2) scale(0.75)">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                        <circle cx="12" cy="12" r="3"/>
-                                    </g>
-                                    <!-- Dollar sign in corner -->
-                                    <g transform="translate(10, 8) scale(0.65)">
-                                        <line x1="12" x2="12" y1="2" y2="22" stroke-width="2.5"/>
-                                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke-width="2.5"/>
-                                    </g>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Magnet Mode -->
-                    <div class="tool-group">
-                        <button class="tool-group-btn" id="magnetMode" data-tooltip="Magnet Mode (OFF)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="m12 15 4 4"/>
-                                <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
-                                <path d="m5 8 4 4"/>
-                            </svg>
-                        </button>
-                        <button class="dropdown-arrow" id="magnetArrow" data-group="magnet">
-                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <div class="tool-dropdown" id="magnetDropdown">
-                            <span class="tool-dropdown-label">MAGNET STRENGTH</span>
-                            <button class="tool-dropdown-item" data-magnet="off">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="m12 15 4 4"/>
-                                    <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
-                                    <path d="m5 8 4 4"/>
-                                    <circle cx="18" cy="6" r="2.7"/>
-                                    <line x1="16.4" y1="4.4" x2="19.6" y2="7.6"/>
-                                </svg>
-                                <span>Off</span>
-                            </button>
-                            <button class="tool-dropdown-item" data-magnet="weak">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="m12 15 4 4"/>
-                                    <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
-                                    <path d="m5 8 4 4"/>
-                                </svg>
-                                <span>Weak</span>
-                            </button>
-                            <button class="tool-dropdown-item active" data-magnet="strong">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="m12 15 4 4"/>
-                                    <path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/>
-                                    <path d="m5 8 4 4"/>
-                                    <polyline points="6.6,17.6 4.9,20.6 7.1,20.6 5.8,23 8.4,19.6 6.2,19.6"/>
-                                    <polyline points="17.4,17.6 15.7,20.6 17.9,20.6 16.6,23 19.2,19.6 17,19.6"/>
-                                </svg>
-                                <span>Strong</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Keep Drawing Mode -->
-                    <button class="toolbar-icon-btn" id="keepDrawingModeToolbar" data-tooltip="Keep Drawing Mode (OFF)">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                            <path d="M12 19l7-7 3 3-7 7-3-3z" stroke-linejoin="round"/>
-                            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" stroke-linejoin="round"/>
-                            <path d="M2 2l7.586 7.586" stroke-linecap="round"/>
-                            <circle cx="11" cy="11" r="2" fill="currentColor"/>
-                        </svg>
-                    </button>
-                    
-                    <!-- Delete Menu -->
-                    <div class="tool-group">
-                        <button class="tool-group-btn" id="deleteAllDrawingsToolbar" data-group="delete-toolbar" data-tooltip="Delete All Drawings">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <path d="M3 6h18" stroke-linecap="round"/>
-                                <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linejoin="round"/>
-                                <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
-                            </svg>
-                        </button>
-                        <button class="dropdown-arrow" id="deleteDropdownArrowToolbar" data-group="delete-toolbar">
-                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <div class="tool-dropdown tool-dropdown-grid" id="delete-toolbar-dropdown">
-                            <span class="tool-dropdown-label">DELETE</span>
-                            <button class="tool-btn" id="deleteAllDrawingsToolbarDropdown" data-tooltip="Delete All Drawings" onclick="window.selectDeleteDrawings()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
-                                    <!-- Big Trash can -->
-                                    <path d="M3 6h18" stroke-linecap="round"/>
-                                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
-                                    <!-- Brush in corner -->
-                                    <g transform="translate(10, 8) scale(0.65)">
-                                        <path d="m11 10 3 3" stroke-width="2"/>
-                                        <path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z" stroke-width="2"/>
-                                        <path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031" stroke-width="2"/>
-                                    </g>
-                                </svg>
-                            </button>
-                            <button class="tool-btn" id="deleteAllIndicatorsToolbar" data-tooltip="Delete All Indicators" onclick="window.selectDeleteIndicators()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
-                                    <!-- Big Trash can -->
-                                    <path d="M3 6h18" stroke-linecap="round"/>
-                                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
-                                    <!-- Indicator in corner -->
-                                    <g transform="translate(10, 8) scale(0.65)">
-                                        <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" stroke-width="2.5"/>
-                                    </g>
-                                </svg>
-                            </button>
-                            <button class="tool-btn" id="deleteAllObjectsToolbar" data-tooltip="Delete All Objects" onclick="window.selectDeleteAllObjects()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
-                                    <!-- Big Trash can -->
-                                    <path d="M3 6h18" stroke-linecap="round"/>
-                                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M10 11v6M14 11v6" stroke-linecap="round"/>
-                                    <!-- Star/All symbol in corner -->
-                                    <g transform="translate(10, 8) scale(0.65)">
-                                        <polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9" stroke-width="2.5"/>
-                                    </g>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
         </div>
     
     <div class="container">
