@@ -755,20 +755,18 @@ class HorizontalLineTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            // t-based positioning with clamping
+            // fixed 30px from endpoint, clamped so gap stays on line
+            const HL_EDGE_S = 30;
             const hl_lineLen = xRange[1] - xRange[0];
-            const halfGapT_hl = hl_lineLen > 0 ? (gapSize / 2) / hl_lineLen : 0;
-            let t_hl = 0.5;
+            let hl_rawTextX;
             switch (textHAlign) {
-                case 'left':  t_hl = 0.05; break;
-                case 'right': t_hl = 0.95; break;
-                default:      t_hl = 0.5;
+                case 'left':  hl_rawTextX = xRange[0] + HL_EDGE_S; break;
+                case 'right': hl_rawTextX = xRange[1] - HL_EDGE_S; break;
+                default:      hl_rawTextX = (xRange[0] + xRange[1]) / 2;
             }
-            const split1T_hl = Math.max(0, t_hl - halfGapT_hl);
-            const split2T_hl = Math.min(1, t_hl + halfGapT_hl);
-            const textX = xRange[0] + hl_lineLen * t_hl;
-            const split1X = xRange[0] + hl_lineLen * split1T_hl;
-            const split2X = xRange[0] + hl_lineLen * split2T_hl;
+            const textX = Math.max(xRange[0] + gapSize/2, Math.min(xRange[1] - gapSize/2, hl_rawTextX));
+            const split1X = Math.max(xRange[0], textX - gapSize / 2);
+            const split2X = Math.min(xRange[1], textX + gapSize / 2);
             
             this._splitInfo = {
                 textX: textX,
@@ -990,12 +988,13 @@ class HorizontalLineTool extends BaseDrawing {
         const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
         let baseX = (xRange[0] + xRange[1]) / 2;
 
+        const HL_EDGE = 30; // fixed px from endpoint
         switch (textHAlign) {
             case 'left':
-                baseX = xRange[0] + (xRange[1] - xRange[0]) * 0.05;
+                baseX = xRange[0] + HL_EDGE;
                 break;
             case 'right':
-                baseX = xRange[0] + (xRange[1] - xRange[0]) * 0.95;
+                baseX = xRange[1] - HL_EDGE;
                 break;
             default:
                 baseX = (xRange[0] + xRange[1]) / 2;
@@ -1859,20 +1858,17 @@ class HorizontalRayTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            // t-based positioning with clamping (x = ray start, chartRightX = ray end)
-            const hr_lineLen = chartRightX - x;
-            const halfGapT_hr = hr_lineLen > 0 ? (gapSize / 2) / hr_lineLen : 0;
-            let t_hr = 0.5;
+            // fixed 30px from endpoint, clamped so gap stays on line
+            const HR_EDGE_S = 30;
+            let hr_rawTextX;
             switch (textHAlign) {
-                case 'left':  t_hr = 0.05; break;
-                case 'right': t_hr = 0.95; break;
-                default:      t_hr = 0.5;
+                case 'left':  hr_rawTextX = x + HR_EDGE_S; break;
+                case 'right': hr_rawTextX = chartRightX - HR_EDGE_S; break;
+                default:      hr_rawTextX = (x + chartRightX) / 2;
             }
-            const split1T_hr = Math.max(0, t_hr - halfGapT_hr);
-            const split2T_hr = Math.min(1, t_hr + halfGapT_hr);
-            const textX = x + hr_lineLen * t_hr;
-            const split1X = x + hr_lineLen * split1T_hr;
-            const split2X = x + hr_lineLen * split2T_hr;
+            const textX = Math.max(x + gapSize/2, Math.min(chartRightX - gapSize/2, hr_rawTextX));
+            const split1X = Math.max(x, textX - gapSize / 2);
+            const split2X = Math.min(chartRightX, textX + gapSize / 2);
             
             this._splitInfo = {
                 textX: textX,
@@ -2113,12 +2109,13 @@ class HorizontalRayTool extends BaseDrawing {
         const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
         let baseX = (startX + chartRightX) / 2;
 
+        const HR_EDGE = 30; // fixed px from endpoint
         switch (textHAlign) {
             case 'left':
-                baseX = startX + (chartRightX - startX) * 0.05;
+                baseX = startX + HR_EDGE;
                 break;
             case 'right':
-                baseX = startX + (chartRightX - startX) * 0.95;
+                baseX = chartRightX - HR_EDGE;
                 break;
             default:
                 baseX = (startX + chartRightX) / 2;
