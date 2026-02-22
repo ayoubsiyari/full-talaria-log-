@@ -16507,7 +16507,7 @@
                
 
                 <!-- Settings Button -->
-                <button class="toolbar-icon-btn-dark" id="settingsBtn" title="Settings" style="cursor:pointer;" onclick="if(window._spToggle)window._spToggle();else document.getElementById('settingsPanel').classList.toggle('open');">
+                <button class="toolbar-icon-btn-dark" id="settingsBtn" title="Settings" style="cursor:pointer;" onclick="var p=document.getElementById('settingsPanel');if(p){p.classList.toggle('open');console.log('[BTN] toggled, open=',p.classList.contains('open'));}else{console.error('[BTN] settingsPanel not found');};">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -24668,25 +24668,37 @@ function loadSection(type){
 
 window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
 
-var panel=document.getElementById('settingsPanel');
-var btn=document.getElementById('settingsBtn');
-var closeB=document.getElementById('settingsPanelClose');
+var panel=null,btn=null,closeB=null;
 
-function openPanel(){panel.classList.add('open');loadSection('general');}
-function closePanel(){panel.classList.remove('open');}
-window._spToggle=function(){panel.classList.contains('open')?closePanel():openPanel();};
+function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('general');}
+function closePanel(){if(!panel)return;panel.classList.remove('open');}
+window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};
+window._spLoad=function(type,el){if(!panel)panel=document.getElementById('settingsPanel');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
 
-if(btn)btn.addEventListener('click',function(e){e.stopPropagation();window._spToggle();});
-if(closeB)closeB.addEventListener('click',function(e){e.stopPropagation();closePanel();});
-/* use mousedown + setTimeout to avoid same-tick close */
-document.addEventListener('mousedown',function(e){
-    if(panel&&panel.classList.contains('open')&&!panel.contains(e.target)&&!(btn&&btn.contains(e.target))){
-        setTimeout(closePanel,10);
-    }
-});
-document.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
-    item.addEventListener('click',function(e){e.stopPropagation();window._spLoad(this.dataset.settings,this);});
-});
+function _spWireDom(){
+    panel  = document.getElementById('settingsPanel');
+    btn    = document.getElementById('settingsBtn');
+    closeB = document.getElementById('settingsPanelClose');
+    if(!panel){console.error('[SP] settingsPanel element not found!');return;}
+    console.log('[SP] DOM wired. panel=',!!panel,'btn=',!!btn);
+    if(closeB)closeB.addEventListener('click',function(e){e.stopPropagation();closePanel();});
+    document.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
+        item.addEventListener('click',function(e){e.stopPropagation();window._spLoad(this.dataset.settings,this);});
+    });
+    /* close on outside click - use click not mousedown to avoid same-tick issue */
+    document.addEventListener('click',function(e){
+        if(!panel||!panel.classList.contains('open'))return;
+        if(panel.contains(e.target))return;
+        if(btn&&btn.contains(e.target))return;
+        closePanel();
+    },true);
+}
+
+if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',_spWireDom);
+}else{
+    _spWireDom();
+}
 
 /* startup apply */
 setTimeout(function(){
