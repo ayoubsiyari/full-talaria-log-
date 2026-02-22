@@ -24507,7 +24507,8 @@ function showIndicatorsMenu() {
 
     </script>
     <script>
-/* ── SETTINGS PANEL – fully inlined ── */
+/* ── SETTINGS PANEL – fully inlined v3 ── */
+try{
 (function(){
 var P={};
 
@@ -24705,6 +24706,7 @@ setTimeout(function(){
 
 console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 })();
+}catch(e){ console.error('[SP] FATAL ERROR:', e.message, e.stack); }
     </script>
     
     </body>
