@@ -2343,7 +2343,7 @@
             height: calc(100vh - 48px);
             background: #0a0a1a;
             border-left: 1px solid rgba(255,255,255,0.07);
-            z-index: 9999;
+            z-index: 1000010;
             display: flex;
             flex-direction: row;
             transition: right 0.28s cubic-bezier(.4,0,.2,1);
@@ -24677,7 +24677,12 @@ window._spToggle=function(){panel.classList.contains('open')?closePanel():openPa
 
 if(btn)btn.addEventListener('click',function(e){e.stopPropagation();window._spToggle();});
 if(closeB)closeB.addEventListener('click',function(e){e.stopPropagation();closePanel();});
-document.addEventListener('click',function(e){if(panel&&panel.classList.contains('open')&&!panel.contains(e.target)&&!(btn&&btn.contains(e.target)))closePanel();});
+/* use mousedown + setTimeout to avoid same-tick close */
+document.addEventListener('mousedown',function(e){
+    if(panel&&panel.classList.contains('open')&&!panel.contains(e.target)&&!(btn&&btn.contains(e.target))){
+        setTimeout(closePanel,10);
+    }
+});
 document.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
     item.addEventListener('click',function(e){e.stopPropagation();window._spLoad(this.dataset.settings,this);});
 });
