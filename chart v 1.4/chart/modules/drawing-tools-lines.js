@@ -1523,20 +1523,40 @@ class RayTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            // Use visual left/right (by x-coord) and t-based positioning with clamping
+            // Fixed 30px along line direction from endpoint, clamped within line
+            const RAY_EDGE = 30;
             const rayLineLength = Math.sqrt((extendedX - x1Screen) ** 2 + (extendedY - y1Screen) ** 2);
-            const halfGapT_ray = rayLineLength > 0 ? (gapSize / 2) / rayLineLength : 0;
+            const ray_ux = rayLineLength > 0 ? (extendedX - x1Screen) / rayLineLength : 1;
+            const ray_uy = rayLineLength > 0 ? (extendedY - y1Screen) / rayLineLength : 0;
             const p1IsLeft_ray = x1Screen <= extendedX;
-            let t_ray = 0.5;
+            // visual left/right endpoints
+            const ray_lvX = p1IsLeft_ray ? x1Screen : extendedX;
+            const ray_lvY = p1IsLeft_ray ? y1Screen : extendedY;
+            const ray_rvX = p1IsLeft_ray ? extendedX : x1Screen;
+            const ray_rvY = p1IsLeft_ray ? extendedY : y1Screen;
+            // offset vector: from left→right unit direction * 30px
+            const ray_fwdX = ray_rvX > ray_lvX ? Math.abs(ray_ux) * RAY_EDGE : -Math.abs(ray_ux) * RAY_EDGE;
+            const ray_fwdY = ray_rvX > ray_lvX ? Math.abs(ray_uy) * RAY_EDGE * Math.sign(ray_uy || 1) : -Math.abs(ray_uy) * RAY_EDGE * Math.sign(ray_uy || 1);
+            let rawTextX, rawTextY;
             switch (textHAlign) {
-                case 'left':  t_ray = p1IsLeft_ray ? 0.05 : 0.95; break;
-                case 'right': t_ray = p1IsLeft_ray ? 0.95 : 0.05; break;
-                default:      t_ray = 0.5;
+                case 'left':
+                    rawTextX = ray_lvX + Math.abs(ray_ux) * RAY_EDGE;
+                    rawTextY = ray_lvY + Math.abs(ray_uy) * RAY_EDGE * (ray_lvY < ray_rvY ? 1 : -1);
+                    break;
+                case 'right':
+                    rawTextX = ray_rvX - Math.abs(ray_ux) * RAY_EDGE;
+                    rawTextY = ray_rvY - Math.abs(ray_uy) * RAY_EDGE * (ray_lvY < ray_rvY ? 1 : -1);
+                    break;
+                default:
+                    rawTextX = (x1Screen + extendedX) / 2;
+                    rawTextY = (y1Screen + extendedY) / 2;
             }
+            const halfGapT_ray = rayLineLength > 0 ? (gapSize / 2) / rayLineLength : 0;
+            const t_ray = rayLineLength > 0 ? Math.sqrt((rawTextX-x1Screen)**2+(rawTextY-y1Screen)**2) / rayLineLength : 0.5;
             const split1T_ray = Math.max(0, t_ray - halfGapT_ray);
             const split2T_ray = Math.min(1, t_ray + halfGapT_ray);
-            const textX = x1Screen + (extendedX - x1Screen) * t_ray;
-            const textY = y1Screen + (extendedY - y1Screen) * t_ray;
+            const textX = rawTextX;
+            const textY = rawTextY;
             const split1X = x1Screen + (extendedX - x1Screen) * split1T_ray;
             const split1Y = y1Screen + (extendedY - y1Screen) * split1T_ray;
             const split2X = x1Screen + (extendedX - x1Screen) * split2T_ray;
@@ -1696,22 +1716,24 @@ class RayTool extends BaseDrawing {
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        // Visual left/right by x-coord, 5%/95% along the line
+        // Fixed 30px along line direction from visual endpoint
+        const RL_EDGE = 30;
         const rl_lvX = x1 <= x2 ? x1 : x2;
         const rl_lvY = x1 <= x2 ? y1 : y2;
         const rl_rvX = x1 <= x2 ? x2 : x1;
         const rl_rvY = x1 <= x2 ? y2 : y1;
-        const rl_vDX = rl_rvX - rl_lvX;
-        const rl_vDY = rl_rvY - rl_lvY;
+        const rl_len = Math.sqrt((rl_rvX-rl_lvX)**2 + (rl_rvY-rl_lvY)**2) || 1;
+        const rl_ux = (rl_rvX - rl_lvX) / rl_len;
+        const rl_uy = (rl_rvY - rl_lvY) / rl_len;
         let baseX, baseY;
         switch (textHAlign) {
             case 'left':
-                baseX = rl_lvX + rl_vDX * 0.05;
-                baseY = rl_lvY + rl_vDY * 0.05;
+                baseX = rl_lvX + rl_ux * RL_EDGE;
+                baseY = rl_lvY + rl_uy * RL_EDGE;
                 break;
             case 'right':
-                baseX = rl_lvX + rl_vDX * 0.95;
-                baseY = rl_lvY + rl_vDY * 0.95;
+                baseX = rl_rvX - rl_ux * RL_EDGE;
+                baseY = rl_rvY - rl_uy * RL_EDGE;
                 break;
             default:
                 baseX = (x1 + x2) / 2;
@@ -2294,19 +2316,31 @@ class ExtendedLineTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            // t-based positioning with clamping (leftX/rightX already visual L/R)
+            // Fixed 30px along line direction from visual endpoint (leftX/rightX already visual L/R)
+            const EL_EDGE = 30;
             const el_lineLength = Math.sqrt((rightX - leftX) ** 2 + (rightY - leftY) ** 2);
+            const el_ux = el_lineLength > 0 ? (rightX - leftX) / el_lineLength : 1;
+            const el_uy = el_lineLength > 0 ? (rightY - leftY) / el_lineLength : 0;
             const halfGapT_el = el_lineLength > 0 ? (gapSize / 2) / el_lineLength : 0;
-            let t_el = 0.5;
+            let rawTextX_el, rawTextY_el;
             switch (textHAlign) {
-                case 'left':  t_el = 0.05; break;
-                case 'right': t_el = 0.95; break;
-                default:      t_el = 0.5;
+                case 'left':
+                    rawTextX_el = leftX + el_ux * EL_EDGE;
+                    rawTextY_el = leftY + el_uy * EL_EDGE;
+                    break;
+                case 'right':
+                    rawTextX_el = rightX - el_ux * EL_EDGE;
+                    rawTextY_el = rightY - el_uy * EL_EDGE;
+                    break;
+                default:
+                    rawTextX_el = (leftX + rightX) / 2;
+                    rawTextY_el = (leftY + rightY) / 2;
             }
+            const t_el = el_lineLength > 0 ? Math.sqrt((rawTextX_el-leftX)**2+(rawTextY_el-leftY)**2) / el_lineLength : 0.5;
             const split1T_el = Math.max(0, t_el - halfGapT_el);
             const split2T_el = Math.min(1, t_el + halfGapT_el);
-            const textX = leftX + (rightX - leftX) * t_el;
-            const textY = leftY + (rightY - leftY) * t_el;
+            const textX = rawTextX_el;
+            const textY = rawTextY_el;
             const split1X = leftX + (rightX - leftX) * split1T_el;
             const split1Y = leftY + (rightY - leftY) * split1T_el;
             const split2X = leftX + (rightX - leftX) * split2T_el;
@@ -2456,15 +2490,20 @@ class ExtendedLineTool extends BaseDrawing {
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         // x1/y1 = leftX/leftY, x2/y2 = rightX/rightY (already visual L/R from render)
+        // Fixed 30px along line direction from visual endpoint
+        const EL_MAIN_EDGE = 30;
+        const el_main_len = Math.sqrt((x2-x1)**2 + (y2-y1)**2) || 1;
+        const el_main_ux = (x2 - x1) / el_main_len;
+        const el_main_uy = (y2 - y1) / el_main_len;
         let baseX, baseY;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + (x2 - x1) * 0.05;
-                baseY = y1 + (y2 - y1) * 0.05;
+                baseX = x1 + el_main_ux * EL_MAIN_EDGE;
+                baseY = y1 + el_main_uy * EL_MAIN_EDGE;
                 break;
             case 'right':
-                baseX = x1 + (x2 - x1) * 0.95;
-                baseY = y1 + (y2 - y1) * 0.95;
+                baseX = x2 - el_main_ux * EL_MAIN_EDGE;
+                baseY = y2 - el_main_uy * EL_MAIN_EDGE;
                 break;
             default:
                 baseX = (x1 + x2) / 2;
