@@ -36,15 +36,22 @@ window._spPanels = {};
     document.addEventListener('click', function(e){ if(panel.classList.contains('open')&&!panel.contains(e.target)&&!(btn&&btn.contains(e.target))) closePanel(); });
 
     panel.querySelectorAll('.settings-menu-item[data-settings]').forEach(function(item){
-        item.addEventListener('click', function(){ openSub(this.dataset.settings); });
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', function(e){
+            e.stopPropagation();
+            try{ openSub(this.dataset.settings); }catch(err){ console.error('[SP] openSub error:', err); }
+        });
     });
 
     function openSub(type){
         if(menuEl) menuEl.style.display='none';
-        if(contEl){ contEl.style.display=''; contEl.innerHTML=buildSub(type); }
+        if(contEl){
+            contEl.style.cssText = 'display:block !important; padding: 20px 24px; overflow-y:auto; flex:1;';
+            try{ contEl.innerHTML = buildSub(type); }catch(e){ contEl.innerHTML='<p style="color:#f23645;padding:20px;">Error: '+e.message+'</p>'; console.error('[SP] buildSub error:',e); }
+        }
         var back=document.getElementById('spBack');
         if(back) back.addEventListener('click', showRoot);
-        wireSub(type);
+        try{ wireSub(type); }catch(e){ console.error('[SP] wireSub error:',e); }
     }
 
     /* ── HTML builders (exposed for Part 2) ── */
