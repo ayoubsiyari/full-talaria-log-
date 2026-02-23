@@ -604,16 +604,15 @@ class TrendlineTool extends BaseDrawing {
 
         let baseX, baseY;
         if (lvX >= visLeft) {
-            // Left point is on-screen — start label there
             baseX = lvX;
             baseY = lvY;
         } else {
-            // Left point is off-screen — interpolate to visLeft along the line
             const frac = (rvX !== lvX) ? (visLeft + 4 - lvX) / (rvX - lvX) : 0;
             baseX = visLeft + 4;
             baseY = lvY + frac * (rvY - lvY);
         }
         let labelAnchor = 'start';
+        console.log('[LabelDebug] lvX='+lvX+' rvX='+rvX+' visLeft='+visLeft+' visRight='+visRight+' baseX='+baseX+' baseY='+baseY);
 
         let perpOffsetX = 0;
         let perpOffsetY = 0;
