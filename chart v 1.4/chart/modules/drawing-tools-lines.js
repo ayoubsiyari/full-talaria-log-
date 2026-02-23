@@ -525,15 +525,41 @@ class TrendlineTool extends BaseDrawing {
 
             const { scales: siScales } = coords;
             const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
-            let siLabelX = this._splitInfo.textX + offsetX;
-            if (siXRange) {
-                siLabelX = Math.max(siXRange[0] + 4, Math.min(siXRange[1] - 4, siLabelX));
+            const siVisLeft  = siXRange ? siXRange[0] : 0;
+            const siVisRight = siXRange ? siXRange[1] : 99999;
+
+            // Use the same left-entry logic: find where line enters visible area
+            const siExtX1 = coords.x1 !== undefined ? coords.x1 : this._splitInfo.textX;
+            const siExtX2 = coords.x2 !== undefined ? coords.x2 : this._splitInfo.textX;
+            const siExtY1 = coords.y1 !== undefined ? coords.y1 : this._splitInfo.textY;
+            const siExtY2 = coords.y2 !== undefined ? coords.y2 : this._splitInfo.textY;
+            const siLX = siExtX1 <= siExtX2 ? siExtX1 : siExtX2;
+            const siLY = siExtX1 <= siExtX2 ? siExtY1 : siExtY2;
+            const siRX = siExtX1 <= siExtX2 ? siExtX2 : siExtX1;
+            const siRY = siExtX1 <= siExtX2 ? siExtY2 : siExtY1;
+            const siSegDX = siRX - siLX;
+            const siSegDY = siRY - siLY;
+
+            let siEntryX, siEntryY;
+            if (siLX >= siVisLeft) {
+                siEntryX = siLX; siEntryY = siLY;
+            } else if (siSegDX !== 0) {
+                const t = (siVisLeft - siLX) / siSegDX;
+                siEntryX = siVisLeft;
+                siEntryY = siLY + t * siSegDY;
+            } else {
+                siEntryX = siLX; siEntryY = siLY;
             }
-            
+            if (siEntryX > siVisRight) siEntryX = siVisRight;
+
+            // For middle alignment: place at left entry with start anchor
+            let siLabelX = Math.max(siVisLeft + 8, Math.min(siVisRight - 8, siEntryX + 8 + offsetX));
+            const siLabelY = siEntryY + offsetY;
+
             appendTextLabel(this.group, label, {
                 x: siLabelX,
-                y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                y: siLabelY,
+                anchor: 'start',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
