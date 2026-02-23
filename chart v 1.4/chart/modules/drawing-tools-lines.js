@@ -533,7 +533,7 @@ class TrendlineTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: siLabelX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: 'start',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -639,7 +639,7 @@ class TrendlineTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: finalLabelX,
             y: baseY + perpOffsetY + offsetY,
-            anchor: labelAnchor,
+            anchor: 'start',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
