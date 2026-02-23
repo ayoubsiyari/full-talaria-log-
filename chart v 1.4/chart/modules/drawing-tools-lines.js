@@ -533,7 +533,7 @@ class TrendlineTool extends BaseDrawing {
             appendTextLabel(this.group, label, {
                 x: siLabelX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'start',
+                anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -579,27 +579,49 @@ class TrendlineTool extends BaseDrawing {
 
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        let baseX = midX;
-        let baseY = midY;
+        // Compute visible segment: clamp original endpoints to [visLeft, visRight]
+        const xRange2 = scales && scales.xScale ? scales.xScale.range() : null;
+        const vLeft  = xRange2 ? xRange2[0] : 0;
+        const vRight = xRange2 ? xRange2[1] : 99999;
 
-        const lvX = x1 <= x2 ? x1 : x2;
-        const lvY = x1 <= x2 ? y1 : y2;
-        const rvX = x1 <= x2 ? x2 : x1;
-        const rvY = x1 <= x2 ? y2 : y1;
-        const vDX = rvX - lvX;
-        const vDY = rvY - lvY;
+        const rawLX = x1 <= x2 ? x1 : x2;
+        const rawLY = x1 <= x2 ? y1 : y2;
+        const rawRX = x1 <= x2 ? x2 : x1;
+        const rawRY = x1 <= x2 ? y2 : y1;
+        const rawDX = rawRX - rawLX;
+        const rawDY = rawRY - rawLY;
+
+        // Clamp left endpoint to visLeft
+        let segLX = rawLX, segLY = rawLY;
+        if (rawDX !== 0 && rawLX < vLeft) {
+            const f = (vLeft - rawLX) / rawDX;
+            segLX = vLeft;
+            segLY = rawLY + f * rawDY;
+        }
+        // Clamp right endpoint to visRight
+        let segRX = rawRX, segRY = rawRY;
+        if (rawDX !== 0 && rawRX > vRight) {
+            const f = (vRight - rawLX) / rawDX;
+            segRX = vRight;
+            segRY = rawLY + f * rawDY;
+        }
+
+        const segDX = segRX - segLX;
+        const segDY = segRY - segLY;
+
+        let baseX, baseY;
         switch (textHAlign) {
             case 'left':
-                baseX = lvX + vDX * 0.05;
-                baseY = lvY + vDY * 0.05;
+                baseX = segLX + segDX * 0.05;
+                baseY = segLY + segDY * 0.05;
                 break;
             case 'right':
-                baseX = lvX + vDX * 0.95;
-                baseY = lvY + vDY * 0.95;
+                baseX = segLX + segDX * 0.95;
+                baseY = segLY + segDY * 0.95;
                 break;
             default:
-                baseX = midX;
-                baseY = midY;
+                baseX = segLX + segDX * 0.5;
+                baseY = segLY + segDY * 0.5;
         }
         let labelAnchor = 'middle';
 
@@ -629,17 +651,13 @@ class TrendlineTool extends BaseDrawing {
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
         // Clamp label X to stay within the visible chart area
-        const xRange = scales && scales.xScale ? scales.xScale.range() : null;
-        const labelMargin = 4;
-        let finalLabelX = baseX + perpOffsetX + offsetX;
-        if (xRange) {
-            finalLabelX = Math.max(xRange[0] + labelMargin, Math.min(xRange[1] - labelMargin, finalLabelX));
-        }
+        // No extra clamp needed — baseX is already within the visible segment
+        const finalLabelX = baseX + perpOffsetX + offsetX;
 
         appendTextLabel(this.group, label, {
             x: finalLabelX,
             y: baseY + perpOffsetY + offsetY,
-            anchor: 'start',
+            anchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
