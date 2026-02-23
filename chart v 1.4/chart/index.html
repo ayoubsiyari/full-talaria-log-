@@ -15161,10 +15161,6 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                     <span>Status line</span>
                 </div>
-                <div class="sp-nav-item" data-settings="scales" onclick="event.stopPropagation();window._spLoad&&window._spLoad('scales',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                    <span>Scales and lines</span>
-                </div>
                 <div class="sp-nav-item" data-settings="canvas" onclick="event.stopPropagation();window._spLoad&&window._spLoad('canvas',this);">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
                     <span>Canvas</span>
@@ -24525,7 +24521,7 @@ var P={};
 
 /* helpers */
 function ch(){ return window.chart||window.mainChart||null; }
-function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){} }
+function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} }
 function set(k,v){ var c=ch(); if(!c)return; c.chartSettings=c.chartSettings||{}; c.chartSettings[k]=v; apply(); }
 function sess(){ try{return window.backtestingSession||JSON.parse(localStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
 function saveSess(s){ window.backtestingSession=s; try{localStorage.setItem('backtestingSession',JSON.stringify(s));}catch(e){} var c=ch(); if(c)c.backtestingSession=s; }
@@ -24540,7 +24536,7 @@ function chk(label,id,on){ return '<div class="settings-checkbox-item'+(on?' che
 function irow(label,id,val,mn,mx,step){ return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><input type="number" id="nr_'+id+'" class="settings-input" value="'+val+'" min="'+mn+'" max="'+mx+'" step="'+(step||1)+'"></div>'; }
 function sel(label,id,opts,cur){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><select id="sl_'+id+'" class="settings-select" style="margin-left:auto;max-width:168px;">'+o+'</select></div>'; }
 function selI(id,opts,cur,w){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<select id="sl_'+id+'" class="settings-select" style="width:'+(w||'130px')+';flex-shrink:0;">'+o+'</select>'; }
-function clr(label,id,val){ return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+val+'" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+val+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(41,98,255,0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
+function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+encodeURIComponent(safeVal)+'" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+safeVal+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(41,98,255,0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
 function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:#2962ff;font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:#787b86;margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
 function savebtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:#2962ff;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">'+label+'</button>'; }
 function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:transparent;color:#787b86;border:1px solid rgba(255,255,255,0.1);border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
@@ -24551,7 +24547,7 @@ function wChk(id,fn){ var el=document.getElementById('ck_'+id); if(el)el.addEven
 function wSel(id,fn){ var el=document.getElementById('sl_'+id); if(el)el.addEventListener('change',function(){fn(this.value);}); }
 function wNum(id,fn){ var el=document.getElementById('nr_'+id); if(el)el.addEventListener('change',function(){fn(parseFloat(this.value)||0);}); }
 function wRng(id,fn){ var el=document.getElementById('rng_'+id),rv=document.getElementById('rv_'+id); if(el)el.addEventListener('input',function(){if(rv)rv.textContent=this.value;fn(parseFloat(this.value));}); }
-function wClr(id,fn){ var sw=document.getElementById('sw_'+id); if(!sw)return; sw.addEventListener('click',function(e){ e.stopPropagation(); var self=this; var cur=self.dataset.color||self.style.background||'#2962ff'; if(typeof window.openColorPicker==='function'){ window.openColorPicker(cur,function(v){ self.style.background=v; self.dataset.color=v; fn(v); },self); } }); }
+function wClr(id,fn){ var sw=document.getElementById('sw_'+id); if(!sw)return; sw.addEventListener('click',function(e){ e.stopPropagation(); var self=this; var cur=decodeURIComponent(self.dataset.color||'')||'#2962ff'; if(typeof window.openColorPicker==='function'){ window.openColorPicker(cur,function(v){ self.style.background=v; self.dataset.color=encodeURIComponent(v); fn(v); },self); } }); }
 
 /* ── SYMBOL ── */
 P['symbol']={title:'Symbol',build:function(){
@@ -24612,8 +24608,8 @@ P['scales']={title:'Scales and lines',build:function(){
 /* ── CANVAS ── */
 P['canvas']={title:'Canvas',build:function(){
     var c=ch(),cs=(c&&c.chartSettings)||{};
-    var gridV=cs.showGridVertical!==false,gridH=cs.showGridHorizontal!==false;
-    var gridMode=gridV&&gridH?'both':gridV?'vert':gridH?'horz':'none';
+    var gridStyle=cs.gridStyle||'Vert and horz';
+    var ro=(c&&c.timeScale&&c.timeScale.rightOffset!=null)?c.timeScale.rightOffset:10;
     return sec(st('CHART BASIC STYLES')+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Background</span>'+
@@ -24621,51 +24617,76 @@ P['canvas']={title:'Canvas',build:function(){
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Grid lines</span>'+
-            selI('cv_grid',[['both','Vert and horz'],['vert','Vert only'],['horz','Horz only'],['none','No lines']],gridMode)+
+            selI('cv_grid',[['Vert and horz','Vert and horz'],['Vertical','Vert only'],['Horizontal','Horz only'],['None','No lines']],gridStyle)+
             clr('','cv_gridClr',cs.gridColor||'rgba(42,46,57,0.6)')+
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
-            clr('','cv_crossClr',cs.crosshairColor||'rgba(120,123,134,0.6)')+
+            clr('','cv_crossClr',cs.crosshairColor||'rgba(120,123,134,0.4)')+
         '</div>'+
         '<div class="tv-row" style="margin-bottom:4px;">'+
             '<span class="settings-input-label" style="flex:1;">Volume</span>'+
-            chk('','cv_vol',cs.showVolume!==false)+
+            chk('','cv_vol',!!cs.showVolume)+
             clr('','cv_volUp',cs.volumeUpColor||'rgba(8,153,129,0.5)')+
             clr('','cv_volDn',cs.volumeDownColor||'rgba(242,54,69,0.5)')+
         '</div>')+
     sec(st('SCALES')+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Text</span>'+
-            clr('','cv_scaleText',cs.scaleTextColor||'#d1d4dc')+
-            selI('cv_scaleFont',[['10','10'],['11','11'],['12','12'],['13','13'],['14','14'],['16','16']],String(cs.scaleFontSize||'12'),'72px')+
+            clr('','cv_scaleText',cs.scaleTextColor||'#ffffff')+
+            selI('cv_scaleFont',[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']],String(cs.scaleTextSize||cs.scaleFontSize||'12'),'72px')+
         '</div>'+
         '<div class="tv-row" style="margin-bottom:4px;">'+
             '<span class="settings-input-label" style="flex:1;">Lines</span>'+
-            clr('','cv_scaleLines',cs.scaleLinesColor||'rgba(42,46,57,0.8)')+
+            clr('','cv_scaleLines',cs.scaleLinesColor||'#2a2e39')+
         '</div>')+
     sec(st('MARGINS')+
-        irow('Top','cv_marginTop',cs.marginTop||5,0,50)+
-        irow('Bottom','cv_marginBottom',cs.marginBottom||8,0,50)+
-        irow('Right (bars)','cv_marginRight',(c&&c.timeScale&&c.timeScale.rightOffset)||10,0,300));
+        irow('Right (bars)','cv_marginRight',ro,0,300));
 },wire:function(){
-    wClr('cv_bg',function(v){set('backgroundColor',v);var c=ch();if(c&&c.canvas)c.canvas.style.backgroundColor=v;});
+    wClr('cv_bg',function(v){
+        var c=ch();if(!c)return;
+        c.chartSettings.backgroundColor=v;
+        c.canvas.style.backgroundColor=v;
+        var el=document.querySelector('.chart-container');if(el)el.style.backgroundColor=v;
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+    });
     wSel('cv_grid',function(v){
-        set('showGridVertical',v==='both'||v==='vert');
-        set('showGridHorizontal',v==='both'||v==='horz');
-        set('showGrid',v!=='none');
+        var c=ch();if(!c)return;
+        c.chartSettings.gridStyle=v;
+        c.chartSettings.showGrid=(v!=='None');
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
     wClr('cv_gridClr',function(v){set('gridColor',v);});
-    wClr('cv_crossClr',function(v){set('crosshairColor',v);});
+    wClr('cv_crossClr',function(v){
+        var c=ch();if(!c)return;
+        c.chartSettings.crosshairColor=v;
+        var vl=document.querySelector('.crosshair-vertical'),hl=document.querySelector('.crosshair-horizontal');
+        if(vl)vl.style.background=v;if(hl)hl.style.background=v;
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+    });
     wChk('cv_vol',function(v){set('showVolume',v);});
     wClr('cv_volUp',function(v){set('volumeUpColor',v);});
     wClr('cv_volDn',function(v){set('volumeDownColor',v);});
-    wClr('cv_scaleText',function(v){set('scaleTextColor',v);});
-    wSel('cv_scaleFont',function(v){var n=parseInt(v);set('scaleFontSize',n);set('scaleAxisFontSize',n);});
+    wClr('cv_scaleText',function(v){
+        var c=ch();if(!c)return;
+        c.chartSettings.scaleTextColor=v;
+        if(c.applyChartSettings)c.applyChartSettings();
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+    });
+    wSel('cv_scaleFont',function(v){
+        var n=parseInt(v);
+        var c=ch();if(!c)return;
+        c.chartSettings.scaleTextSize=n;
+        c.chartSettings.scaleFontSize=n;
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+    });
     wClr('cv_scaleLines',function(v){set('scaleLinesColor',v);});
-    wNum('cv_marginTop',function(v){set('marginTop',v);});
-    wNum('cv_marginBottom',function(v){set('marginBottom',v);});
-    wNum('cv_marginRight',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;apply();});
+    wNum('cv_marginRight',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;if(c.scheduleRender)c.scheduleRender();});
 }};
 
 /* ── TRADING ── */

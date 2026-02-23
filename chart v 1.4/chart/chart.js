@@ -1467,14 +1467,16 @@ class Chart {
                 console.log('✅ Chart settings loaded from localStorage');
             }
             
-            // Always force dark theme as default on load
-            this.chartSettings.backgroundColor = '#050028';
-            this.chartSettings.scaleLinesColor = '#050028';
-            this.chartSettings.scaleTextColor = '#ffffff';
-            this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
-            this.chartSettings.cursorLabelTextColor = '#d1d4dc';
-            this.chartSettings.cursorLabelBgColor = '#363a45';
-            this.chartSettings.symbolTextColor = '#d1d4dc';
+            // Only apply dark theme defaults if no saved settings exist
+            if (!saved) {
+                this.chartSettings.backgroundColor = '#050028';
+                this.chartSettings.scaleLinesColor = '#050028';
+                this.chartSettings.scaleTextColor = '#ffffff';
+                this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
+                this.chartSettings.cursorLabelTextColor = '#d1d4dc';
+                this.chartSettings.cursorLabelBgColor = '#363a45';
+                this.chartSettings.symbolTextColor = '#d1d4dc';
+            }
             
             // Always apply chart settings (even with defaults)
             this.applyChartSettings();
