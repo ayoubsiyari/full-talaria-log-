@@ -2544,8 +2544,13 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             };
             
             div.appendChild(item);
-            console.log('Final item HTML:', item.innerHTML);
-            console.log('Item children count:', item.children.length);
+        }
+
+        // Re-apply showIndicatorTitles visibility flag after rebuilding
+        if (this.chartSettings && this.chartSettings.showIndicatorTitles === false) {
+            div.style.display = 'none';
+        } else {
+            div.style.display = '';
         }
     };
     

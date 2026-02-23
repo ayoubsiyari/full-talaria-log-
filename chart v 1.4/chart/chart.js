@@ -3835,32 +3835,29 @@ class Chart {
             if (volumeValue) volumeValue.style.color = targetChart.chartSettings.symbolTextColor;
         }
         
-        // Apply Status Line visibility settings
-        const idSuffix = (targetChart.panelIndex !== undefined) ? targetChart.panelIndex : '';
-        const ohlcInfoEl = document.getElementById('ohlcInfo' + idSuffix) || container.querySelector('.ohlc-info');
-        if (ohlcInfoEl) {
-            // Show/hide OHLC values (O/H/L/C stats row)
-            const ohlcStats = ohlcInfoEl.querySelector('.ohlc-stats');
-            if (ohlcStats) ohlcStats.style.display = targetChart.chartSettings.showChartValues !== false ? '' : 'none';
-
-            // Show/hide bar change % value
-            const chartChangeEl = ohlcInfoEl.querySelector('#chartChange' + idSuffix) || ohlcInfoEl.querySelector('.ohlc-change');
-            if (chartChangeEl) chartChangeEl.style.display = targetChart.chartSettings.showBarChangeValues !== false ? '' : 'none';
-
-            // Show/hide symbol label block
-            const symbolBlock = ohlcInfoEl.querySelector('.ohlc-symbol-block');
-            if (symbolBlock) symbolBlock.style.display = targetChart.chartSettings.symbolTitle !== false ? '' : 'none';
-
-            // Show/hide indicator legend
-            const ohlcIndicatorsEl = ohlcInfoEl.querySelector('#ohlcIndicators' + idSuffix) || ohlcInfoEl.querySelector('#ohlcIndicators');
-            if (ohlcIndicatorsEl) {
-                const showLegend = targetChart.chartSettings.showIndicatorTitles !== false;
-                ohlcIndicatorsEl.style.display = showLegend ? '' : 'none';
-            }
-        }
-
         // Re-render target chart to apply all settings
         targetChart.scheduleRender();
+
+        // Apply Status Line visibility AFTER render (setTimeout ensures it runs after scheduleRender pipeline)
+        const _tc = targetChart;
+        const _idSuffix = (_tc.panelIndex !== undefined) ? _tc.panelIndex : '';
+        setTimeout(function() {
+            const el = document.getElementById('ohlcInfo' + _idSuffix) || document.querySelector('.ohlc-info');
+            if (!el) return;
+            const cs = _tc.chartSettings;
+
+            const ohlcStats = el.querySelector('.ohlc-stats');
+            if (ohlcStats) ohlcStats.style.display = cs.showChartValues !== false ? '' : 'none';
+
+            const chartChangeEl = el.querySelector('#chartChange' + _idSuffix) || el.querySelector('.ohlc-change');
+            if (chartChangeEl) chartChangeEl.style.display = cs.showBarChangeValues !== false ? '' : 'none';
+
+            const symbolBlock = el.querySelector('.ohlc-symbol-block');
+            if (symbolBlock) symbolBlock.style.display = cs.symbolTitle !== false ? '' : 'none';
+
+            const ohlcIndicatorsEl = el.querySelector('#ohlcIndicators' + _idSuffix) || el.querySelector('#ohlcIndicators');
+            if (ohlcIndicatorsEl) ohlcIndicatorsEl.style.display = cs.showIndicatorTitles !== false ? '' : 'none';
+        }, 0);
         
         // Save panel-specific settings
         if (targetChart.isPanel && targetChart.panelIndex !== undefined && window.panelManager) {
