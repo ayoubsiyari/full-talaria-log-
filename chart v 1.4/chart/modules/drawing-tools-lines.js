@@ -638,8 +638,19 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp final X to visible area to prevent text overflowing outside chart
-        let finalLabelX = Math.max(visLeft + 4, Math.min(visRight - 4, baseX + perpOffsetX + offsetX));
+        // Clamp final X to visible area and adapt anchor so text always grows inward
+        const rawLabelX = baseX + perpOffsetX + offsetX;
+        let finalLabelX = rawLabelX;
+        const edgeThreshold = (visRight - visLeft) * 0.15; // 15% from each edge
+        if (rawLabelX < visLeft + edgeThreshold) {
+            finalLabelX = Math.max(visLeft + 4, rawLabelX);
+            labelAnchor = 'start';
+        } else if (rawLabelX > visRight - edgeThreshold) {
+            finalLabelX = Math.min(visRight - 4, rawLabelX);
+            labelAnchor = 'end';
+        } else {
+            finalLabelX = rawLabelX;
+        }
 
         appendTextLabel(this.group, label, {
             x: finalLabelX,
