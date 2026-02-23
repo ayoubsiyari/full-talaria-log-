@@ -625,10 +625,10 @@ class TrendlineTool extends BaseDrawing {
                 labelAnchor = 'end';
                 break;
             default:
-                // Center: anchor at midpoint, text flows leftward
+                // Center: anchor at midpoint, text flows rightward
                 baseX = segLX + segDX * 0.5;
                 baseY = segLY + segDY * 0.5;
-                labelAnchor = 'middle';
+                labelAnchor = 'start';
         }
 
         let perpOffsetX = 0;
