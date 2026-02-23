@@ -24517,12 +24517,16 @@ function showIndicatorsMenu() {
 /* settings panel color swatch handler – must be global */
 window._spClr=function(btn){
     var c=btn.dataset.color||'#2962ff';
+    console.log('[SP] _spClr called, color=',c,'openColorPicker=',typeof window.openColorPicker);
     if(window.openColorPicker){
         window.openColorPicker(c,function(v){
+            console.log('[SP] color picked:',v);
             btn.style.background=v;
             btn.dataset.color=v;
             if(btn._onChange)btn._onChange(v);
         },btn);
+    } else {
+        console.error('[SP] window.openColorPicker not defined!');
     }
 };
 /* ── SETTINGS PANEL – fully inlined v3 ── */
