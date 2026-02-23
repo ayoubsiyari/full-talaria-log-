@@ -527,13 +527,13 @@ class TrendlineTool extends BaseDrawing {
             const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
             let siLabelX = this._splitInfo.textX + offsetX;
             if (siXRange) {
-                siLabelX = Math.max(siXRange[0] + 4, Math.min(siXRange[1] - 4, siLabelX));
+                siLabelX = Math.min(siXRange[1] - 4, siLabelX);
             }
 
             appendTextLabel(this.group, label, {
                 x: siLabelX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: 'end',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
