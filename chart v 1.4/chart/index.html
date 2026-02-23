@@ -24536,7 +24536,7 @@ function chk(label,id,on){ return '<div class="settings-checkbox-item'+(on?' che
 function irow(label,id,val,mn,mx,step){ return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><input type="number" id="nr_'+id+'" class="settings-input" value="'+val+'" min="'+mn+'" max="'+mx+'" step="'+(step||1)+'"></div>'; }
 function sel(label,id,opts,cur){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><select id="sl_'+id+'" class="settings-select" style="margin-left:auto;max-width:168px;">'+o+'</select></div>'; }
 function selI(id,opts,cur,w){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<select id="sl_'+id+'" class="settings-select" style="width:'+(w||'130px')+';flex-shrink:0;">'+o+'</select>'; }
-function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+encodeURIComponent(safeVal)+'" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+safeVal+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(41,98,255,0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
+function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+encodeURIComponent(safeVal)+'" onclick="window._spPickColor(\'sw_'+id+'\',event)" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+safeVal+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(41,98,255,0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
 function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:#2962ff;font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:#787b86;margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
 function savebtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:#2962ff;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">'+label+'</button>'; }
 function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:transparent;color:#787b86;border:1px solid rgba(255,255,255,0.1);border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
@@ -24547,17 +24547,31 @@ function wChk(id,fn){ var el=document.getElementById('ck_'+id); if(el)el.addEven
 function wSel(id,fn){ var el=document.getElementById('sl_'+id); if(el)el.addEventListener('change',function(){fn(this.value);}); }
 function wNum(id,fn){ var el=document.getElementById('nr_'+id); if(el)el.addEventListener('change',function(){fn(parseFloat(this.value)||0);}); }
 function wRng(id,fn){ var el=document.getElementById('rng_'+id),rv=document.getElementById('rv_'+id); if(el)el.addEventListener('input',function(){if(rv)rv.textContent=this.value;fn(parseFloat(this.value));}); }
-var _spPicker=null;
-function _getSpPicker(){
-    if(_spPicker)return _spPicker;
-    if(typeof ColorPicker!=='undefined'){
-        _spPicker=new ColorPicker();
-        return _spPicker;
-    }
-    if(window.__tvColorPickerInstance)return window.__tvColorPickerInstance;
-    return null;
+/* settings panel color picker – own instance, never shares with drawing toolbar */
+window._spPickColor=function(swId,e){
+    if(e)e.stopPropagation();
+    var sw=document.getElementById(swId); if(!sw)return;
+    var cur=decodeURIComponent(sw.dataset.color||'')||'#2962ff';
+    var picker;
+    if(window._spPickerInst){picker=window._spPickerInst;}
+    else if(typeof ColorPicker!=='undefined'){picker=window._spPickerInst=new ColorPicker();}
+    else if(window.__tvColorPickerInstance){picker=window.__tvColorPickerInstance;}
+    if(!picker){console.warn('[SP] No ColorPicker available');return;}
+    var rect=sw.getBoundingClientRect();
+    var x=rect.right+10; var y=rect.top-10;
+    if(x+260>window.innerWidth)x=rect.left-270;
+    if(y+350>window.innerHeight)y=window.innerHeight-360;
+    picker.show(x,y,cur,function(v){
+        sw.style.background=v;
+        sw.dataset.color=encodeURIComponent(v);
+        if(sw._spOnChange)sw._spOnChange(v);
+    },sw);
+};
+function wClr(id,fn){
+    var sw=document.getElementById('sw_'+id);
+    if(!sw)return;
+    sw._spOnChange=fn;
 }
-function wClr(id,fn){ var sw=document.getElementById('sw_'+id); if(!sw)return; sw.addEventListener('click',function(e){ e.stopPropagation(); var self=this; var cur=decodeURIComponent(self.dataset.color||'')||'#2962ff'; var picker=_getSpPicker(); if(picker&&typeof picker.show==='function'){ var rect=self.getBoundingClientRect(); var x=rect.right+10; var y=rect.top-10; if(x+260>window.innerWidth)x=rect.left-270; picker.show(x,y,cur,function(v){ self.style.background=v; self.dataset.color=encodeURIComponent(v); fn(v); },self); } }); }
 
 /* ── SYMBOL ── */
 P['symbol']={title:'Symbol',build:function(){
