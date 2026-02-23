@@ -596,18 +596,23 @@ class TrendlineTool extends BaseDrawing {
         const visLeft  = xRangeVis ? xRangeVis[0] : 0;
         const visRight = xRangeVis ? xRangeVis[1] : 99999;
 
-        // Use the drawn (extended/clipped) coords passed in — left endpoint is the visible start
-        const drawnLX = coords.x1 <= coords.x2 ? coords.x1 : coords.x2;
-        const drawnLY = coords.x1 <= coords.x2 ? coords.y1 : coords.y2;
+        // Find left-most original data point
+        const lvX = x1 <= x2 ? x1 : x2;
+        const lvY = x1 <= x2 ? y1 : y2;
+        const rvX = x1 <= x2 ? x2 : x1;
+        const rvY = x1 <= x2 ? y2 : y1;
 
-        // Clamp to visible left edge in case line starts off-screen
-        const startX = Math.max(visLeft + 4, drawnLX);
-        const startFrac = (coords.x1 !== coords.x2) ? (startX - drawnLX) / Math.abs(coords.x2 - coords.x1) : 0;
-        const drawnDY = (coords.x1 <= coords.x2 ? coords.y2 - coords.y1 : coords.y1 - coords.y2);
-        const startY = drawnLY + startFrac * drawnDY;
-
-        let baseX = startX;
-        let baseY = startY;
+        let baseX, baseY;
+        if (lvX >= visLeft) {
+            // Left point is on-screen — start label there
+            baseX = lvX;
+            baseY = lvY;
+        } else {
+            // Left point is off-screen — interpolate to visLeft along the line
+            const frac = (rvX !== lvX) ? (visLeft + 4 - lvX) / (rvX - lvX) : 0;
+            baseX = visLeft + 4;
+            baseY = lvY + frac * (rvY - lvY);
+        }
         let labelAnchor = 'start';
 
         let perpOffsetX = 0;
