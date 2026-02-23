@@ -578,6 +578,8 @@ class DrawingToolsManager {
         // Keyboard shortcuts
         d3.select(window).on('keydown.drawing', (event) => this.handleKeyDown(event));
         d3.select(window).on('keyup.drawing', (event) => this.handleKeyUp(event));
+        // Reset modifier-key flags when window loses focus (prevents stuck magnetKeyHeld)
+        d3.select(window).on('blur.drawing', () => { this.magnetKeyHeld = false; this.ctrlSelectMode = false; });
         
         // Canvas-level events for rectangular selection and deselection
         const canvas = document.getElementById('chartCanvas');
@@ -1621,7 +1623,8 @@ class DrawingToolsManager {
      * Handle keyboard shortcuts
      */
     handleKeyDown(event) {
-        // Track Command/Ctrl key for temporary magnet mode and multi-select hover mode
+        // Track Command/Ctrl key for multi-select hover mode
+        // Note: magnetKeyHeld is no longer used for snap - event.metaKey/ctrlKey checked directly
         if (event.metaKey || event.ctrlKey) {
             this.magnetKeyHeld = true;
             // Enable Ctrl+hover to select mode (only Ctrl, not Command on Mac)
@@ -1686,16 +1689,17 @@ class DrawingToolsManager {
             yScale: this.chart.yScale
         }, this.chart, isContinuousTool);
         
-        // Apply magnet mode if enabled (weak or strong) OR if Command/Ctrl key is held
-        // Skip magnet for continuous/freehand tools
-        const effectiveMagnetMode = this.magnetKeyHeld ? 'strong' : this.magnetMode;
+        // Apply magnet mode only when explicitly active (not via stuck key flag)
+        // Use event.metaKey/ctrlKey directly - never rely on potentially-stuck magnetKeyHeld flag
+        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
         if (!isContinuousTool && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
                 { xScale: this.chart.xScale, yScale: this.chart.yScale },
-                effectiveMagnetMode  // Pass 'weak' or 'strong'
+                effectiveMagnetMode
             );
         }
         
