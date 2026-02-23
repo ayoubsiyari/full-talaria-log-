@@ -24703,7 +24703,16 @@ P['canvas']={title:'Canvas',build:function(){
         if(c.scheduleRender)c.scheduleRender();
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
-    wClr('cv_scaleLines',function(v){set('scaleLinesColor',v);});
+    wClr('cv_scaleLines',function(v){
+        var c=ch();if(!c)return;
+        c.chartSettings.scaleLinesColor=v;
+        c.chartSettings.cursorLabelBgColor=v;
+        var pl=document.querySelector('.price-label'),tl=document.querySelector('.time-label');
+        if(pl)pl.style.background=v;
+        if(tl)tl.style.background=v;
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+    });
     wNum('cv_marginRight',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;if(c.scheduleRender)c.scheduleRender();});
 }};
 

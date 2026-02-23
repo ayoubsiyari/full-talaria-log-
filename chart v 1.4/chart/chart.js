@@ -12468,6 +12468,9 @@ class Chart {
             priceLabel.style.width = (m.r - 4) + 'px';
             priceLabel.style.textAlign = 'center';
             priceLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
+            // Enforce label colors from settings
+            if (this.chartSettings.cursorLabelBgColor) priceLabel.style.background = this.chartSettings.cursorLabelBgColor;
+            if (this.chartSettings.cursorLabelTextColor) priceLabel.style.color = this.chartSettings.cursorLabelTextColor;
         }
         
         // Update time label position with snapped X
@@ -12523,6 +12526,9 @@ class Chart {
                 timeLabel.style.left = snappedX + 'px';
                 timeLabel.style.transform = 'translateX(-50%)';
                 timeLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
+                // Enforce label colors from settings
+                if (this.chartSettings.cursorLabelBgColor) timeLabel.style.background = this.chartSettings.cursorLabelBgColor;
+                if (this.chartSettings.cursorLabelTextColor) timeLabel.style.color = this.chartSettings.cursorLabelTextColor;
             } else if (this.data.length === 0) {
                 // Even with no data, show the label (will be empty but visible)
                 timeLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
