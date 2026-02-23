@@ -271,9 +271,16 @@ class DrawingToolbar {
         
         // Fill color
         const showFill = this.needsFillColor(drawing) && !isColorOnlyTool;
-        const fillBaseColor = showFill
+        const _fillRaw = showFill
             ? ((style.fill && style.fill !== 'none') ? style.fill : (style.backgroundColor || '#787b86'))
             : null;
+        // For the underline indicator, always show a fully opaque version of the fill color
+        // so it's visible even when fill opacity is very low
+        const fillBaseColor = _fillRaw ? (function(c) {
+            const m = c.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+            if (m) return 'rgb(' + m[1] + ',' + m[2] + ',' + m[3] + ')';
+            return c;
+        })(_fillRaw) : null;
         
         // Line controls (hide for text/marker tools)
         const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label'];
@@ -1292,7 +1299,12 @@ class DrawingToolbar {
                             drawing.style.backgroundColor = newColor;
                         }
 
-                        this.updateColorPreview(fillPreview, newColor);
+                        // Show opaque version in underline so it's always visible
+                        const opaqueColor = (function(c) {
+                            const m = c.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+                            return m ? 'rgb(' + m[1] + ',' + m[2] + ',' + m[3] + ')' : c;
+                        })(newColor);
+                        this.updateColorPreview(fillPreview, opaqueColor);
                         if (this.onUpdate) {
                             this.onUpdate(drawing);
                         }

@@ -2548,76 +2548,11 @@ body.light-mode .template-save-dialog .dialog-title {
         const isBrushType = drawing.type === 'brush' || drawing.type === 'highlighter';
         const isArrowMarkerType = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
         
-        // For polyline and shapes: show background color picker with opacity slider
+        // For polyline and shapes: show background color picker without checkbox
         if (isPolyline || isShapeTool || isArrowMarkerType) {
             const bgRow = document.createElement('div');
             bgRow.className = 'tv-prop-row';
-            bgRow.style.cssText = 'display: flex; align-items: center; gap: 12px;';
-
-            // Extract current fill color and opacity
-            const currentFill = drawing.style.fill || 'rgba(41, 98, 255, 0.2)';
-            let fillOpacity = 0.2;
-            const rgbaMatch = currentFill.match(/rgba?\([^)]+,\s*([\d.]+)\)/);
-            if (rgbaMatch) fillOpacity = parseFloat(rgbaMatch[1]);
-            else if (currentFill.startsWith('#') || currentFill.startsWith('rgb(')) fillOpacity = 1;
-
-            // Label
-            const bgLabel = document.createElement('span');
-            bgLabel.className = 'tv-prop-label';
-            bgLabel.style.minWidth = '80px';
-            bgLabel.textContent = 'Background';
-            bgRow.appendChild(bgLabel);
-
-            // Opacity slider
-            const slider = document.createElement('input');
-            slider.type = 'range';
-            slider.className = 'tv-opacity-slider';
-            slider.min = '0';
-            slider.max = '1';
-            slider.step = '0.05';
-            slider.value = String(fillOpacity);
-            const pct = (fillOpacity * 100).toFixed(0);
-            slider.style.cssText = 'flex:1; height:6px; -webkit-appearance:none; appearance:none; border-radius:3px; cursor:pointer; outline:none; background: linear-gradient(to right, #2962ff ' + pct + '%, #363a45 ' + pct + '%);';
-            bgRow.appendChild(slider);
-
-            // Color button
-            const btnWrap = document.createElement('div');
-            btnWrap.className = 'tv-prop-controls';
-            const colorBtn = document.createElement('button');
-            colorBtn.className = 'tv-color-btn';
-            colorBtn.dataset.prop = 'backgroundColor';
-            colorBtn.style.background = currentFill;
-            btnWrap.appendChild(colorBtn);
-            bgRow.appendChild(btnWrap);
-
-            // Wire opacity slider
-            const self = this;
-            slider.addEventListener('input', function() {
-                const val = parseFloat(slider.value);
-                const p = (val * 100).toFixed(0);
-                slider.style.background = 'linear-gradient(to right, #2962ff ' + p + '%, #363a45 ' + p + '%)';
-                const base = drawing.style.fill || 'rgba(41,98,255,0.2)';
-                const hexM = base.match(/#([0-9a-f]{3,6})/i);
-                const rgbM = base.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-                let r = 41, g = 98, b = 255;
-                if (hexM) {
-                    const hex6 = hexM[1].length === 3
-                        ? hexM[1].split('').map(function(x){return x+x;}).join('')
-                        : hexM[1];
-                    r = parseInt(hex6.slice(0,2),16);
-                    g = parseInt(hex6.slice(2,4),16);
-                    b = parseInt(hex6.slice(4,6),16);
-                } else if (rgbM) {
-                    r = parseInt(rgbM[1]); g = parseInt(rgbM[2]); b = parseInt(rgbM[3]);
-                }
-                const newFill = 'rgba(' + r + ',' + g + ',' + b + ',' + val + ')';
-                drawing.style.fill = newFill;
-                colorBtn.style.background = newFill;
-                self.pendingChanges.backgroundColor = newFill;
-                if (drawing.group) drawing.group.selectAll('.shape-fill').attr('fill', newFill);
-                self.applyChanges(drawing);
-            });
-
+            bgRow.innerHTML = '<span class="tv-prop-label">Background</span><div class="tv-prop-controls"><button class="tv-color-btn" data-prop="backgroundColor" style="background: ' + (drawing.style.fill || 'rgba(41, 98, 255, 0.2)') + ';"></button></div>';
             if (drawing.type === 'rectangle' && rectangleBorderRow) {
                 container.insertBefore(bgRow, rectangleBorderRow.nextSibling);
             } else {
