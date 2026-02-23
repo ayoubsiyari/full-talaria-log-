@@ -24610,13 +24610,61 @@ P['scales']={title:'Scales and lines',build:function(){
 
 /* ── CANVAS ── */
 P['canvas']={title:'Canvas',build:function(){
-    var cs=(ch()&&ch().chartSettings)||{};
-    return sec(st('BACKGROUND')+clr('Background color','cv_bg',cs.backgroundColor||'#050028'))+
-    sec(st('VOLUME')+chk('Show volume','cv_vol',cs.showVolume!==false)+'<div class="tv-row">'+clr('Volume up','cv_volUp',cs.volumeUpColor||'rgba(8,153,129,0.5)')+clr('Volume down','cv_volDn',cs.volumeDownColor||'rgba(242,54,69,0.5)')+'</div>');
+    var c=ch(),cs=(c&&c.chartSettings)||{};
+    var gridV=cs.showGridVertical!==false,gridH=cs.showGridHorizontal!==false;
+    var gridMode=gridV&&gridH?'both':gridV?'vert':gridH?'horz':'none';
+    return sec(st('CHART BASIC STYLES')+
+        '<div class="tv-row" style="margin-bottom:10px;">'+
+            '<span class="settings-input-label" style="flex:1;">Background</span>'+
+            clr('','cv_bg',cs.backgroundColor||'#050028')+
+        '</div>'+
+        '<div class="tv-row" style="margin-bottom:10px;">'+
+            '<span class="settings-input-label" style="flex:1;">Grid lines</span>'+
+            sel('','cv_grid',[['both','Vert and horz'],['vert','Vert only'],['horz','Horz only'],['none','No lines']],gridMode)+
+            clr('','cv_gridClr',cs.gridColor||'rgba(42,46,57,0.6)')+
+        '</div>'+
+        '<div class="tv-row" style="margin-bottom:10px;">'+
+            '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
+            clr('','cv_crossClr',cs.crosshairColor||'rgba(120,123,134,0.6)')+
+        '</div>'+
+        '<div class="tv-row" style="margin-bottom:4px;">'+
+            '<span class="settings-input-label" style="flex:1;">Volume</span>'+
+            chk('','cv_vol',cs.showVolume!==false)+
+            clr('','cv_volUp',cs.volumeUpColor||'rgba(8,153,129,0.5)')+
+            clr('','cv_volDn',cs.volumeDownColor||'rgba(242,54,69,0.5)')+
+        '</div>')+
+    sec(st('SCALES')+
+        '<div class="tv-row" style="margin-bottom:10px;">'+
+            '<span class="settings-input-label" style="flex:1;">Text</span>'+
+            clr('','cv_scaleText',cs.scaleTextColor||'#d1d4dc')+
+            sel('','cv_scaleFont',[['10','10'],['11','11'],['12','12'],['13','13'],['14','14'],['16','16']],String(cs.scaleFontSize||'12'))+
+        '</div>'+
+        '<div class="tv-row" style="margin-bottom:4px;">'+
+            '<span class="settings-input-label" style="flex:1;">Lines</span>'+
+            clr('','cv_scaleLines',cs.scaleLinesColor||'rgba(42,46,57,0.8)')+
+        '</div>')+
+    sec(st('MARGINS')+
+        irow('Top','cv_marginTop',cs.marginTop||5,0,50)+
+        irow('Bottom','cv_marginBottom',cs.marginBottom||8,0,50)+
+        irow('Right (bars)','cv_marginRight',(c&&c.timeScale&&c.timeScale.rightOffset)||10,0,300));
 },wire:function(){
     wClr('cv_bg',function(v){set('backgroundColor',v);var c=ch();if(c&&c.canvas)c.canvas.style.backgroundColor=v;});
+    wSel('cv_grid',function(v){
+        set('showGridVertical',v==='both'||v==='vert');
+        set('showGridHorizontal',v==='both'||v==='horz');
+        set('showGrid',v!=='none');
+    });
+    wClr('cv_gridClr',function(v){set('gridColor',v);});
+    wClr('cv_crossClr',function(v){set('crosshairColor',v);});
     wChk('cv_vol',function(v){set('showVolume',v);});
-    wClr('cv_volUp',function(v){set('volumeUpColor',v);});wClr('cv_volDn',function(v){set('volumeDownColor',v);});
+    wClr('cv_volUp',function(v){set('volumeUpColor',v);});
+    wClr('cv_volDn',function(v){set('volumeDownColor',v);});
+    wClr('cv_scaleText',function(v){set('scaleTextColor',v);});
+    wSel('cv_scaleFont',function(v){var n=parseInt(v);set('scaleFontSize',n);set('scaleAxisFontSize',n);});
+    wClr('cv_scaleLines',function(v){set('scaleLinesColor',v);});
+    wNum('cv_marginTop',function(v){set('marginTop',v);});
+    wNum('cv_marginBottom',function(v){set('marginBottom',v);});
+    wNum('cv_marginRight',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;apply();});
 }};
 
 /* ── TRADING ── */
