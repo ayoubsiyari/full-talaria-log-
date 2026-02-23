@@ -12401,16 +12401,27 @@ class Chart {
         // DON'T show lines for 'dot' or 'arrow' cursor types
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
+        const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
+        const vBg = crossPattern === 'solid'
+            ? crossColor
+            : crossPattern === 'dotted'
+                ? `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
+                : `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
+        const hBg = crossPattern === 'solid'
+            ? crossColor
+            : crossPattern === 'dotted'
+                ? `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
+                : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
         if (vLine) {
             vLine.style.left = snappedX + 'px';
             vLine.style.height = 'calc(100% - 30px)';
             vLine.style.display = showLines ? 'block' : 'none';
-            vLine.style.background = crossColor;
+            vLine.style.background = vBg;
         }
         if (hLine) {
             hLine.style.top = y + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
-            hLine.style.background = crossColor;
+            hLine.style.background = hBg;
         }
         
         // Show dot indicator for 'dot' cursor type

@@ -24610,13 +24610,13 @@ P['scales']={title:'Scales and lines',build:function(){
     var pm=(c&&c.priceScale&&c.priceScale.mode)||cs.priceScaleMode||'linear';
     return sec(st('PRICE SCALE')+sel('Mode','sc_mode',[['linear','Normal (linear)'],['log','Logarithmic'],['percent','Percentage']],pm)+chk('Show price line','sc_priceLine',cs.showPriceLine!==false)+clr('Price line color','sc_priceClr',cs.priceLineColor||'#2962ff'))+
     sec(st('GRID')+chk('Show grid lines','sc_grid',cs.showGrid!==false)+clr('Grid color','sc_gridClr',cs.gridColor||'rgba(42,46,57,0.6)'))+
-    sec(st('CROSSHAIR')+chk('Show crosshair','sc_cross',cs.showCrosshair!==false)+clr('Crosshair color','sc_crossClr',cs.crosshairColor||'rgba(120,123,134,0.6)')+chk('Magnet to OHLC','sc_magnet',!!(gLoad().magnetCrosshair)))+
+    sec(st('CROSSHAIR')+chk('Show crosshair','sc_cross',cs.showCrosshair!==false)+clr('Crosshair color','sc_crossClr',cs.crosshairColor||'rgba(120,123,134,0.6)')+sel('Style','sc_crossStyle',[['dashed','Dashed'],['solid','Solid'],['dotted','Dotted']],cs.crosshairPattern||'dashed')+chk('Magnet to OHLC','sc_magnet',!!(gLoad().magnetCrosshair)))+
     sec(st('SCALE LABELS')+clr('Text color','sc_textClr',cs.scaleTextColor||'#d1d4dc')+sel('Font size','sc_font',[['10','10px'],['11','11px'],['12','12px'],['14','14px'],['16','16px']],String(cs.scaleFontSize||'12'))+irow('Right margin (bars)','sc_rOff',(c&&c.timeScale&&c.timeScale.rightOffset)||50,0,300));
 },wire:function(){
     wSel('sc_mode',function(v){var c=ch();if(!c)return;c.priceScale=c.priceScale||{};c.priceScale.mode=v;set('priceScaleMode',v);});
     wChk('sc_priceLine',function(v){set('showPriceLine',v);});wClr('sc_priceClr',function(v){set('priceLineColor',v);});
     wChk('sc_grid',function(v){set('showGrid',v);});wClr('sc_gridClr',function(v){set('gridColor',v);});
-    wChk('sc_cross',function(v){set('showCrosshair',v);});wClr('sc_crossClr',function(v){set('crosshairColor',v);});
+    wChk('sc_cross',function(v){set('showCrosshair',v);});wClr('sc_crossClr',function(v){set('crosshairColor',v);});wSel('sc_crossStyle',function(v){set('crosshairPattern',v);});
     wChk('sc_magnet',function(v){gSave({magnetCrosshair:v});var c=ch();if(!c)return;c.magnetMode=v?'on':'off';});
     wClr('sc_textClr',function(v){set('scaleTextColor',v);});
     wSel('sc_font',function(v){var n=parseInt(v);set('scaleFontSize',n);set('scaleAxisFontSize',n);});
