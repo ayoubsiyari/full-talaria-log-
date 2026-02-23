@@ -18303,7 +18303,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V2"></script>
+         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V3"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260219_REPLAY_FORWARD_PANLOAD_V1"></script>
@@ -24640,7 +24640,7 @@ P['canvas']={title:'Canvas',build:function(){
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
-            '<button id="cv_crossBtn" onclick="window._openCrosshairPicker(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+(cs.crosshairColor||'rgba(120,123,134,0.4)')+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(41,98,255,0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button>'+
+            '<button id="cv_crossBtn" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+(cs.crosshairColor||'rgba(120,123,134,0.4)')+';cursor:pointer;flex-shrink:0;"></button>'+
         '</div>'+
         '<div class="tv-row" style="margin-bottom:4px;">'+
             '<span class="settings-input-label" style="flex:1;">Volume</span>'+
@@ -24677,7 +24677,12 @@ P['canvas']={title:'Canvas',build:function(){
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
     wClr('cv_gridClr',function(v){set('gridColor',v);});
-    // crosshair color button wired via _openCrosshairPicker
+    // crosshair color button
+    (function(){
+        var btn=document.getElementById('cv_crossBtn');
+        if(btn)btn.addEventListener('click',function(){window._openCrosshairPicker(btn);});
+    })();
+    // crosshair color picker logic
     window._applyCrosshairSettings=function(color,opacity,width,style){
         var c=ch();if(!c)return;
         var m=String(color).match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
