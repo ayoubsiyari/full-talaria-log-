@@ -522,9 +522,16 @@ class TrendlineTool extends BaseDrawing {
                 ? 0
                 : this.style.textOffsetY;
             const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+
+            const { scales: siScales } = coords;
+            const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
+            let siLabelX = this._splitInfo.textX + offsetX;
+            if (siXRange) {
+                siLabelX = Math.max(siXRange[0] + 4, Math.min(siXRange[1] - 4, siLabelX));
+            }
             
             appendTextLabel(this.group, label, {
-                x: this._splitInfo.textX + offsetX,
+                x: siLabelX,
                 y: this._splitInfo.textY + offsetY,
                 anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
@@ -623,8 +630,16 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
+        // Clamp label X to stay within the visible chart area
+        const xRange = scales && scales.xScale ? scales.xScale.range() : null;
+        const labelMargin = 4;
+        let finalLabelX = baseX + perpOffsetX + offsetX;
+        if (xRange) {
+            finalLabelX = Math.max(xRange[0] + labelMargin, Math.min(xRange[1] - labelMargin, finalLabelX));
+        }
+
         appendTextLabel(this.group, label, {
-            x: baseX + perpOffsetX + offsetX,
+            x: finalLabelX,
             y: baseY + perpOffsetY + offsetY,
             anchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
