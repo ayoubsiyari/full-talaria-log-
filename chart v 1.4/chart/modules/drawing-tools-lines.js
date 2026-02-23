@@ -509,28 +509,47 @@ class TrendlineTool extends BaseDrawing {
         // If we have split info from line rendering, use it for exact positioning
         if (this._splitInfo) {
             let angle = this._splitInfo.angle;
-
-            // Keep text readable by flipping it if upside down
             while (angle > 180) angle -= 360;
             while (angle < -180) angle += 360;
-            if (angle > 90 || angle < -90) {
-                angle += 180;
-            }
+            if (angle > 90 || angle < -90) angle += 180;
 
             const offsetX = this.style.textOffsetX || 0;
             const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-                ? 0
-                : this.style.textOffsetY;
+                ? 0 : this.style.textOffsetY;
             const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
             const { scales: siScales } = coords;
+            const sp1 = this.points[0], sp2 = this.points[1];
+            const sox1 = siScales && siScales.chart && siScales.chart.dataIndexToPixel
+                ? siScales.chart.dataIndexToPixel(sp1.x) : (siScales ? siScales.xScale(sp1.x) : this._splitInfo.textX);
+            const soy1 = siScales ? siScales.yScale(sp1.y) : this._splitInfo.textY;
+            const sox2 = siScales && siScales.chart && siScales.chart.dataIndexToPixel
+                ? siScales.chart.dataIndexToPixel(sp2.x) : (siScales ? siScales.xScale(sp2.x) : this._splitInfo.textX);
+            const soy2 = siScales ? siScales.yScale(sp2.y) : this._splitInfo.textY;
             const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
-            const siLabelX = this._splitInfo.textX + offsetX;
+            const svLeft = siXRange ? siXRange[0] : 0, svRight = siXRange ? siXRange[1] : 99999;
+            const sRawLX = sox1 <= sox2 ? sox1 : sox2, sRawLY = sox1 <= sox2 ? soy1 : soy2;
+            const sRawRX = sox1 <= sox2 ? sox2 : sox1, sRawRY = sox1 <= sox2 ? soy2 : soy1;
+            const sRawDX = sRawRX - sRawLX, sRawDY = sRawRY - sRawLY;
+            let sSegLX = sRawLX, sSegLY = sRawLY;
+            if (sRawDX !== 0 && sRawLX < svLeft) { const f = (svLeft - sRawLX) / sRawDX; sSegLX = svLeft; sSegLY = sRawLY + f * sRawDY; }
+            let sSegRX = sRawRX, sSegRY = sRawRY;
+            if (sRawDX !== 0 && sRawRX > svRight) { const f = (svRight - sRawLX) / sRawDX; sSegRX = svRight; sSegRY = sRawLY + f * sRawDY; }
+            const sSegLen = Math.sqrt((sSegRX - sSegLX) ** 2 + (sSegRY - sSegLY) ** 2) || 1;
+            const sUx = (sSegRX - sSegLX) / sSegLen, sUy = (sSegRY - sSegLY) / sSegLen;
+            const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            const SI_EDGE = 30;
+            let siTextX, siTextY, siAnchor;
+            switch (siTextHAlign) {
+                case 'left':  siTextX = sSegLX + sUx * SI_EDGE; siTextY = sSegLY + sUy * SI_EDGE; siAnchor = 'start'; break;
+                case 'right': siTextX = sSegRX - sUx * SI_EDGE; siTextY = sSegRY - sUy * SI_EDGE; siAnchor = 'end';   break;
+                default:      siTextX = (sSegLX + sSegRX) / 2;  siTextY = (sSegLY + sSegRY) / 2;  siAnchor = 'middle';
+            }
 
             appendTextLabel(this.group, label, {
-                x: siLabelX,
-                y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                x: siTextX + offsetX,
+                y: siTextY + offsetY,
+                anchor: siAnchor,
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
