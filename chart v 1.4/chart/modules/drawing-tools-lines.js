@@ -527,13 +527,13 @@ class TrendlineTool extends BaseDrawing {
             const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
             let siLabelX = this._splitInfo.textX + offsetX;
             if (siXRange) {
-                siLabelX = Math.max(siXRange[0] + 4, siLabelX);
+                siLabelX = Math.min(siXRange[1] - 4, siLabelX);
             }
 
             appendTextLabel(this.group, label, {
                 x: siLabelX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'start',
+                anchor: 'end',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -613,10 +613,10 @@ class TrendlineTool extends BaseDrawing {
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                // Anchor at left visible endpoint, text flows rightward (anchor:start)
-                baseX = segLX;
-                baseY = segLY;
-                labelAnchor = 'start';
+                // Anchor at 20% from left of visible segment, text flows leftward (anchor:end)
+                baseX = segLX + segDX * 0.2;
+                baseY = segLY + segDY * 0.2;
+                labelAnchor = 'end';
                 break;
             case 'right':
                 // Anchor at right visible endpoint, text flows leftward (anchor:end)
@@ -625,10 +625,10 @@ class TrendlineTool extends BaseDrawing {
                 labelAnchor = 'end';
                 break;
             default:
-                // Center: anchor at midpoint of visible segment, text flows rightward (anchor:start)
+                // Center: anchor at midpoint, text flows leftward (anchor:end)
                 baseX = segLX + segDX * 0.5;
                 baseY = segLY + segDY * 0.5;
-                labelAnchor = 'start';
+                labelAnchor = 'end';
         }
 
         let perpOffsetX = 0;
