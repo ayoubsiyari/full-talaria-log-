@@ -7381,11 +7381,6 @@ body.light-mode .template-save-dialog .dialog-title {
                     
                     const drawingManager = window.chart?.drawingManager || window.drawingManager;
                     
-                    // [debug removed]
-                        hasOriginalStyle: !!originalStyleStr, 
-                        drawingId, 
-                        hasDrawingManager: !!drawingManager 
-                    });
                     
                     if (originalStyleStr && drawingManager && drawingId) {
                         const originalStyle = JSON.parse(originalStyleStr);
