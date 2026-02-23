@@ -613,10 +613,10 @@ class TrendlineTool extends BaseDrawing {
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                // Anchor at left end, text flows rightward → never overflows left
-                baseX = segLX;
-                baseY = segLY;
-                labelAnchor = 'start';
+                // Anchor at 30% of visible segment, text flows leftward → stays on line
+                baseX = segLX + segDX * 0.3;
+                baseY = segLY + segDY * 0.3;
+                labelAnchor = 'end';
                 break;
             case 'right':
                 // Anchor at right end, text flows leftward → never overflows right
