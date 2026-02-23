@@ -12400,8 +12400,18 @@ class Chart {
         // Show crosshair lines for 'cross' cursor type, eraser, OR when drawing tool is active
         // DON'T show lines for 'dot' or 'arrow' cursor types
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool) && this.cursorType !== 'dot';
-        if (vLine) vLine.style.cssText = `left:${snappedX}px;height:calc(100% - 30px);display:${showLines ? 'block' : 'none'}`;
-        if (hLine) hLine.style.cssText = `top:${y}px;display:${showLines ? 'block' : 'none'}`;
+        const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
+        if (vLine) {
+            vLine.style.left = snappedX + 'px';
+            vLine.style.height = 'calc(100% - 30px)';
+            vLine.style.display = showLines ? 'block' : 'none';
+            vLine.style.background = crossColor;
+        }
+        if (hLine) {
+            hLine.style.top = y + 'px';
+            hLine.style.display = showLines ? 'block' : 'none';
+            hLine.style.background = crossColor;
+        }
         
         // Show dot indicator for 'dot' cursor type
         let dotIndicator = container.querySelector('.cursor-dot-indicator');
