@@ -18303,7 +18303,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V7"></script>
+         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V8"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260219_REPLAY_FORWARD_PANLOAD_V1"></script>
@@ -19574,6 +19574,49 @@
                 });
             });
             
+            // ── Delete toolbar button handlers ──
+            window.selectDeleteDrawings = function() {
+                var c = window.chart || window.mainChart;
+                if (c && typeof c.clearOnlyDrawings === 'function') {
+                    c.clearOnlyDrawings({ confirmPrompt: false });
+                } else if (c && c.drawingManager) {
+                    var dm = c.drawingManager;
+                    var all = (dm.drawings || []).slice();
+                    all.forEach(function(d){ dm.deleteDrawing(d); });
+                }
+                document.querySelectorAll('.tool-dropdown').forEach(function(dd){ dd.classList.remove('show'); dd.style.display=''; });
+            };
+            window.selectDeleteIndicators = function() {
+                var c = window.chart || window.mainChart;
+                if (c && typeof c.clearOnlyIndicators === 'function') {
+                    c.clearOnlyIndicators({ confirmPrompt: false });
+                } else if (c && c.indicators && Array.isArray(c.indicators.active)) {
+                    c.indicators.active = [];
+                    if (c.render) c.render();
+                }
+                document.querySelectorAll('.tool-dropdown').forEach(function(dd){ dd.classList.remove('show'); dd.style.display=''; });
+            };
+            window.selectDeleteAllObjects = function() {
+                var c = window.chart || window.mainChart;
+                if (c && typeof c.clearDrawingsAndIndicators === 'function') {
+                    c.clearDrawingsAndIndicators({ confirmPrompt: false });
+                } else {
+                    window.selectDeleteDrawings();
+                    window.selectDeleteIndicators();
+                }
+                document.querySelectorAll('.tool-dropdown').forEach(function(dd){ dd.classList.remove('show'); dd.style.display=''; });
+            };
+
+            // Main delete toolbar button – opens the dropdown
+            var deleteMainBtn = document.getElementById('deleteAllDrawingsToolbar');
+            var deleteArrowBtn = document.getElementById('deleteDropdownArrowToolbar');
+            if (deleteMainBtn) {
+                deleteMainBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (deleteArrowBtn) deleteArrowBtn.click();
+                });
+            }
+
             // Handle cursor tool button click - reactivate last selected tool or clear
             const cursorToolBtn = document.getElementById('cursorTool');
             if (cursorToolBtn) {
