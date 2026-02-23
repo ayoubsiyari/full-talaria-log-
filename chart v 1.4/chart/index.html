@@ -18303,7 +18303,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V4"></script>
+         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V6"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260219_REPLAY_FORWARD_PANLOAD_V1"></script>
@@ -24542,7 +24542,8 @@ window._openCrosshairPicker=function(btn){
     var colors=['#ffffff','#d1d4dc','#787b86','#434651','#131722','#f23645','#ff9800','#ffeb3b','#26a69a','#2962ff','#9c27b0','#e91e63','#00bcd4','#4caf50','#ff5722'];
     var swatches=colors.map(function(col){return '<div onclick="window._crosshairPickColor(\''+col+'\')" style="width:22px;height:22px;border-radius:4px;background:'+col+';cursor:pointer;border:2px solid transparent;flex-shrink:0;"></div>';}).join('');
     var thickBtns=[1,2,3,4].map(function(w){return '<div onclick="window._crosshairPickWidth('+w+')" data-w="'+w+'" style="flex:1;height:36px;border-radius:6px;border:2px solid '+(curWidth===w?'#2962ff':'rgba(255,255,255,0.12)')+';background:'+(curWidth===w?'rgba(41,98,255,0.15)':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;"><div style="width:80%;height:'+w+'px;background:#d1d4dc;border-radius:1px;"></div></div>';}).join('');
-    var styleBtns=[['solid','━━━'],['dashed','╌╌╌'],['dotted','┄┄┄']].map(function(s){return '<div onclick="window._crosshairPickStyle(\''+s[0]+'\')" data-s="'+s[0]+'" style="flex:1;height:36px;border-radius:6px;border:2px solid '+(curStyle===s[0]?'#2962ff':'rgba(255,255,255,0.12)')+';background:'+(curStyle===s[0]?'rgba(41,98,255,0.15)':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;color:#d1d4dc;font-size:16px;letter-spacing:2px;">'+s[1]+'</div>';}).join('');
+    var styleLabels={'solid':'Solid','dashed':'Dashed','dotted':'Dotted'};
+    var styleBtns=['solid','dashed','dotted'].map(function(s){return '<div onclick="window._crosshairPickStyle(\''+s+'\')" data-s="'+s+'" style="flex:1;height:36px;border-radius:6px;border:2px solid '+(curStyle===s?'#2962ff':'rgba(255,255,255,0.12)')+';background:'+(curStyle===s?'rgba(41,98,255,0.15)':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;color:#d1d4dc;font-size:11px;font-weight:600;">'+styleLabels[s]+'</div>';}).join('');
     var popup=document.createElement('div');
     popup.id='_crosshairPickerPopup';
     popup.style.cssText='position:fixed;z-index:99999;background:#1e222d;border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:16px;width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
@@ -24695,7 +24696,7 @@ P['canvas']={title:'Canvas',build:function(){
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
-            '<button id="cv_crossBtn" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+(cs.crosshairColor||'rgba(120,123,134,0.4)')+';cursor:pointer;flex-shrink:0;"></button>'+
+            '<button id="cv_crossBtn" onclick="window._openCrosshairPicker(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+(cs.crosshairColor||'rgba(120,123,134,0.4)')+';cursor:pointer;flex-shrink:0;"></button>'+
         '</div>'+
         '<div class="tv-row" style="margin-bottom:4px;">'+
             '<span class="settings-input-label" style="flex:1;">Volume</span>'+
