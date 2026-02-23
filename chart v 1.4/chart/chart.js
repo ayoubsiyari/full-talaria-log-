@@ -12535,6 +12535,10 @@ class Chart {
                 const highElem = document.getElementById('high' + idSuffix);
                 const lowElem = document.getElementById('low' + idSuffix);
                 const closeElem = document.getElementById('close' + idSuffix);
+
+                // Enforce showChartValues flag
+                const ohlcStatsEl = openElem && openElem.closest('.ohlc-stats');
+                if (ohlcStatsEl) ohlcStatsEl.style.display = this.chartSettings.showChartValues !== false ? '' : 'none';
                 
                 const ohlcElems = [openElem, highElem, lowElem, closeElem];
                 const priceMap = [candle.o, candle.h, candle.l, candle.c];
@@ -12556,6 +12560,8 @@ class Chart {
                 if (chartChangeElem) {
                     chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
                     chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
+                    // Enforce showBarChangeValues flag
+                    chartChangeElem.style.display = this.chartSettings.showBarChangeValues !== false ? '' : 'none';
                 }
                 
                 // Update volume (only if showVolume is enabled)
@@ -14628,6 +14634,10 @@ class Chart {
         const highElem = document.getElementById('high' + idSuffix);
         const lowElem = document.getElementById('low' + idSuffix);
         const closeElem = document.getElementById('close' + idSuffix);
+
+        // Enforce showChartValues flag
+        const ohlcStatsEl2 = openElem && openElem.closest('.ohlc-stats');
+        if (ohlcStatsEl2) ohlcStatsEl2.style.display = this.chartSettings.showChartValues !== false ? '' : 'none';
         
         const ohlcElems = [openElem, highElem, lowElem, closeElem];
         const priceMap = [candle.o, candle.h, candle.l, candle.c];
@@ -14649,6 +14659,8 @@ class Chart {
         if (chartChangeElem) {
             chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
             chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
+            // Enforce showBarChangeValues flag
+            chartChangeElem.style.display = this.chartSettings.showBarChangeValues !== false ? '' : 'none';
         }
         
         // Update volume - only if volume indicator is active
