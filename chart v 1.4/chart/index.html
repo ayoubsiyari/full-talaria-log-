@@ -18303,7 +18303,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V8"></script>
+         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V9"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260219_REPLAY_FORWARD_PANLOAD_V1"></script>
@@ -19322,6 +19322,7 @@
                     // Toggle dropdown
                     const isShowing = dropdown.classList.contains('show');
                     dropdown.classList.toggle('show');
+                    if (!isShowing) dropdown.style.display = '';
                     this.classList.toggle('dropdown-open', !isShowing);
                     currentOpenDropdown = isShowing ? null : dropdown;
                     
