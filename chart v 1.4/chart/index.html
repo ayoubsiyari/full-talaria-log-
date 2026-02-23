@@ -24539,6 +24539,7 @@ function st(t){ return '<div class="settings-section-title" style="margin-top:4p
 function chk(label,id,on){ return '<div class="settings-checkbox-item'+(on?' checked':'')+'" id="ck_'+id+'" style="cursor:pointer;"><div class="settings-checkbox">'+CSV+'</div><span class="settings-checkbox-label">'+label+'</span></div>'; }
 function irow(label,id,val,mn,mx,step){ return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><input type="number" id="nr_'+id+'" class="settings-input" value="'+val+'" min="'+mn+'" max="'+mx+'" step="'+(step||1)+'"></div>'; }
 function sel(label,id,opts,cur){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><select id="sl_'+id+'" class="settings-select" style="margin-left:auto;max-width:168px;">'+o+'</select></div>'; }
+function selI(id,opts,cur,w){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<select id="sl_'+id+'" class="settings-select" style="width:'+(w||'130px')+';flex-shrink:0;">'+o+'</select>'; }
 function clr(label,id,val){ return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+val+'" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+val+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(41,98,255,0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
 function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:#2962ff;font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:#787b86;margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
 function savebtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:#2962ff;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">'+label+'</button>'; }
@@ -24620,7 +24621,7 @@ P['canvas']={title:'Canvas',build:function(){
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Grid lines</span>'+
-            sel('','cv_grid',[['both','Vert and horz'],['vert','Vert only'],['horz','Horz only'],['none','No lines']],gridMode)+
+            selI('cv_grid',[['both','Vert and horz'],['vert','Vert only'],['horz','Horz only'],['none','No lines']],gridMode)+
             clr('','cv_gridClr',cs.gridColor||'rgba(42,46,57,0.6)')+
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
@@ -24637,7 +24638,7 @@ P['canvas']={title:'Canvas',build:function(){
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Text</span>'+
             clr('','cv_scaleText',cs.scaleTextColor||'#d1d4dc')+
-            sel('','cv_scaleFont',[['10','10'],['11','11'],['12','12'],['13','13'],['14','14'],['16','16']],String(cs.scaleFontSize||'12'))+
+            selI('cv_scaleFont',[['10','10'],['11','11'],['12','12'],['13','13'],['14','14'],['16','16']],String(cs.scaleFontSize||'12'),'72px')+
         '</div>'+
         '<div class="tv-row" style="margin-bottom:4px;">'+
             '<span class="settings-input-label" style="flex:1;">Lines</span>'+
