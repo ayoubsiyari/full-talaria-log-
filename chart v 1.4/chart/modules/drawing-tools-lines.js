@@ -645,8 +645,8 @@ class TrendlineTool extends BaseDrawing {
                 break;
             default:
                 // anchor:middle → text centered at midpoint
-                baseX = (segLX + segRX)* EDGE ;
-                baseY = (segLY + segRY)* EDGE ;
+                baseX = (segLX - segRX)* EDGE ;
+                baseY = (segLY - segRY)* EDGE ;
                 labelAnchor = 'middle';
         }
 
