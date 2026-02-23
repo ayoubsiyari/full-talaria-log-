@@ -716,6 +716,23 @@ class DrawingToolbar {
                 </div>
             </div>
             
+            <!-- Fill Color Input (for shapes) -->
+            ${showFill ? `
+            <div class="toolbar-item">
+                <div class="toolbar-color-label" title="Fill Color">
+                    <div class="toolbar-color-icon-wrapper" id="fill-color-preview">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/>
+                            <path d="m5 2 5 5"/>
+                            <path d="M2 13h15"/>
+                            <path d="M22 20.3c0 .8-.5 1.7-1.5 1.7s-1.5-.9-1.5-1.7c0-.8 1.5-2.3 1.5-2.3s1.5 1.5 1.5 2.3Z"/>
+                        </svg>
+                        <div class="toolbar-color-underline" style="background: ${fillBaseColor};"></div>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+            
             <!-- Line Style Dropdown (for line tools only) -->
             ${lineTools.includes(drawing.type) ? `
             <div class="toolbar-item toolbar-dropdown-wrapper">
