@@ -259,42 +259,43 @@ class TrendlineTool extends BaseDrawing {
             const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
             
             // Use exact text width for gap with padding
-            const padding = 10; // Small space on each side of text
+            const padding = 10;
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
-            
-            // Calculate text position using interpolation along the line
-            // Use visual left/right (by x-coord), not draw order
-            const p1IsVisualLeft = origX1 <= origX2;
-            let t = 0.5; // 0 = point1, 1 = point2, 0.5 = middle
-            switch (textHAlign) {
-                case 'left':
-                    t = p1IsVisualLeft ? 0.05 : 0.95;
-                    break;
-                case 'right':
-                    t = p1IsVisualLeft ? 0.95 : 0.05;
-                    break;
-                default: // center
-                    t = 0.5;
-            }
-            
-            // Interpolate position along the line
-            const textX = origX1 + (origX2 - origX1) * t;
-            const textY = origY1 + (origY2 - origY1) * t;
-            
-            // Clamp split t-values so the gap never extends past the endpoints
-            const lineLength = Math.sqrt(
-                (origX2 - origX1) ** 2 + (origY2 - origY1) ** 2
-            );
-            const halfGapT = lineLength > 0 ? (gapSize / 2) / lineLength : 0;
-            const split1T = Math.max(0, t - halfGapT);
-            const split2T = Math.min(1, t + halfGapT);
 
-            // Calculate split points - these define where the line segments end/start
-            const split1X = origX1 + (origX2 - origX1) * split1T;
-            const split1Y = origY1 + (origY2 - origY1) * split1T;
-            const split2X = origX1 + (origX2 - origX1) * split2T;
-            const split2Y = origY1 + (origY2 - origY1) * split2T;
+            // Compute visible segment (clamp to chart boundaries)
+            const xRange = scales && scales.xScale ? scales.xScale.range() : null;
+            const vLeft = xRange ? xRange[0] : 0;
+            const vRight = xRange ? xRange[1] : 99999;
+            const rawLX = origX1 <= origX2 ? origX1 : origX2;
+            const rawLY = origX1 <= origX2 ? origY1 : origY2;
+            const rawRX = origX1 <= origX2 ? origX2 : origX1;
+            const rawRY = origX1 <= origX2 ? origY2 : origY1;
+            const rawDX = rawRX - rawLX, rawDY = rawRY - rawLY;
+            let segLX = rawLX, segLY = rawLY;
+            if (rawDX !== 0 && rawLX < vLeft) { const f = (vLeft - rawLX) / rawDX; segLX = vLeft; segLY = rawLY + f * rawDY; }
+            let segRX = rawRX, segRY = rawLY;
+            if (rawDX !== 0) { const f = (segRX - rawLX) / rawDX; segRY = rawLY + f * rawDY; }
+            if (rawDX !== 0 && rawRX > vRight) { const f = (vRight - rawLX) / rawDX; segRX = vRight; segRY = rawLY + f * rawDY; }
+
+            // Calculate text position on the VISIBLE segment
+            const segLen = Math.sqrt((segRX - segLX) ** 2 + (segRY - segLY) ** 2) || 1;
+            const seg_ux = (segRX - segLX) / segLen;
+            const seg_uy = (segRY - segLY) / segLen;
+            const SI_EDGE = 30;
+            let textX, textY;
+            switch (textHAlign) {
+                case 'left':  textX = segLX + seg_ux * SI_EDGE; textY = segLY + seg_uy * SI_EDGE; break;
+                case 'right': textX = segRX - seg_ux * SI_EDGE; textY = segRY - seg_uy * SI_EDGE; break;
+                default:      textX = (segLX + segRX) / 2;      textY = (segLY + segRY) / 2;
+            }
+
+            // Calculate split points centred on textX/textY, clamped to visible segment
+            const halfGap = gapSize / 2;
+            const split1X = textX - seg_ux * halfGap;
+            const split1Y = textY - seg_uy * halfGap;
+            const split2X = textX + seg_ux * halfGap;
+            const split2Y = textY + seg_uy * halfGap;
             
             // Store split info for text rendering to use
             this._splitInfo = {
@@ -1060,7 +1061,7 @@ class HorizontalLineTool extends BaseDrawing {
             y: y + offsetY + (this.style.textOffsetY || 0),
             anchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
-            fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
+            fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize, 
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
