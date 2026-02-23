@@ -609,21 +609,24 @@ class TrendlineTool extends BaseDrawing {
         const segDX = segRX - segLX;
         const segDY = segRY - segLY;
 
+        // TradingView style: anchor at right end of visible segment, text flows leftward
+        // textHAlign controls position: right=near right end, center=midpoint, left=near left end
         let baseX, baseY;
         switch (textHAlign) {
             case 'left':
-                baseX = segLX + segDX * 0.05;
-                baseY = segLY + segDY * 0.05;
+                baseX = segLX + segDX * 0.15;
+                baseY = segLY + segDY * 0.15;
                 break;
             case 'right':
-                baseX = segLX + segDX * 0.95;
-                baseY = segLY + segDY * 0.95;
+                baseX = segRX;
+                baseY = segRY;
                 break;
             default:
                 baseX = segLX + segDX * 0.5;
                 baseY = segLY + segDY * 0.5;
         }
-        let labelAnchor = 'middle';
+        // anchor:end → text flows leftward from baseX, never overflows right
+        let labelAnchor = 'end';
 
         let perpOffsetX = 0;
         let perpOffsetY = 0;
@@ -657,7 +660,7 @@ class TrendlineTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: finalLabelX,
             y: baseY + perpOffsetY + offsetY,
-            anchor: 'middle',
+            anchor: labelAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
