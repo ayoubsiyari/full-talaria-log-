@@ -290,12 +290,28 @@ class TrendlineTool extends BaseDrawing {
                 default:      textX = (segLX + segRX) / 2;      textY = (segLY + segRY) / 2;
             }
 
-            // Calculate split points centred on textX/textY, clamped to visible segment
+            // Calculate split points based on anchor type so gap covers actual text area
             const halfGap = gapSize / 2;
-            const split1X = textX - seg_ux * halfGap;
-            const split1Y = textY - seg_uy * halfGap;
-            const split2X = textX + seg_ux * halfGap;
-            const split2Y = textY + seg_uy * halfGap;
+            let split1X, split1Y, split2X, split2Y;
+            switch (textHAlign) {
+                case 'left': // anchor:start — text extends rightward from textX
+                    split1X = textX - seg_ux * capPad;
+                    split1Y = textY - seg_uy * capPad;
+                    split2X = textX + seg_ux * (textWidth + padding + capPad);
+                    split2Y = textY + seg_uy * (textWidth + padding + capPad);
+                    break;
+                case 'right': // anchor:end — text extends leftward from textX
+                    split1X = textX - seg_ux * (textWidth + padding + capPad);
+                    split1Y = textY - seg_uy * (textWidth + padding + capPad);
+                    split2X = textX + seg_ux * capPad;
+                    split2Y = textY + seg_uy * capPad;
+                    break;
+                default: // anchor:middle — text centered on textX
+                    split1X = textX - seg_ux * halfGap;
+                    split1Y = textY - seg_uy * halfGap;
+                    split2X = textX + seg_ux * halfGap;
+                    split2Y = textY + seg_uy * halfGap;
+            }
             
             // Store split info for text rendering to use
             this._splitInfo = {
