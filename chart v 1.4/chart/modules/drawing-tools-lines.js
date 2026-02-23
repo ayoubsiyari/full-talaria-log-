@@ -627,7 +627,7 @@ class TrendlineTool extends BaseDrawing {
         const seg_ux = (segRX - segLX) / segLen;
         const seg_uy = (segRY - segLY) / segLen;
 
-        const EDGE = 10;
+        const EDGE = 5;
         let baseX, baseY;
         let labelAnchor;
         switch (textHAlign) {
@@ -645,8 +645,8 @@ class TrendlineTool extends BaseDrawing {
                 break;
             default:
                 // anchor:middle → text centered at midpoint
-                baseX = (segLX + segRX) / 2;
-                baseY = (segLY + segRY) / 2;
+                baseX = (segLX + segRX) ;
+                baseY = (segLY + segRY) ;
                 labelAnchor = 'middle';
         }
 
