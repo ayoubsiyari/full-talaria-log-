@@ -625,9 +625,9 @@ class TrendlineTool extends BaseDrawing {
                 labelAnchor = 'end';
                 break;
             default:
-                // Center: anchor at left visible endpoint, text flows rightward (anchor:start)
-                baseX = segLX;
-                baseY = segLY;
+                // Center: anchor at midpoint of visible segment, text flows rightward (anchor:start)
+                baseX = segLX + segDX * 0.5;
+                baseY = segLY + segDY * 0.5;
                 labelAnchor = 'start';
         }
 
