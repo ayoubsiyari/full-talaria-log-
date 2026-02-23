@@ -12402,6 +12402,7 @@ class Chart {
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
+        const crossWidth = (this.chartSettings && this.chartSettings.crosshairWidth) || 1;
         const vBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
@@ -12414,12 +12415,14 @@ class Chart {
                 : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
         if (vLine) {
             vLine.style.left = snappedX + 'px';
+            vLine.style.width = crossWidth + 'px';
             vLine.style.height = 'calc(100% - 30px)';
             vLine.style.display = showLines ? 'block' : 'none';
             vLine.style.background = vBg;
         }
         if (hLine) {
             hLine.style.top = y + 'px';
+            hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
         }
