@@ -527,13 +527,13 @@ class TrendlineTool extends BaseDrawing {
             const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
             let siLabelX = this._splitInfo.textX + offsetX;
             if (siXRange) {
-                siLabelX = Math.min(siXRange[1] - 4, siLabelX);
+                siLabelX = Math.max(siXRange[0] + 4, siLabelX);
             }
 
             appendTextLabel(this.group, label, {
                 x: siLabelX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'end',
+                anchor: 'start',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -625,10 +625,10 @@ class TrendlineTool extends BaseDrawing {
                 labelAnchor = 'end';
                 break;
             default:
-                // Center: anchor at midpoint, text flows leftward (anchor:end)
-                baseX = segLX + segDX * 0.5;
-                baseY = segLY + segDY * 0.5;
-                labelAnchor = 'end';
+                // Center: anchor at left visible endpoint, text flows rightward (anchor:start)
+                baseX = segLX;
+                baseY = segLY;
+                labelAnchor = 'start';
         }
 
         let perpOffsetX = 0;
