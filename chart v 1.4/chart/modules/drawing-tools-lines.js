@@ -1036,7 +1036,7 @@ class HorizontalLineTool extends BaseDrawing {
         const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
         let baseX = (xRange[0] + xRange[1]) / 2;
 
-        const HL_EDGE = 5; // fixed px from endpoint
+        const HL_EDGE = 20; // fixed px from endpoint
         switch (textHAlign) {
             case 'left':
                 baseX = xRange[0] + HL_EDGE;
