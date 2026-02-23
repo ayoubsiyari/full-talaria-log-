@@ -46,7 +46,7 @@ class ColorPicker {
             border-radius: 10px;
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
             padding: 14px;
-            z-index: 1000001;
+            z-index: 1000020;
             user-select: none;
             width: max-content;
             box-sizing: border-box;
