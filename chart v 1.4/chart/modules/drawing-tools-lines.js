@@ -528,13 +528,23 @@ class TrendlineTool extends BaseDrawing {
             const siVisLeft  = siXRange ? siXRange[0] : 0;
             const siVisRight = siXRange ? siXRange[1] : 99999;
 
-            // Clamp only: keep original textX but prevent it going outside visible area
-            let siLabelX = Math.max(siVisLeft + 8, Math.min(siVisRight - 8, this._splitInfo.textX + offsetX));
+            // Position at left endpoint of visible line, flow left-to-right
+            const siP1 = this.points[0];
+            const siP2 = this.points[1];
+            const { scales: _sc } = coords;
+            const siX1 = _sc && _sc.chart && _sc.chart.dataIndexToPixel ? _sc.chart.dataIndexToPixel(siP1.x) : (_sc ? _sc.xScale(siP1.x) : this._splitInfo.textX);
+            const siX2 = _sc && _sc.chart && _sc.chart.dataIndexToPixel ? _sc.chart.dataIndexToPixel(siP2.x) : (_sc ? _sc.xScale(siP2.x) : this._splitInfo.textX);
+            const siY1 = _sc ? _sc.yScale(siP1.y) : this._splitInfo.textY;
+            const siY2 = _sc ? _sc.yScale(siP2.y) : this._splitInfo.textY;
+            const siLeftX = siX1 <= siX2 ? siX1 : siX2;
+            const siLeftY = siX1 <= siX2 ? siY1 : siY2;
+            let siLabelX = Math.max(siVisLeft + 4, siLeftX + offsetX);
+            const siLabelY = siLeftY + offsetY;
 
             appendTextLabel(this.group, label, {
                 x: siLabelX,
-                y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                y: siLabelY,
+                anchor: 'start',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -583,35 +593,13 @@ class TrendlineTool extends BaseDrawing {
         const visLeft  = xRangeVis ? xRangeVis[0] : 0;
         const visRight = xRangeVis ? xRangeVis[1] : 99999;
 
-        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-
-        let baseX = midX;
-        let baseY = midY;
-        let labelAnchor = 'middle';
-
-        // Horizontal position along the original (non-extended) line
+        // Always anchor at the left endpoint, text flows left-to-right
         const lvX = x1 <= x2 ? x1 : x2;
         const lvY = x1 <= x2 ? y1 : y2;
-        const rvX = x1 <= x2 ? x2 : x1;
-        const rvY = x1 <= x2 ? y2 : y1;
-        const vDX = rvX - lvX;
-        const vDY = rvY - lvY;
-        switch (textHAlign) {
-            case 'left':
-                baseX = lvX + vDX * 0.05;
-                baseY = lvY + vDY * 0.05;
-                labelAnchor = 'start';
-                break;
-            case 'right':
-                baseX = lvX + vDX * 0.95;
-                baseY = lvY + vDY * 0.95;
-                labelAnchor = 'end';
-                break;
-            default:
-                baseX = midX;
-                baseY = midY;
-                labelAnchor = 'middle';
-        }
+
+        let baseX = Math.max(visLeft + 4, lvX);
+        let baseY = lvY;
+        let labelAnchor = 'start';
 
         let perpOffsetX = 0;
         let perpOffsetY = 0;
@@ -638,19 +626,8 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp final X to visible area and adapt anchor so text always grows inward
-        const rawLabelX = baseX + perpOffsetX + offsetX;
-        let finalLabelX = rawLabelX;
-        const edgeThreshold = (visRight - visLeft) * 0.15; // 15% from each edge
-        if (rawLabelX < visLeft + edgeThreshold) {
-            finalLabelX = Math.max(visLeft + 4, rawLabelX);
-            labelAnchor = 'start';
-        } else if (rawLabelX > visRight - edgeThreshold) {
-            finalLabelX = Math.min(visRight - 4, rawLabelX);
-            labelAnchor = 'end';
-        } else {
-            finalLabelX = rawLabelX;
-        }
+        // Clamp to visible area, always start anchor so text flows left-to-right
+        let finalLabelX = Math.max(visLeft + 4, baseX + perpOffsetX + offsetX);
 
         appendTextLabel(this.group, label, {
             x: finalLabelX,
