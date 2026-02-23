@@ -2548,16 +2548,52 @@ body.light-mode .template-save-dialog .dialog-title {
         const isBrushType = drawing.type === 'brush' || drawing.type === 'highlighter';
         const isArrowMarkerType = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
         
-        // For polyline and shapes: show background color picker without checkbox
+        // For polyline and shapes: show background color picker with opacity slider
         if (isPolyline || isShapeTool || isArrowMarkerType) {
             const bgRow = document.createElement('div');
             bgRow.className = 'tv-prop-row';
+            bgRow.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+
+            // Extract current fill opacity
+            const currentFill = drawing.style.fill || 'rgba(41, 98, 255, 0.2)';
+            let fillOpacity = 0.2;
+            const rgbaMatch = currentFill.match(/rgba?\([^)]+,\s*([\d.]+)\)/);
+            if (rgbaMatch) fillOpacity = parseFloat(rgbaMatch[1]);
+            else if (currentFill.startsWith('#') || currentFill.startsWith('rgb(')) fillOpacity = 1;
+
             bgRow.innerHTML = `
-                <span class="tv-prop-label">Background</span>
+                <span class="tv-prop-label" style="min-width: 80px;">Background</span>
+                <input type="range" class="tv-opacity-slider" data-prop="fillOpacity"
+                    min="0" max="1" step="0.05" value="${fillOpacity}"
+                    style="flex:1; height:6px; -webkit-appearance:none; appearance:none;
+                           background: linear-gradient(to right, #2962ff ${fillOpacity*100}%, #363a45 ${fillOpacity*100}%);
+                           border-radius:3px; cursor:pointer; outline:none;">
                 <div class="tv-prop-controls">
-                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(41, 98, 255, 0.2)'};"></button>
+                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${currentFill};"></button>
                 </div>
             `;
+
+            // Wire opacity slider live
+            const slider = bgRow.querySelector('.tv-opacity-slider');
+            slider.addEventListener('input', () => {
+                const val = parseFloat(slider.value);
+                slider.style.background = `linear-gradient(to right, #2962ff ${val*100}%, #363a45 ${val*100}%)`;
+                // Blend current fill color with new opacity
+                const btn = bgRow.querySelector('.tv-color-btn');
+                const base = drawing.style.fill || 'rgba(41,98,255,0.2)';
+                const hex = base.match(/#[0-9a-f]{3,6}/i);
+                const rgb = base.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+                let r=41,g=98,b=255;
+                if (hex) { const c=parseInt(hex[0].slice(1),16); r=(c>>16)&255; g=(c>>8)&255; b=c&255; }
+                else if (rgb) { r=parseInt(rgb[1]); g=parseInt(rgb[2]); b=parseInt(rgb[3]); }
+                const newFill = `rgba(${r},${g},${b},${val})`;
+                drawing.style.fill = newFill;
+                btn.style.background = newFill;
+                this.pendingChanges.backgroundColor = newFill;
+                if (drawing.group) drawing.group.selectAll('.shape-fill').attr('fill', newFill);
+                this.applyChanges(drawing);
+            });
+
             if (drawing.type === 'rectangle' && rectangleBorderRow) {
                 container.insertBefore(bgRow, rectangleBorderRow.nextSibling);
             } else {
