@@ -613,18 +613,19 @@ class TrendlineTool extends BaseDrawing {
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                // Anchor at left endpoint + 30px, text flows left-to-right (anchor:start)
+                // anchor:start → text starts at this point and flows rightward along the line
                 baseX = segLX + seg_ux * EDGE;
                 baseY = segLY + seg_uy * EDGE;
-                labelAnchor = isFlipped ? 'end' : 'start';
+                labelAnchor = 'start';
                 break;
             case 'right':
-                // Anchor at right endpoint - 30px, text flows right-to-left (anchor:end)
+                // anchor:end → text ends at this point and flows leftward along the line
                 baseX = segRX - seg_ux * EDGE;
                 baseY = segRY - seg_uy * EDGE;
-                labelAnchor = isFlipped ? 'start' : 'end';
+                labelAnchor = 'end';
                 break;
             default:
+                // anchor:middle → text centered at midpoint
                 baseX = (segLX + segRX) / 2;
                 baseY = (segLY + segRY) / 2;
                 labelAnchor = 'middle';
