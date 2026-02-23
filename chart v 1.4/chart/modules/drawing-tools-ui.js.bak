@@ -2146,8 +2146,8 @@ body.light-mode .template-save-dialog .dialog-title {
      * Build TradingView-style modal for shapes
      */
     buildTVModal(drawing) {
-        // [debug removed]
-        // [debug removed]
+        console.log('🎨 buildTVModal called for drawing.type:', drawing.type);
+        console.log('🎨 drawing.constructor.name:', drawing.constructor.name);
         this.ensureTVStyles();
         
         const modal = document.createElement('div');
@@ -2402,14 +2402,14 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Special handling for image-v2
         if (drawing.type === 'image-v2') {
-            // [debug removed]
+            console.log('✅ Building image-v2 style tab!');
             this.buildImageV2StyleTab(container, drawing);
             return;
         }
         
         // Special handling for image
         if (drawing.type === 'image') {
-            // [debug removed]
+            console.log('✅ Building image style tab!');
             this.buildImageStyleTab(container, drawing);
             return;
         }
@@ -5113,7 +5113,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id);
                 if (actualDrawing) {
                     actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
-                    // [debug removed]
+                    console.log('✅ Updated actual drawing levels:', actualDrawing.levels);
                 }
             }
             self.renderPreview(drawing);
@@ -7260,13 +7260,13 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Apply button - save style as default for this tool type, then close
         modal.querySelector('.tv-btn-apply').addEventListener('click', () => {
-            // [debug removed]
-            // [debug removed]
+            console.log('🔵 OK button clicked');
+            console.log('Drawing levels before apply:', drawing.levels);
             
             // Apply all pending changes to the drawing
             this.applyChanges(drawing);
             
-            // [debug removed]
+            console.log('Drawing levels after applyChanges:', drawing.levels);
             
             // Save the current style as default for this tool type
             const drawingManager = window.chart?.drawingManager || window.drawingManager;
@@ -7274,7 +7274,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 // Find the actual drawing in the manager and update it
                 const actualDrawing = drawingManager.drawings.find(d => d.id === drawing.id);
                 if (actualDrawing) {
-                    // [debug removed]
+                    console.log('Actual drawing levels before update:', actualDrawing.levels);
                     // Copy all properties including levels
                     actualDrawing.style = JSON.parse(JSON.stringify(drawing.style));
                     actualDrawing.text = drawing.text;
@@ -7284,7 +7284,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     }
                     if (drawing.levels) {
                         actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
-                        // [debug removed]
+                        console.log('Actual drawing levels after update:', actualDrawing.levels);
                     }
                     // Re-render and save
                     drawingManager.renderDrawing(actualDrawing);
@@ -7304,12 +7304,12 @@ body.light-mode .template-save-dialog .dialog-title {
         // Cancel button - revert all changes and close
         // Read original style from modal dataset (stored at build time)
         const cancelBtn = modal.querySelector('.tv-btn-cancel');
-        // [debug removed]
+        console.log('🔧 Cancel button found:', !!cancelBtn);
         if (cancelBtn) {
             cancelBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // [debug removed]
+                console.log('❌ Cancel button clicked');
                 
                 try {
                     // Get original style from modal dataset
@@ -7321,7 +7321,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     
                     const drawingManager = window.chart?.drawingManager || window.drawingManager;
                     
-                    // [debug removed]
+                    console.log('📦 Cancel data:', { 
                         hasOriginalStyle: !!originalStyleStr, 
                         drawingId, 
                         hasDrawingManager: !!drawingManager 
@@ -7331,7 +7331,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         const originalStyle = JSON.parse(originalStyleStr);
                         const actualDrawing = drawingManager.drawings.find(d => d.id === drawingId);
                         
-                        // [debug removed]
+                        console.log('🎨 Found drawing:', !!actualDrawing, 'Original style:', originalStyle);
                         
                         if (actualDrawing) {
                             // Replace the entire style object
@@ -7351,10 +7351,10 @@ body.light-mode .template-save-dialog .dialog-title {
                             }
                             
                             // Re-render the drawing
-                            // [debug removed]
+                            console.log('🔄 Re-rendering drawing with original style');
                             drawingManager.renderDrawing(actualDrawing);
                             drawingManager.saveDrawings();
-                            // [debug removed]
+                            console.log('✅ Cancel complete - style restored');
                         }
                     } else {
                         console.warn('⚠️ Missing data for cancel:', { originalStyleStr: !!originalStyleStr, drawingManager: !!drawingManager, drawingId });
@@ -7384,7 +7384,7 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Checkbox toggles - handle both real checkboxes and custom div checkboxes
         setTimeout(() => {
-            // [debug removed]
+            console.log('🔧 Setting up checkbox listeners, found:', queryAll('.tv-checkbox').length, 'checkboxes');
             queryAll('.tv-checkbox').forEach(cb => {
                 const isRealCheckbox = cb.tagName === 'INPUT' && cb.type === 'checkbox';
                 const eventType = isRealCheckbox ? 'change' : 'click';
@@ -7394,7 +7394,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     if (prop === 'timeframeRangeEnabled') {
                         return;
                     }
-                    // [debug removed]
+                    console.log('📦 Checkbox clicked:', prop, cb.dataset.tf);
                     let isChecked;
                     
                     if (isRealCheckbox) {
@@ -7580,7 +7580,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     // Direct d3 style update
                     if (actualDrawing.group) {
                         actualDrawing.group.style('display', isChecked ? null : 'none');
-                        // [debug removed]
+                        console.log(`👁️ Select All: ${isChecked}`);
                     }
                     
                     if (window.drawingManager) {
@@ -7595,7 +7595,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         drawing.visibility = {};
                     }
                     drawing.visibility[tf] = isChecked;
-                    // [debug removed]
+                    console.log(`👁️ Set visibility[${tf}] = ${isChecked}`);
                     
                     // Update Select All checkbox state
                     const allChecked = this.defaultTimeframes.every(tfItem => {
@@ -7625,7 +7625,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     if (actualDrawing.group) {
                         const shouldShow = actualDrawing.visibility[currentTf] !== false;
                         actualDrawing.group.style('display', shouldShow ? null : 'none');
-                        // [debug removed]
+                        console.log(`👁️ TF=${tf}, currentTF=${currentTf}, shouldShow=${shouldShow}`);
                     }
                     
                     if (window.drawingManager) {
@@ -8668,7 +8668,7 @@ body.light-mode .template-save-dialog .dialog-title {
      * Apply pending changes to drawing
      */
     applyChanges(drawing) {
-        // [debug removed]
+        console.log('📝 Applying changes:', this.pendingChanges);
 
         // Coordinates changes
         if (this.pendingChanges.points && Array.isArray(this.pendingChanges.points)) {
@@ -8912,11 +8912,11 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.visibility[tf] = isChecked;
                 });
                 
-                // [debug removed]
+                console.log('📝 Timeframe visibility:', drawing.visibility);
             }
         }
         
-        // [debug removed]
+        console.log('📝 Drawing style after:', drawing.style);
         
         // Trigger save callback to re-render
         if (this.onSave) {
@@ -8996,26 +8996,26 @@ body.light-mode .template-save-dialog .dialog-title {
      * Apply changes immediately without waiting for OK button
      */
     applyChangesImmediately(drawing) {
-        // [debug removed]
-        // [debug removed]
+        console.log('applyChangesImmediately - drawing:', drawing);
+        console.log('applyChangesImmediately - pitchforkStyle:', drawing.style.pitchforkStyle);
         // Re-render the drawing with updated style
         const drawingManager = window.chart?.drawingManager || window.drawingManager;
         if (drawingManager) {
             // Find the actual drawing in the manager's array to ensure we're updating the right reference
             const actualDrawing = drawingManager.drawings.find(d => d.id === drawing.id);
-            // [debug removed]
+            console.log('Found actualDrawing:', actualDrawing);
             if (actualDrawing) {
                 // Copy style properties to the actual drawing
                 Object.assign(actualDrawing.style, drawing.style);
-                // [debug removed]
+                console.log('actualDrawing.style.pitchforkStyle after assign:', actualDrawing.style.pitchforkStyle);
                 // Also copy levels if they exist (for pitchfork/channel tools)
                 if (drawing.levels) {
                     actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
                 }
-                // [debug removed]
+                console.log('Calling renderDrawing on actualDrawing');
                 drawingManager.renderDrawing(actualDrawing);
             } else {
-                // [debug removed]
+                console.log('Calling renderDrawing on drawing (no actualDrawing found)');
                 drawingManager.renderDrawing(drawing);
             }
             // Save the changes to persist them
@@ -9029,10 +9029,10 @@ body.light-mode .template-save-dialog .dialog-title {
      * Cancel all changes and restore original style
      */
     cancelChanges(drawing) {
-        // [debug removed]
-        // [debug removed]
-        // [debug removed]
-        // [debug removed]
+        console.log('🔄 Cancel changes called');
+        console.log('🔄 Drawing:', drawing);
+        console.log('🔄 Original style:', this.originalStyle);
+        console.log('🔄 Current drawing:', this.currentDrawing);
         
         // Use currentDrawing if drawing is not provided or doesn't have id
         const targetDrawing = (drawing && drawing.id) ? drawing : this.currentDrawing;
@@ -9040,7 +9040,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.originalStyle && window.drawingManager && targetDrawing) {
             // Find the actual drawing in the manager's array
             const actualDrawing = window.drawingManager.drawings.find(d => d.id === targetDrawing.id);
-            // [debug removed]
+            console.log('🔄 Found actual drawing:', actualDrawing);
             
             if (actualDrawing) {
                 // Deep restore - replace entire style object with original
@@ -9058,18 +9058,18 @@ body.light-mode .template-save-dialog .dialog-title {
                     actualDrawing.text = this.originalText;
                 }
                 
-                // [debug removed]
+                console.log('🔄 Restored style:', actualDrawing.style);
                 
                 // Re-render the drawing with restored style
                 window.drawingManager.renderDrawing(actualDrawing);
                 window.drawingManager.saveDrawings();
                 
-                // [debug removed]
+                console.log('🔄 Drawing re-rendered and saved');
             } else {
-                // [debug removed]
+                console.log('🔄 ERROR: Could not find actual drawing in manager');
             }
         } else {
-            // [debug removed]
+            console.log('🔄 ERROR: Missing originalStyle, drawingManager, or targetDrawing');
         }
         
         // Clear pending changes
@@ -10313,9 +10313,9 @@ applyTemplate(drawing, templateId, modal) {
             ? this.panelContent
             : this.panel;
 
-        // [debug removed]
-        // [debug removed]
-        // [debug removed]
+        console.log('📋 showSettings called for drawing:', drawing);
+        console.log('📋 drawing.type:', drawing.type);
+        console.log('📋 drawing.constructor.name:', drawing.constructor.name);
         
         contentRoot.append('div')
             .attr('class', 'settings-section')
@@ -10470,7 +10470,7 @@ applyTemplate(drawing, templateId, modal) {
         const styleSection = styleContainerParent.append('div')
             .attr('class', 'settings-section');
 
-        // [debug removed]
+        console.log('🎨 buildStyleSection called for drawing.type:', drawing.type);
         const textToolTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'pin', 'price-note'];
         const isTextTool = textToolTypes.includes(drawing.type);
         const isNoteBox = drawing.type === 'notebox';
@@ -10495,7 +10495,7 @@ applyTemplate(drawing, templateId, modal) {
         
         // Image Tool V2 or Image Tool - check first
         if (drawing.type === 'image-v2' || drawing.type === 'image') {
-            // [debug removed]
+            console.log('✅ IMAGE SETTINGS MATCHED! Building upload UI...');
             // Image preview section with label
             const imageGroup = document.createElement('div');
             imageGroup.className = 'settings-group';

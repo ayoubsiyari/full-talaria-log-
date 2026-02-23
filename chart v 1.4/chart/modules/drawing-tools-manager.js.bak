@@ -375,19 +375,19 @@ class DrawingToolsManager {
 
             // If drawings were not loaded yet (chart had no data during init), load them now
             if (!this._drawingsLoaded) {
-                // [debug removed]
+                console.log(`📂 Chart data now available — loading drawings...`);
                 requestAnimationFrame(() => this.loadDrawings());
                 return;
             }
 
             if (newTimeframe && newTimeframe !== lastTimeframe) {
-                // [debug removed]
+                console.log(`🔄 Timeframe changed: ${lastTimeframe} → ${newTimeframe}`);
                 lastTimeframe = newTimeframe;
                 
                 // Refresh drawings after a small delay to ensure data is resampled
                 requestAnimationFrame(() => {
                     if (this.drawings.length > 0) {
-                        // [debug removed]
+                        console.log(`🎨 Refreshing ${this.drawings.length} drawings for new timeframe...`);
                         this.refreshDrawingsForTimeframe();
                         this.saveDrawings();
                     }
@@ -404,7 +404,7 @@ class DrawingToolsManager {
             console.warn('⚠️ UndoRedoManager not found');
         }
         
-        // [debug removed]
+        console.log('✅ Drawing Tools Manager initialized');
     }
     
     /**
@@ -593,7 +593,7 @@ class DrawingToolsManager {
             const onMouseDown = (event) => {
                 // Check for Ctrl+drag to start rectangular selection
                 if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
-                    // [debug removed]
+                    console.log('🔲 Ctrl+mousedown detected on canvas');
                     this.startRectangularSelection(event);
                 }
             };
@@ -610,7 +610,7 @@ class DrawingToolsManager {
                 }
                 
                 if (!event.ctrlKey && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
-                    // [debug removed]
+                    console.log('🖱️ Canvas click - deselecting all');
                     this.deselectAll();
                 }
             };
@@ -636,11 +636,11 @@ class DrawingToolsManager {
      * Set the current drawing tool
      */
     setTool(toolName) {
-        // [debug removed]
-        // [debug removed]
+        console.log(`🎯 setTool called with: ${toolName}`);
+        console.log(`🎯 Tool exists in registry:`, !!this.toolRegistry[toolName]);
         if (!this.toolRegistry[toolName]) {
             console.error(`Unknown tool: ${toolName}`);
-            // [debug removed]
+            console.log(`Available tools:`, Object.keys(this.toolRegistry));
             return;
         }
         if (toolName === 'emoji' && !this.currentEmojiOptions) {
@@ -674,14 +674,14 @@ class DrawingToolsManager {
             this.favoritesManager.syncActiveState(toolName);
         }
         
-        // [debug removed]
+        console.log(`🎨 Tool set to: ${toolName || 'none'}`);
     }
 
     /**
      * Clear current tool (cursor mode)
      */
     clearTool() {
-        // [debug removed]
+        console.log('🧹 Clearing tool, current tool was:', this.currentTool);
         this.currentTool = null;
         this.drawingState.reset();
         this.svg.style('cursor', 'default');
@@ -759,7 +759,7 @@ class DrawingToolsManager {
             return;
         }
         
-        // [debug removed]
+        console.log('🖱️ Mouse down - currentTool:', this.currentTool);
         
         if (!this.currentTool) {
             // Get mouse position in SVG coordinates
@@ -770,7 +770,7 @@ class DrawingToolsManager {
             // Check for stacked lines (more than 3 lines at this point)
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
             if (stackedLinesInfo.isStacked) {
-                // [debug removed]
+                console.log(`📚 Stacked lines detected: ${stackedLinesInfo.count} lines from ${stackedLinesInfo.drawings.length} drawings`);
                 // Store stacked lines info for potential UI display or selection
                 this.lastStackedLines = stackedLinesInfo;
             }
@@ -894,7 +894,7 @@ class DrawingToolsManager {
             
             // If stacked lines detected and Shift key is held, select all drawings with lines at this point
             if (stackedLinesInfo.isStacked && event.shiftKey) {
-                // [debug removed]
+                console.log('📚 Shift+Click on stacked lines - selecting all drawings');
                 stackedLinesInfo.drawings.forEach((d, i) => {
                     this.selectDrawing(d, i > 0); // Add to selection for subsequent drawings
                 });
@@ -911,7 +911,7 @@ class DrawingToolsManager {
                         const currentIndex = drawingsAtPoint.indexOf(currentlySelected);
                         const nextIndex = (currentIndex + 1) % drawingsAtPoint.length;
                         drawing = drawingsAtPoint[nextIndex];
-                        // [debug removed]
+                        console.log('🔄 Alt+Click: Cycling to next drawing in stack');
                     } else {
                         // No selection, start with first
                         drawing = drawingsAtPoint[0];
@@ -1041,7 +1041,7 @@ class DrawingToolsManager {
             } else {
                 // Clicked on empty space - deselect all (unless Shift is held)
                 if (!event.shiftKey) {
-                    // [debug removed]
+                    console.log('🖱️ Clicked on empty space - deselecting all');
                     this.deselectAll();
                 }
             }
@@ -1053,11 +1053,19 @@ class DrawingToolsManager {
 
         let point = this.getDataPoint(event);
         
+        // Apply magnet snap to candle OHLC (when Ctrl/Cmd held OR magnetMode is active)
+        const magnetMode = this.magnetMode || window.magnetMode || 'off';
+        const isMagnetActive = magnetMode !== 'off';
+        if (((event.ctrlKey || event.metaKey) || isMagnetActive) && this.currentTool) {
+            console.log('🧲 Magnet mode activated');
+            point = this.snapToCandle(point);
+        }
+        
         const toolInfo = this.toolRegistry[this.currentTool];
-        // [debug removed]
+        console.log('🔍 Current tool:', this.currentTool, 'Tool info:', toolInfo);
         
         if (!this.drawingState.isDrawing) {
-            // [debug removed]
+            console.log('🎬 Starting drawing for:', this.currentTool, 'Required points:', toolInfo?.points);
             this.drawingState.startDrawing(this.currentTool, toolInfo.points);
             this.riskRewardPreview = null;
             
@@ -1125,19 +1133,19 @@ class DrawingToolsManager {
         }
         
         const isComplete = this.drawingState.addPoint(point);
-        // [debug removed]
+        console.log('✅ Point added. isComplete:', isComplete, 'tempPoints:', this.drawingState.tempPoints.length);
         
-        // [debug removed]
+        console.log('🎯 Tool info:', this.currentTool, toolInfo);
         if (!toolInfo) {
-            // [debug removed]
+            console.log('⚠️ No tool info found!');
             this.updateTempDrawing();
         } else if (toolInfo.dragPreview) {
-            // [debug removed]
+            console.log('📍 Drag preview tool - tempPoints:', this.drawingState.tempPoints.length);
             if (this.drawingState.tempPoints.length === 1) {
                 const entry = { ...point };
-                // [debug removed]
+                console.log('📍 Entry point:', entry);
                 const defaults = this.buildDefaultRiskReward(entry, this.currentTool === 'long-position');
-                // [debug removed]
+                console.log('📍 Default points:', defaults);
                 this.riskRewardPreview = {
                     entry,
                     tool: this.currentTool,
@@ -1145,20 +1153,20 @@ class DrawingToolsManager {
                 };
                 this.drawingState.tempPoints = defaults.map(p => ({ ...p }));
                 this.updateTempDrawing(defaults);
-                // [debug removed]
+                console.log('📍 Calling finalizeDrawing');
                 this.finalizeDrawing();
                 return;
             }
         } else {
-            // [debug removed]
+            console.log('🎨 Updating temp drawing...');
             this.updateTempDrawing();
         }
         
         if (isComplete) {
-            // [debug removed]
+            console.log('🏁 Drawing complete! Finalizing...');
             this.finalizeDrawing();
         } else {
-            // [debug removed]
+            console.log('⏳ Drawing not complete yet. Need more points.');
         }
     }
 
@@ -1221,7 +1229,7 @@ class DrawingToolsManager {
         const indicators = this.chart?.indicators;
         
         if (snapToIndicators && indicators) {
-            // [debug removed]
+            console.log('📊 Snap to indicators enabled, checking indicators...');
             const activeIndicators = indicators.active || [];
             const indicatorData = indicators.data || {};
             
@@ -1232,11 +1240,11 @@ class DrawingToolsManager {
                 
                 const indData = indicatorData[ind.id];
                 if (!indData) {
-                    // [debug removed]
+                    console.log(`📊 No data for ${ind.name}`);
                     continue;
                 }
                 
-                // [debug removed]
+                console.log(`📊 Found indicator: ${ind.name}, type: ${ind.type}`);
                 
                 // Handle different indicator data formats
                 if (ind.type === 'bb' || ind.type === 'bollinger') {
@@ -1255,7 +1263,7 @@ class DrawingToolsManager {
                     const value = indData[clampedIndex];
                     if (value !== undefined && value !== null && !isNaN(value)) {
                         snapTargets.push({ price: value, name: ind.name });
-                        // [debug removed]
+                        console.log(`📊 Added snap target: ${ind.name} = ${value}`);
                     }
                 } else if (typeof indData === 'object' && indData.values) {
                     // Some indicators might have a values array
@@ -1282,7 +1290,7 @@ class DrawingToolsManager {
             }
         }
         
-        // [debug removed]
+        console.log(`🧲 Magnet snap to ${nearestName}: ${nearestPrice} (candle ${clampedIndex})`);
         
         return {
             x: clampedIndex,
@@ -1403,6 +1411,13 @@ class DrawingToolsManager {
         const toolInfo = this.toolRegistry[this.currentTool];
         let point = this.getDataPoint(event);
         
+        // Apply magnet snap to candle OHLC (when Ctrl/Cmd held OR magnetMode is active)
+        const magnetMode = this.magnetMode || window.magnetMode || 'off';
+        const isMagnetActive = magnetMode !== 'off';
+        if (((event.ctrlKey || event.metaKey) || isMagnetActive) && this.currentTool) {
+            point = this.snapToCandle(point);
+        }
+        
         // Apply Shift key angle constraint for supported tools
         if (event.shiftKey && this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
             const referencePoint = this.drawingState.tempPoints[this.drawingState.tempPoints.length - 1];
@@ -1493,6 +1508,12 @@ class DrawingToolsManager {
             if (toolInfo && toolInfo.dragFirstTwo && this.drawingState.tempPoints.length === 1) {
                 let point = this.getDataPoint(event);
                 
+                // Apply magnet snap
+                const magnetMode = this.magnetMode || window.magnetMode || 'off';
+                if (magnetMode !== 'off' || event.ctrlKey || event.metaKey) {
+                    point = this.snapToCandle(point);
+                }
+                
                 // Apply angle constraint if shift held
                 if (event.shiftKey) {
                     const referencePoint = this.drawingState.tempPoints[0];
@@ -1558,7 +1579,7 @@ class DrawingToolsManager {
         // If a persistent tool (brush/highlighter) is active, right-click deactivates it
         const persistentTools = ['brush', 'highlighter'];
         if (!this.drawingState.isDrawing && this.currentTool && persistentTools.includes(this.currentTool)) {
-            // [debug removed]
+            console.log('🖱️ Right-click deactivates persistent tool:', this.currentTool);
             this.clearTool();
             // Update UI - remove active from all tools (including cursor tool button)
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
@@ -1583,7 +1604,7 @@ class DrawingToolsManager {
         
         // For any other drawing in progress, right-click cancels it
         if (this.drawingState.isDrawing) {
-            // [debug removed]
+            console.log('🖱️ Right-click cancels drawing:', this.currentTool);
             this.cancelDrawing();
             return;
         }
@@ -1611,7 +1632,7 @@ class DrawingToolsManager {
             const drawing = this.drawings.find(d => d.id === drawingId);
             
             if (drawing) {
-                // [debug removed]
+                console.log('🖱️ Right-click on drawing:', drawing.type, drawing.id);
                 this.showContextMenu(drawing, event.pageX, event.pageY);
             }
         }
@@ -1766,14 +1787,14 @@ class DrawingToolsManager {
      * Finalize and save current drawing
      */
     finalizeDrawing() {
-        // [debug removed]
+        console.log('✅ finalizeDrawing called for:', this.currentTool);
         const toolInfo = this.toolRegistry[this.currentTool];
         if (!toolInfo) {
-            // [debug removed]
+            console.log('❌ No tool info found');
             return;
         }
 
-        // [debug removed]
+        console.log('✅ Creating drawing with points:', this.drawingState.tempPoints);
         // Create the actual drawing
         const args = [this.drawingState.tempPoints];
         if (this.currentTool === 'emoji') {
@@ -1789,7 +1810,7 @@ class DrawingToolsManager {
         // For image tools, don't save if no image is uploaded
         if (this.currentTool === 'image' && 
             (!drawing.style.imageUrl || drawing.style.imageUrl === '')) {
-            // [debug removed]
+            console.log('🖼️ Image tool created without image - not saving, waiting for upload');
             // Add to drawings temporarily so it can be selected and edited
             drawing.chart = this.chart;
             // Mark as an empty image that can be auto-removed on deselect UNTIL the user opens settings.
@@ -1941,7 +1962,7 @@ class DrawingToolsManager {
         const targetOffset = stopOffset * 2;
         const stopPrice = isLong ? entry.y - stopOffset : entry.y + stopOffset;
         const targetPrice = isLong ? entry.y + targetOffset : entry.y - targetOffset;
-        // [debug removed]
+        console.log('📏 Building risk/reward - stopOffset:', stopOffset, 'entry:', entry.y);
         return [
             { x: entry.x, y: entry.y },
             { x: entry.x, y: stopPrice },
@@ -1997,7 +2018,7 @@ class DrawingToolsManager {
         this.selectedDrawings = [drawing];  // Update selectedDrawings array for deselect to work
         this.renderDrawing(drawing);
         
-        // [debug removed]
+        console.log(`✅ Drawing added: ${drawing.type} (${drawing.id})`);
     }
 
     /**
@@ -2010,7 +2031,7 @@ class DrawingToolsManager {
             return;
         }
         
-        // [debug removed]
+        console.log('🔄 Rendering drawing:', drawing.type, 'with style:', drawing.style);
         
         // Handle visibility
         if (drawing.visible === false) {
@@ -2099,9 +2120,9 @@ class DrawingToolsManager {
         const selector = '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
         
-        // [debug removed]
+        console.log('🎯 Interactive elements found for', drawing.type, ':', interactiveElements.size(), 'elements');
         if (drawing.type === 'regression-trend') {
-            // [debug removed]
+            console.log('🔍 Regression trend elements:', interactiveElements.nodes().map(n => ({tag: n.tagName, class: n.className.baseVal})));
         }
         
         // Click handler function
@@ -2112,7 +2133,7 @@ class DrawingToolsManager {
                 return; // Let the element's own click handler handle it
             }
             
-            // [debug removed]
+            console.log('👆 CLICK on drawing:', drawing.type, 'target:', event.target.tagName, 'class:', event.target.className.baseVal || event.target.className);
             
             // STROKE-ONLY CHECK: Verify click is actually on a stroke, not fill area
             const svgRect = self.svg.node().getBoundingClientRect();
@@ -2128,20 +2149,20 @@ class DrawingToolsManager {
                 const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
                 
                 if (!clickedOnStroke) {
-                    // [debug removed]
+                    console.log('❌ Click was on fill, not stroke - ignoring');
                     return; // Don't select - click was on fill area
                 }
             }
             
-            // [debug removed]
+            console.log('🧹 Eraser mode check:', self.eraserMode);
             
             // If eraser mode, delete immediately and stop
             if (self.eraserMode) {
                 event.stopPropagation();
                 event.preventDefault();
-                // [debug removed]
+                console.log('🧹 DELETING drawing:', drawing.id);
                 self.deleteDrawing(drawing);
-                // [debug removed]
+                console.log('🧹 Drawing deleted successfully');
                 return;
             }
             
@@ -2155,7 +2176,7 @@ class DrawingToolsManager {
             const lastClickTime = self._drawingClickTimes[drawing.id] || 0;
             const timeSinceLastClick = now - lastClickTime;
             
-            // [debug removed]
+            console.log('⏱️ Time since last click:', timeSinceLastClick, 'ms (last:', lastClickTime, 'now:', now, ')');
             
             // Double-click detection (within 400ms)
             if (timeSinceLastClick < DOUBLE_CLICK_DELAY && timeSinceLastClick > 50) {
@@ -2166,12 +2187,12 @@ class DrawingToolsManager {
                     return; // Let the element's own dblclick handler handle it
                 }
                 
-                // [debug removed]
+                console.log('🖱️ Double-click detected on:', drawing.type, drawing.id);
                 
                 if (!drawing.locked) {
                     self.selectDrawing(drawing);
                     self.editDrawing(drawing, event.pageX, event.pageY);
-                    // [debug removed]
+                    console.log('⚙️ Opening settings for:', drawing.type);
                 }
                 self._drawingClickTimes[drawing.id] = 0; // Reset
                 return;
@@ -2198,12 +2219,12 @@ class DrawingToolsManager {
             
             if (self.eraserMode) return;
             
-            // [debug removed]
+            console.log('🖱️ Native dblclick on drawing:', drawing.type, drawing.id);
             
             if (!drawing.locked) {
                 self.selectDrawing(drawing);
                 self.editDrawing(drawing, event.pageX, event.pageY);
-                // [debug removed]
+                console.log('⚙️ Opening settings for:', drawing.type);
             }
         };
         
@@ -2511,7 +2532,7 @@ class DrawingToolsManager {
                         self.chart.broadcastDrawingChange('update', drawing, index);
                     }
                     
-                    // [debug removed]
+                    console.log('✅ Drawing moved');
                 })
         );
     }
@@ -2645,6 +2666,13 @@ class DrawingToolsManager {
                     let point = self.getDataPoint(event.sourceEvent);
                     const index = self.resizingPointIndex;
                     
+                    // Apply magnet snap to candle OHLC (when Ctrl/Cmd held OR magnetMode is active)
+                    const magnetMode = self.magnetMode || window.magnetMode || 'off';
+                    const isMagnetActive = magnetMode !== 'off';
+                    if ((event.sourceEvent.ctrlKey || event.sourceEvent.metaKey) || isMagnetActive) {
+                        point = self.snapToCandle(point);
+                    }
+                    
                     // Apply Shift key angle constraint for supported line tools
                     if (event.sourceEvent.shiftKey && self.angleSnapTools.includes(drawing.type)) {
                         const otherIndex = index === 0 ? 1 : 0;
@@ -2699,7 +2727,7 @@ class DrawingToolsManager {
         if (this.history) {
             this.resizeBeforeState = this.history.captureState(drawing);
         }
-        // [debug removed]
+        console.log(`🎯 Resizing point ${pointIndex}`);
     }
 
     /**
@@ -2717,6 +2745,13 @@ class DrawingToolsManager {
         if (index === undefined || index === null || isNaN(index)) {
             console.warn('⚠️ Invalid resize point index:', index);
             return;
+        }
+        
+        // Apply magnet snap to candle OHLC (when Ctrl/Cmd held OR magnetMode is active)
+        const magnetMode = this.magnetMode || window.magnetMode || 'off';
+        const isMagnetActive = magnetMode !== 'off';
+        if ((event.sourceEvent.ctrlKey || event.sourceEvent.metaKey) || isMagnetActive) {
+            point = this.snapToCandle(point);
         }
         
         // Apply Shift key angle constraint for supported line tools
@@ -2768,7 +2803,7 @@ class DrawingToolsManager {
         if (this.chart.broadcastDrawingChange && index > -1) {
             this.chart.broadcastDrawingChange('update', drawing, index);
         }
-        // [debug removed]
+        console.log('✅ Resize complete');
     }
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
@@ -2789,7 +2824,7 @@ class DrawingToolsManager {
         if (typeof drawing.beginHandleDrag === 'function') {
             drawing.beginHandleDrag(handleRole, this.customHandleStart);
         }
-        // [debug removed]
+        console.log(`🎯 Custom handle drag started: ${handleRole}, pointIndex: ${pointIndex}`);
     }
 
     handleCustomHandleDrag(event) {
@@ -2811,6 +2846,13 @@ class DrawingToolsManager {
             }
         }
         
+        // Apply magnet snap if active
+        const magnetMode = this.magnetMode || window.magnetMode || 'off';
+        if (context.ctrlKey || magnetMode !== 'off') {
+            context.dataPoint = this.snapToCandle(context.dataPoint);
+            context.point = context.dataPoint;
+        }
+
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
         }
@@ -2867,7 +2909,7 @@ class DrawingToolsManager {
                 this.chart.broadcastDrawingChange('update', drawing, index);
             }
         }
-        // [debug removed]
+        console.log('✅ Custom handle resize complete');
     }
 
     collectHandleContext(event) {
@@ -3047,7 +3089,7 @@ class DrawingToolsManager {
         // If eraser mode is active, delete the drawing instead of selecting
         if (this.eraserMode) {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
-            // [debug removed]
+            console.log(`🧹 Erased drawing: ${drawing.id}`);
             return;
         }
         
@@ -3142,7 +3184,7 @@ class DrawingToolsManager {
         );
         
         emptyImageTools.forEach(d => {
-            // [debug removed]
+            console.log('🗑️ Removing empty image tool that was never uploaded');
             const index = this.drawings.indexOf(d);
             if (index > -1) {
                 this.drawings.splice(index, 1);
@@ -3216,7 +3258,7 @@ class DrawingToolsManager {
                 style: drawing.style
             };
             this.clipboardDrawing = JSON.parse(JSON.stringify(data));
-            // [debug removed]
+            console.log('📋 Drawing copied to clipboard:', drawing.type);
         } catch (err) {
             console.error('Failed to copy drawing:', err);
         }
@@ -3227,7 +3269,7 @@ class DrawingToolsManager {
      */
     pasteDrawing() {
         if (!this.clipboardDrawing) {
-            // [debug removed]
+            console.log('📋 No drawing in clipboard');
             return;
         }
         
@@ -3249,7 +3291,7 @@ class DrawingToolsManager {
             
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing);
-            // [debug removed]
+            console.log('📋 Drawing pasted');
         } catch (err) {
             console.error('Failed to paste drawing:', err);
         }
@@ -3268,14 +3310,14 @@ class DrawingToolsManager {
                 drawing.group.classed('locked', true);
                 drawing.group.style('opacity', '0.7');
             }
-            // [debug removed]
+            console.log('🔒 Drawing locked:', drawing.type);
         } else {
             // Re-enable full interaction
             if (drawing.group) {
                 drawing.group.classed('locked', false);
                 drawing.group.style('opacity', null);
             }
-            // [debug removed]
+            console.log('🔓 Drawing unlocked:', drawing.type);
         }
         
         this.saveDrawings();
@@ -3292,12 +3334,12 @@ class DrawingToolsManager {
             if (drawing.group) {
                 drawing.group.style('display', 'none');
             }
-            // [debug removed]
+            console.log('👁️ Drawing hidden');
         } else {
             if (drawing.group) {
                 drawing.group.style('display', null);
             }
-            // [debug removed]
+            console.log('👁️ Drawing shown');
         }
         
         this.saveDrawings();
@@ -3339,7 +3381,7 @@ class DrawingToolsManager {
                             }
                         });
                         if (ordersToCancel.length > 0) {
-                            // [debug removed]
+                            console.log(`🗑️ Cancelled ${ordersToCancel.length} pending order(s)`);
                         }
                     }
                     
@@ -3360,7 +3402,7 @@ class DrawingToolsManager {
                             if (orderManager.orderLines) {
                                 orderManager.orderLines = orderManager.orderLines.filter(l => l.orderId !== order.id);
                             }
-                            // [debug removed]
+                            console.log(`🗑️ Removed order line for position #${order.id}`);
                         });
                     }
                     
@@ -3387,7 +3429,7 @@ class DrawingToolsManager {
                         });
                         
                         linesToRemove.forEach(lineData => {
-                            // [debug removed]
+                            console.log(`🗑️ Removing pending order line #${lineData.orderId}`);
                             if (lineData.line) lineData.line.remove();
                             if (lineData.labelBox) lineData.labelBox.remove();
                             if (lineData.labelText) lineData.labelText.remove();
@@ -3412,13 +3454,13 @@ class DrawingToolsManager {
                     if (orderManager.chart?.svg) {
                         const svg = orderManager.chart.svg;
                         const entryPriceStr = entryPrice.toFixed(5);
-                        // [debug removed]
+                        console.log(`🔍 Looking for pending order visuals at price ${entryPriceStr}`);
                         
                         // Find ALL pending order price texts and check their content
                         svg.selectAll('.pending-order-price-text').each(function() {
                             const text = d3.select(this);
                             const textContent = text.text();
-                            // [debug removed]
+                            console.log(`   Found price text: "${textContent}"`);
                             
                             // Check if price matches (with tolerance)
                             const textPrice = parseFloat(textContent);
@@ -3427,7 +3469,7 @@ class DrawingToolsManager {
                                 const match = className.match(/pending-(\d+)/);
                                 if (match) {
                                     const orderId = match[1];
-                                    // [debug removed]
+                                    console.log(`   ✓ Price matches! Removing order #${orderId}`);
                                     svg.selectAll(`.pending-${orderId}`).remove();
                                     svg.selectAll(`.pending-sl-${orderId}`).remove();
                                     svg.selectAll(`.pending-tp-${orderId}`).remove();
@@ -3448,7 +3490,7 @@ class DrawingToolsManager {
                                 if (!priceText.empty()) {
                                     const textPrice = parseFloat(priceText.text());
                                     if (!isNaN(textPrice) && Math.abs(textPrice - entryPrice) < 0.001) {
-                                        // [debug removed]
+                                        console.log(`   ✓ Found matching price box, removing order #${orderId}`);
                                         svg.selectAll(`.pending-${orderId}`).remove();
                                         svg.selectAll(`[class*="pending-${orderId}"]`).remove();
                                     }
@@ -3505,7 +3547,7 @@ class DrawingToolsManager {
                 this.objectTreeManager.refresh();
             }
             
-            // [debug removed]
+            console.log(`🗑️ Drawing deleted: ${drawing.id}`);
         }
     }
     
@@ -3555,7 +3597,7 @@ class DrawingToolsManager {
             
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing); // Select the new clone
-            // [debug removed]
+            console.log('📋 Drawing cloned:', drawing.type);
         } catch (err) {
             console.error('Failed to clone drawing:', err);
         }
@@ -3578,7 +3620,7 @@ class DrawingToolsManager {
             drawing.group.raise();
         }
         
-        // [debug removed]
+        console.log('📐 Drawing brought to front:', drawing.type);
     }
 
     /**
@@ -3598,7 +3640,7 @@ class DrawingToolsManager {
             drawing.group.lower();
         }
         
-        // [debug removed]
+        console.log('📐 Drawing sent to back:', drawing.type);
     }
 
     /**
@@ -3672,7 +3714,7 @@ class DrawingToolsManager {
             this.chart.broadcastDrawingChange('clear');
         }
         
-        // [debug removed]
+        console.log('🗑️ All drawings cleared');
         return true;
     }
 
@@ -3706,14 +3748,14 @@ class DrawingToolsManager {
         this.drawings.forEach(d => {
             if (!d.chart) {
                 d.chart = this.chart;
-                // [debug removed]
+                console.log(`  ⚠️ Setting missing chart reference for ${d.type}`);
             }
         });
         
         const data = this.drawings.map(d => d.toJSON());
         const key = this.getStorageKey();
         localStorage.setItem(key, JSON.stringify(data));
-        // [debug removed]
+        console.log(`💾 Saved ${this.drawings.length} drawings to ${key}`);
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             this.chart.scheduleSessionStateSave({ drawings: data });
@@ -3721,7 +3763,7 @@ class DrawingToolsManager {
         
         // Log coordinate system for each drawing
         data.forEach((d, i) => {
-            // [debug removed]
+            console.log(`  ${i + 1}. ${d.type}: coordinateSystem=${d.coordinateSystem}`);
         });
     }
 
@@ -3741,7 +3783,7 @@ class DrawingToolsManager {
             }
         }
         
-        // [debug removed]
+        console.log(`📂 Loading drawings from ${key} for ${this.chart.currentTimeframe}...`);
         
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn(`⚠️ Cannot load drawings yet - chart has no data`);
@@ -3752,13 +3794,13 @@ class DrawingToolsManager {
         this._drawingsLoaded = true;
 
         if (!saved) {
-            // [debug removed]
+            console.log(`📂 No saved drawings found`);
             return;
         }
         
         try {
             const data = JSON.parse(saved);
-            // [debug removed]
+            console.log(`📂 Found ${data.length} saved drawings`);
 
             const normalizeDashPatterns = (node) => {
                 if (!node) return;
@@ -3789,7 +3831,7 @@ class DrawingToolsManager {
                 try {
                     const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
                     conversionData = fullResampled;
-                    // [debug removed]
+                    console.log(`🎮 Replay mode: Using full resampled data (${conversionData.length} candles) for loading drawings`);
                 } catch (error) {
                     console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
                 }
@@ -3808,7 +3850,7 @@ class DrawingToolsManager {
                             price: p.price || p.y
                         }));
                         
-                        // [debug removed]
+                        console.log(`  Converting ${item.type} to ${this.chart.currentTimeframe}`);
                         // Convert to indices for rendering with correct timeframe
                         item.points = CoordinateUtils.pointsFromTimestamps(originalTimestampPoints, conversionData, this.chart.currentTimeframe);
                     }
@@ -3828,7 +3870,7 @@ class DrawingToolsManager {
                 }
             });
             
-            // [debug removed]
+            console.log(`✅ Loaded ${this.drawings.length} drawings for ${this.chart.currentTimeframe}`);
 
             if (key.includes('_s')) {
                 this.saveDrawings();
@@ -3955,8 +3997,8 @@ class DrawingToolsManager {
             return;
         }
         
-        // [debug removed]
-        // [debug removed]
+        console.log(`🔄 Refreshing ${this.drawings.length} drawings for timeframe ${this.chart.currentTimeframe}`);
+        console.log(`📊 Chart data: ${this.chart.data.length} candles`);
         
         // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
         // This ensures drawings with timestamps beyond current replay position are handled correctly
@@ -3970,7 +4012,7 @@ class DrawingToolsManager {
             try {
                 const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
                 conversionData = fullResampled;
-                // [debug removed]
+                console.log(`🎮 Replay mode: Using full resampled data (${conversionData.length} candles) for timestamp conversion`);
             } catch (error) {
                 console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
             }
@@ -3998,7 +4040,7 @@ class DrawingToolsManager {
             }
         });
         
-        // [debug removed]
+        console.log(`✅ Refreshed ${this.drawings.length} drawings for ${this.chart.currentTimeframe}`);
         
         // Refresh object tree if available
         if (this.objectTreeManager) {
@@ -4014,7 +4056,7 @@ class DrawingToolsManager {
         const currentIndex = modes.indexOf(this.magnetMode);
         const nextIndex = (currentIndex + 1) % modes.length;
         this.magnetMode = modes[nextIndex];
-        // [debug removed]
+        console.log(`🧲 Magnet mode: ${this.magnetMode.toUpperCase()}`);
         return this.magnetMode;
     }
 
@@ -4025,7 +4067,7 @@ class DrawingToolsManager {
     setMagnetMode(mode) {
         if (['off', 'weak', 'strong'].includes(mode)) {
             this.magnetMode = mode;
-            // [debug removed]
+            console.log(`🧲 Magnet mode set to: ${mode.toUpperCase()}`);
             return this.magnetMode;
         }
         return this.magnetMode;
@@ -4036,7 +4078,7 @@ class DrawingToolsManager {
      */
     toggleKeepDrawingMode() {
         this.keepDrawingMode = !this.keepDrawingMode;
-        // [debug removed]
+        console.log(`✏️ Keep Drawing mode: ${this.keepDrawingMode ? 'ON' : 'OFF'}`);
         return this.keepDrawingMode;
     }
 
@@ -4052,7 +4094,7 @@ class DrawingToolsManager {
         this.currentEmojiOptions = resolved;
         this.pendingEmojiOptions = resolved;
         this.setTool('emoji');
-        // [debug removed]
+        console.log('🎨 Emoji tool activated with:', resolved);
     }
 
     /**
@@ -4071,7 +4113,7 @@ class DrawingToolsManager {
                 this.svg.classed('eraser-mode', false);
             }
         }
-        // [debug removed]
+        console.log(`🧹 Eraser mode: ${enabled ? 'ON' : 'OFF'}`);
     }
 
     /**
@@ -4082,7 +4124,7 @@ class DrawingToolsManager {
         const drawing = this.drawings.find(d => d.id === drawingId);
         if (drawing) {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
-            // [debug removed]
+            console.log(`🧹 Erased drawing: ${drawingId}`);
         }
     }
 
@@ -4162,7 +4204,7 @@ class DrawingToolsManager {
             if (this.isRectSelecting) {
                 // Check if Ctrl is still held
                 if (!e.ctrlKey) {
-                    // [debug removed]
+                    console.log('🔲 Ctrl released - canceling rectangular selection');
                     this.cancelRectangularSelection();
                     document.removeEventListener('mousemove', handleMouseMove);
                     document.removeEventListener('mouseup', handleMouseUp);
@@ -4184,7 +4226,7 @@ class DrawingToolsManager {
         
         const handleKeyUp = (e) => {
             if (e.key === 'Control' && this.isRectSelecting) {
-                // [debug removed]
+                console.log('🔲 Ctrl key released - canceling rectangular selection');
                 this.cancelRectangularSelection();
                 document.removeEventListener('mousemove', handleMouseMove);
                 document.removeEventListener('mouseup', handleMouseUp);
@@ -4196,7 +4238,7 @@ class DrawingToolsManager {
         document.addEventListener('mouseup', handleMouseUp);
         document.addEventListener('keyup', handleKeyUp);
         
-        // [debug removed]
+        console.log('🔲 Started rectangular selection');
     }
 
     /**
@@ -4249,7 +4291,7 @@ class DrawingToolsManager {
             this.selectDrawing(drawing, true); // true = add to selection
         });
         
-        // [debug removed]
+        console.log(`🔲 Selected ${selectedDrawings.length} drawings within rectangle`);
         
         // Clean up
         this.rectSelectRect.remove();
@@ -4267,7 +4309,7 @@ class DrawingToolsManager {
     cancelRectangularSelection() {
         if (!this.isRectSelecting) return;
         
-        // [debug removed]
+        console.log('🔲 Canceling rectangular selection');
         
         // Clean up selection rectangle visual
         if (this.rectSelectRect) {
@@ -4413,7 +4455,7 @@ class DrawingToolsManager {
             
             // Special handling for tools that use isPointInside() (images, emojis, etc.)
             if (drawing.type === 'emoji' || drawing.type === 'image') {
-                // [debug removed]
+                console.log('🎯 Checking image tool:', drawing.type, 'at', mouseX, mouseY);
                 if (typeof drawing.isPointInside === 'function') {
                     const scales = {
                         xScale: this.chart.xScale,
@@ -4421,14 +4463,14 @@ class DrawingToolsManager {
                         chart: this.chart
                     };
                     const isInside = drawing.isPointInside(mouseX, mouseY, scales);
-                    // [debug removed]
+                    console.log('🎯 isPointInside result:', isInside);
                     if (isInside && !hitsById.has(drawing.id)) {
-                        // [debug removed]
+                        console.log('✅ Adding image to drawingsAtPoint');
                         hitsById.set(drawing.id, { drawing, distance: 0, z });
                         continue;
                     }
                 } else {
-                    // [debug removed]
+                    console.log('⚠️ No isPointInside method on drawing');
                 }
             }
             
@@ -4958,7 +5000,7 @@ class DrawingToolsManager {
         const isStacked = lines.length > threshold;
         
         if (isStacked) {
-            // [debug removed]
+            console.log(`📚 Detected ${lines.length} stacked lines at point (${mouseX.toFixed(0)}, ${mouseY.toFixed(0)})`);
         }
         
         return {
@@ -5215,7 +5257,7 @@ class DrawingToolsManager {
         
         try {
             localStorage.setItem('drawingToolStyles', JSON.stringify(this.savedToolStyles));
-            // [debug removed]
+            console.log(`💾 Saved style for ${toolType}`);
         } catch (e) {
             console.warn('Failed to save tool style:', e);
         }
@@ -5252,7 +5294,7 @@ class DrawingToolsManager {
                     drawing.style[key] = savedStyle[key];
                 }
             });
-            // [debug removed]
+            console.log(`📋 Applied saved style for ${drawing.type}`);
         }
     }
 }
