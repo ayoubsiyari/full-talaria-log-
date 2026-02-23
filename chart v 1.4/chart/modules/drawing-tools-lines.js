@@ -627,7 +627,7 @@ class TrendlineTool extends BaseDrawing {
         const seg_ux = (segRX - segLX) / segLen;
         const seg_uy = (segRY - segLY) / segLen;
 
-        const EDGE = 30;
+        const EDGE = 10;
         let baseX, baseY;
         let labelAnchor;
         switch (textHAlign) {
