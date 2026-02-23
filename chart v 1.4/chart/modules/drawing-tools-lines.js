@@ -538,7 +538,7 @@ class TrendlineTool extends BaseDrawing {
             const sSegLen = Math.sqrt((sSegRX - sSegLX) ** 2 + (sSegRY - sSegLY) ** 2) || 1;
             const sUx = (sSegRX - sSegLX) / sSegLen, sUy = (sSegRY - sSegLY) / sSegLen;
             const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            const SI_EDGE = 30;
+            const SI_EDGE = 5;
             let siTextX, siTextY, siAnchor;
             switch (siTextHAlign) {
                 case 'left':  siTextX = sSegLX + sUx * SI_EDGE; siTextY = sSegLY + sUy * SI_EDGE; siAnchor = 'start'; break;
@@ -645,8 +645,8 @@ class TrendlineTool extends BaseDrawing {
                 break;
             default:
                 // anchor:middle → text centered at midpoint
-                baseX = (segLX - segRX)* EDGE ;
-                baseY = (segLY - segRY)* EDGE ;
+                baseX = (segLX + segRX)/2 ;
+                baseY = (segLY + segRY)/2 ;
                 labelAnchor = 'middle';
         }
 
