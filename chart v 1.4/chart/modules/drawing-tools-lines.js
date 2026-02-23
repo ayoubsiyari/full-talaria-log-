@@ -576,33 +576,59 @@ class TrendlineTool extends BaseDrawing {
         const verticalOffset = LINE_LABEL_OFFSET;
         const edgePadding = TEXT_EDGE_PADDING;
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+
+        // Compute the visible x range from scales
+        const xRangeVis = scales && scales.xScale ? scales.xScale.range() : null;
+        const visLeft  = xRangeVis ? xRangeVis[0] : 0;
+        const visRight = xRangeVis ? xRangeVis[1] : 99999;
+
+        // Left/right endpoints of the actual (possibly extended) line segment passed in coords
+        const extX1 = coords.x1 !== undefined ? coords.x1 : x1;
+        const extY1 = coords.y1 !== undefined ? coords.y1 : y1;
+        const extX2 = coords.x2 !== undefined ? coords.x2 : x2;
+        const extY2 = coords.y2 !== undefined ? coords.y2 : y2;
+        const lx = extX1 <= extX2 ? extX1 : extX2;
+        const ly = extX1 <= extX2 ? extY1 : extY2;
+        const rx = extX1 <= extX2 ? extX2 : extX1;
+        const ry = extX1 <= extX2 ? extY2 : extY1;
+        const segDX = rx - lx;
+        const segDY = ry - ly;
+
+        // Find where the line segment enters the visible area from the left
+        let entryX, entryY;
+        if (lx >= visLeft) {
+            entryX = lx;
+            entryY = ly;
+        } else if (segDX !== 0) {
+            const t = (visLeft - lx) / segDX;
+            entryX = visLeft;
+            entryY = ly + t * segDY;
+        } else {
+            entryX = lx;
+            entryY = ly;
+        }
+        // Clamp entry to right boundary too
+        if (entryX > visRight) { entryX = visRight; }
+
+        let baseX = entryX + 8; // small left-edge padding
+        let baseY = entryY;
+        let labelAnchor = 'start';
+
+        // For explicit center/right alignment, fall back to midpoint / right entry
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-
-        let baseX = midX;
-        let baseY = midY;
-
-        // Horizontal position: place text CENTER at 15% / 50% / 85% along the line
-        // Always anchor to the visual left/right end (by x-coordinate), not draw order
-        const lineDX = x2 - x1;
-        const lineDY = y2 - y1;
-        const lvX = x1 <= x2 ? x1 : x2;
-        const lvY = x1 <= x2 ? y1 : y2;
-        const rvX = x1 <= x2 ? x2 : x1;
-        const rvY = x1 <= x2 ? y2 : y1;
-        const vDX = rvX - lvX;
-        const vDY = rvY - lvY;
-        switch (textHAlign) {
-            case 'left':
-                baseX = lvX + vDX * 0.05;
-                baseY = lvY + vDY * 0.05;
-                break;
-            case 'right':
-                baseX = lvX + vDX * 0.95;
-                baseY = lvY + vDY * 0.95;
-                break;
-            default:
-                baseX = midX;
-                baseY = midY;
+        if (textHAlign === 'right') {
+            const exitX = Math.min(rx, visRight);
+            const tExit = segDX !== 0 ? (exitX - lx) / segDX : 1;
+            baseX = Math.min(exitX - 8, visRight - 8);
+            baseY = ly + tExit * segDY;
+            labelAnchor = 'end';
+        } else if (textHAlign === 'center') {
+            const clampedLX = Math.max(lx, visLeft);
+            const clampedRX = Math.min(rx, visRight);
+            const midFrac = segDX !== 0 ? ((clampedLX + clampedRX) / 2 - lx) / segDX : 0.5;
+            baseX = Math.max(visLeft + 8, Math.min(visRight - 8, lx + midFrac * segDX));
+            baseY = ly + midFrac * segDY;
+            labelAnchor = 'middle';
         }
 
         let perpOffsetX = 0;
@@ -630,18 +656,12 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp label X to stay within the visible chart area
-        const xRange = scales && scales.xScale ? scales.xScale.range() : null;
-        const labelMargin = 4;
-        let finalLabelX = baseX + perpOffsetX + offsetX;
-        if (xRange) {
-            finalLabelX = Math.max(xRange[0] + labelMargin, Math.min(xRange[1] - labelMargin, finalLabelX));
-        }
+        let finalLabelX = Math.max(visLeft + 4, Math.min(visRight - 4, baseX + perpOffsetX + offsetX));
 
         appendTextLabel(this.group, label, {
             x: finalLabelX,
             y: baseY + perpOffsetY + offsetY,
-            anchor: 'middle',
+            anchor: labelAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
