@@ -528,38 +528,13 @@ class TrendlineTool extends BaseDrawing {
             const siVisLeft  = siXRange ? siXRange[0] : 0;
             const siVisRight = siXRange ? siXRange[1] : 99999;
 
-            // Use the same left-entry logic: find where line enters visible area
-            const siExtX1 = coords.x1 !== undefined ? coords.x1 : this._splitInfo.textX;
-            const siExtX2 = coords.x2 !== undefined ? coords.x2 : this._splitInfo.textX;
-            const siExtY1 = coords.y1 !== undefined ? coords.y1 : this._splitInfo.textY;
-            const siExtY2 = coords.y2 !== undefined ? coords.y2 : this._splitInfo.textY;
-            const siLX = siExtX1 <= siExtX2 ? siExtX1 : siExtX2;
-            const siLY = siExtX1 <= siExtX2 ? siExtY1 : siExtY2;
-            const siRX = siExtX1 <= siExtX2 ? siExtX2 : siExtX1;
-            const siRY = siExtX1 <= siExtX2 ? siExtY2 : siExtY1;
-            const siSegDX = siRX - siLX;
-            const siSegDY = siRY - siLY;
-
-            let siEntryX, siEntryY;
-            if (siLX >= siVisLeft) {
-                siEntryX = siLX; siEntryY = siLY;
-            } else if (siSegDX !== 0) {
-                const t = (siVisLeft - siLX) / siSegDX;
-                siEntryX = siVisLeft;
-                siEntryY = siLY + t * siSegDY;
-            } else {
-                siEntryX = siLX; siEntryY = siLY;
-            }
-            if (siEntryX > siVisRight) siEntryX = siVisRight;
-
-            // For middle alignment: place at left entry with start anchor
-            let siLabelX = Math.max(siVisLeft + 8, Math.min(siVisRight - 8, siEntryX + 8 + offsetX));
-            const siLabelY = siEntryY + offsetY;
+            // Clamp only: keep original textX but prevent it going outside visible area
+            let siLabelX = Math.max(siVisLeft + 8, Math.min(siVisRight - 8, this._splitInfo.textX + offsetX));
 
             appendTextLabel(this.group, label, {
                 x: siLabelX,
-                y: siLabelY,
-                anchor: 'start',
+                y: this._splitInfo.textY + offsetY,
+                anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -608,53 +583,34 @@ class TrendlineTool extends BaseDrawing {
         const visLeft  = xRangeVis ? xRangeVis[0] : 0;
         const visRight = xRangeVis ? xRangeVis[1] : 99999;
 
-        // Left/right endpoints of the actual (possibly extended) line segment passed in coords
-        const extX1 = coords.x1 !== undefined ? coords.x1 : x1;
-        const extY1 = coords.y1 !== undefined ? coords.y1 : y1;
-        const extX2 = coords.x2 !== undefined ? coords.x2 : x2;
-        const extY2 = coords.y2 !== undefined ? coords.y2 : y2;
-        const lx = extX1 <= extX2 ? extX1 : extX2;
-        const ly = extX1 <= extX2 ? extY1 : extY2;
-        const rx = extX1 <= extX2 ? extX2 : extX1;
-        const ry = extX1 <= extX2 ? extY2 : extY1;
-        const segDX = rx - lx;
-        const segDY = ry - ly;
-
-        // Find where the line segment enters the visible area from the left
-        let entryX, entryY;
-        if (lx >= visLeft) {
-            entryX = lx;
-            entryY = ly;
-        } else if (segDX !== 0) {
-            const t = (visLeft - lx) / segDX;
-            entryX = visLeft;
-            entryY = ly + t * segDY;
-        } else {
-            entryX = lx;
-            entryY = ly;
-        }
-        // Clamp entry to right boundary too
-        if (entryX > visRight) { entryX = visRight; }
-
-        let baseX = entryX + 8; // small left-edge padding
-        let baseY = entryY;
-        let labelAnchor = 'start';
-
-        // For explicit center/right alignment, fall back to midpoint / right entry
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-        if (textHAlign === 'right') {
-            const exitX = Math.min(rx, visRight);
-            const tExit = segDX !== 0 ? (exitX - lx) / segDX : 1;
-            baseX = Math.min(exitX - 8, visRight - 8);
-            baseY = ly + tExit * segDY;
-            labelAnchor = 'end';
-        } else if (textHAlign === 'center') {
-            const clampedLX = Math.max(lx, visLeft);
-            const clampedRX = Math.min(rx, visRight);
-            const midFrac = segDX !== 0 ? ((clampedLX + clampedRX) / 2 - lx) / segDX : 0.5;
-            baseX = Math.max(visLeft + 8, Math.min(visRight - 8, lx + midFrac * segDX));
-            baseY = ly + midFrac * segDY;
-            labelAnchor = 'middle';
+
+        let baseX = midX;
+        let baseY = midY;
+        let labelAnchor = 'middle';
+
+        // Horizontal position along the original (non-extended) line
+        const lvX = x1 <= x2 ? x1 : x2;
+        const lvY = x1 <= x2 ? y1 : y2;
+        const rvX = x1 <= x2 ? x2 : x1;
+        const rvY = x1 <= x2 ? y2 : y1;
+        const vDX = rvX - lvX;
+        const vDY = rvY - lvY;
+        switch (textHAlign) {
+            case 'left':
+                baseX = lvX + vDX * 0.05;
+                baseY = lvY + vDY * 0.05;
+                labelAnchor = 'start';
+                break;
+            case 'right':
+                baseX = lvX + vDX * 0.95;
+                baseY = lvY + vDY * 0.95;
+                labelAnchor = 'end';
+                break;
+            default:
+                baseX = midX;
+                baseY = midY;
+                labelAnchor = 'middle';
         }
 
         let perpOffsetX = 0;
@@ -682,6 +638,7 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
+        // Clamp final X to visible area to prevent text overflowing outside chart
         let finalLabelX = Math.max(visLeft + 4, Math.min(visRight - 4, baseX + perpOffsetX + offsetX));
 
         appendTextLabel(this.group, label, {
