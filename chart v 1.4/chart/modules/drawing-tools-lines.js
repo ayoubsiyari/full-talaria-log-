@@ -259,7 +259,7 @@ class TrendlineTool extends BaseDrawing {
             const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
             
             // Use exact text width for gap with padding
-            const padding = 4;
+            const padding = 2;
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
