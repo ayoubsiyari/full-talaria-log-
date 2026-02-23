@@ -525,15 +525,13 @@ class TrendlineTool extends BaseDrawing {
 
             const { scales: siScales } = coords;
             const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
-            let siLabelX = this._splitInfo.textX + offsetX;
-            if (siXRange) {
-                siLabelX = Math.min(siXRange[1] - 4, siLabelX);
-            }
+            const siLabelX = this._splitInfo.textX + offsetX;
 
             appendTextLabel(this.group, label, {
                 x: siLabelX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'end',
+                anchor: 'middle',
+                yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -606,45 +604,37 @@ class TrendlineTool extends BaseDrawing {
             segRY = rawLY + f * rawDY;
         }
 
-        const segDX = segRX - segLX;
-        const segDY = segRY - segLY;
+        const segLen = Math.sqrt((segRX - segLX) ** 2 + (segRY - segLY) ** 2) || 1;
+        const seg_ux = (segRX - segLX) / segLen;
+        const seg_uy = (segRY - segLY) / segLen;
 
+        // Same logic as RayTool: anchor:middle, 30px from endpoints
+        const EDGE = 30;
         let baseX, baseY;
-        let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                // Anchor at 50% of visible segment, text flows leftward into left half
-                baseX = segLX + segDX * 0.5;
-                baseY = segLY + segDY * 0.5;
-                labelAnchor = 'end';
+                baseX = segLX + seg_ux * EDGE;
+                baseY = segLY + seg_uy * EDGE;
                 break;
             case 'right':
-                // Anchor at right visible endpoint, text flows leftward
-                baseX = segRX;
-                baseY = segRY;
-                labelAnchor = 'end';
+                baseX = segRX - seg_ux * EDGE;
+                baseY = segRY - seg_uy * EDGE;
                 break;
             default:
-                // Center: anchor at 75%, text flows leftward into center area
-                baseX = segLX + segDX * 0.75;
-                baseY = segLY + segDY * 0.75;
-                labelAnchor = 'end';
+                baseX = (segLX + segRX) / 2;
+                baseY = (segLY + segRY) / 2;
         }
-
-        let perpOffsetX = 0;
-        let perpOffsetY = 0;
 
         const perpX = -Math.sin(angleRad);
         const perpY = Math.cos(angleRad);
 
+        const signUp = perpY <= 0 ? 1 : -1;
         if (textVAlign === 'top') {
-            const dir = isFlipped ? 1 : -1;
-            perpOffsetX = perpX * verticalOffset * dir;
-            perpOffsetY = perpY * verticalOffset * dir;
+            baseX += perpX * verticalOffset * signUp;
+            baseY += perpY * verticalOffset * signUp;
         } else if (textVAlign === 'bottom') {
-            const dir = isFlipped ? -1 : 1;
-            perpOffsetX = perpX * verticalOffset * dir;
-            perpOffsetY = perpY * verticalOffset * dir;
+            baseX -= perpX * verticalOffset * signUp;
+            baseY -= perpY * verticalOffset * signUp;
         }
 
         const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
@@ -656,14 +646,10 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp label X to stay within the visible chart area
-        // No extra clamp needed — baseX is already within the visible segment
-        const finalLabelX = baseX + perpOffsetX + offsetX;
-
         appendTextLabel(this.group, label, {
-            x: finalLabelX,
-            y: baseY + perpOffsetY + offsetY,
-            anchor: labelAnchor,
+            x: baseX + offsetX,
+            y: baseY + offsetY,
+            anchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
