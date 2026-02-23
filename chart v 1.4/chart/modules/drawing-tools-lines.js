@@ -528,16 +528,26 @@ class TrendlineTool extends BaseDrawing {
             const siVisLeft  = siXRange ? siXRange[0] : 0;
             const siVisRight = siXRange ? siXRange[1] : 99999;
 
-            // Clamp only: keep original textX but prevent it going outside visible area
-            let siLabelX = this._splitInfo.textX + offsetX;
-            if (siXRange) {
-                siLabelX = Math.max(siXRange[0] + 4, Math.min(siXRange[1] - 4, siLabelX));
-            }
+            // Use left visible entry of the drawn line, anchor:start so text flows right
+            const siDrawnLX = coords.x1 !== undefined && coords.x2 !== undefined
+                ? (coords.x1 <= coords.x2 ? coords.x1 : coords.x2)
+                : this._splitInfo.textX;
+            const siDrawnLY = coords.x1 !== undefined && coords.x2 !== undefined
+                ? (coords.x1 <= coords.x2 ? coords.y1 : coords.y2)
+                : this._splitInfo.textY;
+            const siStartX = siXRange ? Math.max(siXRange[0] + 4, siDrawnLX) : siDrawnLX;
+            const siFrac = (coords.x1 !== undefined && coords.x1 !== coords.x2)
+                ? (siStartX - siDrawnLX) / Math.abs(coords.x2 - coords.x1) : 0;
+            const siDrDY = coords.x1 !== undefined
+                ? (coords.x1 <= coords.x2 ? coords.y2 - coords.y1 : coords.y1 - coords.y2) : 0;
+            const siStartY = siDrawnLY + siFrac * siDrDY;
+            const siLabelX = siStartX + offsetX;
+            const siLabelY = siStartY + offsetY;
 
             appendTextLabel(this.group, label, {
                 x: siLabelX,
-                y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                y: siLabelY,
+                anchor: 'start',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -586,31 +596,19 @@ class TrendlineTool extends BaseDrawing {
         const visLeft  = xRangeVis ? xRangeVis[0] : 0;
         const visRight = xRangeVis ? xRangeVis[1] : 99999;
 
-        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+        // Use the drawn (extended/clipped) coords passed in — left endpoint is the visible start
+        const drawnLX = coords.x1 <= coords.x2 ? coords.x1 : coords.x2;
+        const drawnLY = coords.x1 <= coords.x2 ? coords.y1 : coords.y2;
 
-        let baseX = midX;
-        let baseY = midY;
-        let labelAnchor = 'middle';
+        // Clamp to visible left edge in case line starts off-screen
+        const startX = Math.max(visLeft + 4, drawnLX);
+        const startFrac = (coords.x1 !== coords.x2) ? (startX - drawnLX) / Math.abs(coords.x2 - coords.x1) : 0;
+        const drawnDY = (coords.x1 <= coords.x2 ? coords.y2 - coords.y1 : coords.y1 - coords.y2);
+        const startY = drawnLY + startFrac * drawnDY;
 
-        const lvX = x1 <= x2 ? x1 : x2;
-        const lvY = x1 <= x2 ? y1 : y2;
-        const rvX = x1 <= x2 ? x2 : x1;
-        const rvY = x1 <= x2 ? y2 : y1;
-        const vDX = rvX - lvX;
-        const vDY = rvY - lvY;
-        switch (textHAlign) {
-            case 'left':
-                baseX = lvX + vDX * 0.05;
-                baseY = lvY + vDY * 0.05;
-                break;
-            case 'right':
-                baseX = lvX + vDX * 0.95;
-                baseY = lvY + vDY * 0.95;
-                break;
-            default:
-                baseX = midX;
-                baseY = midY;
-        }
+        let baseX = startX;
+        let baseY = startY;
+        let labelAnchor = 'start';
 
         let perpOffsetX = 0;
         let perpOffsetY = 0;
@@ -638,10 +636,7 @@ class TrendlineTool extends BaseDrawing {
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
         // Clamp label X to stay within the visible chart area
-        let finalLabelX = baseX + perpOffsetX + offsetX;
-        if (xRangeVis) {
-            finalLabelX = Math.max(xRangeVis[0] + 4, Math.min(xRangeVis[1] - 4, finalLabelX));
-        }
+        let finalLabelX = Math.max(visLeft + 4, baseX + perpOffsetX + offsetX);
 
         appendTextLabel(this.group, label, {
             x: finalLabelX,
