@@ -608,21 +608,27 @@ class TrendlineTool extends BaseDrawing {
         const seg_ux = (segRX - segLX) / segLen;
         const seg_uy = (segRY - segLY) / segLen;
 
-        // Same logic as RayTool: anchor:middle, 30px from endpoints
         const EDGE = 30;
         let baseX, baseY;
+        let labelAnchor;
         switch (textHAlign) {
             case 'left':
+                // Start text at 30px from left endpoint, flows rightward along line
                 baseX = segLX + seg_ux * EDGE;
                 baseY = segLY + seg_uy * EDGE;
+                labelAnchor = 'start';
                 break;
             case 'right':
+                // End text at 30px from right endpoint, flows leftward along line
                 baseX = segRX - seg_ux * EDGE;
                 baseY = segRY - seg_uy * EDGE;
+                labelAnchor = 'end';
                 break;
             default:
+                // Center text at midpoint
                 baseX = (segLX + segRX) / 2;
                 baseY = (segLY + segRY) / 2;
+                labelAnchor = 'middle';
         }
 
         const perpX = -Math.sin(angleRad);
@@ -649,7 +655,7 @@ class TrendlineTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
-            anchor: 'middle',
+            anchor: labelAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
