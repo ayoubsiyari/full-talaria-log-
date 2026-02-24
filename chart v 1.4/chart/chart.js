@@ -12259,9 +12259,11 @@ class Chart {
         const dataIdx = Math.round(this.pixelToDataIndex(x));
         const snappedX = this.dataIndexToPixel(dataIdx); // Already returns candle center
         
-        // Show crosshair lines for 'cross' cursor type, eraser, OR when drawing tool is active
+        // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
         // DON'T show lines for 'dot' or 'arrow' cursor types
-        const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool) && this.cursorType !== 'dot';
+        const _dm = this.drawingManager;
+        const _drawingActive = !!(_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDrawing || _dm.isDragging));
+        const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
         const crossWidth = (this.chartSettings && this.chartSettings.crosshairWidth) || 1;
