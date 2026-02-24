@@ -11085,6 +11085,9 @@ class Chart {
             event.stopPropagation(); // Prevent canvas events while interacting with SVG
             event.preventDefault();
             
+            // Always update crosshair so lines follow the cursor when SVG intercepts events
+            if (typeof this.updateCrosshair === 'function') this.updateCrosshair(event);
+            
             // Skip if no active drawing
             if (!start || !startData || !this.tool) return;
             

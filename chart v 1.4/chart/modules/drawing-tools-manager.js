@@ -1336,6 +1336,12 @@ class DrawingToolsManager {
      * Handle mouse move event
      */
     handleMouseMove(event) {
+        // Always keep crosshair visible when a tool is active, drawing is selected, or dragging
+        if (this.chart && typeof this.chart.updateCrosshair === 'function' &&
+            (this.currentTool || this.selectedDrawing || this.isDragging || this.isDrawing || this.isResizing)) {
+            this.chart.updateCrosshair(event);
+        }
+        
         // Handle rectangular selection
         if (this.isRectSelecting) {
             this.updateRectangularSelection(event);
