@@ -550,6 +550,8 @@ class DrawingSettingsPanel {
 /* Ending/Info dropdown buttons */
 .tv-ending-dropdown-btn,
 .tv-info-dropdown-btn {
+    -webkit-appearance: none !important;
+    appearance: none !important;
     background-color: rgba(255, 255, 255, 0.08) !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
     border-radius: 4px !important;
