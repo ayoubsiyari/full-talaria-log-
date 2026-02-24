@@ -1724,7 +1724,16 @@ class DrawingToolsManager {
      * For freehand tools (path, brush, highlighter), uses continuous coordinates for smooth curves
      */
     getDataPoint(event) {
-        const [screenX, screenY] = d3.pointer(event, this.svg.node());
+        let [screenX, screenY] = d3.pointer(event, this.svg.node());
+
+        // Clamp to chart inner area so no drawing point can go outside the chart
+        if (this.chart) {
+            const m = this.chart.margin;
+            const maxX = this.chart.w - m.r;
+            const maxY = this.chart.h - m.b;
+            screenX = Math.max(m.l, Math.min(maxX, screenX));
+            screenY = Math.max(m.t, Math.min(maxY, screenY));
+        }
         
         // Check if current tool is a freehand/continuous drawing tool
         const isContinuousTool = this.currentTool === 'path' || 
