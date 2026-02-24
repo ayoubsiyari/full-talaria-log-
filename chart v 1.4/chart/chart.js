@@ -8228,8 +8228,7 @@ class Chart {
         
         this.animateZoom();
 
-        // Always redraw if we have selected drawings to ensure style updates are visible
-        if (this.renderPending || this.selectedDrawing !== null) {
+        if (this.renderPending) {
             this.render();
             this.renderPending = false;
         }
@@ -8275,6 +8274,9 @@ class Chart {
 
         // IMPORTANT: Calculate scales FIRST before drawing anything
         this.calculateScales();
+
+        // Build time-axis ticks ONCE – shared by drawGrid() and drawAxes() for perfect sync
+        this._timeTicks = this._buildTimeTicks();
 
         const candleSpacing = this.getCandleSpacing();
         const firstVisibleIndex = Math.floor(-this.offsetX / candleSpacing);
@@ -8475,71 +8477,17 @@ class Chart {
             });
         }
         
-        // Vertical grid lines (time) - at natural time intervals
-        if (showVertical) {
+        // Vertical grid lines – use same tick positions as time-axis labels for perfect sync
+        if (showVertical && this._timeTicks && this._timeTicks.length > 0) {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
             this.ctx.lineWidth = 1;
-            
-            const candleSpacing = this.getCandleSpacing();
-            const firstVisibleIdx = Math.max(0, -this.offsetX / candleSpacing);
-            
-            // In replay mode, extend to show future times
-            const isReplayMode = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
-            const maxDataLength = isReplayMode ? this.replaySystem.fullRawData.length : this.data.length;
-            const lastVisibleIdx = Math.min(maxDataLength - 1, firstVisibleIdx + cw / candleSpacing);
-            
-            // Calculate appropriate interval based on timeframe and visible range
-            const visibleBars = lastVisibleIdx - firstVisibleIdx;
-            const timeframe = this.currentTimeframe || '1m';
-            
-            // Determine grid interval (in number of candles)
-            let gridInterval;
-            if (timeframe === '1m') {
-                if (visibleBars > 300) gridInterval = 30;      // Every 30 minutes
-                else if (visibleBars > 150) gridInterval = 15; // Every 15 minutes
-                else if (visibleBars > 60) gridInterval = 10;  // Every 10 minutes
-                else gridInterval = 5;                          // Every 5 minutes
-            } else if (timeframe === '5m') {
-                if (visibleBars > 200) gridInterval = 12;      // Every 1 hour
-                else if (visibleBars > 100) gridInterval = 6;  // Every 30 minutes
-                else gridInterval = 3;                          // Every 15 minutes
-            } else if (timeframe === '15m') {
-                if (visibleBars > 150) gridInterval = 8;       // Every 2 hours
-                else if (visibleBars > 75) gridInterval = 4;   // Every 1 hour
-                else gridInterval = 2;                          // Every 30 minutes
-            } else if (timeframe === '30m') {
-                if (visibleBars > 150) gridInterval = 8;       // Every 4 hours
-                else if (visibleBars > 75) gridInterval = 4;   // Every 2 hours
-                else gridInterval = 2;                          // Every 1 hour
-            } else if (timeframe === '1h') {
-                if (visibleBars > 200) gridInterval = 24;      // Every 1 day
-                else if (visibleBars > 100) gridInterval = 6;  // Every 6 hours
-                else gridInterval = 3;                          // Every 3 hours
-            } else if (timeframe === '4h') {
-                if (visibleBars > 100) gridInterval = 6;       // Every 1 day
-                else gridInterval = 3;                          // Every 12 hours
-            } else if (timeframe === '1d') {
-                if (visibleBars > 150) gridInterval = 30;      // Every month
-                else if (visibleBars > 75) gridInterval = 7;   // Every week
-                else gridInterval = 1;                          // Every day
-            } else {
-                gridInterval = Math.ceil(visibleBars / 8);     // Default: ~8 grid lines
-            }
-            
-            // Find first grid line aligned to natural time boundary
-            const startIdx = Math.ceil(firstVisibleIdx / gridInterval) * gridInterval;
-            
-            // Draw grid lines at regular intervals
-            for (let idx = startIdx; idx <= lastVisibleIdx; idx += gridInterval) {
-                if (idx >= 0 && idx < maxDataLength) {
-                    const x = this.dataIndexToPixel(idx);
-                    
-                    if (x >= m.l && x <= this.w - m.r) {
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(x, m.t);
-                        this.ctx.lineTo(x, this.h - m.b);
-                        this.ctx.stroke();
-                    }
+            for (let i = 0; i < this._timeTicks.length; i++) {
+                const x = this._timeTicks[i].x;
+                if (x >= m.l && x <= this.w - m.r) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, m.t);
+                    this.ctx.lineTo(x, this.h - m.b);
+                    this.ctx.stroke();
                 }
             }
         }
@@ -8618,14 +8566,27 @@ class Chart {
             }
         });
         
-        // X-axis (time) labels with natural time intervals - TradingView style
+        // X-axis (time) labels – use pre-built ticks (synced with vertical grid lines)
         this.ctx.textAlign = 'center';
         this.ctx.fillStyle = this.chartSettings.scaleTextColor;
-        
-        const candleSpacing = this.getCandleSpacing();
-        const firstVisibleIdx = Math.max(0, -this.offsetX / candleSpacing);
-        
-        // Always use this.data for time axis (it's resampled to current timeframe)
+        if (this._timeTicks && this._timeTicks.length > 0) {
+            for (let i = 0; i < this._timeTicks.length; i++) {
+                const tick = this._timeTicks[i];
+                const x = tick.x;
+                this.ctx.strokeStyle = '#e0e3eb';
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, this.h - m.b);
+                this.ctx.lineTo(x, this.h - m.b + 5);
+                this.ctx.stroke();
+                this.ctx.fillStyle = this.chartSettings.scaleTextColor;
+                this.ctx.font = scaleFont;
+                this.ctx.fillText(tick.label, x, this.h - 10);
+            }
+        }
+        this.ctx.font = scaleFont;
+
+        if (false) { // legacy block kept for reference – replaced by _buildTimeTicks()
         const timeAxisData = this.data;
         const maxDataLength = timeAxisData.length;
         // Calculate full visible range including future space (like TradingView)
@@ -8888,10 +8849,173 @@ class Chart {
             }
         }
         
-        // Reset font
-        this.ctx.font = scaleFont;
+        } // end legacy block
     }
     
+    /**
+     * Build time-axis tick list once per render frame.
+     * Returns [{idx, x, label, isBoundary}] – used by both drawGrid() and drawAxes().
+     */
+    _buildTimeTicks() {
+        if (!this.data || this.data.length === 0) return [];
+        const m = this.margin;
+        const candleSpacing = this.getCandleSpacing();
+        const cw = this.w - m.l - m.r;
+        const firstVisibleIdx = -this.offsetX / candleSpacing;
+        const isReplayMode = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
+        const maxDataLength = isReplayMode ? this.replaySystem.fullRawData.length : this.data.length;
+        const lastVisibleIdx = firstVisibleIdx + cw / candleSpacing;
+        const visibleBarsCount = Math.ceil(Math.max(0, lastVisibleIdx) - Math.max(0, firstVisibleIdx));
+
+        // Detect timeframe from data
+        let timeframe = this.currentTimeframe || '1m';
+        let timeframeMs = 60000;
+        if (this.data.length >= 2) {
+            timeframeMs = this.data[1].t - this.data[0].t;
+            const d = timeframeMs / 60000;
+            if (d >= 37000) timeframe = '1mo';
+            else if (d >= 10000) timeframe = '1w';
+            else if (d >= 1380)  timeframe = '1d';
+            else if (d >= 220)   timeframe = '4h';
+            else if (d >= 55)    timeframe = '1h';
+            else if (d >= 25)    timeframe = '30m';
+            else if (d >= 13)    timeframe = '15m';
+            else if (d >= 4)     timeframe = '5m';
+            else                 timeframe = '1m';
+        } else {
+            const tfMap = {'1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000,'1mo':2592000000};
+            timeframeMs = tfMap[timeframe] || 60000;
+        }
+
+        // Adaptive label interval (candles between ticks)
+        let labelInterval;
+        if (timeframe === '1m') {
+            if (visibleBarsCount > 600) labelInterval = 180;
+            else if (visibleBarsCount > 400) labelInterval = 60;
+            else if (visibleBarsCount > 200) labelInterval = 30;
+            else if (visibleBarsCount > 100) labelInterval = 15;
+            else labelInterval = 5;
+        } else if (timeframe === '5m') {
+            if (visibleBarsCount > 300) labelInterval = 36;
+            else if (visibleBarsCount > 150) labelInterval = 12;
+            else if (visibleBarsCount > 75)  labelInterval = 6;
+            else labelInterval = 3;
+        } else if (timeframe === '15m') {
+            if (visibleBarsCount > 200) labelInterval = 12;
+            else if (visibleBarsCount > 100) labelInterval = 4;
+            else labelInterval = 2;
+        } else if (timeframe === '30m') {
+            if (visibleBarsCount > 200) labelInterval = 12;
+            else if (visibleBarsCount > 100) labelInterval = 6;
+            else labelInterval = 2;
+        } else if (timeframe === '1h') {
+            if (visibleBarsCount > 400) labelInterval = 24;
+            else if (visibleBarsCount > 200) labelInterval = 12;
+            else if (visibleBarsCount > 100) labelInterval = 6;
+            else if (visibleBarsCount > 50)  labelInterval = 3;
+            else labelInterval = 1;
+        } else if (timeframe === '4h') {
+            if (visibleBarsCount > 150) labelInterval = 6;
+            else if (visibleBarsCount > 75)  labelInterval = 3;
+            else labelInterval = 1;
+        } else if (timeframe === '1d') {
+            if (visibleBarsCount > 150) labelInterval = 30;
+            else if (visibleBarsCount > 75)  labelInterval = 7;
+            else labelInterval = 1;
+        } else if (timeframe === '1w') {
+            if (visibleBarsCount > 120) labelInterval = 4;
+            else if (visibleBarsCount > 60)  labelInterval = 2;
+            else labelInterval = 1;
+        } else if (timeframe === '1mo') {
+            labelInterval = 1;
+        } else {
+            labelInterval = Math.max(1, Math.ceil(visibleBarsCount / 8));
+        }
+
+        const labelIntervalMs   = labelInterval * timeframeMs;
+        const intervalMinutes   = labelIntervalMs / 60000;
+        const isCalendarTf      = timeframe === '1w' || /mo$/i.test(timeframe);
+        const isDailyOrHigher   = timeframeMs >= 86400000;
+        const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const minSpacing        = 50;
+
+        const scanFrom = Math.max(0, Math.floor(Math.max(0, firstVisibleIdx)));
+        const scanTo   = Math.min(maxDataLength - 1, Math.ceil(lastVisibleIdx));
+
+        // Single pass – collect candidates
+        const candidates = [];
+        let prevDay = -1, prevMonth = -1, prevYear = -1;
+
+        for (let idx = scanFrom; idx <= scanTo; idx++) {
+            const candle = this.data[idx];
+            if (!candle || !candle.t) continue;
+            const tzDate = this.convertToTimezone(candle.t);
+            const day = tzDate.getDate(), month = tzDate.getMonth(), year = tzDate.getFullYear();
+
+            // Detect boundary
+            let isBoundary = false, boundaryLabel = null;
+            if (prevYear !== -1) {
+                if (year !== prevYear)        { isBoundary = true; boundaryLabel = String(year); }
+                else if (month !== prevMonth) { isBoundary = true; boundaryLabel = monthNames[month]; }
+                else if (day !== prevDay)     { isBoundary = true; boundaryLabel = String(day); }
+            }
+            prevDay = day; prevMonth = month; prevYear = year;
+
+            // Detect round-time alignment
+            let isRound = false;
+            if (isCalendarTf) {
+                isRound = (idx - scanFrom) % Math.max(1, labelInterval) === 0;
+            } else {
+                const tot = tzDate.getHours() * 60 + tzDate.getMinutes();
+                isRound = intervalMinutes > 0 && tot % intervalMinutes === 0;
+            }
+
+            if (!isBoundary && !isRound) continue;
+
+            let label;
+            if (isBoundary && boundaryLabel) {
+                label = boundaryLabel;
+            } else if (isDailyOrHigher) {
+                label = monthNames[month] + ' ' + day;
+            } else {
+                label = String(tzDate.getHours()).padStart(2,'0') + ':' + String(tzDate.getMinutes()).padStart(2,'0');
+            }
+            candidates.push({ idx, isBoundary, label });
+        }
+
+        // Extrapolate future ticks
+        if (maxDataLength > 0 && !isCalendarTf && Math.ceil(lastVisibleIdx) > scanTo) {
+            const last = this.data[maxDataLength - 1];
+            const ltz  = this.convertToTimezone(last.t);
+            const lMin = ltz.getHours() * 60 + ltz.getMinutes();
+            const next = Math.ceil((lMin + 1) / intervalMinutes) * intervalMinutes;
+            let futureIdx = maxDataLength - 1 + Math.ceil(((next - lMin) * 60000) / timeframeMs);
+            for (; futureIdx <= lastVisibleIdx; futureIdx += labelInterval) {
+                const ri  = Math.round(futureIdx);
+                const tz2 = this.convertToTimezone(last.t + (ri - maxDataLength + 1) * timeframeMs);
+                const lbl = isDailyOrHigher
+                    ? monthNames[tz2.getMonth()] + ' ' + tz2.getDate()
+                    : String(tz2.getHours()).padStart(2,'0') + ':' + String(tz2.getMinutes()).padStart(2,'0');
+                candidates.push({ idx: ri, isBoundary: false, label: lbl });
+            }
+        }
+
+        // Sort and filter by minimum pixel spacing
+        candidates.sort((a, b) => a.idx - b.idx);
+        const ticks = [];
+        let lastX = -Infinity;
+        for (const c of candidates) {
+            const x = this.dataIndexToPixel(c.idx);
+            if (x < m.l + 20 || x > this.w - m.r - 20) continue;
+            const gap = c.isBoundary ? minSpacing * 0.7 : minSpacing;
+            if (x - lastX >= gap || lastX === -Infinity) {
+                ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
+                lastX = x;
+            }
+        }
+        return ticks;
+    }
+
     /**
      * Get appropriate decimal places based on price range
      */
