@@ -288,10 +288,60 @@ class ColorPicker {
         return { hex: color, opacity: 1 };
     }
 
-    show(x, y, currentColor, callback, buttonElement) {
+    pickThickness(w) {
+        if (this.options && this.options.onThickness) {
+            this.options.onThickness(w);
+            this.options.thickness = w;
+        }
+        this._rebuildExtended();
+    }
+
+    pickLineStyle(s) {
+        if (this.options && this.options.onLineStyle) {
+            this.options.onLineStyle(s);
+            this.options.lineStyle = s;
+        }
+        this._rebuildExtended();
+    }
+
+    _rebuildExtended() {
+        const old = this.picker.querySelector('.cp-extended');
+        if (old) old.remove();
+        const opts = this.options || {};
+        if (!opts.showThickness && !opts.showLineStyle) return;
+        const ext = document.createElement('div');
+        ext.className = 'cp-extended';
+        if (opts.showThickness) {
+            const section = document.createElement('div');
+            section.style.cssText = 'margin-top:12px;';
+            const dashMap = { solid: 'none', dashed: '6,3', dotted: '2,3' };
+            const thickBtns = [1, 2, 3, 4].map(w => {
+                const active = opts.thickness === w;
+                return '<div data-w="'+w+'" onclick="window.__tvColorPickerInstance.pickThickness('+w+')" style="flex:1;height:32px;border-radius:6px;border:2px solid '+(active?'#2962ff':'rgba(255,255,255,0.12)')+';background:'+(active?'rgba(41,98,255,0.15)':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;"><div style="width:80%;height:'+w+'px;background:#d1d4dc;border-radius:1px;"></div></div>';
+            }).join('');
+            section.innerHTML = '<div style="color:#8a8e99;font-size:12px;margin-bottom:8px;">Thickness</div><div style="display:flex;gap:4px;">'+thickBtns+'</div>';
+            ext.appendChild(section);
+        }
+        if (opts.showLineStyle) {
+            const section = document.createElement('div');
+            section.style.cssText = 'margin-top:12px;';
+            const dashMap = { solid: 'none', dashed: '6,3', dotted: '2,3' };
+            const styleBtns = ['solid','dashed','dotted'].map(s => {
+                const active = opts.lineStyle === s;
+                return '<div data-s="'+s+'" onclick="window.__tvColorPickerInstance.pickLineStyle(\'' + s + '\')" style="flex:1;height:32px;border-radius:6px;border:2px solid '+(active?'#2962ff':'rgba(255,255,255,0.12)')+';background:'+(active?'rgba(41,98,255,0.15)':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="30" height="10"><line x1="2" y1="5" x2="28" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+(dashMap[s]||'none')+'"/></svg></div>';
+            }).join('');
+            section.innerHTML = '<div style="color:#8a8e99;font-size:12px;margin-bottom:8px;">Line style</div><div style="display:flex;gap:4px;">'+styleBtns+'</div>';
+            ext.appendChild(section);
+        }
+        this.picker.appendChild(ext);
+    }
+
+    show(x, y, currentColor, callback, buttonElement, options) {
         this.visible = true;
         this.currentCallback = callback;
         this.currentButton = buttonElement;
+        this.options = options || {};
+        this._rebuildExtended();
         
         // Parse current color
         const parsed = this.parseColor(currentColor);
@@ -337,7 +387,7 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 if (typeof window !== 'undefined' && typeof window.openColorPicker !== 'function') {
-    window.openColorPicker = function (currentColor, callback, buttonElement) {
+    window.openColorPicker = function (currentColor, callback, buttonElement, options) {
         if (!window.__tvColorPickerInstance) {
             if (typeof ColorPicker === 'undefined') return;
             window.__tvColorPickerInstance = new ColorPicker();
@@ -356,6 +406,6 @@ if (typeof window !== 'undefined' && typeof window.openColorPicker !== 'function
             y = rect.top - 10;
         }
 
-        picker.show(x, y, currentColor, callback, buttonElement);
+        picker.show(x, y, currentColor, callback, buttonElement, options);
     };
 }

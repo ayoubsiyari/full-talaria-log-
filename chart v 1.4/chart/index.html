@@ -24619,6 +24619,49 @@ window._openCrosshairPicker=function(btn){
 window._crosshairPickColor=function(color){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;p._color=color;window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
 window._crosshairPickWidth=function(w){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;p._width=w;p.querySelectorAll('[data-w]').forEach(function(d){var a=parseInt(d.dataset.w)===w;d.style.borderColor=a?'#2962ff':'rgba(255,255,255,0.12)';d.style.background=a?'rgba(41,98,255,0.15)':'transparent';});window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
 window._crosshairPickStyle=function(s){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;p._style=s;p.querySelectorAll('[data-s]').forEach(function(d){var a=d.dataset.s===s;d.style.borderColor=a?'#2962ff':'rgba(255,255,255,0.12)';d.style.background=a?'rgba(41,98,255,0.15)':'transparent';});window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
+window._openCrosshairColorPicker=function(btn){
+    var c=window.chart||window.mainChart;
+    var cs=(c&&c.chartSettings)||{};
+    var curColor=cs.crosshairColor||'#787b86';
+    var curWidth=cs.crosshairWidth||1;
+    var curStyle=cs.crosshairPattern||'dashed';
+    if(window.openColorPicker){
+        window.openColorPicker(curColor,function(v){
+            var swatch=document.getElementById('_cxColorSwatch');
+            if(swatch)swatch.style.background=v;
+            var c2=window.chart||window.mainChart;
+            if(!c2)return;
+            c2.chartSettings=c2.chartSettings||{};
+            c2.chartSettings.crosshairColor=v;
+            if(c2.scheduleRender)c2.scheduleRender();
+            try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+        },btn,{
+            showThickness:true,
+            thickness:curWidth,
+            onThickness:function(w){
+                var c2=window.chart||window.mainChart;
+                if(!c2)return;
+                c2.chartSettings=c2.chartSettings||{};
+                c2.chartSettings.crosshairWidth=w;
+                if(c2.scheduleRender)c2.scheduleRender();
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+            },
+            showLineStyle:true,
+            lineStyle:curStyle,
+            onLineStyle:function(s){
+                var c2=window.chart||window.mainChart;
+                if(!c2)return;
+                c2.chartSettings=c2.chartSettings||{};
+                c2.chartSettings.crosshairPattern=s;
+                if(c2.scheduleRender)c2.scheduleRender();
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+                var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
+                var lineEl=document.getElementById('_cxLinePreview');
+                if(lineEl)lineEl.setAttribute('stroke-dasharray',dashMap[s]||'none');
+            }
+        });
+    }
+};
 window._spClr=function(btn){
     var c=btn.dataset.color||'#2962ff';
     console.log('[SP] _spClr called, color=',c,'openColorPicker=',typeof window.openColorPicker);
@@ -24766,9 +24809,12 @@ P['canvas']={title:'Canvas',build:function(){
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
-            selI('cv_crossStyle',[['Solid','solid'],['Dashed','dashed'],['Dotted','dotted']],cs.crosshairPattern||'dashed')+
-            selI('cv_crossWidth',[['1px','1'],['2px','2'],['3px','3']],String(cs.crosshairWidth||1),'60px')+
-            clr('','cv_crossClr',cs.crosshairColor||'#787b86')+
+            (function(){
+                var col=cs.crosshairColor||'#787b86';
+                var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
+                var dash=dashMap[cs.crosshairPattern||'dashed']||'8 4';
+                return '<button onclick="window._openCrosshairColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_cxColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_cxLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+dash+'"/></svg></button>';
+            })()+
         '</div>')+
     sec(st('SCALES')+
             '<div class="tv-row" style="margin-bottom:10px;">'+
@@ -24799,27 +24845,6 @@ P['canvas']={title:'Canvas',build:function(){
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
     wClr('cv_gridClr',function(v){set('gridColor',v);});
-    wSel('cv_crossStyle',function(v){
-        var c=ch();if(!c)return;
-        c.chartSettings=c.chartSettings||{};
-        c.chartSettings.crosshairPattern=v;
-        if(c.scheduleRender)c.scheduleRender();
-        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
-    });
-    wSel('cv_crossWidth',function(v){
-        var c=ch();if(!c)return;
-        c.chartSettings=c.chartSettings||{};
-        c.chartSettings.crosshairWidth=parseInt(v);
-        if(c.scheduleRender)c.scheduleRender();
-        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
-    });
-    wClr('cv_crossClr',function(v){
-        var c=ch();if(!c)return;
-        c.chartSettings=c.chartSettings||{};
-        c.chartSettings.crosshairColor=v;
-        if(c.scheduleRender)c.scheduleRender();
-        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
-    });
     wClr('cv_scaleText',function(v){
         var c=ch();if(!c)return;
         c.chartSettings.scaleTextColor=v;
