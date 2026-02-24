@@ -24564,10 +24564,6 @@ function showIndicatorsMenu() {
     <script>
 /* settings panel color swatch handler – must be global */
 /* ── CROSSHAIR PICKER (global, outside IIFE) ── */
-document.addEventListener('click',function(e){
-    var btn=e.target.closest('#cv_crossBtn');
-    if(btn){e.stopPropagation();window._openCrosshairPicker(btn);}
-},true);
 window._applyCrosshairSettings=function(color,opacity,width,lineStyle){
     var c=window.chart||window.mainChart;if(!c)return;
     var m=String(color).match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
@@ -24770,24 +24766,18 @@ P['canvas']={title:'Canvas',build:function(){
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
-            '<button id="cv_crossBtn" style="width:28px;height:28px;border-radius:6px;border:2px solid #2962ff;background:'+(cs.crosshairColor||'rgba(120,123,134,0.4)')+';cursor:pointer;flex-shrink:0;"></button>'+
+            '<button id="cv_crossBtn" onclick="event.stopPropagation();window._openCrosshairPicker(this)" style="width:28px;height:28px;border-radius:6px;border:2px solid #2962ff;background:'+(cs.crosshairColor||'rgba(120,123,134,0.4)')+';cursor:pointer;flex-shrink:0;"></button>'+
         '</div>'+
-        '<div class="tv-row" style="margin-bottom:4px;">'+
-            '<span class="settings-input-label" style="flex:1;">Volume</span>'+
-            chk('','cv_vol',!!cs.showVolume)+
-            clr('','cv_volUp',cs.volumeUpColor||'rgba(8,153,129,0.5)')+
-            clr('','cv_volDn',cs.volumeDownColor||'rgba(242,54,69,0.5)')+
-        '</div>')+
-    sec(st('SCALES')+
-        '<div class="tv-row" style="margin-bottom:10px;">'+
-            '<span class="settings-input-label" style="flex:1;">Text</span>'+
-            clr('','cv_scaleText',cs.scaleTextColor||'#ffffff')+
-            selI('cv_scaleFont',[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']],String(cs.scaleTextSize||cs.scaleFontSize||'12'),'72px')+
-        '</div>'+
-        '<div class="tv-row" style="margin-bottom:4px;">'+
-            '<span class="settings-input-label" style="flex:1;">Lines</span>'+
-            clr('','cv_scaleLines',cs.scaleLinesColor||'#2a2e39')+
-        '</div>')+
+        sec(st('SCALES')+
+            '<div class="tv-row" style="margin-bottom:10px;">'+
+                '<span class="settings-input-label" style="flex:1;">Text</span>'+
+                clr('','cv_scaleText',cs.scaleTextColor||'#ffffff')+
+                selI('cv_scaleFont',[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']],String(cs.scaleTextSize||cs.scaleFontSize||'12'),'72px')+
+            '</div>'+
+            '<div class="tv-row" style="margin-bottom:4px;">'+
+                '<span class="settings-input-label" style="flex:1;">Lines</span>'+
+                clr('','cv_scaleLines',cs.scaleLinesColor||'#2a2e39')+
+            '</div>')+
     sec(st('MARGINS')+
         irow('Right (bars)','cv_marginRight',ro,0,300));
 },wire:function(){
@@ -24807,14 +24797,6 @@ P['canvas']={title:'Canvas',build:function(){
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
     wClr('cv_gridClr',function(v){set('gridColor',v);});
-    // crosshair color button wired via global _openCrosshairPicker
-    (function(){
-        var btn=document.getElementById('cv_crossBtn');
-        if(btn)btn.addEventListener('click',function(){window._openCrosshairPicker(btn);});
-    })();
-    wChk('cv_vol',function(v){set('showVolume',v);});
-    wClr('cv_volUp',function(v){set('volumeUpColor',v);});
-    wClr('cv_volDn',function(v){set('volumeDownColor',v);});
     wClr('cv_scaleText',function(v){
         var c=ch();if(!c)return;
         c.chartSettings.scaleTextColor=v;
