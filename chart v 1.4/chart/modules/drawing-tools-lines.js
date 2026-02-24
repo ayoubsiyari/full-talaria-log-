@@ -648,18 +648,21 @@ class TrendlineTool extends BaseDrawing {
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = rawLX + seg_ux * EDGE;
-                baseY = rawLY + seg_uy * EDGE;
+                baseX = (rawLX >= vLeft ? rawLX : segLX) + seg_ux * EDGE;
+                baseY = (rawLX >= vLeft ? rawLY : segLY) + seg_uy * EDGE;
                 labelAnchor = 'start';
                 break;
             case 'right':
-                baseX = rawRX - seg_ux * EDGE;
-                baseY = rawRY - seg_uy * EDGE;
+                baseX = (rawRX <= vRight ? rawRX : segRX) - seg_ux * EDGE;
+                baseY = (rawRX <= vRight ? rawRY : segRY) - seg_uy * EDGE;
                 labelAnchor = 'end';
                 break;
             default: {
-                baseX = (rawLX + rawRX) / 2;
-                baseY = (rawLY + rawRY) / 2;
+                const midX = (rawLX + rawRX) / 2;
+                const midY = (rawLY + rawRY) / 2;
+                // Keep text inside visible area; slide along line to nearest visible point
+                baseX = Math.max(segLX + EDGE, Math.min(segRX - EDGE, midX));
+                baseY = midY + (rawDX !== 0 ? (baseX - midX) * rawDY / rawDX : 0);
                 labelAnchor = 'middle';
                 break;
             }
