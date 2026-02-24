@@ -24678,23 +24678,46 @@ function wClr(id,fn){
 /* ── SYMBOL ── */
 P['symbol']={title:'Symbol',build:function(){
     var c=ch(),cs=(c&&c.chartSettings)||{};
+    var type=cs.chartType||'candles';
     var bU=cs.bodyUpColor||cs.candleUpColor||'#089981',bD=cs.bodyDownColor||cs.candleDownColor||'#f23645';
     var brU=cs.borderUpColor||bU,brD=cs.borderDownColor||bD,wU=cs.wickUpColor||bU,wD=cs.wickDownColor||bD;
-    return sec(st('CANDLES')+
-        '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div>'+
-        '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div>'+
-        '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div>')+
-    sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],cs.chartType||'candles'))+
+    var lC=cs.lineColor||bU;
+    var aL=cs.areaLineColor||bU,aF=cs.areaFillColor||'rgba(8,153,129,0.28)';
+    var isCandleType=['candles','hollow','heikinashi'].indexOf(type)!==-1;
+    var colorSec='';
+    if(isCandleType){
+        colorSec=sec(st('CANDLES')+
+            '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div>'+
+            '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div>'+
+            '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div>');
+    } else if(type==='bars'){
+        colorSec=sec(st('BARS')+
+            '<div class="tv-row">'+chk('Up bar','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+'</div>'+
+            '<div class="tv-row">'+chk('Down bar','showBdr',true)+clr('','bodyDn',bD)+'</div>');
+    } else if(type==='line'){
+        colorSec=sec(st('LINE')+clr('Line color','bodyUp',lC));
+    } else if(type==='area'){
+        colorSec=sec(st('AREA')+clr('Line color','bodyUp',aL)+clr('Fill color','areaFill',aF));
+    } else if(type==='baseline'){
+        colorSec=sec(st('BASELINE')+clr('Upper color','bodyUp',bU)+clr('Lower color','bodyDn',bD));
+    }
+    return colorSec+
+    sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type))+
     sec(st('DATA')+
         sel('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
         sel('Timezone','sym_tz',[['UTC','UTC'],['America/New_York','(UTC-5) New York'],['America/Chicago','(UTC-6) Chicago'],['America/Los_Angeles','(UTC-8) Los Angeles'],['Europe/London','(UTC+0) London'],['Europe/Paris','(UTC+1) Paris'],['Europe/Moscow','(UTC+3) Moscow'],['Asia/Dubai','(UTC+4) Dubai'],['Asia/Tokyo','(UTC+9) Tokyo'],['Asia/Shanghai','(UTC+8) Shanghai'],['Australia/Sydney','(UTC+10) Sydney']],cs.timezone||sess().timezone||'America/New_York'));
 },wire:function(){
-    wChk('colorPrev',function(v){set('colorBarsOnPrevClose',v);});
-    wChk('showBody',function(v){set('showCandleBody',v);});wChk('showBdr',function(v){set('showCandleBorders',v);});wChk('showWick',function(v){set('showCandleWick',v);});
-    wClr('bodyUp',function(v){set('bodyUpColor',v);set('candleUpColor',v);});wClr('bodyDn',function(v){set('bodyDownColor',v);set('candleDownColor',v);});
-    wClr('bdrUp',function(v){set('borderUpColor',v);});wClr('bdrDn',function(v){set('borderDownColor',v);});
-    wClr('wkUp',function(v){set('wickUpColor',v);});wClr('wkDn',function(v){set('wickDownColor',v);});
-    wSel('sym_type',function(v){set('chartType',v);});
+    wChk('showBody',function(v){set('showCandleBody',v);});
+    wChk('showBdr',function(v){set('showCandleBorders',v);});
+    wChk('showWick',function(v){set('showCandleWick',v);});
+    wClr('bodyUp',function(v){set('bodyUpColor',v);set('candleUpColor',v);set('lineColor',v);set('areaLineColor',v);});
+    wClr('bodyDn',function(v){set('bodyDownColor',v);set('candleDownColor',v);});
+    wClr('bdrUp',function(v){set('borderUpColor',v);});
+    wClr('bdrDn',function(v){set('borderDownColor',v);});
+    wClr('wkUp',function(v){set('wickUpColor',v);});
+    wClr('wkDn',function(v){set('wickDownColor',v);});
+    wClr('areaFill',function(v){set('areaFillColor',v);});
+    wSel('sym_type',function(v){set('chartType',v);loadSection('symbol');});
     wSel('sym_prec',function(v){set('pricePrecision',v);});
     wSel('sym_tz',function(v){set('timezone',v);var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
 }};
