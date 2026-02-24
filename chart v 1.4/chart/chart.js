@@ -8720,8 +8720,8 @@ class Chart {
         }
 
         // Extrapolate future ticks
-        if (maxDataLength > 0 && !isCalendarTf && Math.ceil(lastVisibleIdx) > scanTo) {
-            const last = this.data[maxDataLength - 1];
+        if (this.data.length > 0 && !isCalendarTf && Math.ceil(lastVisibleIdx) > scanTo) {
+            const last = this.data[this.data.length - 1];
             const ltz  = this.convertToTimezone(last.t);
             const lMin = ltz.getHours() * 60 + ltz.getMinutes();
             const next = Math.ceil((lMin + 1) / intervalMinutes) * intervalMinutes;
