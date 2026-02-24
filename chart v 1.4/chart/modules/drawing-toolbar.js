@@ -975,8 +975,8 @@ class DrawingToolbar {
             'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle',
             // Brushes
             'brush', 'highlighter',
-            // Arrow markers (arrow-marker is fill-only but color shown via settings, not toolbar)
-            'arrow-mark-up', 'arrow-mark-down',
+            // Arrow markers
+            'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
             // Text tools with background
             'notebox', 'note', 'price-note', 'anchored-text', 'callout', 'price-label',
             // Polyline (background shows when shape is closed)
