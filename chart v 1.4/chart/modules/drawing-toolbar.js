@@ -283,8 +283,12 @@ class DrawingToolbar {
         })(_fillRaw) : null;
         
         // Line controls (hide for text/marker tools)
-        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label'];
+        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'arrow-marker'];
         const showLineControls = !noLineControlTypes.includes(drawing.type);
+
+        // Tools that show only the fill color (no stroke button)
+        const fillOnlyTools = ['arrow-marker'];
+        const showStrokeColor = !fillOnlyTools.includes(drawing.type);
         
         // Text editing
         const fontSize = style.fontSize || 14;
@@ -704,6 +708,7 @@ class DrawingToolbar {
             </div>
             
             <!-- Stroke Color Input -->
+            ${showStrokeColor ? `
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="${strokeLabel}">
                     <div class="toolbar-color-icon-wrapper" id="stroke-color-preview">
@@ -715,6 +720,7 @@ class DrawingToolbar {
                     </div>
                 </div>
             </div>
+            ` : ''}
             
             <!-- Fill Color Input (for shapes) -->
             ${showFill ? `
@@ -820,6 +826,7 @@ class DrawingToolbar {
             ` : `
             <!-- STANDARD TOOLBAR FOR OTHER TOOLS -->
             <!-- Stroke Color Input -->
+            ${showStrokeColor ? `
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="${strokeLabel}">
                     <div class="toolbar-color-icon-wrapper" id="stroke-color-preview">
@@ -831,6 +838,7 @@ class DrawingToolbar {
                     </div>
                 </div>
             </div>
+            ` : ''}
             
             <!-- Fill Color Input (for shapes) -->
             ${showFill ? `
@@ -967,8 +975,8 @@ class DrawingToolbar {
             'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle',
             // Brushes
             'brush', 'highlighter',
-            // Arrow markers
-            'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
+            // Arrow markers (arrow-marker is fill-only but color shown via settings, not toolbar)
+            'arrow-mark-up', 'arrow-mark-down',
             // Text tools with background
             'notebox', 'note', 'price-note', 'anchored-text', 'callout', 'price-label',
             // Polyline (background shows when shape is closed)
