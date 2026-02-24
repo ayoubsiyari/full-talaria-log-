@@ -19484,7 +19484,7 @@
                         setTimeout(() => {
                             document.querySelectorAll('.tool-dropdown').forEach(dd => dd.classList.remove('show'));
                             document.querySelectorAll('.tool-group-btn').forEach(btn => btn.classList.remove('dropdown-open'));
-                            document.querySelectorAll('.cursor-dropdown-arrow').forEach(btn => btn.classList.remove('dropdown-open'));
+                            document.querySelectorAll('.cursor-dropdown-arrow, .dropdown-arrow').forEach(btn => btn.classList.remove('dropdown-open'));
                             currentOpenDropdown = null;
                             isDeselecting = false; // Clear flag after dropdown closes
                         }, 150);
@@ -19568,7 +19568,7 @@
                         document.querySelectorAll('.tool-group-btn').forEach(btn => {
                             btn.classList.remove('dropdown-open');
                         });
-                        document.querySelectorAll('.cursor-dropdown-arrow').forEach(btn => {
+                        document.querySelectorAll('.cursor-dropdown-arrow, .dropdown-arrow').forEach(btn => {
                             btn.classList.remove('dropdown-open');
                         });
                         currentOpenDropdown = null;
