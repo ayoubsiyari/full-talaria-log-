@@ -1192,10 +1192,10 @@ class VerticalLineTool extends BaseDrawing {
             let labelY;
             switch (textVAlign) {
                 case 'top':
-                    labelY = topY + LINE_LABEL_OFFSET;
+                    labelY = topY + gapSize / 2 + TEXT_EDGE_PADDING;
                     break;
                 case 'bottom':
-                    labelY = bottomY - LINE_LABEL_OFFSET;
+                    labelY = bottomY - gapSize / 2 - TEXT_EDGE_PADDING;
                     break;
                 default:
                     labelY = (topY + bottomY) / 2;
@@ -1356,10 +1356,10 @@ class VerticalLineTool extends BaseDrawing {
         let baseY;
         switch (textVAlign) {
             case 'top':
-                baseY = topY + LINE_LABEL_OFFSET;
+                baseY = topY + TEXT_EDGE_PADDING;
                 break;
             case 'bottom':
-                baseY = bottomY - LINE_LABEL_OFFSET;
+                baseY = bottomY - TEXT_EDGE_PADDING;
                 break;
             default: // middle
                 baseY = (topY + bottomY) / 2;
