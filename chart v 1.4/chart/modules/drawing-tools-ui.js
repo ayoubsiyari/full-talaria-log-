@@ -547,6 +547,21 @@ class DrawingSettingsPanel {
     box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
 }
 
+/* Ending/Info dropdown buttons */
+.tv-ending-dropdown-btn,
+.tv-info-dropdown-btn {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 4px !important;
+    color: #d1d4dc !important;
+}
+
+.tv-ending-dropdown-btn:hover,
+.tv-info-dropdown-btn:hover {
+    background-color: rgba(255, 255, 255, 0.14) !important;
+    border-color: rgba(41, 98, 255, 0.65) !important;
+}
+
 /* Dropdown Select */
 .tv-select {
     background-color: rgba(255, 255, 255, 0.08) !important;
