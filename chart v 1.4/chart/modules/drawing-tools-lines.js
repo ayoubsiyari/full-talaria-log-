@@ -1790,19 +1790,22 @@ class RayTool extends BaseDrawing {
         const rl_len = Math.sqrt((rl_rvX-rl_lvX)**2 + (rl_rvY-rl_lvY)**2) || 1;
         const rl_ux = (rl_rvX - rl_lvX) / rl_len;
         const rl_uy = (rl_rvY - rl_lvY) / rl_len;
-        let baseX, baseY;
+        let baseX, baseY, textAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = rl_lvX + rl_ux * RL_EDGE;
-                baseY = rl_lvY + rl_uy * RL_EDGE;
+                baseX = rl_lvX + TEXT_EDGE_PADDING;
+                baseY = rl_lvY + rl_uy * TEXT_EDGE_PADDING;
+                textAnchor = 'start';
                 break;
             case 'right':
-                baseX = rl_rvX - rl_ux * RL_EDGE;
-                baseY = rl_rvY - rl_uy * RL_EDGE;
+                baseX = rl_rvX - TEXT_EDGE_PADDING;
+                baseY = rl_rvY - rl_uy * TEXT_EDGE_PADDING;
+                textAnchor = 'end';
                 break;
             default:
-                baseX = (x1 + x2) / 2;
-                baseY = (y1 + y2) / 2;
+                baseX = rl_lvX + TEXT_EDGE_PADDING;
+                baseY = rl_lvY + rl_uy * TEXT_EDGE_PADDING;
+                textAnchor = 'start';
         }
 
         const perpX = -Math.sin(originalAngleRad);
@@ -1823,22 +1826,10 @@ class RayTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp baseX so text doesn't overflow past the chart clip boundary
-        const _rightEdge = Math.max(x1, x2);
-        const _leftEdge  = Math.min(x1, x2);
-        const _tMeasure = this.group.append('text')
-            .attr('font-size', fontSize)
-            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
-            .text(label);
-        const _halfTW = (_tMeasure.node().getBBox().width / 2) + TEXT_EDGE_PADDING;
-        _tMeasure.remove();
-        if (baseX + _halfTW > _rightEdge) baseX = _rightEdge - _halfTW;
-        if (baseX - _halfTW < _leftEdge)  baseX = _leftEdge  + _halfTW;
-
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
-            anchor: 'middle',
+            anchor: textAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -2208,16 +2199,19 @@ class HorizontalRayTool extends BaseDrawing {
         const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
         let baseX = (startX + chartRightX) / 2;
 
-        const HR_EDGE = 30; // fixed px from endpoint
+        let hrAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = startX + HR_EDGE;
+                baseX = startX + TEXT_EDGE_PADDING;
+                hrAnchor = 'start';
                 break;
             case 'right':
-                baseX = chartRightX - HR_EDGE;
+                baseX = chartRightX - TEXT_EDGE_PADDING;
+                hrAnchor = 'end';
                 break;
             default:
-                baseX = (startX + chartRightX) / 2;
+                baseX = startX + TEXT_EDGE_PADDING;
+                hrAnchor = 'start';
         }
         
         let offsetY = 0;
@@ -2227,22 +2221,10 @@ class HorizontalRayTool extends BaseDrawing {
             offsetY = LINE_LABEL_OFFSET;
         }
 
-        // Clamp baseX so text doesn't overflow past chart clip boundary
-        const _hrRightEdge = chartRightX;
-        const _hrLeftEdge  = startX;
-        const _hrMeasure = this.group.append('text')
-            .attr('font-size', this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize)
-            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
-            .text(label);
-        const _hrHalfTW = (_hrMeasure.node().getBBox().width / 2) + TEXT_EDGE_PADDING;
-        _hrMeasure.remove();
-        if (baseX + _hrHalfTW > _hrRightEdge) baseX = _hrRightEdge - _hrHalfTW;
-        if (baseX - _hrHalfTW < _hrLeftEdge)  baseX = _hrLeftEdge  + _hrHalfTW;
-
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
             y: y + offsetY + (this.style.textOffsetY || 0),
-            anchor: 'middle',
+            anchor: hrAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -2584,19 +2566,22 @@ class ExtendedLineTool extends BaseDrawing {
         const el_main_len = Math.sqrt((x2-x1)**2 + (y2-y1)**2) || 1;
         const el_main_ux = (x2 - x1) / el_main_len;
         const el_main_uy = (y2 - y1) / el_main_len;
-        let baseX, baseY;
+        let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + el_main_ux * EL_MAIN_EDGE;
-                baseY = y1 + el_main_uy * EL_MAIN_EDGE;
+                baseX = x1 + TEXT_EDGE_PADDING;
+                baseY = y1 + el_main_uy * TEXT_EDGE_PADDING;
+                elAnchor = 'start';
                 break;
             case 'right':
-                baseX = x2 - el_main_ux * EL_MAIN_EDGE;
-                baseY = y2 - el_main_uy * EL_MAIN_EDGE;
+                baseX = x2 - TEXT_EDGE_PADDING;
+                baseY = y2 - el_main_uy * TEXT_EDGE_PADDING;
+                elAnchor = 'end';
                 break;
             default:
-                baseX = (x1 + x2) / 2;
-                baseY = (y1 + y2) / 2;
+                baseX = x1 + TEXT_EDGE_PADDING;
+                baseY = y1 + el_main_uy * TEXT_EDGE_PADDING;
+                elAnchor = 'start';
         }
 
         const perpX = -Math.sin(originalAngleRad);
@@ -2617,22 +2602,10 @@ class ExtendedLineTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp baseX so text doesn't overflow past chart clip boundary
-        const _elRightEdge = Math.max(x1, x2);
-        const _elLeftEdge  = Math.min(x1, x2);
-        const _elMeasure = this.group.append('text')
-            .attr('font-size', fontSize)
-            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
-            .text(label);
-        const _elHalfTW = (_elMeasure.node().getBBox().width / 2) + TEXT_EDGE_PADDING;
-        _elMeasure.remove();
-        if (baseX + _elHalfTW > _elRightEdge) baseX = _elRightEdge - _elHalfTW;
-        if (baseX - _elHalfTW < _elLeftEdge)  baseX = _elLeftEdge  + _elHalfTW;
-
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
-            anchor: 'middle',
+            anchor: elAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
