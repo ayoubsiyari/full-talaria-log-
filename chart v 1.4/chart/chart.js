@@ -8676,7 +8676,7 @@ class Chart {
         const minSpacing        = 50;
 
         const scanFrom = Math.max(0, Math.floor(Math.max(0, firstVisibleIdx)));
-        const scanTo   = Math.min(maxDataLength - 1, Math.ceil(lastVisibleIdx));
+        const scanTo   = Math.min(this.data.length - 1, Math.ceil(lastVisibleIdx));
 
         // Single pass – collect candidates
         const candidates = [];
@@ -8720,15 +8720,16 @@ class Chart {
         }
 
         // Extrapolate future ticks
-        if (this.data.length > 0 && !isCalendarTf && Math.ceil(lastVisibleIdx) > scanTo) {
+        const lastRealIdx = this.data.length - 1;
+        if (this.data.length > 0 && !isCalendarTf && lastVisibleIdx > lastRealIdx) {
             const last = this.data[this.data.length - 1];
             const ltz  = this.convertToTimezone(last.t);
             const lMin = ltz.getHours() * 60 + ltz.getMinutes();
             const next = Math.ceil((lMin + 1) / intervalMinutes) * intervalMinutes;
-            let futureIdx = maxDataLength - 1 + Math.ceil(((next - lMin) * 60000) / timeframeMs);
+            let futureIdx = lastRealIdx + Math.ceil(((next - lMin) * 60000) / timeframeMs);
             for (; futureIdx <= lastVisibleIdx; futureIdx += labelInterval) {
                 const ri  = Math.round(futureIdx);
-                const tz2 = this.convertToTimezone(last.t + (ri - maxDataLength + 1) * timeframeMs);
+                const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
                 const lbl = isDailyOrHigher
                     ? monthNames[tz2.getMonth()] + ' ' + tz2.getDate()
                     : String(tz2.getHours()).padStart(2,'0') + ':' + String(tz2.getMinutes()).padStart(2,'0');
