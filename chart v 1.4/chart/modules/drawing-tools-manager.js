@@ -1009,6 +1009,7 @@ class DrawingToolsManager {
                         this.startCustomHandleDrag(drawing, role, { sourceEvent: event });
 
                         this._directResizeMoveHandler = (e) => {
+                            if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
                             this.handleCustomHandleDrag({ sourceEvent: e });
                         };
                         this._directResizeUpHandler = (e) => {
@@ -1023,6 +1024,7 @@ class DrawingToolsManager {
                         if (role && typeof drawing.handleCustomHandleDrag === 'function') {
                             this.startCustomHandleDrag(drawing, role, { sourceEvent: event });
                             this._directResizeMoveHandler = (e) => {
+                                if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
                                 this.handleCustomHandleDrag({ sourceEvent: e });
                             };
                             this._directResizeUpHandler = (e) => {
@@ -1032,6 +1034,7 @@ class DrawingToolsManager {
                         } else {
                             this.startHandleDrag(drawing, idx, { sourceEvent: event });
                             this._directResizeMoveHandler = (e) => {
+                                if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
                                 this.handleDrag({ sourceEvent: e });
                             };
                             this._directResizeUpHandler = (e) => {
