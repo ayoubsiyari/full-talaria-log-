@@ -8600,8 +8600,9 @@ class Chart {
         const firstVisibleIdx = -this.offsetX / candleSpacing;
         const isReplayMode = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
         const maxDataLength = isReplayMode ? this.replaySystem.fullRawData.length : this.data.length;
-        const lastVisibleIdx = firstVisibleIdx + cw / candleSpacing;
-        const visibleBarsCount = Math.ceil(Math.max(0, lastVisibleIdx) - Math.max(0, firstVisibleIdx));
+        const lastVisibleIdx     = firstVisibleIdx + cw / candleSpacing;
+        const lastVisibleIdxData = Math.min(this.data.length - 1, lastVisibleIdx);
+        const visibleBarsCount   = Math.ceil(Math.max(0, lastVisibleIdxData) - Math.max(0, firstVisibleIdx));
 
         // Detect timeframe from data
         let timeframe = this.currentTimeframe || '1m';
