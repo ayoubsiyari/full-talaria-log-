@@ -2000,6 +2000,20 @@ class DrawingToolsManager {
         this.selectedDrawing = drawing;
         this.selectedDrawings = [drawing];  // Update selectedDrawings array for deselect to work
         this.renderDrawing(drawing);
+
+        // Show toolbar immediately after drawing is completed
+        if (drawing.group && this.toolbar) {
+            try {
+                const node = drawing.group.node();
+                const bbox = node ? node.getBBox() : null;
+                if (bbox && bbox.width > 0) {
+                    const svgRect = this.svg.node().getBoundingClientRect();
+                    const x = svgRect.left + bbox.x + (bbox.width / 2);
+                    const y = svgRect.top + bbox.y;
+                    this.toolbar.show(drawing, x, y);
+                }
+            } catch (e) {}
+        }
         
         // [debug removed]
     }
