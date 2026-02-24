@@ -639,30 +639,50 @@ class TrendlineTool extends BaseDrawing {
             segRY = rawLY + f * rawDY;
         }
 
-        // Unit vector from actual line (not clipped segment) so text follows shape past any edge
+        // Actual line unit vector (direction never changes with clipping)
         const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
         const line_ux = rawDX / rawLen;
         const line_uy = rawDY / rawLen;
 
+        // Anchor point: actual endpoint when on-screen, visible-segment boundary when off-screen
+        // This keeps the text label at the visible end of the line at all times.
         const EDGE = 5;
         let baseX, baseY;
         let labelAnchor;
         switch (textHAlign) {
-            case 'left':
-                baseX = rawLX + line_ux * EDGE;
-                baseY = rawLY + line_uy * EDGE;
+            case 'left': {
+                const ax = rawLX >= vLeft ? rawLX : segLX;
+                const ay = rawLX >= vLeft ? rawLY : segLY;
+                baseX = ax + line_ux * EDGE;
+                baseY = ay + line_uy * EDGE;
                 labelAnchor = 'start';
                 break;
-            case 'right':
-                baseX = rawRX - line_ux * EDGE;
-                baseY = rawRY - line_uy * EDGE;
+            }
+            case 'right': {
+                const ax = rawRX <= vRight ? rawRX : segRX;
+                const ay = rawRX <= vRight ? rawRY : segRY;
+                baseX = ax - line_ux * EDGE;
+                baseY = ay - line_uy * EDGE;
                 labelAnchor = 'end';
                 break;
-            default:
-                baseX = (rawLX + rawRX) / 2;
-                baseY = (rawLY + rawRY) / 2;
+            }
+            default: {
+                const midX = (rawLX + rawRX) / 2;
+                const midY = (rawLY + rawRY) / 2;
+                // Keep midpoint inside visible segment
+                if (midX < segLX) {
+                    baseX = segLX + EDGE;
+                    baseY = segLY + line_uy * EDGE;
+                } else if (midX > segRX) {
+                    baseX = segRX - EDGE;
+                    baseY = segRY - line_uy * EDGE;
+                } else {
+                    baseX = midX;
+                    baseY = midY;
+                }
                 labelAnchor = 'middle';
                 break;
+            }
         }
 
         const perpX = -Math.sin(angleRad);
