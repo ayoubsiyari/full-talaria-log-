@@ -2027,7 +2027,7 @@ class DrawingToolbar {
 let _globalColorPicker = null;
 
 // Global helper function to open color picker from anywhere
-window.openColorPicker = function(currentColor, callback, buttonElement) {
+window.openColorPicker = function(currentColor, callback, buttonElement, options) {
     // Use drawingToolbar's colorPicker if available
     let picker = window.drawingToolbar && window.drawingToolbar.colorPicker;
     
@@ -2043,7 +2043,7 @@ window.openColorPicker = function(currentColor, callback, buttonElement) {
         const rect = buttonElement.getBoundingClientRect();
         const x = rect.left;
         const y = rect.bottom;
-        picker.show(x, y, currentColor, callback, buttonElement);
+        picker.show(x, y, currentColor, callback, buttonElement, options);
     }
 };
 
