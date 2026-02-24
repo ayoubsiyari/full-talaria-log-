@@ -416,7 +416,7 @@ class TrendlineTool extends BaseDrawing {
             }
         }
 
-        this.renderTextLabel({ x1, y1, x2, y2, scales });
+        this.renderTextLabel({ x1: origX1, y1: origY1, x2: origX2, y2: origY2, scales });
         
         // Render info box if enabled
         this.renderInfoBox(origX1, origY1, origX2, origY2, scales);
@@ -577,22 +577,12 @@ class TrendlineTool extends BaseDrawing {
             return;
         }
 
-        // Use original point coordinates for text positioning, not extended line coords
+        // Use the pixel coords passed in directly (computed in render() from dataIndexToPixel)
         const { scales } = coords;
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        
-        const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : coords.x1);
-        const origY1 = scales ? scales.yScale(p1.y) : coords.y1;
-        const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : coords.x2);
-        const origY2 = scales ? scales.yScale(p2.y) : coords.y2;
-        
-        const x1 = origX1;
-        const y1 = origY1;
-        const x2 = origX2;
-        const y2 = origY2;
+        const x1 = coords.x1;
+        const y1 = coords.y1;
+        const x2 = coords.x2;
+        const y2 = coords.y2;
 
         const midX = (x1 + x2) / 2;
         const midY = (y1 + y2) / 2;
