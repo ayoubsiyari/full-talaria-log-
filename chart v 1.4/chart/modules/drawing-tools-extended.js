@@ -141,8 +141,8 @@ class ArrowMarkerTool extends BaseDrawing {
         super('arrow-marker', points, style);
         this.requiredPoints = 2;
         this.style.fill = style.fill || '#2962ff';
-        this.style.stroke = style.stroke || '#2962ff';
-        this.style.strokeWidth = style.strokeWidth || 0;
+        this.style.stroke = 'none';
+        this.style.strokeWidth = 0;
         this.arrowHeadSize = style.arrowHeadSize || 40;
     }
 
@@ -237,26 +237,7 @@ class ArrowMarkerTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
-        // Border (interactive)
-        this.group.append('path')
-            .attr('class', 'shape-border')
-            .attr('d', arrowPath)
-            .attr('fill', 'none')
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('data-original-width', this.style.strokeWidth)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
-        // Stroke-only hit area (interactive)
-        this.group.append('path')
-            .attr('class', 'shape-border-hit')
-            .attr('d', arrowPath)
-            .attr('fill', 'none')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(8, (this.style.strokeWidth || 2) * 4))
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        // No border — fill-only arrow; arrow-fill-hit handles all interaction
 
         // Render text at start point (p1)
         if (this.text && this.text.trim()) {
