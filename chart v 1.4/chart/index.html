@@ -24767,8 +24767,8 @@ P['canvas']={title:'Canvas',build:function(){
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
             '<button id="cv_crossBtn" onclick="event.stopPropagation();window._openCrosshairPicker(this)" style="width:28px;height:28px;border-radius:6px;border:2px solid #2962ff;background:'+(cs.crosshairColor||'rgba(120,123,134,0.4)')+';cursor:pointer;flex-shrink:0;"></button>'+
-        '</div>'+
-        sec(st('SCALES')+
+        '</div>')+
+    sec(st('SCALES')+
             '<div class="tv-row" style="margin-bottom:10px;">'+
                 '<span class="settings-input-label" style="flex:1;">Text</span>'+
                 clr('','cv_scaleText',cs.scaleTextColor||'#ffffff')+
