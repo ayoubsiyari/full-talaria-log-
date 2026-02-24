@@ -8566,9 +8566,15 @@ class Chart {
         
         if (!this.xScale || !this.yScale) return;
         
-        // Draw Y-axis background area (price axis on the right) - uses same background as chart
+        const axisLeft = !!this.priceAxisLeft;
+        const axisW = axisLeft ? m.l : m.r;
+        const axisX = axisLeft ? 0 : this.w - m.r;
+        const axisBorderX = axisLeft ? m.l : this.w - m.r;
+        const axisMidX = axisLeft ? m.l / 2 : this.w - m.r / 2;
+
+        // Draw Y-axis background area
         this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
-        this.ctx.fillRect(this.w - m.r, 0, m.r, this.h - m.b);
+        this.ctx.fillRect(axisX, 0, axisW, this.h - m.b);
         
         // Draw X-axis background area (time axis on the bottom) - uses same background as chart
         this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
@@ -8577,12 +8583,12 @@ class Chart {
         // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
         this.drawAxisHighlightZones();
         
-        // Draw Y-axis border line (left edge of price axis) - subtle gray
+        // Draw Y-axis border line
         this.ctx.strokeStyle = '#e0e3eb';
         this.ctx.lineWidth = 1;
         this.ctx.beginPath();
-        this.ctx.moveTo(this.w - m.r, 0);
-        this.ctx.lineTo(this.w - m.r, this.h - m.b);
+        this.ctx.moveTo(axisBorderX, 0);
+        this.ctx.lineTo(axisBorderX, this.h - m.b);
         this.ctx.stroke();
         
         // Draw X-axis border line (top edge of time axis) - subtle gray
@@ -8606,11 +8612,9 @@ class Chart {
         yTicks.forEach(price => {
             const y = this.yScale(price);
             if (y > m.t && y < this.h - m.b - volumeAreaHeight) {
-                // Price label centered in price axis area
                 const text = price.toFixed(decimals);
-                
                 this.ctx.fillStyle = this.chartSettings.scaleTextColor;
-                this.ctx.fillText(text, this.w - m.r / 2, y + 4);
+                this.ctx.fillText(text, axisMidX, y + 4);
             }
         });
         
@@ -9352,14 +9356,18 @@ class Chart {
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
         this.ctx.textAlign = 'left';
         const textWidth = this.ctx.measureText(text).width;
+        const labelW = textWidth + 8;
+        const axisLeft = !!this.priceAxisLeft;
+        const labelX = axisLeft ? 2 : this.w - m.r + 2;
+        const textX  = axisLeft ? 6 : this.w - m.r + 6;
         
         // Draw label background - blue
         this.ctx.fillStyle = '#2962ff';
-        this.ctx.fillRect(this.w - m.r + 2, y - 8, textWidth + 8, 16);
+        this.ctx.fillRect(labelX, y - 8, labelW, 16);
         
         // Draw text - white on blue
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillText(text, this.w - m.r + 6, y + 4);
+        this.ctx.fillText(text, textX, y + 4);
     }
     
     updatePriceHoverLine() {

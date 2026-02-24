@@ -18304,7 +18304,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260224_REMOVE_PREV_CLOSE_SETTING_V1"></script>
+         <script src="chart.js?v=20260224_PRICE_AXIS_LEFT_ON_SETTINGS_V1"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260219_REPLAY_FORWARD_PANLOAD_V1"></script>
@@ -24866,8 +24866,8 @@ window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEa
 
 var panel=null,btn=null,closeB=null;
 
-function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('symbol');}
-function closePanel(){if(!panel)return;panel.classList.remove('open');}
+function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('symbol');var c=ch();if(c){c.priceAxisLeft=true;c.margin.l=60;c.margin.r=0;if(c.scheduleRender)c.scheduleRender();}}
+function closePanel(){if(!panel)return;panel.classList.remove('open');var c=ch();if(c){c.priceAxisLeft=false;c.margin.l=0;c.margin.r=60;if(c.scheduleRender)c.scheduleRender();}}
 window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};
 window._spLoad=function(type,el){if(!panel)panel=document.getElementById('settingsPanel');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
 
