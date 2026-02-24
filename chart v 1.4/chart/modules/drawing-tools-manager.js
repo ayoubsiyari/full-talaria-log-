@@ -413,25 +413,61 @@ class DrawingToolsManager {
     setupToolbarCallbacks() {
         const self = this;
         
+        // Style-change undo tracking: capture before state once per editing session
+        let _styleBeforeState = null;
+        let _styleBeforeId = null;
+        let _styleTimer = null;
+
+        const captureStyleBefore = (drawing) => {
+            if (self.history && drawing && drawing.id !== _styleBeforeId) {
+                _styleBeforeId = drawing.id;
+                _styleBeforeState = self.history.captureState(drawing);
+            }
+        };
+
+        const commitStyleChange = (drawing) => {
+            clearTimeout(_styleTimer);
+            _styleTimer = setTimeout(() => {
+                if (self.history && _styleBeforeState && _styleBeforeId === drawing.id) {
+                    self.history.recordModify(drawing, _styleBeforeState);
+                    // Reset so next change session gets a fresh capture
+                    _styleBeforeState = self.history.captureState(drawing);
+                }
+            }, 600);
+        };
+
+        // Expose so the toolbar can call captureStyleBefore before applying a change
+        this.toolbar.onBeforeUpdate = captureStyleBefore;
+
         // Update callback
         this.toolbar.onUpdate = (drawing) => {
+            commitStyleChange(drawing);
             self.renderDrawing(drawing);
             self.saveDrawings();
         };
         
         // Delete callback
         this.toolbar.onDelete = (drawing) => {
+            // Discard any pending style timer
+            clearTimeout(_styleTimer);
+            _styleBeforeState = null;
+            _styleBeforeId = null;
             self.deleteDrawing(drawing);
         };
         
         // Settings callback - opens settings panel
         this.toolbar.onSettings = (drawing) => {
             const rect = self.toolbar.toolbar.getBoundingClientRect();
+            // Capture before state immediately (panel not yet open)
+            const beforeState = self.history ? self.history.captureState(drawing) : null;
             self.settingsPanel.show(
                 drawing,
                 rect.left + rect.width / 2,
                 rect.bottom + 10,
                 (updatedDrawing) => {
+                    if (self.history && beforeState) {
+                        self.history.recordModify(updatedDrawing, beforeState);
+                    }
                     self.renderDrawing(updatedDrawing);
                     self.saveDrawings();
                 }
@@ -440,8 +476,12 @@ class DrawingToolsManager {
         
         // Lock callback
         this.toolbar.onLock = (drawing) => {
+            const beforeState = self.history ? self.history.captureState(drawing) : null;
             self.renderDrawing(drawing);
             self.saveDrawings();
+            if (self.history && beforeState) {
+                self.history.recordModify(drawing, beforeState);
+            }
         };
         
         // More options callback - opens context menu (right-click menu)
@@ -3099,7 +3139,8 @@ class DrawingToolsManager {
                     const svgRect = this.svg.node().getBoundingClientRect();
                     const x = svgRect.left + bbox.x + (bbox.width / 2);
                     const y = svgRect.top + bbox.y;
-                    this.toolbar.show(lastDrawing, x, y);
+                    if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(lastDrawing);
+                this.toolbar.show(lastDrawing, x, y);
                 }
             }
         } else {
@@ -3116,6 +3157,7 @@ class DrawingToolsManager {
                     const svgRect = this.svg.node().getBoundingClientRect();
                     const x = svgRect.left + bbox.x + (bbox.width / 2);
                     const y = svgRect.top + bbox.y;
+                    if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                     this.toolbar.show(drawing, x, y);
                 }
                 return;
@@ -3135,7 +3177,7 @@ class DrawingToolsManager {
                 // Position toolbar above the drawing
                 const x = svgRect.left + bbox.x + (bbox.width / 2);
                 const y = svgRect.top + bbox.y;
-                
+                if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                 this.toolbar.show(drawing, x, y);
             }
         }
@@ -3730,7 +3772,9 @@ class DrawingToolsManager {
         localStorage.setItem(key, JSON.stringify(data));
         // [debug removed]
 
-        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
+        // Skip expensive network save during undo/redo to prevent lag
+        const isUndoRedo = this.history && this.history.isPerformingUndoRedo;
+        if (!isUndoRedo && this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             this.chart.scheduleSessionStateSave({ drawings: data });
         }
         

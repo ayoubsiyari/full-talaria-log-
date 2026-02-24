@@ -87,7 +87,6 @@ class UndoRedoManager {
      */
     undo() {
         if (this.undoStack.length === 0) {
-            console.log('⚠️ Nothing to undo');
             this.showNotification('Nothing to undo');
             return false;
         }
@@ -98,31 +97,27 @@ class UndoRedoManager {
         try {
             switch (action.type) {
                 case 'add':
-                    // Undo add = remove the drawing
                     this.undoAdd(action.data);
                     break;
-                    
                 case 'delete':
-                    // Undo delete = restore the drawing
                     this.undoDelete(action.data);
                     break;
-                    
                 case 'modify':
-                    // Undo modify = restore previous state
                     this.undoModify(action.data);
                     break;
             }
             
-            // Push to redo stack
             this.redoStack.push(action);
-            
-            console.log(`↩️ Undid action: ${action.type}`);
             this.showNotification('Undo');
             
         } catch (error) {
             console.error('❌ Undo failed:', error);
+            // Put action back if it failed
+            this.undoStack.push(action);
         } finally {
             this.isPerformingUndoRedo = false;
+            // ONE network save after the full operation is done
+            this._scheduleFinalSave();
         }
         
         this.updateUI();
@@ -134,7 +129,6 @@ class UndoRedoManager {
      */
     redo() {
         if (this.redoStack.length === 0) {
-            console.log('⚠️ Nothing to redo');
             this.showNotification('Nothing to redo');
             return false;
         }
@@ -145,31 +139,26 @@ class UndoRedoManager {
         try {
             switch (action.type) {
                 case 'add':
-                    // Redo add = add the drawing again
                     this.redoAdd(action.data);
                     break;
-                    
                 case 'delete':
-                    // Redo delete = remove the drawing again
                     this.redoDelete(action.data);
                     break;
-                    
                 case 'modify':
-                    // Redo modify = apply the new state
                     this.redoModify(action.data);
                     break;
             }
             
-            // Push back to undo stack
             this.undoStack.push(action);
-            
-            console.log(`↪️ Redid action: ${action.type}`);
             this.showNotification('Redo');
             
         } catch (error) {
             console.error('❌ Redo failed:', error);
+            // Put action back if it failed
+            this.redoStack.push(action);
         } finally {
             this.isPerformingUndoRedo = false;
+            this._scheduleFinalSave();
         }
         
         this.updateUI();
@@ -227,9 +216,21 @@ class UndoRedoManager {
         if (index > -1) {
             this.drawingManager.drawings.splice(index, 1);
             drawing.destroy();
+
+            // Clean up selection state
+            if (this.drawingManager.selectedDrawing === drawing) {
+                this.drawingManager.selectedDrawing = null;
+            }
+            if (this.drawingManager.selectedDrawings) {
+                this.drawingManager.selectedDrawings = this.drawingManager.selectedDrawings.filter(d => d !== drawing);
+            }
+            // Hide toolbar if it was showing this drawing
+            if (this.drawingManager.toolbar && this.drawingManager.toolbar.currentDrawing === drawing) {
+                this.drawingManager.toolbar.hide();
+            }
+
             this.drawingManager.saveDrawings();
             
-            // Refresh object tree if available
             if (this.drawingManager.objectTreeManager) {
                 this.drawingManager.objectTreeManager.refresh();
             }
@@ -417,6 +418,19 @@ class UndoRedoManager {
         this.drawingManager.saveDrawings();
     }
     
+    /**
+     * Schedule one network save after undo/redo completes (avoids multiple saves during operation)
+     */
+    _scheduleFinalSave() {
+        clearTimeout(this._finalSaveTimer);
+        this._finalSaveTimer = setTimeout(() => {
+            if (this.drawingManager.chart && typeof this.drawingManager.chart.scheduleSessionStateSave === 'function') {
+                const data = this.drawingManager.drawings.map(d => d.toJSON());
+                this.drawingManager.chart.scheduleSessionStateSave({ drawings: data });
+            }
+        }, 300);
+    }
+
     cloneData(data) {
         return JSON.parse(JSON.stringify(data));
     }
