@@ -1613,8 +1613,8 @@ class RayTool extends BaseDrawing {
                     rawTextY = ray_rvY - Math.abs(ray_uy) * RAY_EDGE * (ray_lvY < ray_rvY ? 1 : -1);
                     break;
                 default:
-                    rawTextX = (x1Screen + extendedX) / 2;
-                    rawTextY = (y1Screen + extendedY) / 2;
+                    rawTextX = ray_lvX + ray_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = ray_lvY + ray_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
             }
             const halfGapT_ray = rayLineLength > 0 ? (gapSize / 2) / rayLineLength : 0;
             const t_ray = rayLineLength > 0 ? Math.sqrt((rawTextX-x1Screen)**2+(rawTextY-y1Screen)**2) / rayLineLength : 0.5;
@@ -1954,7 +1954,7 @@ class HorizontalRayTool extends BaseDrawing {
             switch (textHAlign) {
                 case 'left':  hr_rawTextX = x + HR_EDGE_S; break;
                 case 'right': hr_rawTextX = chartRightX - HR_EDGE_S; break;
-                default:      hr_rawTextX = (x + chartRightX) / 2;
+                default:      hr_rawTextX = x + gapSize / 2 + TEXT_EDGE_PADDING;
             }
             const textX = Math.max(x + gapSize/2, Math.min(chartRightX - gapSize/2, hr_rawTextX));
             const split1X = Math.max(x, textX - gapSize / 2);
@@ -2404,8 +2404,8 @@ class ExtendedLineTool extends BaseDrawing {
                     rawTextY_el = rightY - el_uy * EL_EDGE;
                     break;
                 default:
-                    rawTextX_el = (leftX + rightX) / 2;
-                    rawTextY_el = (leftY + rightY) / 2;
+                    rawTextX_el = leftX + el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY_el = leftY + el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
             }
             const t_el = el_lineLength > 0 ? Math.sqrt((rawTextX_el-leftX)**2+(rawTextY_el-leftY)**2) / el_lineLength : 0.5;
             const split1T_el = Math.max(0, t_el - halfGapT_el);
