@@ -24914,6 +24914,10 @@ function _spWireDom(){
         if(!panel||!panel.classList.contains('open'))return;
         if(panel.contains(e.target))return;
         if(btn&&btn.contains(e.target))return;
+        /* ignore clicks inside color picker or any picker popup */
+        var cp=document.getElementById('custom-color-picker');
+        if(cp&&cp.contains(e.target))return;
+        if(e.target.closest&&e.target.closest('[class*="color-picker"],[id*="color-picker"],[id*="picker"],[class*="picker"]'))return;
         closePanel();
     },true);
 }
