@@ -10567,20 +10567,24 @@ class Chart {
         // This prevents stuck drag state when mouse is released outside the chart area
         document.addEventListener('mouseup', handleMouseUp);
         
-        this.canvas.addEventListener('mouseleave', (e) => {
+        this.canvas.addEventListener('mouseleave', () => {
             this.drag.active = false;
             this.drag.type = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
             this.canvas.style.cursor = 'default';
-            // Don't hide crosshair when mouse moves onto the SVG overlay (handles, tools, drawings)
-            const svgNode = this.svg && this.svg.node && this.svg.node();
-            const movedToSVG = svgNode && e.relatedTarget && (e.relatedTarget === svgNode || svgNode.contains(e.relatedTarget));
-            const _dm = this.drawingManager;
-            const _drawingActive = movedToSVG || (_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDragging || _dm.isDrawing || _dm.isResizing));
-            if (!_drawingActive) this.hideCrosshair();
+            // hideCrosshair is NOT called here — the document-level capture listener
+            // calls updateCrosshair() on every move; its own boundary check hides the
+            // crosshair when the mouse is genuinely outside the chart area.
             this.hideTooltip();
         });
+
+        // Global capture-phase mousemove: updates the crosshair regardless of which
+        // element owns the event (canvas, SVG overlay, resize handles, etc.).
+        // This is the single source of truth for crosshair position.
+        document.addEventListener('mousemove', (e) => {
+            if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
+        }, true);
         
         // Prevent context menu for box zoom
         this.canvas.addEventListener('contextmenu', e => {
