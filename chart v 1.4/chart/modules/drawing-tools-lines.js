@@ -1803,9 +1803,9 @@ class RayTool extends BaseDrawing {
                 textAnchor = 'end';
                 break;
             default:
-                baseX = rl_lvX + TEXT_EDGE_PADDING;
-                baseY = rl_lvY + rl_uy * TEXT_EDGE_PADDING;
-                textAnchor = 'start';
+                baseX = (rl_lvX + rl_rvX) / 2;
+                baseY = (rl_lvY + rl_rvY) / 2;
+                textAnchor = 'middle';
         }
 
         const perpX = -Math.sin(originalAngleRad);
@@ -2210,8 +2210,8 @@ class HorizontalRayTool extends BaseDrawing {
                 hrAnchor = 'end';
                 break;
             default:
-                baseX = startX + TEXT_EDGE_PADDING;
-                hrAnchor = 'start';
+                baseX = (startX + chartRightX) / 2;
+                hrAnchor = 'middle';
         }
         
         let offsetY = 0;
@@ -2579,9 +2579,9 @@ class ExtendedLineTool extends BaseDrawing {
                 elAnchor = 'end';
                 break;
             default:
-                baseX = x1 + TEXT_EDGE_PADDING;
-                baseY = y1 + el_main_uy * TEXT_EDGE_PADDING;
-                elAnchor = 'start';
+                baseX = (x1 + x2) / 2;
+                baseY = (y1 + y2) / 2;
+                elAnchor = 'middle';
         }
 
         const perpX = -Math.sin(originalAngleRad);
