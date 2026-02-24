@@ -549,8 +549,8 @@ class DrawingSettingsPanel {
 
 /* Dropdown Select */
 .tv-select {
-    background: #050028;
-    border: 1px solid #2a2e39;
+    background: #1e222d;
+    border: 1px solid #363a45;
     border-radius: 4px;
     padding: 5px 21px 5px 8px;
     color: #d1d4dc;
@@ -585,14 +585,14 @@ class DrawingSettingsPanel {
 }
 
 .tv-select option {
-    background: #050028;
+    background: #1e222d;
     color: #d1d4dc;
 }
 
 /* Number Input */
 .tv-input {
-    background: #050028;
-    border: 1px solid #2a2e39;
+    background: #1e222d;
+    border: 1px solid #363a45;
     border-radius: 4px;
     padding: 6px 9px;
     color: #d1d4dc;
@@ -3618,7 +3618,7 @@ body.light-mode .template-save-dialog .dialog-title {
         styleLabel.textContent = 'Style';
 
         const styleDropdown = document.createElement('select');
-        styleDropdown.style.cssText = 'background: #050028; border: 1px solid #363a45; border-radius: 4px; color: #d1d4dc; padding: 6px 8px; font-size: 12px; cursor: pointer; min-width: 150px;';
+        styleDropdown.style.cssText = 'background: #1e222d; border: 1px solid #363a45; border-radius: 4px; color: #d1d4dc; padding: 6px 8px; font-size: 12px; cursor: pointer; min-width: 150px;';
         
         const styles = [
             { value: 'original', label: 'Original' },
