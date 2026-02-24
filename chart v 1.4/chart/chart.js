@@ -10567,15 +10567,17 @@ class Chart {
         // This prevents stuck drag state when mouse is released outside the chart area
         document.addEventListener('mouseup', handleMouseUp);
         
-        this.canvas.addEventListener('mouseleave', () => {
+        this.canvas.addEventListener('mouseleave', (e) => {
             this.drag.active = false;
             this.drag.type = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
             this.canvas.style.cursor = 'default';
-            // Don't hide crosshair if mouse moved onto SVG (drawing tool active / drawing selected)
+            // Don't hide crosshair when mouse moves onto the SVG overlay (handles, tools, drawings)
+            const svgNode = this.svg && this.svg.node && this.svg.node();
+            const movedToSVG = svgNode && e.relatedTarget && (e.relatedTarget === svgNode || svgNode.contains(e.relatedTarget));
             const _dm = this.drawingManager;
-            const _drawingActive = _dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDragging || _dm.isDrawing || _dm.isResizing);
+            const _drawingActive = movedToSVG || (_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDragging || _dm.isDrawing || _dm.isResizing));
             if (!_drawingActive) this.hideCrosshair();
             this.hideTooltip();
         });
