@@ -18786,10 +18786,8 @@
                 if (currentPanel === panelType && unifiedPanel.classList.contains('visible')) {
                     unifiedPanel.classList.remove('visible');
                     currentPanel = null;
-                    // Restore price axis
-                    var _c = window.chart || window.mainChart;
-                    if (_c) { _c.priceAxisLeft = false; _c.margin = _c.margin||{}; _c.margin.l = 0; _c.margin.r = 60; if (_c.scheduleRender) _c.scheduleRender(); }
                     var _w = document.getElementById('chartWrapper'); if (_w) _w.classList.remove('settings-open');
+                    var _c = window.chart || window.mainChart;
                     if (_c && _c.resize) setTimeout(function(){ _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
                     return;
                 }
@@ -18797,10 +18795,8 @@
                 // Show panel and activate correct content
                 unifiedPanel.classList.add('visible');
                 currentPanel = panelType;
-                // Shift price axis left (same as settings panel)
-                var _c = window.chart || window.mainChart;
-                if (_c) { _c.priceAxisLeft = true; _c.margin = _c.margin||{}; _c.margin.l = 60; _c.margin.r = 0; if (_c.scheduleRender) _c.scheduleRender(); }
                 var _w = document.getElementById('chartWrapper'); if (_w) _w.classList.add('settings-open');
+                var _c = window.chart || window.mainChart;
                 if (_c && _c.resize) setTimeout(function(){ _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
                 
                 switch(panelType) {
@@ -18856,10 +18852,8 @@
                         if (btn) btn.classList.remove('active');
                     });
                     currentPanel = null;
-                    // Restore price axis
-                    var _c = window.chart || window.mainChart;
-                    if (_c) { _c.priceAxisLeft = false; _c.margin = _c.margin||{}; _c.margin.l = 0; _c.margin.r = 60; if (_c.scheduleRender) _c.scheduleRender(); }
                     var _w = document.getElementById('chartWrapper'); if (_w) _w.classList.remove('settings-open');
+                    var _c = window.chart || window.mainChart;
                     if (_c && _c.resize) setTimeout(function(){ _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
                 });
             }
@@ -18890,10 +18884,8 @@
                     if (btn) btn.classList.remove('active');
                 });
                 currentPanel = null;
-                // Restore price axis
-                var _c = window.chart || window.mainChart;
-                if (_c) { _c.priceAxisLeft = false; _c.margin = _c.margin||{}; _c.margin.l = 0; _c.margin.r = 60; if (_c.scheduleRender) _c.scheduleRender(); }
                 var _w = document.getElementById('chartWrapper'); if (_w) _w.classList.remove('settings-open');
+                var _c = window.chart || window.mainChart;
                 if (_c && _c.resize) setTimeout(function(){ _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
             });
 
