@@ -24766,6 +24766,8 @@ P['canvas']={title:'Canvas',build:function(){
         '</div>'+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
+            selI('cv_crossStyle',[['Solid','solid'],['Dashed','dashed'],['Dotted','dotted']],cs.crosshairPattern||'dashed')+
+            selI('cv_crossWidth',[['1px','1'],['2px','2'],['3px','3']],String(cs.crosshairWidth||1),'60px')+
             clr('','cv_crossClr',cs.crosshairColor||'#787b86')+
         '</div>')+
     sec(st('SCALES')+
@@ -24797,6 +24799,20 @@ P['canvas']={title:'Canvas',build:function(){
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
     wClr('cv_gridClr',function(v){set('gridColor',v);});
+    wSel('cv_crossStyle',function(v){
+        var c=ch();if(!c)return;
+        c.chartSettings=c.chartSettings||{};
+        c.chartSettings.crosshairPattern=v;
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+    });
+    wSel('cv_crossWidth',function(v){
+        var c=ch();if(!c)return;
+        c.chartSettings=c.chartSettings||{};
+        c.chartSettings.crosshairWidth=parseInt(v);
+        if(c.scheduleRender)c.scheduleRender();
+        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+    });
     wClr('cv_crossClr',function(v){
         var c=ch();if(!c)return;
         c.chartSettings=c.chartSettings||{};
