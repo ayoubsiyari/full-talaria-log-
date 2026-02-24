@@ -282,11 +282,10 @@ class TrendlineTool extends BaseDrawing {
             const segLen = Math.sqrt((segRX - segLX) ** 2 + (segRY - segLY) ** 2) || 1;
             const seg_ux = (segRX - segLX) / segLen;
             const seg_uy = (segRY - segLY) / segLen;
-            const SI_EDGE = 30;
             let textX, textY;
             switch (textHAlign) {
-                case 'left':  textX = segLX + seg_ux * SI_EDGE; textY = segLY + seg_uy * SI_EDGE; break;
-                case 'right': textX = segRX - seg_ux * SI_EDGE; textY = segRY - seg_uy * SI_EDGE; break;
+                case 'left':  textX = segLX + seg_ux * (TEXT_EDGE_PADDING + capPad); textY = segLY + seg_uy * (TEXT_EDGE_PADDING + capPad); break;
+                case 'right': textX = segRX - seg_ux * (TEXT_EDGE_PADDING + capPad); textY = segRY - seg_uy * (TEXT_EDGE_PADDING + capPad); break;
                 default:      textX = (segLX + segRX) / 2;      textY = (segLY + segRY) / 2;
             }
 
