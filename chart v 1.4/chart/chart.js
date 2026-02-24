@@ -10573,7 +10573,10 @@ class Chart {
             this.boxZoom.active = false;
             this.inertia.active = false;
             this.canvas.style.cursor = 'default';
-            this.hideCrosshair();
+            // Don't hide crosshair if mouse moved onto SVG (drawing tool active / drawing selected)
+            const _dm = this.drawingManager;
+            const _drawingActive = _dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDragging || _dm.isDrawing || _dm.isResizing);
+            if (!_drawingActive) this.hideCrosshair();
             this.hideTooltip();
         });
         
