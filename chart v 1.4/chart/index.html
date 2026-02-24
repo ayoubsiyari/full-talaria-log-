@@ -2340,7 +2340,6 @@
             top: 48px;
             right: -440px;
             width: 420px;
-            bottom: 230px;
             background: #0a0a1a;
             border-left: 1px solid rgba(255,255,255,0.07);
             z-index: 1000010;
@@ -24870,8 +24869,10 @@ window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEa
 
 var panel=null,btn=null,closeB=null;
 
-function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('symbol');var w=document.getElementById('chartWrapper');if(w)w.classList.add('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
-function closePanel(){if(!panel)return;panel.classList.remove('open');var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
+var _spBottomInterval=null;
+function _syncSpBottom(){if(!panel)return;var ct=document.querySelector('.container');var b=ct?parseFloat(ct.style.bottom)||0:0;panel.style.bottom=b+'px';}
+function openPanel(){if(!panel)return;panel.classList.add('open');_syncSpBottom();loadSection('symbol');var w=document.getElementById('chartWrapper');if(w)w.classList.add('settings-open');_spBottomInterval=setInterval(_syncSpBottom,200);var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
+function closePanel(){if(!panel)return;panel.classList.remove('open');if(_spBottomInterval){clearInterval(_spBottomInterval);_spBottomInterval=null;}var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
 window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};
 window._spLoad=function(type,el){if(!panel)panel=document.getElementById('settingsPanel');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
 
