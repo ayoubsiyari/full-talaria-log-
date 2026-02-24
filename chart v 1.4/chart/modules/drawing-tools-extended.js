@@ -239,21 +239,24 @@ class ArrowMarkerTool extends BaseDrawing {
 
         // No border — fill-only arrow; arrow-fill-hit handles all interaction
 
-        // Render text at start point (p1)
+        // Render text near tail (p1) — offset perpendicular to arrow so it never overlaps the body
         if (this.text && this.text.trim()) {
             const textColor = this.style.textColor || '#FFFFFF';
             const fontSize = this.style.fontSize || 14;
             const fontWeight = this.style.fontWeight || 'normal';
             const fontStyle = this.style.fontStyle || 'normal';
-            
-            // Position text at start point with offset to the left
-            const textOffsetX = -10; // Offset to the left of start point
-            const textOffsetY = 5; // Slight vertical offset for centering
-            
+
+            // Perpendicular direction (90° counter-clockwise from arrow) keeps text
+            // clear of the body regardless of the arrow's rotation angle
+            const perpAngle = angle - Math.PI / 2;
+            const perpDist = Math.max(fontSize, 16) + 6; // scale slightly with font size
+            const textX = x1 + perpDist * Math.cos(perpAngle) + (this.style.textOffsetX || 0);
+            const textY = y1 + perpDist * Math.sin(perpAngle) + (this.style.textOffsetY || 0);
+
             this.group.append('text')
-                .attr('x', x1 + textOffsetX)
-                .attr('y', y1 + textOffsetY)
-                .attr('text-anchor', 'end') // Right-align text so it appears to the left
+                .attr('x', textX)
+                .attr('y', textY)
+                .attr('text-anchor', 'middle')
                 .attr('dominant-baseline', 'middle')
                 .attr('fill', textColor)
                 .attr('font-size', fontSize)
