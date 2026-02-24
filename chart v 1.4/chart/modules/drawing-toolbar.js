@@ -283,11 +283,11 @@ class DrawingToolbar {
         })(_fillRaw) : null;
         
         // Line controls (hide for text/marker tools)
-        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'arrow-marker'];
+        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
         const showLineControls = !noLineControlTypes.includes(drawing.type);
 
         // Tools that show only the fill color (no stroke button)
-        const fillOnlyTools = ['arrow-marker'];
+        const fillOnlyTools = ['arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
         const showStrokeColor = !fillOnlyTools.includes(drawing.type);
         
         // Text editing
@@ -973,10 +973,12 @@ class DrawingToolbar {
         const typesWithFill = [
             // Shapes
             'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle',
-            // Brushes
-            'brush', 'highlighter',
-            // Arrow markers
+            // Arrow markers (fill-only arrows - no stroke)
             'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
+            // Analysis tools with background fills
+            'date-price-range', 'price-range',
+            // Patterns with fill
+            'xabcd-pattern',
             // Text tools with background
             'notebox', 'note', 'price-note', 'anchored-text', 'callout', 'price-label',
             // Polyline (background shows when shape is closed)
