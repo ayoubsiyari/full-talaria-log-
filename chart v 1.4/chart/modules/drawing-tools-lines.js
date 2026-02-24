@@ -648,23 +648,18 @@ class TrendlineTool extends BaseDrawing {
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                // Use actual left data-point position; fall back to clipped if off-screen
-                baseX = (rawLX >= vLeft ? rawLX : segLX) + seg_ux * EDGE;
-                baseY = (rawLX >= vLeft ? rawLY : segLY) + seg_uy * EDGE;
+                baseX = rawLX + seg_ux * EDGE;
+                baseY = rawLY + seg_uy * EDGE;
                 labelAnchor = 'start';
                 break;
             case 'right':
-                // Use actual right data-point position; fall back to clipped if off-screen
-                baseX = (rawRX <= vRight ? rawRX : segRX) - seg_ux * EDGE;
-                baseY = (rawRX <= vRight ? rawRY : segRY) - seg_uy * EDGE;
+                baseX = rawRX - seg_ux * EDGE;
+                baseY = rawRY - seg_uy * EDGE;
                 labelAnchor = 'end';
                 break;
             default: {
-                // Use actual line midpoint (fixed to data, not visible-segment midpoint)
-                const midX = (rawLX + rawRX) / 2;
-                const midY = (rawLY + rawRY) / 2;
-                baseX = Math.max(vLeft + EDGE, Math.min(vRight - EDGE, midX));
-                baseY = midY + (baseX - midX) * (rawDX !== 0 ? rawDY / rawDX : 0);
+                baseX = (rawLX + rawRX) / 2;
+                baseY = (rawLY + rawRY) / 2;
                 labelAnchor = 'middle';
                 break;
             }
