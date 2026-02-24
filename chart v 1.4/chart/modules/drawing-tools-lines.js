@@ -258,9 +258,9 @@ class TrendlineTool extends BaseDrawing {
             // Calculate angle and direction along the line
             const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
             
-            // Use exact text width for gap with padding
+            // Use exact text width for gap with minimal padding
             const padding = 2;
-            const capPad = Math.max(2, scaledStrokeWidth);
+            const capPad = 2;
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
             // Compute visible segment (clamp to chart boundaries)
