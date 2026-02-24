@@ -1823,6 +1823,18 @@ class RayTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
+        // Clamp baseX so text doesn't overflow past the chart clip boundary
+        const _rightEdge = Math.max(x1, x2);
+        const _leftEdge  = Math.min(x1, x2);
+        const _tMeasure = this.group.append('text')
+            .attr('font-size', fontSize)
+            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
+            .text(label);
+        const _halfTW = (_tMeasure.node().getBBox().width / 2) + TEXT_EDGE_PADDING;
+        _tMeasure.remove();
+        if (baseX + _halfTW > _rightEdge) baseX = _rightEdge - _halfTW;
+        if (baseX - _halfTW < _leftEdge)  baseX = _leftEdge  + _halfTW;
+
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
@@ -2215,6 +2227,18 @@ class HorizontalRayTool extends BaseDrawing {
             offsetY = LINE_LABEL_OFFSET;
         }
 
+        // Clamp baseX so text doesn't overflow past chart clip boundary
+        const _hrRightEdge = chartRightX;
+        const _hrLeftEdge  = startX;
+        const _hrMeasure = this.group.append('text')
+            .attr('font-size', this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize)
+            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
+            .text(label);
+        const _hrHalfTW = (_hrMeasure.node().getBBox().width / 2) + TEXT_EDGE_PADDING;
+        _hrMeasure.remove();
+        if (baseX + _hrHalfTW > _hrRightEdge) baseX = _hrRightEdge - _hrHalfTW;
+        if (baseX - _hrHalfTW < _hrLeftEdge)  baseX = _hrLeftEdge  + _hrHalfTW;
+
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
             y: y + offsetY + (this.style.textOffsetY || 0),
@@ -2592,6 +2616,18 @@ class ExtendedLineTool extends BaseDrawing {
             ? 0
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+
+        // Clamp baseX so text doesn't overflow past chart clip boundary
+        const _elRightEdge = Math.max(x1, x2);
+        const _elLeftEdge  = Math.min(x1, x2);
+        const _elMeasure = this.group.append('text')
+            .attr('font-size', fontSize)
+            .attr('font-family', this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily)
+            .text(label);
+        const _elHalfTW = (_elMeasure.node().getBBox().width / 2) + TEXT_EDGE_PADDING;
+        _elMeasure.remove();
+        if (baseX + _elHalfTW > _elRightEdge) baseX = _elRightEdge - _elHalfTW;
+        if (baseX - _elHalfTW < _elLeftEdge)  baseX = _elLeftEdge  + _elHalfTW;
 
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
