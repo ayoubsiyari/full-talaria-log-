@@ -648,22 +648,26 @@ class TrendlineTool extends BaseDrawing {
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                // anchor:start → text starts at this point and flows rightward along the line
-                baseX = segLX + seg_ux * EDGE;
-                baseY = segLY + seg_uy * EDGE;
+                // Use actual left data-point position; fall back to clipped if off-screen
+                baseX = (rawLX >= vLeft ? rawLX : segLX) + seg_ux * EDGE;
+                baseY = (rawLX >= vLeft ? rawLY : segLY) + seg_uy * EDGE;
                 labelAnchor = 'start';
                 break;
             case 'right':
-                // anchor:end → text ends at this point and flows leftward along the line
-                baseX = segRX - seg_ux * EDGE;
-                baseY = segRY - seg_uy * EDGE;
+                // Use actual right data-point position; fall back to clipped if off-screen
+                baseX = (rawRX <= vRight ? rawRX : segRX) - seg_ux * EDGE;
+                baseY = (rawRX <= vRight ? rawRY : segRY) - seg_uy * EDGE;
                 labelAnchor = 'end';
                 break;
-            default:
-                // anchor:middle → text centered at midpoint
-                baseX = (segLX + segRX)/2 ;
-                baseY = (segLY + segRY)/2 ;
+            default: {
+                // Use actual line midpoint (fixed to data, not visible-segment midpoint)
+                const midX = (rawLX + rawRX) / 2;
+                const midY = (rawLY + rawRY) / 2;
+                baseX = Math.max(vLeft + EDGE, Math.min(vRight - EDGE, midX));
+                baseY = midY + (baseX - midX) * (rawDX !== 0 ? rawDY / rawDX : 0);
                 labelAnchor = 'middle';
+                break;
+            }
         }
 
         const perpX = -Math.sin(angleRad);
@@ -1384,7 +1388,7 @@ class VerticalLineTool extends BaseDrawing {
                 anchor = 'middle';
             }
         } else {
-            // top/bottom: center behaves like right
+             // top/bottom: center behaves like right
             if (textHAlign === 'center') {
                 baseX = x;
                 anchor = 'middle';
