@@ -2807,14 +2807,6 @@ class Chart {
             .style('letter-spacing', '0.5px')
             .text('CANDLES');
         
-        // Color bars based on previous close
-        const prevCloseRow = this.addSettingRow(section);
-        const { input: prevCloseInput } = this.addCheckbox(prevCloseRow, 'Color bars based on previous close', this.chartSettings.colorBasedOnPreviousClose);
-        prevCloseInput.on('change', () => {
-            this.chartSettings.colorBasedOnPreviousClose = prevCloseInput.property('checked');
-            this.scheduleRender();
-        });
-        
         // Body
         const bodyRow = this.addSettingRow(section);
         const { input: bodyInput } = this.addCheckbox(bodyRow, 'Body', this.chartSettings.showCandleBody);

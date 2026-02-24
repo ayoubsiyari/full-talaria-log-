@@ -18304,7 +18304,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260223_CROSSHAIR_WIDTH_V9"></script>
+         <script src="chart.js?v=20260224_REMOVE_PREV_CLOSE_SETTING_V1"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260219_REPLAY_FORWARD_PANLOAD_V1"></script>
@@ -24678,7 +24678,6 @@ P['symbol']={title:'Symbol',build:function(){
     var bU=cs.bodyUpColor||cs.candleUpColor||'#089981',bD=cs.bodyDownColor||cs.candleDownColor||'#f23645';
     var brU=cs.borderUpColor||bU,brD=cs.borderDownColor||bD,wU=cs.wickUpColor||bU,wD=cs.wickDownColor||bD;
     return sec(st('CANDLES')+
-        chk('Color bars based on previous close','colorPrev',!!cs.colorBarsOnPrevClose)+
         '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div>'+
         '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div>'+
         '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div>')+
