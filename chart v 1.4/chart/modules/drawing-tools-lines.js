@@ -639,33 +639,30 @@ class TrendlineTool extends BaseDrawing {
             segRY = rawLY + f * rawDY;
         }
 
-        const segLen = Math.sqrt((segRX - segLX) ** 2 + (segRY - segLY) ** 2) || 1;
-        const seg_ux = (segRX - segLX) / segLen;
-        const seg_uy = (segRY - segLY) / segLen;
+        // Unit vector from actual line (not clipped segment) so text follows shape past any edge
+        const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
+        const line_ux = rawDX / rawLen;
+        const line_uy = rawDY / rawLen;
 
         const EDGE = 5;
         let baseX, baseY;
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = (rawLX >= vLeft ? rawLX : segLX) + seg_ux * EDGE;
-                baseY = (rawLX >= vLeft ? rawLY : segLY) + seg_uy * EDGE;
+                baseX = rawLX + line_ux * EDGE;
+                baseY = rawLY + line_uy * EDGE;
                 labelAnchor = 'start';
                 break;
             case 'right':
-                baseX = (rawRX <= vRight ? rawRX : segRX) - seg_ux * EDGE;
-                baseY = (rawRX <= vRight ? rawRY : segRY) - seg_uy * EDGE;
+                baseX = rawRX - line_ux * EDGE;
+                baseY = rawRY - line_uy * EDGE;
                 labelAnchor = 'end';
                 break;
-            default: {
-                const midX = (rawLX + rawRX) / 2;
-                const midY = (rawLY + rawRY) / 2;
-                // Keep text inside visible area; slide along line to nearest visible point
-                baseX = Math.max(segLX + EDGE, Math.min(segRX - EDGE, midX));
-                baseY = midY + (rawDX !== 0 ? (baseX - midX) * rawDY / rawDX : 0);
+            default:
+                baseX = (rawLX + rawRX) / 2;
+                baseY = (rawLY + rawRY) / 2;
                 labelAnchor = 'middle';
                 break;
-            }
         }
 
         const perpX = -Math.sin(angleRad);
