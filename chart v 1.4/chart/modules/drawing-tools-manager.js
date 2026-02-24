@@ -2703,6 +2703,7 @@ class DrawingToolsManager {
                     d3.select(this).style('cursor', 'move');
                 })
                 .on('drag', function(event) {
+                    if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) self.chart.updateCrosshair(event.sourceEvent);
                     // Check if we're in custom handle drag mode
                     if (self.isCustomHandleDrag) {
                         self.handleCustomHandleDrag(event);
@@ -2743,6 +2744,7 @@ class DrawingToolsManager {
                     self.startCustomHandleDrag(drawing, role, event);
                 })
                 .on('drag', function(event) {
+                    if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) self.chart.updateCrosshair(event.sourceEvent);
                     self.handleCustomHandleDrag(event);
                 })
                 .on('end', function(event) {
