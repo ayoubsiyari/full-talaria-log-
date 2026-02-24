@@ -10287,6 +10287,10 @@
             left: 0;
             right: 0;
             bottom: 0;
+            transition: right 0.28s cubic-bezier(.4,0,.2,1);
+        }
+        .chart-wrapper.settings-open {
+            right: 660px;
         }
 
         .toolbar-logo {
@@ -24866,8 +24870,8 @@ window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEa
 
 var panel=null,btn=null,closeB=null;
 
-function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('symbol');}
-function closePanel(){if(!panel)return;panel.classList.remove('open');}
+function openPanel(){if(!panel)return;panel.classList.add('open');loadSection('symbol');var w=document.getElementById('chartWrapper');if(w)w.classList.add('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
+function closePanel(){if(!panel)return;panel.classList.remove('open');var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
 window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};
 window._spLoad=function(type,el){if(!panel)panel=document.getElementById('settingsPanel');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
 
