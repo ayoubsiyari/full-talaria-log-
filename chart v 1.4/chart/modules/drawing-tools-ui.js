@@ -549,7 +549,7 @@ class DrawingSettingsPanel {
 
 /* Dropdown Select */
 .tv-select {
-    background: #1e222d;
+    background: #1e222d !important;
     border: 1px solid #363a45;
     border-radius: 4px;
     padding: 5px 21px 5px 8px;
@@ -585,13 +585,13 @@ class DrawingSettingsPanel {
 }
 
 .tv-select option {
-    background: #1e222d;
+    background: #1e222d !important;
     color: #d1d4dc;
 }
 
 /* Number Input */
 .tv-input {
-    background: #1e222d;
+    background: #1e222d !important;
     border: 1px solid #363a45;
     border-radius: 4px;
     padding: 6px 9px;
