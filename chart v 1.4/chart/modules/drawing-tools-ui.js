@@ -549,7 +549,7 @@ class DrawingSettingsPanel {
 
 /* Dropdown Select */
 .tv-select {
-    background: rgba(255, 255, 255, 0.08) !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 4px;
     padding: 5px 21px 5px 8px;
@@ -591,7 +591,7 @@ class DrawingSettingsPanel {
 
 /* Number Input */
 .tv-input {
-    background: rgba(255, 255, 255, 0.08) !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 4px;
     padding: 6px 9px;
@@ -2685,7 +2685,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     <span class="tv-checkbox-label" style="white-space: nowrap;">Show Info</span>
                 </div>
                 <div class="tv-prop-controls">
-                    <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid #2a2e39; border-radius: 4px; background: #050028; color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                    <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px;">
                         <span>Select</span>
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M6 9l6 6 6-6"/>
@@ -3794,12 +3794,12 @@ body.light-mode .template-save-dialog .dialog-title {
             input.type = 'text';
             input.value = level.label || level.value;
             input.style.cssText = `
-                background: #050028; border: 1px solid #2a2e39; border-radius: 4px;
+                background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
                 color: #d1d4dc; padding: 5px 8px; font-size: 11px; width: 60px;
                 outline: none; transition: border-color 0.15s; box-sizing: border-box;
             `;
             input.onfocus = () => { input.style.borderColor = '#2962ff'; };
-            input.onblur = () => { input.style.borderColor = '#2a2e39'; };
+            input.onblur = () => { input.style.borderColor = 'rgba(255,255,255,0.12)'; };
             input.oninput = () => {
                 const parsed = parseFloat(input.value);
                 if (!isNaN(parsed)) {
@@ -5163,12 +5163,12 @@ body.light-mode .template-save-dialog .dialog-title {
             input.type = 'text';
             input.value = level.value;
             input.style.cssText = `
-                background: #050028; border: 1px solid #2a2e39; border-radius: 4px;
+                background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
                 color: #d1d4dc; padding: 5px 8px; font-size: 11px; width: 60px;
                 outline: none; transition: border-color 0.15s; box-sizing: border-box;
             `;
             input.onfocus = () => { input.style.borderColor = '#2962ff'; };
-            input.onblur = () => { input.style.borderColor = '#2a2e39'; };
+            input.onblur = () => { input.style.borderColor = 'rgba(255,255,255,0.12)'; };
             input.oninput = () => {
                 const parsed = parseFloat(input.value);
                 if (!isNaN(parsed)) {
@@ -5511,7 +5511,7 @@ body.light-mode .template-save-dialog .dialog-title {
             statsRow.style.cssText = 'margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;';
             statsRow.innerHTML = `
                 <span class="tv-checkbox-label" style="white-space: nowrap;">Stats</span>
-                <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid #2a2e39; border-radius: 4px; background: #050028; color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px; min-width: 160px; justify-content: space-between;">
+                <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px; min-width: 160px; justify-content: space-between;">
                     <span>Select</span>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M6 9l6 6 6-6"/>
@@ -6208,7 +6208,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </select>
                 ${isTrendline ? `
                     <div class="tv-ending-dropdown" data-prop="startStyle" style="position: relative;">
-                        <button class="tv-ending-dropdown-btn" style="width: 30px; height: 30px; padding: 0px; border: 2px solid rgba(50, 50, 60, 0.9); border-radius: 4px; background: #050028; cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                        <button class="tv-ending-dropdown-btn" style="width: 30px; height: 30px; padding: 0px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
                             <svg viewBox="0 0 100 100" width="20" height="20" style="display: block;">
                                 ${startStyle === 'arrow' ? 
                                     '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/><path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>' : 
@@ -6233,7 +6233,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         </div>
                     </div>
                     <div class="tv-ending-dropdown" data-prop="endStyle" style="position: relative;">
-                        <button class="tv-ending-dropdown-btn" style="width: 30px; height: 30px; padding: 0px; border: 2px solid rgba(50, 50, 60, 0.9); border-radius: 4px; background: #050028; cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                        <button class="tv-ending-dropdown-btn" style="width: 30px; height: 30px; padding: 0px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
                             <svg viewBox="0 0 100 100" width="20" height="20" style="display: block;">
                                 ${endStyle === 'arrow' ? 
                                     '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/><path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>' : 
