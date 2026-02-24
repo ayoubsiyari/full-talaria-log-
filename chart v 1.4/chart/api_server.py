@@ -1131,6 +1131,15 @@ def _parse_candles_from_csv(file_path):
                 continue
     return _canonicalize_candles(candles)
 
+def _parse_tf_ms(tf: str) -> int:
+    """Parse any timeframe string (e.g. '3m','2h','45m') to milliseconds."""
+    import re
+    m = re.match(r'^(\d+)(mo|m|h|d|w)$', str(tf).strip().lower())
+    if not m:
+        return 60_000
+    val, unit = int(m.group(1)), m.group(2)
+    return val * {'m': 60_000, 'h': 3_600_000, 'd': 86_400_000, 'w': 604_800_000, 'mo': 2_592_000_000}[unit]
+
 def _resample_candles(candles, tf_ms):
     """Resample a sorted list of candle dicts to a given bucket size in ms."""
     aggregated = []
@@ -2829,22 +2838,51 @@ async def get_file_smart(
                     has_more_left = False
                     has_more_right = False
         else:
-            # ── Fallback: CSV parsing (binary not built yet) ──
-            source = "csv-fallback"
-            file_path = UPLOAD_DIR / db_file.filename
-            if not file_path.exists():
-                raise HTTPException(status_code=404, detail="File not found on disk")
+            # ── Fast path for custom TF: resample from 1m binary on-the-fly ──
+            tile_meta_1m = _load_tile_meta(file_id, '1m')
+            agg_1m = db.query(CSVAggregate).filter(
+                CSVAggregate.file_id == file_id,
+                CSVAggregate.timeframe == '1m'
+            ).first()
+            if tile_meta_1m is not None and agg_1m and agg_1m.status == 'ready':
+                source = "custom-tf-resample"
+                raw_1m, _, _, _ = _tiles_read_window(
+                    file_id, '1m', tile_meta_1m,
+                    limit=500_000, anchor='end',
+                    start_ts=start_ts, end_ts=end_ts
+                )
+                if timeframe.endswith('mo'):
+                    candles = _resample_candles_monthly(raw_1m)
+                elif timeframe != '1m':
+                    candles = _resample_candles(raw_1m, _parse_tf_ms(timeframe))
+                else:
+                    candles = raw_1m
+                if start_ts is not None or end_ts is not None:
+                    candles = [c for c in candles
+                               if (start_ts is None or c['t'] >= start_ts) and
+                                  (end_ts is None or c['t'] <= end_ts)]
+                total_candles = len(candles)
+                has_more_left = False
+                has_more_right = False
+                if total_candles > limit:
+                    if anchor == 'start':
+                        candles = candles[:limit]
+                        has_more_right = True
+                    else:
+                        candles = candles[-limit:]
+                        has_more_left = True
+            else:
+                # ── Fallback: CSV parsing (binary not built yet) ──
+                source = "csv-fallback"
+                file_path = UPLOAD_DIR / db_file.filename
+                if not file_path.exists():
+                    raise HTTPException(status_code=404, detail="File not found on disk")
 
-            tf_ms_map = {
-                '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
-                '1h': 3600000, '4h': 14400000, '1d': 86400000, '1w': 604800000
-            }
-            candles = _parse_candles_from_csv(file_path)
-            if timeframe == "1mo":
-                candles = _resample_candles_monthly(candles)
-            elif timeframe != "1m":
-                tf_ms = tf_ms_map.get(timeframe, 60000)
-                candles = _resample_candles(candles, tf_ms)
+                candles = _parse_candles_from_csv(file_path)
+                if timeframe == "1mo":
+                    candles = _resample_candles_monthly(candles)
+                elif timeframe != "1m":
+                    candles = _resample_candles(candles, _parse_tf_ms(timeframe))
             if start_ts is not None or end_ts is not None:
                 candles = [c for c in candles
                            if (start_ts is None or c['t'] >= start_ts) and
@@ -2973,16 +3011,11 @@ async def get_file_candles(
         else:
             # Fallback to CSV-based reading
             file_path = UPLOAD_DIR / db_file.filename
-            tf_ms_map = {
-                '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
-                '1h': 3600000, '4h': 14400000, '1d': 86400000, '1w': 604800000
-            }
             raw = _parse_candles_from_csv(file_path)
             if timeframe == "1mo":
                 candles = _resample_candles_monthly(raw)
             elif timeframe != "1m":
-                tf_ms = tf_ms_map.get(timeframe, 60000)
-                candles = _resample_candles(raw, tf_ms)
+                candles = _resample_candles(raw, _parse_tf_ms(timeframe))
             else:
                 candles = raw
             if cursor_ts:
