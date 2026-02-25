@@ -25120,6 +25120,55 @@ P['trading']={title:'Trading',build:function(){
 /* ── aliases for any legacy callers ── */
 P['general']=P['symbol']; P['chart']=P['scales']; P['project']=P['trading']; P['leverage']=P['trading']; P['commissions']=P['trading'];
 
+/* ── Alerts ── */
+P['alerts']={
+    build:function(){
+        var src=document.getElementById('alertsContent');
+        return src?src.innerHTML:'<p style="color:#787b86;padding:20px 0;">No alerts yet.</p>';
+    },
+    wire:function(){
+        var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var newList=ctx.querySelector('#alertsList');
+        var addBtn=ctx.querySelector('#addAlertBtn');
+        if(window.alertSystem){
+            if(newList){window.alertSystem.alertsList=newList;window.alertSystem.refreshAlertsList();}
+            if(addBtn){addBtn.onclick=function(){window.alertSystem.showCreateAlertModal();};}
+        }
+    }
+};
+
+/* ── Help ── */
+P['help']={
+    build:function(){
+        var src=document.querySelector('#helpPanel .side-panel-body');
+        return src?src.innerHTML:'';
+    },
+    wire:function(){
+        var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var c=ctx.querySelector('#helpContactSupport'); if(c)c.onclick=function(){window.open('mailto:support@talaria.com','_blank');};
+        var k=ctx.querySelector('#helpKeyboardShortcuts'); if(k)k.onclick=function(){if(window.toggleKeyboardShortcuts)window.toggleKeyboardShortcuts();};
+    }
+};
+
+/* ── Profile ── */
+P['profile']={
+    build:function(){
+        var src=document.querySelector('#profilePanel .side-panel-body');
+        return src?src.innerHTML:'';
+    },
+    wire:function(){
+        var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var t=ctx.querySelector('#profileTheme2');
+        if(t)t.onclick=function(){
+            document.body.classList.toggle('light-mode');
+            var v=ctx.querySelector('#profileThemeValue2');
+            if(v)v.textContent=document.body.classList.contains('light-mode')?'Light':'Dark';
+        };
+        var a=ctx.querySelector('#profileAccount2'); if(a)a.onclick=function(){window.location.href='/profile';};
+        var l=ctx.querySelector('#profileLogout2'); if(l)l.onclick=function(){window.location.href='/logout';};
+    }
+};
+
 /* ── DOM wiring ── */
 function loadSection(type){
     var titles={symbol:'Symbol',statusline:'Status line',scales:'Scales and lines',canvas:'Canvas',trading:'Trading',general:'Symbol',chart:'Scales and lines',project:'Trading',leverage:'Trading',commissions:'Trading',alerts:'Alerts',help:'Help',profile:'Profile'};
