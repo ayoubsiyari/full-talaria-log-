@@ -23718,16 +23718,13 @@ function showIndicatorsMenu() {
             }
         })();
 
-        // Help Menu Toggle
+        // Help Menu Toggle — disabled, helpBtn now opens unified settings panel
         (function() {
             const helpBtn = document.getElementById('helpBtn');
             const helpMenu = document.getElementById('helpDropdownMenu');
             
             if (helpBtn && helpMenu) {
-                helpBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    helpMenu.classList.toggle('open');
-                });
+                /* click handler removed — helpBtn.onclick uses window._spOpen('help') */
                 
                 // Close when clicking outside
                 document.addEventListener('click', function(e) {
@@ -23848,7 +23845,7 @@ function showIndicatorsMenu() {
             });
         }
 
-        // Profile Menu Toggle
+        // Profile Menu Toggle — disabled, profileBtn now opens unified settings panel
         (function() {
             const profileBtn = document.getElementById('profileBtn');
             const profileMenu = document.getElementById('profileDropdownMenu');
@@ -23857,11 +23854,7 @@ function showIndicatorsMenu() {
             const languageBackBtn = document.getElementById('languageBackBtn');
             
             if (profileBtn && profileMenu) {
-                profileBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    profileMenu.classList.toggle('open');
-                    languageSubmenu.classList.remove('open');
-                });
+                /* click handler removed — profileBtn.onclick uses window._spOpen('profile') */
                 
                 // Close when clicking outside
                 document.addEventListener('click', function(e) {
