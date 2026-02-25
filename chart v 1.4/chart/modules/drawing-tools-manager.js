@@ -2117,6 +2117,11 @@ class DrawingToolsManager {
             chart: this.chart  // Pass chart for dataIndexToPixel method
         });
         
+        // Always show axis highlights (labels visible regardless of selection state)
+        if (typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights();
+        }
+        
         // Setup interaction handlers
         this.setupDrawingInteraction(drawing);
     }

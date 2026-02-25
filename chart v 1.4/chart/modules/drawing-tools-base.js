@@ -272,8 +272,8 @@ class BaseDrawing {
             this.group.selectAll('.custom-handle').style('opacity', 0);
             this.group.selectAll('.custom-handle').style('pointer-events', 'none');
         }
-        // Hide axis highlights
-        this.hideAxisHighlights();
+        // Refresh axis highlights (keep labels visible after deselect)
+        this.showAxisHighlights();
     }
     
     /**
