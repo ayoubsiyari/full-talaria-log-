@@ -2682,7 +2682,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             labelsSection.innerHTML = `
                 <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
-                    <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-axis-prop="showPriceLabel">
+                    <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-prop="showPriceLabel">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                             <polyline points="20 6 9 17 4 12"/>
                         </svg>
@@ -2690,7 +2690,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     <span class="tv-checkbox-label" style="white-space:nowrap;">Price labels</span>
                 </div>
                 <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
-                    <div class="tv-checkbox ${timeLabelChecked ? 'checked' : ''}" data-axis-prop="showTimeLabel">
+                    <div class="tv-checkbox ${timeLabelChecked ? 'checked' : ''}" data-prop="showTimeLabel">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                             <polyline points="20 6 9 17 4 12"/>
                         </svg>
@@ -2698,22 +2698,6 @@ body.light-mode .template-save-dialog .dialog-title {
                     <span class="tv-checkbox-label" style="white-space:nowrap;">Time labels</span>
                 </div>
             `;
-
-            labelsSection.querySelectorAll('[data-axis-prop]').forEach(cb => {
-                cb.addEventListener('click', () => {
-                    const prop = cb.dataset.axisProp;
-                    drawing.style[prop] = !cb.classList.contains('checked');
-                    cb.classList.toggle('checked', drawing.style[prop]);
-                    self.pendingChanges.style = { ...(self.pendingChanges.style || {}), [prop]: drawing.style[prop] };
-                    self.applyChanges(drawing);
-                    if (window.drawingManager) {
-                        window.drawingManager.renderDrawing(drawing);
-                        window.drawingManager.saveDrawings();
-                    }
-                    if (drawing.hideAxisHighlights) drawing.hideAxisHighlights();
-                    if (drawing.showAxisHighlights) drawing.showAxisHighlights();
-                });
-            });
 
             container.appendChild(labelsSection);
         }
@@ -7590,6 +7574,32 @@ body.light-mode .template-save-dialog .dialog-title {
                     self.renderPreview(drawing);
                 }
                 
+                // Live preview for price labels toggle
+                if (prop === 'showPriceLabel') {
+                    drawing.style.showPriceLabel = isChecked;
+                    this.pendingChanges.showPriceLabel = isChecked;
+                    this.applyChanges(drawing);
+                    if (window.drawingManager) {
+                        window.drawingManager.renderDrawing(drawing);
+                        window.drawingManager.saveDrawings();
+                    }
+                    if (drawing.hideAxisHighlights) drawing.hideAxisHighlights();
+                    if (drawing.showAxisHighlights) drawing.showAxisHighlights();
+                }
+
+                // Live preview for time labels toggle
+                if (prop === 'showTimeLabel') {
+                    drawing.style.showTimeLabel = isChecked;
+                    this.pendingChanges.showTimeLabel = isChecked;
+                    this.applyChanges(drawing);
+                    if (window.drawingManager) {
+                        window.drawingManager.renderDrawing(drawing);
+                        window.drawingManager.saveDrawings();
+                    }
+                    if (drawing.hideAxisHighlights) drawing.hideAxisHighlights();
+                    if (drawing.showAxisHighlights) drawing.showAxisHighlights();
+                }
+
                 // Live preview for extend left (curve/trendline)
                 if (prop === 'extendLeft') {
                     this.pendingChanges.extendLeft = isChecked;
