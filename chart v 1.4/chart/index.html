@@ -25377,6 +25377,101 @@ setTimeout(function(){
 
 console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 })();
+
+/* ── UTC Timezone Dropdown (bottom bar) ── */
+(function(){
+    var TIMEZONES = [
+        { id: 'UTC',                label: 'UTC',          offset: 'UTC' },
+        { id: 'America/New_York',   label: 'New York',     offset: 'UTC-5' },
+        { id: 'America/Chicago',    label: 'Chicago',      offset: 'UTC-6' },
+        { id: 'America/Los_Angeles',label: 'Los Angeles',  offset: 'UTC-8' },
+        { id: 'Europe/London',      label: 'London',       offset: 'UTC+0' },
+        { id: 'Europe/Paris',       label: 'Paris',        offset: 'UTC+1' },
+        { id: 'Europe/Moscow',      label: 'Moscow',       offset: 'UTC+3' },
+        { id: 'Asia/Dubai',         label: 'Dubai',        offset: 'UTC+4' },
+        { id: 'Asia/Tokyo',         label: 'Tokyo',        offset: 'UTC+9' },
+        { id: 'Asia/Shanghai',      label: 'Shanghai',     offset: 'UTC+8' },
+        { id: 'Australia/Sydney',   label: 'Sydney',       offset: 'UTC+10' }
+    ];
+
+    function initTzDropdown() {
+        var btn  = document.getElementById('replayTimezoneToggle');
+        var menu = document.getElementById('replayTimezoneMenu');
+        var lbl  = document.getElementById('replayTimezoneLabel');
+        if (!btn || !menu) return;
+
+        // Get current timezone from settings
+        var currentTz = (function(){
+            try { var s = JSON.parse(localStorage.getItem('chartSession') || '{}'); return s.timezone || 'UTC'; } catch(e){ return 'UTC'; }
+        })();
+
+        // Build menu items
+        menu.innerHTML = TIMEZONES.map(function(tz){
+            return '<div class="timezone-option' + (tz.id === currentTz ? ' selected' : '') + '" data-tz="' + tz.id + '">' +
+                '<span class="timezone-option-label">' + tz.label + '</span>' +
+                '<span class="timezone-option-offset">' + tz.offset + '</span>' +
+                '</div>';
+        }).join('');
+
+        // Update label to current
+        var cur = TIMEZONES.find(function(t){ return t.id === currentTz; });
+        if (cur && lbl) lbl.textContent = cur.id === 'UTC' ? 'UTC' : cur.offset;
+
+        // Toggle menu on button click
+        btn.addEventListener('click', function(e){
+            e.stopPropagation();
+            var open = menu.classList.contains('show');
+            menu.classList.toggle('show', !open);
+            // Position just above the button
+            if (!open) {
+                var rect = btn.getBoundingClientRect();
+                menu.style.left = rect.left + 'px';
+                menu.style.top = (rect.top - menu.offsetHeight - 4) + 'px';
+                // Re-position after layout
+                setTimeout(function(){
+                    menu.style.top = (rect.top - menu.offsetHeight - 4) + 'px';
+                }, 0);
+            }
+        });
+
+        // Select timezone
+        menu.addEventListener('click', function(e){
+            var opt = e.target.closest('.timezone-option');
+            if (!opt) return;
+            var tz = opt.dataset.tz;
+            menu.querySelectorAll('.timezone-option').forEach(function(el){ el.classList.remove('selected'); });
+            opt.classList.add('selected');
+            menu.classList.remove('show');
+
+            // Update label
+            var found = TIMEZONES.find(function(t){ return t.id === tz; });
+            if (lbl) lbl.textContent = found ? (found.id === 'UTC' ? 'UTC' : found.offset) : tz;
+
+            // Apply timezone via settings mechanism
+            var s = (function(){ try { return JSON.parse(localStorage.getItem('chartSession') || '{}'); } catch(e){ return {}; } })();
+            s.timezone = tz;
+            try { localStorage.setItem('chartSession', JSON.stringify(s)); } catch(e){}
+            if (window.timezoneManager && window.timezoneManager.setTimezone) window.timezoneManager.setTimezone(tz);
+            var c = window.chart || (window.chartInstances && window.chartInstances[0]);
+            if (c) {
+                c.chartSettings = c.chartSettings || {};
+                c.chartSettings.timezone = tz;
+                if (c.applyChartSettings) c.applyChartSettings();
+                else if (c.render) c.render();
+            }
+        });
+
+        // Close on outside click
+        document.addEventListener('click', function(){ menu.classList.remove('show'); });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTzDropdown);
+    } else {
+        initTzDropdown();
+    }
+})();
+
 }catch(e){ console.error('[SP] FATAL ERROR:', e.message, e.stack); }
     </script>
     
