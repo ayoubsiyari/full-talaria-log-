@@ -1777,7 +1777,10 @@ class RayTool extends BaseDrawing {
 
         const perpX = -Math.sin(originalAngleRad);
         const perpY = Math.cos(originalAngleRad);
-        const signUp = perpY <= 0 ? 1 : -1;
+        // When text is flipped (line going right-to-left), invert the perp direction
+        // so 'top' stays visually above and 'bottom' stays visually below the rendered text
+        const flipSign = isFlipped ? -1 : 1;
+        const signUp = (perpY <= 0 ? 1 : -1) * flipSign;
         if (textVAlign === 'top') {
             baseX += perpX * verticalOffset * signUp;
             baseY += perpY * verticalOffset * signUp;
