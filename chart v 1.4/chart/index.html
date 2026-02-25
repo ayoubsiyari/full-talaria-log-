@@ -25167,17 +25167,6 @@ function _spWireDom(){
     document.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
         item.addEventListener('click',function(e){e.stopPropagation();window._spLoad(this.dataset.settings,this);});
     });
-    /* close on outside click - use click not mousedown to avoid same-tick issue */
-    document.addEventListener('click',function(e){
-        if(!panel||!panel.classList.contains('open'))return;
-        if(panel.contains(e.target))return;
-        if(btn&&btn.contains(e.target))return;
-        /* ignore clicks inside color picker or any picker popup */
-        var cp=document.getElementById('custom-color-picker');
-        if(cp&&cp.contains(e.target))return;
-        if(e.target.closest&&e.target.closest('[class*="color-picker"],[id*="color-picker"],[id*="picker"],[class*="picker"]'))return;
-        closePanel();
-    },true);
 }
 
 if(document.readyState==='loading'){
