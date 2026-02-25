@@ -665,6 +665,10 @@ class TrendlineTool extends BaseDrawing {
             baseY -= perpY * verticalOffset * signUp;
         }
 
+        // Don't render if text position is outside the visible chart area
+        // (prevents partial-clip "empty place" artifact in the price axis)
+        if (baseX < vLeft || baseX > vRight) return;
+
         const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
             ? 0
             : this.style.textOffsetX;
