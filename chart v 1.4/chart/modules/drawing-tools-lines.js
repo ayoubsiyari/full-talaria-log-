@@ -459,9 +459,9 @@ class TrendlineTool extends BaseDrawing {
         if (infoLines.length === 0) return;
         
         // Calculate box dimensions first to know offset needed
-        const padding = 8;
-        const lineHeight = 16;
-        const fontSize = 12;
+        const padding = 4;
+        const lineHeight = 11;
+        const fontSize = 9;
         const fontFamily = 'system-ui, -apple-system, sans-serif';
 
         // Measure actual max text width using a temporary SVG text element
@@ -495,7 +495,7 @@ class TrendlineTool extends BaseDrawing {
         const perpY = dx / lineLength;
         
         // Offset distance: half box height + larger margin to ensure clear separation
-        const offsetDistance = boxHeight / 2 + 40;
+        const offsetDistance = boxHeight / 2 + 6;
         
         // Choose which side to place the box (prefer above/left of line)
         // If perpendicular points upward (perpY < 0), use it; otherwise flip
