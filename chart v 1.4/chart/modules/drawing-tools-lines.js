@@ -316,12 +316,21 @@ class TrendlineTool extends BaseDrawing {
                 split2Y: split2Y
             };
             
+            // Route each segment to the nearest gap boundary.
+            // split1X/split1Y = left side of gap, split2X/split2Y = right side.
+            // When flipped (x1 on right side), swap so each segment ends at its nearest boundary.
+            const flipped = origX1 > origX2;
+            const gapNearX1 = flipped ? split2X : split1X;
+            const gapNearY1 = flipped ? split2Y : split1Y;
+            const gapNearX2 = flipped ? split1X : split2X;
+            const gapNearY2 = flipped ? split1Y : split2Y;
+
             // Draw invisible wider stroke for easier clicking (first segment)
             this.group.append('line')
                 .attr('x1', x1)
                 .attr('y1', y1)
-                .attr('x2', split1X)
-                .attr('y2', split1Y)
+                .attr('x2', gapNearX1)
+                .attr('y2', gapNearY1)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
                 .style('pointer-events', 'stroke')
@@ -331,8 +340,8 @@ class TrendlineTool extends BaseDrawing {
             const line1 = this.group.append('line')
                 .attr('x1', x1)
                 .attr('y1', y1)
-                .attr('x2', split1X)
-                .attr('y2', split1Y)
+                .attr('x2', gapNearX1)
+                .attr('y2', gapNearY1)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
@@ -343,8 +352,8 @@ class TrendlineTool extends BaseDrawing {
             
             // Draw invisible wider stroke for easier clicking (second segment)
             this.group.append('line')
-                .attr('x1', split2X)
-                .attr('y1', split2Y)
+                .attr('x1', gapNearX2)
+                .attr('y1', gapNearY2)
                 .attr('x2', x2)
                 .attr('y2', y2)
                 .attr('stroke', 'transparent')
@@ -354,8 +363,8 @@ class TrendlineTool extends BaseDrawing {
             
             // Draw second segment (from gap to end)
             const line2 = this.group.append('line')
-                .attr('x1', split2X)
-                .attr('y1', split2Y)
+                .attr('x1', gapNearX2)
+                .attr('y1', gapNearY2)
                 .attr('x2', x2)
                 .attr('y2', y2)
                 .attr('stroke', this.style.stroke)
