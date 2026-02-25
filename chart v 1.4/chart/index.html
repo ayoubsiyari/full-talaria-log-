@@ -24957,8 +24957,8 @@ P['symbol']={title:'Symbol',build:function(){
     } else if(type==='baseline'){
         colorSec=sec(st('BASELINE')+clr('Upper color','bodyUp',bU)+clr('Lower color','bodyDn',bD));
     }
-    return colorSec+
-    sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type))+
+    return sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type))+
+    colorSec+
     sec(st('DATA')+
         sel('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
         sel('Timezone','sym_tz',[['UTC','UTC'],['America/New_York','(UTC-5) New York'],['America/Chicago','(UTC-6) Chicago'],['America/Los_Angeles','(UTC-8) Los Angeles'],['Europe/London','(UTC+0) London'],['Europe/Paris','(UTC+1) Paris'],['Europe/Moscow','(UTC+3) Moscow'],['Asia/Dubai','(UTC+4) Dubai'],['Asia/Tokyo','(UTC+9) Tokyo'],['Asia/Shanghai','(UTC+8) Shanghai'],['Australia/Sydney','(UTC+10) Sydney']],cs.timezone||sess().timezone||'America/New_York'));
