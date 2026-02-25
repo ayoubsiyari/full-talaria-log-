@@ -1717,9 +1717,15 @@ class RayTool extends BaseDrawing {
                 .style('cursor', 'move');
         }
 
+        // Clip the visible start to chart boundaries so text stays on-screen when anchor is off-screen
+        const visX1 = Math.max(chartLeftX, Math.min(chartRightX, x1Screen));
+        const visY1 = x1Screen < chartLeftX && Math.abs(dx) > 0.001
+            ? y1Screen + (dy / dx) * (chartLeftX - x1Screen)
+            : y1Screen;
+
         this.renderTextLabel({
-            x1: x1Screen,
-            y1: y1Screen,
+            x1: visX1,
+            y1: visY1,
             x2: extendedX,
             y2: extendedY
         });
@@ -2195,21 +2201,25 @@ class HorizontalRayTool extends BaseDrawing {
             return;
         }
 
+        const chartLeftX = (scales.chart && scales.chart.margin && typeof scales.chart.margin.l === 'number')
+            ? scales.chart.margin.l
+            : xRange[0];
         const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
             ? (scales.chart.w - scales.chart.margin.r)
             : xRange[1];
 
+        // Clamp to visible area — same as ExtendedLineTool uses leftX
+        const visibleStartX = Math.max(startX, chartLeftX);
+
         const y = scales.yScale(point.y);
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-        
-        const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
-        let baseX = (startX + chartRightX) / 2;
 
+        let baseX;
         let hrAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = startX + TEXT_EDGE_PADDING;
+                baseX = visibleStartX + TEXT_EDGE_PADDING;
                 hrAnchor = 'start';
                 break;
             case 'right':
@@ -2217,7 +2227,7 @@ class HorizontalRayTool extends BaseDrawing {
                 hrAnchor = 'end';
                 break;
             default:
-                baseX = (startX + chartRightX) / 2;
+                baseX = (visibleStartX + chartRightX) / 2;
                 hrAnchor = 'middle';
         }
         
