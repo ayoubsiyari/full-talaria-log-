@@ -39,6 +39,7 @@ class ReplaySystem {
         this.tickPathCache = {};  // { timestamp: [price0, price1, ...price59] }
         this.tickPathCacheBuilt = false;
         this._prngSeed = 12345; // Seeded PRNG state
+        this._nextCandleTimer = null; // Tracks the between-candle 50ms delay so it can be cancelled
 
         this.toolbar = null;
         this.handle = null;
@@ -1110,6 +1111,13 @@ class ReplaySystem {
         // This ensures consistent tick animation across all timeframes
         this.buildTickPathCache();
         
+        // Apply any pending speed set before replay was entered
+        if (window._pendingReplaySpeed != null) {
+            this.speed = window._pendingReplaySpeed;
+            window._pendingReplaySpeed = null;
+            this.updateSpeedButtonUI(this.speed);
+        }
+        
         // Show replay controls
         this.showToolbar();
         this.updateSliderRange();
@@ -1501,6 +1509,13 @@ class ReplaySystem {
         // This ensures consistent tick animation across all timeframes
         this.buildTickPathCache();
         
+        // Apply any pending speed set before replay was entered
+        if (window._pendingReplaySpeed != null) {
+            this.speed = window._pendingReplaySpeed;
+            window._pendingReplaySpeed = null;
+            this.updateSpeedButtonUI(this.speed);
+        }
+        
         // Show replay controls
         this.showToolbar();
         this.updateSliderRange();
@@ -1768,6 +1783,10 @@ class ReplaySystem {
      * Stop all playback intervals and animations
      */
     stopAllPlayback() {
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
         this.stopTickAnimation();
         if (this.playInterval) {
             clearInterval(this.playInterval);
@@ -2141,7 +2160,8 @@ class ReplaySystem {
         
         // Clear any existing tick interval
         if (this.tickInterval) {
-            clearInterval(this.tickInterval);
+            clearTimeout(this.tickInterval);
+            this.tickInterval = null;
         }
         
         // Start tick/frame animation
@@ -2929,12 +2949,16 @@ class ReplaySystem {
         
         // Start animation for next candle if still playing
         if (this.isPlaying && this.currentIndex < this.fullRawData.length - 1) {
-            setTimeout(() => this.startTickAnimation(), 50);
+            this._nextCandleTimer = setTimeout(() => {
+                this._nextCandleTimer = null;
+                if (this.isPlaying) this.startTickAnimation();
+            }, 50);
         } else if (this.currentIndex >= this.fullRawData.length - 1) {
             if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
                 this.chart.checkViewportLoadMore('forward');
                 if (this.isPlaying) {
-                    setTimeout(() => {
+                    this._nextCandleTimer = setTimeout(() => {
+                        this._nextCandleTimer = null;
                         if (this.isPlaying) this.startTickAnimation();
                     }, 120);
                 }
@@ -2980,6 +3004,10 @@ class ReplaySystem {
         this.isPlaying = false;
         
         // Stop active timers first
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
         if (this.tickInterval) {
             clearTimeout(this.tickInterval);
             this.tickInterval = null;
