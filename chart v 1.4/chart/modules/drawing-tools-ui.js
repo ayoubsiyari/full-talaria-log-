@@ -9137,7 +9137,7 @@ body.light-mode .template-save-dialog .dialog-title {
         `;
         
         dropdown.innerHTML = `
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: default; border-radius: 4px;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings.priceRange ? 'checked' : ''}" data-info-prop="priceRange">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -9145,7 +9145,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
                 <span style="color: #d1d4dc; font-size: 13px;">Price range</span>
             </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: default; border-radius: 4px;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings.percentChange ? 'checked' : ''}" data-info-prop="percentChange">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -9153,7 +9153,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
                 <span style="color: #d1d4dc; font-size: 13px;">Percent change</span>
             </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: default; border-radius: 4px;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings.changeInPips ? 'checked' : ''}" data-info-prop="changeInPips">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -9161,7 +9161,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
                 <span style="color: #d1d4dc; font-size: 13px;">Change in pips</span>
             </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: default; border-radius: 4px;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings.barsRange ? 'checked' : ''}" data-info-prop="barsRange">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -9169,7 +9169,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
                 <span style="color: #d1d4dc; font-size: 13px;">Bars range</span>
             </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: default; border-radius: 4px;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings.dateTimeRange ? 'checked' : ''}" data-info-prop="dateTimeRange">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -9177,7 +9177,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
                 <span style="color: #d1d4dc; font-size: 13px;">Date/time range</span>
             </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: default; border-radius: 4px;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings.distance ? 'checked' : ''}" data-info-prop="distance">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -9185,7 +9185,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
                 <span style="color: #d1d4dc; font-size: 13px;">Distance</span>
             </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: default; border-radius: 4px;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings.angle ? 'checked' : ''}" data-info-prop="angle">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -9207,10 +9207,13 @@ body.light-mode .template-save-dialog .dialog-title {
         dropdown.style.top = `${btnRect.bottom + 4}px`;
         dropdown.style.left = `${btnRect.right - dropdown.offsetWidth}px`;
         
-        // Checkbox handlers
+        // Checkbox handlers — whole row is clickable
         const self = this;
-        dropdown.querySelectorAll('.tv-info-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('click', () => {
+        dropdown.querySelectorAll('.tv-info-option').forEach(label => {
+            label.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const checkbox = label.querySelector('.tv-info-checkbox');
+                if (!checkbox) return;
                 const infoProp = checkbox.dataset.infoProp;
                 checkbox.classList.toggle('checked');
                 const isChecked = checkbox.classList.contains('checked');
