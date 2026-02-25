@@ -25129,14 +25129,15 @@ P['general']=P['symbol']; P['chart']=P['scales']; P['project']=P['trading']; P['
 
 /* ── DOM wiring ── */
 function loadSection(type){
-    var titles={symbol:'Symbol',statusline:'Status line',scales:'Scales and lines',canvas:'Canvas',trading:'Trading',general:'Symbol',chart:'Scales and lines',project:'Trading',leverage:'Trading',commissions:'Trading'};
+    var titles={symbol:'Symbol',statusline:'Status line',scales:'Scales and lines',canvas:'Canvas',trading:'Trading',general:'Symbol',chart:'Scales and lines',project:'Trading',leverage:'Trading',commissions:'Trading',alerts:'Alerts',help:'Help',profile:'Profile'};
     var titleEl=document.getElementById('spContentTitle');
     if(titleEl)titleEl.textContent=titles[type]||type;
     document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.settings===type);});
     var el=document.getElementById('settingsPanelContent');
     if(!el)return;
-    try{ el.innerHTML=P[type]?P[type].build():'<p style="color:#787b86;padding:20px 0;">Coming soon.</p>'; }catch(e){ el.innerHTML='<p style="color:#f23645;">Error: '+e.message+'</p>'; console.error(e); }
-    try{ if(P[type]&&P[type].wire)P[type].wire(); }catch(e){ console.error(e); }
+    var def=P[type]||(window._spPanels&&window._spPanels[type]);
+    try{ el.innerHTML=def?def.build():'<p style="color:#787b86;padding:20px 0;">Coming soon.</p>'; }catch(e){ el.innerHTML='<p style="color:#f23645;">Error: '+e.message+'</p>'; console.error(e); }
+    try{ if(def&&def.wire)def.wire(); }catch(e){ console.error(e); }
 }
 
 window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
