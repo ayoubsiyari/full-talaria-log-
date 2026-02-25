@@ -263,49 +263,41 @@ class TrendlineTool extends BaseDrawing {
             const capPad = 2;
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            // Compute visible segment (clamp to chart boundaries)
-            const xRange = scales && scales.xScale ? scales.xScale.range() : null;
-            const vLeft = xRange ? xRange[0] : 0;
-            const vRight = xRange ? xRange[1] : 99999;
+            // Use raw (unclamped) data-point pixel positions for gap/text placement
             const rawLX = origX1 <= origX2 ? origX1 : origX2;
             const rawLY = origX1 <= origX2 ? origY1 : origY2;
             const rawRX = origX1 <= origX2 ? origX2 : origX1;
             const rawRY = origX1 <= origX2 ? origY2 : origY1;
             const rawDX = rawRX - rawLX, rawDY = rawRY - rawLY;
-            let segLX = rawLX, segLY = rawLY;
-            if (rawDX !== 0 && rawLX < vLeft) { const f = (vLeft - rawLX) / rawDX; segLX = vLeft; segLY = rawLY + f * rawDY; }
-            let segRX = rawRX, segRY = rawLY;
-            if (rawDX !== 0) { const f = (segRX - rawLX) / rawDX; segRY = rawLY + f * rawDY; }
-            if (rawDX !== 0 && rawRX > vRight) { const f = (vRight - rawLX) / rawDX; segRX = vRight; segRY = rawLY + f * rawDY; }
+            const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
+            const seg_ux = rawDX / rawLen;
+            const seg_uy = rawDY / rawLen;
 
-            // Calculate text position on the VISIBLE segment
-            const segLen = Math.sqrt((segRX - segLX) ** 2 + (segRY - segLY) ** 2) || 1;
-            const seg_ux = (segRX - segLX) / segLen;
-            const seg_uy = (segRY - segLY) / segLen;
+            // Calculate text/gap position from raw endpoints — no clamping
             let textX, textY;
             switch (textHAlign) {
-                case 'left':  textX = segLX + seg_ux * (TEXT_EDGE_PADDING + capPad); textY = segLY + seg_uy * (TEXT_EDGE_PADDING + capPad); break;
-                case 'right': textX = segRX - seg_ux * (TEXT_EDGE_PADDING + capPad); textY = segRY - seg_uy * (TEXT_EDGE_PADDING + capPad); break;
-                default:      textX = (segLX + segRX) / 2;      textY = (segLY + segRY) / 2;
+                case 'left':  textX = rawLX + seg_ux * (TEXT_EDGE_PADDING + capPad); textY = rawLY + seg_uy * (TEXT_EDGE_PADDING + capPad); break;
+                case 'right': textX = rawRX - seg_ux * (TEXT_EDGE_PADDING + capPad); textY = rawRY - seg_uy * (TEXT_EDGE_PADDING + capPad); break;
+                default:      textX = (rawLX + rawRX) / 2; textY = (rawLY + rawRY) / 2;
             }
 
             // Calculate split points based on anchor type so gap covers actual text area
             const halfGap = gapSize / 2;
             let split1X, split1Y, split2X, split2Y;
             switch (textHAlign) {
-                case 'left': // anchor:start — text extends rightward from textX
+                case 'left':
                     split1X = textX - seg_ux * capPad;
                     split1Y = textY - seg_uy * capPad;
                     split2X = textX + seg_ux * (textWidth + padding + capPad);
                     split2Y = textY + seg_uy * (textWidth + padding + capPad);
                     break;
-                case 'right': // anchor:end — text extends leftward from textX
+                case 'right':
                     split1X = textX - seg_ux * (textWidth + padding + capPad);
                     split1Y = textY - seg_uy * (textWidth + padding + capPad);
                     split2X = textX + seg_ux * capPad;
                     split2Y = textY + seg_uy * capPad;
                     break;
-                default: // anchor:middle — text centered on textX
+                default:
                     split1X = textX - seg_ux * halfGap;
                     split1Y = textY - seg_uy * halfGap;
                     split2X = textX + seg_ux * halfGap;
