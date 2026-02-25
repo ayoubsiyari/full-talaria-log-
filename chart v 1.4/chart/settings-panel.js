@@ -28,8 +28,14 @@ window._spPanels = {};
     function openPanel() {
         panel.classList.add('open');
         loadSection(currentType);
+        var c = ch();
+        if (c) { c.priceAxisLeft = true; c.margin.l = 60; c.margin.r = 0; if (c.scheduleRender) c.scheduleRender(); }
     }
-    function closePanel() { panel.classList.remove('open'); }
+    function closePanel() {
+        panel.classList.remove('open');
+        var c = ch();
+        if (c) { c.priceAxisLeft = false; c.margin.l = 0; c.margin.r = 60; if (c.scheduleRender) c.scheduleRender(); }
+    }
 
     window._spToggle = function() { panel.classList.contains('open') ? closePanel() : openPanel(); };
     window._spLoad = function(type, el) {
@@ -41,9 +47,6 @@ window._spPanels = {};
 
     if (btn)    btn.addEventListener('click', function(e){ e.stopPropagation(); window._spToggle(); });
     if (closeB) closeB.addEventListener('click', function(e){ e.stopPropagation(); closePanel(); });
-    document.addEventListener('click', function(e){
-        if (panel.classList.contains('open') && !panel.contains(e.target) && !(btn && btn.contains(e.target))) closePanel();
-    });
 
     /* nav item clicks */
     panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
