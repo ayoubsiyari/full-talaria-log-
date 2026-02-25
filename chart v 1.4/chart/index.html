@@ -24974,7 +24974,16 @@ P['symbol']={title:'Symbol',build:function(){
     wClr('wkDn',function(v){set('wickDownColor',v);});
     wClr('areaFill',function(v){set('areaFillColor',v);});
     wSel('sym_type',function(v){set('chartType',v);loadSection('symbol');});
-    wSel('sym_prec',function(v){set('pricePrecision',v);var c=ch();if(c){c.chartSettings=c.chartSettings||{};c.chartSettings.pricePrecision=v;if(c.scheduleRender)c.scheduleRender();}});
+    wSel('sym_prec',function(v){
+        var c=ch();if(!c)return;
+        var target=c._settingsSourceChart||c;
+        target.chartSettings=target.chartSettings||{};
+        target.chartSettings.pricePrecision=v;
+        c.chartSettings=c.chartSettings||{};
+        c.chartSettings.pricePrecision=v;
+        if(target.scheduleRender)target.scheduleRender();
+        if(c.saveSettings)c.saveSettings();
+    });
     wSel('sym_tz',function(v){set('timezone',v);var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
 }};
 
