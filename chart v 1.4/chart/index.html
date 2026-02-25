@@ -18521,7 +18521,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260224_CROSSHAIR_GLOBAL_V6"></script>
+         <script src="chart.js?v=20260225_PRICE_PRECISION_V1"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260219_REPLAY_FORWARD_PANLOAD_V1"></script>
@@ -24974,7 +24974,7 @@ P['symbol']={title:'Symbol',build:function(){
     wClr('wkDn',function(v){set('wickDownColor',v);});
     wClr('areaFill',function(v){set('areaFillColor',v);});
     wSel('sym_type',function(v){set('chartType',v);loadSection('symbol');});
-    wSel('sym_prec',function(v){set('pricePrecision',v);});
+    wSel('sym_prec',function(v){set('pricePrecision',v);var c=ch();if(c){c.chartSettings=c.chartSettings||{};c.chartSettings.pricePrecision=v;if(c.scheduleRender)c.scheduleRender();}});
     wSel('sym_tz',function(v){set('timezone',v);var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
 }};
 
