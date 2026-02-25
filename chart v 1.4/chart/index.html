@@ -24995,11 +24995,9 @@ P['symbol']={title:'Symbol',build:function(){
 P['statusline']={title:'Status line',build:function(){
     var cs=(ch()&&ch().chartSettings)||{};
     return sec(st('OHLC BAR')+chk('Show OHLC values on chart','showVals',cs.showChartValues!==false)+chk('Show bar change % values','showBar',cs.showBarChangeValues!==false))+
-    sec(st('INDICATOR LEGEND')+chk('Show indicator titles','indTitles',cs.showIndicatorTitles!==false)+chk('Show indicator arguments','indArgs',cs.showIndicatorArguments!==false)+chk('Show indicator values','indVals',cs.showIndicatorValues!==false))+
     sec(st('SYMBOL LABEL')+chk('Show symbol name','symTitle',cs.symbolTitle!==false)+sel('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc'));
 },wire:function(){
     wChk('showVals',function(v){set('showChartValues',v);});wChk('showBar',function(v){set('showBarChangeValues',v);});
-    wChk('indTitles',function(v){set('showIndicatorTitles',v);});wChk('indArgs',function(v){set('showIndicatorArguments',v);});wChk('indVals',function(v){set('showIndicatorValues',v);});
     wChk('symTitle',function(v){set('symbolTitle',v);});wSel('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symClr',function(v){set('symbolTextColor',v);});
 }};
 
