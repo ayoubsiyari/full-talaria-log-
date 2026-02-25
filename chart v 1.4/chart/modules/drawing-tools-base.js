@@ -587,10 +587,25 @@ class BaseDrawing {
                 // Use dataIndexToPixel if available, otherwise use xScale
                 const xPos = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(index) : xScale(index);
                 if (xPos >= margin.l && xPos <= chartWidth - margin.r) {
-                    // Get time from candle data (candle.t is the timestamp)
+                    // Get time from candle data, extrapolating if index is out of range
+                    const dataLength = this.chart.data?.length || 0;
+                    let candleTime = null;
                     const candle = this.chart.data?.[roundedIndex];
                     if (candle && candle.t) {
-                        const date = new Date(candle.t);
+                        candleTime = candle.t;
+                    } else if (dataLength >= 2) {
+                        const firstCandle = this.chart.data[0];
+                        const lastCandle = this.chart.data[dataLength - 1];
+                        const prevCandle = this.chart.data[dataLength - 2];
+                        const candleInterval = lastCandle.t - prevCandle.t;
+                        if (roundedIndex < 0 && firstCandle?.t) {
+                            candleTime = firstCandle.t + (candleInterval * roundedIndex);
+                        } else if (roundedIndex >= dataLength && lastCandle?.t) {
+                            candleTime = lastCandle.t + (candleInterval * (roundedIndex - (dataLength - 1)));
+                        }
+                    }
+                    if (candleTime !== null) {
+                        const date = new Date(candleTime);
                         const day = date.getDate().toString().padStart(2, '0');
                         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                         const month = months[date.getMonth()];
