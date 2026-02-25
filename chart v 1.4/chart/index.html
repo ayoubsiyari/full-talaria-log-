@@ -13800,14 +13800,14 @@
         .right-sidebar-icon-btn,
         .sidebar-timeframe-btn { position: relative; }
 
-        /* Bottom toolbar — tooltip appears above button */
+        /* Top toolbar — tooltip drops below button */
         .toolbar-icon-btn-dark[data-tooltip]::after,
         .toolbar-icon-btn-light[data-tooltip]::after,
         .profile-avatar-btn[data-tooltip]::after {
             content: attr(data-tooltip);
             position: absolute;
-            bottom: calc(100% + 8px);
-            top: auto;
+            top: calc(100% + 8px);
+            bottom: auto;
             left: 50%;
             transform: translateX(-50%);
             background: #1e222d;
