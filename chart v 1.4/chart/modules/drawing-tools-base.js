@@ -384,7 +384,7 @@ class BaseDrawing {
             timeZoneWidth = maxX - minX;
         }
         
-        if (timeZoneWidth > 0 && timeZoneStartX !== null) {
+        if (this.style.showTimeLabel !== false && timeZoneWidth > 0 && timeZoneStartX !== null) {
             canvasZones.push({
                 type: 'time',
                 x: timeZoneStartX,
@@ -551,7 +551,7 @@ class BaseDrawing {
             
             // Price highlight on Y-axis (right side)
             const yPos = yScale(price);
-            if (yPos >= margin.t && yPos <= chartHeight - margin.b) {
+            if (this.style.showPriceLabel !== false && yPos >= margin.t && yPos <= chartHeight - margin.b) {
                 const priceText = price.toFixed(this.chart.priceDecimals || 5);
                 const boxWidth = 58;
                 const boxHeight = 20;
@@ -581,7 +581,7 @@ class BaseDrawing {
             
             // Time highlight on X-axis (bottom) - only add if not already added for this x position
             const roundedIndex = Math.round(index);
-            if (!timePositions.has(roundedIndex)) {
+            if (this.style.showTimeLabel !== false && !timePositions.has(roundedIndex)) {
                 timePositions.add(roundedIndex);
                 
                 // Use dataIndexToPixel if available, otherwise use xScale

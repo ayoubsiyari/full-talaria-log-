@@ -2671,6 +2671,49 @@ body.light-mode .template-save-dialog .dialog-title {
             container.appendChild(extendSection);
         }
         
+        // Price labels / Time labels checkboxes (for all tools with axis highlights)
+        {
+            const labelsSection = document.createElement('div');
+            labelsSection.style.cssText = 'margin-top: 12px; display: flex; flex-direction: column; gap: 6px;';
+
+            const priceLabelChecked = drawing.style.showPriceLabel !== false;
+            const timeLabelChecked = drawing.style.showTimeLabel !== false;
+
+            labelsSection.innerHTML = `
+                <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
+                    <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-axis-prop="showPriceLabel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    <span class="tv-checkbox-label" style="white-space:nowrap;">Price labels</span>
+                </div>
+                <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
+                    <div class="tv-checkbox ${timeLabelChecked ? 'checked' : ''}" data-axis-prop="showTimeLabel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    <span class="tv-checkbox-label" style="white-space:nowrap;">Time labels</span>
+                </div>
+            `;
+
+            labelsSection.querySelectorAll('[data-axis-prop]').forEach(cb => {
+                cb.addEventListener('click', () => {
+                    const prop = cb.dataset.axisProp;
+                    drawing.style[prop] = !cb.classList.contains('checked');
+                    cb.classList.toggle('checked', drawing.style[prop]);
+                    applyChanges();
+                    if (drawing.selected && drawing.showAxisHighlights) {
+                        drawing.hideAxisHighlights();
+                        drawing.showAxisHighlights();
+                    }
+                });
+            });
+
+            container.appendChild(labelsSection);
+        }
+
         // Info section with checkboxes (only for trendline and arrow, not curve)
         if (['trendline', 'arrow'].includes(drawing.type)) {
             const infoSection = document.createElement('div');
