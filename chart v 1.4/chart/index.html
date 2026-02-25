@@ -15344,6 +15344,14 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                     <span>Trading</span>
                 </div>
+                <div class="sp-nav-item" data-settings="watchlist" onclick="event.stopPropagation();window._spLoad&&window._spLoad('watchlist',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+                    <span>Watchlist</span>
+                </div>
+                <div class="sp-nav-item" data-settings="news" onclick="event.stopPropagation();window._spLoad&&window._spLoad('news',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+                    <span>News</span>
+                </div>
                 <div class="sp-nav-divider"></div>
                 <div class="sp-nav-item" data-settings="alerts" onclick="event.stopPropagation();window._spLoad&&window._spLoad('alerts',this);">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -17922,7 +17930,7 @@
             <div style="flex: 1;"></div>
             
             <div class="right-sidebar-bottom">
-                <button class="right-sidebar-icon-btn" id="newsIconBtn" data-panel="news" data-tooltip="Economic News">
+                <button class="right-sidebar-icon-btn" id="newsIconBtn" data-panel="news" data-tooltip="Economic News" onclick="event.stopPropagation();window._spOpen&&window._spOpen('news');">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" stroke-linecap="round" stroke-linejoin="round"/>
                         <line x1="10" y1="6" x2="18" y2="6" stroke-linecap="round"/>
@@ -17931,7 +17939,7 @@
                     </svg>
                 </button>
                 
-                <button class="right-sidebar-icon-btn" id="clockIconBtn" data-panel="clock" data-tooltip="Clock">
+                <button class="right-sidebar-icon-btn" id="clockIconBtn" data-panel="clock" data-tooltip="Watchlist" onclick="event.stopPropagation();window._spOpen&&window._spOpen('watchlist');">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <circle cx="12" cy="12" r="10" stroke-linecap="round"/>
                         <polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round"/>
@@ -18955,12 +18963,7 @@
             if (watchlistBtn) {
                 watchlistBtn.addEventListener('click', () => showPanel('watchlist'));
             }
-            if (newsBtn) {
-                newsBtn.addEventListener('click', () => showPanel('news'));
-            }
-            if (clockBtn) {
-                clockBtn.addEventListener('click', () => showPanel('clock'));
-            }
+            /* newsBtn and clockBtn now handled via onclick -> window._spOpen */
             if (alertsBtn) {
                 alertsBtn.addEventListener('click', () => showPanel('alerts'));
             }
@@ -25119,6 +25122,32 @@ P['trading']={title:'Trading',build:function(){
 
 /* ── aliases for any legacy callers ── */
 P['general']=P['symbol']; P['chart']=P['scales']; P['project']=P['trading']; P['leverage']=P['trading']; P['commissions']=P['trading'];
+
+/* ── Watchlist ── */
+P['watchlist']={
+    build:function(){
+        var src=document.getElementById('watchlistContent');
+        return src?src.innerHTML:'<p style="color:#787b86;padding:20px 0;">Watchlist not available.</p>';
+    },
+    wire:function(){
+        var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var inp=ctx.querySelector('#watchlistSearchInput');
+        if(inp&&window.loadWatchlistItems) window.loadWatchlistItems();
+        var addBtn=ctx.querySelector('#addSymbolBtn');
+        var origAdd=document.getElementById('addSymbolBtn');
+        if(addBtn&&origAdd) addBtn.onclick=function(){ origAdd.click(); };
+        if(window.loadWatchlistItems) window.loadWatchlistItems();
+    }
+};
+
+/* ── News ── */
+P['news']={
+    build:function(){
+        var src=document.getElementById('newsContent');
+        return src?src.innerHTML:'<p style="color:#787b86;padding:20px 0;">News not available.</p>';
+    },
+    wire:function(){}
+};
 
 /* ── Alerts ── */
 P['alerts']={
