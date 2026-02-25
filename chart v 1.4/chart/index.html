@@ -13752,18 +13752,59 @@
         }
 
         /* =====================================================
-           UNIVERSAL TOOLTIP SYSTEM
-           Overrides all per-element tooltip styles above.
-           Matches the Undo/Redo tooltip style.
+           UNIFIED TOOLTIP VISUAL STYLE
+           Only overrides look (bg, radius, font, transition).
+           All positioning from per-element rules is preserved.
            ===================================================== */
+        #cursorTool::after,
+        #indicatorsBtn::after,
+        #chartTypeBtn::after,
+        #rulerTool::after,
+        #symbolWatchlistBtn::after,
+        .tool-group-btn[data-group="visibility-toolbar"]::after,
+        #keepDrawingModeToolbar::after,
+        .tool-group-btn[data-group="delete-toolbar"]::after,
+        .tool-group-btn::after,
+        .left-sidebar .tool-btn::after,
+        .tool-btn::after {
+            background: #1e222d !important;
+            color: #ffffff !important;
+            border-radius: 6px !important;
+            border: none !important;
+            font-size: 12px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            font-weight: 400 !important;
+            transition: opacity 0s !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+            padding: 6px 12px !important;
+        }
 
-        /* Base: floating tooltip for all [data-tooltip] elements */
-        [data-tooltip]::after {
+        /* Exception: dropdown grid inline labels must stay transparent/static */
+        .tool-dropdown-grid .tool-btn::after {
+            position: static !important;
+            transform: none !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            opacity: 1 !important;
+            font-size: 14px !important;
+            font-weight: 400 !important;
+            color: #d1d5db !important;
+        }
+
+        /* Right sidebar buttons need position:relative for ::after */
+        .right-sidebar-icon-btn,
+        .sidebar-timeframe-btn { position: relative; }
+
+        /* Right sidebar icons — tooltip to the left */
+        .right-sidebar-icons [data-tooltip]::after {
             content: attr(data-tooltip);
             position: absolute;
-            top: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
+            top: 50%;
+            left: auto;
+            right: calc(100% + 10px);
+            transform: translateY(-50%);
             background: #1e222d;
             color: #ffffff;
             padding: 6px 12px;
@@ -13780,61 +13821,7 @@
             z-index: 100002;
         }
 
-        [data-tooltip]:hover::after { opacity: 1; }
-
-        /* Left sidebar — tooltip to the right */
-        .left-sidebar [data-tooltip]::after {
-            top: 50%;
-            left: calc(100% + 10px);
-            transform: translateY(-50%);
-        }
-
-        /* Right sidebar buttons need position:relative for ::after */
-        .right-sidebar-icon-btn,
-        .sidebar-timeframe-btn { position: relative; }
-
-        /* Right sidebar icons — tooltip to the left */
-        .right-sidebar-icons [data-tooltip]::after {
-            top: 50%;
-            left: auto;
-            right: calc(100% + 10px);
-            transform: translateY(-50%);
-        }
-
-        /* Cursor tool — extra gap to clear dropdown arrow strip */
-        #cursorTool::after { top: calc(100% + 20px); }
-
-        /* Dropdown grid: keep the inline label behavior, not floating tooltip */
-        .tool-dropdown-grid [data-tooltip]::after {
-            position: static !important;
-            transform: none !important;
-            background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            opacity: 1 !important;
-            pointer-events: none !important;
-            font-size: 14px;
-            font-weight: 400;
-            color: #d1d5db;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            flex: 1;
-        }
-
-        /* Favorites toggle — hide tooltip */
-        #toggleFavoritesBar::after { display: none !important; }
-
-        /* Hide tooltip when dropdown is open */
-        .tool-group-btn.dropdown-open::after,
-        .tool-group-btn.dropdown-open:hover::after { opacity: 0 !important; }
-
-        /* Light mode tooltip */
-        body.light-mode [data-tooltip]::after {
-            background: #1e222d;
-            color: #ffffff;
-        }
+        .right-sidebar-icons [data-tooltip]:hover::after { opacity: 1; }
     </style>
     
     <style>
