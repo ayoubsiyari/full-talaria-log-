@@ -2703,11 +2703,14 @@ body.light-mode .template-save-dialog .dialog-title {
                     const prop = cb.dataset.axisProp;
                     drawing.style[prop] = !cb.classList.contains('checked');
                     cb.classList.toggle('checked', drawing.style[prop]);
-                    applyChanges();
-                    if (drawing.selected && drawing.showAxisHighlights) {
-                        drawing.hideAxisHighlights();
-                        drawing.showAxisHighlights();
+                    self.pendingChanges.style = { ...(self.pendingChanges.style || {}), [prop]: drawing.style[prop] };
+                    self.applyChanges(drawing);
+                    if (window.drawingManager) {
+                        window.drawingManager.renderDrawing(drawing);
+                        window.drawingManager.saveDrawings();
                     }
+                    if (drawing.hideAxisHighlights) drawing.hideAxisHighlights();
+                    if (drawing.showAxisHighlights) drawing.showAxisHighlights();
                 });
             });
 
