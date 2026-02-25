@@ -461,7 +461,23 @@ class TrendlineTool extends BaseDrawing {
         // Calculate box dimensions first to know offset needed
         const padding = 8;
         const lineHeight = 16;
-        const boxWidth = 150;
+        const fontSize = 12;
+        const fontFamily = 'system-ui, -apple-system, sans-serif';
+
+        // Measure actual max text width using a temporary SVG text element
+        const tempG = this.group.append('g').style('visibility', 'hidden');
+        let maxTextWidth = 0;
+        infoLines.forEach(line => {
+            const t = tempG.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .text(line);
+            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : (line.length * fontSize * 0.6);
+            if (w > maxTextWidth) maxTextWidth = w;
+        });
+        tempG.remove();
+
+        const boxWidth = maxTextWidth + padding * 2;
         const boxHeight = infoLines.length * lineHeight + padding * 2;
         
         // Position info box perpendicular to the line, never covering it
@@ -493,7 +509,7 @@ class TrendlineTool extends BaseDrawing {
             .attr('class', 'trendline-info')
             .attr('transform', `translate(${offsetX}, ${offsetY})`);
         
-        // Draw background rectangle
+        // Draw background rectangle sized to content
         infoGroup.append('rect')
             .attr('x', -boxWidth / 2)
             .attr('y', 0)
@@ -511,8 +527,8 @@ class TrendlineTool extends BaseDrawing {
                 .attr('y', padding + (i + 0.7) * lineHeight)
                 .attr('text-anchor', 'middle')
                 .attr('fill', '#d1d4dc')
-                .attr('font-size', '12px')
-                .attr('font-family', 'system-ui, -apple-system, sans-serif')
+                .attr('font-size', `${fontSize}px`)
+                .attr('font-family', fontFamily)
                 .text(line);
         });
     }
