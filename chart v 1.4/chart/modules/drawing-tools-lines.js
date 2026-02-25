@@ -542,24 +542,18 @@ class TrendlineTool extends BaseDrawing {
             const sox2 = siScales && siScales.chart && siScales.chart.dataIndexToPixel
                 ? siScales.chart.dataIndexToPixel(sp2.x) : (siScales ? siScales.xScale(sp2.x) : this._splitInfo.textX);
             const soy2 = siScales ? siScales.yScale(sp2.y) : this._splitInfo.textY;
-            const siXRange = siScales && siScales.xScale ? siScales.xScale.range() : null;
-            const svLeft = siXRange ? siXRange[0] : 0, svRight = siXRange ? siXRange[1] : 99999;
             const sRawLX = sox1 <= sox2 ? sox1 : sox2, sRawLY = sox1 <= sox2 ? soy1 : soy2;
             const sRawRX = sox1 <= sox2 ? sox2 : sox1, sRawRY = sox1 <= sox2 ? soy2 : soy1;
             const sRawDX = sRawRX - sRawLX, sRawDY = sRawRY - sRawLY;
-            let sSegLX = sRawLX, sSegLY = sRawLY;
-            if (sRawDX !== 0 && sRawLX < svLeft) { const f = (svLeft - sRawLX) / sRawDX; sSegLX = svLeft; sSegLY = sRawLY + f * sRawDY; }
-            let sSegRX = sRawRX, sSegRY = sRawRY;
-            if (sRawDX !== 0 && sRawRX > svRight) { const f = (svRight - sRawLX) / sRawDX; sSegRX = svRight; sSegRY = sRawLY + f * sRawDY; }
-            const sSegLen = Math.sqrt((sSegRX - sSegLX) ** 2 + (sSegRY - sSegLY) ** 2) || 1;
-            const sUx = (sSegRX - sSegLX) / sSegLen, sUy = (sSegRY - sSegLY) / sSegLen;
+            const sRawLen = Math.sqrt(sRawDX * sRawDX + sRawDY * sRawDY) || 1;
+            const sUx = sRawDX / sRawLen, sUy = sRawDY / sRawLen;
             const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             const SI_EDGE = 5;
             let siTextX, siTextY, siAnchor;
             switch (siTextHAlign) {
-                case 'left':  siTextX = sSegLX + sUx * SI_EDGE; siTextY = sSegLY + sUy * SI_EDGE; siAnchor = 'start'; break;
-                case 'right': siTextX = sSegRX - sUx * SI_EDGE; siTextY = sSegRY - sUy * SI_EDGE; siAnchor = 'end';   break;
-                default:      siTextX = (sSegLX + sSegRX) / 2;  siTextY = (sSegLY + sSegRY) / 2;  siAnchor = 'middle';
+                case 'left':  siTextX = sRawLX + sUx * SI_EDGE; siTextY = sRawLY + sUy * SI_EDGE; siAnchor = 'start'; break;
+                case 'right': siTextX = sRawRX - sUx * SI_EDGE; siTextY = sRawRY - sUy * SI_EDGE; siAnchor = 'end';   break;
+                default:      siTextX = (sRawLX + sRawRX) / 2;  siTextY = (sRawLY + sRawRY) / 2;  siAnchor = 'middle';
             }
 
             appendTextLabel(this.group, label, {
@@ -634,45 +628,29 @@ class TrendlineTool extends BaseDrawing {
         const line_ux = rawDX / rawLen;
         const line_uy = rawDY / rawLen;
 
-        // Anchor point: actual endpoint when on-screen, visible-segment boundary when off-screen
-        // This keeps the text label at the visible end of the line at all times.
+        // Use raw (actual data-point) positions — no clamping to visible boundaries.
+        // Text moves exactly with the line. When the endpoint is off-screen the text
+        // is also off-screen (clipped by the SVG clip-path) — same as the line itself.
+        console.log('[TL-TEXT-V15] baseX from:', rawRX.toFixed(1), rawLX.toFixed(1));
         const EDGE = 5;
         let baseX, baseY;
         let labelAnchor;
         switch (textHAlign) {
-            case 'left': {
-                const ax = rawLX >= vLeft ? rawLX : segLX;
-                const ay = rawLX >= vLeft ? rawLY : segLY;
-                baseX = ax + line_ux * EDGE;
-                baseY = ay + line_uy * EDGE;
+            case 'left':
+                baseX = rawLX + line_ux * EDGE;
+                baseY = rawLY + line_uy * EDGE;
                 labelAnchor = 'start';
                 break;
-            }
-            case 'right': {
-                const ax = rawRX <= vRight ? rawRX : segRX;
-                const ay = rawRX <= vRight ? rawRY : segRY;
-                baseX = ax - line_ux * EDGE;
-                baseY = ay - line_uy * EDGE;
+            case 'right':
+                baseX = rawRX - line_ux * EDGE;
+                baseY = rawRY - line_uy * EDGE;
                 labelAnchor = 'end';
                 break;
-            }
-            default: {
-                const midX = (rawLX + rawRX) / 2;
-                const midY = (rawLY + rawRY) / 2;
-                // Keep midpoint inside visible segment
-                if (midX < segLX) {
-                    baseX = segLX + EDGE;
-                    baseY = segLY + line_uy * EDGE;
-                } else if (midX > segRX) {
-                    baseX = segRX - EDGE;
-                    baseY = segRY - line_uy * EDGE;
-                } else {
-                    baseX = midX;
-                    baseY = midY;
-                }
+            default:
+                baseX = (rawLX + rawRX) / 2;
+                baseY = (rawLY + rawRY) / 2;
                 labelAnchor = 'middle';
                 break;
-            }
         }
 
         const perpX = -Math.sin(angleRad);
