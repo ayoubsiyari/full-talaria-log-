@@ -13830,6 +13830,9 @@
         .toolbar-icon-btn-light[data-tooltip]:hover::after,
         .profile-avatar-btn[data-tooltip]:hover::after { opacity: 1; }
 
+        /* Allow ::after tooltip to overflow the button bounds */
+        .right-sidebar-icons [data-tooltip] { overflow: visible !important; }
+
         /* Right sidebar icons — tooltip to the left */
         .right-sidebar-icons [data-tooltip]::after {
             content: attr(data-tooltip);
