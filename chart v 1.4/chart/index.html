@@ -22933,7 +22933,7 @@ function showIndicatorsMenu() {
             const sliderThumb = document.getElementById('speedSliderThumb');
             const sliderFill = document.getElementById('speedSliderFill');
             
-            let currentIndex = 0;
+            let currentIndex = 5;
             const maxIndex = 14;
             
             // Update slider position
@@ -23060,8 +23060,8 @@ function showIndicatorsMenu() {
                     setSpeedByIndex(snappedIndex);
                 });
                 
-                // Initialize position
-                updateSliderPosition(0, false);
+                // Initialize position at 60x (1 candle/second default)
+                updateSliderPosition(5, false);
             }
             
             // Play button handler

@@ -9,7 +9,7 @@ class ReplaySystem {
         this.isActive = false;
         this.isPlaying = false;
         this.currentIndex = 0;
-        this.speed = 1;
+        this.speed = 60;
         this.playInterval = null;
         this.fullRawData = null;
         this.fullData = null;
