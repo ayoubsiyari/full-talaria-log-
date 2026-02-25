@@ -2427,6 +2427,9 @@
             overflow-y: auto;
             padding: 20px 24px;
         }
+        .sp-content-body .sp-embedded { margin: -20px -24px; }
+        .sp-content-body .sp-embedded .side-panel-item { padding: 14px 24px; }
+        .sp-content-body .sp-embedded .side-panel-footer { padding: 14px 24px; }
         .sp-content-body::-webkit-scrollbar { width: 4px; }
         .sp-content-body::-webkit-scrollbar-track { background: transparent; }
         .sp-content-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
@@ -15341,6 +15344,19 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                     <span>Trading</span>
                 </div>
+                <div class="sp-nav-divider"></div>
+                <div class="sp-nav-item" data-settings="alerts" onclick="event.stopPropagation();window._spLoad&&window._spLoad('alerts',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span>Alerts</span>
+                </div>
+                <div class="sp-nav-item" data-settings="help" onclick="event.stopPropagation();window._spLoad&&window._spLoad('help',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
+                    <span>Help</span>
+                </div>
+                <div class="sp-nav-item" data-settings="profile" onclick="event.stopPropagation();window._spLoad&&window._spLoad('profile',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span>Profile</span>
+                </div>
             </nav>
         </div>
         <!-- Content area -->
@@ -16772,7 +16788,7 @@
                     </svg>
                 </button>
                 <!-- Help Button -->
-                <button class="toolbar-icon-btn-light" id="helpBtn" data-tooltip="Help" onclick="event.stopPropagation();window._openSidePanel('helpPanel');">
+                <button class="toolbar-icon-btn-light" id="helpBtn" data-tooltip="Help" onclick="event.stopPropagation();window._spOpen&&window._spOpen('help');">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"></circle>
                         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -16781,7 +16797,7 @@
                 </button>
 
                 <!-- Profile Avatar -->
-                <button class="profile-avatar-btn" id="profileBtn" data-tooltip="Profile" onclick="event.stopPropagation();window._openSidePanel('profilePanel');">
+                <button class="profile-avatar-btn" id="profileBtn" data-tooltip="Profile" onclick="event.stopPropagation();window._spOpen&&window._spOpen('profile');">
                     <div class="avatar-circle">
                         <svg viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
@@ -18948,10 +18964,13 @@
             if (alertsBtn) {
                 alertsBtn.addEventListener('click', () => showPanel('alerts'));
             }
-            // Toolbar alerts button
+            // Toolbar alerts button — opens global settings panel on Alerts section
             const toolbarAlertsBtn = document.getElementById('toolbarAlertsBtn');
             if (toolbarAlertsBtn) {
-                toolbarAlertsBtn.addEventListener('click', () => showPanel('alerts'));
+                toolbarAlertsBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (window._spOpen) window._spOpen('alerts');
+                });
             }
             if (closeUnifiedPanel) {
                 closeUnifiedPanel.addEventListener('click', function() {
@@ -25126,9 +25145,10 @@ var panel=null,btn=null,closeB=null;
 
 var _spBottomInterval=null;
 function _syncSpBottom(){if(!panel)return;var ct=document.querySelector('.container');var b=ct?parseFloat(ct.style.bottom)||0:0;panel.style.bottom=b+'px';}
-function openPanel(){if(!panel)return;['helpPanel','profilePanel'].forEach(function(pid){var p=document.getElementById(pid);if(p)p.classList.remove('open');});panel.classList.add('open');_syncSpBottom();loadSection('symbol');var w=document.getElementById('chartWrapper');if(w)w.classList.add('settings-open');_spBottomInterval=setInterval(_syncSpBottom,200);var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
+function openPanel(section){if(!panel)return;['helpPanel','profilePanel'].forEach(function(pid){var p=document.getElementById(pid);if(p)p.classList.remove('open');});panel.classList.add('open');_syncSpBottom();loadSection(section||'symbol');var w=document.getElementById('chartWrapper');if(w)w.classList.add('settings-open');_spBottomInterval=setInterval(_syncSpBottom,200);var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
 function closePanel(){if(!panel)return;panel.classList.remove('open');if(_spBottomInterval){clearInterval(_spBottomInterval);_spBottomInterval=null;}var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
-window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};
+window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};  
+window._spOpen=function(section){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;var navItem=document.querySelector('.sp-nav-item[data-settings="'+section+'"]');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(navItem)navItem.classList.add('active');if(panel.classList.contains('open')){loadSection(section);}else{openPanel(section);}};
 /* ── Side Panel management ── */
 window._openSidePanel=function(id){
     var all=['helpPanel','profilePanel'];
@@ -25174,6 +25194,82 @@ if(document.readyState==='loading'){
 }else{
     _spWireDom();
 }
+
+/* ── Register Help / Profile / Alerts sections in settings panel ── */
+(function registerExtraSections(){
+    function ready(fn){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fn); else fn(); }
+    ready(function(){
+        var P=window._spPanels; if(!P){ setTimeout(arguments.callee,200); return; }
+
+        P['help']={
+            title:'Help',
+            build:function(){
+                return '<div class="side-panel-body sp-embedded">'+
+                    '<div class="side-panel-item" id="sp_helpContact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg><span>Contact Support</span></div>'+
+                    '<div class="side-panel-item" id="sp_helpKbd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg><span>Keyboard shortcuts</span></div>'+
+                    '<div class="side-panel-item" id="sp_helpFAQ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg><span>FAQ</span></div>'+
+                    '<div class="side-panel-divider"></div>'+
+                    '<div class="side-panel-item" id="sp_helpChangelog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span>Changelog</span><span class="side-panel-badge">1</span></div>'+
+                    '<div class="side-panel-footer">Current version 1.4.9</div>'+
+                    '</div>';
+            },
+            wire:function(){
+                var c=document.getElementById('sp_helpContact'); if(c) c.onclick=function(){ window.open('mailto:support@talaria.com','_blank'); };
+                var k=document.getElementById('sp_helpKbd'); if(k) k.onclick=function(){ if(window.toggleKeyboardShortcuts) window.toggleKeyboardShortcuts(); };
+            }
+        };
+
+        P['profile']={
+            title:'Profile',
+            build:function(){
+                var isDark=!document.body.classList.contains('light-mode');
+                return '<div class="side-panel-body sp-embedded">'+
+                    '<div class="side-panel-item" id="sp_profTheme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><span>Theme</span><span class="side-panel-value" id="sp_profThemeVal">'+(isDark?'Dark':'Light')+'</span></div>'+
+                    '<div class="side-panel-divider"></div>'+
+                    '<div class="side-panel-item" id="sp_profAccount"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Account Settings</span></div>'+
+                    '<div class="side-panel-item sp-danger" id="sp_profLogout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Log Out</span></div>'+
+                    '</div>';
+            },
+            wire:function(){
+                var t=document.getElementById('sp_profTheme');
+                if(t) t.onclick=function(){ document.body.classList.toggle('light-mode'); var v=document.getElementById('sp_profThemeVal'); if(v) v.textContent=document.body.classList.contains('light-mode')?'Light':'Dark'; };
+                var a=document.getElementById('sp_profAccount'); if(a) a.onclick=function(){ window.location.href='/profile'; };
+                var l=document.getElementById('sp_profLogout'); if(l) l.onclick=function(){ window.location.href='/logout'; };
+            }
+        };
+
+        P['alerts']={
+            title:'Alerts',
+            build:function(){
+                return '<div class="side-panel-body sp-embedded" style="padding:20px 16px;">'+
+                    '<p style="color:#787b86;font-size:13px;margin:0 0 16px;">No alerts set. Use the alert button on the chart to create price alerts.</p>'+
+                    '<div id="sp_alertsList"></div>'+
+                    '</div>';
+            },
+            wire:function(){
+                var list=document.getElementById('sp_alertsList');
+                if(!list) return;
+                var alerts=[];
+                try{ alerts=JSON.parse(localStorage.getItem('talaria_alerts')||'[]'); }catch(e){}
+                if(!alerts.length){ list.innerHTML=''; return; }
+                list.innerHTML=alerts.map(function(a,i){
+                    return '<div class="side-panel-item" style="justify-content:space-between;">'+
+                        '<span style="font-size:13px;">'+a.symbol+' '+a.condition+' '+a.price+'</span>'+
+                        '<span style="color:#f23645;cursor:pointer;font-size:18px;" data-idx="'+i+'">&times;</span>'+
+                    '</div>';
+                }).join('');
+                list.querySelectorAll('[data-idx]').forEach(function(btn){
+                    btn.onclick=function(){
+                        var idx=parseInt(this.dataset.idx);
+                        alerts.splice(idx,1);
+                        try{ localStorage.setItem('talaria_alerts',JSON.stringify(alerts)); }catch(e){}
+                        if(P['alerts']&&P['alerts'].wire) P['alerts'].wire();
+                    };
+                });
+            }
+        };
+    });
+})();
 
 /* ── Side Panel item wiring ── */
 (function wireSidePanelItems(){
