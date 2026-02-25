@@ -242,6 +242,90 @@ window._spPanels = {};
         }
     };
 
+    /* ════════════════════════════════════════════
+       ALERTS
+    ════════════════════════════════════════════ */
+    window._spPanels['alerts'] = {
+        title: 'Alerts',
+        build: function(){
+            var src = document.getElementById('alertsContent');
+            return src ? src.innerHTML : '<p style="color:#787b86;padding:20px 0;">No alerts yet.</p>';
+        },
+        wire: function(){
+            var ctx = document.getElementById('settingsPanelContent');
+            if (!ctx) return;
+            var newList = ctx.querySelector('#alertsList');
+            var addBtn  = ctx.querySelector('#addAlertBtn');
+            if (window.alertSystem) {
+                if (newList) { window.alertSystem.alertsList = newList; window.alertSystem.refreshAlertsList(); }
+                if (addBtn)  { addBtn.onclick = function(){ window.alertSystem.showCreateAlertModal(); }; }
+            }
+        }
+    };
+
+    /* ════════════════════════════════════════════
+       HELP
+    ════════════════════════════════════════════ */
+    window._spPanels['help'] = {
+        title: 'Help',
+        build: function(){
+            var src = document.querySelector('#helpPanel .side-panel-body');
+            return src ? src.innerHTML : '';
+        },
+        wire: function(){
+            var ctx = document.getElementById('settingsPanelContent');
+            if (!ctx) return;
+            var c = ctx.querySelector('#helpContactSupport');
+            if (c) c.onclick = function(){ window.open('mailto:support@talaria.com','_blank'); };
+            var k = ctx.querySelector('#helpKeyboardShortcuts');
+            if (k) k.onclick = function(){ if (window.toggleKeyboardShortcuts) window.toggleKeyboardShortcuts(); };
+            var f = ctx.querySelector('#helpFAQ');
+            if (f) f.onclick = function(){};
+            var e = ctx.querySelector('#helpEducation');
+            if (e) e.onclick = function(){};
+        }
+    };
+
+    /* ════════════════════════════════════════════
+       PROFILE
+    ════════════════════════════════════════════ */
+    window._spPanels['profile'] = {
+        title: 'Profile',
+        build: function(){
+            var src = document.querySelector('#profilePanel .side-panel-body');
+            return src ? src.innerHTML : '';
+        },
+        wire: function(){
+            var ctx = document.getElementById('settingsPanelContent');
+            if (!ctx) return;
+            var t = ctx.querySelector('#profileTheme2');
+            if (t) t.onclick = function(){
+                document.body.classList.toggle('light-mode');
+                var isDark = !document.body.classList.contains('light-mode');
+                var v = ctx.querySelector('#profileThemeValue2');
+                if (v) v.textContent = isDark ? 'Dark' : 'Light';
+            };
+            var a = ctx.querySelector('#profileAccount2');
+            if (a) a.onclick = function(){ window.location.href = '/profile'; };
+            var l = ctx.querySelector('#profileLogout2');
+            if (l) l.onclick = function(){ window.location.href = '/logout'; };
+        }
+    };
+
+    /* ── _spOpen: open panel on a specific section ── */
+    window._spOpen = function(section) {
+        if (!panel) return;
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
+        var navItem = panel.querySelector('.sp-nav-item[data-settings="'+section+'"]');
+        if (navItem) navItem.classList.add('active');
+        if (panel.classList.contains('open')) {
+            loadSection(section);
+        } else {
+            currentType = section;
+            openPanel();
+        }
+    };
+
     /* ── Apply persisted General Settings on startup ── */
     function applyStartup(){
         var c=ch(); if(!c) return;
