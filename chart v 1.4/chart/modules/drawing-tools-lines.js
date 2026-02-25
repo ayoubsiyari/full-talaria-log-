@@ -1536,19 +1536,14 @@ class RayTool extends BaseDrawing {
         let extendedX, extendedY;
         
         if (Math.abs(dx) > 0.001) {
-            // Calculate slope
             const slope = dy / dx;
-            
             if (dx > 0) {
-                // Extend to right edge
                 extendedX = chartRightX;
                 extendedY = y1Screen + slope * (extendedX - x1Screen);
             } else {
-                // Extend to left edge
                 extendedX = chartLeftX;
                 extendedY = y1Screen + slope * (extendedX - x1Screen);
             }
-            
             // Clamp Y to chart boundaries
             if (extendedY < yRange[1]) {
                 extendedY = yRange[1];
@@ -1558,9 +1553,30 @@ class RayTool extends BaseDrawing {
                 extendedX = x1Screen + (extendedY - y1Screen) / slope;
             }
         } else {
-            // Vertical ray
             extendedX = x1Screen;
             extendedY = dy > 0 ? yRange[0] : yRange[1];
+        }
+
+        // Clip BOTH endpoints to visible chart area (same as ExtendedLineTool leftX/rightX)
+        // This ensures text positioning always uses on-screen coordinates
+        let visX1 = x1Screen, visY1 = y1Screen;
+        let visX2 = extendedX, visY2 = extendedY;
+        if (Math.abs(dx) > 0.001) {
+            const slope = dy / dx;
+            if (x1Screen < chartLeftX) {
+                visX1 = chartLeftX;
+                visY1 = y1Screen + slope * (chartLeftX - x1Screen);
+            } else if (x1Screen > chartRightX) {
+                visX1 = chartRightX;
+                visY1 = y1Screen + slope * (chartRightX - x1Screen);
+            }
+            if (extendedX < chartLeftX) {
+                visX2 = chartLeftX;
+                visY2 = y1Screen + slope * (chartLeftX - x1Screen);
+            } else if (extendedX > chartRightX) {
+                visX2 = chartRightX;
+                visY2 = y1Screen + slope * (chartRightX - x1Screen);
+            }
         }
 
         // Check if we need to split the line for text
@@ -1573,7 +1589,6 @@ class RayTool extends BaseDrawing {
         if (shouldSplitLine) {
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-            // Measure text width first
             const fontSize = this.style.fontSize || 14;
             const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
             const fontWeight = this.style.fontWeight || 'normal';
@@ -1589,155 +1604,96 @@ class RayTool extends BaseDrawing {
             const textWidth = textBBox.width;
             tempText.remove();
 
-            const lineAngle = Math.atan2(extendedY - y1Screen, extendedX - x1Screen);
+            // Use clipped endpoints for angle + text position (same as ExtendedLineTool)
+            const lineAngle = Math.atan2(visY2 - visY1, visX2 - visX1);
+            let angleDeg = lineAngle * (180 / Math.PI);
+            const isFlipped = angleDeg > 90 || angleDeg < -90;
+            if (isFlipped) angleDeg += 180;
 
             const padding = 10;
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            // Fixed 30px along line direction from endpoint, clamped within line
-            const RAY_EDGE = 30;
-            const rayLineLength = Math.sqrt((extendedX - x1Screen) ** 2 + (extendedY - y1Screen) ** 2);
-            const ray_ux = rayLineLength > 0 ? (extendedX - x1Screen) / rayLineLength : 1;
-            const ray_uy = rayLineLength > 0 ? (extendedY - y1Screen) / rayLineLength : 0;
-            const p1IsLeft_ray = x1Screen <= extendedX;
-            // visual left/right endpoints
-            const ray_lvX = p1IsLeft_ray ? x1Screen : extendedX;
-            const ray_lvY = p1IsLeft_ray ? y1Screen : extendedY;
-            const ray_rvX = p1IsLeft_ray ? extendedX : x1Screen;
-            const ray_rvY = p1IsLeft_ray ? extendedY : y1Screen;
-            // offset vector: from left→right unit direction * 30px
-            const ray_fwdX = ray_rvX > ray_lvX ? Math.abs(ray_ux) * RAY_EDGE : -Math.abs(ray_ux) * RAY_EDGE;
-            const ray_fwdY = ray_rvX > ray_lvX ? Math.abs(ray_uy) * RAY_EDGE * Math.sign(ray_uy || 1) : -Math.abs(ray_uy) * RAY_EDGE * Math.sign(ray_uy || 1);
+            const visLineLength = Math.sqrt((visX2 - visX1) ** 2 + (visY2 - visY1) ** 2);
+            const vis_ux = visLineLength > 0 ? (visX2 - visX1) / visLineLength : 1;
+            const vis_uy = visLineLength > 0 ? (visY2 - visY1) / visLineLength : 0;
+            const halfGapT = visLineLength > 0 ? (gapSize / 2) / visLineLength : 0;
+
             let rawTextX, rawTextY;
             switch (textHAlign) {
                 case 'left':
-                    rawTextX = ray_lvX + ray_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = ray_lvY + ray_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = visX1 + vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = visY1 + vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 case 'right':
-                    rawTextX = ray_rvX - ray_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = ray_rvY - ray_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = visX2 - vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = visY2 - vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 default:
-                    rawTextX = (x1Screen + extendedX) / 2;
-                    rawTextY = (y1Screen + extendedY) / 2;
+                    rawTextX = (visX1 + visX2) / 2;
+                    rawTextY = (visY1 + visY2) / 2;
             }
-            const halfGapT_ray = rayLineLength > 0 ? (gapSize / 2) / rayLineLength : 0;
-            const t_ray = rayLineLength > 0 ? Math.sqrt((rawTextX-x1Screen)**2+(rawTextY-y1Screen)**2) / rayLineLength : 0.5;
-            const split1T_ray = Math.max(0, t_ray - halfGapT_ray);
-            const split2T_ray = Math.min(1, t_ray + halfGapT_ray);
-            const textX = rawTextX;
-            const textY = rawTextY;
-            const split1X = x1Screen + (extendedX - x1Screen) * split1T_ray;
-            const split1Y = y1Screen + (extendedY - y1Screen) * split1T_ray;
-            const split2X = x1Screen + (extendedX - x1Screen) * split2T_ray;
-            const split2Y = y1Screen + (extendedY - y1Screen) * split2T_ray;
+            const t_ray = visLineLength > 0 ? Math.sqrt((rawTextX - visX1) ** 2 + (rawTextY - visY1) ** 2) / visLineLength : 0.5;
+            const split1T = Math.max(0, t_ray - halfGapT);
+            const split2T = Math.min(1, t_ray + halfGapT);
+            const split1X = visX1 + (visX2 - visX1) * split1T;
+            const split1Y = visY1 + (visY2 - visY1) * split1T;
+            const split2X = visX1 + (visX2 - visX1) * split2T;
+            const split2Y = visY1 + (visY2 - visY1) * split2T;
 
             this._splitInfo = {
-                textX: textX,
-                textY: textY,
-                angle: lineAngle * (180 / Math.PI),
+                textX: rawTextX,
+                textY: rawTextY,
+                angle: angleDeg,
                 gapSize: gapSize
             };
 
-            // Draw invisible wider stroke for easier clicking (first segment)
             this.group.append('line')
-                .attr('x1', x1Screen)
-                .attr('y1', y1Screen)
-                .attr('x2', split1X)
-                .attr('y2', split1Y)
+                .attr('x1', x1Screen).attr('y1', y1Screen)
+                .attr('x2', split1X).attr('y2', split1Y)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-            
-            // Draw first segment (from start to gap)
+                .style('pointer-events', 'stroke').style('cursor', 'move');
             this.group.append('line')
-                .attr('x1', x1Screen)
-                .attr('y1', y1Screen)
-                .attr('x2', split1X)
-                .attr('y2', split1Y)
+                .attr('x1', x1Screen).attr('y1', y1Screen)
+                .attr('x2', split1X).attr('y2', split1Y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
-
-            // Draw invisible wider stroke for easier clicking (second segment)
+                .style('pointer-events', 'none').style('cursor', 'move');
             this.group.append('line')
-                .attr('x1', split2X)
-                .attr('y1', split2Y)
-                .attr('x2', extendedX)
-                .attr('y2', extendedY)
+                .attr('x1', split2X).attr('y1', split2Y)
+                .attr('x2', extendedX).attr('y2', extendedY)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-            
-            // Draw second segment (from gap to end)
+                .style('pointer-events', 'stroke').style('cursor', 'move');
             this.group.append('line')
-                .attr('x1', split2X)
-                .attr('y1', split2Y)
-                .attr('x2', extendedX)
-                .attr('y2', extendedY)
+                .attr('x1', split2X).attr('y1', split2Y)
+                .attr('x2', extendedX).attr('y2', extendedY)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none').style('cursor', 'move');
         } else {
-            // Draw invisible wider stroke for easier clicking
             this.group.append('line')
-                .attr('x1', x1Screen)
-                .attr('y1', y1Screen)
-                .attr('x2', extendedX)
-                .attr('y2', extendedY)
+                .attr('x1', x1Screen).attr('y1', y1Screen)
+                .attr('x2', extendedX).attr('y2', extendedY)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-
-            // Draw line normally without split
+                .style('pointer-events', 'stroke').style('cursor', 'move');
             this.group.append('line')
-                .attr('x1', x1Screen)
-                .attr('y1', y1Screen)
-                .attr('x2', extendedX)
-                .attr('y2', extendedY)
+                .attr('x1', x1Screen).attr('y1', y1Screen)
+                .attr('x2', extendedX).attr('y2', extendedY)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
-        }
-
-        // Clip visible endpoints to chart boundaries, preserving original ray direction (anchor → tip)
-        let visX1 = x1Screen, visY1 = y1Screen;
-        let visX2 = extendedX, visY2 = extendedY;
-        if (Math.abs(dx) > 0.001) {
-            const slope = dy / dx;
-            // Clip anchor point
-            if (x1Screen < chartLeftX) {
-                visX1 = chartLeftX;
-                visY1 = y1Screen + slope * (chartLeftX - x1Screen);
-            } else if (x1Screen > chartRightX) {
-                visX1 = chartRightX;
-                visY1 = y1Screen + slope * (chartRightX - x1Screen);
-            }
-            // Clip tip point
-            if (extendedX < chartLeftX) {
-                visX2 = chartLeftX;
-                visY2 = y1Screen + slope * (chartLeftX - x1Screen);
-            } else if (extendedX > chartRightX) {
-                visX2 = chartRightX;
-                visY2 = y1Screen + slope * (chartRightX - x1Screen);
-            }
+                .style('pointer-events', 'none').style('cursor', 'move');
         }
 
         this.renderTextLabel({
