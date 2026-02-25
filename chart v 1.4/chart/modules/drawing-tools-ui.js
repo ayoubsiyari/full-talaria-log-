@@ -2381,6 +2381,7 @@ body.light-mode .template-save-dialog .dialog-title {
      * Build Style Tab Content
      */
     buildStyleTab(container, drawing) {
+        const self = this;
         // Check if brush/highlighter or line tools (skip description for these)
         const isBrushTool = drawing.type === 'brush' || drawing.type === 'highlighter';
         const lineTools = ['trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray', 'extended-line', 'cross-line', 'path', 'curve', 'double-curve', 'parallel-channel', 'regression-trend', 'flat-top-bottom', 'disjoint-channel'];
