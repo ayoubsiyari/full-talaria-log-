@@ -126,6 +126,11 @@ class ReplaySystem {
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
                 this.speed = typeof state.speed === 'number' ? state.speed : this.speed;
                 this.isPlaying = false;
+                // Sync speed bar UI to the restored speed so it doesn't mismatch on first play
+                this.updateSpeedButtonUI(this.speed);
+                if (typeof window.updateSpeedDisplay === 'function') {
+                    window.updateSpeedDisplay(this.speed);
+                }
                 this.updateChartData(false);
             }
         } catch (e) {
