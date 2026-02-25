@@ -1904,282 +1904,170 @@ class HorizontalRayTool extends BaseDrawing {
 
         if (this.points.length < 1) return;
 
-        // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing horizontal-ray')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
-
         const p = this.points[0];
+
+        // Get chart boundaries
         const xRange = scales.xScale.range();
+        const chartLeftX = (scales.chart && scales.chart.margin && typeof scales.chart.margin.l === 'number')
+            ? scales.chart.margin.l
+            : xRange[0];
         const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
             ? (scales.chart.w - scales.chart.margin.r)
             : xRange[1];
+
+        // Convert data index to screen position
+        const startX = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
+        const y = scales.yScale(p.y);
+
+        // Ray goes from the anchor point rightward to the chart right edge
+        const x1 = startX;
+        const y1 = y;
+        const x2 = chartRightX;
+        const y2 = y;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const baseStrokeWidth = (this.style.strokeWidth != null ? this.style.strokeWidth : 2);
         const scaledStrokeWidth = Math.max(0.5, baseStrokeWidth * scaleFactor);
 
-        // Convert data index to screen position
-        const x = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
+        // Create group for this drawing
+        this.group = container.append('g')
+            .attr('class', 'drawing horizontal-ray')
+            .attr('data-id', this.id)
+            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
-        // Check if we need to split the line for text
+        // Check if we need to split the line for centered text
         const hasText = this.text && this.text.trim();
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const shouldSplitLine = hasText && textVAlign === 'middle';
-        
+
         this._splitInfo = null;
-        const y = scales.yScale(p.y);
-        
+
         if (shouldSplitLine) {
-            // Measure text width first
             const fontSize = this.style.fontSize || 14;
             const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
             const fontWeight = this.style.fontWeight || 'normal';
-            
+
             const tempText = this.group.append('text')
                 .attr('font-size', fontSize)
                 .attr('font-family', fontFamily)
                 .attr('font-weight', fontWeight)
                 .attr('text-anchor', 'middle')
                 .text(this.text);
-            
             const textBBox = tempText.node().getBBox();
             const textWidth = textBBox.width;
             tempText.remove();
-            
-            const padding = 10; // Small space on each side of text
-            const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
+
+            const padding = 10;
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            // fixed 30px from endpoint, clamped so gap stays on line
-            const HR_EDGE_S = 30;
-            let hr_rawTextX;
+
+            let rawTextX;
             switch (textHAlign) {
-                case 'left':  hr_rawTextX = x + gapSize / 2 + TEXT_EDGE_PADDING; break;
-                case 'right': hr_rawTextX = chartRightX - gapSize / 2 - TEXT_EDGE_PADDING; break;
-                default:      hr_rawTextX = (x + chartRightX) / 2;
+                case 'left':  rawTextX = x1 + gapSize / 2 + TEXT_EDGE_PADDING; break;
+                case 'right': rawTextX = x2 - gapSize / 2 - TEXT_EDGE_PADDING; break;
+                default:      rawTextX = (x1 + x2) / 2;
             }
-            const textX = Math.max(x + gapSize/2, Math.min(chartRightX - gapSize/2, hr_rawTextX));
-            const split1X = Math.max(x, textX - gapSize / 2);
-            const split2X = Math.min(chartRightX, textX + gapSize / 2);
-            
-            this._splitInfo = {
-                textX: textX,
-                textY: y,
-                angle: 0,
-                gapSize: gapSize,
-                startX: x,
-                endX: chartRightX
-            };
+            const textX = Math.max(x1 + gapSize / 2, Math.min(x2 - gapSize / 2, rawTextX));
+            const split1X = textX - gapSize / 2;
+            const split2X = textX + gapSize / 2;
 
-            // Draw invisible wider stroke for easier clicking (first segment)
+            this._splitInfo = { textX, textY: y, angle: 0, gapSize };
+
+            // Hit + visual first segment
             this.group.append('line')
-                .attr('class', 'shape-border-hit')
-                .attr('x1', x)
-                .attr('y1', y)
-                .attr('x2', split1X)
-                .attr('y2', y)
+                .attr('x1', x1).attr('y1', y).attr('x2', split1X).attr('y2', y)
                 .attr('stroke', 'transparent')
-                .attr('stroke-width', Math.max(16, (baseStrokeWidth || 2) * 5))
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-            
-            // Draw first segment
+                .attr('stroke-width', Math.max(16, baseStrokeWidth * 5))
+                .style('pointer-events', 'stroke').style('cursor', 'move');
             this.group.append('line')
-                .attr('x1', x)
-                .attr('y1', y)
-                .attr('x2', split1X)
-                .attr('y2', y)
+                .attr('x1', x1).attr('y1', y).attr('x2', split1X).attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
-            
-            // Draw invisible wider stroke for easier clicking (second segment)
-            this.group.append('line')
-                .attr('class', 'shape-border-hit')
-                .attr('x1', split2X)
-                .attr('y1', y)
-                .attr('x2', chartRightX)
-                .attr('y2', y)
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', Math.max(16, (baseStrokeWidth || 2) * 5))
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none');
 
-            // Draw second segment
+            // Hit + visual second segment
             this.group.append('line')
-                .attr('x1', split2X)
-                .attr('y1', y)
-                .attr('x2', chartRightX)
-                .attr('y2', y)
+                .attr('x1', split2X).attr('y1', y).attr('x2', x2).attr('y2', y)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', Math.max(16, baseStrokeWidth * 5))
+                .style('pointer-events', 'stroke').style('cursor', 'move');
+            this.group.append('line')
+                .attr('x1', split2X).attr('y1', y).attr('x2', x2).attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none');
         } else {
-            // Draw invisible wider stroke for easier clicking
+            // Hit area
             this.group.append('line')
-                .attr('class', 'shape-border-hit')
-                .attr('x1', x)
-                .attr('y1', scales.yScale(p.y))
-                .attr('x2', chartRightX)
-                .attr('y2', scales.yScale(p.y))
+                .attr('x1', x1).attr('y1', y).attr('x2', x2).attr('y2', y)
                 .attr('stroke', 'transparent')
-                .attr('stroke-width', Math.max(16, (baseStrokeWidth || 2) * 5))
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-
-            // Draw horizontal ray normally
+                .attr('stroke-width', Math.max(16, baseStrokeWidth * 5))
+                .style('pointer-events', 'stroke').style('cursor', 'move');
+            // Visible line
             this.group.append('line')
-                .attr('x1', x)
-                .attr('y1', scales.yScale(p.y))
-                .attr('x2', chartRightX)
-                .attr('y2', scales.yScale(p.y))
+                .attr('x1', x1).attr('y1', y).attr('x2', x2).attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none');
         }
 
-        // Render price label on the right side (if enabled)
-        if (this.style.showPriceLabel !== false) {
-            this.renderPriceLabel(scales, xRange, p);
-        }
+        // Render text label (same pattern as ExtendedLineTool)
+        this.renderTextLabel({ x1, y1, x2, y2 });
 
-        // Render custom text label if provided
-        this.renderTextLabel(scales, xRange, p, x);
-
-        // Create single handle at the center (same behavior as Horizontal Line)
-        const centerX = x;
+        // Single handle at the anchor point
         const handleRadius = 3;
         const handleStrokeWidth = 2;
-        const hitRadius = 12;
         this.group.append('circle')
             .attr('class', 'resize-handle-hit')
-            .attr('cx', centerX)
-            .attr('cy', scales.yScale(p.y))
-            .attr('r', hitRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', 'none')
-            .style('cursor', 'ns-resize')
-            .style('pointer-events', 'all')
-            .style('opacity', 0)
+            .attr('cx', startX).attr('cy', y)
+            .attr('r', 12)
+            .attr('fill', 'transparent').attr('stroke', 'none')
+            .style('cursor', 'ns-resize').style('pointer-events', 'all').style('opacity', 0)
             .attr('data-point-index', 0);
         const handle = this.group.append('circle')
             .attr('class', 'resize-handle')
-            .attr('cx', centerX)
-            .attr('cy', scales.yScale(p.y))
+            .attr('cx', startX).attr('cy', y)
             .attr('r', handleRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
+            .attr('fill', 'transparent').attr('stroke', '#2962FF')
             .attr('stroke-width', handleStrokeWidth)
-            .style('cursor', 'ns-resize')
-            .style('pointer-events', 'all')
+            .style('cursor', 'ns-resize').style('pointer-events', 'all')
             .style('opacity', this.selected ? 1 : 0)
             .attr('data-point-index', 0);
-        
-        // Hover effect
+
         handle.on('mouseenter', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius + 1)
-                .attr('stroke-width', handleStrokeWidth + 0.5);
-        })
-        .on('mouseleave', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius)
-                .attr('stroke-width', handleStrokeWidth);
+            d3.select(this).transition().duration(150)
+                .attr('r', handleRadius + 1).attr('stroke-width', handleStrokeWidth + 0.5);
+        }).on('mouseleave', function() {
+            d3.select(this).transition().duration(150)
+                .attr('r', handleRadius).attr('stroke-width', handleStrokeWidth);
         });
 
         return this.group;
     }
 
-    renderPriceLabel(scales, xRange, point) {
-        // Format price value with appropriate decimal places
-        const priceValue = point?.y;
-        if (priceValue === undefined || priceValue === null) return;
-        const formattedPrice = priceValue.toFixed(5); // Default to 5 decimals, can be customized
-        
-        const y = scales.yScale(point.y);
-        const labelX = xRange[1] - 5; // Position near right edge
-        
-        // Create label group
-        const labelGroup = this.group.append('g')
-            .attr('class', 'price-label');
-        
-        // Create temporary text to measure size
-        const tempText = labelGroup.append('text')
-            .attr('x', labelX)
-            .attr('y', y)
-            .attr('font-family', 'Roboto, sans-serif')
-            .attr('font-size', '12px')
-            .attr('font-weight', '500')
-            .text(formattedPrice)
-            .style('visibility', 'hidden');
-        
-        const bbox = tempText.node().getBBox();
-        tempText.remove();
-        
-        const padding = 6;
-        const rectWidth = bbox.width + padding * 2;
-        const rectHeight = 20;
-        
-        // Draw background rectangle
-        labelGroup.append('rect')
-            .attr('x', labelX - rectWidth)
-            .attr('y', y - rectHeight / 2)
-            .attr('width', rectWidth)
-            .attr('height', rectHeight)
-            .attr('fill', this.style.stroke || '#089981')
-            .attr('rx', 2)
-            .style('pointer-events', 'none');
-        
-        // Draw price text
-        labelGroup.append('text')
-            .attr('x', labelX - rectWidth / 2)
-            .attr('y', y)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'central')
-            .attr('font-family', 'Roboto, sans-serif')
-            .attr('font-size', '12px')
-            .attr('font-weight', '500')
-            .attr('fill', '#FFFFFF')
-            .text(formattedPrice)
-            .style('pointer-events', 'none');
-    }
-
-    renderTextLabel(scales, xRange, point, startX) {
+    renderTextLabel(coords) {
         const label = this.text || '';
-        if (!label.trim()) {
-            return;
-        }
+        if (!label.trim()) return;
 
-        // If we have split info, use it for exact positioning
+        // Centered-on-line text (split mode)
         if (this._splitInfo) {
             const offsetX = this.style.textOffsetX || 0;
             const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-                ? 0
-                : this.style.textOffsetY;
+                ? 0 : this.style.textOffsetY;
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
-                ? 0
-                : rawOffsetY;
+                ? 0 : rawOffsetY;
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
@@ -2195,48 +2083,48 @@ class HorizontalRayTool extends BaseDrawing {
             return;
         }
 
-        const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
-            ? (scales.chart.w - scales.chart.margin.r)
-            : xRange[1];
-
-        const y = scales.yScale(point.y);
+        const { x1, y1, x2, y2 } = coords;
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-        
-        const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
-        let baseX = (startX + chartRightX) / 2;
 
-        let hrAnchor;
+        let baseX, anchor;
         switch (textHAlign) {
             case 'left':
-                baseX = startX + TEXT_EDGE_PADDING;
-                hrAnchor = 'start';
+                baseX = x1 + TEXT_EDGE_PADDING;
+                anchor = 'start';
                 break;
             case 'right':
-                baseX = chartRightX - TEXT_EDGE_PADDING;
-                hrAnchor = 'end';
+                baseX = x2 - TEXT_EDGE_PADDING;
+                anchor = 'end';
                 break;
             default:
-                baseX = (startX + chartRightX) / 2;
-                hrAnchor = 'middle';
-        }
-        
-        let offsetY = 0;
-        if (textVAlign === 'top') {
-            offsetY = -LINE_LABEL_OFFSET;
-        } else if (textVAlign === 'bottom') {
-            offsetY = LINE_LABEL_OFFSET;
+                baseX = (x1 + x2) / 2;
+                anchor = 'middle';
         }
 
+        let baseY = y1;
+        if (textVAlign === 'top') {
+            baseY -= LINE_LABEL_OFFSET;
+        } else if (textVAlign === 'bottom') {
+            baseY += LINE_LABEL_OFFSET;
+        }
+
+        const offsetX = this.style.textOffsetX || 0;
+        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+            ? 0 : this.style.textOffsetY;
+        const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
+            ? 0 : rawOffsetY;
+
         appendTextLabel(this.group, label, {
-            x: baseX + (this.style.textOffsetX || 0),
-            y: y + offsetY + (this.style.textOffsetY || 0),
-            anchor: hrAnchor,
+            x: baseX + offsetX,
+            y: baseY + offsetY,
+            anchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
+            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+            rotation: 0
         });
     }
 
