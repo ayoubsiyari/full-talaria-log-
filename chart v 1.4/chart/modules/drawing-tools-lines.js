@@ -1717,27 +1717,27 @@ class RayTool extends BaseDrawing {
                 .style('cursor', 'move');
         }
 
-        // Compute visible endpoints clipped to chart boundaries, in visual L->R order
-        // (same as ExtendedLineTool passes leftX/leftY -> rightX/rightY)
-        let visX1, visY1, visX2, visY2;
-        if (x1Screen <= extendedX) {
-            // ray goes right — anchor may be off left edge
-            visX1 = Math.max(chartLeftX, x1Screen);
-            visY1 = x1Screen < chartLeftX && Math.abs(dx) > 0.001
-                ? y1Screen + (dy / dx) * (chartLeftX - x1Screen)
-                : y1Screen;
-            visX2 = extendedX;
-            visY2 = extendedY;
-        } else {
-            // ray goes left — extendedX may be off left edge, anchor may be off right edge
-            visX1 = Math.max(chartLeftX, extendedX);
-            visY1 = extendedX < chartLeftX && Math.abs(dx) > 0.001
-                ? y1Screen + (dy / dx) * (chartLeftX - x1Screen)
-                : extendedY;
-            visX2 = Math.min(chartRightX, x1Screen);
-            visY2 = x1Screen > chartRightX && Math.abs(dx) > 0.001
-                ? y1Screen + (dy / dx) * (chartRightX - x1Screen)
-                : y1Screen;
+        // Clip visible endpoints to chart boundaries, preserving original ray direction (anchor → tip)
+        let visX1 = x1Screen, visY1 = y1Screen;
+        let visX2 = extendedX, visY2 = extendedY;
+        if (Math.abs(dx) > 0.001) {
+            const slope = dy / dx;
+            // Clip anchor point
+            if (x1Screen < chartLeftX) {
+                visX1 = chartLeftX;
+                visY1 = y1Screen + slope * (chartLeftX - x1Screen);
+            } else if (x1Screen > chartRightX) {
+                visX1 = chartRightX;
+                visY1 = y1Screen + slope * (chartRightX - x1Screen);
+            }
+            // Clip tip point
+            if (extendedX < chartLeftX) {
+                visX2 = chartLeftX;
+                visY2 = y1Screen + slope * (chartLeftX - x1Screen);
+            } else if (extendedX > chartRightX) {
+                visX2 = chartRightX;
+                visY2 = y1Screen + slope * (chartRightX - x1Screen);
+            }
         }
 
         this.renderTextLabel({
@@ -1778,10 +1778,9 @@ class RayTool extends BaseDrawing {
             return;
         }
 
-        // coords are already in visual L->R order (x1 <= x2)
         const { x1, y1, x2, y2 } = coords;
 
-        // Calculate angle — coords are L->R so angle is always in readable range
+        // Calculate angle from original ray direction; flip detection keeps text readable
         let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
         const originalAngleRad = Math.atan2(y2 - y1, x2 - x1);
         const isFlipped = angle > 90 || angle < -90;
@@ -1796,16 +1795,22 @@ class RayTool extends BaseDrawing {
         const el_ux = (x2 - x1) / el_len;
         const el_uy = (y2 - y1) / el_len;
 
+        // Visual left/right endpoints (for left/right text alignment)
+        const lvX = x1 <= x2 ? x1 : x2;
+        const lvY = x1 <= x2 ? y1 : y2;
+        const rvX = x1 <= x2 ? x2 : x1;
+        const rvY = x1 <= x2 ? y2 : y1;
+
         let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + TEXT_EDGE_PADDING;
-                baseY = y1 + el_uy * TEXT_EDGE_PADDING;
+                baseX = lvX + TEXT_EDGE_PADDING;
+                baseY = lvY + Math.abs(el_uy) * TEXT_EDGE_PADDING * Math.sign(el_uy || 1);
                 elAnchor = 'start';
                 break;
             case 'right':
-                baseX = x2 - TEXT_EDGE_PADDING;
-                baseY = y2 - el_uy * TEXT_EDGE_PADDING;
+                baseX = rvX - TEXT_EDGE_PADDING;
+                baseY = rvY - Math.abs(el_uy) * TEXT_EDGE_PADDING * Math.sign(el_uy || 1);
                 elAnchor = 'end';
                 break;
             default:
