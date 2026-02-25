@@ -13757,9 +13757,7 @@
            Matches the Undo/Redo tooltip style.
            ===================================================== */
 
-        /* Base: all elements with data-tooltip */
-        [data-tooltip] { position: relative; }
-
+        /* Base: floating tooltip for all [data-tooltip] elements */
         [data-tooltip]::after {
             content: attr(data-tooltip);
             position: absolute;
