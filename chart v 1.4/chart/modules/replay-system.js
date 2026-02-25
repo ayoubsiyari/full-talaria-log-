@@ -678,6 +678,11 @@ class ReplaySystem {
         this.toolbarVisible = true;
         this.updateReplayButtonState(true);
         this.togglePlayUI(this.isPlaying);
+        // Always sync the speed bar UI to the actual running speed
+        this.updateSpeedButtonUI(this.speed);
+        if (typeof window.updateSpeedDisplay === 'function') {
+            window.updateSpeedDisplay(this.speed);
+        }
     }
 
     hideToolbar() {
@@ -2021,7 +2026,8 @@ class ReplaySystem {
         if (this.currentIndex >= this.fullRawData.length - 1) {
             if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
                 this.chart.checkViewportLoadMore('forward');
-                setTimeout(() => {
+                this._nextCandleTimer = setTimeout(() => {
+                    this._nextCandleTimer = null;
                     if (this.isPlaying) this.startTickAnimation();
                 }, 120);
                 return;
@@ -2157,7 +2163,7 @@ class ReplaySystem {
                 baseInterval: baseTickInterval,
                 volumeMultiplier: volumeMultiplier,
                 candleVolume: targetCandle.v || 0,
-                tickVolumes: this.generateVolumeDistribution(60, volumeMultiplier)
+                tickVolumes: this.generateVolumeDistribution(60, volumeMultiplier, targetCandle.t)
             };
             
             console.log(`🎬 SMOOTH MODE: Speed=${this.speed}x, Duration=${realTimeCandleDuration.toFixed(0)}ms, Interval=${baseTickInterval.toFixed(0)}ms`);
@@ -2216,15 +2222,16 @@ class ReplaySystem {
      * Generate random volume distribution for tick intervals within a candle
      * Creates realistic burst patterns (fast-slow-fast like real markets)
      */
-    generateVolumeDistribution(numTicks, baseMultiplier) {
+    generateVolumeDistribution(numTicks, baseMultiplier, seed) {
+        const random = this.createSeededRandom(seed || 54321);
         const distribution = [];
         
         // Random number of "burst" periods (1-4)
-        const numBursts = 1 + Math.floor(Math.random() * 4);
+        const numBursts = 1 + Math.floor(random() * 4);
         const burstCenters = [];
         
         for (let i = 0; i < numBursts; i++) {
-            burstCenters.push(Math.floor(Math.random() * numTicks));
+            burstCenters.push(Math.floor(random() * numTicks));
         }
         
         for (let t = 0; t < numTicks; t++) {
@@ -2240,8 +2247,8 @@ class ReplaySystem {
                 }
             }
             
-            // Add random variation (±20%)
-            tickMultiplier *= (0.8 + Math.random() * 0.4);
+            // Add deterministic variation (±20%)
+            tickMultiplier *= (0.8 + random() * 0.4);
             
             // Clamp
             tickMultiplier = Math.max(0.2, Math.min(2.5, tickMultiplier));
