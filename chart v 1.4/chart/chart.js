@@ -8758,6 +8758,11 @@ class Chart {
      * Get appropriate decimal places based on price range
      */
     getPriceDecimals(priceRange) {
+        const override = this.chartSettings && this.chartSettings.pricePrecision;
+        if (override && override !== 'default') {
+            const n = parseInt(override, 10);
+            if (!isNaN(n)) return n;
+        }
         if (priceRange < 0.01) return 6;
         if (priceRange < 0.1) return 4;
         if (priceRange < 1) return 3;
