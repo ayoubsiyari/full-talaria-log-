@@ -2414,6 +2414,16 @@
         #settingsPanel.sp-alert-mode .sp-nav-divider { display: none; }
         #settingsPanel.sp-alert-mode .sp-sidebar-header { display: none; }
 
+        /* Help mode: show only Help */
+        #settingsPanel.sp-help-mode .sp-nav-item:not([data-settings="help"]) { display: none; }
+        #settingsPanel.sp-help-mode .sp-nav-divider { display: none; }
+        #settingsPanel.sp-help-mode .sp-sidebar-header { display: none; }
+
+        /* Profile mode: show only Profile */
+        #settingsPanel.sp-profile-mode .sp-nav-item:not([data-settings="profile"]) { display: none; }
+        #settingsPanel.sp-profile-mode .sp-nav-divider { display: none; }
+        #settingsPanel.sp-profile-mode .sp-sidebar-header { display: none; }
+
         /* Right content area */
         .sp-content-wrap {
             flex: 1;
@@ -16804,7 +16814,7 @@
                
 
                 <!-- Settings Button -->
-                <button class="toolbar-icon-btn-dark" id="settingsBtn" data-tooltip="Settings" style="cursor:pointer;" onclick="(function(){var p=document.getElementById('settingsPanel');if(!p)return;p.classList.remove('sp-global-mode');p.classList.remove('sp-alert-mode');var active=p.querySelector('.sp-nav-item.active');var cur=active?active.dataset.settings:'symbol';if(p.classList.contains('open')&&cur==='symbol'){if(window._spToggle)window._spToggle();}else{if(window._spOpen)window._spOpen('symbol');else p.classList.add('open');}})();">
+                <button class="toolbar-icon-btn-dark" id="settingsBtn" data-tooltip="Settings" style="cursor:pointer;" onclick="(function(){var p=document.getElementById('settingsPanel');if(!p)return;var inSettings=p.classList.contains('open')&&!p.classList.contains('sp-global-mode')&&!p.classList.contains('sp-alert-mode')&&!p.classList.contains('sp-help-mode')&&!p.classList.contains('sp-profile-mode');if(inSettings){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();setTimeout(function(){if(window.openPanel)openPanel('symbol');},10);})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -16826,7 +16836,7 @@
                     </svg>
                 </button>
                 <!-- Help Button -->
-                <button class="toolbar-icon-btn-light" id="helpBtn" data-tooltip="Help" onclick="event.stopPropagation();window._spOpen&&window._spOpen('help');">
+                <button class="toolbar-icon-btn-light" id="helpBtn" data-tooltip="Help" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-help-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-help-mode');setTimeout(function(){if(window.openPanel)openPanel('help');},10);})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"></circle>
                         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -16835,7 +16845,7 @@
                 </button>
 
                 <!-- Profile Avatar -->
-                <button class="profile-avatar-btn" id="profileBtn" data-tooltip="Profile" onclick="event.stopPropagation();window._spOpen&&window._spOpen('profile');">
+                <button class="profile-avatar-btn" id="profileBtn" data-tooltip="Profile" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-profile-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-profile-mode');setTimeout(function(){if(window.openPanel)openPanel('profile');},10);})();">
                     <div class="avatar-circle">
                         <svg viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
@@ -25254,7 +25264,7 @@ var panel=null,btn=null,closeB=null;
 var _spBottomInterval=null;
 function _syncSpBottom(){if(!panel)return;var ct=document.querySelector('.container');var b=ct?parseFloat(ct.style.bottom)||0:0;panel.style.bottom=b+'px';}
 function openPanel(section){if(!panel)return;['helpPanel','profilePanel'].forEach(function(pid){var p=document.getElementById(pid);if(p)p.classList.remove('open');});panel.classList.add('open');document.body.classList.add('settings-open');_syncSpBottom();loadSection(section||'symbol');var w=document.getElementById('chartWrapper');if(w)w.classList.add('settings-open');_spBottomInterval=setInterval(_syncSpBottom,200);var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
-function closePanel(){if(!panel)return;panel.classList.remove('open');panel.classList.remove('sp-global-mode');panel.classList.remove('sp-alert-mode');document.body.classList.remove('settings-open');if(_spBottomInterval){clearInterval(_spBottomInterval);_spBottomInterval=null;}var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
+function closePanel(){if(!panel)return;panel.classList.remove('open');panel.classList.remove('sp-global-mode');panel.classList.remove('sp-alert-mode');panel.classList.remove('sp-help-mode');panel.classList.remove('sp-profile-mode');document.body.classList.remove('settings-open');if(_spBottomInterval){clearInterval(_spBottomInterval);_spBottomInterval=null;}var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
 window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};  
 window._spOpen=function(section){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;var navItem=document.querySelector('.sp-nav-item[data-settings="'+section+'"]');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(navItem)navItem.classList.add('active');if(panel.classList.contains('open')){loadSection(section);}else{openPanel(section);}};
 /* ── Side Panel management ── */
