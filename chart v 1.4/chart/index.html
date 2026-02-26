@@ -23956,19 +23956,13 @@ function showIndicatorsMenu() {
             if (symbolWatchlistBtn) {
                 symbolWatchlistBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    
-                    // Directly open watchlist panel
-                    // Wait for showPanel function to be defined
-                    if (typeof showPanel === 'function') {
-                        showPanel('watchlist');
-                    } else {
-                        // Retry after a short delay if function not yet defined
-                        setTimeout(() => {
-                            if (typeof showPanel === 'function') {
-                                showPanel('watchlist');
-                            }
-                        }, 100);
+                    if (window._spPanels && window._spPanels['globalmarket']) {
+                        window._spPanels['globalmarket']._active = 'watchlist';
                     }
+                    if (window.P && window.P['globalmarket']) {
+                        window.P['globalmarket']._active = 'watchlist';
+                    }
+                    if (window._openMode) window._openMode('globalmarket');
                 });
             }
         })();
