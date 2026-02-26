@@ -6787,6 +6787,12 @@
             color: #ffffff;
             font-weight: 600;
         }
+        .interval-slider-labels-row .tick-label.auto-label {
+            color: #6366f1;
+        }
+        .interval-slider-labels-row .tick-label.auto-label.active {
+            color: #818cf8;
+        }
         .interval-slider-custom {
             position: relative;
             width: 100%;
@@ -26086,6 +26092,7 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             { tf: '1w',  ms: 604800000,   label: '1W'  },
             { tf: '1mo', ms: 2592000000,  label: '1M'  }
         ];
+        var AUTO_INTERVAL = { tf: 'auto', ms: Infinity, label: 'Auto' };
 
         var TF_MS = {
             '1m':60000,'2m':120000,'3m':180000,'4m':240000,'5m':300000,
@@ -26123,7 +26130,7 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
                 labelsRow.innerHTML = '';
                 for (var i = 0; i < count; i++) {
                     var l = document.createElement('span');
-                    l.className = 'tick-label';
+                    l.className = 'tick-label' + (intervals[i].tf === 'auto' ? ' auto-label' : '');
                     l.textContent = intervals[i].label;
                     labelsRow.appendChild(l);
                 }
@@ -26151,12 +26158,13 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
                 return iv.ms <= chartMs;
             });
             if (activeIntervals.length === 0) activeIntervals = [ALL_INTERVALS[0]];
+            activeIntervals.push(AUTO_INTERVAL); // Auto always last
             buildTicks(activeIntervals);
 
-            // Try to keep the same tf selected; otherwise pick the last (=chart tf)
-            var saved = localStorage.getItem('replayUpdateInterval') || '';
+            // Try to keep the same tf selected; otherwise default to Auto
+            var saved = localStorage.getItem('replayUpdateInterval') || 'auto';
             var idx = activeIntervals.findIndex(function(iv) { return iv.tf === saved; });
-            if (idx === -1) idx = activeIntervals.length - 1;
+            if (idx === -1) idx = activeIntervals.length - 1; // fallback to Auto
             setByIndex(idx, true);
         }
 
@@ -26190,29 +26198,34 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             updateSliderPosition(index, true);
             updateActiveLabel(index);
 
+            // 'auto' maps to 'sync' for the replay system
+            var selectVal = (iv.tf === 'auto') ? 'sync' : iv.tf;
+
             // Write to hidden select
             if (hiddenSelect) {
                 var found = false;
                 for (var i = 0; i < hiddenSelect.options.length; i++) {
-                    if (hiddenSelect.options[i].value === iv.tf) {
-                        hiddenSelect.value = iv.tf; found = true; break;
+                    if (hiddenSelect.options[i].value === selectVal) {
+                        hiddenSelect.value = selectVal; found = true; break;
                     }
                 }
                 if (!found) {
                     var opt = document.createElement('option');
-                    opt.value = iv.tf; opt.text = iv.tf;
+                    opt.value = selectVal; opt.text = selectVal;
                     hiddenSelect.appendChild(opt);
-                    hiddenSelect.value = iv.tf;
+                    hiddenSelect.value = selectVal;
                 }
                 hiddenSelect.dispatchEvent(new Event('change'));
             }
 
-            // Update replay system directly
-            var rs = window.chart && window.chart.replaySystem;
-            if (rs) {
-                var rawMs = rs.fullRawData && rs.fullRawData.length > 1
-                    ? (rs.fullRawData[1].t - rs.fullRawData[0].t) : 60000;
-                rs._replayIntervalRawCandles = Math.max(1, Math.round(iv.ms / rawMs));
+            // Update replay system directly (skip for auto — replay-system handles sync)
+            if (iv.tf !== 'auto') {
+                var rs = window.chart && window.chart.replaySystem;
+                if (rs) {
+                    var rawMs = rs.fullRawData && rs.fullRawData.length > 1
+                        ? (rs.fullRawData[1].t - rs.fullRawData[0].t) : 60000;
+                    rs._replayIntervalRawCandles = Math.max(1, Math.round(iv.ms / rawMs));
+                }
             }
         }
 
