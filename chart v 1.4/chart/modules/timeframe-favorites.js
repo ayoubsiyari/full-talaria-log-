@@ -493,104 +493,157 @@ class TimeframeFavorites {
      */
     renderSidebarTimeframes() {
         const sidebarContainer = document.getElementById('sidebarTimeframes');
-        
         if (!sidebarContainer) return;
 
-        // Clear and render ALL favorite timeframes (including current)
         sidebarContainer.innerHTML = '';
 
         this.getSortedFavorites().forEach(timeframe => {
-            // For active timeframe, create container with button + arrow
-            if (timeframe === this.currentTimeframe) {
-                const container = document.createElement('div');
-                container.className = 'sidebar-current-timeframe-container';
-                
-                // Create the main button
-                const btn = document.createElement('button');
-                btn.className = 'sidebar-current-timeframe';
-                btn.dataset.timeframe = timeframe;
-                btn.textContent = this.getTimeframeLabel(timeframe);
-                
-                // Create arrow button (absolute positioned)
-                const arrowBtn = document.createElement('button');
-                arrowBtn.className = 'sidebar-timeframe-arrow';
-                
-                const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                arrow.setAttribute('viewBox', '0 0 12 8');
-                arrow.setAttribute('fill', 'none');
-                arrow.setAttribute('stroke', 'currentColor');
-                arrow.setAttribute('stroke-width', '1.5');
-                
-                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-                polyline.setAttribute('points', '2,2 6,6 10,2');
-                polyline.setAttribute('stroke-linecap', 'round');
-                polyline.setAttribute('stroke-linejoin', 'round');
-                
-                arrow.appendChild(polyline);
-                arrowBtn.appendChild(arrow);
-                
-                // Handle arrow click to open dropdown menu
-                arrowBtn.addEventListener('click', (e) => {
+            const isActive = timeframe === this.currentTimeframe;
+            const btn = document.createElement('button');
+            btn.className = isActive ? 'sidebar-current-timeframe' : 'sidebar-timeframe-btn';
+            btn.dataset.timeframe = timeframe;
+            btn.textContent = this.getTimeframeLabel(timeframe);
+
+            if (isActive) {
+                // Active TF button opens the 3-level flyout
+                btn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const menu = document.getElementById('timeframeDropdownMenu');
-                    const isOpen = arrowBtn.classList.contains('open');
-                    
-                    if (!isOpen) {
-                        // Position the menu to the right of the button
-                        const rect = btn.getBoundingClientRect();
-                        menu.style.top = `${rect.top}px`;
-                        menu.style.left = `${rect.right + 8}px`;
-                        menu.style.display = 'block';
-                        arrowBtn.classList.add('open');
+                    this._openTfFlyout(btn);
+                });
+            } else {
+                btn.addEventListener('click', (e) => {
+                    if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        window.panelManager.updateSelectedPanelTimeframe(timeframe);
+                        return false;
+                    }
+                    this.selectTimeframe(timeframe);
+                }, true);
+            }
+
+            sidebarContainer.appendChild(btn);
+        });
+    }
+
+    /**
+     * Open the 3-level TF flyout panel anchored to the given button
+     */
+    _openTfFlyout(anchorBtn) {
+        // Remove existing flyout if any
+        this._closeTfFlyout();
+
+        const TF_CATEGORIES = [
+            {
+                label: 'Minutes',
+                values: ['1m','2m','3m','4m','5m','10m','15m','30m','45m']
+            },
+            {
+                label: 'Hours',
+                values: ['1h','2h','4h','6h','12h']
+            },
+            {
+                label: 'Days',
+                values: ['1d','1w','1mo']
+            }
+        ];
+
+        // Build flyout DOM
+        const flyout = document.createElement('div');
+        flyout.className = 'tf-flyout open';
+        flyout.id = '_tfFlyout';
+
+        const catPanel = document.createElement('div');
+        catPanel.className = 'tf-flyout-categories';
+
+        const valPanel = document.createElement('div');
+        valPanel.className = 'tf-flyout-values';
+        flyout.appendChild(catPanel);
+        flyout.appendChild(valPanel);
+
+        // Helper: chevron SVG
+        const chevron = () => {
+            const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            s.setAttribute('viewBox', '0 0 10 10');
+            s.setAttribute('fill', 'none');
+            s.setAttribute('stroke-width', '1.5');
+            s.setAttribute('stroke-linecap', 'round');
+            s.setAttribute('stroke-linejoin', 'round');
+            const p = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            p.setAttribute('points', '3,2 7,5 3,8');
+            s.appendChild(p);
+            return s;
+        };
+
+        let activeCategory = null;
+
+        const showValues = (cat, catBtn) => {
+            // Deactivate previous
+            catPanel.querySelectorAll('.tf-flyout-cat-btn').forEach(b => b.classList.remove('active'));
+            catBtn.classList.add('active');
+            activeCategory = cat.label;
+
+            valPanel.innerHTML = '';
+            cat.values.forEach(tf => {
+                const vBtn = document.createElement('button');
+                vBtn.className = 'tf-flyout-val-btn' + (tf === this.currentTimeframe ? ' selected' : '');
+                vBtn.textContent = this.getTimeframeLabel(tf);
+                vBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._closeTfFlyout();
+                    if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
+                        window.panelManager.updateSelectedPanelTimeframe(tf);
                     } else {
-                        menu.style.display = 'none';
-                        arrowBtn.classList.remove('open');
+                        this.selectTimeframe(tf);
                     }
                 });
-                
-                btn.addEventListener('click', (e) => {
-                    // Check if we're in multi-panel mode
-                    if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
-                        e.preventDefault();
-                        e.stopImmediatePropagation();
-                        
-                        console.log(`⌚ Sidebar timeframe ${timeframe} → Update selected panel`);
-                        window.panelManager.updateSelectedPanelTimeframe(timeframe);
-                        return false;
-                    }
-                    
-                    // In single panel mode, select the timeframe normally
-                    this.selectTimeframe(timeframe);
-                }, true);
-                
-                container.appendChild(btn);
-                container.appendChild(arrowBtn);
-                sidebarContainer.appendChild(container);
-            } else {
-                // For non-active timeframes, create simple button
-                const btn = document.createElement('button');
-                btn.className = 'sidebar-timeframe-btn';
-                btn.dataset.timeframe = timeframe;
-                btn.textContent = this.getTimeframeLabel(timeframe);
-                
-                btn.addEventListener('click', (e) => {
-                    // Check if we're in multi-panel mode
-                    if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
-                        e.preventDefault();
-                        e.stopImmediatePropagation();
-                        
-                        console.log(`⌚ Sidebar timeframe ${timeframe} → Update selected panel`);
-                        window.panelManager.updateSelectedPanelTimeframe(timeframe);
-                        return false;
-                    }
-                    
-                    // In single panel mode, select the timeframe normally
-                    this.selectTimeframe(timeframe);
-                }, true);
-                
-                sidebarContainer.appendChild(btn);
-            }
+                valPanel.appendChild(vBtn);
+            });
+            valPanel.classList.add('open');
+        };
+
+        TF_CATEGORIES.forEach(cat => {
+            const catBtn = document.createElement('button');
+            catBtn.className = 'tf-flyout-cat-btn';
+            catBtn.appendChild(document.createTextNode(cat.label));
+            catBtn.appendChild(chevron());
+
+            catBtn.addEventListener('mouseenter', () => showValues(cat, catBtn));
+            catBtn.addEventListener('click', () => showValues(cat, catBtn));
+
+            catPanel.appendChild(catBtn);
         });
+
+        // Position: to the right of the sidebar (anchor button)
+        document.body.appendChild(flyout);
+        const rect = anchorBtn.getBoundingClientRect();
+        flyout.style.top = `${rect.top}px`;
+        flyout.style.left = `${rect.right + 8}px`;
+
+        // Auto-open the category that contains current TF
+        const currentCat = TF_CATEGORIES.find(c => c.values.includes(this.currentTimeframe));
+        if (currentCat) {
+            const idx = TF_CATEGORIES.indexOf(currentCat);
+            const catBtns = catPanel.querySelectorAll('.tf-flyout-cat-btn');
+            if (catBtns[idx]) showValues(currentCat, catBtns[idx]);
+        }
+
+        // Close on outside click
+        this._tfFlyoutOutsideHandler = (e) => {
+            if (!flyout.contains(e.target) && e.target !== anchorBtn) {
+                this._closeTfFlyout();
+            }
+        };
+        setTimeout(() => document.addEventListener('click', this._tfFlyoutOutsideHandler), 0);
+    }
+
+    _closeTfFlyout() {
+        const existing = document.getElementById('_tfFlyout');
+        if (existing) existing.remove();
+        if (this._tfFlyoutOutsideHandler) {
+            document.removeEventListener('click', this._tfFlyoutOutsideHandler);
+            this._tfFlyoutOutsideHandler = null;
+        }
     }
 }
 

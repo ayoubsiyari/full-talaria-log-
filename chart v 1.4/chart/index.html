@@ -207,81 +207,105 @@
             background: rgba(47, 114, 255, 0.35);
         }
         
-        /* Small arrow button next to current timeframe */
-        .sidebar-timeframe-arrow {
-            width: 10px !important;
-            height: 34px !important;
-            min-width: 10px !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            background: rgba(0, 0, 0, 0.92);
-            border: 1px solid rgba(63, 84, 124, 0.35);
-            border-left: none;
-            border-radius: 0 4px 4px 0;
+        /* ── TF Flyout Panel (3-level: categories → values) ── */
+        .tf-flyout {
+            position: fixed;
+            display: none;
+            flex-direction: row;
+            z-index: 99999;
+            filter: drop-shadow(0 8px 24px rgba(0,0,0,0.55));
+        }
+        .tf-flyout.open { display: flex; }
+
+        .tf-flyout-categories {
+            display: flex;
+            flex-direction: column;
+            background: #0d1117;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 4px;
+            min-width: 100px;
+            gap: 2px;
+        }
+        .tf-flyout-cat-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px;
+            border-radius: 5px;
+            border: none;
+            background: transparent;
+            color: #a0aec0;
+            font-size: 12px;
+            font-weight: 600;
             cursor: default;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            color: #a0aec0;
-            transition: none;
-            box-sizing: border-box !important;
-            position: absolute;
-            right: -10px;
-            top: 0;
-            bottom: 0;
-            margin: auto 0;
-            opacity: 0;
+            white-space: nowrap;
+            transition: background 0.12s;
+            gap: 8px;
+        }
+        .tf-flyout-cat-btn svg {
+            width: 10px; height: 10px;
+            stroke: currentColor;
             flex-shrink: 0;
-            z-index: 1;
-            box-shadow: none;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            opacity: 0.6;
         }
-        
-        /* Show arrow when hovering the container or the arrow itself */
-        .sidebar-current-timeframe-container:hover .sidebar-timeframe-arrow,
-        .sidebar-timeframe-arrow:hover,
-        .sidebar-timeframe-arrow.open {
-            opacity: 1;
+        .tf-flyout-cat-btn:hover,
+        .tf-flyout-cat-btn.active {
+            background: rgba(47,114,255,0.2);
+            color: #ffffff;
         }
-        
-        /* Light mode - base state of arrow when visible */
-        body.light-mode .sidebar-timeframe-arrow {
-            background: rgba(255, 255, 255, 0.9) !important;
-            color: #787b86 !important;
-            border-color: #e0e3eb !important;
+        .tf-flyout-cat-btn.active svg { opacity: 1; }
+
+        .tf-flyout-values {
+            display: none;
+            flex-direction: column;
+            background: #0d1117;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 4px;
+            min-width: 72px;
+            gap: 2px;
+            margin-left: 6px;
         }
-        
-        .sidebar-timeframe-arrow:hover {
-            background: rgba(41, 98, 255, 0.15);
+        .tf-flyout-values.open { display: flex; }
+
+        .tf-flyout-val-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 7px 12px;
+            border-radius: 5px;
+            border: none;
+            background: transparent;
             color: #a0aec0;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: default;
+            white-space: nowrap;
+            transition: background 0.12s;
+        }
+        .tf-flyout-val-btn:hover {
+            background: rgba(47,114,255,0.2);
+            color: #ffffff;
+        }
+        .tf-flyout-val-btn.selected {
+            background: rgba(47,114,255,0.3);
+            color: #ffffff;
         }
 
-        .sidebar-timeframe-arrow.open {
-            background: rgba(41, 98, 255, 0.15);
-            color: #a0aec0;
+        body.light-mode .tf-flyout-categories,
+        body.light-mode .tf-flyout-values {
+            background: #ffffff;
+            border-color: rgba(0,0,0,0.1);
         }
-        
-        body.light-mode .sidebar-timeframe-arrow:hover {
-            background: rgba(41, 98, 255, 0.12) !important;
-            color: #2962ff !important;
-        }
-
-        body.light-mode .sidebar-timeframe-arrow.open {
-            background: rgba(41, 98, 255, 0.15) !important;
-            color: #2962ff !important;
-        }
-        
-        .sidebar-timeframe-arrow svg {
-            width: 12px;
-            height: 8px;
-            flex-shrink: 0;
-            transform: rotate(-90deg);
-            transition: none;
-        }
-        
-        .sidebar-timeframe-arrow.open svg {
-            transform: rotate(90deg);
+        body.light-mode .tf-flyout-cat-btn,
+        body.light-mode .tf-flyout-val-btn { color: #131722; }
+        body.light-mode .tf-flyout-cat-btn:hover,
+        body.light-mode .tf-flyout-cat-btn.active,
+        body.light-mode .tf-flyout-val-btn:hover,
+        body.light-mode .tf-flyout-val-btn.selected {
+            background: rgba(41,98,255,0.12);
+            color: #2962ff;
         }
         
         /* Other timeframe buttons (vertical list below) */
