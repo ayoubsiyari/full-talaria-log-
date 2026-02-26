@@ -25223,10 +25223,30 @@ P['objecttree']={
             }).join('');
             content.innerHTML='<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">'+drawings.length+' Drawing'+(drawings.length!==1?'s':'')+'</div>'+rows;
             content.querySelectorAll('.ot-vis-btn').forEach(function(btn){
-                btn.addEventListener('click',function(e){e.stopPropagation();var i=parseInt(this.dataset.idx);var d=drawings[i];if(!d)return;d.visible=d.visible===false;if(d.group)d.group.style('display',d.visible===false?'none':'');P['objecttree']._loadTab('drawings');});
+                btn.addEventListener('click',function(e){
+                    e.stopPropagation();
+                    var i=parseInt(this.dataset.idx);
+                    var d=drawings[i]; if(!d)return;
+                    var dm=c&&c.drawingManager;
+                    d.visible = d.visible===false ? true : false;
+                    if(dm&&typeof dm.renderDrawing==='function'){
+                        dm.renderDrawing(d);
+                        if(typeof dm.saveDrawings==='function') dm.saveDrawings();
+                    }
+                    P['objecttree']._loadTab('drawings');
+                });
             });
             content.querySelectorAll('.ot-del-btn').forEach(function(btn){
-                btn.addEventListener('click',function(e){e.stopPropagation();var i=parseInt(this.dataset.idx);var d=drawings[i];if(!d)return;var dm=c&&c.drawingManager;if(dm&&typeof dm.removeDrawing==='function'){dm.removeDrawing(d);}else{drawings.splice(i,1);}P['objecttree']._loadTab('drawings');});
+                btn.addEventListener('click',function(e){
+                    e.stopPropagation();
+                    var i=parseInt(this.dataset.idx);
+                    var d=drawings[i]; if(!d)return;
+                    var dm=c&&c.drawingManager;
+                    if(dm&&typeof dm.deleteDrawing==='function'){
+                        dm.deleteDrawing(d);
+                    }
+                    P['objecttree']._loadTab('drawings');
+                });
             });
         } else if(tab==='indicators'){
             var active=(c&&c.indicators&&c.indicators.active)||[];
