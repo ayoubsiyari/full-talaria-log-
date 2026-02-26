@@ -13810,8 +13810,7 @@
         /* Top toolbar — tooltip drops below button */
         .toolbar-icon-btn-dark[data-tooltip]::after,
         .toolbar-icon-btn-light[data-tooltip]::after,
-        .profile-avatar-btn[data-tooltip]::after,
-        .sidebar-timeframe-btn[data-tooltip]::after {
+        .profile-avatar-btn[data-tooltip]::after {
             content: attr(data-tooltip);
             position: absolute;
             top: calc(100% + 4px);
@@ -13836,16 +13835,7 @@
 
         .toolbar-icon-btn-dark[data-tooltip]:hover::after,
         .toolbar-icon-btn-light[data-tooltip]:hover::after,
-        .profile-avatar-btn[data-tooltip]:hover::after,
-        .sidebar-timeframe-btn[data-tooltip]:hover::after { opacity: 1; }
-
-        .sidebar-timeframe-btn[data-tooltip]::after {
-            top: 50% !important;
-            bottom: auto !important;
-            left: calc(100% + 8px) !important;
-            transform: translateY(-50%) !important;
-        }
-        .sidebar-timeframe-btn[data-tooltip] { overflow: visible !important; }
+        .profile-avatar-btn[data-tooltip]:hover::after { opacity: 1; }
 
         /* Allow ::after tooltip to overflow the button bounds */
         .right-sidebar-icons [data-tooltip] { overflow: visible !important; }
