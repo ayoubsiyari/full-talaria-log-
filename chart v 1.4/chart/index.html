@@ -25304,6 +25304,15 @@ P['objecttree']={
             if(nav) nav.addEventListener('click',function(){self._loadTab(t);});
         });
         self._loadTab(self._active||'drawings');
+        if(!self._drawingsChangedBound){
+            self._drawingsChangedBound=function(){
+                var panel=document.getElementById('settingsPanel');
+                if(panel&&panel.style.display!=='none'&&panel.classList.contains('open')&&self._active==='drawings'){
+                    self._loadTab('drawings');
+                }
+            };
+            window.addEventListener('drawingsChanged',self._drawingsChangedBound);
+        }
     }
 };
 

@@ -3816,6 +3816,8 @@ class DrawingToolsManager {
         data.forEach((d, i) => {
             // [debug removed]
         });
+
+        window.dispatchEvent(new CustomEvent('drawingsChanged'));
     }
 
     /**
