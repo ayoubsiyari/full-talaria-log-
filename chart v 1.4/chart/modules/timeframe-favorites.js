@@ -504,25 +504,44 @@ class TimeframeFavorites {
             btn.dataset.timeframe = timeframe;
             btn.textContent = this.getTimeframeLabel(timeframe);
 
-            if (isActive) {
-                // Active TF button opens the 3-level flyout
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this._openTfFlyout(btn);
-                });
-            } else {
-                btn.addEventListener('click', (e) => {
-                    if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
-                        e.preventDefault();
-                        e.stopImmediatePropagation();
-                        window.panelManager.updateSelectedPanelTimeframe(timeframe);
-                        return false;
-                    }
-                    this.selectTimeframe(timeframe);
-                }, true);
-            }
+            // All buttons select the timeframe on click
+            btn.addEventListener('click', (e) => {
+                if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    window.panelManager.updateSelectedPanelTimeframe(timeframe);
+                    return false;
+                }
+                this.selectTimeframe(timeframe);
+            }, true);
 
             sidebarContainer.appendChild(btn);
+
+            // For the active button, add a separate small chevron button to open the flyout
+            if (isActive) {
+                const triggerBtn = document.createElement('button');
+                triggerBtn.className = 'sidebar-tf-flyout-trigger';
+                triggerBtn.title = 'Change timeframe';
+
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('viewBox', '0 0 10 10');
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '1.5');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                poly.setAttribute('points', '3,2 7,5 3,8');
+                svg.appendChild(poly);
+                triggerBtn.appendChild(svg);
+
+                triggerBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._openTfFlyout(triggerBtn);
+                });
+
+                sidebarContainer.appendChild(triggerBtn);
+            }
         });
     }
 

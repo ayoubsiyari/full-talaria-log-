@@ -207,6 +207,48 @@
             background: rgba(47, 114, 255, 0.35);
         }
         
+        /* ── Sidebar TF flyout trigger button (chevron next to active TF) ── */
+        .sidebar-tf-flyout-trigger {
+            width: 14px !important;
+            height: 34px !important;
+            min-width: 14px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: rgba(47, 114, 255, 0.15);
+            border: none;
+            border-radius: 0 5px 5px 0;
+            cursor: default;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            color: #a0aec0;
+            transition: background 0.12s;
+            box-sizing: border-box !important;
+            flex-shrink: 0;
+            box-shadow: none;
+        }
+        .sidebar-tf-flyout-trigger svg {
+            width: 10px;
+            height: 10px;
+            stroke: currentColor;
+        }
+        .sidebar-tf-flyout-trigger:hover {
+            background: rgba(47, 114, 255, 0.35) !important;
+            color: #ffffff;
+        }
+        .sidebar-tf-flyout-trigger.open {
+            background: rgba(47, 114, 255, 0.35) !important;
+            color: #ffffff;
+        }
+        body.light-mode .sidebar-tf-flyout-trigger {
+            background: rgba(41, 98, 255, 0.1);
+            color: #787b86;
+        }
+        body.light-mode .sidebar-tf-flyout-trigger:hover {
+            background: rgba(41, 98, 255, 0.25) !important;
+            color: #2962ff;
+        }
+
         /* ── TF Flyout Panel (3-level: categories → values) ── */
         .tf-flyout {
             position: fixed;
@@ -18767,7 +18809,7 @@
     <script src="modules/keyboard-shortcuts.js?v=20251216PLAYSYNC2"></script>
     <script src="modules/object-tree.js?v=20251225PATH6PTS2"></script>
     <script src="modules/panel-manager.js?v=20251230NOBORDER"></script>
-    <script src="modules/timeframe-favorites.js?v=20260226TFFLYOUT"></script>
+    <script src="modules/timeframe-favorites.js?v=20260226TFFLYOUT2"></script>
     <script src="modules/propfirm-tracker.js?v=20241124001"></script>
     <script src="modules/compare-overlay.js?v=20251226AXISCURSOR2"></script>
     
