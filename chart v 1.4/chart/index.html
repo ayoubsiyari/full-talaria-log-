@@ -13840,13 +13840,13 @@
         /* Allow ::after tooltip to overflow the button bounds */
         .right-sidebar-icons [data-tooltip] { overflow: visible !important; }
 
-        /* Right sidebar icons — tooltip to the left */
+        /* Left sidebar icons — tooltip to the right */
         .right-sidebar-icons [data-tooltip]::after {
             content: attr(data-tooltip);
             position: absolute;
             top: 50%;
-            left: auto;
-            right: calc(100% + 4px);
+            left: calc(100% + 8px);
+            right: auto;
             transform: translateY(-50%);
             background: #1e222d;
             color: #ffffff;
