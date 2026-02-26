@@ -2396,6 +2396,11 @@
         .sp-nav-item.active svg { color: #2962ff; }
         .sp-nav-item svg { flex-shrink: 0; color: #555a6e; transition: color 0.15s; }
 
+        /* Global mode: show only Watchlist and News */
+        #settingsPanel.sp-global-mode .sp-nav-item:not([data-settings="watchlist"]):not([data-settings="news"]) { display: none; }
+        #settingsPanel.sp-global-mode .sp-nav-divider { display: none; }
+        #settingsPanel.sp-global-mode .sp-sidebar-header { display: none; }
+
         /* Right content area */
         .sp-content-wrap {
             flex: 1;
@@ -16800,7 +16805,7 @@
                     </svg>
                 </button>
                 <!-- Global Markets Button -->
-                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;var active=p.querySelector('.sp-nav-item.active');var cur=active?active.dataset.settings:'';if(p.classList.contains('open')&&cur==='news'){if(window._spOpen)window._spOpen('watchlist');}else if(p.classList.contains('open')&&cur==='watchlist'){if(window._spToggle)window._spToggle();}else{if(window._spOpen)window._spOpen('news');}})();">
+                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-global-mode')){p.classList.remove('sp-global-mode');if(window._spToggle)window._spToggle();}else{p.classList.add('sp-global-mode');if(window._spOpen)window._spOpen('news');}})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"/>
                         <line x1="2" y1="12" x2="22" y2="12"/>
@@ -25236,7 +25241,7 @@ var panel=null,btn=null,closeB=null;
 var _spBottomInterval=null;
 function _syncSpBottom(){if(!panel)return;var ct=document.querySelector('.container');var b=ct?parseFloat(ct.style.bottom)||0:0;panel.style.bottom=b+'px';}
 function openPanel(section){if(!panel)return;['helpPanel','profilePanel'].forEach(function(pid){var p=document.getElementById(pid);if(p)p.classList.remove('open');});panel.classList.add('open');document.body.classList.add('settings-open');_syncSpBottom();loadSection(section||'symbol');var w=document.getElementById('chartWrapper');if(w)w.classList.add('settings-open');_spBottomInterval=setInterval(_syncSpBottom,200);var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
-function closePanel(){if(!panel)return;panel.classList.remove('open');document.body.classList.remove('settings-open');if(_spBottomInterval){clearInterval(_spBottomInterval);_spBottomInterval=null;}var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
+function closePanel(){if(!panel)return;panel.classList.remove('open');panel.classList.remove('sp-global-mode');document.body.classList.remove('settings-open');if(_spBottomInterval){clearInterval(_spBottomInterval);_spBottomInterval=null;}var w=document.getElementById('chartWrapper');if(w)w.classList.remove('settings-open');var c=ch();if(c&&c.resize){setTimeout(function(){c.resize();if(c.scheduleRender)c.scheduleRender();},290);}}
 window._spToggle=function(){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;panel.classList.contains('open')?closePanel():openPanel();};  
 window._spOpen=function(section){if(!panel)panel=document.getElementById('settingsPanel');if(!panel)return;var navItem=document.querySelector('.sp-nav-item[data-settings="'+section+'"]');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(navItem)navItem.classList.add('active');if(panel.classList.contains('open')){loadSection(section);}else{openPanel(section);}};
 /* ── Side Panel management ── */
