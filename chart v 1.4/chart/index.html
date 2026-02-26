@@ -6749,10 +6749,11 @@
         .interval-slider-track-container {
             position: relative;
             flex: 1;
-            height: 24px;
             display: flex;
-            align-items: center;
+            flex-direction: column;
+            justify-content: center;
             min-width: 0;
+            gap: 4px;
         }
         .interval-slider-ticks {
             position: absolute;
@@ -6768,12 +6769,12 @@
             background: #363a45;
             border-radius: 1px;
         }
-        /* Label row under the track */
+        /* Label row under the track — same width as track, no extra padding */
         .interval-slider-labels-row {
             display: flex;
             justify-content: space-between;
             width: 100%;
-            padding: 0 20px;
+            padding: 0;
             pointer-events: none;
             box-sizing: border-box;
         }
@@ -17371,9 +17372,9 @@
                                     <div class="interval-slider-custom-fill" id="intervalSliderFill"></div>
                                     <div class="interval-slider-custom-thumb" id="intervalSliderThumb"></div>
                                 </div>
+                                <div class="interval-slider-labels-row" id="intervalSliderLabels"></div>
                             </div>
                         </div>
-                        <div class="interval-slider-labels-row" id="intervalSliderLabels"></div>
                     </div>
                 </div>
 
