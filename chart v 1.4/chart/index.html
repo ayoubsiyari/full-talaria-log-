@@ -16814,21 +16814,21 @@
                
 
                 <!-- Settings Button -->
-                <button class="toolbar-icon-btn-dark" id="settingsBtn" data-tooltip="Settings" style="cursor:pointer;" onclick="(function(){var p=document.getElementById('settingsPanel');if(!p)return;var inSettings=p.classList.contains('open')&&!p.classList.contains('sp-global-mode')&&!p.classList.contains('sp-alert-mode')&&!p.classList.contains('sp-help-mode')&&!p.classList.contains('sp-profile-mode');if(inSettings){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();setTimeout(function(){if(window.openPanel)openPanel('symbol');},10);})();">
+                <button class="toolbar-icon-btn-dark" id="settingsBtn" data-tooltip="Settings" style="cursor:pointer;" onclick="(function(){if(!window.openPanel)return;var p=document.getElementById('settingsPanel');if(!p)return;var mine=p.classList.contains('open')&&!p.classList.contains('sp-global-mode')&&!p.classList.contains('sp-alert-mode')&&!p.classList.contains('sp-help-mode')&&!p.classList.contains('sp-profile-mode');p.classList.remove('sp-global-mode','sp-alert-mode','sp-help-mode','sp-profile-mode');if(mine){closePanel();}else{openPanel('symbol');}})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
                 </button>
  <!-- Alerts Button -->
-                <button class="toolbar-icon-btn-dark" id="toolbarAlertsBtn" data-tooltip="Alerts" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-alert-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-alert-mode');setTimeout(function(){if(window.openPanel)openPanel('alerts');},10);})();">
+                <button class="toolbar-icon-btn-dark" id="toolbarAlertsBtn" data-tooltip="Alerts" onclick="event.stopPropagation();(function(){if(!window.openPanel)return;var p=document.getElementById('settingsPanel');if(!p)return;var mine=p.classList.contains('open')&&p.classList.contains('sp-alert-mode');p.classList.remove('sp-global-mode','sp-alert-mode','sp-help-mode','sp-profile-mode');if(mine){closePanel();}else{p.classList.add('sp-alert-mode');openPanel('alerts');}})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </button>
                 <!-- Global Markets Button -->
-                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-global-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-global-mode');setTimeout(function(){if(window.openPanel)openPanel('news');},10);})();">
+                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();(function(){if(!window.openPanel)return;var p=document.getElementById('settingsPanel');if(!p)return;var mine=p.classList.contains('open')&&p.classList.contains('sp-global-mode');p.classList.remove('sp-global-mode','sp-alert-mode','sp-help-mode','sp-profile-mode');if(mine){closePanel();}else{p.classList.add('sp-global-mode');openPanel('news');}})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"/>
                         <line x1="2" y1="12" x2="22" y2="12"/>
@@ -16836,7 +16836,7 @@
                     </svg>
                 </button>
                 <!-- Help Button -->
-                <button class="toolbar-icon-btn-light" id="helpBtn" data-tooltip="Help" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-help-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-help-mode');setTimeout(function(){if(window.openPanel)openPanel('help');},10);})();">
+                <button class="toolbar-icon-btn-light" id="helpBtn" data-tooltip="Help" onclick="event.stopPropagation();(function(){if(!window.openPanel)return;var p=document.getElementById('settingsPanel');if(!p)return;var mine=p.classList.contains('open')&&p.classList.contains('sp-help-mode');p.classList.remove('sp-global-mode','sp-alert-mode','sp-help-mode','sp-profile-mode');if(mine){closePanel();}else{p.classList.add('sp-help-mode');openPanel('help');}})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"></circle>
                         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -16845,7 +16845,7 @@
                 </button>
 
                 <!-- Profile Avatar -->
-                <button class="profile-avatar-btn" id="profileBtn" data-tooltip="Profile" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-profile-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-profile-mode');setTimeout(function(){if(window.openPanel)openPanel('profile');},10);})();">
+                <button class="profile-avatar-btn" id="profileBtn" data-tooltip="Profile" onclick="event.stopPropagation();(function(){if(!window.openPanel)return;var p=document.getElementById('settingsPanel');if(!p)return;var mine=p.classList.contains('open')&&p.classList.contains('sp-profile-mode');p.classList.remove('sp-global-mode','sp-alert-mode','sp-help-mode','sp-profile-mode');if(mine){closePanel();}else{p.classList.add('sp-profile-mode');openPanel('profile');}})();">
                     <div class="avatar-circle">
                         <svg viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
