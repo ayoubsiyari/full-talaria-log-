@@ -6702,8 +6702,8 @@
         /* The slider panel — hidden until wrapper is hovered */
         .interval-slider-panel {
             display: flex;
-            align-items: center;
-            gap: 10px;
+            flex-direction: column;
+            gap: 6px;
             position: absolute;
             bottom: calc(100% + 8px);
             left: 50%;
@@ -6711,8 +6711,8 @@
             background: #1a1d2e;
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 6px;
-            padding: 8px 14px;
-            min-width: 240px;
+            padding: 10px 14px 8px;
+            min-width: 320px;
             box-shadow: 0 6px 24px rgba(0,0,0,0.5);
             white-space: nowrap;
             pointer-events: auto;
@@ -6726,6 +6726,11 @@
             opacity: 1;
             visibility: visible;
         }
+        .interval-slider-panel-top {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
         .interval-slider-label {
             display: flex;
             align-items: baseline;
@@ -6736,10 +6741,14 @@
             white-space: nowrap;
             flex-shrink: 0;
         }
-        .interval-slider-label > span:first-child { margin-right: 4px; }
+        .interval-slider-label .interval-cur-value {
+            color: #ffffff;
+            font-weight: 700;
+            margin-left: 5px;
+        }
         .interval-slider-track-container {
             position: relative;
-            width: 130px;
+            width: 100%;
             height: 24px;
             display: flex;
             align-items: center;
@@ -6758,6 +6767,25 @@
             height: 4px;
             background: #363a45;
             border-radius: 1px;
+        }
+        /* Label row under the track */
+        .interval-slider-labels-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 6px;
+            pointer-events: none;
+            margin-top: 1px;
+        }
+        .interval-slider-labels-row .tick-label {
+            font-size: 10px;
+            color: #787b86;
+            text-align: center;
+            line-height: 1;
+            transform: translateX(-50%);
+        }
+        .interval-slider-labels-row .tick-label.active {
+            color: #ffffff;
+            font-weight: 600;
         }
         .interval-slider-custom {
             position: relative;
@@ -17326,14 +17354,20 @@
                 <div class="interval-slider-wrapper" id="intervalSliderWrapper">
                     <button id="intervalTriggerBtn">Interval&nbsp;<span id="intervalValueDisplay">1m</span></button>
                     <div class="interval-slider-panel">
-                        <div class="interval-slider-label"><span>Update Interval</span></div>
-                        <div class="interval-slider-track-container">
-                            <div class="interval-slider-ticks" id="intervalSliderTicks"></div>
-                            <div class="interval-slider-custom" id="intervalSliderCustom">
-                                <div class="interval-slider-custom-fill" id="intervalSliderFill"></div>
-                                <div class="interval-slider-custom-thumb" id="intervalSliderThumb"></div>
+                        <div class="interval-slider-panel-top">
+                            <div class="interval-slider-label">
+                                <span>Update Interval</span>
+                                <span class="interval-cur-value" id="intervalCurValue">1m</span>
+                            </div>
+                            <div class="interval-slider-track-container">
+                                <div class="interval-slider-ticks" id="intervalSliderTicks"></div>
+                                <div class="interval-slider-custom" id="intervalSliderCustom">
+                                    <div class="interval-slider-custom-fill" id="intervalSliderFill"></div>
+                                    <div class="interval-slider-custom-thumb" id="intervalSliderThumb"></div>
+                                </div>
                             </div>
                         </div>
+                        <div class="interval-slider-labels-row" id="intervalSliderLabels"></div>
                     </div>
                 </div>
 
@@ -26060,27 +26094,48 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             '1d':86400000,'1w':604800000,'1mo':2592000000
         };
 
-        var sliderTrack  = document.getElementById('intervalSliderCustom');
-        var sliderThumb  = document.getElementById('intervalSliderThumb');
-        var sliderFill   = document.getElementById('intervalSliderFill');
-        var sliderTicks  = document.getElementById('intervalSliderTicks');
-        var valueDisplay = document.getElementById('intervalValueDisplay');
-        var hiddenSelect = document.getElementById('replayTimeframe');
+        var sliderTrack   = document.getElementById('intervalSliderCustom');
+        var sliderThumb   = document.getElementById('intervalSliderThumb');
+        var sliderFill    = document.getElementById('intervalSliderFill');
+        var sliderTicks   = document.getElementById('intervalSliderTicks');
+        var labelsRow     = document.getElementById('intervalSliderLabels');
+        var valueDisplay  = document.getElementById('intervalValueDisplay');
+        var curValueSpan  = document.getElementById('intervalCurValue');
+        var hiddenSelect  = document.getElementById('replayTimeframe');
 
         if (!sliderTrack || !sliderThumb) return;
 
         var activeIntervals = ALL_INTERVALS.slice(); // filtered list
         var currentIndex = 0;
 
-        // ── Build / rebuild tick marks ──────────────────────────────
-        function buildTicks(count) {
-            if (!sliderTicks) return;
-            sliderTicks.innerHTML = '';
-            for (var i = 0; i < count; i++) {
-                var t = document.createElement('span');
-                t.className = 'tick';
-                sliderTicks.appendChild(t);
+        // ── Build / rebuild tick marks + label row ──────────────────
+        function buildTicks(intervals) {
+            var count = intervals.length;
+            if (sliderTicks) {
+                sliderTicks.innerHTML = '';
+                for (var i = 0; i < count; i++) {
+                    var t = document.createElement('span');
+                    t.className = 'tick';
+                    sliderTicks.appendChild(t);
+                }
             }
+            if (labelsRow) {
+                labelsRow.innerHTML = '';
+                for (var i = 0; i < count; i++) {
+                    var l = document.createElement('span');
+                    l.className = 'tick-label';
+                    l.textContent = intervals[i].label;
+                    labelsRow.appendChild(l);
+                }
+            }
+        }
+
+        function updateActiveLabel(index) {
+            if (!labelsRow) return;
+            var labels = labelsRow.querySelectorAll('.tick-label');
+            labels.forEach(function(l, i) {
+                l.classList.toggle('active', i === index);
+            });
         }
 
         // ── Filter intervals to those ≤ chart timeframe ─────────────
@@ -26096,7 +26151,7 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
                 return iv.ms <= chartMs;
             });
             if (activeIntervals.length === 0) activeIntervals = [ALL_INTERVALS[0]];
-            buildTicks(activeIntervals.length);
+            buildTicks(activeIntervals);
 
             // Try to keep the same tf selected; otherwise pick the last (=chart tf)
             var saved = localStorage.getItem('replayUpdateInterval') || '';
@@ -26129,9 +26184,11 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 
             var iv = activeIntervals[index];
             if (valueDisplay) valueDisplay.textContent = iv.label;
+            if (curValueSpan) curValueSpan.textContent = iv.label;
             if (!skipSave) localStorage.setItem('replayUpdateInterval', iv.tf);
 
             updateSliderPosition(index, true);
+            updateActiveLabel(index);
 
             // Write to hidden select
             if (hiddenSelect) {
@@ -26191,8 +26248,11 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             sliderFill.style.width = pct + '%';
             if (snapped !== currentIndex) {
                 currentIndex = snapped;
-                if (valueDisplay && activeIntervals[snapped])
-                    valueDisplay.textContent = activeIntervals[snapped].label;
+                if (activeIntervals[snapped]) {
+                    if (valueDisplay) valueDisplay.textContent = activeIntervals[snapped].label;
+                    if (curValueSpan) curValueSpan.textContent = activeIntervals[snapped].label;
+                    updateActiveLabel(snapped);
+                }
             }
             e.preventDefault();
         });
