@@ -6030,7 +6030,8 @@
         .replay-toolbar:not(.floating-clone) .replay-tabs-container,
         .replay-toolbar:not(.floating-clone) #goToControl,
         .replay-toolbar:not(.floating-clone) .replay-timezone-selector,
-        .replay-toolbar:not(.floating-clone) .replay-tz-menu {
+        .replay-toolbar:not(.floating-clone) .replay-tz-menu,
+        .replay-toolbar:not(.floating-clone) .interval-slider-wrapper {
             pointer-events: auto;
         }
 
@@ -6668,13 +6669,62 @@
             margin-left: -10px;
         }
 
-        /* ── Replay Interval Slider (matches speed slider style) ── */
-        .interval-slider-control {
+        /* ── Replay Interval Slider ── */
+        .interval-slider-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        /* The compact trigger button */
+        #intervalTriggerBtn {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            height: 30px;
+            padding: 0 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 4px;
+            color: #d1d4dc;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+            pointer-events: auto;
+        }
+        #intervalTriggerBtn:hover,
+        .interval-slider-wrapper:hover #intervalTriggerBtn {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.25);
+            color: #fff;
+        }
+        /* The slider panel — hidden until wrapper is hovered */
+        .interval-slider-panel {
             display: flex;
             align-items: center;
             gap: 10px;
-            position: relative;
-            min-width: 220px;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1d2e;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            padding: 8px 14px;
+            min-width: 240px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            white-space: nowrap;
+            pointer-events: auto;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease, visibility 0.15s ease;
+            z-index: 99999;
+        }
+        .interval-slider-wrapper:hover .interval-slider-panel,
+        .interval-slider-panel:hover {
+            opacity: 1;
+            visibility: visible;
         }
         .interval-slider-label {
             display: flex;
@@ -6684,23 +6734,16 @@
             font-size: 12px;
             font-weight: 500;
             white-space: nowrap;
+            flex-shrink: 0;
         }
         .interval-slider-label > span:first-child { margin-right: 4px; }
-        .interval-slider-label .interval-value {
-            color: #ffffff;
-            font-weight: 600;
-            display: inline-block;
-            min-width: 32px;
-            text-align: left;
-            margin-right: 6px;
-        }
         .interval-slider-track-container {
             position: relative;
-            width: 120px;
+            width: 130px;
             height: 24px;
             display: flex;
             align-items: center;
-            margin-left: auto;
+            flex-shrink: 0;
         }
         .interval-slider-ticks {
             position: absolute;
@@ -6722,13 +6765,12 @@
             height: 3px;
             background: #363a45;
             border-radius: 2px;
-            cursor: default;
-            transition: background 0.15s ease, height 0.15s ease, box-shadow 0.15s ease;
+            cursor: pointer;
+            transition: background 0.15s ease, height 0.15s ease;
         }
         .interval-slider-custom:hover {
             background: #4a4e5a;
             height: 4px;
-            box-shadow: 0 0 8px rgba(255,255,255,0.3), 0 0 16px rgba(255,255,255,0.15);
         }
         .interval-slider-custom-thumb {
             position: absolute;
@@ -6736,34 +6778,35 @@
             height: 12px;
             background: #ffffff;
             border-radius: 50%;
-            cursor: default;
+            cursor: grab;
             box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
             top: 50%;
             transform: translate(-50%, -50%);
-            transition: left 0.15s cubic-bezier(0.4,0,0.2,1), box-shadow 0.15s ease, transform 0.15s ease;
+            transition: left 0.12s cubic-bezier(0.4,0,0.2,1), box-shadow 0.15s;
             z-index: 2;
         }
         .interval-slider-custom-thumb:hover {
             transform: translate(-50%,-50%) scale(1.2);
             box-shadow: 0 0 0 5px rgba(255,255,255,0.25), 0 0 12px rgba(255,255,255,0.4);
         }
-        .interval-slider-custom-thumb:active,
         .interval-slider-custom-thumb.dragging {
-            cursor: default;
+            cursor: grabbing;
             transform: translate(-50%,-50%) scale(1.05);
-            transition: transform 0.1s;
+            transition: none;
         }
         .interval-slider-custom-fill {
             position: absolute;
             height: 100%;
             background: #787b86;
             border-radius: 2px;
-            transition: width 0.15s cubic-bezier(0.4,0,0.2,1);
+            pointer-events: none;
         }
+        body.light-mode #intervalTriggerBtn { color: #131722; border-color: rgba(0,0,0,0.15); background: rgba(0,0,0,0.04); }
+        body.light-mode #intervalTriggerBtn:hover { background: rgba(0,0,0,0.08); }
+        body.light-mode .interval-slider-panel { background: #f0f3fa; border-color: rgba(0,0,0,0.1); }
         body.light-mode .interval-slider-label { color: #434651; }
-        body.light-mode .interval-slider-label .interval-value { color: #131722; }
         body.light-mode .interval-slider-custom { background: #c0c3cd; }
-        body.light-mode .interval-slider-custom-thumb { background: #131722; box-shadow: 0 0 0 3px rgba(0,0,0,0.1); }
+        body.light-mode .interval-slider-custom-thumb { background: #131722; }
         body.light-mode .interval-slider-ticks .tick { background: #c0c3cd; }
 
         .replay-toolbar button.replay-collapse-toggle .toggle-arrow {
@@ -17280,16 +17323,16 @@
                 </button>
 
                 <!-- Interval Slider Control -->
-                <div class="interval-slider-control" id="intervalSliderControl">
-                    <div class="interval-slider-label">
-                        <span>Interval&nbsp;</span>
-                        <span class="interval-value" id="intervalValueDisplay">1m</span>
-                    </div>
-                    <div class="interval-slider-track-container">
-                        <div class="interval-slider-ticks" id="intervalSliderTicks"></div>
-                        <div class="interval-slider-custom" id="intervalSliderCustom">
-                            <div class="interval-slider-custom-fill" id="intervalSliderFill"></div>
-                            <div class="interval-slider-custom-thumb" id="intervalSliderThumb"></div>
+                <div class="interval-slider-wrapper" id="intervalSliderWrapper">
+                    <button id="intervalTriggerBtn">Interval&nbsp;<span id="intervalValueDisplay">1m</span></button>
+                    <div class="interval-slider-panel">
+                        <div class="interval-slider-label"><span>Update Interval</span></div>
+                        <div class="interval-slider-track-container">
+                            <div class="interval-slider-ticks" id="intervalSliderTicks"></div>
+                            <div class="interval-slider-custom" id="intervalSliderCustom">
+                                <div class="interval-slider-custom-fill" id="intervalSliderFill"></div>
+                                <div class="interval-slider-custom-thumb" id="intervalSliderThumb"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
