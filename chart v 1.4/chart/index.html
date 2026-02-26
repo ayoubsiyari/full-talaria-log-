@@ -25234,11 +25234,22 @@ P['objecttree']={
                         var idx=Math.round(d.points[0].x);
                         if(c.data[idx]) ts=c.data[idx].t;
                     }
-                    if(ts&&c&&typeof c.jumpToTimestamp==='function'){
-                        c.jumpToTimestamp(ts);
+                    if(ts&&c&&c.data&&c.data.length){
+                        var barIdx=-1;
+                        for(var j=0;j<c.data.length;j++){if(Math.abs(c.data[j].t-ts)<1){barIdx=j;break;} if(c.data[j].t===ts){barIdx=j;break;}}
+                        if(barIdx===-1){var minD=Infinity;for(var j=0;j<c.data.length;j++){var diff=Math.abs(c.data[j].t-ts);if(diff<minD){minD=diff;barIdx=j;}}}
+                        if(barIdx>=0){
+                            var spacing=c.getCandleSpacing?c.getCandleSpacing():(c.candleWidth+2);
+                            var m=c.margin||{l:60,r:60};
+                            var cw=c.w-(m.l||60)-(m.r||60);
+                            c.offsetX=(cw/2)-(barIdx*spacing);
+                            if(typeof c.constrainOffset==='function') c.constrainOffset();
+                            if(typeof c.scheduleRender==='function') c.scheduleRender();
+                        }
                     }
                     var dm=c&&c.drawingManager;
-                    if(dm&&typeof dm.selectDrawing==='function'){ dm.deselectAll&&dm.deselectAll(); dm.selectDrawing(d); }
+                    if(dm&&typeof dm.deselectAll==='function') dm.deselectAll();
+                    if(dm&&typeof dm.selectDrawing==='function') dm.selectDrawing(d);
                 });
             });
             content.querySelectorAll('.ot-vis-btn').forEach(function(btn){
