@@ -16811,14 +16811,14 @@
                     </svg>
                 </button>
  <!-- Alerts Button -->
-                <button class="toolbar-icon-btn-dark" id="toolbarAlertsBtn" data-tooltip="Alerts" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-alert-mode')){p.classList.remove('sp-alert-mode');if(window._spToggle)window._spToggle();}else{p.classList.remove('sp-global-mode');p.classList.add('sp-alert-mode');if(window._spOpen)window._spOpen('alerts');}})();">
+                <button class="toolbar-icon-btn-dark" id="toolbarAlertsBtn" data-tooltip="Alerts" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-alert-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-alert-mode');setTimeout(function(){if(window.openPanel)openPanel('alerts');},10);})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </button>
                 <!-- Global Markets Button -->
-                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-global-mode')){p.classList.remove('sp-global-mode');if(window._spToggle)window._spToggle();}else{p.classList.add('sp-global-mode');if(window._spOpen)window._spOpen('news');}})();">
+                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;if(p.classList.contains('open')&&p.classList.contains('sp-global-mode')){if(window.closePanel)closePanel();return;}if(window.closePanel)closePanel();p.classList.add('sp-global-mode');setTimeout(function(){if(window.openPanel)openPanel('news');},10);})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"/>
                         <line x1="2" y1="12" x2="22" y2="12"/>
