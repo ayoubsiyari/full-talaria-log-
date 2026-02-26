@@ -2396,10 +2396,13 @@
         .sp-nav-item.active svg { color: #2962ff; }
         .sp-nav-item svg { flex-shrink: 0; color: #555a6e; transition: color 0.15s; }
 
-        /* Settings mode: hide alerts, news, watchlist (they have own toolbar buttons) */
+        /* Settings mode: hide alerts, news, watchlist, help, profile (they have own toolbar buttons) */
         #settingsPanel:not(.sp-global-mode):not(.sp-alert-mode) .sp-nav-item[data-settings="alerts"],
         #settingsPanel:not(.sp-global-mode):not(.sp-alert-mode) .sp-nav-item[data-settings="news"],
-        #settingsPanel:not(.sp-global-mode):not(.sp-alert-mode) .sp-nav-item[data-settings="watchlist"] { display: none; }
+        #settingsPanel:not(.sp-global-mode):not(.sp-alert-mode) .sp-nav-item[data-settings="watchlist"],
+        #settingsPanel:not(.sp-global-mode):not(.sp-alert-mode) .sp-nav-item[data-settings="help"],
+        #settingsPanel:not(.sp-global-mode):not(.sp-alert-mode) .sp-nav-item[data-settings="profile"] { display: none; }
+        #settingsPanel:not(.sp-global-mode):not(.sp-alert-mode) .sp-nav-divider { display: none; }
 
         /* Global mode: show only Watchlist and News */
         #settingsPanel.sp-global-mode .sp-nav-item:not([data-settings="watchlist"]):not([data-settings="news"]) { display: none; }
