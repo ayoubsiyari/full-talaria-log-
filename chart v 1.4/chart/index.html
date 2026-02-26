@@ -25222,6 +25222,25 @@ P['objecttree']={
                 '</div>';
             }).join('');
             content.innerHTML='<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">'+drawings.length+' Drawing'+(drawings.length!==1?'s':'')+'</div>'+rows;
+            content.querySelectorAll('.ot-row').forEach(function(row){
+                row.addEventListener('click',function(e){
+                    if(e.target.closest('button')) return;
+                    var i=parseInt(this.dataset.idx);
+                    var d=drawings[i]; if(!d) return;
+                    var ts=null;
+                    if(d.timestampPoints&&d.timestampPoints[0]&&d.timestampPoints[0].timestamp){
+                        ts=d.timestampPoints[0].timestamp;
+                    } else if(d.points&&d.points[0]&&c&&c.data){
+                        var idx=Math.round(d.points[0].x);
+                        if(c.data[idx]) ts=c.data[idx].t;
+                    }
+                    if(ts&&c&&typeof c.jumpToTimestamp==='function'){
+                        c.jumpToTimestamp(ts);
+                    }
+                    var dm=c&&c.drawingManager;
+                    if(dm&&typeof dm.selectDrawing==='function'){ dm.deselectAll&&dm.deselectAll(); dm.selectDrawing(d); }
+                });
+            });
             content.querySelectorAll('.ot-vis-btn').forEach(function(btn){
                 btn.addEventListener('click',function(e){
                     e.stopPropagation();
