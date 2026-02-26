@@ -6703,7 +6703,7 @@
         .interval-slider-panel {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 4px;
             position: absolute;
             bottom: calc(100% + 8px);
             left: 50%;
@@ -6711,10 +6711,9 @@
             background: #1a1d2e;
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 6px;
-            padding: 10px 14px 8px;
-            min-width: 320px;
+            padding: 10px 14px 10px;
+            width: 300px;
             box-shadow: 0 6px 24px rgba(0,0,0,0.5);
-            white-space: nowrap;
             pointer-events: auto;
             opacity: 0;
             visibility: hidden;
@@ -6730,6 +6729,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            width: 100%;
         }
         .interval-slider-label {
             display: flex;
@@ -6748,11 +6748,11 @@
         }
         .interval-slider-track-container {
             position: relative;
-            width: 100%;
+            flex: 1;
             height: 24px;
             display: flex;
             align-items: center;
-            flex-shrink: 0;
+            min-width: 0;
         }
         .interval-slider-ticks {
             position: absolute;
@@ -6772,9 +6772,10 @@
         .interval-slider-labels-row {
             display: flex;
             justify-content: space-between;
-            padding: 0 6px;
+            width: 100%;
+            padding: 0 20px;
             pointer-events: none;
-            margin-top: 1px;
+            box-sizing: border-box;
         }
         .interval-slider-labels-row .tick-label {
             font-size: 10px;
