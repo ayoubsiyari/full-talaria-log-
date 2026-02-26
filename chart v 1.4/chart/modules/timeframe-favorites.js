@@ -135,6 +135,15 @@ class TimeframeFavorites {
         const menu = document.getElementById('timeframeDropdownMenu');
         const sidebarDropdownBtn = document.getElementById('sidebarTimeframeDropdownBtn');
 
+        // Wire static clock button above TF list to open flyout
+        const sidebarTfFlyoutBtn = document.getElementById('sidebarTfFlyoutBtn');
+        if (sidebarTfFlyoutBtn) {
+            sidebarTfFlyoutBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._openTfFlyout(sidebarTfFlyoutBtn);
+            });
+        }
+
         if (!menu) {
             console.error('Timeframe dropdown menu not found');
             return;
@@ -516,39 +525,6 @@ class TimeframeFavorites {
             }, true);
 
             sidebarContainer.appendChild(btn);
-
-            // For the active button, add a separate small chevron button to open the flyout
-            if (isActive) {
-                const triggerBtn = document.createElement('button');
-                triggerBtn.className = 'sidebar-tf-flyout-trigger';
-                triggerBtn.title = 'Change timeframe';
-
-                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                svg.setAttribute('viewBox', '0 0 24 24');
-                svg.setAttribute('fill', 'none');
-                svg.setAttribute('stroke', 'currentColor');
-                svg.setAttribute('stroke-width', '2');
-                svg.setAttribute('stroke-linecap', 'round');
-                svg.setAttribute('stroke-linejoin', 'round');
-                // Clock circle
-                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                circle.setAttribute('cx', '12');
-                circle.setAttribute('cy', '12');
-                circle.setAttribute('r', '10');
-                // Hour hand
-                const hour = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-                hour.setAttribute('points', '12,6 12,12 16,14');
-                svg.appendChild(circle);
-                svg.appendChild(hour);
-                triggerBtn.appendChild(svg);
-
-                triggerBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this._openTfFlyout(triggerBtn);
-                });
-
-                sidebarContainer.appendChild(triggerBtn);
-            }
         });
     }
 
