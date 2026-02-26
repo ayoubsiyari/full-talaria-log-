@@ -16810,7 +16810,7 @@
                     </svg>
                 </button>
                 <!-- Global Markets Button -->
-                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();window._openMode&&window._openMode('news');">
+                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();window._openMode&&window._openMode('globalmarket');">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"/>
                         <line x1="2" y1="12" x2="22" y2="12"/>
@@ -18980,6 +18980,7 @@
             
             // Make showPanel globally accessible
             window.showPanel = showPanel;
+            window.loadWatchlistItems = loadWatchlistItems;
             
             if (watchlistBtn) {
                 watchlistBtn.addEventListener('click', () => showPanel('watchlist'));
@@ -19135,8 +19136,8 @@
             });
 
             // Load watchlist items from available files
-            async function loadWatchlistItems() {
-                const container = document.getElementById('watchlistItems');
+            async function loadWatchlistItems(customContainer) {
+                const container = customContainer || document.getElementById('watchlistItems');
                 if (!container) return;
                 
                 try {
@@ -25158,6 +25159,45 @@ P['watchlist']={
         var origAdd=document.getElementById('addSymbolBtn');
         if(addBtn&&origAdd) addBtn.onclick=function(){ origAdd.click(); };
         if(window.loadWatchlistItems) window.loadWatchlistItems();
+    }
+};
+
+/* ── Global Market (Watchlist + News side-by-side) ── */
+P['globalmarket']={
+    build:function(){
+        var wSrc=document.getElementById('watchlistContent');
+        var nSrc=document.getElementById('newsContent');
+        var wHTML=wSrc?wSrc.innerHTML:'<p style="color:#787b86;padding:20px;">Watchlist unavailable.</p>';
+        var nHTML=nSrc?nSrc.innerHTML:'<p style="color:#787b86;padding:20px;">News unavailable.</p>';
+        return '<div style="display:flex;height:100%;overflow:hidden;">'+
+            '<div id="gm_watchlist" style="width:260px;min-width:220px;border-right:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;overflow:hidden;">'+
+                '<div style="padding:10px 14px 8px;font-size:12px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,0.06);">Watchlist</div>'+
+                '<div style="flex:1;overflow-y:auto;">'+wHTML+'</div>'+
+            '</div>'+
+            '<div id="gm_news" style="flex:1;overflow-y:auto;">'+nHTML+'</div>'+
+        '</div>';
+    },
+    wire:function(){
+        var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        /* wire watchlist */
+        var wItems=ctx.querySelector('#watchlistItems');
+        if(!wItems){
+            var wWrap=ctx.querySelector('#gm_watchlist');
+            if(wWrap){ var d=document.createElement('div'); d.id='gm_wlItems'; wWrap.querySelector('div[style*="flex:1"]').appendChild(d); }
+        }
+        var container=wItems||ctx.querySelector('#gm_wlItems');
+        if(container&&!wItems){ container.className='watchlist-items'; }
+        if(window.loadWatchlistItems) window.loadWatchlistItems(container||undefined);
+        var addBtn=ctx.querySelector('#addSymbolBtn');
+        var origAdd=document.getElementById('addSymbolBtn');
+        if(addBtn&&origAdd) addBtn.onclick=function(e){ e.stopPropagation(); origAdd.click(); };
+        /* wire news tabs */
+        ctx.querySelectorAll('.news-tab').forEach(function(tab){
+            tab.addEventListener('click',function(){
+                ctx.querySelectorAll('.news-tab').forEach(function(t){t.classList.remove('active');});
+                this.classList.add('active');
+            });
+        });
     }
 };
 
