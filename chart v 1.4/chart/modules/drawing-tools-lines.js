@@ -1638,13 +1638,21 @@ class RayTool extends BaseDrawing {
                     rawTextX = (slvX + srvX) / 2;
                     rawTextY = (slvY + srvY) / 2;
             }
-            const t_ray = visLineLength > 0 ? Math.sqrt((rawTextX - slvX) ** 2 + (rawTextY - slvY) ** 2) / visLineLength : 0.5;
-            const split1T = Math.max(0, t_ray - halfGapT);
-            const split2T = Math.min(1, t_ray + halfGapT);
-            const split1X = slvX + (srvX - slvX) * split1T;
-            const split1Y = slvY + (srvY - slvY) * split1T;
-            const split2X = slvX + (srvX - slvX) * split2T;
-            const split2Y = slvY + (srvY - slvY) * split2T;
+            // Compute gap in the FULL line's parametric space (x1Screen→extendedX)
+            // so the drawn segments align with the gap position
+            const fullLineLength = Math.sqrt((extendedX - x1Screen) ** 2 + (extendedY - y1Screen) ** 2) || 1;
+            const halfGapPx = gapSize / 2;
+            // Find where the text center lands along the full line
+            const tFull = fullLineLength > 0
+                ? Math.sqrt((rawTextX - x1Screen) ** 2 + (rawTextY - y1Screen) ** 2) / fullLineLength
+                : 0.5;
+            const halfGapTFull = halfGapPx / fullLineLength;
+            const split1T = Math.max(0, tFull - halfGapTFull);
+            const split2T = Math.min(1, tFull + halfGapTFull);
+            const split1X = x1Screen + (extendedX - x1Screen) * split1T;
+            const split1Y = y1Screen + (extendedY - y1Screen) * split1T;
+            const split2X = x1Screen + (extendedX - x1Screen) * split2T;
+            const split2Y = y1Screen + (extendedY - y1Screen) * split2T;
 
             this._splitInfo = {
                 textX: rawTextX,
