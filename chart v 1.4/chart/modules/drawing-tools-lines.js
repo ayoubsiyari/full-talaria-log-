@@ -1820,12 +1820,11 @@ class RayTool extends BaseDrawing {
             ? 0 : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Hide label if it falls outside chart area (e.g. below time axis or above top)
-        const finalY = baseY + offsetY;
+        // Clamp label to stay within chart area (don't overlap time or price axes)
         const chartBottomY = coords.chartBottomY;
         const chartTopY = coords.chartTopY;
-        if (chartBottomY !== undefined && finalY > chartBottomY) return;
-        if (chartTopY !== undefined && finalY < chartTopY) return;
+        if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
+        if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
 
         // Use unclipped labelsGroup so text is never cut off by chart clip-path
         if (this._labelsGroup) {
