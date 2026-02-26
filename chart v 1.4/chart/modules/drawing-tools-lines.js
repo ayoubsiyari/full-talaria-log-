@@ -1604,8 +1604,13 @@ class RayTool extends BaseDrawing {
             const textWidth = textBBox.width;
             tempText.remove();
 
-            // Use clipped endpoints for angle + text position (same as ExtendedLineTool)
-            const lineAngle = Math.atan2(visY2 - visY1, visX2 - visX1);
+            // Use left→right ordered coords for angle (same as ExtendedLineTool leftX/rightX)
+            const slvX = visX1 <= visX2 ? visX1 : visX2;
+            const slvY = visX1 <= visX2 ? visY1 : visY2;
+            const srvX = visX1 <= visX2 ? visX2 : visX1;
+            const srvY = visX1 <= visX2 ? visY2 : visY1;
+
+            const lineAngle = Math.atan2(srvY - slvY, srvX - slvX);
             let angleDeg = lineAngle * (180 / Math.PI);
             const isFlipped = angleDeg > 90 || angleDeg < -90;
             if (isFlipped) angleDeg += 180;
@@ -1614,32 +1619,32 @@ class RayTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            const visLineLength = Math.sqrt((visX2 - visX1) ** 2 + (visY2 - visY1) ** 2);
-            const vis_ux = visLineLength > 0 ? (visX2 - visX1) / visLineLength : 1;
-            const vis_uy = visLineLength > 0 ? (visY2 - visY1) / visLineLength : 0;
+            const visLineLength = Math.sqrt((srvX - slvX) ** 2 + (srvY - slvY) ** 2);
+            const vis_ux = visLineLength > 0 ? (srvX - slvX) / visLineLength : 1;
+            const vis_uy = visLineLength > 0 ? (srvY - slvY) / visLineLength : 0;
             const halfGapT = visLineLength > 0 ? (gapSize / 2) / visLineLength : 0;
 
             let rawTextX, rawTextY;
             switch (textHAlign) {
                 case 'left':
-                    rawTextX = visX1 + vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = visY1 + vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = slvX + vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = slvY + vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 case 'right':
-                    rawTextX = visX2 - vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = visY2 - vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = srvX - vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = srvY - vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 default:
-                    rawTextX = (visX1 + visX2) / 2;
-                    rawTextY = (visY1 + visY2) / 2;
+                    rawTextX = (slvX + srvX) / 2;
+                    rawTextY = (slvY + srvY) / 2;
             }
-            const t_ray = visLineLength > 0 ? Math.sqrt((rawTextX - visX1) ** 2 + (rawTextY - visY1) ** 2) / visLineLength : 0.5;
+            const t_ray = visLineLength > 0 ? Math.sqrt((rawTextX - slvX) ** 2 + (rawTextY - slvY) ** 2) / visLineLength : 0.5;
             const split1T = Math.max(0, t_ray - halfGapT);
             const split2T = Math.min(1, t_ray + halfGapT);
-            const split1X = visX1 + (visX2 - visX1) * split1T;
-            const split1Y = visY1 + (visY2 - visY1) * split1T;
-            const split2X = visX1 + (visX2 - visX1) * split2T;
-            const split2Y = visY1 + (visY2 - visY1) * split2T;
+            const split1X = slvX + (srvX - slvX) * split1T;
+            const split1Y = slvY + (srvY - slvY) * split1T;
+            const split2X = slvX + (srvX - slvX) * split2T;
+            const split2Y = slvY + (srvY - slvY) * split2T;
 
             this._splitInfo = {
                 textX: rawTextX,
