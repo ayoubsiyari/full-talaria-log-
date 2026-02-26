@@ -266,7 +266,10 @@
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
             padding: 4px;
-            min-width: 100px;
+            width: 110px;
+            min-width: 110px;
+            max-width: 110px;
+            flex-shrink: 0;
             gap: 2px;
         }
         .tf-flyout-cat-btn {
@@ -314,8 +317,8 @@
         .tf-flyout-val-btn {
             display: flex;
             align-items: center;
-            justify-content: center;
-            padding: 7px 12px;
+            justify-content: space-between;
+            padding: 7px 8px 7px 12px;
             border-radius: 5px;
             border: none;
             background: transparent;
@@ -325,7 +328,25 @@
             cursor: default;
             white-space: nowrap;
             transition: background 0.12s;
+            gap: 6px;
         }
+        .tf-flyout-val-btn .tf-val-label { flex: 1; }
+        .tf-flyout-val-star {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            opacity: 0;
+            transition: opacity 0.12s;
+            color: #a0aec0;
+        }
+        .tf-flyout-val-star svg { width: 12px; height: 12px; stroke: currentColor; fill: none; }
+        .tf-flyout-val-btn:hover .tf-val-star,
+        .tf-flyout-val-btn:hover .tf-flyout-val-star { opacity: 1; }
+        .tf-flyout-val-star.favorited { opacity: 1 !important; color: #f5c518; }
+        .tf-flyout-val-star.favorited svg { fill: #f5c518; stroke: #f5c518; }
         .tf-flyout-val-btn:hover {
             background: rgba(47,114,255,0.2);
             color: #ffffff;
@@ -14057,7 +14078,33 @@
         .toolbar-icon-btn-light,
         .profile-avatar-btn,
         .right-sidebar-icon-btn,
-        .sidebar-timeframe-btn { position: relative; }
+        .sidebar-timeframe-btn,
+        .sidebar-current-timeframe { position: relative; }
+
+        /* Sidebar TF buttons — tooltip to the left */
+        .sidebar-timeframe-btn[data-tooltip]::after,
+        .sidebar-current-timeframe[data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            right: calc(100% + 8px);
+            top: 50%;
+            transform: translateY(-50%);
+            background: #1e222d;
+            color: #ffffff;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 400;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            z-index: 99999;
+        }
+        .sidebar-timeframe-btn[data-tooltip]:hover::after,
+        .sidebar-current-timeframe[data-tooltip]:hover::after { opacity: 1; }
 
         /* Top toolbar — tooltip drops below button */
         .toolbar-icon-btn-dark[data-tooltip]::after,
@@ -18815,7 +18862,7 @@
     <script src="modules/keyboard-shortcuts.js?v=20251216PLAYSYNC2"></script>
     <script src="modules/object-tree.js?v=20251225PATH6PTS2"></script>
     <script src="modules/panel-manager.js?v=20251230NOBORDER"></script>
-    <script src="modules/timeframe-favorites.js?v=20260226TFFLYOUT4"></script>
+    <script src="modules/timeframe-favorites.js?v=20260226TFFLYOUT6"></script>
     <script src="modules/propfirm-tracker.js?v=20241124001"></script>
     <script src="modules/compare-overlay.js?v=20251226AXISCURSOR2"></script>
     

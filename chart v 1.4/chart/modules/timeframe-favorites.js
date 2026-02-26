@@ -98,6 +98,30 @@ class TimeframeFavorites {
     }
 
     /**
+     * Get full display name for timeframe (used in tooltips)
+     */
+    getTimeframeFullName(timeframe) {
+        const tf = String(timeframe || '').toLowerCase().trim();
+        const names = {
+            '1m': '1 minute', '2m': '2 minutes', '3m': '3 minutes', '4m': '4 minutes',
+            '5m': '5 minutes', '10m': '10 minutes', '15m': '15 minutes',
+            '30m': '30 minutes', '45m': '45 minutes',
+            '1h': '1 hour', '2h': '2 hours', '4h': '4 hours',
+            '6h': '6 hours', '12h': '12 hours',
+            '1d': '1 day', '1w': '1 week', '1mo': '1 month'
+        };
+        if (names[tf]) return names[tf];
+        const match = tf.match(/^(\d+)(m|h|d|w|mo)$/);
+        if (match) {
+            const v = parseInt(match[1]);
+            const unitMap = { m: 'minute', h: 'hour', d: 'day', w: 'week', mo: 'month' };
+            const unit = unitMap[match[2]] || match[2];
+            return `${v} ${unit}${v !== 1 ? 's' : ''}`;
+        }
+        return tf;
+    }
+
+    /**
      * Convert timeframe to minutes for sorting
      */
     timeframeToMinutes(timeframe) {
@@ -512,6 +536,7 @@ class TimeframeFavorites {
             btn.className = isActive ? 'sidebar-current-timeframe' : 'sidebar-timeframe-btn';
             btn.dataset.timeframe = timeframe;
             btn.textContent = this.getTimeframeLabel(timeframe);
+            btn.dataset.tooltip = this.getTimeframeFullName(timeframe);
 
             // All buttons select the timeframe on click
             btn.addEventListener('click', (e) => {
@@ -580,7 +605,6 @@ class TimeframeFavorites {
         let activeCategory = null;
 
         const showValues = (cat, catBtn) => {
-            // Deactivate previous
             catPanel.querySelectorAll('.tf-flyout-cat-btn').forEach(b => b.classList.remove('active'));
             catBtn.classList.add('active');
             activeCategory = cat.label;
@@ -589,8 +613,37 @@ class TimeframeFavorites {
             cat.values.forEach(tf => {
                 const vBtn = document.createElement('button');
                 vBtn.className = 'tf-flyout-val-btn' + (tf === this.currentTimeframe ? ' selected' : '');
-                vBtn.textContent = this.getTimeframeLabel(tf);
+
+                // Label
+                const lbl = document.createElement('span');
+                lbl.className = 'tf-val-label';
+                lbl.textContent = this.getTimeframeLabel(tf);
+
+                // Star (favorite toggle)
+                const star = document.createElement('span');
+                star.className = 'tf-flyout-val-star' + (this.isFavorite(tf) ? ' favorited' : '');
+                star.title = this.isFavorite(tf) ? 'Remove from sidebar' : 'Add to sidebar';
+                const starSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                starSvg.setAttribute('viewBox', '0 0 24 24');
+                const starPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                starPoly.setAttribute('points', '12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26');
+                starSvg.appendChild(starPoly);
+                star.appendChild(starSvg);
+
+                star.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleFavorite(tf);
+                    const isFav = this.isFavorite(tf);
+                    star.classList.toggle('favorited', isFav);
+                    star.title = isFav ? 'Remove from sidebar' : 'Add to sidebar';
+                    this.renderSidebarTimeframes();
+                });
+
+                vBtn.appendChild(lbl);
+                vBtn.appendChild(star);
+
                 vBtn.addEventListener('click', (e) => {
+                    if (e.target === star || star.contains(e.target)) return;
                     e.stopPropagation();
                     this._closeTfFlyout();
                     if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
