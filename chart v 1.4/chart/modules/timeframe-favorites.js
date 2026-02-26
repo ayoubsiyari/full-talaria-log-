@@ -524,15 +524,22 @@ class TimeframeFavorites {
                 triggerBtn.title = 'Change timeframe';
 
                 const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                svg.setAttribute('viewBox', '0 0 10 10');
+                svg.setAttribute('viewBox', '0 0 24 24');
                 svg.setAttribute('fill', 'none');
                 svg.setAttribute('stroke', 'currentColor');
-                svg.setAttribute('stroke-width', '1.5');
+                svg.setAttribute('stroke-width', '2');
                 svg.setAttribute('stroke-linecap', 'round');
                 svg.setAttribute('stroke-linejoin', 'round');
-                const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-                poly.setAttribute('points', '3,2 7,5 3,8');
-                svg.appendChild(poly);
+                // Clock circle
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', '12');
+                circle.setAttribute('cy', '12');
+                circle.setAttribute('r', '10');
+                // Hour hand
+                const hour = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                hour.setAttribute('points', '12,6 12,12 16,14');
+                svg.appendChild(circle);
+                svg.appendChild(hour);
                 triggerBtn.appendChild(svg);
 
                 triggerBtn.addEventListener('click', (e) => {
