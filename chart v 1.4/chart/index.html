@@ -25162,42 +25162,57 @@ P['watchlist']={
     }
 };
 
-/* ── Global Market (Watchlist + News side-by-side) ── */
+/* ── Global Market (sidebar nav: Watchlist / News) ── */
 P['globalmarket']={
+    _active:'watchlist',
     build:function(){
-        var wSrc=document.getElementById('watchlistContent');
-        var nSrc=document.getElementById('newsContent');
-        var wHTML=wSrc?wSrc.innerHTML:'<p style="color:#787b86;padding:20px;">Watchlist unavailable.</p>';
-        var nHTML=nSrc?nSrc.innerHTML:'<p style="color:#787b86;padding:20px;">News unavailable.</p>';
-        return '<div style="display:flex;height:100%;overflow:hidden;">'+
-            '<div id="gm_watchlist" style="width:260px;min-width:220px;border-right:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;overflow:hidden;">'+
-                '<div style="padding:10px 14px 8px;font-size:12px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,0.06);">Watchlist</div>'+
-                '<div style="flex:1;overflow-y:auto;">'+wHTML+'</div>'+
+        return '<div class="sp-embedded" style="display:flex;height:100%;">'+
+            '<div style="width:130px;min-width:130px;background:#04001f;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;padding:10px 8px;gap:2px;overflow-y:auto;">'+
+                '<div class="sp-nav-item active" id="gm_nav_watchlist" style="cursor:pointer;">'+
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'+
+                    '<span>Watchlist</span>'+
+                '</div>'+
+                '<div class="sp-nav-item" id="gm_nav_news" style="cursor:pointer;">'+
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="7" x2="18" y2="7"/><line x1="10" y1="11" x2="18" y2="11"/><line x1="10" y1="15" x2="14" y2="15"/></svg>'+
+                    '<span>News</span>'+
+                '</div>'+
             '</div>'+
-            '<div id="gm_news" style="flex:1;overflow-y:auto;">'+nHTML+'</div>'+
+            '<div id="gm_content" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'+
         '</div>';
+    },
+    _loadTab:function(tab){
+        var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var content=ctx.querySelector('#gm_content'); if(!content)return;
+        ctx.querySelectorAll('#gm_nav_watchlist,#gm_nav_news').forEach(function(n){n.classList.remove('active');});
+        var nav=ctx.querySelector('#gm_nav_'+tab); if(nav)nav.classList.add('active');
+        P['globalmarket']._active=tab;
+        if(tab==='watchlist'){
+            var wSrc=document.getElementById('watchlistContent');
+            content.innerHTML=wSrc?wSrc.innerHTML:'<p style="color:#787b86;">Watchlist unavailable.</p>';
+            var wItems=content.querySelector('#watchlistItems');
+            if(window.loadWatchlistItems) window.loadWatchlistItems(wItems||undefined);
+            var addBtn=content.querySelector('#addSymbolBtn');
+            var origAdd=document.querySelector('#watchlistContent #addSymbolBtn');
+            if(addBtn&&origAdd) addBtn.onclick=function(e){e.stopPropagation();origAdd.click();};
+        } else {
+            var nSrc=document.getElementById('newsContent');
+            content.innerHTML=nSrc?nSrc.innerHTML:'<p style="color:#787b86;">News unavailable.</p>';
+            content.querySelectorAll('.news-tab').forEach(function(tab){
+                tab.addEventListener('click',function(){
+                    content.querySelectorAll('.news-tab').forEach(function(t){t.classList.remove('active');});
+                    this.classList.add('active');
+                });
+            });
+        }
     },
     wire:function(){
         var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
-        /* wire watchlist */
-        var wItems=ctx.querySelector('#watchlistItems');
-        if(!wItems){
-            var wWrap=ctx.querySelector('#gm_watchlist');
-            if(wWrap){ var d=document.createElement('div'); d.id='gm_wlItems'; wWrap.querySelector('div[style*="flex:1"]').appendChild(d); }
-        }
-        var container=wItems||ctx.querySelector('#gm_wlItems');
-        if(container&&!wItems){ container.className='watchlist-items'; }
-        if(window.loadWatchlistItems) window.loadWatchlistItems(container||undefined);
-        var addBtn=ctx.querySelector('#addSymbolBtn');
-        var origAdd=document.getElementById('addSymbolBtn');
-        if(addBtn&&origAdd) addBtn.onclick=function(e){ e.stopPropagation(); origAdd.click(); };
-        /* wire news tabs */
-        ctx.querySelectorAll('.news-tab').forEach(function(tab){
-            tab.addEventListener('click',function(){
-                ctx.querySelectorAll('.news-tab').forEach(function(t){t.classList.remove('active');});
-                this.classList.add('active');
-            });
-        });
+        var self=P['globalmarket'];
+        var wNav=ctx.querySelector('#gm_nav_watchlist');
+        var nNav=ctx.querySelector('#gm_nav_news');
+        if(wNav) wNav.addEventListener('click',function(){self._loadTab('watchlist');});
+        if(nNav) nNav.addEventListener('click',function(){self._loadTab('news');});
+        self._loadTab(self._active||'watchlist');
     }
 };
 
