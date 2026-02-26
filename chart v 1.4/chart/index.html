@@ -26145,11 +26145,50 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             });
         }
 
-        // ── Filter intervals to those ≤ chart timeframe ─────────────
+        // ── Get current chart TF in ms (used for filtering slider options) ────
         function getChartTfMs() {
-            var chart = window.chart;
+            return getAutoIntervalMs();
+        }
+
+        // ── Compute the auto interval:
+        //    single-chart → chart's current TF
+        //    multi-chart  → largest common interval = min TF among all panels
+        function getAutoIntervalMs() {
+            var pm = window.panelManager;
+            if (pm && pm.currentLayout !== '1' && pm.panels && pm.panels.length > 0) {
+                // Collect ms for each panel's timeframe
+                var msValues = [];
+                pm.panels.forEach(function(p) {
+                    var tf = (p.chartInstance && p.chartInstance.currentTimeframe)
+                        ? p.chartInstance.currentTimeframe
+                        : (p.timeframe || '1m');
+                    var ms = TF_MS[tf];
+                    if (ms) msValues.push(ms);
+                });
+                // Also include main chart if present
+                var mc = window.mainChart || window.chart;
+                if (mc && mc.currentTimeframe) {
+                    var mcMs = TF_MS[mc.currentTimeframe];
+                    if (mcMs) msValues.push(mcMs);
+                }
+                if (msValues.length > 0) {
+                    return Math.min.apply(null, msValues); // largest common = smallest TF
+                }
+            }
+            // Single chart
+            var chart = window.mainChart || window.chart;
             if (!chart || !chart.currentTimeframe) return TF_MS['1m'];
             return TF_MS[chart.currentTimeframe] || TF_MS['1m'];
+        }
+
+        // ── Find the ALL_INTERVALS entry closest to a given ms value ─────────
+        function findClosestInterval(ms) {
+            var best = ALL_INTERVALS[0];
+            for (var i = 0; i < ALL_INTERVALS.length; i++) {
+                if (ALL_INTERVALS[i].ms <= ms) best = ALL_INTERVALS[i];
+                else break;
+            }
+            return best;
         }
 
         function rebuildIntervals() {
@@ -26198,8 +26237,13 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             updateSliderPosition(index, true);
             updateActiveLabel(index);
 
-            // 'auto' maps to 'sync' for the replay system
-            var selectVal = (iv.tf === 'auto') ? 'sync' : iv.tf;
+            // For auto: resolve the actual interval from current chart state
+            var resolvedIv = iv;
+            if (iv.tf === 'auto') {
+                resolvedIv = findClosestInterval(getAutoIntervalMs());
+            }
+
+            var selectVal = resolvedIv.tf;
 
             // Write to hidden select
             if (hiddenSelect) {
@@ -26218,14 +26262,12 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
                 hiddenSelect.dispatchEvent(new Event('change'));
             }
 
-            // Update replay system directly (skip for auto — replay-system handles sync)
-            if (iv.tf !== 'auto') {
-                var rs = window.chart && window.chart.replaySystem;
-                if (rs) {
-                    var rawMs = rs.fullRawData && rs.fullRawData.length > 1
-                        ? (rs.fullRawData[1].t - rs.fullRawData[0].t) : 60000;
-                    rs._replayIntervalRawCandles = Math.max(1, Math.round(iv.ms / rawMs));
-                }
+            // Update replay system directly
+            var rs = (window.mainChart || window.chart) && (window.mainChart || window.chart).replaySystem;
+            if (rs) {
+                var rawMs = rs.fullRawData && rs.fullRawData.length > 1
+                    ? (rs.fullRawData[1].t - rs.fullRawData[0].t) : 60000;
+                rs._replayIntervalRawCandles = Math.max(1, Math.round(resolvedIv.ms / rawMs));
             }
         }
 
@@ -26279,15 +26321,38 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             setByIndex(Math.round(getIndexFromPosition(e.clientX)));
         });
 
+        // ── Re-apply Auto if currently selected ──────────────────────
+        function reApplyIfAuto() {
+            if (activeIntervals[currentIndex] && activeIntervals[currentIndex].tf === 'auto') {
+                setByIndex(currentIndex, true);
+            }
+        }
+
         // ── Re-filter whenever chart timeframe changes ───────────────
         window.addEventListener('chartDataLoaded', function() {
             rebuildIntervals();
+        });
+
+        // Re-apply Auto when a panel's timeframe changes (multi-chart)
+        window.addEventListener('panelTimeframeChanged', function() {
+            rebuildIntervals();
+        });
+
+        // Re-apply Auto when layout switches (single ↔ multi)
+        window.addEventListener('panelLayoutChanged', function() {
+            rebuildIntervals();
+        });
+
+        // Re-apply Auto when panel selection changes (different TF now controls)
+        window.addEventListener('panelSelected', function() {
+            reApplyIfAuto();
         });
 
         // ── Init ─────────────────────────────────────────────────────
         setTimeout(rebuildIntervals, 600);
 
         window._replayIntervalRebuild = rebuildIntervals;
+        window._replayIntervalReApplyAuto = reApplyIfAuto;
         window._replayGetCurrentInterval = function() {
             return activeIntervals[currentIndex] ? activeIntervals[currentIndex].tf : '1m';
         };
