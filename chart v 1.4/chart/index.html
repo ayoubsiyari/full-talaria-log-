@@ -24080,10 +24080,27 @@ function showIndicatorsMenu() {
                     if (window.chart) {
                         window.chart.chartSettings.chartType = chartType;
                         window.chart.render();
-                        console.log('Chart type changed to:', chartType);
                     }
+                    // Sync settings panel select if open
+                    var spSel = document.getElementById('sl_chartType');
+                    if (spSel) spSel.value = chartType;
                 });
             });
+
+            // Expose helper so settings panel can sync toolbar icon + active state
+            window._syncChartTypeUI = function(chartType) {
+                // Update active option in dropdown
+                chartTypeDropdown.querySelectorAll('.chart-type-option').forEach(function(o) {
+                    o.classList.toggle('active', o.dataset.type === chartType);
+                });
+                // Update toolbar button icon
+                var activeOpt = chartTypeDropdown.querySelector('.chart-type-option[data-type="' + chartType + '"]');
+                if (activeOpt) {
+                    var newIcon = activeOpt.querySelector('svg');
+                    var curIcon = chartTypeBtn.querySelector('svg');
+                    if (newIcon && curIcon) curIcon.replaceWith(newIcon.cloneNode(true));
+                }
+            };
         }
         
         // Run when DOM is ready

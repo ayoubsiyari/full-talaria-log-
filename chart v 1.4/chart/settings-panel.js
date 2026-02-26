@@ -217,7 +217,7 @@ window._spPanels = {};
                 irow('Right offset (px)','rightOff',ro,0,500));
         },
         wire: function(){
-            wSel('chartType', function(v){ set('chartType',v); });
+            wSel('chartType', function(v){ set('chartType',v); if(window._syncChartTypeUI) window._syncChartTypeUI(v); });
             wSel('priceMode', function(v){ var c=ch(); if(!c)return; c.priceScale=c.priceScale||{}; c.priceScale.mode=v; set('priceScaleMode',v); });
             wClr('bg', function(v){ var c=ch(); if(!c)return; c.chartSettings.backgroundColor=v; if(c.canvas)c.canvas.style.backgroundColor=v; var el=document.querySelector('.chart-container'); if(el)el.style.backgroundColor=v; apply(); });
             wChk('showGrid',  function(v){ set('showGrid',v); });
