@@ -2281,12 +2281,20 @@ class ExtendedLineTool extends BaseDrawing {
         if (this.group) {
             this.group.remove();
         }
+        // Remove any previously rendered unclipped text label
+        if (this._labelGroup) {
+            this._labelGroup.remove();
+            this._labelGroup = null;
+        }
 
         if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
+
+        // Store labelsGroup reference for unclipped text rendering
+        this._labelsGroup = scales.labelsGroup || null;
 
         // Create group for this drawing
         this.group = container.append('g')
@@ -2516,7 +2524,9 @@ class ExtendedLineTool extends BaseDrawing {
             x1: leftX,
             y1: leftY,
             x2: rightX,
-            y2: rightY
+            y2: rightY,
+            chartBottomY: yRange[0],
+            chartTopY: yRange[1]
         });
 
         // Create resize handles (only for the two defining points)
@@ -2614,7 +2624,21 @@ class ExtendedLineTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        appendTextLabel(this.group, label, {
+        // Clamp label to stay within chart area (don't overlap time or price axes)
+        const chartBottomY = coords.chartBottomY;
+        const chartTopY = coords.chartTopY;
+        if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
+        if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
+
+        // Use unclipped labelsGroup so text is never cut off by chart clip-path
+        if (this._labelsGroup) {
+            this._labelGroup = this._labelsGroup.append('g')
+                .attr('class', 'drawing-label extended-line-label')
+                .attr('data-id', this.id)
+                .style('opacity', this.visible ? (this.style.opacity || 1) : 0)
+                .style('pointer-events', 'none');
+        }
+        appendTextLabel(this._labelGroup || this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
             anchor: elAnchor,
