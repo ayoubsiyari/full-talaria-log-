@@ -16800,7 +16800,7 @@
                     </svg>
                 </button>
                 <!-- Global Markets Button -->
-                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets">
+                <button class="toolbar-icon-btn-dark" id="globalViewBtn" data-tooltip="Global Markets" onclick="event.stopPropagation();(function(){var p=document.getElementById('settingsPanel');if(!p)return;var active=p.querySelector('.sp-nav-item.active');var cur=active?active.dataset.settings:'';if(p.classList.contains('open')&&cur==='news'){if(window._spOpen)window._spOpen('watchlist');}else if(p.classList.contains('open')&&cur==='watchlist'){if(window._spToggle)window._spToggle();}else{if(window._spOpen)window._spOpen('news');}})();">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                         <circle cx="12" cy="12" r="10"/>
                         <line x1="2" y1="12" x2="22" y2="12"/>
