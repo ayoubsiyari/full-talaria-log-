@@ -75,6 +75,7 @@ class TimeframeFavorites {
      * Get display label for timeframe
      */
     getTimeframeLabel(timeframe) {
+        const tf = String(timeframe || '').toLowerCase().trim();
         const labels = {
             '1m': '1m', '2m': '2m', '3m': '3m', '4m': '4m', '5m': '5m',
             '10m': '10m', '15m': '15m', '30m': '30m', '45m': '45m',
@@ -82,13 +83,10 @@ class TimeframeFavorites {
             '1d': 'D', '1w': 'W', '1mo': 'M'
         };
         
-        // Return predefined label or format custom timeframe
-        if (labels[timeframe]) {
-            return labels[timeframe];
-        }
+        if (labels[tf]) return labels[tf];
         
         // Handle custom timeframes like "7m", "3h", "2d", etc.
-        const match = timeframe.match(/^(\d+)(m|h|d|w|mo)$/);
+        const match = tf.match(/^(\d+)(m|h|d|w|mo)$/);
         if (match) {
             const value = match[1];
             const unit = match[2];
@@ -96,14 +94,14 @@ class TimeframeFavorites {
             return `${value}${unitLabels[unit] || unit}`;
         }
         
-        return timeframe;
+        return tf;
     }
 
     /**
      * Convert timeframe to minutes for sorting
      */
     timeframeToMinutes(timeframe) {
-        const match = timeframe.match(/^(\d+)(m|h|d|w|mo)$/);
+        const match = String(timeframe || '').toLowerCase().trim().match(/^(\d+)(m|h|d|w|mo)$/);
         if (!match) return 0;
         
         const value = parseInt(match[1]);

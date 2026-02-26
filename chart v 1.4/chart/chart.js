@@ -7563,7 +7563,8 @@ class Chart {
             this.drawingManager.saveDrawings();
         }
         
-        this.currentTimeframe = timeframe;
+        this.currentTimeframe = String(timeframe || '1m').toLowerCase().trim();
+        timeframe = this.currentTimeframe;
         this.scheduleChartViewSave();
         
         if (this.replaySystem && this.replaySystem.isActive) {
@@ -8620,7 +8621,7 @@ class Chart {
             else if (d >= 4)     timeframe = '5m';
             else                 timeframe = '1m';
         } else {
-            const tfMap = {'1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000,'1mo':2592000000};
+            const tfMap = {'1m':60000,'2m':120000,'3m':180000,'4m':240000,'5m':300000,'10m':600000,'15m':900000,'30m':1800000,'45m':2700000,'1h':3600000,'2h':7200000,'4h':14400000,'6h':21600000,'12h':43200000,'1d':86400000,'1w':604800000,'1mo':2592000000};
             timeframeMs = tfMap[timeframe] || 60000;
         }
 
@@ -12376,7 +12377,7 @@ class Chart {
             } else {
                 // Auto-detect timeframe from data like x-axis does
                 let timeframe = this.currentTimeframe || '1m';
-                const tfMap = { '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000, '1h': 3600000, '4h': 14400000, '1d': 86400000, '1w': 604800000, '1M': 2592000000 };
+                const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
                 timeframeMs = tfMap[timeframe] || 60000;
             }
             
