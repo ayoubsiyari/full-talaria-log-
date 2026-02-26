@@ -1696,11 +1696,17 @@ class RayTool extends BaseDrawing {
                 .style('pointer-events', 'none').style('cursor', 'move');
         }
 
+        // Pass in visual left→right order (same as ExtendedLineTool leftX/rightX)
+        // so the flip/perp logic in renderTextLabel works correctly
+        const rl_x1 = visX1 <= visX2 ? visX1 : visX2;
+        const rl_y1 = visX1 <= visX2 ? visY1 : visY2;
+        const rl_x2 = visX1 <= visX2 ? visX2 : visX1;
+        const rl_y2 = visX1 <= visX2 ? visY2 : visY1;
         this.renderTextLabel({
-            x1: visX1,
-            y1: visY1,
-            x2: visX2,
-            y2: visY2
+            x1: rl_x1,
+            y1: rl_y1,
+            x2: rl_x2,
+            y2: rl_y2
         });
 
         // Create resize handles (only for the two defining points)
@@ -1777,10 +1783,7 @@ class RayTool extends BaseDrawing {
 
         const perpX = -Math.sin(originalAngleRad);
         const perpY = Math.cos(originalAngleRad);
-        // When text is flipped (line going right-to-left), invert the perp direction
-        // so 'top' stays visually above and 'bottom' stays visually below the rendered text
-        const flipSign = isFlipped ? -1 : 1;
-        const signUp = (perpY <= 0 ? 1 : -1) * flipSign;
+        const signUp = perpY <= 0 ? 1 : -1;
         if (textVAlign === 'top') {
             baseX += perpX * verticalOffset * signUp;
             baseY += perpY * verticalOffset * signUp;
