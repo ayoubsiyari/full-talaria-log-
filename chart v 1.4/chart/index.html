@@ -6668,155 +6668,103 @@
             margin-left: -10px;
         }
 
-        /* ── Replay Interval Button ── */
-        #replayIntervalBtn {
-            position: relative;
+        /* ── Replay Interval Slider (matches speed slider style) ── */
+        .interval-slider-control {
             display: flex;
             align-items: center;
-            gap: 4px;
-            height: 30px;
-            padding: 0 8px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 4px;
-            color: #d1d4dc;
+            gap: 10px;
+            position: relative;
+            min-width: 220px;
+        }
+        .interval-slider-label {
+            display: flex;
+            align-items: baseline;
+            gap: 0;
+            color: #cbd5f5;
             font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
+            font-weight: 500;
             white-space: nowrap;
-            transition: background 0.15s, border-color 0.15s;
         }
-        #replayIntervalBtn:hover,
-        #replayIntervalBtn.open {
-            background: rgba(255,255,255,0.1);
-            border-color: rgba(255,255,255,0.25);
-            color: #fff;
+        .interval-slider-label > span:first-child { margin-right: 4px; }
+        .interval-slider-label .interval-value {
+            color: #ffffff;
+            font-weight: 600;
+            display: inline-block;
+            min-width: 32px;
+            text-align: left;
+            margin-right: 6px;
         }
-        #replayIntervalBtn svg {
+        .interval-slider-track-container {
+            position: relative;
+            width: 120px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            margin-left: auto;
+        }
+        .interval-slider-ticks {
+            position: absolute;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 6px;
+            pointer-events: none;
+        }
+        .interval-slider-ticks .tick {
+            width: 1px;
+            height: 4px;
+            background: #363a45;
+            border-radius: 1px;
+        }
+        .interval-slider-custom {
+            position: relative;
+            width: 100%;
+            height: 3px;
+            background: #363a45;
+            border-radius: 2px;
+            cursor: default;
+            transition: background 0.15s ease, height 0.15s ease, box-shadow 0.15s ease;
+        }
+        .interval-slider-custom:hover {
+            background: #4a4e5a;
+            height: 4px;
+            box-shadow: 0 0 8px rgba(255,255,255,0.3), 0 0 16px rgba(255,255,255,0.15);
+        }
+        .interval-slider-custom-thumb {
+            position: absolute;
             width: 12px;
             height: 12px;
-            opacity: 0.6;
-            transition: transform 0.15s;
-        }
-        #replayIntervalBtn.open svg { transform: rotate(180deg); }
-
-        /* Interval popup panel */
-        #replayIntervalPopup {
-            display: none;
-            position: fixed;
-            z-index: 99999;
-            background: #1e2130;
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 8px;
-            padding: 6px 0 8px;
-            min-width: 200px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-            user-select: none;
-        }
-        #replayIntervalPopup.visible { display: block; }
-
-        .replay-interval-header {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 14px 8px;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            color: #787b86;
-            text-transform: uppercase;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            margin-bottom: 4px;
-        }
-        .replay-interval-header svg {
-            width: 13px;
-            height: 13px;
-            opacity: 0.6;
-            cursor: help;
-        }
-
-        .replay-interval-option {
-            display: block;
-            width: 100%;
-            padding: 7px 14px;
-            background: none;
-            border: none;
-            color: #d1d4dc;
-            font-size: 13px;
-            text-align: left;
-            cursor: pointer;
-            border-radius: 0;
-            transition: background 0.1s, color 0.1s;
-        }
-        .replay-interval-option:hover { background: rgba(255,255,255,0.07); color: #fff; }
-        .replay-interval-option.active {
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-            font-weight: 600;
-        }
-
-        .replay-interval-divider {
-            height: 1px;
-            background: rgba(255,255,255,0.07);
-            margin: 6px 0;
-        }
-
-        .replay-interval-auto-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 7px 14px 5px;
-            font-size: 13px;
-            color: #d1d4dc;
-            cursor: pointer;
-        }
-        .replay-interval-auto-row:hover { color: #fff; }
-
-        /* Toggle switch */
-        .replay-interval-toggle {
-            position: relative;
-            width: 36px;
-            height: 20px;
-            flex-shrink: 0;
-        }
-        .replay-interval-toggle input { opacity: 0; width: 0; height: 0; }
-        .replay-interval-toggle-slider {
-            position: absolute;
-            inset: 0;
-            background: rgba(255,255,255,0.15);
-            border-radius: 20px;
-            transition: background 0.2s;
-            cursor: pointer;
-        }
-        .replay-interval-toggle-slider::before {
-            content: '';
-            position: absolute;
-            width: 14px;
-            height: 14px;
-            left: 3px;
-            top: 3px;
-            background: #fff;
+            background: #ffffff;
             border-radius: 50%;
-            transition: transform 0.2s;
+            cursor: default;
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transition: left 0.15s cubic-bezier(0.4,0,0.2,1), box-shadow 0.15s ease, transform 0.15s ease;
+            z-index: 2;
         }
-        .replay-interval-toggle input:checked + .replay-interval-toggle-slider {
-            background: #2962ff;
+        .interval-slider-custom-thumb:hover {
+            transform: translate(-50%,-50%) scale(1.2);
+            box-shadow: 0 0 0 5px rgba(255,255,255,0.25), 0 0 12px rgba(255,255,255,0.4);
         }
-        .replay-interval-toggle input:checked + .replay-interval-toggle-slider::before {
-            transform: translateX(16px);
+        .interval-slider-custom-thumb:active,
+        .interval-slider-custom-thumb.dragging {
+            cursor: default;
+            transform: translate(-50%,-50%) scale(1.05);
+            transition: transform 0.1s;
         }
-
-        body.light-mode #replayIntervalPopup {
-            background: #f0f3fa;
-            border-color: rgba(0,0,0,0.1);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        .interval-slider-custom-fill {
+            position: absolute;
+            height: 100%;
+            background: #787b86;
+            border-radius: 2px;
+            transition: width 0.15s cubic-bezier(0.4,0,0.2,1);
         }
-        body.light-mode .replay-interval-option { color: #131722; }
-        body.light-mode .replay-interval-option:hover { background: rgba(0,0,0,0.06); }
-        body.light-mode .replay-interval-option.active { background: rgba(0,0,0,0.08); }
-        body.light-mode .replay-interval-auto-row { color: #131722; }
-        body.light-mode #replayIntervalBtn { color: #131722; border-color: rgba(0,0,0,0.15); background: rgba(0,0,0,0.04); }
-        body.light-mode #replayIntervalBtn:hover { background: rgba(0,0,0,0.08); }
+        body.light-mode .interval-slider-label { color: #434651; }
+        body.light-mode .interval-slider-label .interval-value { color: #131722; }
+        body.light-mode .interval-slider-custom { background: #c0c3cd; }
+        body.light-mode .interval-slider-custom-thumb { background: #131722; box-shadow: 0 0 0 3px rgba(0,0,0,0.1); }
+        body.light-mode .interval-slider-ticks .tick { background: #c0c3cd; }
 
         .replay-toolbar button.replay-collapse-toggle .toggle-arrow {
             transition: transform 0.2s ease;
@@ -17331,13 +17279,20 @@
                     </svg>
                 </button>
 
-                <!-- Update Interval Button -->
-                <button id="replayIntervalBtn" title="Update Interval">
-                    <span id="replayIntervalLabel">1m</span>
-                    <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="1,1 6,7 11,1"/>
-                    </svg>
-                </button>
+                <!-- Interval Slider Control -->
+                <div class="interval-slider-control" id="intervalSliderControl">
+                    <div class="interval-slider-label">
+                        <span>Interval&nbsp;</span>
+                        <span class="interval-value" id="intervalValueDisplay">1m</span>
+                    </div>
+                    <div class="interval-slider-track-container">
+                        <div class="interval-slider-ticks" id="intervalSliderTicks"></div>
+                        <div class="interval-slider-custom" id="intervalSliderCustom">
+                            <div class="interval-slider-custom-fill" id="intervalSliderFill"></div>
+                            <div class="interval-slider-custom-thumb" id="intervalSliderThumb"></div>
+                        </div>
+                    </div>
+                </div>
 
                  <!-- Go To Control (moved here next to play buttons) -->
                 <div class="date-search-wrapper replay-date-search" id="goToControl">
@@ -26039,218 +25994,187 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 }catch(e){ console.error('[SP] FATAL ERROR:', e.message, e.stack); }
     </script>
 
-    <!-- ── Replay Update Interval Popup ── -->
-    <div id="replayIntervalPopup">
-        <div class="replay-interval-header">
-            UPDATE INTERVAL
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" title="The amount of time that corresponds to one data update in Bar Replay mode.">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-        </div>
-        <button class="replay-interval-option" data-interval="tick">1 tick</button>
-        <button class="replay-interval-option" data-interval="1s">1 second</button>
-        <button class="replay-interval-option" data-interval="1m">1 minute</button>
-        <button class="replay-interval-option" data-interval="3m">3 minutes</button>
-        <button class="replay-interval-option" data-interval="5m">5 minutes</button>
-        <button class="replay-interval-option" data-interval="15m">15 minutes</button>
-        <button class="replay-interval-option" data-interval="30m">30 minutes</button>
-        <button class="replay-interval-option" data-interval="1h">1 hour</button>
-        <button class="replay-interval-option" data-interval="4h">4 hours</button>
-        <button class="replay-interval-option" data-interval="1d">1 day</button>
-        <div class="replay-interval-divider"></div>
-        <label class="replay-interval-auto-row">
-            <span>Auto select interval</span>
-            <span class="replay-interval-toggle">
-                <input type="checkbox" id="replayIntervalAutoToggle" checked>
-                <span class="replay-interval-toggle-slider"></span>
-            </span>
-        </label>
-    </div>
-
     <script>
     (function() {
-        var INTERVAL_LABELS = {
-            'tick': '1 tick', '1s': '1s', '1m': '1m', '3m': '3m', '5m': '5m',
-            '15m': '15m', '30m': '30m', '1h': '1h', '4h': '4h', '1d': '1D'
+        // All possible intervals ordered smallest → largest
+        var ALL_INTERVALS = [
+            { tf: '1m',  ms: 60000,       label: '1m'  },
+            { tf: '3m',  ms: 180000,      label: '3m'  },
+            { tf: '5m',  ms: 300000,      label: '5m'  },
+            { tf: '15m', ms: 900000,      label: '15m' },
+            { tf: '30m', ms: 1800000,     label: '30m' },
+            { tf: '1h',  ms: 3600000,     label: '1h'  },
+            { tf: '4h',  ms: 14400000,    label: '4h'  },
+            { tf: '1d',  ms: 86400000,    label: '1D'  },
+            { tf: '1w',  ms: 604800000,   label: '1W'  },
+            { tf: '1mo', ms: 2592000000,  label: '1M'  }
+        ];
+
+        var TF_MS = {
+            '1m':60000,'2m':120000,'3m':180000,'4m':240000,'5m':300000,
+            '10m':600000,'15m':900000,'30m':1800000,'45m':2700000,
+            '1h':3600000,'2h':7200000,'4h':14400000,'6h':21600000,'12h':43200000,
+            '1d':86400000,'1w':604800000,'1mo':2592000000
         };
 
-        // Map interval → value for the hidden replayTimeframe select
-        // 'tick' = advance 1 raw candle; 'sync' = chart timeframe
-        var INTERVAL_TO_TF = {
-            'tick': '1m',  // 1 raw candle step (smallest unit)
-            '1s':  '1m',   // treat as 1m for now (raw data is usually 1m)
-            '1m':  '1m',
-            '3m':  '3m',
-            '5m':  '5m',
-            '15m': '15m',
-            '30m': '30m',
-            '1h':  '1h',
-            '4h':  '4h',
-            '1d':  '1d'
-        };
-
-        var btn = document.getElementById('replayIntervalBtn');
-        var popup = document.getElementById('replayIntervalPopup');
-        var label = document.getElementById('replayIntervalLabel');
-        var autoToggle = document.getElementById('replayIntervalAutoToggle');
+        var sliderTrack  = document.getElementById('intervalSliderCustom');
+        var sliderThumb  = document.getElementById('intervalSliderThumb');
+        var sliderFill   = document.getElementById('intervalSliderFill');
+        var sliderTicks  = document.getElementById('intervalSliderTicks');
+        var valueDisplay = document.getElementById('intervalValueDisplay');
         var hiddenSelect = document.getElementById('replayTimeframe');
 
-        if (!btn || !popup) return;
+        if (!sliderTrack || !sliderThumb) return;
 
-        var currentInterval = localStorage.getItem('replayUpdateInterval') || '1m';
-        var autoSelect = localStorage.getItem('replayIntervalAuto') !== 'false';
+        var activeIntervals = ALL_INTERVALS.slice(); // filtered list
+        var currentIndex = 0;
 
-        function getAutoInterval() {
-            var chart = window.chart;
-            if (!chart || !chart.currentTimeframe) return '1m';
-            var tf = chart.currentTimeframe;
-            // Map chart TF → sensible default interval
-            var map = {
-                '1m':'1m','2m':'1m','3m':'3m','4m':'3m','5m':'5m','10m':'5m',
-                '15m':'15m','30m':'30m','45m':'30m',
-                '1h':'1h','2h':'1h','4h':'4h','6h':'4h','12h':'4h',
-                '1d':'1d','1w':'1d','1mo':'1d'
-            };
-            return map[tf] || '1m';
+        // ── Build / rebuild tick marks ──────────────────────────────
+        function buildTicks(count) {
+            if (!sliderTicks) return;
+            sliderTicks.innerHTML = '';
+            for (var i = 0; i < count; i++) {
+                var t = document.createElement('span');
+                t.className = 'tick';
+                sliderTicks.appendChild(t);
+            }
         }
 
-        function applyInterval(interval, skipSave) {
-            currentInterval = interval;
-            if (!skipSave) localStorage.setItem('replayUpdateInterval', interval);
+        // ── Filter intervals to those ≤ chart timeframe ─────────────
+        function getChartTfMs() {
+            var chart = window.chart;
+            if (!chart || !chart.currentTimeframe) return TF_MS['1m'];
+            return TF_MS[chart.currentTimeframe] || TF_MS['1m'];
+        }
 
-            // Update button label
-            if (label) label.textContent = INTERVAL_LABELS[interval] || interval;
-
-            // Mark active option
-            popup.querySelectorAll('.replay-interval-option').forEach(function(o) {
-                o.classList.toggle('active', o.dataset.interval === interval);
+        function rebuildIntervals() {
+            var chartMs = getChartTfMs();
+            activeIntervals = ALL_INTERVALS.filter(function(iv) {
+                return iv.ms <= chartMs;
             });
+            if (activeIntervals.length === 0) activeIntervals = [ALL_INTERVALS[0]];
+            buildTicks(activeIntervals.length);
 
-            // Write to hidden select so calculateNextIndex picks it up
-            var tf = INTERVAL_TO_TF[interval] || interval;
+            // Try to keep the same tf selected; otherwise pick the last (=chart tf)
+            var saved = localStorage.getItem('replayUpdateInterval') || '';
+            var idx = activeIntervals.findIndex(function(iv) { return iv.tf === saved; });
+            if (idx === -1) idx = activeIntervals.length - 1;
+            setByIndex(idx, true);
+        }
+
+        // ── Apply an interval by index ───────────────────────────────
+        function updateSliderPosition(index, animate) {
+            var maxIdx = Math.max(1, activeIntervals.length - 1);
+            var pct = (index / maxIdx) * 100;
+            if (!animate) {
+                sliderThumb.style.transition = 'none';
+                sliderFill.style.transition  = 'none';
+            }
+            sliderThumb.style.left = pct + '%';
+            sliderFill.style.width = pct + '%';
+            if (!animate) {
+                sliderThumb.offsetHeight; // force reflow
+                sliderThumb.style.transition = '';
+                sliderFill.style.transition  = '';
+            }
+        }
+
+        function setByIndex(index, skipSave) {
+            var maxIdx = activeIntervals.length - 1;
+            index = Math.max(0, Math.min(maxIdx, Math.round(index)));
+            currentIndex = index;
+
+            var iv = activeIntervals[index];
+            if (valueDisplay) valueDisplay.textContent = iv.label;
+            if (!skipSave) localStorage.setItem('replayUpdateInterval', iv.tf);
+
+            updateSliderPosition(index, true);
+
+            // Write to hidden select
             if (hiddenSelect) {
-                // Try to find matching option; if not, add temporary one
                 var found = false;
                 for (var i = 0; i < hiddenSelect.options.length; i++) {
-                    if (hiddenSelect.options[i].value === tf) {
-                        hiddenSelect.value = tf;
-                        found = true;
-                        break;
+                    if (hiddenSelect.options[i].value === iv.tf) {
+                        hiddenSelect.value = iv.tf; found = true; break;
                     }
                 }
                 if (!found) {
                     var opt = document.createElement('option');
-                    opt.value = tf;
-                    opt.text = tf;
+                    opt.value = iv.tf; opt.text = iv.tf;
                     hiddenSelect.appendChild(opt);
-                    hiddenSelect.value = tf;
+                    hiddenSelect.value = iv.tf;
                 }
                 hiddenSelect.dispatchEvent(new Event('change'));
             }
 
-            // Also update replay system directly if available
+            // Update replay system directly
             var rs = window.chart && window.chart.replaySystem;
             if (rs) {
-                if (interval === 'tick') {
-                    rs._replayIntervalRawCandles = 1;
-                } else {
-                    var tfMs = rs.timeframeToMs ? rs.timeframeToMs(tf) : null;
-                    var rawMs = rs.fullRawData && rs.fullRawData.length > 1
-                        ? (rs.fullRawData[1].t - rs.fullRawData[0].t)
-                        : 60000;
-                    rs._replayIntervalRawCandles = tfMs ? Math.max(1, Math.round(tfMs / rawMs)) : 1;
-                }
+                var rawMs = rs.fullRawData && rs.fullRawData.length > 1
+                    ? (rs.fullRawData[1].t - rs.fullRawData[0].t) : 60000;
+                rs._replayIntervalRawCandles = Math.max(1, Math.round(iv.ms / rawMs));
             }
         }
 
-        function applyAutoInterval() {
-            if (!autoSelect) return;
-            applyInterval(getAutoInterval(), true);
+        // ── Drag logic (identical to speed slider) ───────────────────
+        function getIndexFromPosition(clientX) {
+            var rect = sliderTrack.getBoundingClientRect();
+            var pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            return pct * Math.max(1, activeIntervals.length - 1);
         }
 
-        // Init toggle state
-        if (autoToggle) {
-            autoToggle.checked = autoSelect;
-            autoToggle.addEventListener('change', function() {
-                autoSelect = autoToggle.checked;
-                localStorage.setItem('replayIntervalAuto', autoSelect ? 'true' : 'false');
-                // Dim/enable manual options
-                popup.querySelectorAll('.replay-interval-option').forEach(function(o) {
-                    o.style.opacity = autoSelect ? '0.45' : '1';
-                    o.style.pointerEvents = autoSelect ? 'none' : '';
-                });
-                if (autoSelect) applyAutoInterval();
-            });
-        }
+        var isDragging = false;
 
-        // Apply on chart timeframe change
+        sliderThumb.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            sliderThumb.classList.add('dragging');
+            e.preventDefault();
+        });
+
+        sliderTrack.addEventListener('click', function(e) {
+            if (e.target === sliderThumb) return;
+            setByIndex(Math.round(getIndexFromPosition(e.clientX)));
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isDragging) return;
+            var rawIdx     = getIndexFromPosition(e.clientX);
+            var snapped    = Math.round(rawIdx);
+            var maxIdx     = Math.max(1, activeIntervals.length - 1);
+            var pct        = (rawIdx / maxIdx) * 100;
+            sliderThumb.style.transition = 'transform 0.1s, box-shadow 0.15s';
+            sliderFill.style.transition  = 'none';
+            sliderThumb.style.left = pct + '%';
+            sliderFill.style.width = pct + '%';
+            if (snapped !== currentIndex) {
+                currentIndex = snapped;
+                if (valueDisplay && activeIntervals[snapped])
+                    valueDisplay.textContent = activeIntervals[snapped].label;
+            }
+            e.preventDefault();
+        });
+
+        document.addEventListener('mouseup', function(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            sliderThumb.classList.remove('dragging');
+            sliderThumb.style.transition = '';
+            sliderFill.style.transition  = '';
+            setByIndex(Math.round(getIndexFromPosition(e.clientX)));
+        });
+
+        // ── Re-filter whenever chart timeframe changes ───────────────
         window.addEventListener('chartDataLoaded', function() {
-            if (autoSelect) applyAutoInterval();
+            rebuildIntervals();
         });
 
-        // Option clicks
-        popup.querySelectorAll('.replay-interval-option').forEach(function(o) {
-            o.addEventListener('click', function(e) {
-                e.stopPropagation();
-                // Turn off auto when manually selecting
-                autoSelect = false;
-                if (autoToggle) autoToggle.checked = false;
-                localStorage.setItem('replayIntervalAuto', 'false');
-                popup.querySelectorAll('.replay-interval-option').forEach(function(x) {
-                    x.style.opacity = '1'; x.style.pointerEvents = '';
-                });
-                applyInterval(o.dataset.interval);
-                closePopup();
-            });
-        });
+        // ── Init ─────────────────────────────────────────────────────
+        setTimeout(rebuildIntervals, 600);
 
-        function openPopup() {
-            // Position above the button
-            var rect = btn.getBoundingClientRect();
-            popup.style.left = rect.left + 'px';
-            popup.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
-            popup.style.top = 'auto';
-            popup.classList.add('visible');
-            btn.classList.add('open');
-        }
-
-        function closePopup() {
-            popup.classList.remove('visible');
-            btn.classList.remove('open');
-        }
-
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (popup.classList.contains('visible')) {
-                closePopup();
-            } else {
-                openPopup();
-            }
-        });
-
-        document.addEventListener('click', function(e) {
-            if (!popup.contains(e.target) && e.target !== btn) {
-                closePopup();
-            }
-        });
-
-        // Init
-        if (autoSelect) {
-            popup.querySelectorAll('.replay-interval-option').forEach(function(o) {
-                o.style.opacity = '0.45';
-                o.style.pointerEvents = 'none';
-            });
-            // Defer so chart is loaded
-            setTimeout(applyAutoInterval, 500);
-        } else {
-            applyInterval(currentInterval, true);
-        }
-
-        // Expose for replay system to call
-        window._replayIntervalApplyAuto = applyAutoInterval;
-        window._replayGetCurrentInterval = function() { return currentInterval; };
+        window._replayIntervalRebuild = rebuildIntervals;
+        window._replayGetCurrentInterval = function() {
+            return activeIntervals[currentIndex] ? activeIntervals[currentIndex].tf : '1m';
+        };
     })();
     </script>
     
