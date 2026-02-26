@@ -8900,8 +8900,10 @@ class Chart {
         // Use fixed width matching the price axis area
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
         
-        const labelWidth = m.r - 4; // Same width as price axis
-        const labelX = this.w - m.r;
+        const axisLeft = !!this.priceAxisLeft;
+        const axisW = axisLeft ? m.l : m.r;
+        const labelWidth = axisW - 4;
+        const labelX = axisLeft ? 2 : this.w - m.r;
         const radius = 2;
         
         // Check if in replay mode to combine labels
@@ -12345,11 +12347,13 @@ class Chart {
             
             // Position label to match canvas current price label
             const m = this.margin;
-            priceLabel.style.left = (this.w - m.r) + 'px';
+            const _axisLeft = !!this.priceAxisLeft;
+            const _axisW = _axisLeft ? m.l : m.r;
+            priceLabel.style.left = (_axisLeft ? 2 : (this.w - m.r)) + 'px';
             priceLabel.style.right = 'auto';
             priceLabel.style.top = y + 'px';
             priceLabel.style.transform = 'translateY(-50%)';
-            priceLabel.style.width = (m.r - 4) + 'px';
+            priceLabel.style.width = (_axisW - 4) + 'px';
             priceLabel.style.textAlign = 'center';
             priceLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
             // Enforce label colors from settings

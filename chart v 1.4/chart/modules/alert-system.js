@@ -630,9 +630,11 @@ class AlertSystem {
             const labelEl = document.createElement('div');
             labelEl.className = 'alert-label-overlay';
             labelEl.dataset.alertId = alert.id;
+            const _axisLeft = !!(this.chart && this.chart.priceAxisLeft);
+            const _labelRight = _axisLeft ? (width - margin.l + 5) : (margin.r + 5);
             labelEl.style.cssText = `
                 position: absolute;
-                right: ${margin.r + 5}px;
+                right: ${_labelRight}px;
                 top: ${y - 11}px;
                 height: 22px;
                 display: flex;
