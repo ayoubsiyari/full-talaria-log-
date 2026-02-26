@@ -1727,7 +1727,9 @@ class RayTool extends BaseDrawing {
             x1: rl_x1,
             y1: rl_y1,
             x2: rl_x2,
-            y2: rl_y2
+            y2: rl_y2,
+            chartBottomY: yRange[0],
+            chartTopY: yRange[1]
         });
 
         // Create resize handles (only for the two defining points)
@@ -1817,6 +1819,13 @@ class RayTool extends BaseDrawing {
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
             ? 0 : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+
+        // Hide label if it falls outside chart area (e.g. below time axis or above top)
+        const finalY = baseY + offsetY;
+        const chartBottomY = coords.chartBottomY;
+        const chartTopY = coords.chartTopY;
+        if (chartBottomY !== undefined && finalY > chartBottomY) return;
+        if (chartTopY !== undefined && finalY < chartTopY) return;
 
         // Use unclipped labelsGroup so text is never cut off by chart clip-path
         if (this._labelsGroup) {
