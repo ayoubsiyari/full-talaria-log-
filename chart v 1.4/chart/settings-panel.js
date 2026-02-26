@@ -37,7 +37,6 @@ window._spPanels = {};
         if (c) { c.priceAxisLeft = false; c.margin.l = 0; c.margin.r = 60; if (c.scheduleRender) c.scheduleRender(); }
     }
 
-    window._spToggle = function() { panel.classList.contains('open') ? closePanel() : openPanel(); };
     window._spLoad = function(type, el) {
         /* update active state */
         panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
@@ -45,8 +44,7 @@ window._spPanels = {};
         loadSection(type);
     };
 
-    if (btn)    btn.addEventListener('click', function(e){ e.stopPropagation(); window._spToggle(); });
-    if (closeB) closeB.addEventListener('click', function(e){ e.stopPropagation(); closePanel(); });
+    if (closeB) closeB.addEventListener('click', function(e){ e.stopPropagation(); if(window.closePanel)window.closePanel(); else panel.classList.remove('open'); });
 
     /* nav item clicks */
     panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
