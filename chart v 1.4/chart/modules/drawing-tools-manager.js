@@ -549,6 +549,14 @@ class DrawingToolsManager {
         } else {
             this.tempGroup.attr('clip-path', 'url(#chart-clip-path)');
         }
+
+        // Unclipped labels group — text labels that must not be clipped by chart boundary
+        this.labelsGroup = this.svg.select('.drawings-labels');
+        if (this.labelsGroup.empty()) {
+            this.labelsGroup = this.svg.append('g')
+                .attr('class', 'drawings-labels')
+                .style('pointer-events', 'none');
+        }
     }
     
     /**
@@ -2114,7 +2122,8 @@ class DrawingToolsManager {
         drawing.render(this.drawingsGroup, {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
-            chart: this.chart  // Pass chart for dataIndexToPixel method
+            chart: this.chart,  // Pass chart for dataIndexToPixel method
+            labelsGroup: this.labelsGroup  // Unclipped group for text labels
         });
         
         // Always show axis highlights (labels visible regardless of selection state)
