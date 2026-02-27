@@ -360,22 +360,6 @@ class BaseDrawing {
             });
         }
         
-        // Price range zone between points — only when selected
-        if (this.points.length >= 2) {
-            const prices = this.points.map(p => p.y);
-            const minY = yScale(Math.max(...prices));
-            const maxY = yScale(Math.min(...prices));
-            const rangeHeight = maxY - minY;
-            if (rangeHeight > 0) {
-                canvasZones.push({
-                    type: 'price-range',
-                    y: minY,
-                    height: rangeHeight,
-                    color: shapeColor,
-                    selected: !!this.selected
-                });
-            }
-        }
         
         // Calculate time axis zone (X-axis)
         // For position tools, use meta.zoneWidth since all points are on same candle

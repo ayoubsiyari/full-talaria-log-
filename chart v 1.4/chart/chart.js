@@ -8943,25 +8943,15 @@ class Chart {
         const isLightTheme = this.isLightColor ? this.isLightColor(backgroundColor) : false;
         const zoneColor = isLightTheme ? '#e0e3eb' : '#2a2e39';
         
-        this.ctx.globalAlpha = 0.9;
+        this.ctx.globalAlpha = 1.0;
         
         this.axisHighlightZones.forEach(zone => {
             if (zone.type === 'price') {
-                // Price label background box — always visible
+                // Price label background box — solid, always visible
                 this.ctx.fillStyle = zone.color || zoneColor;
                 this.ctx.fillRect(this.w - m.r + 2, zone.y - 10, 58, 20);
-            } else if (zone.type === 'price-range' && zone.selected) {
-                // Zone highlight between price points — only when selected
-                this.ctx.fillStyle = zone.color || zoneColor;
-                this.ctx.fillRect(this.w - m.r + 2, zone.y, 58, zone.height);
-            } else if (zone.type === 'time-range' && zone.selected) {
-                // Zone highlight between time points — only when selected
-                this.ctx.fillStyle = zone.color || zoneColor;
-                this.ctx.fillRect(zone.x, this.h - m.b + 4, zone.width, 20);
             }
         });
-        
-        this.ctx.globalAlpha = 1.0;
     }
     
     /**
