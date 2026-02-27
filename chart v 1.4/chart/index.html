@@ -238,14 +238,15 @@
             width: 8px;
             height: 8px;
             position: absolute;
-            bottom: 4px;
+            top: 50%;
             right: 3px;
+            transform: translateY(-50%);
             transition: transform 0.2s ease;
             stroke: currentColor;
             flex-shrink: 0;
         }
         .sidebar-tf-flyout-trigger.open .tf-btn-chevron {
-            transform: rotate(90deg);
+            transform: translateY(-50%) rotate(90deg);
         }
         .sidebar-tf-flyout-trigger:hover {
             background: rgba(42, 46, 57, 0.85) !important;
