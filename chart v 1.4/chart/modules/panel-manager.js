@@ -1446,8 +1446,8 @@ class PanelManager {
             detail: { panels: this.panels, layout: layout }
         }));
         
-        // Create resize handles between panels after a short delay
-        setTimeout(() => this.createResizeHandles(), 200);
+        // Resize functionality disabled - panels are fixed size
+        // setTimeout(() => this.createResizeHandles(), 200);
     }
     
     /**
@@ -2297,8 +2297,8 @@ class PanelManager {
                 }
             });
             
-            // Recreate resize handles at new positions
-            this.createResizeHandles();
+            // Resize functionality disabled - panels are fixed size
+            // this.createResizeHandles();
         }, 50);
         
         console.log('📐 Panel resize complete');
