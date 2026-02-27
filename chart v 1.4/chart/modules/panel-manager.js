@@ -1389,15 +1389,20 @@ class PanelManager {
                 window.chart.panelIndex = 0;
             }
             
-            // Add click handler to select main chart panel
-            const mainCanvas = document.getElementById('chartCanvas');
-            if (mainCanvas && !mainCanvas._panelClickHandler) {
-                mainCanvas._panelClickHandler = (e) => {
+            // Add click handler to select main chart panel (click anywhere on chart wrapper)
+            const chartWrapper = document.getElementById('chartWrapper');
+            if (chartWrapper && !chartWrapper._panelClickHandler) {
+                chartWrapper._panelClickHandler = (e) => {
+                    // Don't interfere with buttons or controls
+                    if (e.target.closest('button') || e.target.closest('.ohlc-collapse-btn')) {
+                        return;
+                    }
+                    
                     if (this.selectedPanelIndex !== 0) {
                         this.selectPanel(0);
                     }
                 };
-                mainCanvas.addEventListener('mousedown', mainCanvas._panelClickHandler, true);
+                chartWrapper.addEventListener('mousedown', chartWrapper._panelClickHandler, true);
             }
             
             // Setup double-click to maximize for main chart
@@ -1505,16 +1510,6 @@ class PanelManager {
         canvas.style.display = 'block';
         chartContainer.appendChild(canvas);
         
-        // Click on canvas to select panel - prevent drawing when switching
-        canvas.addEventListener('mousedown', (e) => {
-            if (this.selectedPanelIndex !== index) {
-                // Switching panels - select and prevent drawing on first click
-                this.selectPanel(index);
-                e.stopPropagation();
-                e.preventDefault();
-            }
-        }, true); // capture phase - run before drawing handlers
-        
         // Create SVG for drawings
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('class', 'panel-svg');
@@ -1616,6 +1611,19 @@ class PanelManager {
         }, 100);
         
         panel.appendChild(chartContainer);
+        
+        // Click anywhere on panel to select it (like TradingView)
+        panel.addEventListener('mousedown', (e) => {
+            // Don't interfere with OHLC collapse button or other controls
+            if (e.target.closest('.ohlc-collapse-btn') || e.target.closest('button')) {
+                return;
+            }
+            
+            // Select this panel if not already selected
+            if (this.selectedPanelIndex !== index) {
+                this.selectPanel(index);
+            }
+        }, true); // Use capture phase to run before chart handlers
         
         this.container.appendChild(panel);
         
