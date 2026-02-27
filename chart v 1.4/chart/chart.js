@@ -8946,10 +8946,18 @@ class Chart {
         this.ctx.globalAlpha = 0.9;
         
         this.axisHighlightZones.forEach(zone => {
-            if (zone.type === 'price' && zone.selected) {
-                // Price axis background box only when drawing is selected
+            if (zone.type === 'price') {
+                // Price label background box — always visible
                 this.ctx.fillStyle = zone.color || zoneColor;
                 this.ctx.fillRect(this.w - m.r + 2, zone.y - 10, 58, 20);
+            } else if (zone.type === 'price-range' && zone.selected) {
+                // Zone highlight between price points — only when selected
+                this.ctx.fillStyle = zone.color || zoneColor;
+                this.ctx.fillRect(this.w - m.r + 2, zone.y, 58, zone.height);
+            } else if (zone.type === 'time-range' && zone.selected) {
+                // Zone highlight between time points — only when selected
+                this.ctx.fillStyle = zone.color || zoneColor;
+                this.ctx.fillRect(zone.x, this.h - m.b + 4, zone.width, 20);
             }
         });
         
