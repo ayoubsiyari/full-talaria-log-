@@ -71,9 +71,25 @@ class PanelManager {
         // Create layout selector button in toolbar
         this.createLayoutSelector();
         
+        // Setup event listeners for panel synchronization
+        this.setupEventListeners();
+        
         // Default: show original chart (layout '1')
         // Don't call applyLayout - original chart is already visible
         this.currentLayout = '1';
+    }
+    
+    /**
+     * Setup event listeners for panel synchronization
+     */
+    setupEventListeners() {
+        // Listen for scroll sync events from charts
+        window.addEventListener('chartScrolled', (e) => {
+            const { panel, offsetX, candleWidth } = e.detail;
+            if (panel && this.syncSettings.time) {
+                this.syncScroll(panel, offsetX, candleWidth);
+            }
+        });
     }
     
     /**
@@ -464,7 +480,7 @@ class PanelManager {
                         <div class="sync-info" title="Synchronize scroll position (time) across all panels">i</div>
                     </div>
                     <label class="sync-toggle">
-                        <input type="checkbox" id="time-sync-toggle">
+                        <input type="checkbox" id="time-sync-toggle" checked>
                         <span class="sync-toggle-slider"></span>
                     </label>
                 </div>
@@ -867,7 +883,7 @@ class PanelManager {
                     }
                     
                     // Position so targetIndex is at the right edge of view
-                    const spacing = chartInst.candleWidth + 2;
+                    const spacing = chartInst.getCandleSpacing ? chartInst.getCandleSpacing() : (chartInst.candleWidth + 2);
                     const chartWidth = chartInst.w - chartInst.margin.l - chartInst.margin.r;
                     const visibleCandles = Math.floor(chartWidth / spacing);
                     
@@ -901,8 +917,8 @@ class PanelManager {
             
             // Direct offsetX copy for smooth movement
             // Scale based on candle width ratio if different
-            const sourceSpacing = sourceChart.candleWidth + 2;
-            const targetSpacing = chart.candleWidth + 2;
+            const sourceSpacing = sourceChart.getCandleSpacing ? sourceChart.getCandleSpacing() : (sourceChart.candleWidth + 2);
+            const targetSpacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
             const ratio = targetSpacing / sourceSpacing;
             
             // Copy offsetX directly (scaled if candle widths differ)
@@ -943,7 +959,7 @@ class PanelManager {
                     }
                     
                     // Position so targetIndex is at the right edge of view
-                    const spacing = chartInst.candleWidth + 2;
+                    const spacing = chartInst.getCandleSpacing ? chartInst.getCandleSpacing() : (chartInst.candleWidth + 2);
                     const chartWidth = chartInst.w - chartInst.margin.l - chartInst.margin.r;
                     const visibleCandles = Math.floor(chartWidth / spacing);
                     
