@@ -554,15 +554,17 @@ class BaseDrawing {
             if (this.style.showPriceLabel !== false && yPos >= margin.t && yPos <= chartHeight - margin.b) {
                 const priceText = price.toFixed(this.chart.priceDecimals || 5);
                 
-                // Price text only (no background box)
+                // Price text over background box
+                const boxWidth = 58;
+                const priceTextColor = isLightColor(priceColor) ? '#131722' : '#ffffff';
                 this.axisHighlightGroup.append('text')
                     .attr('class', 'axis-highlight-price-text')
-                    .attr('x', chartWidth - margin.r + 6)
-                    .attr('y', yPos + 4)
-                    .attr('fill', priceColor)
+                    .attr('x', chartWidth - margin.r + 2 + boxWidth / 2)
+                    .attr('y', yPos + 5)
+                    .attr('fill', priceTextColor)
                     .attr('font-size', '11px')
                     .attr('font-weight', '600')
-                    .attr('text-anchor', 'start')
+                    .attr('text-anchor', 'middle')
                     .text(priceText);
             }
             

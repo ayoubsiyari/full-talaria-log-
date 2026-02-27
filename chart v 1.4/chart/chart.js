@@ -8943,7 +8943,18 @@ class Chart {
         const isLightTheme = this.isLightColor ? this.isLightColor(backgroundColor) : false;
         const zoneColor = isLightTheme ? '#e0e3eb' : '#2a2e39';
         
-        // Background boxes removed — labels draw text only
+        this.ctx.fillStyle = zoneColor;
+        this.ctx.globalAlpha = 0.9;
+        
+        this.axisHighlightZones.forEach(zone => {
+            if (zone.type === 'price') {
+                // Price axis background box (Y-axis on right)
+                this.ctx.fillRect(this.w - m.r + 2, zone.y, 58, zone.height);
+            }
+            // time axis background box intentionally removed
+        });
+        
+        this.ctx.globalAlpha = 1.0;
     }
     
     /**
