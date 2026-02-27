@@ -12620,6 +12620,7 @@ class Chart {
                 ohlcElems.forEach((elem, idx) => {
                     if (!elem) return;
                     elem.textContent = formatPrice(priceMap[idx]);
+                    elem.style.color = this.chartSettings.symbolTextColor || '';
                     elem.classList.remove('up', 'down');
                     if (candle.c > candle.o) {
                         elem.classList.add('up');
@@ -12635,6 +12636,7 @@ class Chart {
                 if (chartChangeElem) {
                     chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
                     chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
+                    chartChangeElem.style.color = this.chartSettings.symbolTextColor || '';
                     // Enforce showBarChangeValues flag
                     chartChangeElem.style.display = this.chartSettings.showBarChangeValues !== false ? '' : 'none';
                 }
@@ -14719,6 +14721,7 @@ class Chart {
         ohlcElems.forEach((elem, idx) => {
             if (!elem) return;
             elem.textContent = formatPrice(priceMap[idx]);
+            elem.style.color = this.chartSettings.symbolTextColor || '';
             elem.classList.remove('up', 'down');
             if (candle.c > candle.o) {
                 elem.classList.add('up');
@@ -14734,6 +14737,7 @@ class Chart {
         if (chartChangeElem) {
             chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
             chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
+            chartChangeElem.style.color = this.chartSettings.symbolTextColor || '';
             // Enforce showBarChangeValues flag
             chartChangeElem.style.display = this.chartSettings.showBarChangeValues !== false ? '' : 'none';
         }
