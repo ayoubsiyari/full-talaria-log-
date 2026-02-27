@@ -3819,6 +3819,11 @@ class DrawingToolsManager {
             this.scheduleSaveToAPI(data);
         }
         
+        // 4. Update URL with drawings for cross-tab/browser sharing
+        if (!isUndoRedo) {
+            this.updateURLWithDrawings();
+        }
+        
         // Log coordinate system for each drawing
         data.forEach((d, i) => {
             // [debug removed]
@@ -3886,6 +3891,100 @@ class DrawingToolsManager {
     }
 
     /**
+     * Load drawings from URL parameters (for sharing across tabs/browsers)
+     * This allows drawings to persist even without localStorage or authentication
+     */
+    loadDrawingsFromURL() {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const drawingsParam = urlParams.get('drawings');
+            
+            if (!drawingsParam) {
+                return null;
+            }
+            
+            // Decode base64 and decompress
+            const decompressed = this.decompressDrawings(drawingsParam);
+            if (decompressed && Array.isArray(decompressed)) {
+                console.log(`📥 Found ${decompressed.length} drawings in URL`);
+                return decompressed;
+            }
+            
+            return null;
+        } catch (error) {
+            console.warn('⚠️ Error loading drawings from URL:', error.message);
+            return null;
+        }
+    }
+    
+    /**
+     * Compress drawings for URL encoding
+     */
+    compressDrawings(drawings) {
+        try {
+            const json = JSON.stringify(drawings);
+            // Use LZString compression if available, otherwise base64
+            if (window.LZString) {
+                return LZString.compressToEncodedURIComponent(json);
+            } else {
+                return btoa(encodeURIComponent(json));
+            }
+        } catch (error) {
+            console.warn('Failed to compress drawings:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * Decompress drawings from URL parameter
+     */
+    decompressDrawings(compressed) {
+        try {
+            let json;
+            // Try LZString decompression first
+            if (window.LZString) {
+                json = LZString.decompressFromEncodedURIComponent(compressed);
+            }
+            // Fallback to base64
+            if (!json) {
+                json = decodeURIComponent(atob(compressed));
+            }
+            return JSON.parse(json);
+        } catch (error) {
+            console.warn('Failed to decompress drawings:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * Update URL with current drawings (for sharing)
+     */
+    updateURLWithDrawings() {
+        try {
+            if (!this.drawings || this.drawings.length === 0) {
+                // Remove drawings parameter if no drawings
+                const url = new URL(window.location);
+                url.searchParams.delete('drawings');
+                window.history.replaceState({}, '', url);
+                return;
+            }
+            
+            // Compress and encode drawings
+            const compressed = this.compressDrawings(this.drawings);
+            if (!compressed) return;
+            
+            // Update URL without reloading page
+            const url = new URL(window.location);
+            url.searchParams.set('drawings', compressed);
+            window.history.replaceState({}, '', url);
+            
+            console.log('🔗 URL updated with drawings (shareable link)');
+        } catch (error) {
+            console.warn('Failed to update URL with drawings:', error);
+        }
+    }
+
+    /**
      * Load drawings from backend API for cross-device sync
      */
     async loadDrawingsFromAPI() {
@@ -3940,28 +4039,36 @@ class DrawingToolsManager {
             return; // _drawingsLoaded stays false — listener will retry
         }
 
-        // Try loading from API first for cross-device sync
-        const apiDrawings = await this.loadDrawingsFromAPI();
-        
         let saved = null;
-        if (apiDrawings) {
-            // Use API data if available
-            saved = JSON.stringify(apiDrawings);
-            console.log('📥 Loaded drawings from cloud');
-        } else {
-            // Fall back to localStorage
-            const key = this.getStorageKey();
-            saved = localStorage.getItem(key);
-            if (!saved && key.includes('_s')) {
-                const fileId = this.chart.currentFileId || 'default';
-                const legacyKey = `chart_drawings_${fileId}`;
-                const legacy = localStorage.getItem(legacyKey);
-                if (legacy) {
-                    saved = legacy;
-                }
+        
+        // 1. Try loading from URL parameters first (for sharing across tabs/browsers)
+        const urlDrawings = this.loadDrawingsFromURL();
+        if (urlDrawings) {
+            saved = JSON.stringify(urlDrawings);
+            console.log('📥 Loaded drawings from URL (shared link)');
+        }
+        // 2. Try loading from API for cross-device sync (requires authentication)
+        else {
+            const apiDrawings = await this.loadDrawingsFromAPI();
+            if (apiDrawings) {
+                saved = JSON.stringify(apiDrawings);
+                console.log('📥 Loaded drawings from cloud');
             }
-            if (saved) {
-                console.log('📥 Loaded drawings from localStorage');
+            // 3. Fall back to localStorage
+            else {
+                const key = this.getStorageKey();
+                saved = localStorage.getItem(key);
+                if (!saved && key.includes('_s')) {
+                    const fileId = this.chart.currentFileId || 'default';
+                    const legacyKey = `chart_drawings_${fileId}`;
+                    const legacy = localStorage.getItem(legacyKey);
+                    if (legacy) {
+                        saved = legacy;
+                    }
+                }
+                if (saved) {
+                    console.log('📥 Loaded drawings from localStorage');
+                }
             }
         }
         

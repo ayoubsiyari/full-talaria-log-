@@ -18875,6 +18875,9 @@
         })();
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer" onerror="window.__loadD3Fallback()"></script>
+    
+    <!-- LZString for URL compression -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
     <!-- Drawing Tools Modules (load in order) -->
     <script src="modules/drawing-tools-base.js?v=20260225_AXIS_LABEL_TOGGLE_V2"></script>
@@ -18898,7 +18901,7 @@
     <script src="modules/undo-redo-manager.js?v=20260224_UNDO_OVERHAUL_V1"></script>
     <script src="modules/preferences-sync.js?v=20260227_UNIFIED_PREFS_V1"></script>
     <script src="modules/preferences-init.js?v=20260227_UNIFIED_PREFS_V1"></script>
-    <script src="modules/drawing-tools-manager.js?v=20260227_CLOUD_SYNC_V1"></script>
+    <script src="modules/drawing-tools-manager.js?v=20260227_URL_SHARING_V1"></script>
     <script src="modules/favorites-manager.js?v=20260125HORIZONTAL_RAY_UI_V1"></script>
     <script src="modules/keyboard-shortcuts.js?v=20251216PLAYSYNC2"></script>
     <script src="modules/object-tree.js?v=20260227JUMPTO2"></script>
@@ -18910,7 +18913,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20251216NODUP"></script>
     
-         <script src="chart.js?v=20260227_SETTINGS_CLOUD_SYNC_V1"></script>
+         <script src="chart.js?v=20260227_SETTINGS_PERSIST_FIX_V1"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260227_AUTOSCROLL_MARGIN_FIX_V1"></script>
@@ -19257,6 +19260,10 @@
                             });
                         }
                         window.chart.render();
+                        // Save settings to persist theme change
+                        if (typeof window.chart.saveSettings === 'function') {
+                            window.chart.saveSettings();
+                        }
                     }
                 });
                 
@@ -19286,6 +19293,10 @@
                             });
                         }
                         window.chart.render();
+                        // Save settings to persist theme change
+                        if (typeof window.chart.saveSettings === 'function') {
+                            window.chart.saveSettings();
+                        }
                     }
                 });
             }
@@ -24436,6 +24447,10 @@ function showIndicatorsMenu() {
                     if (window.chart) {
                         window.chart.chartSettings.chartType = chartType;
                         window.chart.render();
+                        // Save settings to persist chart type change
+                        if (typeof window.chart.saveSettings === 'function') {
+                            window.chart.saveSettings();
+                        }
                     }
                     // Sync settings panel select if open
                     var spSel = document.getElementById('sl_chartType');

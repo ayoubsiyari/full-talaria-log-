@@ -1031,6 +1031,8 @@ class Chart {
                         b.classList.toggle('active', b.dataset.timeframe === v.timeframe);
                     });
                 }
+                // Set flag to prevent fitToView() from overriding the restored position
+                this._chartViewRestored = true;
                 this.scheduleRender();
                 console.log('📍 Restored chart view from session state');
             }
@@ -1454,33 +1456,150 @@ class Chart {
     
     saveSettings() {
         try {
+            // 1. Save to localStorage immediately (instant, works offline)
             localStorage.setItem('chartSettings', JSON.stringify(this.chartSettings));
             console.log('✅ Chart settings saved to localStorage');
         } catch (error) {
             console.error('❌ Failed to save settings:', error);
         }
+        
+        // 2. Save to session state for backtesting sessions
         this.scheduleSessionStateSave({ chartSettings: this.chartSettings });
+        
+        // 3. Save to API for cross-device sync (background, debounced)
+        this.scheduleSettingsSaveToAPI();
     }
     
-    loadSavedSettings() {
+    /**
+     * Schedule API save with debouncing to avoid excessive requests
+     */
+    scheduleSettingsSaveToAPI() {
+        // Clear existing timer
+        if (this._settingsApiSaveTimer) {
+            clearTimeout(this._settingsApiSaveTimer);
+        }
+        
+        // Debounce API saves by 2 seconds
+        this._settingsApiSaveTimer = setTimeout(() => {
+            this.saveSettingsToAPI();
+        }, 2000);
+    }
+    
+    /**
+     * Save chart settings to backend API for cross-device sync
+     */
+    async saveSettingsToAPI() {
         try {
-            const saved = localStorage.getItem('chartSettings');
-            if (saved) {
-                const settings = JSON.parse(saved);
-                // Merge saved settings with defaults
-                this.chartSettings = { ...this.chartSettings, ...settings };
-                console.log('✅ Chart settings loaded from localStorage');
+            const symbol = this.currentFileId || 'default';
+            const sessionId = typeof this.getActiveTradingSessionId === 'function'
+                ? this.getActiveTradingSessionId()
+                : null;
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // User not logged in, skip API save
+                return;
             }
             
-            // Only apply dark theme defaults if no saved settings exist
-            if (!saved) {
-                this.chartSettings.backgroundColor = '#050028';
-                this.chartSettings.scaleLinesColor = '#050028';
-                this.chartSettings.scaleTextColor = '#ffffff';
-                this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
-                this.chartSettings.cursorLabelTextColor = '#d1d4dc';
-                this.chartSettings.cursorLabelBgColor = '#363a45';
-                this.chartSettings.symbolTextColor = '#d1d4dc';
+            const response = await fetch(`/api/chart/settings/${encodeURIComponent(symbol)}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    settings: this.chartSettings,
+                    session_id: sessionId
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ Chart settings synced to cloud');
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - settings saved locally only');
+            } else {
+                console.warn('⚠️ Failed to sync settings to cloud:', response.statusText);
+            }
+        } catch (error) {
+            console.warn('⚠️ Error syncing settings to cloud:', error.message);
+            // Fail silently - localStorage still has the data
+        }
+    }
+    
+    /**
+     * Load chart settings from backend API for cross-device sync
+     */
+    async loadSettingsFromAPI() {
+        try {
+            const symbol = this.currentFileId || 'default';
+            const sessionId = typeof this.getActiveTradingSessionId === 'function'
+                ? this.getActiveTradingSessionId()
+                : null;
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // User not logged in, skip API load
+                return null;
+            }
+            
+            const url = new URL(`/api/chart/settings/${encodeURIComponent(symbol)}`, window.location.origin);
+            if (sessionId) {
+                url.searchParams.append('session_id', sessionId);
+            }
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include'
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.settings && Object.keys(result.settings).length > 0) {
+                    return result.settings;
+                }
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - using local settings only');
+            }
+            
+            return null;
+        } catch (error) {
+            console.warn('⚠️ Error loading settings from cloud:', error.message);
+            return null;
+        }
+    }
+    
+    async loadSavedSettings() {
+        // Try loading from API first for cross-device sync
+        const apiSettings = await this.loadSettingsFromAPI();
+        
+        try {
+            if (apiSettings && Object.keys(apiSettings).length > 0) {
+                // Use API data if available
+                this.chartSettings = { ...this.chartSettings, ...apiSettings };
+                console.log('📥 Chart settings loaded from cloud');
+            } else {
+                // Fall back to localStorage
+                const saved = localStorage.getItem('chartSettings');
+                if (saved) {
+                    const settings = JSON.parse(saved);
+                    // Merge saved settings with defaults
+                    this.chartSettings = { ...this.chartSettings, ...settings };
+                    console.log('📥 Chart settings loaded from localStorage');
+                } else {
+                    // Only apply dark theme defaults if no saved settings exist
+                    this.chartSettings.backgroundColor = '#050028';
+                    this.chartSettings.scaleLinesColor = '#050028';
+                    this.chartSettings.scaleTextColor = '#ffffff';
+                    this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
+                    this.chartSettings.cursorLabelTextColor = '#d1d4dc';
+                    this.chartSettings.cursorLabelBgColor = '#363a45';
+                    this.chartSettings.symbolTextColor = '#d1d4dc';
+                }
             }
             
             // Always apply chart settings (even with defaults)
@@ -5204,6 +5323,13 @@ class Chart {
     fitToView() {
         if (!this.data || this.data.length === 0) return;
         
+        // Skip if chart view was already restored from session state
+        // This preserves the user's scroll position when continuing a session
+        if (this._chartViewRestored) {
+            console.log('📍 fitToView skipped - chart view already restored from session');
+            return;
+        }
+        
         const m = this.margin;
         const cw = this.w - m.l - m.r;
         
@@ -5247,6 +5373,9 @@ class Chart {
      */
     jumpToLatest() {
         console.log('🎯 Jumping to latest candles...');
+        
+        // Clear the restored flag so fitToView() can reposition
+        this._chartViewRestored = false;
         
         // Reset zoom
         this.candleWidth = 8;
