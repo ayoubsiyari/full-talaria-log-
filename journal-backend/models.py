@@ -488,3 +488,21 @@ class WebhookLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class ChartDrawing(db.Model):
+    """Stores chart drawings per user and symbol for cross-device sync."""
+    __tablename__ = 'chart_drawings'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    symbol = db.Column(db.String(50), nullable=False)  # e.g., 'EURUSD', 'GBPUSD'
+    session_id = db.Column(db.String(100), nullable=True)  # For backtesting sessions
+    drawings_data = db.Column(JSON, nullable=False, default=list)  # Array of drawing objects
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship to user
+    user = db.relationship('User', backref=db.backref('chart_drawings', lazy=True))
+    
+    # Ensure unique combination of user, symbol, and session
+    __table_args__ = (db.UniqueConstraint('user_id', 'symbol', 'session_id', name='uq_user_symbol_session'),)
+
+

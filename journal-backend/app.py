@@ -17,6 +17,7 @@ from routes.admin_routes import admin_bp  # <-- your new admin routes
 from routes.strategy_routes import strategy_bp
 from routes.feature_flags_routes import feature_flags_bp
 from routes.subscription_routes import subscription_bp
+from routes.chart_routes import chart_bp
 
 import jwt as pyjwt
 
@@ -66,6 +67,7 @@ app.register_blueprint(admin_bp,   url_prefix='/api/admin')   # ← register adm
 app.register_blueprint(strategy_bp, url_prefix='/api')
 app.register_blueprint(feature_flags_bp, url_prefix='/api') # Strategy routes
 app.register_blueprint(subscription_bp, url_prefix='/api/subscriptions')  # Subscription management
+app.register_blueprint(chart_bp, url_prefix='/api/chart')  # Chart drawings
 
 @app.route('/', methods=['GET'])
 def home():

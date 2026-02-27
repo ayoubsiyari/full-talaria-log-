@@ -3790,7 +3790,7 @@ class DrawingToolsManager {
     }
 
     /**
-     * Save drawings to localStorage
+     * Save drawings to localStorage and API (hybrid approach)
      */
     saveDrawings() {
         // Ensure all drawings have chart reference before saving
@@ -3803,13 +3803,20 @@ class DrawingToolsManager {
         
         const data = this.drawings.map(d => d.toJSON());
         const key = this.getStorageKey();
+        
+        // 1. Save to localStorage immediately (instant, works offline)
         localStorage.setItem(key, JSON.stringify(data));
         // [debug removed]
 
-        // Skip expensive network save during undo/redo to prevent lag
+        // 2. Save to session state for backtesting sessions
         const isUndoRedo = this.history && this.history.isPerformingUndoRedo;
         if (!isUndoRedo && this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             this.chart.scheduleSessionStateSave({ drawings: data });
+        }
+        
+        // 3. Save to API for cross-device sync (background, debounced)
+        if (!isUndoRedo) {
+            this.scheduleSaveToAPI(data);
         }
         
         // Log coordinate system for each drawing
@@ -3821,27 +3828,144 @@ class DrawingToolsManager {
     }
 
     /**
-     * Load drawings from localStorage
-     * Converts timestamps to indices for current timeframe
+     * Schedule API save with debouncing to avoid excessive requests
      */
-    loadDrawings() {
-        const key = this.getStorageKey();
-        let saved = localStorage.getItem(key);
-        if (!saved && key.includes('_s')) {
-            const fileId = this.chart.currentFileId || 'default';
-            const legacyKey = `chart_drawings_${fileId}`;
-            const legacy = localStorage.getItem(legacyKey);
-            if (legacy) {
-                saved = legacy;
-            }
+    scheduleSaveToAPI(data) {
+        // Clear existing timer
+        if (this._apiSaveTimer) {
+            clearTimeout(this._apiSaveTimer);
         }
         
-        // [debug removed]
-        
+        // Debounce API saves by 2 seconds
+        this._apiSaveTimer = setTimeout(() => {
+            this.saveDrawingsToAPI(data);
+        }, 2000);
+    }
+
+    /**
+     * Save drawings to backend API for cross-device sync
+     */
+    async saveDrawingsToAPI(data) {
+        try {
+            const symbol = this.chart.currentFileId || 'default';
+            const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                ? this.chart.getActiveTradingSessionId()
+                : null;
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // User not logged in, skip API save
+                return;
+            }
+            
+            const response = await fetch(`/api/chart/drawings/${encodeURIComponent(symbol)}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    drawings: data,
+                    session_id: sessionId
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - drawings saved locally only');
+            } else {
+                console.warn('⚠️ Failed to sync drawings to cloud:', response.statusText);
+            }
+        } catch (error) {
+            console.warn('⚠️ Error syncing drawings to cloud:', error.message);
+            // Fail silently - localStorage still has the data
+        }
+    }
+
+    /**
+     * Load drawings from backend API for cross-device sync
+     */
+    async loadDrawingsFromAPI() {
+        try {
+            const symbol = this.chart.currentFileId || 'default';
+            const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                ? this.chart.getActiveTradingSessionId()
+                : null;
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // User not logged in, skip API load
+                return null;
+            }
+            
+            const url = new URL(`/api/chart/drawings/${encodeURIComponent(symbol)}`, window.location.origin);
+            if (sessionId) {
+                url.searchParams.append('session_id', sessionId);
+            }
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include'
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.drawings && result.drawings.length > 0) {
+                    return result.drawings;
+                }
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - using local drawings only');
+            }
+            
+            return null;
+        } catch (error) {
+            console.warn('⚠️ Error loading drawings from cloud:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Load drawings from API (cloud sync) or localStorage (fallback)
+     * Converts timestamps to indices for current timeframe
+     */
+    async loadDrawings() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn(`⚠️ Cannot load drawings yet - chart has no data`);
             return; // _drawingsLoaded stays false — listener will retry
         }
+
+        // Try loading from API first for cross-device sync
+        const apiDrawings = await this.loadDrawingsFromAPI();
+        
+        let saved = null;
+        if (apiDrawings) {
+            // Use API data if available
+            saved = JSON.stringify(apiDrawings);
+            console.log('📥 Loaded drawings from cloud');
+        } else {
+            // Fall back to localStorage
+            const key = this.getStorageKey();
+            saved = localStorage.getItem(key);
+            if (!saved && key.includes('_s')) {
+                const fileId = this.chart.currentFileId || 'default';
+                const legacyKey = `chart_drawings_${fileId}`;
+                const legacy = localStorage.getItem(legacyKey);
+                if (legacy) {
+                    saved = legacy;
+                }
+            }
+            if (saved) {
+                console.log('📥 Loaded drawings from localStorage');
+            }
+        }
+        
+        // [debug removed]
 
         // Clear any existing drawings before loading to prevent duplicates
         // (can happen when loadDrawings is called multiple times via chartDataLoaded retry)
