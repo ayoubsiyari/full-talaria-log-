@@ -494,8 +494,9 @@ class TrendlineTool extends BaseDrawing {
         const perpX = -dy / lineLength;
         const perpY = dx / lineLength;
         
-        // Offset distance: half box height + larger margin to ensure clear separation
-        const offsetDistance = boxHeight / 2 + 6;
+        // Offset distance: half box height + margin to ensure clear separation from line
+        // Increased from 6 to 12 pixels to prevent box from touching the line
+        const offsetDistance = boxHeight / 2 + 12;
         
         // Choose which side to place the box (prefer above/left of line)
         // If perpendicular points upward (perpY < 0), use it; otherwise flip
