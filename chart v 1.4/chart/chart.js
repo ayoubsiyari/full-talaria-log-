@@ -1021,8 +1021,12 @@ class Chart {
                 }
                 if (v.timeframe && v.timeframe !== this.currentTimeframe) {
                     this.currentTimeframe = v.timeframe;
-                    // update timeframe button UI
-                    document.querySelectorAll('.timeframe-btn').forEach(b => {
+                    // Update TimeframeFavorites UI to sync button display
+                    if (window.timeframeFavorites && typeof window.timeframeFavorites.selectTimeframe === 'function') {
+                        window.timeframeFavorites.selectTimeframe(v.timeframe);
+                    }
+                    // Fallback: update timeframe button UI directly
+                    document.querySelectorAll('.timeframe-btn, .sidebar-timeframe-btn, .sidebar-current-timeframe').forEach(b => {
                         b.classList.toggle('active', b.dataset.timeframe === v.timeframe);
                     });
                 }
