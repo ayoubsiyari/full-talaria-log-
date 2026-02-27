@@ -553,16 +553,29 @@ class BaseDrawing {
             const yPos = yScale(price);
             if (this.style.showPriceLabel !== false && yPos >= margin.t && yPos <= chartHeight - margin.b) {
                 const priceText = price.toFixed(this.chart.priceDecimals || 5);
+                const boxWidth = 58;
+                const boxHeight = 20;
                 
-                // Price text only (no background box)
+                // Background box with slight transparency
+                this.axisHighlightGroup.append('rect')
+                    .attr('class', 'axis-highlight-price')
+                    .attr('x', chartWidth - margin.r + 2)
+                    .attr('y', yPos - boxHeight / 2)
+                    .attr('width', boxWidth)
+                    .attr('height', boxHeight)
+                    .attr('fill', priceColor)
+                    .attr('rx', 3);
+                
+                // Price text - determine text color based on price background
+                const priceTextColor = isLightColor(priceColor) ? '#131722' : '#ffffff';
                 this.axisHighlightGroup.append('text')
                     .attr('class', 'axis-highlight-price-text')
-                    .attr('x', chartWidth - margin.r + 6)
-                    .attr('y', yPos + 4)
-                    .attr('fill', priceColor)
+                    .attr('x', chartWidth - margin.r + 2 + boxWidth / 2)
+                    .attr('y', yPos + 5)
+                    .attr('fill', priceTextColor)
                     .attr('font-size', '11px')
                     .attr('font-weight', '600')
-                    .attr('text-anchor', 'start')
+                    .attr('text-anchor', 'middle')
                     .text(priceText);
             }
             
@@ -601,12 +614,25 @@ class BaseDrawing {
                         const mins = date.getMinutes().toString().padStart(2, '0');
                         const timeText = `${day} ${month} '${year} ${hours}:${mins}`;
                         
-                        // Time text only (no background box)
+                        const boxWidth = 100;
+                        const boxHeight = 20;
+                        
+                        // Background box
+                        this.axisHighlightGroup.append('rect')
+                            .attr('class', 'axis-highlight-time')
+                            .attr('x', xPos - boxWidth / 2)
+                            .attr('y', chartHeight - margin.b + 4)
+                            .attr('width', boxWidth)
+                            .attr('height', boxHeight)
+                            .attr('fill', timeHighlightColor)
+                            .attr('rx', 3);
+                        
+                        // Time text
                         this.axisHighlightGroup.append('text')
                             .attr('class', 'axis-highlight-time-text')
                             .attr('x', xPos)
-                            .attr('y', chartHeight - margin.b + 15)
-                            .attr('fill', timeHighlightColor)
+                            .attr('y', chartHeight - margin.b + 17)
+                            .attr('fill', textColor)
                             .attr('font-size', '11px')
                             .attr('font-weight', '600')
                             .attr('text-anchor', 'middle')
