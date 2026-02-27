@@ -1393,15 +1393,27 @@ class PanelManager {
             const chartWrapper = document.getElementById('chartWrapper');
             if (chartWrapper && !chartWrapper._panelClickHandler) {
                 chartWrapper._panelClickHandler = (e) => {
+                    console.log('🖱️ Main chart clicked', e.target);
+                    
                     // Don't interfere with resize handles, buttons, or controls
-                    if (e.target.closest('.panel-resize-handle') ||
-                        e.target.closest('button') || 
-                        e.target.closest('.ohlc-collapse-btn')) {
+                    if (e.target.closest('.panel-resize-handle')) {
+                        console.log('⏭️ Skipping - resize handle');
+                        return;
+                    }
+                    if (e.target.closest('button')) {
+                        console.log('⏭️ Skipping - button');
+                        return;
+                    }
+                    if (e.target.closest('.ohlc-collapse-btn')) {
+                        console.log('⏭️ Skipping - collapse button');
                         return;
                     }
                     
                     if (this.selectedPanelIndex !== 0) {
+                        console.log('✅ Selecting main chart (panel 0)');
                         this.selectPanel(0);
+                    } else {
+                        console.log('ℹ️ Main chart already selected');
                     }
                 };
                 chartWrapper.addEventListener('mousedown', chartWrapper._panelClickHandler, true);
@@ -1616,16 +1628,28 @@ class PanelManager {
         
         // Click anywhere on panel to select it (like TradingView)
         panel.addEventListener('mousedown', (e) => {
+            console.log(`🖱️ Panel ${index} clicked`, e.target);
+            
             // Don't interfere with resize handles, buttons, or other controls
-            if (e.target.closest('.panel-resize-handle') || 
-                e.target.closest('.ohlc-collapse-btn') || 
-                e.target.closest('button')) {
+            if (e.target.closest('.panel-resize-handle')) {
+                console.log('⏭️ Skipping - resize handle');
+                return;
+            }
+            if (e.target.closest('.ohlc-collapse-btn')) {
+                console.log('⏭️ Skipping - collapse button');
+                return;
+            }
+            if (e.target.closest('button')) {
+                console.log('⏭️ Skipping - button');
                 return;
             }
             
             // Select this panel if not already selected
             if (this.selectedPanelIndex !== index) {
+                console.log(`✅ Selecting panel ${index}`);
                 this.selectPanel(index);
+            } else {
+                console.log(`ℹ️ Panel ${index} already selected`);
             }
         }, true); // Use capture phase to run before chart handlers
         
