@@ -4675,20 +4675,33 @@ class Chart {
                 this.scheduleRender();
             }
             
-            // Clear old drawings and load saved drawings for this file
+            // Clear old drawings and load saved drawings ONLY when file changes (not on timeframe change)
             if (startIndex === 0 && this.drawingManager) {
-                // First, clear any existing drawings from previous file
-                if (this.drawingManager.drawings.length > 0) {
-                    console.log('🗑️ Clearing old drawings from previous file...');
-                    this.drawingManager.drawings.forEach(d => d.destroy());
-                    this.drawingManager.drawings = [];
-                }
+                const fileChanged = this._lastLoadedFileId && this._lastLoadedFileId !== this.currentFileId;
                 
-                // Now load drawings for this specific file
-                if (typeof this.drawingManager.loadDrawings === 'function') {
-                    console.log('🎨 Loading saved drawings for this file...');
-                    this.drawingManager.loadDrawings();
+                if (fileChanged) {
+                    // File changed - clear old drawings from previous file
+                    if (this.drawingManager.drawings.length > 0) {
+                        console.log('🗑️ Clearing old drawings from previous file...');
+                        this.drawingManager.drawings.forEach(d => d.destroy());
+                        this.drawingManager.drawings = [];
+                    }
+                    
+                    // Load drawings for the new file
+                    if (typeof this.drawingManager.loadDrawings === 'function') {
+                        console.log('🎨 Loading saved drawings for new file...');
+                        this.drawingManager.loadDrawings();
+                    }
+                } else if (!this._lastLoadedFileId) {
+                    // First load ever - load drawings
+                    if (typeof this.drawingManager.loadDrawings === 'function') {
+                        console.log('🎨 Loading saved drawings (initial load)...');
+                        this.drawingManager.loadDrawings();
+                    }
                 }
+                // On timeframe change (same file), do nothing - chartDataLoaded listener will handle refresh
+                
+                this._lastLoadedFileId = this.currentFileId;
             }
             
             // Notify that data has been updated (for panels)
