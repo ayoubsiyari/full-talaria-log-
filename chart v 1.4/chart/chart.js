@@ -3931,7 +3931,7 @@ class Chart {
             if (symbolText) symbolText.style.color = targetChart.chartSettings.symbolTextColor;
             
             // Apply to OHLC labels and values
-            ohlcInfo.querySelectorAll('.ohlc-label').forEach(el => {
+            ohlcInfo.querySelectorAll('.ohlc-label, .ohlc-value, .ohlc-change').forEach(el => {
                 el.style.color = targetChart.chartSettings.symbolTextColor;
             });
             ohlcInfo.querySelectorAll('.ohlc-separator').forEach(el => {
