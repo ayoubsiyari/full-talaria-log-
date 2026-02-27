@@ -1740,10 +1740,11 @@ class PanelManager {
             this.selectedPanelIndex = index;
             const panel = this.panels[index];
             
-            // Highlight selected panel with soft blue border on all sides and subtle glow
+            // Highlight selected panel with bright blue border on all sides
             if (panel.element) {
-                panel.element.style.border = '2px solid rgba(41, 98, 255, 0.6)';
-                panel.element.style.boxShadow = '0 0 0 1px rgba(41, 98, 255, 0.2), inset 0 0 0 1px rgba(41, 98, 255, 0.15)';
+                panel.element.style.border = '3px solid #2962ff';
+                panel.element.style.boxShadow = '0 0 10px rgba(41, 98, 255, 0.5), inset 0 0 0 1px rgba(41, 98, 255, 0.3)';
+                panel.element.style.outline = 'none';
             }
             
             console.log(`📊 Panel ${index} selected (${panel.timeframe})`);
