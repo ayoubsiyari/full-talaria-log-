@@ -168,14 +168,6 @@ class TimeframeFavorites {
             });
         }
 
-        // Wire chevron button below to also open flyout
-        const sidebarTfChevronBtn = document.getElementById('sidebarTfChevronBtn');
-        if (sidebarTfChevronBtn) {
-            sidebarTfChevronBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this._openTfFlyout(sidebarTfFlyoutBtn);
-            });
-        }
 
         if (!menu) {
             console.error('Timeframe dropdown menu not found');

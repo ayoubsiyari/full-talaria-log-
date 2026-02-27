@@ -207,21 +207,14 @@
             background: rgba(47, 114, 255, 0.35);
         }
         
-        /* ── Sidebar TF flyout trigger (vertical stack: icon + chevron) ── */
-        .sidebar-tf-flyout-group {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            flex-shrink: 0;
-        }
+        /* ── Sidebar TF flyout trigger (single button: icon + chevron) ── */
         .sidebar-tf-flyout-trigger {
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            width: 34px !important;
+            gap: 2px;
             height: 34px !important;
-            min-width: 34px !important;
-            padding: 0 !important;
+            padding: 0 6px 0 4px !important;
             margin: 0 !important;
             background: transparent;
             border: none;
@@ -234,10 +227,21 @@
             box-shadow: none;
             position: relative;
         }
-        .sidebar-tf-flyout-trigger svg {
+        .sidebar-tf-flyout-trigger .tf-main-icon {
             width: 18px;
             height: 18px;
             stroke: currentColor;
+            flex-shrink: 0;
+        }
+        .sidebar-tf-flyout-trigger .tf-btn-chevron {
+            width: 8px;
+            height: 8px;
+            stroke: currentColor;
+            flex-shrink: 0;
+            transition: transform 0.2s ease;
+        }
+        .sidebar-tf-flyout-trigger.open .tf-btn-chevron {
+            transform: rotate(180deg);
         }
         .sidebar-tf-flyout-trigger:hover {
             background: rgba(42, 46, 57, 0.85) !important;
@@ -247,34 +251,6 @@
             background: rgba(42, 46, 57, 0.85) !important;
             color: #a0aec0;
         }
-        /* Separate chevron button to the right of the icon */
-        .sidebar-tf-chevron-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 14px;
-            height: 34px;
-            background: transparent;
-            border: none;
-            border-radius: 0 4px 4px 0;
-            cursor: default;
-            color: #a0aec0;
-            padding: 0;
-            transition: all 0.15s ease;
-        }
-        .sidebar-tf-chevron-btn svg {
-            width: 8px;
-            height: 8px;
-            stroke: currentColor;
-            transition: transform 0.2s ease;
-            transform: rotate(-90deg);
-        }
-        .sidebar-tf-chevron-btn:hover {
-            background: rgba(42, 46, 57, 0.85);
-        }
-        .sidebar-tf-flyout-trigger.open ~ .sidebar-tf-chevron-btn svg {
-            transform: rotate(90deg);
-        }
         body.light-mode .sidebar-tf-flyout-trigger {
             background: transparent;
             color: #787b86;
@@ -282,12 +258,6 @@
         body.light-mode .sidebar-tf-flyout-trigger:hover {
             background: rgba(0, 0, 0, 0.07) !important;
             color: #131722;
-        }
-        body.light-mode .sidebar-tf-chevron-btn {
-            color: #787b86;
-        }
-        body.light-mode .sidebar-tf-chevron-btn:hover {
-            background: rgba(0, 0, 0, 0.07);
         }
 
         /* ── TF Flyout Panel (3-level: categories → values) ── */
@@ -18373,19 +18343,15 @@
 
     <!-- Right Sidebar - Icon Bar -->
         <div class="right-sidebar-icons">
-            <div class="sidebar-tf-flyout-group">
-                <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" data-tooltip="Change timeframe">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" data-tooltip="Change timeframe">
+                    <svg class="tf-main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"/>
                         <polyline points="12,6 12,12 16,14"/>
                     </svg>
-                </button>
-                <button class="sidebar-tf-chevron-btn" id="sidebarTfChevronBtn">
-                    <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg class="tf-btn-chevron" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="2,2 6,6 10,2"/>
                     </svg>
-                </button>
-            </div>
+            </button>
             <div class="sidebar-timeframe-section" id="sidebarTimeframes">
                 <!-- Timeframe buttons will be dynamically populated -->
             </div>
