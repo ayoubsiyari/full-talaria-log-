@@ -1891,6 +1891,7 @@ class PanelManager {
                     panel.element.style.height = '100%';
                     panel.element.style.display = 'block';
                     panel.element.style.zIndex = '200';
+                    panel.element.style.overflow = 'visible'; // Allow crosshair lines to render fully
                 } else {
                     // Hide other panels
                     panel.element.style.display = 'none';
@@ -1946,6 +1947,7 @@ class PanelManager {
                 panel.element.style.top = saved.top;
                 panel.element.style.display = saved.display || 'block';
                 panel.element.style.zIndex = '100';
+                panel.element.style.overflow = 'hidden'; // Restore clipping
             }
         });
         
