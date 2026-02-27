@@ -226,11 +226,33 @@
             box-sizing: border-box !important;
             flex-shrink: 0;
             box-shadow: none;
+            position: relative;
         }
         .sidebar-tf-flyout-trigger svg {
             width: 18px;
             height: 18px;
             stroke: currentColor;
+        }
+        /* Small chevron indicator at bottom-right corner */
+        .sidebar-tf-flyout-trigger::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            width: 0;
+            height: 0;
+            border-left: 3px solid transparent;
+            border-right: 3px solid transparent;
+            border-top: 4px solid currentColor;
+            opacity: 0.6;
+            transition: transform 0.2s ease, opacity 0.15s ease;
+        }
+        .sidebar-tf-flyout-trigger:hover::after {
+            opacity: 1;
+        }
+        .sidebar-tf-flyout-trigger.open::after {
+            transform: rotate(180deg);
+            opacity: 1;
         }
         .sidebar-tf-flyout-trigger:hover {
             background: rgba(42, 46, 57, 0.85) !important;
