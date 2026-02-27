@@ -8947,6 +8947,7 @@ class Chart {
         this.ctx.globalAlpha = 0.9;
         
         this.axisHighlightZones.forEach(zone => {
+            if (!zone.selected) return;
             if (zone.type === 'price') {
                 // Price axis zone (Y-axis on right)
                 this.ctx.fillRect(this.w - m.r + 2, zone.y, 58, zone.height);
