@@ -307,7 +307,7 @@ class ObjectTreeManager {
 
         // Jump to button
         const jumpBtn = document.createElement('button');
-        jumpBtn.className = 'object-tree-action-btn';
+        jumpBtn.className = 'object-tree-action-btn jump-to';
         jumpBtn.title = 'Jump to';
         jumpBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"></circle>
