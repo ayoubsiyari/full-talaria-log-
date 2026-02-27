@@ -304,6 +304,20 @@ class ObjectTreeManager {
         // Actions
         const actions = document.createElement('div');
         actions.className = 'object-tree-actions';
+
+        // Jump to button
+        const jumpBtn = document.createElement('button');
+        jumpBtn.className = 'object-tree-action-btn';
+        jumpBtn.title = 'Jump to';
+        jumpBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path>
+        </svg>`;
+        jumpBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.selectDrawing(drawing);
+        });
+        actions.appendChild(jumpBtn);
         
         // Visibility toggle
         const visibilityBtn = document.createElement('button');
