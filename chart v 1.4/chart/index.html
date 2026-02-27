@@ -24506,9 +24506,12 @@ function showIndicatorsMenu() {
                 chartTypeBtn.addEventListener('click', toggleChartTypeDropdown);
             }
             
-            // Close when clicking outside
+            // Close when clicking outside (but not on the button or arrow themselves)
             document.addEventListener('click', function(e) {
-                if (!chartTypeDropdown.contains(e.target) && !chartTypeArrow.contains(e.target)) {
+                const inDropdown = chartTypeDropdown.contains(e.target);
+                const inArrow = chartTypeArrow && chartTypeArrow.contains(e.target);
+                const inBtn = chartTypeBtn && chartTypeBtn.contains(e.target);
+                if (!inDropdown && !inArrow && !inBtn) {
                     chartTypeDropdown.classList.remove('show');
                     if (chartTypeArrow) chartTypeArrow.classList.remove('dropdown-open');
                 }
