@@ -8943,20 +8943,7 @@ class Chart {
         const isLightTheme = this.isLightColor ? this.isLightColor(backgroundColor) : false;
         const zoneColor = isLightTheme ? '#e0e3eb' : '#2a2e39';
         
-        this.ctx.fillStyle = zoneColor;
-        this.ctx.globalAlpha = 0.9;
-        
-        this.axisHighlightZones.forEach(zone => {
-            if (zone.type === 'price') {
-                // Price axis zone (Y-axis on right)
-                this.ctx.fillRect(this.w - m.r + 2, zone.y, 58, zone.height);
-            } else if (zone.type === 'time') {
-                // Time axis zone (X-axis on bottom)
-                this.ctx.fillRect(zone.x, this.h - m.b + 4, zone.width, 20);
-            }
-        });
-        
-        this.ctx.globalAlpha = 1.0;
+        // Background boxes removed — labels draw text only
     }
     
     /**
