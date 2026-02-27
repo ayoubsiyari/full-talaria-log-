@@ -1696,12 +1696,18 @@ class PanelManager {
         }
         
         // Deselect all panels - reset to normal border (only right/bottom)
-        this.panels.forEach(panel => {
+        this.panels.forEach((panel, i) => {
             if (panel.element) {
-                panel.element.style.border = 'none';
-                panel.element.style.borderRight = '1px solid #2a2e39';
-                panel.element.style.borderBottom = '1px solid #2a2e39';
-                panel.element.style.boxShadow = 'none';
+                // Main chart (index 0) needs special handling
+                if (i === 0 && panel.isMainChart) {
+                    panel.element.style.border = 'none';
+                    panel.element.style.boxShadow = 'none';
+                } else {
+                    panel.element.style.border = 'none';
+                    panel.element.style.borderRight = '1px solid #2a2e39';
+                    panel.element.style.borderBottom = '1px solid #2a2e39';
+                    panel.element.style.boxShadow = 'none';
+                }
             }
         });
         
