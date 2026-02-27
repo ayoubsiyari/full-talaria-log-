@@ -209,44 +209,44 @@
         
         /* ── Sidebar TF flyout trigger button (chevron next to active TF) ── */
         .sidebar-tf-flyout-trigger {
-            width: 26px !important;
-            height: 34px !important;
-            min-width: 26px !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            background: rgba(47, 114, 255, 0.15);
-            border: none;
-            border-radius: 0 5px 5px 0;
-            cursor: default;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
+            width: 34px !important;
+            height: 34px !important;
+            min-width: 34px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            cursor: default;
             color: #a0aec0;
-            transition: background 0.12s;
+            transition: all 0.15s ease;
             box-sizing: border-box !important;
             flex-shrink: 0;
             box-shadow: none;
         }
         .sidebar-tf-flyout-trigger svg {
-            width: 14px;
-            height: 14px;
+            width: 18px;
+            height: 18px;
             stroke: currentColor;
         }
         .sidebar-tf-flyout-trigger:hover {
-            background: rgba(47, 114, 255, 0.35) !important;
-            color: #ffffff;
+            background: rgba(42, 46, 57, 0.85) !important;
+            color: #a0aec0;
         }
         .sidebar-tf-flyout-trigger.open {
-            background: rgba(47, 114, 255, 0.35) !important;
-            color: #ffffff;
+            background: rgba(42, 46, 57, 0.85) !important;
+            color: #a0aec0;
         }
         body.light-mode .sidebar-tf-flyout-trigger {
-            background: rgba(41, 98, 255, 0.1);
+            background: transparent;
             color: #787b86;
         }
         body.light-mode .sidebar-tf-flyout-trigger:hover {
-            background: rgba(41, 98, 255, 0.25) !important;
-            color: #2962ff;
+            background: rgba(0, 0, 0, 0.07) !important;
+            color: #131722;
         }
 
         /* ── TF Flyout Panel (3-level: categories → values) ── */
@@ -17512,7 +17512,7 @@
                     <div class="interval-slider-panel">
                         <div class="interval-slider-panel-top">
                             <div class="interval-slider-label">
-                                <span>Interval</span>
+                                <span></span>
                                 <span class="interval-cur-value" id="intervalCurValue">1m</span>
                             </div>
                             <div class="interval-slider-track-container">
@@ -18289,8 +18289,8 @@
 
     <!-- Right Sidebar - Icon Bar -->
         <div class="right-sidebar-icons">
-            <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" title="Change timeframe" style="width:40px!important;height:34px!important;min-width:40px!important;border-radius:5px;margin-bottom:2px;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
+            <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" title="Change timeframe">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12,6 12,12 16,14"/>
                 </svg>
