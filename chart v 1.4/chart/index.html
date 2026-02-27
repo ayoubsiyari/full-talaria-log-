@@ -3052,19 +3052,25 @@
             border: none;
             background: transparent;
             cursor: default;
-            border-radius: 50%;
-            overflow: hidden;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+            color: #a0aec0;
+        }
+
+        .profile-avatar-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #a0aec0;
         }
 
         .avatar-circle {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: #050028;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            background: transparent;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #ffffff;
+            color: currentColor;
         }
 
         .avatar-circle svg {
