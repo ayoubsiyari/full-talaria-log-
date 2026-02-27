@@ -1719,19 +1719,11 @@ class PanelManager {
             }
         }
         
-        // Deselect all panels - reset to normal border (only right/bottom)
+        // Deselect all panels - reset to no outline
         this.panels.forEach((panel, i) => {
             if (panel.element) {
-                // Main chart (index 0) needs special handling
-                if (i === 0 && panel.isMainChart) {
-                    panel.element.style.border = 'none';
-                    panel.element.style.boxShadow = 'none';
-                } else {
-                    panel.element.style.border = 'none';
-                    panel.element.style.borderRight = '1px solid #2a2e39';
-                    panel.element.style.borderBottom = '1px solid #2a2e39';
-                    panel.element.style.boxShadow = 'none';
-                }
+                panel.element.style.outline = 'none';
+                panel.element.style.outlineOffset = '0';
             }
         });
         
@@ -1740,11 +1732,10 @@ class PanelManager {
             this.selectedPanelIndex = index;
             const panel = this.panels[index];
             
-            // Highlight selected panel with bright blue border on all sides
+            // Highlight selected panel using outline (not clipped by overflow:hidden)
             if (panel.element) {
-                panel.element.style.border = '3px solid #2962ff';
-                panel.element.style.boxShadow = '0 0 10px rgba(41, 98, 255, 0.5), inset 0 0 0 1px rgba(41, 98, 255, 0.3)';
-                panel.element.style.outline = 'none';
+                panel.element.style.outline = '3px solid #2962ff';
+                panel.element.style.outlineOffset = '-3px';
             }
             
             console.log(`📊 Panel ${index} selected (${panel.timeframe})`);
