@@ -207,25 +207,30 @@
             background: rgba(47, 114, 255, 0.35);
         }
         
-        /* ── Sidebar TF flyout trigger (single button: icon + chevron) ── */
+        /* ── Sidebar TF flyout trigger ── */
         .sidebar-tf-flyout-trigger {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 2px;
-            height: 34px !important;
-            padding: 0 6px 0 4px !important;
-            margin: 0 !important;
             background: transparent;
             border: none;
-            border-radius: 4px;
-            cursor: default;
             color: #a0aec0;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px;
+            border-radius: 6px;
             transition: all 0.15s ease;
-            box-sizing: border-box !important;
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            min-height: 34px;
+            max-width: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            cursor: default;
             flex-shrink: 0;
-            box-shadow: none;
             position: relative;
+            overflow: hidden;
+            box-shadow: none;
         }
         .sidebar-tf-flyout-trigger .tf-main-icon {
             width: 18px;
@@ -234,19 +239,19 @@
             flex-shrink: 0;
         }
         .sidebar-tf-flyout-trigger:hover {
-            background: rgba(42, 46, 57, 0.85) !important;
+            background: rgba(255, 255, 255, 0.08);
             color: #a0aec0;
         }
         .sidebar-tf-flyout-trigger.open {
-            background: rgba(42, 46, 57, 0.85) !important;
+            background: rgba(47, 114, 255, 0.25);
             color: #a0aec0;
         }
         body.light-mode .sidebar-tf-flyout-trigger {
             background: transparent;
-            color: #787b86;
+            color: #1e1e1e;
         }
         body.light-mode .sidebar-tf-flyout-trigger:hover {
-            background: rgba(0, 0, 0, 0.07) !important;
+            background: rgba(0, 0, 0, 0.07);
             color: #131722;
         }
 
