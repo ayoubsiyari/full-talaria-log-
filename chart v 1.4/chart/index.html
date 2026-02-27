@@ -14136,11 +14136,13 @@
         .profile-avatar-btn,
         .right-sidebar-icon-btn,
         .sidebar-timeframe-btn,
-        .sidebar-current-timeframe { position: relative; }
+        .sidebar-current-timeframe,
+        .sidebar-tf-flyout-trigger { position: relative; }
 
         /* Sidebar TF buttons — tooltip to the left */
         .sidebar-timeframe-btn[data-tooltip]::after,
-        .sidebar-current-timeframe[data-tooltip]::after {
+        .sidebar-current-timeframe[data-tooltip]::after,
+        .sidebar-tf-flyout-trigger[data-tooltip]::after {
             content: attr(data-tooltip);
             position: absolute;
             right: calc(100% + 8px);
@@ -14161,7 +14163,8 @@
             z-index: 99999;
         }
         .sidebar-timeframe-btn[data-tooltip]:hover::after,
-        .sidebar-current-timeframe[data-tooltip]:hover::after { opacity: 1; }
+        .sidebar-current-timeframe[data-tooltip]:hover::after,
+        .sidebar-tf-flyout-trigger[data-tooltip]:hover::after { opacity: 1; }
 
         /* Top toolbar — tooltip drops below button */
         .toolbar-icon-btn-dark[data-tooltip]::after,
@@ -18309,7 +18312,7 @@
 
     <!-- Right Sidebar - Icon Bar -->
         <div class="right-sidebar-icons">
-            <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" title="Change timeframe">
+            <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" data-tooltip="Change timeframe">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12,6 12,12 16,14"/>
