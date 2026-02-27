@@ -24469,38 +24469,41 @@ function showIndicatorsMenu() {
             
             // Handle dropdown arrow click only
             const chartTypeArrow = document.getElementById('chartTypeDropdownArrow');
-            if (chartTypeArrow) {
-                chartTypeArrow.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    e.preventDefault();
+
+            function toggleChartTypeDropdown(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                
+                const isOpen = chartTypeDropdown.classList.contains('show');
+                
+                // Close all other dropdowns first
+                document.querySelectorAll('.tool-dropdown.show').forEach(dd => {
+                    if (dd !== chartTypeDropdown) dd.classList.remove('show');
+                });
+                
+                if (!isOpen) {
+                    const rect = (chartTypeArrow || chartTypeBtn).getBoundingClientRect();
                     
-                    const isOpen = chartTypeDropdown.classList.contains('show');
-                    
-                    // Close all other dropdowns first
-                    document.querySelectorAll('.tool-dropdown.show').forEach(dd => {
-                        if (dd !== chartTypeDropdown) dd.classList.remove('show');
-                    });
-                    
-                    if (!isOpen) {
-                        // Position dropdown below arrow
-                        const rect = chartTypeArrow.getBoundingClientRect();
-                        
-                        if (chartTypeDropdown.parentElement !== document.body) {
-                            document.body.appendChild(chartTypeDropdown);
-                        }
-                        
-                        chartTypeDropdown.style.position = 'fixed';
-                        chartTypeDropdown.style.top = (rect.bottom + 4) + 'px';
-                        chartTypeDropdown.style.left = rect.left + 'px';
-                        chartTypeDropdown.classList.add('show');
-                        chartTypeArrow.classList.add('dropdown-open');
-                    } else {
-                        chartTypeDropdown.classList.remove('show');
-                        chartTypeArrow.classList.remove('dropdown-open');
+                    if (chartTypeDropdown.parentElement !== document.body) {
+                        document.body.appendChild(chartTypeDropdown);
                     }
                     
-                    console.log('Chart type dropdown toggled:', chartTypeDropdown.classList.contains('show'));
-                });
+                    chartTypeDropdown.style.position = 'fixed';
+                    chartTypeDropdown.style.top = (rect.bottom + 4) + 'px';
+                    chartTypeDropdown.style.left = rect.left + 'px';
+                    chartTypeDropdown.classList.add('show');
+                    if (chartTypeArrow) chartTypeArrow.classList.add('dropdown-open');
+                } else {
+                    chartTypeDropdown.classList.remove('show');
+                    if (chartTypeArrow) chartTypeArrow.classList.remove('dropdown-open');
+                }
+            }
+
+            if (chartTypeArrow) {
+                chartTypeArrow.addEventListener('click', toggleChartTypeDropdown);
+            }
+            if (chartTypeBtn) {
+                chartTypeBtn.addEventListener('click', toggleChartTypeDropdown);
             }
             
             // Close when clicking outside
