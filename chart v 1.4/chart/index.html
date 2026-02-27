@@ -210,9 +210,8 @@
         /* ── Sidebar TF flyout trigger (vertical stack: icon + chevron) ── */
         .sidebar-tf-flyout-group {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-            width: 34px;
             flex-shrink: 0;
         }
         .sidebar-tf-flyout-trigger {
@@ -248,32 +247,33 @@
             background: rgba(42, 46, 57, 0.85) !important;
             color: #a0aec0;
         }
-        /* Separate chevron button below the icon */
+        /* Separate chevron button to the right of the icon */
         .sidebar-tf-chevron-btn {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 34px;
-            height: 14px;
+            width: 14px;
+            height: 34px;
             background: transparent;
             border: none;
-            border-radius: 0 0 4px 4px;
+            border-radius: 0 4px 4px 0;
             cursor: default;
             color: #a0aec0;
             padding: 0;
             transition: all 0.15s ease;
         }
         .sidebar-tf-chevron-btn svg {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             stroke: currentColor;
             transition: transform 0.2s ease;
+            transform: rotate(-90deg);
         }
         .sidebar-tf-chevron-btn:hover {
             background: rgba(42, 46, 57, 0.85);
         }
         .sidebar-tf-flyout-trigger.open ~ .sidebar-tf-chevron-btn svg {
-            transform: rotate(180deg);
+            transform: rotate(90deg);
         }
         body.light-mode .sidebar-tf-flyout-trigger {
             background: transparent;
