@@ -24362,6 +24362,20 @@ function showIndicatorsMenu() {
         // Make it globally accessible
         window.openCompareSymbolModal = openCompareSymbolModal;
 
+        // Helper: returns the chart instance for the currently selected panel
+        window.getActiveChart = function() {
+            if (window.panelManager && window.panelManager.panels.length > 0) {
+                const idx = window.panelManager.selectedPanelIndex || 0;
+                const panel = window.panelManager.panels[idx];
+                if (panel) {
+                    // Panel 0 is the main chart
+                    if (idx === 0 && panel.isMainChart) return window.chart;
+                    if (panel.chartInstance) return panel.chartInstance;
+                }
+            }
+            return window.chart;
+        };
+
         // Chart Type Selector - Initialize when DOM is ready
         function initChartTypeSelector() {
             const chartTypeBtn = document.getElementById('chartTypeBtn');
@@ -24443,13 +24457,13 @@ function showIndicatorsMenu() {
                     chartTypeDropdown.classList.remove('show');
                     if (chartTypeArrow) chartTypeArrow.classList.remove('dropdown-open');
                     
-                    // Apply chart type to chart
-                    if (window.chart) {
-                        window.chart.chartSettings.chartType = chartType;
-                        window.chart.render();
-                        // Save settings to persist chart type change
-                        if (typeof window.chart.saveSettings === 'function') {
-                            window.chart.saveSettings();
+                    // Apply chart type to the active (selected) panel's chart
+                    const activeChart = window.getActiveChart();
+                    if (activeChart) {
+                        activeChart.chartSettings.chartType = chartType;
+                        activeChart.render();
+                        if (typeof activeChart.saveSettings === 'function') {
+                            activeChart.saveSettings();
                         }
                     }
                     // Sync settings panel select if open
@@ -25308,7 +25322,7 @@ try{
 var P={};
 
 /* helpers */
-function ch(){ return window.chart||window.mainChart||null; }
+function ch(){ return (window.getActiveChart&&window.getActiveChart())||window.chart||window.mainChart||null; }
 function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} }
 function set(k,v){ var c=ch(); if(!c)return; c.chartSettings=c.chartSettings||{}; c.chartSettings[k]=v; apply(); }
 function sess(){ try{return window.backtestingSession||JSON.parse(localStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
