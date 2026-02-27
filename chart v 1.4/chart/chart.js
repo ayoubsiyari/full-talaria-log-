@@ -5197,15 +5197,12 @@ class Chart {
         if (this.data.length <= visibleCandles) {
             this.offsetX = 0;
         } else {
-            // Position so the last candles are visible on the right
-            // Calculate total width of all candles
+            // Position so the last candle is in the center of the screen
             const totalDataWidth = this.data.length * candleSpacing;
             
-            // Calculate offset to position last candle near right edge (with minimal padding)
-            const padding = candleSpacing * 0.5; // 0.5 candles worth of padding
-            
-            // offsetX should be negative to shift data left, showing the end
-            this.offsetX = cw - totalDataWidth - padding;
+            // Position last candle at center: offsetX = (chartWidth / 2) - (lastCandlePosition)
+            const lastCandleX = (this.data.length - 1) * candleSpacing;
+            this.offsetX = (cw / 2) - lastCandleX;
         }
         
         console.log('📍 fitToView:', {
