@@ -669,6 +669,40 @@ class TimeframeFavorites {
             catPanel.appendChild(catBtn);
         });
 
+        // Divider
+        const divider = document.createElement('div');
+        divider.className = 'tf-flyout-divider';
+        catPanel.appendChild(divider);
+
+        // Custom button
+        const customBtn = document.createElement('button');
+        customBtn.className = 'tf-flyout-cat-btn tf-flyout-cat-custom';
+        const plusSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        plusSvg.setAttribute('viewBox', '0 0 24 24');
+        plusSvg.setAttribute('fill', 'none');
+        plusSvg.setAttribute('stroke-width', '2');
+        plusSvg.setAttribute('stroke-linecap', 'round');
+        const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        l1.setAttribute('x1', '12'); l1.setAttribute('y1', '5');
+        l1.setAttribute('x2', '12'); l1.setAttribute('y2', '19');
+        const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        l2.setAttribute('x1', '5');  l2.setAttribute('y1', '12');
+        l2.setAttribute('x2', '19'); l2.setAttribute('y2', '12');
+        plusSvg.appendChild(l1); plusSvg.appendChild(l2);
+        customBtn.appendChild(plusSvg);
+        customBtn.appendChild(document.createTextNode('Custom'));
+        customBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._closeTfFlyout();
+            const modal = document.getElementById('customTimeframeModal');
+            if (modal) {
+                modal.classList.add('open');
+                const input = document.getElementById('customTimeframeValue');
+                if (input) { input.focus(); input.select(); }
+            }
+        });
+        catPanel.appendChild(customBtn);
+
         // Position: to the right of the sidebar (anchor button)
         document.body.appendChild(flyout);
         const rect = anchorBtn.getBoundingClientRect();
