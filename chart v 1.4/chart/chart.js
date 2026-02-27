@@ -4668,7 +4668,11 @@ class Chart {
             // including pan-loads, which would destroy the user's current zoom level.
             if (startIndex === 0) {
                 console.log('🎯 Auto-positioning to latest candles (initial load)...');
+                // Force resize first so this.w/h are accurate before fitToView calculates offsetX.
+                // Without this, fitToView may run with this.w=0 and compute a wrong offsetX.
+                this.resize();
                 this.fitToView();
+                this.scheduleRender();
             }
             
             // Clear old drawings and load saved drawings for this file
