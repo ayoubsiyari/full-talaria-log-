@@ -1635,10 +1635,12 @@ class ReplaySystem {
         if (autoScroll && this.autoScrollEnabled) {
             const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : 
                                  (this.chart.candleWidth + (this.chart.candleGap || 2));
-            const numVisibleCandles = Math.floor(this.chart.w / candleSpacing);
+            const m = this.chart.margin || { l: 0, r: 70 };
+            const chartAreaW = this.chart.w - m.l - m.r;
+            const numVisibleCandles = Math.floor(chartAreaW / candleSpacing);
             
             // Position offsetX so the latest candles are visible on the right side
-            // Show last ~20% of available candles for context
+            // Show last ~80% of visible area filled with candles (keeps last candle near right edge)
             const scrollPosition = Math.max(0, this.chart.data.length - Math.floor(numVisibleCandles * 0.8));
             this.chart.offsetX = -scrollPosition * candleSpacing;
             
@@ -2467,7 +2469,9 @@ class ReplaySystem {
         if (this.autoScrollEnabled) {
             const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : 
                                  (this.chart.candleWidth + (this.chart.candleGap || 2));
-            const numVisibleCandles = Math.floor(this.chart.w / candleSpacing);
+            const m = this.chart.margin || { l: 0, r: 70 };
+            const chartAreaW = this.chart.w - m.l - m.r;
+            const numVisibleCandles = Math.floor(chartAreaW / candleSpacing);
             const scrollPosition = Math.max(0, this.chart.data.length - Math.floor(numVisibleCandles * 0.8));
             this.chart.offsetX = -scrollPosition * candleSpacing;
         }

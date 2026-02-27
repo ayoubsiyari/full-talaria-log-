@@ -3843,6 +3843,14 @@ class DrawingToolsManager {
             return; // _drawingsLoaded stays false — listener will retry
         }
 
+        // Clear any existing drawings before loading to prevent duplicates
+        // (can happen when loadDrawings is called multiple times via chartDataLoaded retry)
+        if (this.drawings.length > 0) {
+            this.drawings.forEach(d => { try { d.destroy(); } catch(e) {} });
+            this.drawings = [];
+            if (this.drawingsGroup) this.drawingsGroup.selectAll('*').remove();
+        }
+
         // Mark as loaded regardless of whether there are saved drawings
         this._drawingsLoaded = true;
 

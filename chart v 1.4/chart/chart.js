@@ -4663,12 +4663,16 @@ class Chart {
                 this.updateSymbolSelector(this.currentSymbol);
             }
             
-            // Auto-jump to latest after loading data
-            console.log('🎯 Auto-positioning to latest candles...');
-            this.jumpToLatest();
+            // On initial load (startIndex===0), position to show latest candles.
+            // Do NOT call jumpToLatest() here — it resets candleWidth/zoom on every chunk
+            // including pan-loads, which would destroy the user's current zoom level.
+            if (startIndex === 0) {
+                console.log('🎯 Auto-positioning to latest candles (initial load)...');
+                this.fitToView();
+            }
             
             // Clear old drawings and load saved drawings for this file
-            if (this.drawingManager) {
+            if (startIndex === 0 && this.drawingManager) {
                 // First, clear any existing drawings from previous file
                 if (this.drawingManager.drawings.length > 0) {
                     console.log('🗑️ Clearing old drawings from previous file...');
@@ -5242,7 +5246,7 @@ class Chart {
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
         
         // Calculate visible range
-        const spacing = this.candleWidth + 2;
+        const spacing = this.getCandleSpacing();
         const visibleCandles = Math.floor((this.w - this.margin.l - this.margin.r) / spacing);
         const endIndex = Math.min(this.data.length - 1, Math.floor(-this.offsetX / spacing) + visibleCandles);
         const startIndex = Math.max(0, endIndex - visibleCandles);
@@ -7584,8 +7588,7 @@ class Chart {
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
-        this.offsetX = 0;
-        this.constrainOffset();
+        this.fitToView(); // position to last candle after timeframe change
         this.scheduleRender();
         this._fireChartDataLoaded();
     }
@@ -7615,18 +7618,19 @@ class Chart {
             this._panLoading = false;
             
             this.parseCSVChunk(result.data, 0);
-            this.data = [...this.rawData];
+            // NOTE: parseCSVChunk already resamples this.data to currentTimeframe
+            // do NOT overwrite it with rawData here (that would break non-1m timeframes)
             
             if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
             
-            this.offsetX = 0;
-            this.constrainOffset();
+            this.fitToView(); // position to last candle after timeframe change
             this.scheduleRender();
             if (this.hideLoader) this.hideLoader();
-            this._fireChartDataLoaded();
+            // NOTE: parseCSVChunk already dispatches chartDataLoaded internally,
+            // so we do NOT call _fireChartDataLoaded() here to avoid double-refresh of drawings
             
             console.log(`✅ ${timeframe}: loaded ${this.rawData.length}/${result.total} candles`);
         } catch (error) {
