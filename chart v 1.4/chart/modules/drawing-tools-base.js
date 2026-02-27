@@ -343,23 +343,23 @@ class BaseDrawing {
         // Prepare canvas-based zone highlights (drawn behind labels)
         const canvasZones = [];
         
-        // Per-point price label background boxes (always visible)
-        const shapeColor = this.style?.color || this.style?.stroke || '#2962ff';
-        if (this.points.length >= 1) {
-            this.points.forEach((point, idx) => {
-                let pColor = shapeColor;
-                if (this.type === 'long-position' || this.type === 'short-position') {
-                    if (idx === 0) pColor = '#2196f3';
-                    else if (idx === 1) pColor = '#f44336';
-                    else if (idx === 2) pColor = '#4caf50';
-                }
-                const py = yScale(point.y);
-                if (py >= margin.t && py <= chartHeight - margin.b) {
-                    canvasZones.push({ type: 'price', y: py, color: pColor });
-                }
-            });
+        // Calculate price axis zone (Y-axis)
+        if (this.points.length >= 2) {
+            const prices = this.points.map(p => p.y);
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const minY = yScale(maxPrice); // Note: Y is inverted
+            const maxY = yScale(minPrice);
+            const zoneHeight = maxY - minY;
+            
+            if (zoneHeight > 0) {
+                canvasZones.push({
+                    type: 'price',
+                    y: minY,
+                    height: zoneHeight
+                });
+            }
         }
-        
         
         // Calculate time axis zone (X-axis)
         // For position tools, use meta.zoneWidth since all points are on same candle
@@ -386,11 +386,9 @@ class BaseDrawing {
         
         if (this.style.showTimeLabel !== false && timeZoneWidth > 0 && timeZoneStartX !== null) {
             canvasZones.push({
-                type: 'time-range',
+                type: 'time',
                 x: timeZoneStartX,
-                width: timeZoneWidth,
-                color: shapeColor,
-                selected: !!this.selected
+                width: timeZoneWidth
             });
             
             // Add start and end time labels for ALL tools with time zones
@@ -454,6 +452,7 @@ class BaseDrawing {
                         .attr('height', boxHeight)
                         .attr('fill', timeHighlightColor)
                         .attr('rx', 3);
+                    
                     this.axisHighlightGroup.append('text')
                         .attr('class', 'axis-highlight-time-start-text')
                         .attr('x', timeZoneStartX)
@@ -508,6 +507,7 @@ class BaseDrawing {
                         .attr('height', boxHeight)
                         .attr('fill', timeHighlightColor)
                         .attr('rx', 3);
+                    
                     this.axisHighlightGroup.append('text')
                         .attr('class', 'axis-highlight-time-end-text')
                         .attr('x', endX)
@@ -554,17 +554,15 @@ class BaseDrawing {
             if (this.style.showPriceLabel !== false && yPos >= margin.t && yPos <= chartHeight - margin.b) {
                 const priceText = price.toFixed(this.chart.priceDecimals || 5);
                 
-                // Price label: always show background + white text
-                const boxWidth = 58;
-                const priceTextColor = isLightColor(priceColor) ? '#131722' : '#ffffff';
+                // Price text only (no background box)
                 this.axisHighlightGroup.append('text')
                     .attr('class', 'axis-highlight-price-text')
-                    .attr('x', chartWidth - margin.r + 2 + boxWidth / 2)
-                    .attr('y', yPos + 5)
-                    .attr('fill', priceTextColor)
+                    .attr('x', chartWidth - margin.r + 6)
+                    .attr('y', yPos + 4)
+                    .attr('fill', priceColor)
                     .attr('font-size', '11px')
                     .attr('font-weight', '600')
-                    .attr('text-anchor', 'middle')
+                    .attr('text-anchor', 'start')
                     .text(priceText);
             }
             
@@ -603,7 +601,7 @@ class BaseDrawing {
                         const mins = date.getMinutes().toString().padStart(2, '0');
                         const timeText = `${day} ${month} '${year} ${hours}:${mins}`;
                         
-                        // Time label: background + white text when selected, text only when deselected
+                        // Time text only (no background box)
                         this.axisHighlightGroup.append('text')
                             .attr('class', 'axis-highlight-time-text')
                             .attr('x', xPos)
