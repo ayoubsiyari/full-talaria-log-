@@ -24376,6 +24376,35 @@ function showIndicatorsMenu() {
             return window.chart;
         };
 
+        // Sync toolbar UI when a panel is selected
+        window.addEventListener('panelSelected', function(e) {
+            const detail = e.detail;
+            const activeChart = window.getActiveChart();
+            if (!activeChart) return;
+
+            // 1. Sync chart type toolbar icon
+            const chartType = (activeChart.chartSettings && activeChart.chartSettings.chartType) || 'candles';
+            if (window._syncChartTypeUI) window._syncChartTypeUI(chartType);
+
+            // 2. Sync timeframe label in sidebar / toolbar
+            const timeframe = detail.timeframe || activeChart.currentTimeframe || '1m';
+            const sidebarTf = document.getElementById('sidebarCurrentTimeframe');
+            if (sidebarTf) sidebarTf.textContent = timeframe;
+            const tfLabel = document.getElementById('currentTimeframeLabel');
+            if (tfLabel) tfLabel.textContent = timeframe;
+
+            // 3. If settings panel is currently open, reload it with active panel's values
+            const settingsPanel = document.getElementById('settingsPanel');
+            if (settingsPanel && settingsPanel.classList.contains('open')) {
+                // Re-render the currently active section
+                const activeNav = document.querySelector('.sp-nav-item.active');
+                const section = activeNav ? activeNav.dataset.section : 'symbol';
+                if (window._spLoad) window._spLoad(section, activeNav);
+            }
+
+            console.log(`🔄 Toolbar synced to panel ${detail.panelIndex} (${chartType}, ${timeframe})`);
+        });
+
         // Chart Type Selector - Initialize when DOM is ready
         function initChartTypeSelector() {
             const chartTypeBtn = document.getElementById('chartTypeBtn');
