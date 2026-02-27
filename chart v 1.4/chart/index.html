@@ -2185,19 +2185,23 @@
             background: rgba(41, 98, 255, 0.1);
         }
 
-        /* Help Button - Light Circle */
+        /* Help Button */
         .toolbar-icon-btn-light {
             display: flex;
             align-items: center;
             justify-content: center;
             width: 34px;
             height: 34px;
-            border: 1px solid #363a45;
+            border: none;
             background: transparent;
             color: #a0aec0;
             cursor: default;
-            border-radius: 50%;
+            border-radius: 4px;
             transition: all 0.15s ease;
+        }
+        .toolbar-icon-btn-light:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #a0aec0;
         }
 
 
@@ -14653,9 +14657,10 @@
             background: rgba(120, 123, 134, 0.3) !important;
         }
         
-        /* Help button (circle) - same size but round */
+        /* Help button - matches other toolbar buttons */
         .toolbar-icon-btn-light {
-            border-radius: 50% !important;
+            border-radius: 4px !important;
+            border: none !important;
         }
         
         /* Buttons with labels - auto width */
