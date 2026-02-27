@@ -1668,6 +1668,21 @@ class PanelManager {
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
+        // Deactivate any active drawing tool when switching panels
+        if (this.selectedPanelIndex !== index) {
+            // Deactivate drawing tool on all charts
+            this.panels.forEach(panel => {
+                if (panel.chartInstance && panel.chartInstance.drawingManager) {
+                    panel.chartInstance.drawingManager.deactivateTool();
+                }
+            });
+            
+            // Also deactivate on main chart if it exists
+            if (window.chart && window.chart.drawingManager) {
+                window.chart.drawingManager.deactivateTool();
+            }
+        }
+        
         // Deselect all panels - reset to normal border (only right/bottom)
         this.panels.forEach(panel => {
             if (panel.element) {

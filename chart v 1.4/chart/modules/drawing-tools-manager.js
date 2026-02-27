@@ -788,6 +788,14 @@ class DrawingToolsManager {
             this.favoritesManager.syncActiveState(null);
         }
     }
+    
+    /**
+     * Deactivate current drawing tool (used when switching panels)
+     * Alias for clearTool() with more explicit naming
+     */
+    deactivateTool() {
+        this.clearTool();
+    }
 
     /**
      * Handle mouse down event
