@@ -5206,6 +5206,14 @@ class Chart {
         
         const m = this.margin;
         const cw = this.w - m.l - m.r;
+        
+        // Safeguard: if canvas width is invalid (0 or too small), skip positioning
+        // This prevents the huge gap issue on page reload when layout isn't complete
+        if (cw <= 0 || this.w <= 0) {
+            console.warn('⚠️ fitToView skipped - canvas dimensions not ready:', { w: this.w, cw });
+            return;
+        }
+        
         const candleSpacing = this.getCandleSpacing();
         
         // Calculate how many candles can fit on screen
