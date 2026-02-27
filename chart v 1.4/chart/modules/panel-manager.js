@@ -1393,8 +1393,10 @@ class PanelManager {
             const chartWrapper = document.getElementById('chartWrapper');
             if (chartWrapper && !chartWrapper._panelClickHandler) {
                 chartWrapper._panelClickHandler = (e) => {
-                    // Don't interfere with buttons or controls
-                    if (e.target.closest('button') || e.target.closest('.ohlc-collapse-btn')) {
+                    // Don't interfere with resize handles, buttons, or controls
+                    if (e.target.closest('.panel-resize-handle') ||
+                        e.target.closest('button') || 
+                        e.target.closest('.ohlc-collapse-btn')) {
                         return;
                     }
                     
@@ -1614,8 +1616,10 @@ class PanelManager {
         
         // Click anywhere on panel to select it (like TradingView)
         panel.addEventListener('mousedown', (e) => {
-            // Don't interfere with OHLC collapse button or other controls
-            if (e.target.closest('.ohlc-collapse-btn') || e.target.closest('button')) {
+            // Don't interfere with resize handles, buttons, or other controls
+            if (e.target.closest('.panel-resize-handle') || 
+                e.target.closest('.ohlc-collapse-btn') || 
+                e.target.closest('button')) {
                 return;
             }
             
@@ -1701,15 +1705,15 @@ class PanelManager {
             }
         });
         
-        // Select the clicked panel - show blue glow/shadow instead of full border
+        // Select the clicked panel - show soft blue border on all 4 sides
         if (this.panels[index]) {
             this.selectedPanelIndex = index;
             const panel = this.panels[index];
             
-            // Highlight selected panel with subtle blue border and glow
+            // Highlight selected panel with soft blue border on all sides and subtle glow
             if (panel.element) {
-                panel.element.style.border = '1px solid #2962ff';
-                panel.element.style.boxShadow = 'inset 0 0 0 1px rgba(41, 98, 255, 0.3)';
+                panel.element.style.border = '2px solid rgba(41, 98, 255, 0.6)';
+                panel.element.style.boxShadow = '0 0 0 1px rgba(41, 98, 255, 0.2), inset 0 0 0 1px rgba(41, 98, 255, 0.15)';
             }
             
             console.log(`📊 Panel ${index} selected (${panel.timeframe})`);
@@ -2076,7 +2080,7 @@ class PanelManager {
         handle.dataset.panelIndex = panelIndex;
         handle.dataset.edge = edge;
         
-        const thickness = 4;
+        const thickness = 10; // Wider hit area for easier grabbing
         
         if (type === 'vertical') {
             handle.style.cssText = `
@@ -2087,7 +2091,8 @@ class PanelManager {
                 height: ${size}px;
                 cursor: col-resize;
                 background: transparent;
-                z-index: 300;
+                z-index: 150;
+                pointer-events: auto;
                 transition: background 0.15s ease;
             `;
         } else {
@@ -2099,7 +2104,8 @@ class PanelManager {
                 height: ${thickness}px;
                 cursor: row-resize;
                 background: transparent;
-                z-index: 300;
+                z-index: 150;
+                pointer-events: auto;
                 transition: background 0.15s ease;
             `;
         }
