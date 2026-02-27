@@ -18272,18 +18272,6 @@
 
     <!-- Right Sidebar - Icon Bar -->
         <div class="right-sidebar-icons">
-            <button class="sidebar-timeframe-btn" id="undoBtn" data-tooltip="Undo (Ctrl+Z)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                    <path d="M3 10h10c4.42 0 8 3.58 8 8v2"></path>
-                    <polyline points="7 14 3 10 7 6"></polyline>
-                </svg>
-            </button>
-            <button class="sidebar-timeframe-btn" id="redoBtn" data-tooltip="Redo (Ctrl+Y)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                    <path d="M21 10H11c-4.42 0-8 3.58-8 8v2"></path>
-                    <polyline points="17 14 21 10 17 6"></polyline>
-                </svg>
-            </button>
             <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" title="Change timeframe" style="width:40px!important;height:34px!important;min-width:40px!important;border-radius:5px;margin-bottom:2px;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
                     <circle cx="12" cy="12" r="10"/>
@@ -18296,6 +18284,20 @@
             
             <!-- Spacer to push panel icons to bottom -->
             <div style="flex: 1;"></div>
+
+            <!-- Undo / Redo -->
+            <button class="sidebar-timeframe-btn" id="undoBtn" data-tooltip="Undo (Ctrl+Z)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <path d="M3 10h10c4.42 0 8 3.58 8 8v2"></path>
+                    <polyline points="7 14 3 10 7 6"></polyline>
+                </svg>
+            </button>
+            <button class="sidebar-timeframe-btn" id="redoBtn" data-tooltip="Redo (Ctrl+Y)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <path d="M21 10H11c-4.42 0-8 3.58-8 8v2"></path>
+                    <polyline points="17 14 21 10 17 6"></polyline>
+                </svg>
+            </button>
             
             <div class="right-sidebar-bottom">
                 <button class="right-sidebar-icon-btn" id="newsIconBtn" data-panel="news" data-tooltip="Economic News" onclick="event.stopPropagation();window._spOpen&&window._spOpen('news');" style="display:none;">
