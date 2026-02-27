@@ -3956,8 +3956,8 @@
         }
 
         .ohlc-label {
-            color: #787b86;
             font-weight: 500;
+            opacity: 0.6;
         }
 
         .ohlc-value {
@@ -11169,7 +11169,7 @@
             gap: 5px;
             font-size: 11px;
             font-weight: 400;
-            color: #ffffff;
+            color: inherit;
         }
 
         .ohlc-symbol-dot {
@@ -11191,7 +11191,8 @@
         }
 
         .ohlc-separator {
-            color: #ffffff;
+            color: inherit;
+            opacity: 0.6;
             font-weight: 400;
         }
 
@@ -11201,7 +11202,7 @@
             gap: 8px;
             flex-wrap: wrap;
             font-weight: 300;
-            color: #ffffff;
+            color: inherit;
         }
 
         .ohlc-item {
@@ -11211,25 +11212,26 @@
         }
 
         .ohlc-label {
-            color: #ffffff;
+            color: inherit;
             font-weight: 400;
+            opacity: 0.6;
         }
 
         .ohlc-value {
-            color: #ffffff;
+            color: inherit;
             font-weight: 400;
         }
 
         .ohlc-value.up,
         .ohlc-value.down {
-            color: #ffffff;
+            color: inherit;
         }
 
         .ohlc-change {
             padding: 2px 6px;
             border-radius: 999px;
             background: rgba(2, 192, 118, 0.15);
-            color: #ffffff;
+            color: inherit;
             font-weight: 400;
         }
 
@@ -19313,9 +19315,9 @@
                         // Apply text color to OHLC info elements
                         const ohlcInfo = document.querySelector('.ohlc-info');
                         if (ohlcInfo) {
-                            ohlcInfo.querySelectorAll('.ohlc-symbol-text, .ohlc-label, .ohlc-value, .ohlc-separator, #chartTimeframe, .volume-label, .volume-value').forEach(el => {
-                                el.style.color = '#050028';
-                            });
+                            ohlcInfo.style.color = '#050028';
+                            ohlcInfo.querySelectorAll('[style*="color"]').forEach(el => { el.style.color = ''; });
+                            ohlcInfo.style.color = '#050028';
                         }
                         window.chart.render();
                         // Save settings to persist theme change
@@ -19346,6 +19348,9 @@
                         // Apply text color to OHLC info elements
                         const ohlcInfo = document.querySelector('.ohlc-info');
                         if (ohlcInfo) {
+                            ohlcInfo.querySelectorAll('[style*="color"]').forEach(el => { el.style.color = ''; });
+                            ohlcInfo.style.color = '#ffffff';
+                            /* legacy: keep for any remaining inline-styled children */
                             ohlcInfo.querySelectorAll('.ohlc-symbol-text, .ohlc-label, .ohlc-value, .ohlc-separator, #chartTimeframe, .volume-label, .volume-value').forEach(el => {
                                 el.style.color = '#ffffff';
                             });
