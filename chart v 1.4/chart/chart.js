@@ -565,11 +565,12 @@ class Chart {
         console.log('✓ Initial render complete');
         
         // Force a re-render after a short delay to ensure chart is visible after page reload
-        // This fixes the issue where chart sometimes disappears until double-click
+        // Also re-measure canvas dimensions after page layout completes to fix squished/broken appearance
         setTimeout(() => {
+            this.resize(); // Re-measure canvas after layout completes
             this.fitToView();
             this.render();
-            console.log('✓ Delayed re-render complete (ensures visibility)');
+            console.log('✓ Delayed re-render complete (ensures visibility and correct dimensions)');
         }, 100);
         
         // Listen for timezone changes (only for main chart)
