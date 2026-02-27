@@ -5201,8 +5201,8 @@ class Chart {
             // Calculate total width of all candles
             const totalDataWidth = this.data.length * candleSpacing;
             
-            // Calculate offset to position last candle near right edge (with some padding)
-            const padding = candleSpacing * 2; // 2 candles worth of padding
+            // Calculate offset to position last candle near right edge (with minimal padding)
+            const padding = candleSpacing * 0.5; // 0.5 candles worth of padding
             
             // offsetX should be negative to shift data left, showing the end
             this.offsetX = cw - totalDataWidth - padding;
