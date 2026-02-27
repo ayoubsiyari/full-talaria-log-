@@ -11169,7 +11169,7 @@
             gap: 5px;
             font-size: 11px;
             font-weight: 400;
-            color: #d1d4dc;
+            color: #ffffff;
         }
 
         .ohlc-symbol-dot {
@@ -11191,7 +11191,7 @@
         }
 
         .ohlc-separator {
-            color: #d1d4dc;
+            color: #ffffff;
             font-weight: 400;
         }
 
@@ -11201,7 +11201,7 @@
             gap: 8px;
             flex-wrap: wrap;
             font-weight: 300;
-            color: #d1d4dc;
+            color: #ffffff;
         }
 
         .ohlc-item {
@@ -11211,25 +11211,25 @@
         }
 
         .ohlc-label {
-            color: #787b86;
+            color: #ffffff;
             font-weight: 400;
         }
 
         .ohlc-value {
-            color: #d1d4dc;
+            color: #ffffff;
             font-weight: 400;
         }
 
         .ohlc-value.up,
         .ohlc-value.down {
-            color: #d1d4dc;
+            color: #ffffff;
         }
 
         .ohlc-change {
             padding: 2px 6px;
             border-radius: 999px;
             background: rgba(2, 192, 118, 0.15);
-            color: #d1d4dc;
+            color: #ffffff;
             font-weight: 400;
         }
 
@@ -19313,7 +19313,7 @@
                         // Apply text color to OHLC info elements
                         const ohlcInfo = document.querySelector('.ohlc-info');
                         if (ohlcInfo) {
-                            ohlcInfo.querySelectorAll('.ohlc-symbol-text, .ohlc-label, .ohlc-separator, #chartTimeframe, .volume-label, .volume-value').forEach(el => {
+                            ohlcInfo.querySelectorAll('.ohlc-symbol-text, .ohlc-label, .ohlc-value, .ohlc-separator, #chartTimeframe, .volume-label, .volume-value').forEach(el => {
                                 el.style.color = '#050028';
                             });
                         }
@@ -19346,7 +19346,7 @@
                         // Apply text color to OHLC info elements
                         const ohlcInfo = document.querySelector('.ohlc-info');
                         if (ohlcInfo) {
-                            ohlcInfo.querySelectorAll('.ohlc-symbol-text, .ohlc-label, .ohlc-separator, #chartTimeframe, .volume-label, .volume-value').forEach(el => {
+                            ohlcInfo.querySelectorAll('.ohlc-symbol-text, .ohlc-label, .ohlc-value, .ohlc-separator, #chartTimeframe, .volume-label, .volume-value').forEach(el => {
                                 el.style.color = '#ffffff';
                             });
                         }
