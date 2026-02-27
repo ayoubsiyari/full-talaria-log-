@@ -233,25 +233,23 @@
             height: 18px;
             stroke: currentColor;
         }
-        /* Small chevron indicator at bottom-right corner */
-        .sidebar-tf-flyout-trigger::after {
-            content: '';
+        /* Chevron SVG inside the button */
+        .sidebar-tf-flyout-trigger .tf-btn-chevron {
+            width: 8px;
+            height: 8px;
             position: absolute;
             bottom: 4px;
-            right: 4px;
-            width: 0;
-            height: 0;
-            border-left: 3px solid transparent;
-            border-right: 3px solid transparent;
-            border-top: 4px solid currentColor;
+            right: 3px;
             opacity: 0.6;
             transition: transform 0.2s ease, opacity 0.15s ease;
+            stroke: currentColor;
+            flex-shrink: 0;
         }
-        .sidebar-tf-flyout-trigger:hover::after {
+        .sidebar-tf-flyout-trigger:hover .tf-btn-chevron {
             opacity: 1;
         }
-        .sidebar-tf-flyout-trigger.open::after {
-            transform: rotate(180deg);
+        .sidebar-tf-flyout-trigger.open .tf-btn-chevron {
+            transform: rotate(90deg);
             opacity: 1;
         }
         .sidebar-tf-flyout-trigger:hover {
@@ -18315,6 +18313,9 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12,6 12,12 16,14"/>
+                </svg>
+                <svg class="tf-btn-chevron" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 6 15 12 9 18"/>
                 </svg>
             </button>
             <div class="sidebar-timeframe-section" id="sidebarTimeframes">
