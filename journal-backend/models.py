@@ -506,3 +506,47 @@ class ChartDrawing(db.Model):
     __table_args__ = (db.UniqueConstraint('user_id', 'symbol', 'session_id', name='uq_user_symbol_session'),)
 
 
+class ChartSettings(db.Model):
+    """Stores chart settings per user and symbol for cross-device sync."""
+    __tablename__ = 'chart_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    symbol = db.Column(db.String(50), nullable=False)  # e.g., 'EURUSD', 'GBPUSD'
+    session_id = db.Column(db.String(100), nullable=True)  # For backtesting sessions
+    settings_data = db.Column(JSON, nullable=False, default=dict)  # Chart settings object
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship to user
+    user = db.relationship('User', backref=db.backref('chart_settings', lazy=True))
+    
+    # Ensure unique combination of user, symbol, and session
+    __table_args__ = (db.UniqueConstraint('user_id', 'symbol', 'session_id', name='uq_user_symbol_session_settings'),)
+
+
+class UserPreferences(db.Model):
+    """Stores all user preferences for cross-device sync."""
+    __tablename__ = 'user_preferences'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    
+    # All user preferences stored as JSON
+    tool_defaults = db.Column(JSON, nullable=True, default=dict)  # Drawing tool default styles
+    timeframe_favorites = db.Column(JSON, nullable=True, default=list)  # Favorite timeframes
+    chart_templates = db.Column(JSON, nullable=True, default=dict)  # User-created chart templates
+    keyboard_shortcuts = db.Column(JSON, nullable=True, default=dict)  # Custom keyboard shortcuts
+    drawing_tool_styles = db.Column(JSON, nullable=True, default=dict)  # Saved tool styles per type
+    panel_sync_settings = db.Column(JSON, nullable=True, default=dict)  # Multi-panel sync preferences
+    panel_settings = db.Column(JSON, nullable=True, default=dict)  # Individual panel configurations
+    market_config = db.Column(JSON, nullable=True, default=dict)  # Market type, pip size, etc.
+    protection_settings = db.Column(JSON, nullable=True, default=list)  # Prop firm protection presets
+    general_settings = db.Column(JSON, nullable=True, default=dict)  # General app settings
+    keep_drawing_enabled = db.Column(db.Boolean, nullable=True, default=False)  # Keep drawing mode
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship to user
+    user = db.relationship('User', backref=db.backref('preferences', uselist=False, lazy=True))
+
+
