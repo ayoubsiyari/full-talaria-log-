@@ -1503,13 +1503,13 @@ class PriceNoteTool extends BaseDrawing {
         if (angleDeg > 90) angleDeg -= 180;
         if (angleDeg < -90) angleDeg += 180;
 
-        const labelOffset = 10;
         const markerRadius = 6 * scaleFactor;
+        const endpointClearance = this.selected ? markerRadius : 0;
 
         const len = Math.hypot(dx, dy);
         const ux = len > 0 ? (dx / len) : 0;
         const uy = len > 0 ? (dy / len) : 1;
-        const labelDistance = markerRadius + labelOffset + boxHeight / 2;
+        const labelDistance = endpointClearance + boxHeight / 2;
         let labelX = x2 + ux * labelDistance;
         let labelY = y2 + uy * labelDistance;
 
