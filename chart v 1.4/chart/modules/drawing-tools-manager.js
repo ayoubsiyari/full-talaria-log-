@@ -2155,7 +2155,7 @@ class DrawingToolsManager {
         
         // Enable pointer events on STROKE elements only (not fills)
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
-        drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle, ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
+        drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
         
         // Shape borders use 'stroke' - ONLY responds to clicks on the actual stroke path
@@ -2184,6 +2184,10 @@ class DrawingToolsManager {
         
         // Explicitly disable pointer-events on any ellipse/circle fill elements
         drawing.group.selectAll('ellipse.shape-fill, circle.shape-fill')
+            .style('pointer-events', 'none');
+
+        // Pin center hole should not capture hover/drag; let pin body handle interactions
+        drawing.group.selectAll('.pin-center-hole')
             .style('pointer-events', 'none');
         
         // Apply locked visual state
@@ -5432,7 +5436,7 @@ class DrawingToolsManager {
             return;
         }
 
-        const textHoverNodes = this.svg.selectAll('.inline-editable-text, .text-body-hit').nodes();
+        const textHoverNodes = this.svg.selectAll('.inline-editable-text, .text-body-hit, .pin-body-hit').nodes();
         let isOverTextHitArea = false;
         for (let i = 0; i < textHoverNodes.length; i++) {
             const n = textHoverNodes[i];

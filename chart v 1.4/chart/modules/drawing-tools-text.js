@@ -1869,6 +1869,7 @@ class PinTool extends BaseDrawing {
 
         // Inner hole - dark circle in center of bulb
         this.group.append('circle')
+            .attr('class', 'pin-center-hole')
             .attr('cx', x)
             .attr('cy', bulbCenterY)
             .attr('r', 5)
