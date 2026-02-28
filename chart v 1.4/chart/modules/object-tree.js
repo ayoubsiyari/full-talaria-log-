@@ -300,14 +300,10 @@ class ObjectTreeManager {
         label.className = 'object-tree-label';
         label.textContent = this.getDrawingLabel(drawing, index);
         item.appendChild(label);
-        
-        // Actions
-        const actions = document.createElement('div');
-        actions.className = 'object-tree-actions';
 
-        // Jump to shape button
+        // Jump to shape button (always visible)
         const jumpBtn = document.createElement('button');
-        jumpBtn.className = 'object-tree-action-btn jump-to';
+        jumpBtn.className = 'object-tree-jump-btn';
         jumpBtn.title = 'Jump to shape';
         jumpBtn.setAttribute('aria-label', 'Jump to shape');
         jumpBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -321,8 +317,11 @@ class ObjectTreeManager {
             e.stopPropagation();
             this.jumpToDrawing(drawing);
         });
-        actions.appendChild(jumpBtn);
-
+        item.appendChild(jumpBtn);
+        
+        // Actions
+        const actions = document.createElement('div');
+        actions.className = 'object-tree-actions';
         
         // Visibility toggle
         const visibilityBtn = document.createElement('button');

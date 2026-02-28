@@ -13697,6 +13697,31 @@
             align-items: center;
         }
 
+        .object-tree-jump-btn {
+            width: 20px;
+            height: 20px;
+            border: none;
+            background: transparent;
+            color: #4a90d9;
+            cursor: default;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.15s ease;
+        }
+
+        .object-tree-jump-btn:hover {
+            background: rgba(47, 114, 255, 0.2);
+            color: #2962ff;
+        }
+
+        .object-tree-jump-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
         .object-tree-actions {
             display: flex;
             gap: 4px;
@@ -13706,15 +13731,6 @@
 
         .object-tree-item:hover .object-tree-actions {
             opacity: 1;
-        }
-
-        .object-tree-action-btn.jump-to {
-            opacity: 1 !important;
-            color: #4a90d9;
-        }
-        .object-tree-action-btn.jump-to:hover {
-            background: rgba(47,114,255,0.2);
-            color: #2962ff;
         }
 
         .object-tree-action-btn {
@@ -19032,7 +19048,7 @@
     <script src="modules/drawing-tools-manager.js?v=20260228_TF_PIN_V13"></script>
     <script src="modules/favorites-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/keyboard-shortcuts.js?v=20260228_TF_PIN_V12"></script>
-    <script src="modules/object-tree.js?v=20260228_TF_PIN_V13"></script>
+    <script src="modules/object-tree.js?v=20260228_TF_PIN_V14"></script>
     <script src="modules/panel-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/timeframe-favorites.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/propfirm-tracker.js?v=20260228_TF_PIN_V12"></script>
