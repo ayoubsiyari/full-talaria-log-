@@ -305,7 +305,24 @@ class ObjectTreeManager {
         const actions = document.createElement('div');
         actions.className = 'object-tree-actions';
 
-       
+        // Jump to shape button
+        const jumpBtn = document.createElement('button');
+        jumpBtn.className = 'object-tree-action-btn jump-to';
+        jumpBtn.title = 'Jump to shape';
+        jumpBtn.setAttribute('aria-label', 'Jump to shape');
+        jumpBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <line x1="12" y1="2" x2="12" y2="6"></line>
+            <line x1="12" y1="18" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="6" y2="12"></line>
+            <line x1="18" y1="12" x2="22" y2="12"></line>
+        </svg>`;
+        jumpBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.jumpToDrawing(drawing);
+        });
+        actions.appendChild(jumpBtn);
+
         
         // Visibility toggle
         const visibilityBtn = document.createElement('button');
@@ -436,6 +453,64 @@ class ObjectTreeManager {
         if (this.drawingManager && typeof this.drawingManager.selectDrawing === 'function') {
             this.drawingManager.selectDrawing(drawing);
             this.refresh();
+        }
+    }
+
+    /**
+     * Jump chart viewport to a drawing and select it
+     */
+    jumpToDrawing(drawing) {
+        if (!drawing) return;
+
+        this.selectDrawing(drawing);
+
+        const chart = this.drawingManager ? this.drawingManager.chart : null;
+        const points = Array.isArray(drawing.points) ? drawing.points : null;
+        if (!chart || !points || points.length === 0) {
+            return;
+        }
+
+        const validPoints = points.filter(point =>
+            point &&
+            Number.isFinite(Number(point.x)) &&
+            Number.isFinite(Number(point.y))
+        );
+
+        if (validPoints.length === 0) {
+            return;
+        }
+
+        const avgIndex = validPoints.reduce((sum, point) => sum + Number(point.x), 0) / validPoints.length;
+        const avgPrice = validPoints.reduce((sum, point) => sum + Number(point.y), 0) / validPoints.length;
+        if (!Number.isFinite(avgIndex)) {
+            return;
+        }
+
+        const candleSpacing = typeof chart.getCandleSpacing === 'function'
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        const margin = chart.margin || { l: 0, r: 0 };
+        const plotWidth = Number(chart.w) - Number(margin.l || 0) - Number(margin.r || 0);
+
+        if (!Number.isFinite(candleSpacing) || candleSpacing <= 0 || !Number.isFinite(plotWidth) || plotWidth <= 0) {
+            return;
+        }
+
+        const targetIndex = Math.round(avgIndex);
+        chart.offsetX = (plotWidth / 2) - (targetIndex * candleSpacing);
+
+        if (typeof chart.constrainOffset === 'function') {
+            chart.constrainOffset();
+        }
+
+        // Keep autoscale behavior unchanged; only center price when user already disabled autoscale.
+        if (chart.autoScale === false && Number.isFinite(avgPrice) && typeof chart.centerOnPrice === 'function') {
+            chart.centerOnPrice(avgPrice);
+            return;
+        }
+
+        if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
         }
     }
 
