@@ -1022,6 +1022,11 @@ class Chart {
                 }
                 if (v.timeframe && v.timeframe !== this.currentTimeframe) {
                     this.currentTimeframe = v.timeframe;
+                    if (this.currentSymbol) {
+                        this.updateChartTitle(this.currentSymbol);
+                    } else {
+                        this.updateChartOHLCSymbol(this.currentSymbol);
+                    }
                     // Update TimeframeFavorites UI to sync button display
                     if (window.timeframeFavorites && typeof window.timeframeFavorites.selectTimeframe === 'function') {
                         window.timeframeFavorites.selectTimeframe(v.timeframe);
@@ -7725,6 +7730,11 @@ class Chart {
         this.currentTimeframe = String(timeframe || '1m').toLowerCase().trim();
         timeframe = this.currentTimeframe;
         this.scheduleChartViewSave();
+        if (this.currentSymbol) {
+            this.updateChartTitle(this.currentSymbol);
+        } else {
+            this.updateChartOHLCSymbol(this.currentSymbol);
+        }
         
         if (this.replaySystem && this.replaySystem.isActive) {
             this.replaySystem.onTimeframeChange();
