@@ -2682,6 +2682,53 @@
             min-height: 100%;
         }
 
+        /* Panel layouts (settings panel mode): sync rows */
+        .pl-sync-list {
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .pl-sync-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 8px;
+            margin: 0 -8px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #e0e3ea;
+            cursor: default;
+            transition: background 0.15s ease;
+        }
+
+        .pl-sync-row:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .pl-sync-check {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 24px;
+        }
+
+        .pl-sync-check input[type="checkbox"] {
+            margin: 0;
+        }
+
+        body.light-mode .pl-sync-row {
+            color: #050028;
+        }
+
+        body.light-mode .pl-sync-row:hover {
+            background: rgba(5, 0, 40, 0.08);
+        }
+
         .sp-content-body::-webkit-scrollbar { width: 4px; }
         .sp-content-body::-webkit-scrollbar-track { background: transparent; }
         .sp-content-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
@@ -26042,17 +26089,20 @@ P['panellayout']={
             '</button>';
         }).join('');
         function chk(v){ return v?' checked':''; }
+        function syncRow(label,id,enabled){
+            return '<label class="pl-sync-row"><span>'+label+'</span><span class="pl-sync-check"><input type="checkbox" id="'+id+'"'+chk(enabled)+'></span></label>';
+        }
         return '<div class="sp-embedded" style="padding:20px 24px;min-height:100%;box-sizing:border-box;">'+
             '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Panel layouts</div>'+
             '<div id="pl_layout_grid" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;">'+rows+'</div>'+
             '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Sync in layout</div>'+
-            '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;display:flex;flex-direction:column;gap:2px;">'+
-                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Symbol</span><input type="checkbox" id="symbol-sync-toggle"'+chk(!!sync.symbol)+'></label>'+
-                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Interval</span><input type="checkbox" id="interval-sync-toggle"'+chk(!!sync.interval)+'></label>'+
-                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Crosshair</span><input type="checkbox" id="crosshair-sync-toggle"'+chk(sync.crosshair!==false)+'></label>'+
-                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Time</span><input type="checkbox" id="time-sync-toggle"'+chk(sync.time!==false)+'></label>'+
-                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Date range</span><input type="checkbox" id="daterange-sync-toggle"'+chk(!!sync.dateRange)+'></label>'+
-                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Drawings</span><input type="checkbox" id="drawings-sync-toggle"'+chk(sync.drawings!==false)+'></label>'+
+            '<div class="pl-sync-list">'+
+                syncRow('Symbol','symbol-sync-toggle',!!sync.symbol)+
+                syncRow('Interval','interval-sync-toggle',!!sync.interval)+
+                syncRow('Crosshair','crosshair-sync-toggle',sync.crosshair!==false)+
+                syncRow('Time','time-sync-toggle',sync.time!==false)+
+                syncRow('Date range','daterange-sync-toggle',!!sync.dateRange)+
+                syncRow('Drawings','drawings-sync-toggle',sync.drawings!==false)+
             '</div>'+
             (!pm?'<p style="margin:12px 0 0;color:#f23645;font-size:12px;">Panel manager is not ready yet.</p>':'')+
         '</div>';
