@@ -2741,7 +2741,7 @@ class PriceLabelTool extends BaseDrawing {
             .attr('cx', x1)
             .attr('cy', y1)
             .attr('r', 4 * scaleFactor)
-            .attr('fill', this.style.stroke)
+            .attr('fill', lineColor)
             .style('pointer-events', 'none');
 
         // Create handles at both endpoints
@@ -2944,6 +2944,7 @@ class Signpost2Tool extends BaseDrawing {
         this.requiredPoints = 1;
         this.text = text || 'add text';
         this.style.stroke = style.stroke || '#787b86';
+        this.style.borderColor = style.borderColor !== undefined ? style.borderColor : (style.stroke || '#787b86');
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.fill = style.fill || '#2e3238';
         this.style.textColor = style.textColor || '#d1d4dc';
@@ -2970,6 +2971,12 @@ class Signpost2Tool extends BaseDrawing {
         const p1 = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
+        const lineColor = this.style.stroke || '#787b86';
+        const rawTextBorderColor = this.style.borderColor;
+        const textBorderColor = (rawTextBorderColor === undefined || rawTextBorderColor === null || rawTextBorderColor === '')
+            ? lineColor
+            : rawTextBorderColor;
+        const hasTextBorder = textBorderColor !== 'none' && textBorderColor !== 'transparent';
 
         // Vertical line from point going down
         const lineEndY = y1 + scaledLineLength;
@@ -2978,7 +2985,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('y1', y1)
             .attr('x2', x1)
             .attr('y2', lineEndY)
-            .attr('stroke', this.style.stroke)
+            .attr('stroke', lineColor)
             .attr('stroke-width', scaledStrokeWidth)
             .attr('stroke-linecap', 'round')
             .style('pointer-events', 'none');
@@ -3025,8 +3032,8 @@ class Signpost2Tool extends BaseDrawing {
             .attr('width', boxWidth)
             .attr('height', boxHeight)
             .attr('fill', this.style.fill)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', 1)
+            .attr('stroke', hasTextBorder ? textBorderColor : 'none')
+            .attr('stroke-width', hasTextBorder ? 1 : 0)
             .attr('rx', cornerRadius)
             .attr('class', 'shape-fill')
             .style('pointer-events', 'none')

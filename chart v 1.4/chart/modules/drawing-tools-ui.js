@@ -5932,8 +5932,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const borderRow = document.createElement('div');
                 borderRow.className = 'tv-prop-row';
-                const borderColor = (drawing.type === 'callout' || drawing.type === 'comment' || drawing.type === 'pin' || drawing.type === 'anchored-text')
-                    ? drawing.style.borderColor
+                const borderColor = (drawing.type === 'callout' || drawing.type === 'comment' || drawing.type === 'pin' || drawing.type === 'anchored-text' || drawing.type === 'signpost-2')
+                    ? (drawing.style.borderColor !== undefined ? drawing.style.borderColor : drawing.style.stroke)
                     : (drawing.style.stroke || drawing.style.borderColor);
                 const hasBorder = borderColor && borderColor !== 'none' && borderColor !== 'transparent';
                 borderRow.innerHTML = `
@@ -7497,7 +7497,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         this.pendingChanges.showBorder = isChecked;
                         self.applyChangesImmediately(drawing);
                     } else {
-                        const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text'].includes(drawing.type);
+                        const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text', 'signpost-2'].includes(drawing.type);
                         if (usesBorderColor) {
                             if (isChecked) {
                                 drawing.style.borderColor = drawing.style._savedBorderColor || this.pendingChanges.borderColor || drawing.style.borderColor || '#787b86';
@@ -8630,7 +8630,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 this.pendingChanges.labelBackgroundColor = finalColor;
                 this.applyChangesImmediately(actualDrawing);
             } else if (prop === 'borderColor') {
-                const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text'].includes(drawing.type);
+                const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text', 'signpost-2'].includes(drawing.type);
                 if (usesBorderColor) {
                     actualDrawing.style.borderColor = finalColor;
                     drawing.style.borderColor = finalColor;
