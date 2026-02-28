@@ -2502,6 +2502,10 @@ class DrawingToolsManager {
                 })
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
+
+                    if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
+                        self.chart.updateCrosshair(event.sourceEvent);
+                    }
                     
                     // Select the drawing when starting to drag (if not already selected)
                     if (!drawing.selected) {
@@ -2530,6 +2534,10 @@ class DrawingToolsManager {
                 })
                 .on('drag', function(event) {
                     if (!dragStartPoints || !startDataPoint) return;
+
+                    if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
+                        self.chart.updateCrosshair(event.sourceEvent);
+                    }
                     
                     // Get current mouse position in data space
                     const currentDataPoint = getDragDataPoint(event);
@@ -2570,6 +2578,10 @@ class DrawingToolsManager {
                     }
                 })
                 .on('end', function(event) {
+                    if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
+                        self.chart.updateCrosshair(event.sourceEvent);
+                    }
+
                     // Record modification for undo/redo
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
                         // Record undo for all moved drawings
@@ -2647,6 +2659,10 @@ class DrawingToolsManager {
             e.preventDefault();
             e.stopPropagation();
 
+            if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                this.chart.updateCrosshair(e);
+            }
+
             const p = this.getDataPoint(e);
             const dx = p.x - startPoint.x;
             const dy = p.y - startPoint.y;
@@ -2671,6 +2687,10 @@ class DrawingToolsManager {
             e.preventDefault();
             e.stopPropagation();
             stopDirectMoveListeners();
+
+            if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                this.chart.updateCrosshair(e);
+            }
 
             startStates.forEach(item => {
                 if (moved && this.history && item.beforeState) {
