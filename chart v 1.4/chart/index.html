@@ -54,6 +54,13 @@
         canvas, svg, svg * {
             cursor: inherit;
         }
+
+        /* Drawing text tools: keep move cursor on text body + glyphs */
+        svg .inline-editable-text,
+        svg .inline-editable-text tspan,
+        svg .text-body-hit {
+            cursor: move !important;
+        }
         
         /* Keep resize cursors for axis zones */
         .price-axis-zone {
