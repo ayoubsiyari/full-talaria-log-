@@ -1195,7 +1195,7 @@ class ReplaySystem {
         
         // Detect light mode
         const isLightMode = document.body.classList.contains('light-mode');
-        const overlayColor = isLightMode ? 'rgba(248, 250, 252, 0.9)' : 'rgba(19, 23, 34, 0.85)';
+        const overlayColor = isLightMode ? 'rgba(156, 163, 175, 0.18)' : 'rgba(203, 209, 218, 0.22)';
         
         this.pickModeOverlay = document.createElement('div');
         this.pickModeOverlay.id = 'replayPickOverlay';
@@ -1247,18 +1247,19 @@ class ReplaySystem {
         instruction.id = 'replayPickInstruction';
         instruction.style.cssText = `
             position: fixed;
-            top: 80px;
+            bottom: 82px;
             left: 50%;
-            transform: translateX(-50%) translateY(-20px);
+            transform: translateX(-50%) translateY(20px);
             opacity: 0;
-            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+            background: linear-gradient(135deg, rgba(111, 118, 132, 0.96) 0%, rgba(81, 89, 103, 0.96) 100%);
+            border: 1px solid rgba(214, 221, 234, 0.28);
             color: white;
             padding: 14px 28px;
             border-radius: 12px;
             font-size: 14px;
             font-weight: 600;
             z-index: 10000;
-            box-shadow: 0 8px 32px rgba(33, 150, 243, 0.4);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 18px rgba(173, 180, 198, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
             display: flex;
             align-items: center;
             gap: 16px;
@@ -1268,8 +1269,8 @@ class ReplaySystem {
         instruction.innerHTML = `
             <span>Click on chart to rewind to that point</span>
             <button id="cancelPickMode" style="
-                background: rgba(255,255,255,0.2);
-                border: 1px solid rgba(255,255,255,0.3);
+                background: rgba(255,255,255,0.14);
+                border: 1px solid rgba(255,255,255,0.28);
                 color: white;
                 padding: 8px 16px;
                 border-radius: 6px;
@@ -1277,8 +1278,8 @@ class ReplaySystem {
                 font-size: 12px;
                 font-weight: 600;
                 transition: all 0.2s;
-            " onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
-               onmouseout="this.style.background='rgba(255,255,255,0.2)'">Cancel (ESC)</button>
+            " onmouseover="this.style.background='rgba(255,255,255,0.24)'" 
+               onmouseout="this.style.background='rgba(255,255,255,0.14)'">Cancel (ESC)</button>
         `;
         document.body.appendChild(instruction);
         
