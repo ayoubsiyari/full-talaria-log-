@@ -626,9 +626,12 @@ class TimeframeFavorites {
                 star.title = this.isFavorite(tf) ? 'Remove from sidebar' : 'Add to sidebar';
                 const starSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 starSvg.setAttribute('viewBox', '0 0 24 24');
-                const starPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-                starPoly.setAttribute('points', '12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26');
-                starSvg.appendChild(starPoly);
+                starSvg.setAttribute('fill', 'none');
+                starSvg.setAttribute('stroke', 'currentColor');
+                starSvg.setAttribute('stroke-width', '1.5');
+                const pinPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                pinPath.setAttribute('d', 'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z');
+                starSvg.appendChild(pinPath);
                 star.appendChild(starSvg);
 
                 star.addEventListener('click', (e) => {
