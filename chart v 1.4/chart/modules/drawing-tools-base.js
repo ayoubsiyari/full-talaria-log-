@@ -40,6 +40,7 @@ class BaseDrawing {
         };
         this.handles = [];
         this.group = null; // SVG group element
+        this.hasAxisHighlightZones = false; // Track whether this drawing currently owns canvas axis zones
         
         // Multi-timeframe support
         this.coordinateSystem = 'timestamp'; // 'timestamp' or 'index' (legacy)
@@ -299,7 +300,8 @@ class BaseDrawing {
         
         // Create highlight group for SVG labels only (zones are drawn on canvas)
         this.axisHighlightGroup = svg.append('g')
-            .attr('class', 'axis-highlight-group');
+            .attr('class', 'axis-highlight-group')
+            .attr('data-drawing-id', this.id);
         
         // Use the shape's color for time highlights (like TradingView)
         const timeHighlightColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';
@@ -646,6 +648,7 @@ class BaseDrawing {
         // Keep these shaded zones ONLY for selected drawings.
         if (this.selected && this.chart.setAxisHighlightZones && canvasZones.length > 0) {
             this.chart.setAxisHighlightZones(canvasZones);
+            this.hasAxisHighlightZones = true;
             // Trigger re-render to show the zones
             if (this.chart.scheduleRender) {
                 this.chart.scheduleRender();
@@ -661,25 +664,18 @@ class BaseDrawing {
             this.axisHighlightGroup.remove();
             this.axisHighlightGroup = null;
         }
-        // Also remove any orphaned highlights - be thorough
+        // Also remove orphaned groups for this drawing only (do not affect other drawings)
         if (this.chart?.svg) {
-            this.chart.svg.selectAll('.axis-highlight-group').remove();
-            this.chart.svg.selectAll('.axis-highlight-price').remove();
-            this.chart.svg.selectAll('.axis-highlight-price-text').remove();
-            this.chart.svg.selectAll('.axis-highlight-time').remove();
-            this.chart.svg.selectAll('.axis-highlight-time-text').remove();
-            this.chart.svg.selectAll('.axis-highlight-time-start').remove();
-            this.chart.svg.selectAll('.axis-highlight-time-start-text').remove();
-            this.chart.svg.selectAll('.axis-highlight-time-end').remove();
-            this.chart.svg.selectAll('.axis-highlight-time-end-text').remove();
+            this.chart.svg.selectAll(`.axis-highlight-group[data-drawing-id="${this.id}"]`).remove();
         }
-        // Clear canvas-based zones
-        if (this.chart?.clearAxisHighlightZones) {
+        // Clear canvas-based zones only if this drawing had set them
+        if (this.hasAxisHighlightZones && this.chart?.clearAxisHighlightZones) {
             this.chart.clearAxisHighlightZones();
             if (this.chart.scheduleRender) {
                 this.chart.scheduleRender();
             }
         }
+        this.hasAxisHighlightZones = false;
     }
 
     /**
