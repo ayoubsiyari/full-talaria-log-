@@ -102,6 +102,12 @@ class PanelManager {
             console.error('Layout button not found in HTML');
             return;
         }
+
+        // Newer UI flow: open panel layouts inside settings panel (same as Object Tree mode)
+        if (layoutBtn.dataset && layoutBtn.dataset.openMode === 'settings-panel') {
+            console.log('✅ Layout button configured for settings-panel mode; skipping legacy dropdown wiring');
+            return;
+        }
         
         console.log('✅ Layout button found, attaching dropdown');
         

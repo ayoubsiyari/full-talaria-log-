@@ -17210,7 +17210,7 @@
             <!-- Right Section: Actions & Settings -->
             <div class="toolbar-right">
                 <!-- Layout Button (placeholder - will be managed by panel-manager) -->
-                <button class="toolbar-icon-btn-dark" id="layout-selector-btn" data-tooltip="Panel Layouts">
+                <button class="toolbar-icon-btn-dark" id="layout-selector-btn" data-open-mode="settings-panel" data-tooltip="Panel Layouts" onclick="event.stopPropagation();window._openMode&&window._openMode('panellayout');">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/>
                         <rect x="14" y="2" width="8" height="8" rx="1"/>
@@ -18997,7 +18997,7 @@
     <script src="modules/drawing-tools-manager.js?v=20260228_TF_PIN_V13"></script>
     <script src="modules/favorites-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/keyboard-shortcuts.js?v=20260228_TF_PIN_V12"></script>
-    <script src="modules/panel-manager.js?v=20260228_TF_PIN_V12"></script>
+    <script src="modules/panel-manager.js?v=20260228_TF_PIN_V14"></script>
     <script src="modules/timeframe-favorites.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/propfirm-tracker.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/compare-overlay.js?v=20260228_TF_PIN_V12"></script>
@@ -25635,6 +25635,71 @@ P['watchlist']={
     }
 };
 
+/* ── Panel Layouts ── */
+P['panellayout']={
+    _options:[
+        ['1','Single'],['2v','2 Vertical'],['2h','2 Horizontal'],
+        ['3v','3 Vertical'],['3h','3 Horizontal'],['3l','Left + 2'],
+        ['4','2x2'],['4v','4 Vertical'],['4h','4 Horizontal'],['4t','Top + 3'],['4b','3 + Bottom'],['4r','Left 3 + Right'],
+        ['5a','2 + 3'],['5b','3 + 2'],['5c','Left 2 + Right 3'],['5v','5 Vertical'],['5h','5 Horizontal'],
+        ['6','2x3'],['6b','3x2'],['6v','6 Vertical'],['6h','6 Horizontal'],
+        ['7v','7 Vertical'],['7a','3 / 3 / 1'],
+        ['8','2x4'],['8b','4x2'],['8v','8 Vertical'],['8h','8 Horizontal']
+    ],
+    build:function(){
+        var pm=window.panelManager;
+        var current=(pm&&typeof pm.getCurrentLayout==='function'&&pm.getCurrentLayout())||'1';
+        var sync=(pm&&pm.syncSettings)||{};
+        var rows=this._options.map(function(opt){
+            var code=opt[0],label=opt[1],active=(code===current);
+            return '<button type="button" class="pl-layout-btn'+(active?' active':'')+'" data-layout="'+code+'" style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:10px;border:1px solid '+(active?'#2962ff':'rgba(255,255,255,0.08)')+';background:'+(active?'rgba(41,98,255,0.16)':'rgba(255,255,255,0.02)')+';border-radius:8px;color:#e0e3ea;cursor:pointer;">'+
+                '<span style="font-size:12px;font-weight:700;line-height:1;">'+code.toUpperCase()+'</span>'+
+                '<span style="font-size:11px;color:#787b86;line-height:1.2;">'+label+'</span>'+
+            '</button>';
+        }).join('');
+        function chk(v){ return v?' checked':''; }
+        return '<div class="sp-embedded" style="padding:20px 24px;min-height:100%;box-sizing:border-box;">'+
+            '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Panel layouts</div>'+
+            '<div id="pl_layout_grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">'+rows+'</div>'+
+            '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Sync in layout</div>'+
+            '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;display:flex;flex-direction:column;gap:2px;">'+
+                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Symbol</span><input type="checkbox" id="symbol-sync-toggle"'+chk(!!sync.symbol)+'></label>'+
+                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Interval</span><input type="checkbox" id="interval-sync-toggle"'+chk(!!sync.interval)+'></label>'+
+                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Crosshair</span><input type="checkbox" id="crosshair-sync-toggle"'+chk(sync.crosshair!==false)+'></label>'+
+                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Time</span><input type="checkbox" id="time-sync-toggle"'+chk(sync.time!==false)+'></label>'+
+                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Date range</span><input type="checkbox" id="daterange-sync-toggle"'+chk(!!sync.dateRange)+'></label>'+
+                '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Drawings</span><input type="checkbox" id="drawings-sync-toggle"'+chk(sync.drawings!==false)+'></label>'+
+            '</div>'+
+            (!pm?'<p style="margin:12px 0 0;color:#f23645;font-size:12px;">Panel manager is not ready yet.</p>':'')+
+        '</div>';
+    },
+    wire:function(){
+        var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var pm=window.panelManager;
+        var setActive=function(btn){
+            ctx.querySelectorAll('.pl-layout-btn').forEach(function(b){
+                b.classList.remove('active');
+                b.style.borderColor='rgba(255,255,255,0.08)';
+                b.style.background='rgba(255,255,255,0.02)';
+            });
+            btn.classList.add('active');
+            btn.style.borderColor='#2962ff';
+            btn.style.background='rgba(41,98,255,0.16)';
+        };
+        ctx.querySelectorAll('.pl-layout-btn').forEach(function(btn){
+            btn.addEventListener('click',function(){
+                if(!pm||typeof pm.applyLayout!=='function') return;
+                var layout=this.dataset.layout||'1';
+                pm.applyLayout(layout);
+                setActive(this);
+            });
+        });
+        if(pm&&typeof pm.setupSyncToggles==='function'){
+            pm.setupSyncToggles(ctx);
+        }
+    }
+};
+
 /* ── Object Tree ── */
 P['objecttree']={
     _active:'drawings',
@@ -25944,7 +26009,7 @@ P['profile']={
 
 /* ── DOM wiring ── */
 function loadSection(type){
-    var titles={symbol:'Symbol',statusline:'Status line',scales:'Scales and lines',canvas:'Canvas',trading:'Trading',general:'Symbol',chart:'Scales and lines',project:'Trading',leverage:'Trading',commissions:'Trading',alerts:'Alerts',help:'Help',profile:'Profile',globalmarket:'Global Markets',objecttree:'Object Tree'};
+    var titles={symbol:'Symbol',statusline:'Status line',scales:'Scales and lines',canvas:'Canvas',trading:'Trading',general:'Symbol',chart:'Scales and lines',project:'Trading',leverage:'Trading',commissions:'Trading',alerts:'Alerts',help:'Help',profile:'Profile',globalmarket:'Global Markets',objecttree:'Object Tree',panellayout:'Panel Layouts'};
     var titleEl=document.getElementById('spContentTitle');
     if(titleEl)titleEl.textContent=titles[type]||type;
     document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.settings===type);});
