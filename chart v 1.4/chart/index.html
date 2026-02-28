@@ -276,6 +276,15 @@
             z-index: 2;
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease !important;
+        }
+
+        .sidebar-tf-flyout-group:hover .sidebar-timeframe-arrow,
+        .sidebar-timeframe-arrow.open {
+            opacity: 1;
+            pointer-events: auto;
         }
 
         .sidebar-timeframe-arrow svg {
