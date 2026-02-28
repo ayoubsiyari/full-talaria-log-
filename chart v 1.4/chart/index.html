@@ -26111,10 +26111,6 @@ window.closePanel = function() {
 var closePanel = window.closePanel;
 
 window._openMode = function(section) {
-    if(section==='objecttree'){
-        window._toggleObjectTreeLayoutDropdown();
-        return;
-    }
     if (window._closeObjectTreeLayoutDropdown) window._closeObjectTreeLayoutDropdown();
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
@@ -26140,10 +26136,6 @@ window._openMode = function(section) {
 window._spToggle = function() { window._openMode(); };
 
 window._spOpen = function(section) {
-    if(section==='objecttree'){
-        window._toggleObjectTreeLayoutDropdown();
-        return;
-    }
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
     panel.querySelectorAll('.sp-nav-item').forEach(function(n) { n.classList.remove('active'); });
