@@ -6940,8 +6940,9 @@
             background: #050028;
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 6px;
-            padding: 10px 14px 10px;
-            width: 300px;
+            padding: 10px 12px;
+            width: auto;
+            min-width: 112px;
             box-shadow: 0 6px 24px rgba(0,0,0,0.5);
             pointer-events: auto;
             opacity: 0;
@@ -6956,13 +6957,14 @@
         }
         .interval-slider-panel-top {
             display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            width: auto;
         }
         .interval-slider-label {
             display: flex;
-            align-items: baseline;
+            align-items: center;
             gap: 0;
             color: #cbd5f5;
             font-size: 12px;
@@ -6973,36 +6975,42 @@
         .interval-slider-label .interval-cur-value {
             color: #ffffff;
             font-weight: 700;
-            margin-left: 5px;
+            margin-left: 0;
         }
         .interval-slider-track-container {
             position: relative;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            display: grid;
+            grid-template-columns: 8px 4px auto;
+            column-gap: 8px;
+            align-items: stretch;
             min-width: 0;
-            gap: 4px;
+            height: 154px;
         }
         .interval-slider-ticks {
-            position: absolute;
-            width: 100%;
+            position: static;
+            width: 8px;
+            height: 100%;
             display: flex;
+            flex-direction: column;
             justify-content: space-between;
-            padding: 0 6px;
+            align-items: center;
+            padding: 6px 0;
             pointer-events: none;
         }
         .interval-slider-ticks .tick {
-            width: 1px;
-            height: 4px;
+            width: 6px;
+            height: 1px;
             background: #363a45;
             border-radius: 1px;
         }
-        /* Label row under the track — same width as track, no extra padding */
+        /* Label column next to the vertical track */
         .interval-slider-labels-row {
             display: flex;
+            flex-direction: column;
             justify-content: space-between;
-            width: 100%;
+            align-items: flex-start;
+            width: auto;
+            height: 100%;
             padding: 0;
             pointer-events: none;
             box-sizing: border-box;
@@ -7010,7 +7018,7 @@
         .interval-slider-labels-row .tick-label {
             font-size: 10px;
             color: #787b86;
-            text-align: center;
+            text-align: left;
             line-height: 1;
         }
         .interval-slider-labels-row .tick-label.active {
@@ -7025,16 +7033,16 @@
         }
         .interval-slider-custom {
             position: relative;
-            width: 100%;
-            height: 3px;
+            width: 4px;
+            height: 100%;
             background: #363a45;
             border-radius: 2px;
             cursor: pointer;
-            transition: background 0.15s ease, height 0.15s ease;
+            transition: background 0.15s ease, width 0.15s ease;
         }
         .interval-slider-custom:hover {
             background: #4a4e5a;
-            height: 4px;
+            width: 5px;
         }
         .interval-slider-custom-thumb {
             position: absolute;
@@ -7044,9 +7052,10 @@
             border-radius: 50%;
             cursor: grab;
             box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
+            left: 50%;
             top: 50%;
             transform: translate(-50%, -50%);
-            transition: left 0.12s cubic-bezier(0.4,0,0.2,1), box-shadow 0.15s;
+            transition: top 0.12s cubic-bezier(0.4,0,0.2,1), box-shadow 0.15s;
             z-index: 2;
         }
         .interval-slider-custom-thumb:hover {
@@ -7060,10 +7069,14 @@
         }
         .interval-slider-custom-fill {
             position: absolute;
-            height: 100%;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 0;
             background: #787b86;
             border-radius: 2px;
             pointer-events: none;
+            transition: height 0.12s cubic-bezier(0.4,0,0.2,1);
         }
         body.light-mode #intervalTriggerBtn { color: #131722; border-color: rgba(0,0,0,0.15); background: rgba(0,0,0,0.04); }
         body.light-mode #intervalTriggerBtn:hover { background: rgba(0,0,0,0.08); }
@@ -26593,8 +26606,8 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
                 sliderThumb.style.transition = 'none';
                 sliderFill.style.transition  = 'none';
             }
-            sliderThumb.style.left = pct + '%';
-            sliderFill.style.width = pct + '%';
+            sliderThumb.style.top = pct + '%';
+            sliderFill.style.height = pct + '%';
             if (!animate) {
                 sliderThumb.offsetHeight; // force reflow
                 sliderThumb.style.transition = '';
@@ -26650,9 +26663,9 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
         }
 
         // ── Drag logic (identical to speed slider) ───────────────────
-        function getIndexFromPosition(clientX) {
+        function getIndexFromPosition(clientY) {
             var rect = sliderTrack.getBoundingClientRect();
-            var pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            var pct  = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
             return pct * Math.max(1, activeIntervals.length - 1);
         }
 
@@ -26666,19 +26679,19 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 
         sliderTrack.addEventListener('click', function(e) {
             if (e.target === sliderThumb) return;
-            setByIndex(Math.round(getIndexFromPosition(e.clientX)));
+            setByIndex(Math.round(getIndexFromPosition(e.clientY)));
         });
 
         document.addEventListener('mousemove', function(e) {
             if (!isDragging) return;
-            var rawIdx     = getIndexFromPosition(e.clientX);
+            var rawIdx     = getIndexFromPosition(e.clientY);
             var snapped    = Math.round(rawIdx);
             var maxIdx     = Math.max(1, activeIntervals.length - 1);
             var pct        = (rawIdx / maxIdx) * 100;
             sliderThumb.style.transition = 'transform 0.1s, box-shadow 0.15s';
             sliderFill.style.transition  = 'none';
-            sliderThumb.style.left = pct + '%';
-            sliderFill.style.width = pct + '%';
+            sliderThumb.style.top = pct + '%';
+            sliderFill.style.height = pct + '%';
             if (snapped !== currentIndex) {
                 currentIndex = snapped;
                 if (activeIntervals[snapped]) {
@@ -26696,7 +26709,7 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             sliderThumb.classList.remove('dragging');
             sliderThumb.style.transition = '';
             sliderFill.style.transition  = '';
-            setByIndex(Math.round(getIndexFromPosition(e.clientX)));
+            setByIndex(Math.round(getIndexFromPosition(e.clientY)));
         });
 
         // ── Re-apply Auto if currently selected ──────────────────────
