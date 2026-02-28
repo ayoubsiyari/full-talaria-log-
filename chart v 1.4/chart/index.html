@@ -2692,9 +2692,9 @@
         }
 
         .pl-sync-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr 24px;
             align-items: center;
-            justify-content: space-between;
             padding: 6px 8px;
             margin: 0 -8px;
             border-radius: 6px;
@@ -2715,10 +2715,12 @@
             align-items: center;
             justify-content: center;
             flex: 0 0 24px;
+            justify-self: center;
         }
 
         .pl-sync-check input[type="checkbox"] {
             margin: 0;
+            display: block;
         }
 
         body.light-mode .pl-sync-row {
