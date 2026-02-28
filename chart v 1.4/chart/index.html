@@ -2697,11 +2697,18 @@
             align-items: center;
             padding: 6px 8px;
             margin: 0 -8px;
+            min-height: 36px;
             border-radius: 6px;
             font-size: 13px;
             color: #e0e3ea;
             cursor: default;
             transition: background 0.15s ease;
+        }
+
+        .pl-sync-row > span:first-child {
+            display: flex;
+            align-items: center;
+            min-height: 24px;
         }
 
         .pl-sync-row:hover {
@@ -2716,11 +2723,17 @@
             justify-content: center;
             flex: 0 0 24px;
             justify-self: center;
+            align-self: center;
+            line-height: 0;
         }
 
         .pl-sync-check input[type="checkbox"] {
             margin: 0;
             display: block;
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            vertical-align: middle;
         }
 
         body.light-mode .pl-sync-row {
