@@ -127,18 +127,18 @@ class TextTool extends BaseDrawing {
         // Store bbox for handle creation
         this.bbox = bbox;
 
-        this.group.append('rect')
-            .attr('class', 'shape-border-hit')
+        const bodyHitArea = this.group.insert('rect', 'text')
+            .attr('class', 'shape-border-hit text-body-hit')
             .attr('x', bbox.x)
             .attr('y', bbox.y)
             .attr('width', bbox.width)
             .attr('height', bbox.height)
-            .attr('fill', 'none')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', 12)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .attr('stroke-width', 0)
             .attr('rx', 4)
             .attr('ry', 4)
-            .style('pointer-events', 'stroke')
+            .style('pointer-events', 'all')
             .style('cursor', 'move');
 
         // Create resize handles like rectangles (4 corners + 4 sides)
@@ -266,6 +266,12 @@ class TextTool extends BaseDrawing {
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
         textElement.node().addEventListener('dblclick', handleOpenSettings, true);
+
+        if (bodyHitArea && bodyHitArea.node()) {
+            bodyHitArea.node().addEventListener('mousedown', handleMouseDown, true);
+            bodyHitArea.node().addEventListener('click', handleInlineEdit, true);
+            bodyHitArea.node().addEventListener('dblclick', handleOpenSettings, true);
+        }
 
         return this.group;
     }
