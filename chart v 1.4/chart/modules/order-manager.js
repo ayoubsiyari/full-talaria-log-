@@ -136,6 +136,7 @@ class OrderManager {
         this.pendingPreviewAlignFrame = null;
         this.pendingPreviewAlignFollowupFrame = null;
         this.pendingPreviewAlignTimeout = null;
+        this._lastPreviewChartWidth = null;
         this.pendingTargetLines = [];
         
         // Professional Trailing SL System
@@ -6754,6 +6755,34 @@ class OrderManager {
         if (!this.chart || !this.chart.scales || !this.previewLines) {
             return;
         }
+
+        const widthChanged = this._lastPreviewChartWidth !== this.chart.w;
+        this._lastPreviewChartWidth = this.chart.w;
+
+        const updateLabelY = (lineData, yPixel) => {
+            if (!lineData || !lineData.labelGroup) return;
+
+            // Badges have custom horizontal placement logic; recompute fully on width changes.
+            if (widthChanged && lineData.isBadge) {
+                this.positionPreviewLabel(lineData, yPixel);
+                return;
+            }
+
+            const bbox = lineData.labelDimensions;
+            const height = bbox?.height || 0;
+            const currentTransform = lineData.labelGroup.attr('transform');
+            const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+            lineData.labelGroup.attr('transform', `translate(${currentX}, ${yPixel - height / 2})`);
+        };
+
+        const updateYAxisHighlight = (lineData, yPixel) => {
+            if (!lineData || !lineData.yAxisHighlight) return;
+            const rect = lineData.yAxisHighlight.select('rect');
+            const highlightHeight = parseFloat(rect.attr('height')) || 24;
+            const rightMargin = this.chart.margin?.r || 70;
+            const x = this.chart.w - rightMargin + 2;
+            lineData.yAxisHighlight.attr('transform', `translate(${x}, ${yPixel - highlightHeight / 2})`);
+        };
         
         // Update entry line position
         if (this.previewLines.entry) {
@@ -6766,24 +6795,9 @@ class OrderManager {
                     .attr('y2', entryY)
                     .attr('x2', this.chart.w);
             }
-            
-            // Update label position
-            if (this.previewLines.entry.labelGroup) {
-                const bbox = this.previewLines.entry.labelDimensions;
-                const height = bbox?.height || 0;
-                const currentTransform = this.previewLines.entry.labelGroup.attr('transform');
-                const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                this.previewLines.entry.labelGroup.attr('transform', `translate(${currentX}, ${entryY - height / 2})`);
-            }
-            
-            // Update Y-axis highlight (it's a group element)
-            if (this.previewLines.entry.yAxisHighlight) {
-                const height = 22;
-                const width = parseFloat(this.previewLines.entry.yAxisHighlight.select('rect').attr('width')) || 55;
-                const x = this.chart.w - width - 2;
-                const y = entryY - height / 2;
-                this.previewLines.entry.yAxisHighlight.attr('transform', `translate(${x}, ${y})`);
-            }
+
+            updateLabelY(this.previewLines.entry, entryY);
+            updateYAxisHighlight(this.previewLines.entry, entryY);
         }
         
         // Update TP line/badge position (works for both badges and full lines)
@@ -6797,15 +6811,9 @@ class OrderManager {
                     .attr('y2', tpY)
                     .attr('x2', this.chart.w);
             }
-            
-            // Update label/badge position (works for both badge and full line)
-            if (this.previewLines.tp.labelGroup) {
-                const bbox = this.previewLines.tp.labelDimensions;
-                const height = bbox?.height || 0;
-                const currentTransform = this.previewLines.tp.labelGroup.attr('transform');
-                const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                this.previewLines.tp.labelGroup.attr('transform', `translate(${currentX}, ${tpY - height / 2})`);
-            }
+
+            updateLabelY(this.previewLines.tp, tpY);
+            updateYAxisHighlight(this.previewLines.tp, tpY);
         }
         
         // Update SL line/badge position (works for both badges and full lines)
@@ -6819,15 +6827,9 @@ class OrderManager {
                     .attr('y2', slY)
                     .attr('x2', this.chart.w);
             }
-            
-            // Update label/badge position (works for both badge and full line)
-            if (this.previewLines.sl.labelGroup) {
-                const bbox = this.previewLines.sl.labelDimensions;
-                const height = bbox?.height || 0;
-                const currentTransform = this.previewLines.sl.labelGroup.attr('transform');
-                const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                this.previewLines.sl.labelGroup.attr('transform', `translate(${currentX}, ${slY - height / 2})`);
-            }
+
+            updateLabelY(this.previewLines.sl, slY);
+            updateYAxisHighlight(this.previewLines.sl, slY);
         }
         
         // Update multiple TP lines positions
@@ -6843,15 +6845,9 @@ class OrderManager {
                             .attr('y2', tpY)
                             .attr('x2', this.chart.w);
                     }
-                    
-                    // Update label position
-                    if (tpLine.labelGroup) {
-                        const bbox = tpLine.labelDimensions;
-                        const height = bbox?.height || 0;
-                        const currentTransform = tpLine.labelGroup.attr('transform');
-                        const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                        tpLine.labelGroup.attr('transform', `translate(${currentX}, ${tpY - height / 2})`);
-                    }
+
+                    updateLabelY(tpLine, tpY);
+                    updateYAxisHighlight(tpLine, tpY);
                 }
             });
         }
@@ -6867,15 +6863,15 @@ class OrderManager {
                     .attr('y2', beY)
                     .attr('x2', this.chart.w);
             }
-            
-            // Update label position
-            if (this.previewLines.be.labelGroup) {
-                const bbox = this.previewLines.be.labelDimensions;
-                const height = bbox?.height || 0;
-                const currentTransform = this.previewLines.be.labelGroup.attr('transform');
-                const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                this.previewLines.be.labelGroup.attr('transform', `translate(${currentX}, ${beY - height / 2})`);
-            }
+
+            updateLabelY(this.previewLines.be, beY);
+            updateYAxisHighlight(this.previewLines.be, beY);
+        }
+
+        // Reflow horizontal preview label alignment after width changes
+        if (widthChanged) {
+            this.alignPreviewLabels();
+            this.scheduleAlignPreviewLabels();
         }
     }
 

@@ -514,8 +514,24 @@ class Chart {
             
             // Load saved drawings from localStorage
             this.loadDrawingsFromStorage();
-            
-            window.addEventListener('resize', () => this.resize());
+
+            if (!this._handleViewportRefresh) {
+                this._handleViewportRefresh = () => {
+                    this.resize();
+                    this.scheduleRender();
+                };
+                this._handleVisibilityRefresh = () => {
+                    if (document.hidden) return;
+                    this._handleViewportRefresh();
+                    // Run a follow-up pass after layout settles post-restore.
+                    setTimeout(() => this._handleViewportRefresh(), 120);
+                };
+
+                window.addEventListener('resize', this._handleViewportRefresh);
+                window.addEventListener('focus', this._handleViewportRefresh);
+                window.addEventListener('pageshow', this._handleViewportRefresh);
+                document.addEventListener('visibilitychange', this._handleVisibilityRefresh);
+            }
         } else {
             // For panels, still setup canvas right-click context menu
             this.canvas.addEventListener('contextmenu', (e) => {
@@ -5262,25 +5278,34 @@ class Chart {
 	        
 	        // Get dimensions from PARENT container (chart-wrapper), not canvas itself
 	        const container = this.canvas.parentElement;
+	        if (!container) return;
 	        void container.offsetHeight; // Force reflow
-	        
+
 	        const dpr = window.devicePixelRatio || 1;
 	        const rect = container.getBoundingClientRect();
+	        const nextW = Math.floor(rect.width || 0);
+	        const nextH = Math.floor(rect.height || 0);
+
+	        // Browser minimize/restore can temporarily report 0x0; keep last valid size.
+	        if (nextW < 2 || nextH < 2) {
+	            return;
+	        }
 	        
 	        // Set canvas physical size
-	        this.canvas.width = rect.width * dpr;
-	        this.canvas.height = rect.height * dpr;
+	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
+	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
 	        
 	        // Set canvas display size
-	        this.canvas.style.width = rect.width + 'px';
-	        this.canvas.style.height = rect.height + 'px';
+	        this.canvas.style.width = nextW + 'px';
+	        this.canvas.style.height = nextH + 'px';
 	        
 	        // Scale context for high DPI displays
+	        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 	        this.ctx.scale(dpr, dpr);
 	        
 	        // Update chart dimensions
-	        this.w = rect.width;
-	        this.h = rect.height;
+	        this.w = nextW;
+	        this.h = nextH;
 	        this.svg.attr('width', this.w).attr('height', this.h);
 	        this.svg.style('width', this.w + 'px').style('height', this.h + 'px');
 	        
