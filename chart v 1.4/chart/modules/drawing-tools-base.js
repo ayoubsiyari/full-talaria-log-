@@ -356,8 +356,7 @@ class BaseDrawing {
                 canvasZones.push({
                     type: 'price',
                     y: minY,
-                    height: zoneHeight,
-                    selected: !!this.selected
+                    height: zoneHeight
                 });
             }
         }
@@ -389,8 +388,7 @@ class BaseDrawing {
             canvasZones.push({
                 type: 'time',
                 x: timeZoneStartX,
-                width: timeZoneWidth,
-                selected: !!this.selected
+                width: timeZoneWidth
             });
             
             // Add start and end time labels for ALL tools with time zones
@@ -677,6 +675,9 @@ class BaseDrawing {
         // Clear canvas-based zones
         if (this.chart?.clearAxisHighlightZones) {
             this.chart.clearAxisHighlightZones();
+            if (this.chart.scheduleRender) {
+                this.chart.scheduleRender();
+            }
         }
     }
 
