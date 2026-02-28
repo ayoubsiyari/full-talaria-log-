@@ -677,9 +677,6 @@ class BaseDrawing {
         // Clear canvas-based zones
         if (this.chart?.clearAxisHighlightZones) {
             this.chart.clearAxisHighlightZones();
-            if (this.chart.scheduleRender) {
-                this.chart.scheduleRender();
-            }
         }
     }
 
