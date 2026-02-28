@@ -1251,35 +1251,46 @@ class ReplaySystem {
             left: 50%;
             transform: translateX(-50%) translateY(20px);
             opacity: 0;
-            background: linear-gradient(135deg, rgba(111, 118, 132, 0.96) 0%, rgba(81, 89, 103, 0.96) 100%);
-            border: 1px solid rgba(214, 221, 234, 0.28);
-            color: white;
-            padding: 14px 28px;
-            border-radius: 12px;
-            font-size: 14px;
+            background: linear-gradient(135deg, rgba(31, 37, 56, 0.96) 0%, rgba(43, 52, 78, 0.95) 100%);
+            border: 1px solid rgba(145, 189, 255, 0.75);
+            color: #f3f6ff;
+            padding: 9px 18px;
+            border-radius: 10px;
+            font-size: 13px;
             font-weight: 600;
+            letter-spacing: 0.01em;
             z-index: 10000;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 18px rgba(173, 180, 198, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+            box-shadow:
+                0 10px 24px rgba(0, 0, 0, 0.42),
+                0 0 0 1px rgba(103, 166, 255, 0.65),
+                0 0 22px rgba(79, 140, 255, 0.9),
+                0 0 44px rgba(79, 140, 255, 0.5);
+            text-shadow:
+                0 0 12px rgba(165, 199, 255, 0.85),
+                0 0 4px rgba(165, 199, 255, 0.65);
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 12px;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             backdrop-filter: blur(8px);
         `;
         instruction.innerHTML = `
             <span>Click on chart to rewind to that point</span>
             <button id="cancelPickMode" style="
-                background: rgba(255,255,255,0.14);
-                border: 1px solid rgba(255,255,255,0.28);
-                color: white;
-                padding: 8px 16px;
-                border-radius: 6px;
+                background: rgba(22, 34, 58, 0.72);
+                border: 1px solid rgba(145, 189, 255, 0.65);
+                color: #f3f6ff;
+                padding: 7px 14px;
+                border-radius: 8px;
                 cursor: pointer;
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: 600;
-                transition: all 0.2s;
-            " onmouseover="this.style.background='rgba(255,255,255,0.24)'" 
-               onmouseout="this.style.background='rgba(255,255,255,0.14)'">Cancel (ESC)</button>
+                letter-spacing: 0.01em;
+                text-shadow: 0 0 8px rgba(165, 199, 255, 0.55);
+                box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 16px rgba(79, 140, 255, 0.28);
+                transition: all 0.2s ease;
+            " onmouseover="this.style.background='rgba(42, 62, 102, 0.8)'; this.style.borderColor='rgba(174, 213, 255, 0.95)'" 
+               onmouseout="this.style.background='rgba(22, 34, 58, 0.72)'; this.style.borderColor='rgba(145, 189, 255, 0.65)'">Cancel (ESC)</button>
         `;
         document.body.appendChild(instruction);
         
