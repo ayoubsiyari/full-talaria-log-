@@ -2326,15 +2326,14 @@ class DrawingToolsManager {
                 self.selectDrawing(drawing, true);
             }
             
-            // Check if hovering on inline-editable text - use text cursor
+            // Check if hovering on inline-editable text - use move cursor
             const target = event?.target ? d3.select(event.target) : null;
             const isInlineEditable = target && target.classed('inline-editable-text');
             
             if (!drawing.locked) {
                 if (isInlineEditable) {
-                    // Text cursor for editable text areas
-                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'text';
-                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'text';
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
                 } else {
                     drawing.group.style('cursor', 'move');
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
@@ -5426,8 +5425,8 @@ class DrawingToolsManager {
         }
 
         if (isOverInlineText) {
-            canvas.style.cursor = 'text';
-            this.svg.style('cursor', 'text');
+            canvas.style.cursor = 'move';
+            this.svg.style('cursor', 'move');
             this._cursorOverInlineText = true;
             this._cursorOverLine = false;
             return;

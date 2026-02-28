@@ -56,7 +56,7 @@ class TextTool extends BaseDrawing {
                                this.style.textAlign === 'right' ? 'end' : 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
-            .style('cursor', 'text')
+            .style('cursor', 'move')
             .style('user-select', 'none');
 
         const lineHeight = scaledFontSize * 1.2;
@@ -519,7 +519,7 @@ class NoteBoxTool extends BaseDrawing {
             .attr('stroke', this.style.stroke || 'none')
             .attr('stroke-width', this.style.strokeWidth || 0)
             .style('pointer-events', 'all')
-            .style('cursor', 'text');
+            .style('cursor', 'move');
 
         this.group.append('rect')
             .attr('class', 'shape-border-hit')
@@ -905,7 +905,7 @@ class AnchoredTextTool extends BaseDrawing {
             .attr('stroke', hasBorder ? this.style.borderColor : 'none')
             .attr('stroke-width', hasBorder ? 1 : 0)
             .style('pointer-events', 'all')
-            .style('cursor', 'text');
+            .style('cursor', 'move');
 
         this.group.append('rect')
             .attr('class', 'shape-border-hit')
@@ -928,7 +928,7 @@ class AnchoredTextTool extends BaseDrawing {
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'all')
-            .style('cursor', 'text')
+            .style('cursor', 'move')
             .text(this.text);
 
         const self = this;
@@ -1163,7 +1163,7 @@ class NoteTool extends BaseDrawing {
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', 1)
             .style('pointer-events', 'all')
-            .style('cursor', 'text');
+            .style('cursor', 'move');
 
         // Text
         const textElement = this.group.append('text')
@@ -1174,7 +1174,7 @@ class NoteTool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .style('pointer-events', 'all')
-            .style('cursor', 'text')
+            .style('cursor', 'move')
             .text(this.text || 'Add text');
 
         // Add double-click to edit text inline using native addEventListener (won't be overwritten)
@@ -1693,7 +1693,7 @@ class PinTool extends BaseDrawing {
                 .attr('stroke', hasBorder ? this.style.borderColor : 'none')
                 .attr('stroke-width', hasBorder ? 1 : 0)
                 .style('pointer-events', 'all')
-                .style('cursor', 'text');
+                .style('cursor', 'move');
 
             // Text
             const boxTextEl = textBoxGroup.append('text')
@@ -1705,7 +1705,7 @@ class PinTool extends BaseDrawing {
                 .attr('font-family', this.style.fontFamily)
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
-                .style('cursor', 'text')
+                .style('cursor', 'move')
                 .text(displayText);
 
             const self = this;
@@ -2194,7 +2194,7 @@ class CalloutTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .style('pointer-events', 'all')
-            .style('cursor', 'text')
+            .style('cursor', 'move')
             .text(this.text);
 
         const self = this;
@@ -2487,7 +2487,7 @@ class CommentTool extends BaseDrawing {
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'all')
-            .style('cursor', 'text')
+            .style('cursor', 'move')
             .text(this.text);
 
         const self = this;
