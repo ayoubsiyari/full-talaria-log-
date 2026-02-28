@@ -6358,7 +6358,8 @@
         body.speed-slider-clone-active #replayStepBackward,
         body.speed-slider-clone-active #replayPlayPause,
         body.speed-slider-clone-active #replayStepForward,
-        body.speed-slider-clone-active #goToControl {
+        body.speed-slider-clone-active #goToControl,
+        body.speed-slider-clone-active #intervalSliderWrapper {
             pointer-events: none;
         }
 
@@ -6404,6 +6405,108 @@
 
         .speed-slider-placeholder.visible {
             display: block;
+        }
+
+        .interval-clone-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .interval-clone-btn {
+            height: 30px;
+            padding: 0 10px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: rgba(209, 212, 220, 0.78);
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .interval-clone-btn:hover,
+        .interval-clone-btn.active {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+        }
+
+        .interval-clone-menu {
+            position: absolute;
+            left: 50%;
+            top: calc(100% + 8px);
+            transform: translateX(-50%);
+            min-width: 86px;
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: #050028;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+            display: none;
+            flex-direction: column;
+            gap: 2px;
+            z-index: 10005;
+        }
+
+        .interval-clone-menu.open {
+            display: flex;
+        }
+
+        .interval-clone-option {
+            height: 26px;
+            padding: 0 8px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: #cbd5f5;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .interval-clone-option:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+        }
+
+        .interval-clone-option.active {
+            background: rgba(99, 102, 241, 0.2);
+            color: #818cf8;
+        }
+
+        body.light-mode #speedSliderClone .interval-clone-btn {
+            color: rgba(55, 65, 81, 0.86);
+        }
+
+        body.light-mode #speedSliderClone .interval-clone-btn:hover,
+        body.light-mode #speedSliderClone .interval-clone-btn.active {
+            background: rgba(0, 0, 0, 0.08);
+            color: #111827;
+        }
+
+        body.light-mode #speedSliderClone .interval-clone-menu {
+            background: #f8fafc;
+            border-color: rgba(0, 0, 0, 0.12);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        body.light-mode #speedSliderClone .interval-clone-option {
+            color: #374151;
+        }
+
+        body.light-mode #speedSliderClone .interval-clone-option:hover {
+            background: rgba(0, 0, 0, 0.06);
+            color: #111827;
+        }
+
+        body.light-mode #speedSliderClone .interval-clone-option.active {
+            background: rgba(99, 102, 241, 0.16);
+            color: #4f46e5;
         }
 
         .speed-slider-play-btn {
@@ -23573,8 +23676,122 @@ function showIndicatorsMenu() {
                 let dragOffset = { x: 0, y: 0 };
                 let floatingClone = null;
 
+                function intervalLabelFromTf(tf) {
+                    const normalized = String(tf || '').trim().toLowerCase();
+                    if (normalized === 'auto') return 'Auto';
+                    if (normalized === '1d') return '1D';
+                    if (normalized === '1w') return '1W';
+                    if (normalized === '1mo') return '1M';
+                    return tf || 'Auto';
+                }
+
+                function normalizeIntervalTf(label) {
+                    const raw = String(label || '').trim();
+                    if (!raw) return null;
+                    if (/^auto$/i.test(raw)) return 'auto';
+                    if (raw === '1M') return '1mo';
+                    if (raw === '1D' || raw === '1d') return '1d';
+                    if (raw === '1W' || raw === '1w') return '1w';
+                    const lower = raw.toLowerCase();
+                    if (/^\d+(m|h)$/.test(lower)) return lower;
+                    if (lower === '1mo') return '1mo';
+                    return lower;
+                }
+
+                function getCurrentIntervalTf() {
+                    if (typeof window._replayGetCurrentInterval === 'function') {
+                        return normalizeIntervalTf(window._replayGetCurrentInterval()) || 'auto';
+                    }
+                    const saved = localStorage.getItem('replayUpdateInterval');
+                    if (saved) return normalizeIntervalTf(saved) || 'auto';
+                    const hiddenSelect = document.getElementById('replayTimeframe');
+                    if (hiddenSelect && hiddenSelect.value) {
+                        return normalizeIntervalTf(hiddenSelect.value) || 'auto';
+                    }
+                    return 'auto';
+                }
+
+                function getCurrentIntervalLabel() {
+                    const display = document.getElementById('intervalValueDisplay');
+                    const raw = display ? String(display.textContent || '').trim() : '';
+                    if (raw) return raw;
+                    return intervalLabelFromTf(getCurrentIntervalTf());
+                }
+
+                function getIntervalChoicesForClone() {
+                    const choices = [];
+                    const seen = new Set();
+                    const tickLabels = document.querySelectorAll('#intervalSliderLabels .tick-label');
+                    tickLabels.forEach((node) => {
+                        const tf = normalizeIntervalTf(node.textContent);
+                        if (!tf || seen.has(tf)) return;
+                        seen.add(tf);
+                        choices.push({ tf, label: intervalLabelFromTf(tf) });
+                    });
+
+                    if (choices.length === 0) {
+                        [
+                            { tf: '1m', label: '1m' },
+                            { tf: '3m', label: '3m' },
+                            { tf: '5m', label: '5m' },
+                            { tf: '15m', label: '15m' },
+                            { tf: '30m', label: '30m' },
+                            { tf: '1h', label: '1h' },
+                            { tf: '4h', label: '4h' },
+                            { tf: '1d', label: '1D' },
+                            { tf: '1w', label: '1W' }
+                        ].forEach((item) => {
+                            if (!seen.has(item.tf)) {
+                                seen.add(item.tf);
+                                choices.push(item);
+                            }
+                        });
+                    }
+
+                    if (!seen.has('auto')) {
+                        choices.push({ tf: 'auto', label: 'Auto' });
+                    }
+
+                    return choices;
+                }
+
+                function applyReplayIntervalFromClone(tf) {
+                    const normalized = normalizeIntervalTf(tf) || 'auto';
+                    try {
+                        localStorage.setItem('replayUpdateInterval', normalized);
+                    } catch (err) {}
+
+                    if (typeof window._replayIntervalRebuild === 'function') {
+                        window._replayIntervalRebuild();
+                        if (normalized === 'auto' && typeof window._replayIntervalReApplyAuto === 'function') {
+                            window._replayIntervalReApplyAuto();
+                        }
+                        return;
+                    }
+
+                    const hiddenSelect = document.getElementById('replayTimeframe');
+                    if (!hiddenSelect || normalized === 'auto') return;
+
+                    let found = false;
+                    for (let i = 0; i < hiddenSelect.options.length; i++) {
+                        if (hiddenSelect.options[i].value === normalized) {
+                            hiddenSelect.value = normalized;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        const option = document.createElement('option');
+                        option.value = normalized;
+                        option.textContent = intervalLabelFromTf(normalized);
+                        hiddenSelect.appendChild(option);
+                        hiddenSelect.value = normalized;
+                    }
+                    hiddenSelect.dispatchEvent(new Event('change'));
+                }
+
                 function setOriginalSpeedBarOpacity(opacity) {
-                    const fadeIds = ['speedSliderControl', 'replayGoBack', 'replayStepForward', 'goToControl'];
+                    const fadeIds = ['speedSliderControl', 'replayGoBack', 'replayStepForward', 'goToControl', 'intervalSliderWrapper'];
                     fadeIds.forEach((id) => {
                         const el = document.getElementById(id);
                         if (el) {
@@ -23742,6 +23959,8 @@ function showIndicatorsMenu() {
                     const originalValueLabel = document.getElementById('speedValueDisplay');
                     const originalTimeLabel = document.getElementById('speedRateDisplay');
                     const originalPlayBtn = document.getElementById('speedSliderPlayBtn');
+                    const originalIntervalValueLabel = document.getElementById('intervalValueDisplay');
+                    const cloneIntervalValueLabel = clone.querySelector('.interval-clone-value');
                     
                     // Play button - toggle play/pause
                     if (clonePlayBtn) {
@@ -23888,6 +24107,14 @@ function showIndicatorsMenu() {
                         });
                         timeObserver.observe(originalTimeLabel, { childList: true, characterData: true, subtree: true });
                     }
+
+                    if (originalIntervalValueLabel && cloneIntervalValueLabel) {
+                        const intervalObserver = new MutationObserver(() => {
+                            const nextLabel = String(originalIntervalValueLabel.textContent || '').trim();
+                            cloneIntervalValueLabel.textContent = nextLabel || intervalLabelFromTf(getCurrentIntervalTf());
+                        });
+                        intervalObserver.observe(originalIntervalValueLabel, { childList: true, characterData: true, subtree: true });
+                    }
                     
                     // Sync play button state from original to clone
                     if (originalPlayBtn && clonePlayBtn) {
@@ -23912,6 +24139,9 @@ function showIndicatorsMenu() {
                     }
                     if (originalFill && cloneSliderFill) {
                         cloneSliderFill.style.width = originalFill.style.width || '0%';
+                    }
+                    if (cloneIntervalValueLabel) {
+                        cloneIntervalValueLabel.textContent = getCurrentIntervalLabel();
                     }
                 }
                 
@@ -23997,6 +24227,62 @@ function showIndicatorsMenu() {
                         }
                     };
                     floatingClone.appendChild(stepForwardClone);
+
+                    // Interval control with themed dropdown
+                    const intervalCloneWrapper = document.createElement('div');
+                    intervalCloneWrapper.className = 'interval-clone-wrapper';
+
+                    const intervalCloneBtn = document.createElement('button');
+                    intervalCloneBtn.type = 'button';
+                    intervalCloneBtn.className = 'interval-clone-btn';
+                    const intervalCloneValue = document.createElement('span');
+                    intervalCloneValue.className = 'interval-clone-value';
+                    intervalCloneValue.textContent = getCurrentIntervalLabel();
+                    intervalCloneBtn.appendChild(intervalCloneValue);
+
+                    const intervalCloneMenu = document.createElement('div');
+                    intervalCloneMenu.className = 'interval-clone-menu';
+
+                    function renderIntervalCloneMenu() {
+                        const selectedTf = getCurrentIntervalTf();
+                        const choices = getIntervalChoicesForClone();
+                        intervalCloneMenu.innerHTML = '';
+                        choices.forEach((choice) => {
+                            const optionBtn = document.createElement('button');
+                            optionBtn.type = 'button';
+                            optionBtn.className = 'interval-clone-option' + (choice.tf === selectedTf ? ' active' : '');
+                            optionBtn.textContent = choice.label;
+                            optionBtn.addEventListener('click', (optionEvent) => {
+                                optionEvent.stopPropagation();
+                                applyReplayIntervalFromClone(choice.tf);
+                                intervalCloneValue.textContent = intervalLabelFromTf(choice.tf);
+                                intervalCloneMenu.classList.remove('open');
+                                intervalCloneBtn.classList.remove('active');
+                            });
+                            intervalCloneMenu.appendChild(optionBtn);
+                        });
+                    }
+
+                    intervalCloneBtn.addEventListener('click', (btnEvent) => {
+                        btnEvent.stopPropagation();
+                        const willOpen = !intervalCloneMenu.classList.contains('open');
+                        intervalCloneMenu.classList.toggle('open', willOpen);
+                        intervalCloneBtn.classList.toggle('active', willOpen);
+                        if (willOpen) renderIntervalCloneMenu();
+                    });
+
+                    intervalCloneMenu.addEventListener('click', (menuEvent) => {
+                        menuEvent.stopPropagation();
+                    });
+
+                    intervalCloneWrapper.addEventListener('mouseleave', () => {
+                        intervalCloneMenu.classList.remove('open');
+                        intervalCloneBtn.classList.remove('active');
+                    });
+
+                    intervalCloneWrapper.appendChild(intervalCloneBtn);
+                    intervalCloneWrapper.appendChild(intervalCloneMenu);
+                    floatingClone.appendChild(intervalCloneWrapper);
 
                     // Go To button (use existing goToMenu to avoid duplicate IDs)
                     const goToClone = document.createElement('button');
