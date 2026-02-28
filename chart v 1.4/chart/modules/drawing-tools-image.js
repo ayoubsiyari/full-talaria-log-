@@ -440,44 +440,88 @@ class ImageTool extends BaseDrawing {
     }
 
     triggerImageUpload() {
+        if (this._uploadDialogOpen) {
+            return;
+        }
+
         this._uploadDialogOpen = true;
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
         input.style.display = 'none';
         document.body.appendChild(input);
+
+        const cleanup = () => {
+            if (input.parentNode) {
+                input.parentNode.removeChild(input);
+            }
+            this._uploadDialogOpen = false;
+        };
         
         input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        // Store original aspect ratio
+            const file = e.target && e.target.files ? e.target.files[0] : null;
+            if (!file) {
+                cleanup();
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const imageDataUrl = event && event.target ? event.target.result : '';
+                if (!imageDataUrl) {
+                    cleanup();
+                    return;
+                }
+
+                const img = new Image();
+                img.onload = () => {
+                    if (img.width > 0 && img.height > 0) {
                         this.style.originalAspectRatio = img.width / img.height;
                         this.style.maintainAspectRatio = true;
-                        this.style.imageUrl = event.target.result;
-                        this.meta.updatedAt = Date.now();
-                        this._uploadDialogOpen = false;
-                        // Trigger re-render
-                        if (this.chart && typeof this.chart.scheduleRender === 'function') {
-                            this.chart.scheduleRender();
-                        }
-                    };
-                    img.src = event.target.result;
+                    } else {
+                        this.style.originalAspectRatio = null;
+                    }
+
+                    this.style.imageUrl = imageDataUrl;
+                    this.meta.updatedAt = Date.now();
+
+                    if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                        this.chart.drawingManager.saveDrawings();
+                    }
+                    if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                        this.chart.scheduleRender();
+                    }
+
+                    cleanup();
                 };
-                reader.readAsDataURL(file);
-            }
-            document.body.removeChild(input);
-            if (!this.style.imageUrl) {
-                this._uploadDialogOpen = false;
-            }
+
+                img.onerror = () => {
+                    this.style.originalAspectRatio = null;
+                    this.style.imageUrl = imageDataUrl;
+                    this.meta.updatedAt = Date.now();
+
+                    if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                        this.chart.drawingManager.saveDrawings();
+                    }
+                    if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                        this.chart.scheduleRender();
+                    }
+
+                    cleanup();
+                };
+
+                img.src = imageDataUrl;
+            };
+
+            reader.onerror = () => {
+                cleanup();
+            };
+
+            reader.readAsDataURL(file);
         };
         
         input.oncancel = () => {
-            document.body.removeChild(input);
-            this._uploadDialogOpen = false;
+            cleanup();
         };
         
         input.click();

@@ -5630,6 +5630,149 @@ body.light-mode .template-save-dialog .dialog-title {
             overflow: hidden;
             cursor: pointer;
         `;
+
+        let isUploadDialogOpen = false;
+        const openImageUploadDialog = () => {
+            if (isUploadDialogOpen) return;
+            isUploadDialogOpen = true;
+
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.style.display = 'none';
+            document.body.appendChild(input);
+
+            const cleanup = () => {
+                if (input.parentNode) {
+                    input.parentNode.removeChild(input);
+                }
+                isUploadDialogOpen = false;
+            };
+
+            input.onchange = (e) => {
+                const file = e.target && e.target.files ? e.target.files[0] : null;
+                if (!file) {
+                    cleanup();
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const imageDataUrl = event && event.target ? event.target.result : '';
+                    if (!imageDataUrl) {
+                        cleanup();
+                        return;
+                    }
+
+                    // Compress image to reduce localStorage usage
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+
+                        const maxWidth = 2000;
+                        const maxHeight = 2000;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > maxWidth || height > maxHeight) {
+                            const ratio = Math.min(maxWidth / width, maxHeight / height);
+                            width = width * ratio;
+                            height = height * ratio;
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // Keep storage size manageable
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+                        if (img.width > 0 && img.height > 0) {
+                            drawing.style.originalAspectRatio = img.width / img.height;
+                            drawing.style.maintainAspectRatio = true;
+                        } else {
+                            drawing.style.originalAspectRatio = null;
+                        }
+
+                        drawing.style.imageUrl = compressedDataUrl;
+                        if (window.drawingManager) {
+                            window.drawingManager.renderDrawing(drawing);
+                            window.drawingManager.saveDrawings();
+                        }
+
+                        // Live preview - update the preview container without rebuilding modal
+                        previewContainer.innerHTML = '';
+                        const previewImg = document.createElement('img');
+                        previewImg.src = compressedDataUrl;
+                        previewImg.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
+                        previewContainer.appendChild(previewImg);
+
+                        // Add delete button
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.innerHTML = `
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                        `;
+                        deleteBtn.style.cssText = `
+                            position: absolute;
+                            bottom: 8px;
+                            right: 8px;
+                            background: rgba(0, 0, 0, 0.7);
+                            border: none;
+                            border-radius: 4px;
+                            padding: 8px;
+                            cursor: pointer;
+                            color: #d1d4dc;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: background 0.2s;
+                        `;
+                        deleteBtn.onmouseenter = () => deleteBtn.style.background = 'rgba(242, 54, 69, 0.8)';
+                        deleteBtn.onmouseleave = () => deleteBtn.style.background = 'rgba(0, 0, 0, 0.7)';
+                        deleteBtn.onclick = (evt) => {
+                            evt.stopPropagation();
+                            drawing.style.imageUrl = '';
+                            drawing.style.originalAspectRatio = null;
+                            if (window.drawingManager) {
+                                window.drawingManager.renderDrawing(drawing);
+                                window.drawingManager.saveDrawings();
+                            }
+                            // Rebuild the modal
+                            const modal = document.querySelector('.tv-settings-modal');
+                            if (modal) {
+                                const drawingId = modal.dataset.drawingId;
+                                modal.remove();
+                                document.querySelectorAll(`.tv-external-dropdown[data-modal-id="${drawingId}"]`).forEach(d => d.remove());
+                                this.buildTVModal(drawing);
+                            }
+                        };
+                        previewContainer.appendChild(deleteBtn);
+
+                        cleanup();
+                    };
+                    img.onerror = () => {
+                        cleanup();
+                    };
+                    img.src = imageDataUrl;
+                };
+                reader.onerror = () => {
+                    cleanup();
+                };
+                reader.readAsDataURL(file);
+            };
+
+            input.oncancel = () => {
+                cleanup();
+            };
+
+            input.click();
+        };
         
         if (drawing.style.imageUrl) {
             // Show image preview
@@ -5668,6 +5811,7 @@ body.light-mode .template-save-dialog .dialog-title {
             deleteBtn.onclick = (e) => {
                 e.stopPropagation();
                 drawing.style.imageUrl = '';
+                drawing.style.originalAspectRatio = null;
                 if (window.drawingManager) {
                     window.drawingManager.renderDrawing(drawing);
                     window.drawingManager.saveDrawings();
@@ -5692,103 +5836,7 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Click to upload
         previewContainer.onclick = () => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.onchange = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        // Compress image to reduce localStorage usage
-                        const img = new Image();
-                        img.onload = () => {
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-                            
-                            // Max dimensions to keep file size around 1-2MB
-                            const maxWidth = 2000;
-                            const maxHeight = 2000;
-                            let width = img.width;
-                            let height = img.height;
-                            
-                            if (width > maxWidth || height > maxHeight) {
-                                const ratio = Math.min(maxWidth / width, maxHeight / height);
-                                width = width * ratio;
-                                height = height * ratio;
-                            }
-                            
-                            canvas.width = width;
-                            canvas.height = height;
-                            ctx.drawImage(img, 0, 0, width, height);
-                            
-                            // Compress to JPEG with 0.85 quality (targets 1-2MB)
-                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                            
-                            drawing.style.imageUrl = compressedDataUrl;
-                            if (window.drawingManager) {
-                                window.drawingManager.renderDrawing(drawing);
-                                window.drawingManager.saveDrawings();
-                            }
-                            
-                            // Live preview - update the preview container without rebuilding modal
-                            previewContainer.innerHTML = '';
-                            const previewImg = document.createElement('img');
-                            previewImg.src = compressedDataUrl;
-                            previewImg.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
-                            previewContainer.appendChild(previewImg);
-                            
-                            // Add delete button
-                            const deleteBtn = document.createElement('button');
-                        deleteBtn.innerHTML = `
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                            </svg>
-                        `;
-                        deleteBtn.style.cssText = `
-                            position: absolute;
-                            bottom: 8px;
-                            right: 8px;
-                            background: rgba(0, 0, 0, 0.7);
-                            border: none;
-                            border-radius: 4px;
-                            padding: 8px;
-                            cursor: pointer;
-                            color: #d1d4dc;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            transition: background 0.2s;
-                        `;
-                        deleteBtn.onmouseenter = () => deleteBtn.style.background = 'rgba(242, 54, 69, 0.8)';
-                        deleteBtn.onmouseleave = () => deleteBtn.style.background = 'rgba(0, 0, 0, 0.7)';
-                            deleteBtn.onclick = (e) => {
-                                e.stopPropagation();
-                                drawing.style.imageUrl = '';
-                                if (window.drawingManager) {
-                                    window.drawingManager.renderDrawing(drawing);
-                                    window.drawingManager.saveDrawings();
-                                }
-                                // Rebuild the modal
-                                const modal = document.querySelector('.tv-settings-modal');
-                                if (modal) {
-                                    const drawingId = modal.dataset.drawingId;
-                                    modal.remove();
-                                    document.querySelectorAll(`.tv-external-dropdown[data-modal-id="${drawingId}"]`).forEach(d => d.remove());
-                                    this.buildTVModal(drawing);
-                                }
-                            };
-                            previewContainer.appendChild(deleteBtn);
-                        };
-                        img.src = event.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-            input.click();
+            openImageUploadDialog();
         };
         
         imageGroup.appendChild(previewContainer);
@@ -10591,6 +10639,76 @@ applyTemplate(drawing, templateId, modal) {
                 overflow: hidden;
                 cursor: pointer;
             `;
+
+            let isUploadDialogOpen = false;
+            const openImageUploadDialog = () => {
+                if (isUploadDialogOpen) return;
+                isUploadDialogOpen = true;
+
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.style.display = 'none';
+                document.body.appendChild(input);
+
+                const cleanup = () => {
+                    if (input.parentNode) {
+                        input.parentNode.removeChild(input);
+                    }
+                    isUploadDialogOpen = false;
+                };
+
+                input.onchange = (e) => {
+                    const file = e.target && e.target.files ? e.target.files[0] : null;
+                    if (!file) {
+                        cleanup();
+                        return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const imageDataUrl = event && event.target ? event.target.result : '';
+                        if (!imageDataUrl) {
+                            cleanup();
+                            return;
+                        }
+
+                        const img = new Image();
+                        img.onload = () => {
+                            if (img.width > 0 && img.height > 0) {
+                                drawing.style.originalAspectRatio = img.width / img.height;
+                                drawing.style.maintainAspectRatio = true;
+                            } else {
+                                drawing.style.originalAspectRatio = null;
+                            }
+
+                            drawing.style.imageUrl = imageDataUrl;
+                            this.onUpdate(drawing);
+                            // Refresh settings panel to show updated preview and controls
+                            this.showSettings(drawing);
+                            cleanup();
+                        };
+                        img.onerror = () => {
+                            drawing.style.originalAspectRatio = null;
+                            drawing.style.imageUrl = imageDataUrl;
+                            this.onUpdate(drawing);
+                            this.showSettings(drawing);
+                            cleanup();
+                        };
+                        img.src = imageDataUrl;
+                    };
+                    reader.onerror = () => {
+                        cleanup();
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                input.oncancel = () => {
+                    cleanup();
+                };
+
+                input.click();
+            };
             
             if (drawing.style.imageUrl) {
                 // Show image preview
@@ -10633,6 +10751,7 @@ applyTemplate(drawing, templateId, modal) {
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
                     drawing.style.imageUrl = '';
+                    drawing.style.originalAspectRatio = null;
                     this.onUpdate(drawing);
                     // Refresh the settings panel
                     this.showSettings(drawing);
@@ -10652,23 +10771,7 @@ applyTemplate(drawing, templateId, modal) {
             
             // Click to upload
             previewContainer.onclick = () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                            drawing.style.imageUrl = event.target.result;
-                            this.onUpdate(drawing);
-                            // Refresh the settings panel to show preview
-                            this.showSettings(drawing);
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                };
-                input.click();
+                openImageUploadDialog();
             };
             
             imageGroup.appendChild(previewContainer);

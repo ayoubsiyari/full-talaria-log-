@@ -1089,7 +1089,9 @@ class DrawingToolsManager {
                             event.preventDefault();
                             event.stopPropagation();
                             drawing._keepEmpty = true;
-                            drawing.triggerImageUpload();
+                            if (!drawing._uploadDialogOpen) {
+                                drawing.triggerImageUpload();
+                            }
                             return;
                         }
                     }
@@ -2204,6 +2206,31 @@ class DrawingToolsManager {
         // Exclude .inline-editable-text elements - they handle their own click/dblclick events
         const selector = '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
+
+        const isEmptyImageUploadTarget = (eventTarget) => {
+            if (drawing.type !== 'image') return false;
+            if (drawing.style.imageUrl && drawing.style.imageUrl !== '') return false;
+            if (!eventTarget || !eventTarget.classList) return false;
+
+            return eventTarget.classList.contains('image-placeholder') ||
+                eventTarget.classList.contains('image-content');
+        };
+
+        const handleEmptyImageUploadInteraction = (event) => {
+            if (!isEmptyImageUploadTarget(event?.target)) return false;
+            if (typeof drawing.triggerImageUpload !== 'function') return false;
+
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            drawing._keepEmpty = true;
+
+            if (!drawing._uploadDialogOpen) {
+                drawing.triggerImageUpload();
+            }
+            return true;
+        };
         
         // [debug removed]
         if (drawing.type === 'regression-trend') {
@@ -2216,6 +2243,14 @@ class DrawingToolsManager {
             const targetSel = d3.select(event.target);
             if (targetSel.classed('inline-editable-text')) {
                 return; // Let the element's own click handler handle it
+            }
+
+            if (handleEmptyImageUploadInteraction(event)) {
+                if (!self._drawingClickTimes) {
+                    self._drawingClickTimes = {};
+                }
+                self._drawingClickTimes[drawing.id] = 0;
+                return;
             }
             
             // [debug removed]
@@ -2271,6 +2306,11 @@ class DrawingToolsManager {
                     self._drawingClickTimes[drawing.id] = 0;
                     return; // Let the element's own dblclick handler handle it
                 }
+
+                if (handleEmptyImageUploadInteraction(event)) {
+                    self._drawingClickTimes[drawing.id] = 0;
+                    return;
+                }
                 
                 // [debug removed]
                 
@@ -2297,6 +2337,14 @@ class DrawingToolsManager {
             const target = d3.select(event.target);
             if (target.classed('inline-editable-text')) {
                 return; // Let the element's own dblclick handler handle it
+            }
+
+            if (handleEmptyImageUploadInteraction(event)) {
+                if (!self._drawingClickTimes) {
+                    self._drawingClickTimes = {};
+                }
+                self._drawingClickTimes[drawing.id] = 0;
+                return;
             }
             
             event.stopPropagation();
