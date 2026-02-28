@@ -4539,16 +4539,21 @@ class DrawingToolsManager {
             bottom: 50px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(42, 46, 57, 0.95);
-            color: #d1d4dc;
+            background: rgba(33, 38, 52, 0.94);
+            color: #e6ebff;
             padding: 8px 16px;
             border-radius: 6px;
             font-size: 13px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            box-shadow:
+                0 4px 12px rgba(0, 0, 0, 0.32),
+                0 0 0 1px rgba(129, 140, 248, 0.35),
+                0 0 16px rgba(99, 102, 241, 0.42),
+                0 0 28px rgba(99, 102, 241, 0.2);
+            text-shadow: 0 0 10px rgba(129, 140, 248, 0.35);
             z-index: 10000;
             pointer-events: none;
-            border: 1px solid #363a45;
+            border: 1px solid rgba(129, 140, 248, 0.45);
         `;
         tooltip.textContent = 'Right click to end';
         
