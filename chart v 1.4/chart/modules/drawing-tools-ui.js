@@ -2412,7 +2412,7 @@ body.light-mode .template-save-dialog .dialog-title {
         }
         
         // Special handling for text tools
-        const textTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2', 'flag-mark'];
+        const textTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2'];
         if (textTypes.includes(drawing.type)) {
             this.buildTextStyleTab(container, drawing);
             return;
@@ -5891,7 +5891,7 @@ body.light-mode .template-save-dialog .dialog-title {
      */
     buildTextStyleTab(container, drawing) {
         // Unify all Texts & Notes tools to the same UI style as Text tool
-        const unifiedTextTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2', 'flag-mark'];
+        const unifiedTextTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2'];
         if (unifiedTextTypes.includes(drawing.type)) {
             // Keep pin marker color control
             if (drawing.type === 'pin') {
