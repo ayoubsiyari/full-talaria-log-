@@ -2163,8 +2163,12 @@ class DrawingToolsManager {
             .style('pointer-events', 'stroke');
         
         // Hit areas also use stroke
-        drawing.group.selectAll('.shape-border-hit')
+        drawing.group.selectAll('.shape-border-hit:not(.text-body-hit)')
             .style('pointer-events', 'stroke');
+
+        // Text body hit areas should stay fully interactive (middle + border drag zone)
+        drawing.group.selectAll('.text-body-hit')
+            .style('pointer-events', 'all');
 
         // Arrow tools: allow fill hit areas to be interactive
         drawing.group.selectAll('.arrow-fill-hit')
@@ -2430,6 +2434,7 @@ class DrawingToolsManager {
                     const isTextElement = tagName === 'text' || tagName === 'tspan';  // Allow dragging text and tspan
                     const isShapeBorder = targetSelection.classed('shape-border');
                     const isEmojiElement = targetSelection.classed('emoji-glyph') || targetSelection.classed('emoji-background');
+                    const isTextBodyHit = targetSelection.classed('text-body-hit');
                     const hasStroke = targetSelection.attr('stroke') && targetSelection.attr('stroke') !== 'none';
 
                     // For circle/ellipse, enforce border-only drag by checking distance to border.
@@ -2491,7 +2496,7 @@ class DrawingToolsManager {
                     
                     // Allow drag from: position zones, lines, paths, shape borders, stroked elements, or emoji/text
                     // Block drag from: filled areas and resize handles
-                    const canDrag = isPositionZone || isLineElement || isShapeBorder || isTextElement || isEmojiElement || hasStroke;
+                    const canDrag = isPositionZone || isLineElement || isShapeBorder || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
                     
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
                 })
@@ -5407,10 +5412,10 @@ class DrawingToolsManager {
             return;
         }
 
-        const inlineNodes = this.svg.selectAll('.inline-editable-text').nodes();
-        let isOverInlineText = false;
-        for (let i = 0; i < inlineNodes.length; i++) {
-            const n = inlineNodes[i];
+        const textHoverNodes = this.svg.selectAll('.inline-editable-text, .text-body-hit').nodes();
+        let isOverTextHitArea = false;
+        for (let i = 0; i < textHoverNodes.length; i++) {
+            const n = textHoverNodes[i];
             if (!n || typeof n.getBoundingClientRect !== 'function') continue;
             const r = n.getBoundingClientRect();
             if (
@@ -5419,12 +5424,12 @@ class DrawingToolsManager {
                 event.clientY >= r.top &&
                 event.clientY <= r.bottom
             ) {
-                isOverInlineText = true;
+                isOverTextHitArea = true;
                 break;
             }
         }
 
-        if (isOverInlineText) {
+        if (isOverTextHitArea) {
             canvas.style.cursor = 'move';
             this.svg.style('cursor', 'move');
             this._cursorOverInlineText = true;
