@@ -13752,6 +13752,15 @@
             color: #ffffff;
         }
 
+        .object-tree-action-btn.object-tree-legacy-jump-btn {
+            color: #4a90d9;
+        }
+
+        .object-tree-action-btn.object-tree-legacy-jump-btn:hover {
+            background: rgba(47, 114, 255, 0.2);
+            color: #2962ff;
+        }
+
         .object-tree-action-btn.delete:hover {
             background: rgba(242, 54, 69, 0.2);
             color: #f23645;
@@ -19048,7 +19057,151 @@
     <script src="modules/drawing-tools-manager.js?v=20260228_TF_PIN_V13"></script>
     <script src="modules/favorites-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/keyboard-shortcuts.js?v=20260228_TF_PIN_V12"></script>
-    <script src="modules/object-tree.js?v=20260228_TF_PIN_V14"></script>
+    <script src="modules/object-tree.js?v=20260228_TF_PIN_V15"></script>
+    <script>
+        (function() {
+            const JUMP_BTN_SELECTOR = '.object-tree-jump-btn, .object-tree-legacy-jump-btn';
+            const JUMP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+            </svg>`;
+
+            function jumpToDrawingFallback(manager, drawing) {
+                if (!manager || !drawing) return;
+
+                if (typeof manager.selectDrawing === 'function') {
+                    manager.selectDrawing(drawing);
+                }
+
+                const chart = manager.drawingManager ? manager.drawingManager.chart : null;
+                const points = Array.isArray(drawing.points) ? drawing.points : null;
+                if (!chart || !points || points.length === 0) {
+                    return;
+                }
+
+                const validPoints = points.filter(point =>
+                    point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))
+                );
+                if (validPoints.length === 0) {
+                    return;
+                }
+
+                const avgIndex = validPoints.reduce((sum, point) => sum + Number(point.x), 0) / validPoints.length;
+                const avgPrice = validPoints.reduce((sum, point) => sum + Number(point.y), 0) / validPoints.length;
+                if (!Number.isFinite(avgIndex)) {
+                    return;
+                }
+
+                const candleSpacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : chart.candleWidth;
+                const margin = chart.margin || { l: 0, r: 0 };
+                const plotWidth = Number(chart.w) - Number(margin.l || 0) - Number(margin.r || 0);
+                if (!Number.isFinite(candleSpacing) || candleSpacing <= 0 || !Number.isFinite(plotWidth) || plotWidth <= 0) {
+                    return;
+                }
+
+                chart.offsetX = (plotWidth / 2) - (Math.round(avgIndex) * candleSpacing);
+                if (typeof chart.constrainOffset === 'function') {
+                    chart.constrainOffset();
+                }
+
+                if (chart.autoScale === false && Number.isFinite(avgPrice) && typeof chart.centerOnPrice === 'function') {
+                    chart.centerOnPrice(avgPrice);
+                    return;
+                }
+
+                if (typeof chart.scheduleRender === 'function') {
+                    chart.scheduleRender();
+                }
+            }
+
+            function injectLegacyJumpButtons(manager) {
+                if (!manager || !manager.listContainer || !manager.drawingManager) return;
+
+                const rows = manager.listContainer.querySelectorAll('.object-tree-item');
+                if (!rows.length) return;
+
+                const drawings = Array.isArray(manager.drawingManager.drawings) ? manager.drawingManager.drawings : [];
+
+                rows.forEach((row) => {
+                    if (row.querySelector(JUMP_BTN_SELECTOR)) {
+                        return;
+                    }
+
+                    const actions = row.querySelector('.object-tree-actions');
+                    if (!actions) {
+                        return;
+                    }
+
+                    const drawingId = row.dataset ? row.dataset.drawingId : null;
+                    const drawing = drawings.find(d => d && String(d.id) === String(drawingId));
+                    if (!drawing) {
+                        return;
+                    }
+
+                    const jumpBtn = document.createElement('button');
+                    jumpBtn.className = 'object-tree-action-btn object-tree-legacy-jump-btn';
+                    jumpBtn.title = 'Jump to shape';
+                    jumpBtn.setAttribute('aria-label', 'Jump to shape');
+                    jumpBtn.innerHTML = JUMP_ICON;
+                    jumpBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (typeof manager.jumpToDrawing === 'function') {
+                            manager.jumpToDrawing(drawing);
+                            return;
+                        }
+                        jumpToDrawingFallback(manager, drawing);
+                    });
+
+                    actions.insertBefore(jumpBtn, actions.firstChild);
+                });
+            }
+
+            function patchObjectTreeRefresh() {
+                if (typeof ObjectTreeManager === 'undefined') {
+                    return false;
+                }
+
+                const proto = ObjectTreeManager.prototype;
+                if (proto.__legacyJumpRefreshPatched) {
+                    return true;
+                }
+
+                const originalRefresh = proto.refresh;
+                if (typeof originalRefresh === 'function') {
+                    proto.refresh = function(...args) {
+                        const result = originalRefresh.apply(this, args);
+                        try {
+                            injectLegacyJumpButtons(this);
+                        } catch (error) {
+                            console.warn('Object Tree jump fallback injection failed:', error);
+                        }
+                        return result;
+                    };
+                }
+
+                proto.__legacyJumpRefreshPatched = true;
+                return true;
+            }
+
+            function runAfterBoot() {
+                const chart = window.chart || window.mainChart;
+                const manager = chart ? chart.objectTreeManager : null;
+                injectLegacyJumpButtons(manager);
+            }
+
+            if (!patchObjectTreeRefresh()) {
+                window.addEventListener('load', () => {
+                    patchObjectTreeRefresh();
+                    setTimeout(runAfterBoot, 700);
+                });
+            } else {
+                window.addEventListener('load', () => setTimeout(runAfterBoot, 700));
+            }
+        })();
+    </script>
     <script src="modules/panel-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/timeframe-favorites.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/propfirm-tracker.js?v=20260228_TF_PIN_V12"></script>
