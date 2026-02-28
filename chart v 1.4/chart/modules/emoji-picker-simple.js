@@ -181,7 +181,7 @@ class SimpleEmojiPicker {
         style.textContent = `
             .emoji-picker-panel {
                 position: fixed;
-                background: #000000;
+                background: var(--tv-panel-bg, #050028);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 8px;
                 box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -199,7 +199,7 @@ class SimpleEmojiPicker {
                 padding: 8px 8px 0 8px;
                 gap: 2px;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                background: rgba(0, 0, 0, 0.55);
+                background: var(--tv-panel-bg, #050028);
             }
             
             .emoji-picker-tab {
