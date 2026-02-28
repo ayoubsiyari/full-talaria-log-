@@ -84,11 +84,21 @@
         }
         
         .toolbar-drawing-icons .toolbar-icon-btn {
-            color: #2962ff;
+            color: #a0aec0;
         }
         
         .toolbar-drawing-icons .toolbar-icon-btn:hover {
             color: #a0aec0;
+        }
+
+        .toolbar-drawing-icons .toolbar-icon-btn.active {
+            background: rgba(47, 114, 255, 0.25);
+            color: #2962ff;
+        }
+
+        .toolbar-drawing-icons .toolbar-icon-btn.active:hover {
+            background: rgba(47, 114, 255, 0.3);
+            color: #4f8dff;
         }
         
         /* Toolbar tool-group for horizontal layout - match left sidebar exactly */
@@ -3649,6 +3659,11 @@
         /* Light mode - keep drawing button hover */
         body.light-mode #keepDrawingModeToolbar:hover {
             color: #1e1e1e !important;
+        }
+
+        body.light-mode .toolbar-drawing-icons .toolbar-icon-btn.active {
+            background: rgba(41, 98, 255, 0.15);
+            color: #2962ff;
         }
         
 
