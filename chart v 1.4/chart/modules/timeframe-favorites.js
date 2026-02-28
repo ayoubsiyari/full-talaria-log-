@@ -225,7 +225,7 @@ class TimeframeFavorites {
                 menu.style.display = 'none';
                 if (dropdown) dropdown.classList.remove('open');
             }
-        });
+        }, true);
 
         // Section collapse/expand
         const sectionHeaders = menu.querySelectorAll('.timeframe-dropdown-section-header');
@@ -734,11 +734,13 @@ class TimeframeFavorites {
 
         // Close on outside click
         this._tfFlyoutOutsideHandler = (e) => {
-            if (!flyout.contains(e.target) && e.target !== anchorBtn) {
+            const clickedAnchor = anchorBtn && anchorBtn.contains(e.target);
+            const clickedAnyFlyoutTrigger = !!e.target.closest('#sidebarTfFlyoutBtn, #sidebarTimeframeDropdownBtn');
+            if (!flyout.contains(e.target) && !clickedAnchor && !clickedAnyFlyoutTrigger) {
                 this._closeTfFlyout();
             }
         };
-        setTimeout(() => document.addEventListener('click', this._tfFlyoutOutsideHandler), 0);
+        setTimeout(() => document.addEventListener('click', this._tfFlyoutOutsideHandler, true), 0);
     }
 
     _closeTfFlyout() {
@@ -752,7 +754,7 @@ class TimeframeFavorites {
         if (sidebarArrow) sidebarArrow.classList.remove('open');
 
         if (this._tfFlyoutOutsideHandler) {
-            document.removeEventListener('click', this._tfFlyoutOutsideHandler);
+            document.removeEventListener('click', this._tfFlyoutOutsideHandler, true);
             this._tfFlyoutOutsideHandler = null;
         }
     }
