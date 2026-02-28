@@ -246,6 +246,58 @@
             background: rgba(47, 114, 255, 0.25);
             color: #a0aec0;
         }
+
+        .sidebar-tf-flyout-group {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 34px;
+            padding-bottom: 10px;
+        }
+
+        .sidebar-timeframe-arrow {
+            width: 32px;
+            height: 10px;
+            border: 1px solid rgba(63, 84, 124, 0.35);
+            border-top: none;
+            background: rgba(0, 0, 0, 0.92);
+            color: #a0aec0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: default;
+            position: absolute;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            border-radius: 0 0 4px 4px;
+            padding: 0;
+            z-index: 2;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .sidebar-timeframe-arrow svg {
+            width: 12px;
+            height: 8px;
+            transition: transform 0.2s ease;
+        }
+
+        .sidebar-timeframe-arrow:hover {
+            background: rgba(41, 98, 255, 0.15);
+            color: #a0aec0;
+        }
+
+        .sidebar-timeframe-arrow.open {
+            background: rgba(41, 98, 255, 0.15);
+            color: #a0aec0;
+        }
+
+        .sidebar-timeframe-arrow.open svg {
+            transform: rotate(180deg);
+        }
+
         body.light-mode .sidebar-tf-flyout-trigger {
             background: transparent;
             color: #1e1e1e;
@@ -471,11 +523,15 @@
         }
         
         body.light-mode .sidebar-timeframe-arrow {
+            background: rgba(255, 255, 255, 0.9);
             color: #787b86;
+            border-color: #e0e3eb;
         }
         
-        body.light-mode .sidebar-timeframe-arrow:hover {
-            color: #050028;
+        body.light-mode .sidebar-timeframe-arrow:hover,
+        body.light-mode .sidebar-timeframe-arrow.open {
+            background: rgba(41, 98, 255, 0.12);
+            color: #2962ff;
         }
         
         #undoBtn, #redoBtn {
@@ -18338,12 +18394,19 @@
 
     <!-- Right Sidebar - Icon Bar -->
         <div class="right-sidebar-icons">
-            <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" data-tooltip="Change timeframe">
-                    <svg class="tf-main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12,6 12,12 16,14"/>
+            <div class="sidebar-tf-flyout-group">
+                <button class="sidebar-tf-flyout-trigger" id="sidebarTfFlyoutBtn" data-tooltip="Change timeframe">
+                        <svg class="tf-main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12,6 12,12 16,14"/>
+                        </svg>
+                </button>
+                <button class="sidebar-timeframe-arrow" id="sidebarTimeframeDropdownBtn" aria-label="Open timeframe list">
+                    <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-            </button>
+                </button>
+            </div>
             <div class="sidebar-timeframe-section" id="sidebarTimeframes">
                 <!-- Timeframe buttons will be dynamically populated -->
             </div>

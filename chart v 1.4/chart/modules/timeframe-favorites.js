@@ -161,11 +161,22 @@ class TimeframeFavorites {
 
         // Wire static clock button above TF list to open flyout
         const sidebarTfFlyoutBtn = document.getElementById('sidebarTfFlyoutBtn');
+        const openSidebarFlyout = (e) => {
+            e.stopPropagation();
+            if (document.getElementById('_tfFlyout')) {
+                this._closeTfFlyout();
+                return;
+            }
+            const anchor = sidebarTfFlyoutBtn || sidebarDropdownBtn || e.currentTarget;
+            this._openTfFlyout(anchor);
+        };
+
         if (sidebarTfFlyoutBtn) {
-            sidebarTfFlyoutBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this._openTfFlyout(sidebarTfFlyoutBtn);
-            });
+            sidebarTfFlyoutBtn.addEventListener('click', openSidebarFlyout);
+        }
+
+        if (sidebarDropdownBtn) {
+            sidebarDropdownBtn.addEventListener('click', openSidebarFlyout);
         }
 
 
@@ -213,10 +224,6 @@ class TimeframeFavorites {
             if (!clickedDropdown && !clickedMenu && !clickedTimeframeContainer) {
                 menu.style.display = 'none';
                 if (dropdown) dropdown.classList.remove('open');
-                // Remove open class from all timeframe arrows
-                document.querySelectorAll('.sidebar-timeframe-arrow').forEach(arrow => {
-                    arrow.classList.remove('open');
-                });
             }
         });
 
@@ -713,6 +720,10 @@ class TimeframeFavorites {
         flyout.style.top = `${rect.top}px`;
         flyout.style.left = `${rect.right + 8}px`;
 
+        anchorBtn.classList.add('open');
+        const sidebarArrow = document.getElementById('sidebarTimeframeDropdownBtn');
+        if (sidebarArrow) sidebarArrow.classList.add('open');
+
         // Auto-open the category that contains current TF
         const currentCat = TF_CATEGORIES.find(c => c.values.includes(this.currentTimeframe));
         if (currentCat) {
@@ -733,6 +744,13 @@ class TimeframeFavorites {
     _closeTfFlyout() {
         const existing = document.getElementById('_tfFlyout');
         if (existing) existing.remove();
+
+        const sidebarBtn = document.getElementById('sidebarTfFlyoutBtn');
+        if (sidebarBtn) sidebarBtn.classList.remove('open');
+
+        const sidebarArrow = document.getElementById('sidebarTimeframeDropdownBtn');
+        if (sidebarArrow) sidebarArrow.classList.remove('open');
+
         if (this._tfFlyoutOutsideHandler) {
             document.removeEventListener('click', this._tfFlyoutOutsideHandler);
             this._tfFlyoutOutsideHandler = null;
