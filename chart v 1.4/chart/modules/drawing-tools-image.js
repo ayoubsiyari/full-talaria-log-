@@ -451,12 +451,31 @@ class ImageTool extends BaseDrawing {
         input.style.display = 'none';
         document.body.appendChild(input);
 
+        let cleanedUp = false;
         const cleanup = () => {
+            if (cleanedUp) {
+                return;
+            }
+            cleanedUp = true;
             if (input.parentNode) {
                 input.parentNode.removeChild(input);
             }
             this._uploadDialogOpen = false;
         };
+
+        // Some browsers do not reliably fire oncancel for file inputs.
+        // Reset dialog lock when window regains focus and no file was selected.
+        window.addEventListener('focus', () => {
+            setTimeout(() => {
+                if (!this._uploadDialogOpen) {
+                    return;
+                }
+                const hasSelectedFile = !!(input.files && input.files.length > 0);
+                if (!hasSelectedFile) {
+                    cleanup();
+                }
+            }, 350);
+        }, { once: true });
         
         input.onchange = (e) => {
             const file = e.target && e.target.files ? e.target.files[0] : null;
@@ -475,39 +494,51 @@ class ImageTool extends BaseDrawing {
 
                 const img = new Image();
                 img.onload = () => {
-                    if (img.width > 0 && img.height > 0) {
-                        this.style.originalAspectRatio = img.width / img.height;
-                        this.style.maintainAspectRatio = true;
-                    } else {
-                        this.style.originalAspectRatio = null;
-                    }
+                    try {
+                        if (img.width > 0 && img.height > 0) {
+                            this.style.originalAspectRatio = img.width / img.height;
+                            this.style.maintainAspectRatio = true;
+                        } else {
+                            this.style.originalAspectRatio = null;
+                        }
 
-                    this.style.imageUrl = imageDataUrl;
-                    this.meta.updatedAt = Date.now();
+                        this.style.imageUrl = imageDataUrl;
+                        this.meta.updatedAt = Date.now();
 
-                    if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
-                        this.chart.drawingManager.saveDrawings();
+                        if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                            try {
+                                this.chart.drawingManager.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
+                        }
+                        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                            this.chart.scheduleRender();
+                        }
+                    } finally {
+                        cleanup();
                     }
-                    if (this.chart && typeof this.chart.scheduleRender === 'function') {
-                        this.chart.scheduleRender();
-                    }
-
-                    cleanup();
                 };
 
                 img.onerror = () => {
-                    this.style.originalAspectRatio = null;
-                    this.style.imageUrl = imageDataUrl;
-                    this.meta.updatedAt = Date.now();
+                    try {
+                        this.style.originalAspectRatio = null;
+                        this.style.imageUrl = imageDataUrl;
+                        this.meta.updatedAt = Date.now();
 
-                    if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
-                        this.chart.drawingManager.saveDrawings();
+                        if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                            try {
+                                this.chart.drawingManager.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload fallback saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
+                        }
+                        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                            this.chart.scheduleRender();
+                        }
+                    } finally {
+                        cleanup();
                     }
-                    if (this.chart && typeof this.chart.scheduleRender === 'function') {
-                        this.chart.scheduleRender();
-                    }
-
-                    cleanup();
                 };
 
                 img.src = imageDataUrl;

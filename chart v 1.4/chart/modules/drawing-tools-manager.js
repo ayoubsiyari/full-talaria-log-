@@ -3887,25 +3887,41 @@ class DrawingToolsManager {
         
         const data = this.drawings.map(d => d.toJSON());
         const key = this.getStorageKey();
-        
+
         // 1. Save to localStorage immediately (instant, works offline)
-        localStorage.setItem(key, JSON.stringify(data));
-        // [debug removed]
+        try {
+            localStorage.setItem(key, JSON.stringify(data));
+            // [debug removed]
+        } catch (error) {
+            console.warn('⚠️ Failed to save drawings to localStorage:', error?.message || error);
+        }
 
         // 2. Save to session state for backtesting sessions
         const isUndoRedo = this.history && this.history.isPerformingUndoRedo;
         if (!isUndoRedo && this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
-            this.chart.scheduleSessionStateSave({ drawings: data });
+            try {
+                this.chart.scheduleSessionStateSave({ drawings: data });
+            } catch (error) {
+                console.warn('⚠️ Failed to queue session state save for drawings:', error?.message || error);
+            }
         }
         
         // 3. Save to API for cross-device sync (background, debounced)
         if (!isUndoRedo) {
-            this.scheduleSaveToAPI(data);
+            try {
+                this.scheduleSaveToAPI(data);
+            } catch (error) {
+                console.warn('⚠️ Failed to schedule drawings API sync:', error?.message || error);
+            }
         }
         
         // 4. Update URL with drawings for cross-tab/browser sharing
         if (!isUndoRedo) {
-            this.updateURLWithDrawings();
+            try {
+                this.updateURLWithDrawings();
+            } catch (error) {
+                console.warn('⚠️ Failed to update URL with drawings:', error?.message || error);
+            }
         }
         
         // Log coordinate system for each drawing
@@ -3913,7 +3929,11 @@ class DrawingToolsManager {
             // [debug removed]
         });
 
-        window.dispatchEvent(new CustomEvent('drawingsChanged'));
+        try {
+            window.dispatchEvent(new CustomEvent('drawingsChanged'));
+        } catch (error) {
+            console.warn('⚠️ Failed to dispatch drawingsChanged event:', error?.message || error);
+        }
     }
 
     /**

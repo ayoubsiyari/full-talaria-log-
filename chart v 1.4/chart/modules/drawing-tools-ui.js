@@ -5631,6 +5631,12 @@ body.light-mode .template-save-dialog .dialog-title {
             cursor: pointer;
         `;
 
+        const reopenImageModal = () => {
+            if (typeof this.show === 'function') {
+                this.show(drawing, null, null, this.onSave, this.onDelete);
+            }
+        };
+
         let isUploadDialogOpen = false;
         const openImageUploadDialog = () => {
             if (isUploadDialogOpen) return;
@@ -5642,12 +5648,31 @@ body.light-mode .template-save-dialog .dialog-title {
             input.style.display = 'none';
             document.body.appendChild(input);
 
+            let cleanedUp = false;
             const cleanup = () => {
+                if (cleanedUp) {
+                    return;
+                }
+                cleanedUp = true;
                 if (input.parentNode) {
                     input.parentNode.removeChild(input);
                 }
                 isUploadDialogOpen = false;
             };
+
+            // Some browsers do not reliably fire oncancel for file inputs.
+            // Reset the modal dialog lock when focus returns and no file was picked.
+            window.addEventListener('focus', () => {
+                setTimeout(() => {
+                    if (!isUploadDialogOpen) {
+                        return;
+                    }
+                    const hasSelectedFile = !!(input.files && input.files.length > 0);
+                    if (!hasSelectedFile) {
+                        cleanup();
+                    }
+                }, 350);
+            }, { once: true });
 
             input.onchange = (e) => {
                 const file = e.target && e.target.files ? e.target.files[0] : null;
@@ -5667,97 +5692,110 @@ body.light-mode .template-save-dialog .dialog-title {
                     // Compress image to reduce localStorage usage
                     const img = new Image();
                     img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
+                        try {
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            if (!ctx) {
+                                throw new Error('Canvas context unavailable for image upload');
+                            }
 
-                        const maxWidth = 2000;
-                        const maxHeight = 2000;
-                        let width = img.width;
-                        let height = img.height;
+                            const maxWidth = 2000;
+                            const maxHeight = 2000;
+                            let width = img.width;
+                            let height = img.height;
 
-                        if (width > maxWidth || height > maxHeight) {
-                            const ratio = Math.min(maxWidth / width, maxHeight / height);
-                            width = width * ratio;
-                            height = height * ratio;
-                        }
+                            if (width > maxWidth || height > maxHeight) {
+                                const ratio = Math.min(maxWidth / width, maxHeight / height);
+                                width = width * ratio;
+                                height = height * ratio;
+                            }
 
-                        canvas.width = width;
-                        canvas.height = height;
-                        ctx.drawImage(img, 0, 0, width, height);
+                            canvas.width = width;
+                            canvas.height = height;
+                            ctx.drawImage(img, 0, 0, width, height);
 
-                        // Keep storage size manageable
-                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                            // Keep storage size manageable
+                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
-                        if (img.width > 0 && img.height > 0) {
-                            drawing.style.originalAspectRatio = img.width / img.height;
-                            drawing.style.maintainAspectRatio = true;
-                        } else {
-                            drawing.style.originalAspectRatio = null;
-                        }
+                            if (img.width > 0 && img.height > 0) {
+                                drawing.style.originalAspectRatio = img.width / img.height;
+                                drawing.style.maintainAspectRatio = true;
+                            } else {
+                                drawing.style.originalAspectRatio = null;
+                            }
 
-                        drawing.style.imageUrl = compressedDataUrl;
-                        if (window.drawingManager) {
-                            window.drawingManager.renderDrawing(drawing);
-                            window.drawingManager.saveDrawings();
-                        }
-
-                        // Live preview - update the preview container without rebuilding modal
-                        previewContainer.innerHTML = '';
-                        const previewImg = document.createElement('img');
-                        previewImg.src = compressedDataUrl;
-                        previewImg.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
-                        previewContainer.appendChild(previewImg);
-
-                        // Add delete button
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.innerHTML = `
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                            </svg>
-                        `;
-                        deleteBtn.style.cssText = `
-                            position: absolute;
-                            bottom: 8px;
-                            right: 8px;
-                            background: rgba(0, 0, 0, 0.7);
-                            border: none;
-                            border-radius: 4px;
-                            padding: 8px;
-                            cursor: pointer;
-                            color: #d1d4dc;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            transition: background 0.2s;
-                        `;
-                        deleteBtn.onmouseenter = () => deleteBtn.style.background = 'rgba(242, 54, 69, 0.8)';
-                        deleteBtn.onmouseleave = () => deleteBtn.style.background = 'rgba(0, 0, 0, 0.7)';
-                        deleteBtn.onclick = (evt) => {
-                            evt.stopPropagation();
-                            drawing.style.imageUrl = '';
-                            drawing.style.originalAspectRatio = null;
+                            drawing.style.imageUrl = compressedDataUrl;
                             if (window.drawingManager) {
-                                window.drawingManager.renderDrawing(drawing);
-                                window.drawingManager.saveDrawings();
+                                try {
+                                    window.drawingManager.renderDrawing(drawing);
+                                    window.drawingManager.saveDrawings();
+                                } catch (error) {
+                                    console.warn('Image upload rendered but failed to persist drawing state:', error?.message || error);
+                                }
                             }
-                            // Rebuild the modal
-                            const modal = document.querySelector('.tv-settings-modal');
-                            if (modal) {
-                                const drawingId = modal.dataset.drawingId;
-                                modal.remove();
-                                document.querySelectorAll(`.tv-external-dropdown[data-modal-id="${drawingId}"]`).forEach(d => d.remove());
-                                this.buildTVModal(drawing);
-                            }
-                        };
-                        previewContainer.appendChild(deleteBtn);
 
-                        cleanup();
+                            // Live preview - update the preview container without rebuilding modal
+                            previewContainer.innerHTML = '';
+                            const previewImg = document.createElement('img');
+                            previewImg.src = compressedDataUrl;
+                            previewImg.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
+                            previewContainer.appendChild(previewImg);
+
+                            // Add delete button
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.innerHTML = `
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                            `;
+                            deleteBtn.style.cssText = `
+                                position: absolute;
+                                bottom: 8px;
+                                right: 8px;
+                                background: rgba(0, 0, 0, 0.7);
+                                border: none;
+                                border-radius: 4px;
+                                padding: 8px;
+                                cursor: pointer;
+                                color: #d1d4dc;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                transition: background 0.2s;
+                            `;
+                            deleteBtn.onmouseenter = () => deleteBtn.style.background = 'rgba(242, 54, 69, 0.8)';
+                            deleteBtn.onmouseleave = () => deleteBtn.style.background = 'rgba(0, 0, 0, 0.7)';
+                            deleteBtn.onclick = (evt) => {
+                                evt.stopPropagation();
+                                drawing.style.imageUrl = '';
+                                drawing.style.originalAspectRatio = null;
+                                drawing._uploadDialogOpen = false;
+                                if (window.drawingManager) {
+                                    try {
+                                        window.drawingManager.renderDrawing(drawing);
+                                        window.drawingManager.saveDrawings();
+                                    } catch (error) {
+                                        console.warn('Image delete applied but failed to persist drawing state:', error?.message || error);
+                                    }
+                                }
+                                reopenImageModal();
+                            };
+                            previewContainer.appendChild(deleteBtn);
+                        } catch (error) {
+                            console.warn('Image upload processing failed:', error?.message || error);
+                        } finally {
+                            cleanup();
+                        }
                     };
                     img.onerror = () => {
-                        cleanup();
+                        try {
+                            console.warn('Image upload decode failed, skipping update');
+                        } finally {
+                            cleanup();
+                        }
                     };
                     img.src = imageDataUrl;
                 };
@@ -5812,18 +5850,16 @@ body.light-mode .template-save-dialog .dialog-title {
                 e.stopPropagation();
                 drawing.style.imageUrl = '';
                 drawing.style.originalAspectRatio = null;
+                drawing._uploadDialogOpen = false;
                 if (window.drawingManager) {
-                    window.drawingManager.renderDrawing(drawing);
-                    window.drawingManager.saveDrawings();
+                    try {
+                        window.drawingManager.renderDrawing(drawing);
+                        window.drawingManager.saveDrawings();
+                    } catch (error) {
+                        console.warn('Image delete applied but failed to persist drawing state:', error?.message || error);
+                    }
                 }
-                // Rebuild the modal
-                const modal = document.querySelector('.tv-settings-modal');
-                if (modal) {
-                    const drawingId = modal.dataset.drawingId;
-                    modal.remove();
-                    document.querySelectorAll(`.tv-external-dropdown[data-modal-id="${drawingId}"]`).forEach(d => d.remove());
-                    this.buildTVModal(drawing);
-                }
+                reopenImageModal();
             };
             previewContainer.appendChild(deleteBtn);
         } else {
