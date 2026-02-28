@@ -6489,14 +6489,14 @@
             display: inline-block;
             min-width: auto;
             text-align: left;
-            margin-right: 6px;
+            margin-right: 0;
         }
 
         .speed-slider-label .speed-rate {
             color: rgba(150, 160, 180, 0.7);
             font-size: 11px;
             font-weight: 400;
-            display: inline-block;
+            display: none;
             min-width: auto;
             text-align: left;
             margin-left: 4px;
@@ -6888,7 +6888,8 @@
         #intervalTriggerBtn {
             display: flex;
             align-items: center;
-            gap: 4px;
+            justify-content: center;
+            gap: 0;
             height: 30px;
             padding: 0 8px;
             background: transparent;
@@ -6906,6 +6907,8 @@
         .interval-slider-wrapper:hover #intervalTriggerBtn {
             background: rgba(255,255,255,0.08);
             color: #fff;
+            transform: none;
+            box-shadow: none;
         }
         /* The slider panel — hidden until wrapper is hovered */
         .interval-slider-panel {
@@ -6916,7 +6919,7 @@
             bottom: calc(100% + 8px);
             left: 50%;
             transform: translateX(-50%);
-            background: #1a1d2e;
+            background: #050028;
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 6px;
             padding: 10px 14px 10px;
@@ -17555,7 +17558,7 @@
                         <div class="speed-slider-label">
                             <span>Speed&nbsp;</span>
                             <span class="speed-value" id="speedValueDisplay">1x</span>
-                            <span class="speed-rate" id="speedRateDisplay">(~real time)</span>
+                            <span class="speed-rate" id="speedRateDisplay"></span>
                         </div>
                         <div class="speed-slider-track-container">
                             <div class="speed-slider-ticks">
@@ -17623,7 +17626,7 @@
 
                 <!-- Interval Slider Control -->
                 <div class="interval-slider-wrapper" id="intervalSliderWrapper">
-                    <button id="intervalTriggerBtn">&nbsp;<span id="intervalValueDisplay">1m</span></button>
+                    <button id="intervalTriggerBtn"><span id="intervalValueDisplay">1m</span></button>
                     <div class="interval-slider-panel">
                         <div class="interval-slider-panel-top">
                             <div class="interval-slider-label">
@@ -23451,23 +23454,7 @@ function showIndicatorsMenu() {
             const speedLabels = [
                 '1x', '2x', '5x', '10x', '30x', '60x', '120x', '300x', '900x', '1800x', '3600x', '7200x', '14400x', '43200x', '86400x'
             ];
-            const speedRates = [
-                '(real time)',
-                '(2 sec for 1sec)',
-                '',
-                '',
-                '',
-                '(1m bar/sec)',
-                '',
-                '(5m bar/sec)',
-                '(15m bar/sec)',
-                '(30m bar/sec)',
-                '(1h bar/sec)',
-                '(2h/sec)',
-                '(4h/sec)',
-                '(12h/sec)',
-                '(1D bar/sec)'
-            ];
+            const speedRates = new Array(speedValues.length).fill('');
             
             // Custom smooth slider elements
             const sliderTrack = document.getElementById('speedSliderCustom');
