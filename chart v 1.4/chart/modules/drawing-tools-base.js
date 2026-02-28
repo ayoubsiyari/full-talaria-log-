@@ -643,7 +643,8 @@ class BaseDrawing {
         });
         
         // Set canvas-based zones (drawn behind labels in drawAxes)
-        if (this.chart.setAxisHighlightZones && canvasZones.length > 0) {
+        // Keep these shaded zones ONLY for selected drawings.
+        if (this.selected && this.chart.setAxisHighlightZones && canvasZones.length > 0) {
             this.chart.setAxisHighlightZones(canvasZones);
             // Trigger re-render to show the zones
             if (this.chart.scheduleRender) {
