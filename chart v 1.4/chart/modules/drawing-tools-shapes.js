@@ -1217,10 +1217,26 @@ class ArrowTool extends BaseDrawing {
         
         if (infoLines.length === 0) return;
         
-        // Calculate box dimensions
-        const padding = 8;
-        const lineHeight = 16;
-        const boxWidth = 150;
+        // Calculate box dimensions first to know offset needed
+        const padding = 4;
+        const lineHeight = 11;
+        const fontSize = 9;
+        const fontFamily = 'system-ui, -apple-system, sans-serif';
+
+        // Measure actual max text width using a temporary SVG text element
+        const tempG = this.group.append('g').style('visibility', 'hidden');
+        let maxTextWidth = 0;
+        infoLines.forEach(line => {
+            const t = tempG.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .text(line);
+            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : (line.length * fontSize * 0.6);
+            if (w > maxTextWidth) maxTextWidth = w;
+        });
+        tempG.remove();
+
+        const boxWidth = maxTextWidth + padding * 2;
         const boxHeight = infoLines.length * lineHeight + padding * 2;
         
         // Position info box perpendicular to the line
@@ -1236,8 +1252,8 @@ class ArrowTool extends BaseDrawing {
         const perpX = -dy / lineLength;
         const perpY = dx / lineLength;
         
-        // Offset distance
-        const offsetDistance = boxHeight / 2 + 40;
+        // Offset distance: half box height + margin to ensure clear separation from line
+        const offsetDistance = boxHeight / 2 + 12;
         const sign = perpY <= 0 ? 1 : -1;
         
         const offsetX = midX + perpX * offsetDistance * sign;
@@ -1248,7 +1264,7 @@ class ArrowTool extends BaseDrawing {
             .attr('class', 'arrow-info')
             .attr('transform', `translate(${offsetX}, ${offsetY})`);
         
-        // Draw background rectangle
+        // Draw background rectangle sized to content
         infoGroup.append('rect')
             .attr('x', -boxWidth / 2)
             .attr('y', 0)
@@ -1263,12 +1279,11 @@ class ArrowTool extends BaseDrawing {
         infoLines.forEach((line, i) => {
             infoGroup.append('text')
                 .attr('x', 0)
-                .attr('y', padding + i * lineHeight + 12)
+                .attr('y', padding + (i + 0.7) * lineHeight)
                 .attr('text-anchor', 'middle')
                 .attr('fill', '#d1d4dc')
-                .attr('font-size', '12px')
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
-                .style('pointer-events', 'none')
+                .attr('font-size', `${fontSize}px`)
+                .attr('font-family', fontFamily)
                 .text(line);
         });
     }
