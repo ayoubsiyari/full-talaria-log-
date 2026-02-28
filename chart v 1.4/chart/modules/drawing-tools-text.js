@@ -1851,11 +1851,12 @@ class PinTool extends BaseDrawing {
         `;
 
         const pinMarker = this.group.append('path')
+            .attr('class', 'pin-body-hit')
             .attr('d', pinPath)
             .attr('fill', this.style.fill)
             .attr('stroke', 'none')
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
 
         this.group.append('path')
             .attr('class', 'shape-border-hit')

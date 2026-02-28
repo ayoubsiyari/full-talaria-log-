@@ -2166,8 +2166,8 @@ class DrawingToolsManager {
         drawing.group.selectAll('.shape-border-hit:not(.text-body-hit)')
             .style('pointer-events', 'stroke');
 
-        // Text body hit areas should stay fully interactive (middle + border drag zone)
-        drawing.group.selectAll('.text-body-hit')
+        // Text/pin body hit areas should stay fully interactive (middle + border drag zone)
+        drawing.group.selectAll('.text-body-hit, .pin-body-hit')
             .style('pointer-events', 'all');
 
         // Arrow tools: allow fill hit areas to be interactive
@@ -2175,7 +2175,7 @@ class DrawingToolsManager {
             .style('pointer-events', 'all');
         
         // Paths that are NOT fills should be clickable on stroke
-        drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
+        drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit):not(.pin-body-hit), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
             .style('pointer-events', 'stroke');
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
