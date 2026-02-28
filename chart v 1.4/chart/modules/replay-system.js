@@ -1195,7 +1195,7 @@ class ReplaySystem {
         
         // Detect light mode
         const isLightMode = document.body.classList.contains('light-mode');
-        const overlayColor = isLightMode ? 'rgba(156, 163, 175, 0.18)' : 'rgba(203, 209, 218, 0.22)';
+        const overlayColor = isLightMode ? 'rgba(214, 220, 230, 0.24)' : 'rgba(194, 202, 214, 0.14)';
         
         this.pickModeOverlay = document.createElement('div');
         this.pickModeOverlay.id = 'replayPickOverlay';
