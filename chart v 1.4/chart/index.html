@@ -13752,15 +13752,6 @@
             color: #ffffff;
         }
 
-        .object-tree-action-btn.object-tree-legacy-jump-btn {
-            color: #4a90d9;
-        }
-
-        .object-tree-action-btn.object-tree-legacy-jump-btn:hover {
-            background: rgba(47, 114, 255, 0.2);
-            color: #2962ff;
-        }
-
         .object-tree-action-btn.delete:hover {
             background: rgba(242, 54, 69, 0.2);
             color: #f23645;
@@ -18890,68 +18881,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Right Sidebar Panel - Object Tree -->
-        <div class="right-sidebar-panel" id="objectTreePanel">
-            <div class="object-tree-header">
-                <div class="object-tree-tabs">
-                    <button class="object-tree-tab active" data-tab="objects">Object Tree</button>
-                    <button class="object-tree-tab" data-tab="data">Data Window</button>
-                    <button class="object-tree-tab" data-tab="journal">Trade Journal</button>
-                </div>
-                <button class="object-tree-close" id="closeObjectTree" title="Close">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                </button>
-            </div>
-            
-            <!-- Object Tree Toolbar (only for objects tab) -->
-            <div class="object-tree-toolbar" id="objectTreeToolbar">
-                <button class="object-tree-btn" id="showAllObjects" title="Show All">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                </button>
-                <button class="object-tree-btn" id="hideAllObjects" title="Hide All">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                        <line x1="1" y1="1" x2="23" y2="23"></line>
-                    </svg>
-                </button>
-                <button class="object-tree-btn" id="deleteAllObjects" title="Delete All">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                </button>
-            </div>
-            
-            <!-- Content Panels -->
-            <div class="object-tree-content">
-                <!-- Object Tree Tab Content -->
-                <div class="object-tree-list" id="objectTreeList" data-tab-content="objects" style="display: block;">
-                    <!-- Objects will be listed here -->
-                </div>
-                
-                <!-- Data Window Tab Content (already exists elsewhere, placeholder) -->
-                <div class="object-tree-list" id="dataWindowContent" data-tab-content="data" style="display: none;">
-                    <div style="padding: 20px; text-align: center; color: #64748b;">
-                        Data Window
-                    </div>
-                </div>
-                
-                <!-- Trade Journal Tab Content -->
-                <div class="object-tree-list" id="journalTabContent" data-tab-content="journal" style="display: none; overflow-y: auto; max-height: 100%;">
-                    <div id="tradeHistoryList" style="padding: 0;"></div>
-                    <div id="noTradesMsg" style="display: block; padding: 40px 20px; text-align: center; color: #64748b; font-size: 13px;">
-                        No closed trades yet. Trades will appear here once you close positions.
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Custom Timeframe Modal -->
@@ -19057,151 +18986,6 @@
     <script src="modules/drawing-tools-manager.js?v=20260228_TF_PIN_V13"></script>
     <script src="modules/favorites-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/keyboard-shortcuts.js?v=20260228_TF_PIN_V12"></script>
-    <script src="modules/object-tree.js?v=20260228_TF_PIN_V15"></script>
-    <script>
-        (function() {
-            const JUMP_BTN_SELECTOR = '.object-tree-jump-btn, .object-tree-legacy-jump-btn';
-            const JUMP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"></circle>
-                <line x1="12" y1="2" x2="12" y2="6"></line>
-                <line x1="12" y1="18" x2="12" y2="22"></line>
-                <line x1="2" y1="12" x2="6" y2="12"></line>
-                <line x1="18" y1="12" x2="22" y2="12"></line>
-            </svg>`;
-
-            function jumpToDrawingFallback(manager, drawing) {
-                if (!manager || !drawing) return;
-
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(drawing);
-                }
-
-                const chart = manager.drawingManager ? manager.drawingManager.chart : null;
-                const points = Array.isArray(drawing.points) ? drawing.points : null;
-                if (!chart || !points || points.length === 0) {
-                    return;
-                }
-
-                const validPoints = points.filter(point =>
-                    point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))
-                );
-                if (validPoints.length === 0) {
-                    return;
-                }
-
-                const avgIndex = validPoints.reduce((sum, point) => sum + Number(point.x), 0) / validPoints.length;
-                const avgPrice = validPoints.reduce((sum, point) => sum + Number(point.y), 0) / validPoints.length;
-                if (!Number.isFinite(avgIndex)) {
-                    return;
-                }
-
-                const candleSpacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : chart.candleWidth;
-                const margin = chart.margin || { l: 0, r: 0 };
-                const plotWidth = Number(chart.w) - Number(margin.l || 0) - Number(margin.r || 0);
-                if (!Number.isFinite(candleSpacing) || candleSpacing <= 0 || !Number.isFinite(plotWidth) || plotWidth <= 0) {
-                    return;
-                }
-
-                chart.offsetX = (plotWidth / 2) - (Math.round(avgIndex) * candleSpacing);
-                if (typeof chart.constrainOffset === 'function') {
-                    chart.constrainOffset();
-                }
-
-                if (chart.autoScale === false && Number.isFinite(avgPrice) && typeof chart.centerOnPrice === 'function') {
-                    chart.centerOnPrice(avgPrice);
-                    return;
-                }
-
-                if (typeof chart.scheduleRender === 'function') {
-                    chart.scheduleRender();
-                }
-            }
-
-            function injectLegacyJumpButtons(manager) {
-                if (!manager || !manager.listContainer || !manager.drawingManager) return;
-
-                const rows = manager.listContainer.querySelectorAll('.object-tree-item');
-                if (!rows.length) return;
-
-                const drawings = Array.isArray(manager.drawingManager.drawings) ? manager.drawingManager.drawings : [];
-
-                rows.forEach((row) => {
-                    if (row.querySelector(JUMP_BTN_SELECTOR)) {
-                        return;
-                    }
-
-                    const actions = row.querySelector('.object-tree-actions');
-                    if (!actions) {
-                        return;
-                    }
-
-                    const drawingId = row.dataset ? row.dataset.drawingId : null;
-                    const drawing = drawings.find(d => d && String(d.id) === String(drawingId));
-                    if (!drawing) {
-                        return;
-                    }
-
-                    const jumpBtn = document.createElement('button');
-                    jumpBtn.className = 'object-tree-action-btn object-tree-legacy-jump-btn';
-                    jumpBtn.title = 'Jump to shape';
-                    jumpBtn.setAttribute('aria-label', 'Jump to shape');
-                    jumpBtn.innerHTML = JUMP_ICON;
-                    jumpBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        if (typeof manager.jumpToDrawing === 'function') {
-                            manager.jumpToDrawing(drawing);
-                            return;
-                        }
-                        jumpToDrawingFallback(manager, drawing);
-                    });
-
-                    actions.insertBefore(jumpBtn, actions.firstChild);
-                });
-            }
-
-            function patchObjectTreeRefresh() {
-                if (typeof ObjectTreeManager === 'undefined') {
-                    return false;
-                }
-
-                const proto = ObjectTreeManager.prototype;
-                if (proto.__legacyJumpRefreshPatched) {
-                    return true;
-                }
-
-                const originalRefresh = proto.refresh;
-                if (typeof originalRefresh === 'function') {
-                    proto.refresh = function(...args) {
-                        const result = originalRefresh.apply(this, args);
-                        try {
-                            injectLegacyJumpButtons(this);
-                        } catch (error) {
-                            console.warn('Object Tree jump fallback injection failed:', error);
-                        }
-                        return result;
-                    };
-                }
-
-                proto.__legacyJumpRefreshPatched = true;
-                return true;
-            }
-
-            function runAfterBoot() {
-                const chart = window.chart || window.mainChart;
-                const manager = chart ? chart.objectTreeManager : null;
-                injectLegacyJumpButtons(manager);
-            }
-
-            if (!patchObjectTreeRefresh()) {
-                window.addEventListener('load', () => {
-                    patchObjectTreeRefresh();
-                    setTimeout(runAfterBoot, 700);
-                });
-            } else {
-                window.addEventListener('load', () => setTimeout(runAfterBoot, 700));
-            }
-        })();
-    </script>
     <script src="modules/panel-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/timeframe-favorites.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/propfirm-tracker.js?v=20260228_TF_PIN_V12"></script>
@@ -19403,55 +19187,6 @@
     <!-- Right Sidebar Panel Handler -->
     <script>
         window.addEventListener('load', () => {
-            const btn = document.getElementById('objectTreeIconBtn');
-            const panel = document.getElementById('objectTreePanel');
-            
-            if (btn && panel) {
-                btn.addEventListener('click', function() {
-                    panel.classList.toggle('visible');
-                });
-            }
-            
-            // Close button
-            const closeBtn = document.getElementById('closeObjectTree');
-            if (closeBtn && panel) {
-                closeBtn.addEventListener('click', function() {
-                    panel.classList.remove('visible');
-                });
-            }
-            
-            // Tab switching for Object Tree panel
-            const tabs = document.querySelectorAll('.object-tree-tab');
-            const toolbar = document.getElementById('objectTreeToolbar');
-            tabs.forEach(tab => {
-                tab.addEventListener('click', function() {
-                    const targetTab = this.getAttribute('data-tab');
-                    
-                    // Update active tab
-                    tabs.forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Show/hide content panels
-                    document.querySelectorAll('[data-tab-content]').forEach(content => {
-                        if (content.getAttribute('data-tab-content') === targetTab) {
-                            content.style.display = 'block';
-                        } else {
-                            content.style.display = 'none';
-                        }
-                    });
-                    
-                    // Show toolbar only for objects tab
-                    if (toolbar) {
-                        toolbar.style.display = targetTab === 'objects' ? 'flex' : 'none';
-                    }
-                    
-                    // Update journal tab when switched to
-                    if (targetTab === 'journal' && window.chart && window.chart.orderManager) {
-                        window.chart.orderManager.updateJournalTab();
-                    }
-                });
-            });
-
             // Challenge Progress Toolbar Dropdown
             const challengeToolbarBtn = document.getElementById('challengeToolbarBtn');
             const challengeDropdown = document.getElementById('challengeDropdown');
@@ -25935,7 +25670,7 @@ P['objecttree']={
                     '<div style="width:8px;height:8px;border-radius:50%;background:'+(d.color||d.stroke||'#2962ff')+';flex-shrink:0;"></div>'+
                     '<span style="flex:1;font-size:13px;color:'+(vis?'#e0e3ea':'#555a6e')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+label+'</span>'+
                     '<button class="ot-jump-btn" data-idx="'+i+'" title="Jump to shape" style="background:none;border:none;color:#4a90d9;cursor:pointer;padding:2px;display:flex;align-items:center;">'+
-                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>'+
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c2.5-5 6.5-8 13-8"/><path d="M13.5 6H17v3.5"/></svg>'+
                     '</button>'+
                     '<button class="ot-vis-btn" data-idx="'+i+'" title="'+(vis?'Hide':'Show')+'" style="background:none;border:none;color:'+(vis?'#787b86':'#444')+'  ;cursor:pointer;padding:2px;display:flex;align-items:center;">'+
                         (vis?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>')+
