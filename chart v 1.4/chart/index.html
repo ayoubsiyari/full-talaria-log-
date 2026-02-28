@@ -25637,30 +25637,70 @@ P['watchlist']={
 
 /* ── Panel Layouts ── */
 P['panellayout']={
-    _options:[
-        ['1','Single'],['2v','2 Vertical'],['2h','2 Horizontal'],
-        ['3v','3 Vertical'],['3h','3 Horizontal'],['3l','Left + 2'],
-        ['4','2x2'],['4v','4 Vertical'],['4h','4 Horizontal'],['4t','Top + 3'],['4b','3 + Bottom'],['4r','Left 3 + Right'],
-        ['5a','2 + 3'],['5b','3 + 2'],['5c','Left 2 + Right 3'],['5v','5 Vertical'],['5h','5 Horizontal'],
-        ['6','2x3'],['6b','3x2'],['6v','6 Vertical'],['6h','6 Horizontal'],
-        ['7v','7 Vertical'],['7a','3 / 3 / 1'],
-        ['8','2x4'],['8b','4x2'],['8v','8 Vertical'],['8h','8 Horizontal']
-    ],
+    _options:['1','2v','2h','3v','3h','3l','4','4v','4h','4t','4b','4r','5a','5b','5c','5v','5h','6','6b','6v','6h','7v','7a','8','8b','8v','8h'],
+    _labels:{
+        '1':'Single panel','2v':'Two vertical','2h':'Two horizontal','3v':'Three vertical','3h':'Three horizontal','3l':'Left + two right',
+        '4':'2x2 grid','4v':'Four vertical','4h':'Four horizontal','4t':'Top + three bottom','4b':'Three top + bottom','4r':'Three left + right',
+        '5a':'Top 2 + bottom 3','5b':'Top 3 + bottom 2','5c':'Left 2 + right 3','5v':'Five vertical','5h':'Five horizontal',
+        '6':'2x3 grid','6b':'3x2 grid','6v':'Six vertical','6h':'Six horizontal','7v':'Seven vertical','7a':'3 / 3 / 1','8':'2x4 grid','8b':'4x2 grid','8v':'Eight vertical','8h':'Eight horizontal'
+    },
+    _iconLayouts:{
+        '1':[{l:0,t:0,w:100,h:100}],
+        '2v':[{l:0,t:0,w:50,h:100},{l:50,t:0,w:50,h:100}],
+        '2h':[{l:0,t:0,w:100,h:50},{l:0,t:50,w:100,h:50}],
+        '3v':[{l:0,t:0,w:33.33,h:100},{l:33.33,t:0,w:33.33,h:100},{l:66.66,t:0,w:33.34,h:100}],
+        '3h':[{l:0,t:0,w:100,h:33.33},{l:0,t:33.33,w:100,h:33.33},{l:0,t:66.66,w:100,h:33.34}],
+        '3l':[{l:0,t:0,w:50,h:100},{l:50,t:0,w:50,h:50},{l:50,t:50,w:50,h:50}],
+        '4':[{l:0,t:0,w:50,h:50},{l:50,t:0,w:50,h:50},{l:0,t:50,w:50,h:50},{l:50,t:50,w:50,h:50}],
+        '4v':[{l:0,t:0,w:25,h:100},{l:25,t:0,w:25,h:100},{l:50,t:0,w:25,h:100},{l:75,t:0,w:25,h:100}],
+        '4h':[{l:0,t:0,w:100,h:25},{l:0,t:25,w:100,h:25},{l:0,t:50,w:100,h:25},{l:0,t:75,w:100,h:25}],
+        '4t':[{l:0,t:0,w:100,h:50},{l:0,t:50,w:33.33,h:50},{l:33.33,t:50,w:33.33,h:50},{l:66.66,t:50,w:33.34,h:50}],
+        '4b':[{l:0,t:0,w:33.33,h:50},{l:33.33,t:0,w:33.33,h:50},{l:66.66,t:0,w:33.34,h:50},{l:0,t:50,w:100,h:50}],
+        '4r':[{l:0,t:0,w:50,h:33.33},{l:0,t:33.33,w:50,h:33.33},{l:0,t:66.66,w:50,h:33.34},{l:50,t:0,w:50,h:100}],
+        '5a':[{l:0,t:0,w:50,h:50},{l:50,t:0,w:50,h:50},{l:0,t:50,w:33.33,h:50},{l:33.33,t:50,w:33.33,h:50},{l:66.66,t:50,w:33.34,h:50}],
+        '5b':[{l:0,t:0,w:33.33,h:50},{l:33.33,t:0,w:33.33,h:50},{l:66.66,t:0,w:33.34,h:50},{l:0,t:50,w:50,h:50},{l:50,t:50,w:50,h:50}],
+        '5c':[{l:0,t:0,w:50,h:50},{l:0,t:50,w:50,h:50},{l:50,t:0,w:50,h:33.33},{l:50,t:33.33,w:50,h:33.33},{l:50,t:66.66,w:50,h:33.34}],
+        '5v':[{l:0,t:0,w:20,h:100},{l:20,t:0,w:20,h:100},{l:40,t:0,w:20,h:100},{l:60,t:0,w:20,h:100},{l:80,t:0,w:20,h:100}],
+        '5h':[{l:0,t:0,w:100,h:20},{l:0,t:20,w:100,h:20},{l:0,t:40,w:100,h:20},{l:0,t:60,w:100,h:20},{l:0,t:80,w:100,h:20}],
+        '6':[{l:0,t:0,w:33.33,h:50},{l:33.33,t:0,w:33.33,h:50},{l:66.66,t:0,w:33.34,h:50},{l:0,t:50,w:33.33,h:50},{l:33.33,t:50,w:33.33,h:50},{l:66.66,t:50,w:33.34,h:50}],
+        '6b':[{l:0,t:0,w:50,h:33.33},{l:50,t:0,w:50,h:33.33},{l:0,t:33.33,w:50,h:33.33},{l:50,t:33.33,w:50,h:33.33},{l:0,t:66.66,w:50,h:33.34},{l:50,t:66.66,w:50,h:33.34}],
+        '6v':[{l:0,t:0,w:16.66,h:100},{l:16.66,t:0,w:16.66,h:100},{l:33.32,t:0,w:16.66,h:100},{l:49.98,t:0,w:16.66,h:100},{l:66.64,t:0,w:16.66,h:100},{l:83.30,t:0,w:16.70,h:100}],
+        '6h':[{l:0,t:0,w:100,h:16.66},{l:0,t:16.66,w:100,h:16.66},{l:0,t:33.32,w:100,h:16.66},{l:0,t:49.98,w:100,h:16.66},{l:0,t:66.64,w:100,h:16.66},{l:0,t:83.30,w:100,h:16.70}],
+        '7v':[{l:0,t:0,w:14.28,h:100},{l:14.28,t:0,w:14.28,h:100},{l:28.56,t:0,w:14.28,h:100},{l:42.84,t:0,w:14.28,h:100},{l:57.12,t:0,w:14.28,h:100},{l:71.40,t:0,w:14.28,h:100},{l:85.68,t:0,w:14.32,h:100}],
+        '7a':[{l:0,t:0,w:33.33,h:33.33},{l:33.33,t:0,w:33.33,h:33.33},{l:66.66,t:0,w:33.34,h:33.33},{l:0,t:33.33,w:33.33,h:33.33},{l:33.33,t:33.33,w:33.33,h:33.33},{l:66.66,t:33.33,w:33.34,h:33.33},{l:0,t:66.66,w:100,h:33.34}],
+        '8':[{l:0,t:0,w:25,h:50},{l:25,t:0,w:25,h:50},{l:50,t:0,w:25,h:50},{l:75,t:0,w:25,h:50},{l:0,t:50,w:25,h:50},{l:25,t:50,w:25,h:50},{l:50,t:50,w:25,h:50},{l:75,t:50,w:25,h:50}],
+        '8b':[{l:0,t:0,w:50,h:25},{l:50,t:0,w:50,h:25},{l:0,t:25,w:50,h:25},{l:50,t:25,w:50,h:25},{l:0,t:50,w:50,h:25},{l:50,t:50,w:50,h:25},{l:0,t:75,w:50,h:25},{l:50,t:75,w:50,h:25}],
+        '8v':[{l:0,t:0,w:12.5,h:100},{l:12.5,t:0,w:12.5,h:100},{l:25,t:0,w:12.5,h:100},{l:37.5,t:0,w:12.5,h:100},{l:50,t:0,w:12.5,h:100},{l:62.5,t:0,w:12.5,h:100},{l:75,t:0,w:12.5,h:100},{l:87.5,t:0,w:12.5,h:100}],
+        '8h':[{l:0,t:0,w:100,h:12.5},{l:0,t:12.5,w:100,h:12.5},{l:0,t:25,w:100,h:12.5},{l:0,t:37.5,w:100,h:12.5},{l:0,t:50,w:100,h:12.5},{l:0,t:62.5,w:100,h:12.5},{l:0,t:75,w:100,h:12.5},{l:0,t:87.5,w:100,h:12.5}]
+    },
+    _iconSvg:function(layoutCode){
+        var cells=this._iconLayouts[layoutCode]||this._iconLayouts['1'];
+        var w=40,h=26,pad=1;
+        var rects=cells.map(function(c){
+            var x=pad+((c.l/100)*w);
+            var y=pad+((c.t/100)*h);
+            var rw=(c.w/100)*w;
+            var rh=(c.h/100)*h;
+            return '<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+rw.toFixed(2)+'" height="'+rh.toFixed(2)+'" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.2"/>';
+        }).join('');
+        return '<svg viewBox="0 0 42 28" width="40" height="26" fill="none" aria-hidden="true">'+rects+'</svg>';
+    },
     build:function(){
         var pm=window.panelManager;
         var current=(pm&&typeof pm.getCurrentLayout==='function'&&pm.getCurrentLayout())||'1';
         var sync=(pm&&pm.syncSettings)||{};
-        var rows=this._options.map(function(opt){
-            var code=opt[0],label=opt[1],active=(code===current);
-            return '<button type="button" class="pl-layout-btn'+(active?' active':'')+'" data-layout="'+code+'" style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:10px;border:1px solid '+(active?'#2962ff':'rgba(255,255,255,0.08)')+';background:'+(active?'rgba(41,98,255,0.16)':'rgba(255,255,255,0.02)')+';border-radius:8px;color:#e0e3ea;cursor:pointer;">'+
-                '<span style="font-size:12px;font-weight:700;line-height:1;">'+code.toUpperCase()+'</span>'+
-                '<span style="font-size:11px;color:#787b86;line-height:1.2;">'+label+'</span>'+
+        var self=this;
+        var rows=this._options.map(function(code){
+            var active=(code===current);
+            var label=self._labels[code]||code.toUpperCase();
+            return '<button type="button" class="pl-layout-btn'+(active?' active':'')+'" data-layout="'+code+'" title="'+label+'" style="display:flex;align-items:center;justify-content:center;padding:8px 6px;height:48px;border:1px solid '+(active?'#2962ff':'rgba(255,255,255,0.08)')+';background:'+(active?'rgba(41,98,255,0.16)':'rgba(255,255,255,0.02)')+';border-radius:8px;color:'+(active?'#e8f0ff':'#7f8aa3')+';cursor:pointer;">'+
+                self._iconSvg(code)+
             '</button>';
         }).join('');
         function chk(v){ return v?' checked':''; }
         return '<div class="sp-embedded" style="padding:20px 24px;min-height:100%;box-sizing:border-box;">'+
             '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Panel layouts</div>'+
-            '<div id="pl_layout_grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">'+rows+'</div>'+
+            '<div id="pl_layout_grid" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;">'+rows+'</div>'+
             '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Sync in layout</div>'+
             '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;display:flex;flex-direction:column;gap:2px;">'+
                 '<label style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:13px;color:#e0e3ea;"><span>Symbol</span><input type="checkbox" id="symbol-sync-toggle"'+chk(!!sync.symbol)+'></label>'+
@@ -25681,10 +25721,12 @@ P['panellayout']={
                 b.classList.remove('active');
                 b.style.borderColor='rgba(255,255,255,0.08)';
                 b.style.background='rgba(255,255,255,0.02)';
+                b.style.color='#7f8aa3';
             });
             btn.classList.add('active');
             btn.style.borderColor='#2962ff';
             btn.style.background='rgba(41,98,255,0.16)';
+            btn.style.color='#e8f0ff';
         };
         ctx.querySelectorAll('.pl-layout-btn').forEach(function(btn){
             btn.addEventListener('click',function(){
