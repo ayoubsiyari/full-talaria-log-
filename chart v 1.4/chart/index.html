@@ -24769,6 +24769,14 @@ function showIndicatorsMenu() {
                 });
                 
                 if (!isOpen) {
+                    if (window.timeframeFavorites && typeof window.timeframeFavorites._closeTfFlyout === 'function') {
+                        window.timeframeFavorites._closeTfFlyout();
+                    }
+                    const timeframeDropdown = document.getElementById('timeframeDropdown');
+                    const timeframeDropdownMenu = document.getElementById('timeframeDropdownMenu');
+                    if (timeframeDropdownMenu) timeframeDropdownMenu.style.display = 'none';
+                    if (timeframeDropdown) timeframeDropdown.classList.remove('open');
+
                     const rect = (chartTypeArrow || chartTypeBtn).getBoundingClientRect();
                     
                     if (chartTypeDropdown.parentElement !== document.body) {

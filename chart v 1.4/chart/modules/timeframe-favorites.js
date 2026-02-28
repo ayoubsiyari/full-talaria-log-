@@ -216,7 +216,7 @@ class TimeframeFavorites {
         }
 
         // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
+        document.addEventListener('pointerdown', (e) => {
             const clickedDropdown = dropdown && dropdown.contains(e.target);
             const clickedMenu = menu.contains(e.target);
             const clickedTimeframeContainer = e.target.closest('.sidebar-current-timeframe-container');
@@ -568,6 +568,11 @@ class TimeframeFavorites {
         // Remove existing flyout if any
         this._closeTfFlyout();
 
+        // Keep only one menu open at a time: close toolbar tool dropdowns
+        document.querySelectorAll('.tool-dropdown.show').forEach(dd => dd.classList.remove('show'));
+        const chartTypeArrow = document.getElementById('chartTypeDropdownArrow');
+        if (chartTypeArrow) chartTypeArrow.classList.remove('dropdown-open');
+
         const TF_CATEGORIES = [
             {
                 label: 'Minutes',
@@ -740,7 +745,7 @@ class TimeframeFavorites {
                 this._closeTfFlyout();
             }
         };
-        setTimeout(() => document.addEventListener('click', this._tfFlyoutOutsideHandler, true), 0);
+        setTimeout(() => document.addEventListener('pointerdown', this._tfFlyoutOutsideHandler, true), 0);
     }
 
     _closeTfFlyout() {
@@ -754,7 +759,7 @@ class TimeframeFavorites {
         if (sidebarArrow) sidebarArrow.classList.remove('open');
 
         if (this._tfFlyoutOutsideHandler) {
-            document.removeEventListener('click', this._tfFlyoutOutsideHandler, true);
+            document.removeEventListener('pointerdown', this._tfFlyoutOutsideHandler, true);
             this._tfFlyoutOutsideHandler = null;
         }
     }
