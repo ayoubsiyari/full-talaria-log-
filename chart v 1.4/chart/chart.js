@@ -7867,6 +7867,8 @@ class Chart {
         if (!this.currentFileId) return;
         if (!this._serverCursors) return;
 
+        const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
+
         const session = this.backtestingSession || {};
         const sessionStartTs = session.startDate ? new Date(session.startDate).getTime() : null;
         const sessionEndTs = session.endDate ? new Date(session.endDate).getTime() : null;
@@ -7893,25 +7895,36 @@ class Chart {
             }
         }
         
-        // Debounce: don't fire again within 500ms of last load completing
+        // Debounce: replay needs tighter turnaround than manual panning.
+        const debounceMs = isReplay ? 80 : 500;
         const now = Date.now();
-        if (this._lastPanLoadTime && now - this._lastPanLoadTime < 500) return;
+        if (this._lastPanLoadTime && now - this._lastPanLoadTime < debounceMs) return;
         
         this._panLoading = true;
-        
-        const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
+
         const replayRawTf = isReplay ? (this.replaySystem.rawTimeframe || '1m') : null;
         const tf = replayRawTf || this.currentTimeframe || '1m';
         const cursor = direction === 'backward' 
             ? this._serverCursors.firstTs 
             : this._serverCursors.lastTs;
+
+        // Replay can consume candles much faster than normal panning.
+        // Use larger chunks at higher replay speeds to avoid starvation pauses.
+        let panLimit = 5000;
+        if (isReplay) {
+            const replaySpeed = Math.max(1, Number(this.replaySystem?.speed) || 1);
+            if (replaySpeed >= 3600) panLimit = 30000;
+            else if (replaySpeed >= 600) panLimit = 15000;
+            else if (replaySpeed >= 120) panLimit = 10000;
+        }
+        this._panLoadLimit = panLimit;
         
         if (!cursor) { this._panLoading = false; return; }
         
-        // Load 5000 candles per pan for faster deep scrolling
+        // Load chunk sized to mode/speed (larger during replay).
         const params = new URLSearchParams({
             timeframe: tf,
-            limit: '5000',
+            limit: String(panLimit),
             cursor: cursor,
             direction: direction
         });
@@ -8057,8 +8070,12 @@ class Chart {
                         const newIdx = merged.findIndex(c => c.t >= replayTs);
                         if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
                     }
-                    // Let replay system re-slice for the current position
-                    this.replaySystem.updateChartData(false);
+
+                    // Avoid expensive re-slice/re-resample in the middle of active playback.
+                    // Playback loop already redraws continuously and will pick up merged data.
+                    if (!this.replaySystem.isPlaying) {
+                        this.replaySystem.updateChartData(false);
+                    }
                 } else {
                     // Normal mode: update rawData directly
                     if (direction === 'backward') {
@@ -8109,8 +8126,11 @@ class Chart {
                     }).catch(() => {});
                 }
                 
-                if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
-                this.scheduleRender();
+                const replayPlaying = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
+                if (!replayPlaying) {
+                    if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
+                    this.scheduleRender();
+                }
                 
                 console.log(`📦 Pan ${direction}: +${uniqueNew.length} candles (master: ${isReplay ? this.replaySystem.fullRawData.length : this.rawData.length})`);
             })
