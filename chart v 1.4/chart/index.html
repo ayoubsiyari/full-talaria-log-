@@ -8642,14 +8642,14 @@
 
         .nav-badge-icon {
             position: relative;
-            width: 22px;
-            height: 22px;
+            width: 24px;
+            height: 24px;
             display: flex;
             align-items: center;
             justify-content: center;
             pointer-events: none;
             border-radius: 50%;
-            background: rgba(74, 222, 128, 0.15);
+            background: rgba(74, 222, 128, 0.14);
         }
 
         .nav-badge-letters {
@@ -8659,34 +8659,40 @@
             z-index: 2;
         }
 
-        .nav-badge-circle {
+        .nav-badge-radio {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: 1;
-            stroke-width: 1.5;
+            stroke-width: 1;
+        }
+
+        /* LB state (back navigation enabled) should be red */
+        .nav-integrity-badge.enabled .nav-badge-icon {
+            background: rgba(248, 113, 113, 0.14);
         }
 
         .nav-integrity-badge.enabled .nav-badge-letters {
-            color: #4ade80;
+            color: #f87171;
         }
 
-        .nav-integrity-badge.enabled .nav-badge-circle {
-            stroke: transparent;
+        .nav-integrity-badge.enabled .nav-badge-radio {
+            color: #f87171;
         }
 
-        .nav-integrity-badge.enabled .nav-badge-circle line {
-            display: none;
+        /* BN state (back navigation disabled) should be green */
+        .nav-integrity-badge.disabled .nav-badge-icon {
+            background: rgba(74, 222, 128, 0.16);
         }
 
         .nav-integrity-badge.disabled .nav-badge-letters {
-            color: #fca5a5;
+            color: #4ade80;
         }
 
-        .nav-integrity-badge.disabled .nav-badge-circle {
-            stroke: #fca5a5;
+        .nav-integrity-badge.disabled .nav-badge-radio {
+            color: #4ade80;
         }
 
         /* Badge Tooltip */
@@ -8734,11 +8740,11 @@
         }
 
         .nav-badge-tooltip.enabled-tip strong {
-            color: #4ade80;
+            color: #f87171;
         }
 
         .nav-badge-tooltip.disabled-tip strong {
-            color: #fca5a5;
+            color: #4ade80;
         }
 
         /* Session Info Panel */
@@ -18590,11 +18596,14 @@
                         <!-- Navigation Integrity Badge -->
                             <div id="navIntegrityBadge" class="nav-integrity-badge" style="display: none;" onclick="event.stopPropagation(); this.classList.toggle('show-tooltip');">
                                 <div class="nav-badge-icon">
-                                    <span class="nav-badge-letters">BN</span>
-                                    <svg class="nav-badge-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <line x1="4" y1="4" x2="20" y2="20"></line>
+                                    <svg class="nav-badge-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M16.247 7.761a6 6 0 0 1 0 8.478"></path>
+                                        <path d="M19.075 4.933a10 10 0 0 1 0 14.134"></path>
+                                        <path d="M4.925 19.067a10 10 0 0 1 0-14.134"></path>
+                                        <path d="M7.753 16.239a6 6 0 0 1 0-8.478"></path>
+                                        <circle cx="12" cy="12" r="2"></circle>
                                     </svg>
+                                    <span class="nav-badge-letters">BN</span>
                                 </div>
                                 <div class="nav-badge-tooltip" id="navBadgeTooltip">
                                     <strong>Back Navigation Disabled</strong><br>
