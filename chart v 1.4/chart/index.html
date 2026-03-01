@@ -26520,6 +26520,27 @@ function _syncSpBottom() {
     panel.style.bottom = b + 'px';
 }
 
+function _spResizeChart(settleDelayMs) {
+    var c = ch();
+    if (!c || !c.resize) return;
+
+    requestAnimationFrame(function() {
+        var now = ch();
+        if (!now || !now.resize) return;
+        now.resize();
+        if (now.scheduleRender) now.scheduleRender();
+    });
+
+    if (settleDelayMs > 0) {
+        setTimeout(function() {
+            var later = ch();
+            if (!later || !later.resize) return;
+            later.resize();
+            if (later.scheduleRender) later.scheduleRender();
+        }, settleDelayMs);
+    }
+}
+
 function openPanel(section) {
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
@@ -26537,8 +26558,7 @@ function openPanel(section) {
     var w = document.getElementById('chartWrapper');
     if (w) w.classList.add('settings-open');
     _spBottomInterval = setInterval(_syncSpBottom, 200);
-    var c = ch();
-    if (c && c.resize) setTimeout(function() { c.resize(); if (c.scheduleRender) c.scheduleRender(); }, _spAnimMs + 10);
+    _spResizeChart(_spAnimMs + 24);
 }
 
 window.closePanel = function() {
@@ -26550,13 +26570,19 @@ window.closePanel = function() {
     if (sb) sb.style.display = '';
     if (_spBottomInterval) { clearInterval(_spBottomInterval); _spBottomInterval = null; }
     var w = document.getElementById('chartWrapper');
-    if (_spCloseAnimTimer) clearTimeout(_spCloseAnimTimer);
-    _spCloseAnimTimer = setTimeout(function() {
-        document.body.classList.remove('settings-open');
-        if (w) w.classList.remove('settings-open');
+
+    if (_spCloseAnimTimer) {
+        clearTimeout(_spCloseAnimTimer);
         _spCloseAnimTimer = null;
-        var c = ch();
-        if (c && c.resize) setTimeout(function() { c.resize(); if (c.scheduleRender) c.scheduleRender(); }, 16);
+    }
+
+    // Remove layout classes immediately so chart and panel animate together.
+    document.body.classList.remove('settings-open');
+    if (w) w.classList.remove('settings-open');
+    _spResizeChart(_spAnimMs + 24);
+
+    _spCloseAnimTimer = setTimeout(function() {
+        _spCloseAnimTimer = null;
     }, _spAnimMs);
 };
 
