@@ -19204,7 +19204,7 @@
          <script src="chart.js?v=20260301_TF_PIN_V20"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260301_TF_PIN_V17"></script>
+    <script src="modules/replay-system.js?v=20260301_TF_PIN_V18"></script>
     
     
     <!-- Order Management System -->
@@ -23885,6 +23885,10 @@ function showIndicatorsMenu() {
 
                     document.body.classList.toggle('speed-slider-clone-active', opacity !== '1');
                 }
+
+                function isReplayBackNavigationAllowed() {
+                    return !(window.backtestingSettings && window.backtestingSettings.allowBackNavigation === false);
+                }
                 
                 // Create close button for clone
                 function addCloseButton(clone) {
@@ -24280,9 +24284,27 @@ function showIndicatorsMenu() {
                     goBackClone.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="m9 6-6 6 6 6"/><path d="M3 12h14"/><path d="M21 19V5"/>
                     </svg>`;
-                    goBackClone.onmouseenter = () => { goBackClone.style.background = 'rgba(255,255,255,0.08)'; goBackClone.style.color = 'rgba(209, 212, 220, 0.9)'; };
-                    goBackClone.onmouseleave = () => { goBackClone.style.background = 'transparent'; goBackClone.style.color = 'rgba(209, 212, 220, 0.6)'; };
+                    const cloneBackNavigationAllowed = isReplayBackNavigationAllowed();
+                    if (!cloneBackNavigationAllowed) {
+                        goBackClone.disabled = true;
+                        goBackClone.style.opacity = '0.3';
+                        goBackClone.style.cursor = 'not-allowed';
+                        goBackClone.title = 'Back navigation disabled for integrity';
+                    }
+                    goBackClone.onmouseenter = () => {
+                        if (goBackClone.disabled) return;
+                        goBackClone.style.background = 'rgba(255,255,255,0.08)';
+                        goBackClone.style.color = 'rgba(209, 212, 220, 0.9)';
+                    };
+                    goBackClone.onmouseleave = () => {
+                        if (goBackClone.disabled) return;
+                        goBackClone.style.background = 'transparent';
+                        goBackClone.style.color = 'rgba(209, 212, 220, 0.6)';
+                    };
                     goBackClone.onclick = () => {
+                        if (goBackClone.disabled || !isReplayBackNavigationAllowed()) {
+                            return;
+                        }
                         const rs = window.chart && window.chart.replaySystem;
                         if (rs && typeof rs.goBackToPickPoint === 'function') {
                             rs.goBackToPickPoint();

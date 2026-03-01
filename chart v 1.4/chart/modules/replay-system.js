@@ -1141,7 +1141,16 @@ class ReplaySystem {
     /**
      * Go back to pick a new start point (within current visible data)
      */
+    isBackNavigationAllowed() {
+        return !((typeof window !== 'undefined' && window.backtestingSettings) && window.backtestingSettings.allowBackNavigation === false);
+    }
+
     goBackToPickPoint() {
+        if (!this.isBackNavigationAllowed()) {
+            console.warn('🚫 Go Back blocked: back navigation disabled by session policy');
+            return;
+        }
+
         console.log('🔙 Go Back mode activated');
         
         // Stop playback if playing
@@ -1319,6 +1328,11 @@ class ReplaySystem {
      */
     handleGoBackClick(e) {
         if (!this.isPickingPoint || !this.isGoingBack) return;
+
+        if (!this.isBackNavigationAllowed()) {
+            this.exitGoBackMode();
+            return;
+        }
         
         const wrapper = this.chartWrapper || document.getElementById('chartWrapper') || this.chart.canvas?.parentElement;
         if (!wrapper) return;
@@ -3211,6 +3225,11 @@ class ReplaySystem {
     stepBackward() {
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) {
             console.log('⏮️ Replay not active or no data');
+            return;
+        }
+
+        if (!this.isBackNavigationAllowed()) {
+            console.warn('🚫 Step backward blocked: back navigation disabled by session policy');
             return;
         }
         
