@@ -12807,19 +12807,21 @@ class Chart {
         };
         
         const isLightMode = document.body.classList.contains('light-mode');
-        const labelColor = isLightMode ? '#64748b' : '#94a3b8';
-        const valueColor = isLightMode ? '#1e293b' : '#f1f5f9';
-        const borderColor = isLightMode ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
+        const labelColor = isLightMode ? '#64748b' : '#9aa3b2';
+        const valueColor = isLightMode ? '#131722' : '#d1d4dc';
+        const borderColor = isLightMode ? 'rgba(15, 23, 42, 0.12)' : 'rgba(120, 131, 155, 0.28)';
+        const upColor = this.chartSettings.candleUpColor || '#089981';
+        const downColor = this.chartSettings.candleDownColor || '#f23645';
         
         const html = `
             <div style="font-weight: 600; font-size: 14px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid ${borderColor};">
                 ${dateStr} ${timeStr}
             </div>
             <div style="display: grid; grid-template-columns: 60px 1fr; gap: 6px 16px; font-size: 13px;">
-                <span style="color: ${labelColor};">Open:</span><span style="color: ${valueColor}; font-weight: 500;">$${formatPrice(candle.o)}</span>
-                <span style="color: ${labelColor};">High:</span><span style="color: #22c55e; font-weight: 500;">$${formatPrice(candle.h)}</span>
-                <span style="color: ${labelColor};">Low:</span><span style="color: #ef4444; font-weight: 500;">$${formatPrice(candle.l)}</span>
-                <span style="color: ${labelColor};">Close:</span><span style="color: ${candle.c >= candle.o ? '#22c55e' : '#ef4444'}; font-weight: 500;">$${formatPrice(candle.c)}</span>
+                <span style="color: ${labelColor};">Open:</span><span style="color: ${valueColor}; font-weight: 500;">${formatPrice(candle.o)}</span>
+                <span style="color: ${labelColor};">High:</span><span style="color: ${upColor}; font-weight: 500;">${formatPrice(candle.h)}</span>
+                <span style="color: ${labelColor};">Low:</span><span style="color: ${downColor}; font-weight: 500;">${formatPrice(candle.l)}</span>
+                <span style="color: ${labelColor};">Close:</span><span style="color: ${candle.c >= candle.o ? upColor : downColor}; font-weight: 500;">${formatPrice(candle.c)}</span>
                 <span style="color: ${labelColor};">Volume:</span><span style="color: ${valueColor}; font-weight: 500;">${formatVol(candle.v)}</span>
             </div>
         `;

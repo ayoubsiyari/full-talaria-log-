@@ -11828,30 +11828,28 @@
 
         /* Chart Tooltip - Dark Theme */
         .chart-tooltip {
-            background: rgba(17, 24, 39, 0.95);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: none;
-            border-left: 3px solid #3b82f6;
-            border-radius: 8px;
+            background: linear-gradient(145deg, rgba(5, 0, 40, 0.96) 0%, rgba(16, 28, 54, 0.96) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(63, 84, 124, 0.5);
+            border-radius: 12px;
             padding: 14px 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            box-shadow: 0 12px 30px rgba(3, 6, 20, 0.45);
             font-size: 13px;
-            color: #e2e8f0;
+            color: #d1d4dc;
             max-width: 320px;
             z-index: 10000;
         }
 
         /* Chart Tooltip - Light Theme */
         body.light-mode .chart-tooltip {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: none;
-            border-left: 3px solid #3b82f6;
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
-            color: #1e293b;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.97) 0%, rgba(245, 248, 252, 0.97) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(15, 23, 42, 0.14);
+            border-radius: 12px;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.15);
+            color: #131722;
         }
 
         /* Resize Handles - Blue Outline Style */
@@ -19220,7 +19218,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260228_TF_PIN_V12"></script>
     
-         <script src="chart.js?v=20260301_TF_PIN_V16"></script>
+         <script src="chart.js?v=20260301_TF_PIN_V17"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260228_TF_PIN_V16"></script>
