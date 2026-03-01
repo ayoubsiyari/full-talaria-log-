@@ -3,7 +3,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
-from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
+from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt, Subscription
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
@@ -15,6 +15,29 @@ BLOCK_DURATION_HOURS = 24  # Block for 24 hours
 FAILED_ATTEMPT_WINDOW_HOURS = 1  # Count attempts within 1 hour
 ALERT_THRESHOLD = 5  # Send alert after 5 failed attempts (before block)
 ADMIN_EMAIL = os.environ.get('ADMIN_ALERT_EMAIL', 'contact@talaria.services')
+
+
+def _has_active_or_grace_subscription(user_id):
+    now = datetime.utcnow()
+    active_statuses = ['active', 'trialing']
+    grace_statuses = ['past_due', 'cancelled', 'canceled', 'unpaid']
+
+    active_subscription = Subscription.query.filter(
+        Subscription.user_id == user_id,
+        Subscription.status.in_(active_statuses)
+    ).first()
+    if active_subscription:
+        return True
+
+    grace_threshold = now - timedelta(days=3)
+    grace_subscription = Subscription.query.filter(
+        Subscription.user_id == user_id,
+        Subscription.status.in_(grace_statuses),
+        Subscription.current_period_end.isnot(None),
+        Subscription.current_period_end >= grace_threshold
+    ).first()
+
+    return grace_subscription is not None
 
 
 def send_security_alert(subject, message, ip_address, event_type='attack_detected'):
@@ -207,13 +230,6 @@ def login_user():
         record_failed_login(client_ip, email)
         return jsonify({"error": "No account found with this email. Please check your email or register for a new account."}), 401
 
-    # Check if user has journal access
-    if not user.has_journal_access:
-        return jsonify({
-            "error": "You don't have access to the trading journal. Please contact support.",
-            "action": "no_access"
-        }), 403
-
     # Check if user is active
     if not user.is_active:
         return jsonify({"error": "Your account is disabled. Please contact support."}), 403
@@ -224,6 +240,18 @@ def login_user():
         # Record failed attempt
         record_failed_login(client_ip, email)
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
+
+    # Journal entitlement check (for UI + secure route gating)
+    has_subscription_access = _has_active_or_grace_subscription(user.id)
+    has_journal_access = bool(user.is_admin or user.has_journal_access or has_subscription_access)
+
+    # Auto-heal legacy flag if subscription is active/grace but access flag wasn't synced
+    if has_subscription_access and not user.has_journal_access:
+        user.has_journal_access = True
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
     
     # Successful login - clear failed attempts for this IP
     clear_failed_attempts(client_ip)
@@ -250,7 +278,8 @@ def login_user():
             "email": user.email,
             "email_verified": True,
             "is_admin": user.is_admin,
-            "has_active_profile": has_active_profile
+            "has_active_profile": has_active_profile,
+            "has_journal_access": has_journal_access
         }
     }), 200
 
@@ -287,7 +316,7 @@ def register_user():
         email=email,
         password=generate_password_hash(password),
         is_active=True,
-        has_journal_access=True
+        has_journal_access=False
     )
     
     db.session.add(new_user)
@@ -508,12 +537,17 @@ def validate_token():
     """
     try:
         user_id = get_jwt_identity()
-        claims = get_jwt()
         
         # Check if user still exists
         user = User.query.get(user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
+
+        has_journal_access = bool(
+            user.is_admin or
+            user.has_journal_access or
+            _has_active_or_grace_subscription(user.id)
+        )
             
         return jsonify({
             "valid": True,
@@ -521,7 +555,8 @@ def validate_token():
                 "id": user.id,
                 "email": user.email,
                 "is_admin": user.is_admin,
-                "email_verified": True
+                "email_verified": True,
+                "has_journal_access": has_journal_access
             }
         }), 200
     except Exception as e:
@@ -543,4 +578,11 @@ def check_email_verified():
     if not user:
         # Return same shape to prevent user enumeration
         return jsonify({"verified": False, "has_journal_access": False}), 200
-    return jsonify({"verified": True, "has_journal_access": user.has_journal_access}), 200
+
+    has_journal_access = bool(
+        user.is_admin or
+        user.has_journal_access or
+        _has_active_or_grace_subscription(user.id)
+    )
+
+    return jsonify({"verified": True, "has_journal_access": has_journal_access}), 200

@@ -13,6 +13,8 @@ import secrets
 import hashlib
 import base64
 import json
+import re
+import subprocess
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from google.oauth2.service_account import Credentials
@@ -179,6 +181,10 @@ Base = declarative_base()
 # Upload directory
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+REPO_ROOT = _APP_DIR.parent.parent
+DUKASCOPY_SCRIPT_PATH = REPO_ROOT / "download" / "fetch-data.js"
+DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
 
 # Database Model
 class CSVFile(Base):
@@ -590,6 +596,61 @@ def count_csv_rows(file_path: str) -> int:
             return len(f.readlines()) - 1  # Exclude header
     except:
         return 0
+
+def _dataset_file_public_dict(db_file: CSVFile) -> dict:
+    return {
+        "id": db_file.id,
+        "filename": db_file.original_name,
+        "rowCount": int(db_file.row_count or 0),
+        "uploadDate": db_file.upload_date.isoformat() if db_file.upload_date else None,
+    }
+
+def _store_dataset_file(file_path: Path, original_name: str, description: str | None = None):
+    row_count = count_csv_rows(file_path)
+    db = SessionLocal()
+    try:
+        db_file = CSVFile(
+            filename=file_path.name,
+            original_name=original_name,
+            row_count=row_count,
+            description=(description or f"Uploaded on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        )
+        db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
+
+        # Kick off background binary conversion for all timeframes
+        build_binary_for_file(db_file.id, file_path, original_name)
+
+        return {
+            "success": True,
+            "file": _dataset_file_public_dict(db_file)
+        }
+    except Exception as e:
+        db.rollback()
+        if file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+def _parse_iso_date(value: str, field_name: str) -> datetime:
+    raw = (value or "").strip()
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d")
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"{field_name} must use YYYY-MM-DD format")
+
+def _normalize_dukascopy_instrument(value: str) -> str:
+    instrument = (value or "").strip().lower()
+    if not instrument:
+        raise HTTPException(status_code=400, detail="instrument is required")
+    if not re.fullmatch(r"[a-z0-9]{3,20}", instrument):
+        raise HTTPException(status_code=400, detail="instrument must contain only letters/numbers (3-20 chars)")
+    return instrument
 
 def file_response_if_exists(path: str):
     p = Path(path)
@@ -1612,6 +1673,11 @@ class AdminDatasetSettingsIn(BaseModel):
     is_active: bool | None = None
     notes: str | None = None
 
+class AdminDukascopyFetchIn(BaseModel):
+    instrument: str
+    from_date: str
+    to_date: str
+
 class _AnonymousUser:
     """Dummy user object used when AUTH_ENABLED is False."""
     id = 0
@@ -2315,6 +2381,82 @@ async def admin_upload_dataset(request: Request, csvFile: UploadFile = File(...)
     _require_admin(request)
     return await upload_csv(request, csvFile)
 
+@app.post("/api/admin/datasets/fetch-dukascopy")
+async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, request: Request):
+    _require_admin(request)
+
+    instrument = _normalize_dukascopy_instrument(payload.instrument)
+    from_dt = _parse_iso_date(payload.from_date, "from_date")
+    to_dt = _parse_iso_date(payload.to_date, "to_date")
+
+    if from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
+
+    if not DUKASCOPY_SCRIPT_PATH.exists():
+        raise HTTPException(status_code=500, detail=f"Dukascopy script not found: {DUKASCOPY_SCRIPT_PATH}")
+
+    node_binary = shutil.which("node")
+    if not node_binary:
+        raise HTTPException(status_code=500, detail="Node.js is not installed on the server")
+
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+    original_name = f"{instrument}-{DUKASCOPY_DEFAULT_TIMEFRAME}-bid-{from_str}-{to_str}.csv"
+    unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
+    output_path = (UPLOAD_DIR / unique_filename).resolve()
+
+    cmd = [
+        node_binary,
+        str(DUKASCOPY_SCRIPT_PATH),
+        "--instrument", instrument,
+        "--from", from_str,
+        "--to", to_str,
+        "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
+        "--out", str(output_path),
+    ]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=1200,
+        )
+    except subprocess.TimeoutExpired:
+        if output_path.exists():
+            output_path.unlink()
+        raise HTTPException(status_code=504, detail="Dukascopy download timed out")
+    except Exception as exc:
+        if output_path.exists():
+            output_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Failed to start Dukascopy script: {str(exc)}")
+
+    if proc.returncode != 0:
+        if output_path.exists():
+            output_path.unlink()
+        err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
+        raise HTTPException(status_code=502, detail=f"Dukascopy fetch failed: {err_txt.splitlines()[-1] if err_txt else 'Unknown error'}")
+
+    if not output_path.exists() or output_path.stat().st_size <= 0:
+        if output_path.exists():
+            output_path.unlink()
+        raise HTTPException(status_code=502, detail="Dukascopy returned an empty CSV")
+
+    result = _store_dataset_file(
+        file_path=output_path,
+        original_name=original_name,
+        description=f"Dukascopy {instrument.upper()} {DUKASCOPY_DEFAULT_TIMEFRAME.upper()} {from_str} to {to_str}"
+    )
+    result["source"] = "dukascopy"
+    result["params"] = {
+        "instrument": instrument,
+        "from_date": from_str,
+        "to_date": to_str,
+        "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+    }
+    return result
+
 @app.patch("/api/admin/datasets/{file_id}/settings")
 async def admin_update_dataset_settings(file_id: int, payload: AdminDatasetSettingsIn, request: Request):
     _require_admin(request)
@@ -2648,42 +2790,11 @@ async def upload_csv(request: Request, csvFile: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
     
-    # Count rows
-    row_count = count_csv_rows(file_path)
-    
-    # Save to database
-    db = next(get_db())
-    try:
-        db_file = CSVFile(
-            filename=unique_filename,
-            original_name=csvFile.filename,
-            row_count=row_count,
-            description=f"Uploaded on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        db.add(db_file)
-        db.commit()
-        db.refresh(db_file)
-        
-        # Kick off background binary conversion for all timeframes
-        build_binary_for_file(db_file.id, file_path, csvFile.filename)
-        
-        return {
-            "success": True,
-            "file": {
-                "id": db_file.id,
-                "filename": db_file.original_name,
-                "rowCount": db_file.row_count,
-                "uploadDate": db_file.upload_date.isoformat()
-            }
-        }
-    except Exception as e:
-        db.rollback()
-        # Clean up file if database fails
-        if file_path.exists():
-            file_path.unlink()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    finally:
-        db.close()
+    return _store_dataset_file(
+        file_path=file_path,
+        original_name=csvFile.filename,
+        description=f"Uploaded on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
 
 @app.get("/api/files")
 async def get_files():

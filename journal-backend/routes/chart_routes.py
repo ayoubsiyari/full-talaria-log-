@@ -2,14 +2,64 @@
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, ChartDrawing, ChartSettings, UserPreferences, User
-from datetime import datetime
+from models import db, ChartDrawing, ChartSettings, UserPreferences, User, Subscription
+from datetime import datetime, timedelta
+from functools import wraps
 
 chart_bp = Blueprint('chart', __name__)
 
 
+def _has_active_or_grace_subscription(user_id):
+    now = datetime.utcnow()
+    active_statuses = ['active', 'trialing']
+    grace_statuses = ['past_due', 'cancelled', 'canceled', 'unpaid']
+
+    active_subscription = Subscription.query.filter(
+        Subscription.user_id == user_id,
+        Subscription.status.in_(active_statuses)
+    ).first()
+    if active_subscription:
+        return True
+
+    grace_threshold = now - timedelta(days=3)
+    grace_subscription = Subscription.query.filter(
+        Subscription.user_id == user_id,
+        Subscription.status.in_(grace_statuses),
+        Subscription.current_period_end.isnot(None),
+        Subscription.current_period_end >= grace_threshold
+    ).first()
+
+    return grace_subscription is not None
+
+
+def journal_access_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user_id = get_jwt_identity()
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            pass
+
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        if user.role == 'admin' or user.has_journal_access or _has_active_or_grace_subscription(user.id):
+            return f(*args, **kwargs)
+
+        return jsonify({
+            'success': False,
+            'error': 'Active subscription required',
+            'action': 'subscription_required'
+        }), 403
+
+    return decorated
+
+
 @chart_bp.route('/drawings/<symbol>', methods=['GET'])
 @jwt_required()
+@journal_access_required
 def get_drawings(symbol):
     """
     Get saved drawings for a specific symbol.
@@ -56,6 +106,7 @@ def get_drawings(symbol):
 
 @chart_bp.route('/drawings/<symbol>', methods=['POST'])
 @jwt_required()
+@journal_access_required
 def save_drawings(symbol):
     """
     Save drawings for a specific symbol.
@@ -123,6 +174,7 @@ def save_drawings(symbol):
 
 @chart_bp.route('/drawings/<symbol>', methods=['DELETE'])
 @jwt_required()
+@journal_access_required
 def delete_drawings(symbol):
     """
     Delete all drawings for a specific symbol.
@@ -171,6 +223,7 @@ def delete_drawings(symbol):
 
 @chart_bp.route('/drawings', methods=['GET'])
 @jwt_required()
+@journal_access_required
 def get_all_user_drawings():
     """
     Get all drawings for the current user across all symbols.
@@ -210,6 +263,7 @@ def get_all_user_drawings():
 
 @chart_bp.route('/settings/<symbol>', methods=['GET'])
 @jwt_required()
+@journal_access_required
 def get_settings(symbol):
     """
     Get saved chart settings for a specific symbol.
@@ -256,6 +310,7 @@ def get_settings(symbol):
 
 @chart_bp.route('/settings/<symbol>', methods=['POST'])
 @jwt_required()
+@journal_access_required
 def save_settings(symbol):
     """
     Save chart settings for a specific symbol.
@@ -322,6 +377,7 @@ def save_settings(symbol):
 
 @chart_bp.route('/settings/<symbol>', methods=['DELETE'])
 @jwt_required()
+@journal_access_required
 def delete_settings(symbol):
     """
     Delete chart settings for a specific symbol.
@@ -374,6 +430,7 @@ def delete_settings(symbol):
 
 @chart_bp.route('/preferences', methods=['GET'])
 @jwt_required()
+@journal_access_required
 def get_preferences():
     """
     Get all user preferences.
@@ -431,6 +488,7 @@ def get_preferences():
 
 @chart_bp.route('/preferences', methods=['POST'])
 @jwt_required()
+@journal_access_required
 def update_preferences():
     """
     Update user preferences (partial update supported).

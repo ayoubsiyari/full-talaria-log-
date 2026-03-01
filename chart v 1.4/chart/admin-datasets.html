@@ -72,7 +72,7 @@
     @media(max-width:1060px){.form-grid{grid-template-columns:1fr}}
     .fg-full{grid-column:1/-1}
     .field>label{display:block;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
-    input[type=text],select,textarea{width:100%;background:#08101f;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;transition:border-color .15s}
+    input[type=text],input[type=date],select,textarea{width:100%;background:#08101f;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;transition:border-color .15s}
     input:focus,select:focus,textarea:focus{border-color:var(--accent)}
     select option{background:#0d1530}
     textarea{min-height:68px;resize:vertical;font-family:inherit}
@@ -129,6 +129,47 @@
       <div id="uploadProgress">
         <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
         <div class="pbar-label" id="pbarLabel"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="card-title" style="margin-bottom:6px">Fetch directly from Dukascopy</div>
+      <div class="hdr-sub" style="margin-bottom:10px">Choose pair and date range. Server downloads CSV and saves it automatically as a dataset.</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Pair</label>
+          <select id="dk_pair">
+            <option value="eurusd">EUR/USD</option>
+            <option value="gbpusd">GBP/USD</option>
+            <option value="audusd">AUD/USD</option>
+            <option value="nzdusd">NZD/USD</option>
+            <option value="usdcad">USD/CAD</option>
+            <option value="usdchf">USD/CHF</option>
+            <option value="usdjpy">USD/JPY</option>
+            <option value="eurjpy">EUR/JPY</option>
+            <option value="gbpjpy">GBP/JPY</option>
+            <option value="xauusd">XAU/USD</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>From</label>
+          <input type="date" id="dk_from">
+        </div>
+        <div class="field">
+          <label>To</label>
+          <input type="date" id="dk_to">
+        </div>
+        <div class="field">
+          <label>Timeframe</label>
+          <input type="text" value="M1" disabled>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:10px;justify-content:flex-end">
+        <button type="button" class="btn primary" id="dkFetchBtn">Fetch &amp; Save Dataset</button>
+      </div>
+      <div id="dukaProgress" style="display:none;margin-top:8px">
+        <div class="pbar-wrap"><div class="pbar" id="dukaPbar"></div></div>
+        <div class="pbar-label" id="dukaPbarLabel"></div>
       </div>
     </div>
   </div>
@@ -226,6 +267,18 @@ async function api(url, opts = {}) {
 function fmtN(n) { return Number(n || 0).toLocaleString(); }
 function esc(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function selDs() { return S.datasets.find(d => d.id === S.sel) || null; }
+
+function setDefaultDukascopyDates() {
+  const today = new Date();
+  const to = today.toISOString().slice(0, 10);
+  const fromDate = new Date(today);
+  fromDate.setDate(fromDate.getDate() - 30);
+  const from = fromDate.toISOString().slice(0, 10);
+  const fromEl = document.getElementById('dk_from');
+  const toEl = document.getElementById('dk_to');
+  if (fromEl && !fromEl.value) fromEl.value = from;
+  if (toEl && !toEl.value) toEl.value = to;
+}
 
 /* ── Render table ── */
 function renderTable() {
@@ -372,6 +425,65 @@ async function uploadFile(file) {
   }
 }
 
+async function fetchDukascopyDataset() {
+  const pair = (document.getElementById('dk_pair').value || '').trim().toLowerCase();
+  const fromDate = (document.getElementById('dk_from').value || '').trim();
+  const toDate = (document.getElementById('dk_to').value || '').trim();
+  const btn = document.getElementById('dkFetchBtn');
+  const prog = document.getElementById('dukaProgress');
+  const pbar = document.getElementById('dukaPbar');
+  const label = document.getElementById('dukaPbarLabel');
+
+  if (!pair) { toast('Please select a pair.', 'err'); return; }
+  if (!fromDate || !toDate) { toast('Please select both from/to dates.', 'err'); return; }
+  if (new Date(fromDate) > new Date(toDate)) { toast('From date must be before To date.', 'err'); return; }
+
+  btn.disabled = true;
+  prog.style.display = 'block';
+  pbar.style.width = '12%';
+  label.textContent = `Requesting ${pair.toUpperCase()} M1 ${fromDate} → ${toDate}...`;
+
+  let pv = 12;
+  const iv = setInterval(() => {
+    if (pv < 88) {
+      pv += 3;
+      pbar.style.width = pv + '%';
+    }
+  }, 600);
+
+  try {
+    const res = await api('/api/admin/datasets/fetch-dukascopy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instrument: pair,
+        from_date: fromDate,
+        to_date: toDate,
+      }),
+    });
+
+    clearInterval(iv);
+    pbar.style.width = '100%';
+    label.textContent = `✓ Saved ${fmtN(res.file && res.file.rowCount)} rows. Converting binaries...`;
+    toast('Dukascopy dataset imported successfully.', 'ok');
+
+    await loadDatasets(false);
+    if (res.file && res.file.id) {
+      selectDs(res.file.id);
+      startPolling(res.file.id);
+    }
+
+    setTimeout(() => { prog.style.display = 'none'; }, 8000);
+  } catch (err) {
+    clearInterval(iv);
+    pbar.style.width = '0%';
+    label.textContent = '✗ ' + err.message;
+    toast('Dukascopy fetch failed: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ── Drag & drop ── */
 const dz = document.getElementById('dropZone');
 const fi = document.getElementById('fileInput');
@@ -379,6 +491,7 @@ dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dra
 dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
 dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); uploadFile(e.dataTransfer.files[0]); });
 fi.addEventListener('change', () => { uploadFile(fi.files[0]); fi.value = ''; });
+document.getElementById('dkFetchBtn').addEventListener('click', fetchDukascopyDataset);
 
 /* ── Active toggle label ── */
 document.getElementById('f_active').addEventListener('change', function() {
@@ -457,6 +570,7 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
     const badge = document.getElementById('adminBadge');
     badge.textContent = S.me.email;
     badge.style.display = 'inline-block';
+    setDefaultDukascopyDates();
     await loadDatasets(false);
   } catch (err) {
     toast('Auth error: ' + err.message, 'err');

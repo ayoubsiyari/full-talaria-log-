@@ -588,15 +588,19 @@ def stripe_webhook():
     
     payload = request.get_data(as_text=True)
     sig_header = request.headers.get('Stripe-Signature')
-    webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+    webhook_secret = (os.environ.get('STRIPE_WEBHOOK_SECRET') or '').strip()
+
+    if not webhook_secret:
+        current_app.logger.error('Stripe webhook rejected: STRIPE_WEBHOOK_SECRET is not configured')
+        return jsonify({'error': 'Webhook endpoint not configured'}), 503
+
+    if not sig_header:
+        return jsonify({'error': 'Missing Stripe-Signature header'}), 400
     
     try:
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, webhook_secret
-            )
-        else:
-            event = json.loads(payload)
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, webhook_secret
+        )
         
         # Log the webhook
         log = WebhookLog(
