@@ -79,7 +79,7 @@ class DrawingToolbar {
                 position: absolute;
                 display: none;
                 border-radius: 8px;
-                padding: 0 12px;
+                padding: 0 12px 0 0;
                 height: 48px;
                 z-index: 10000;
                 gap: 4px;
