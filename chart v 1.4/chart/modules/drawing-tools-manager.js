@@ -995,14 +995,32 @@ class DrawingToolsManager {
                 }
             }
             
+            const rawTargetNode = target.node();
+            const resizeHandleNode = rawTargetNode && rawTargetNode.closest
+                ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group')
+                : null;
+            const customHandleNode = rawTargetNode && rawTargetNode.closest
+                ? rawTargetNode.closest('.custom-handle')
+                : null;
+
+            // If a handle was clicked directly, resolve the drawing from the DOM group.
+            // This avoids missing the drawing when geometric stroke-only hit testing fails
+            // on transparent handle centers.
+            if (!drawing && (resizeHandleNode || customHandleNode)) {
+                const handleDrawingGroup = rawTargetNode && rawTargetNode.closest
+                    ? rawTargetNode.closest('.drawing')
+                    : null;
+                if (handleDrawingGroup) {
+                    const handleDrawingId = d3.select(handleDrawingGroup).attr('data-id');
+                    const handleDrawing = this.drawings.find(d => d.id === handleDrawingId);
+                    if (handleDrawing) {
+                        drawing = handleDrawing;
+                        drawingGroup = handleDrawingGroup;
+                    }
+                }
+            }
+
             if (drawing) {
-                const rawTargetNode = target.node();
-                const resizeHandleNode = rawTargetNode && rawTargetNode.closest
-                    ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group')
-                    : null;
-                const customHandleNode = rawTargetNode && rawTargetNode.closest
-                    ? rawTargetNode.closest('.custom-handle')
-                    : null;
 
                 if (resizeHandleNode || customHandleNode) {
                     event.preventDefault();
@@ -1045,8 +1063,26 @@ class DrawingToolsManager {
                         const idxAttr = resizeHandleNode.getAttribute('data-point-index');
                         const idx = idxAttr != null ? parseInt(idxAttr, 10) : NaN;
 
-                        if (role && typeof drawing.handleCustomHandleDrag === 'function') {
+                        const baseProto = (typeof BaseDrawing !== 'undefined' && BaseDrawing.prototype) ? BaseDrawing.prototype : null;
+                        const hasCustomOverride = baseProto
+                            ? drawing.handleCustomHandleDrag !== baseProto.handleCustomHandleDrag
+                            : (typeof drawing.handleCustomHandleDrag === 'function');
+                        const hasPointOverride = baseProto
+                            ? drawing.onPointHandleDrag !== baseProto.onPointHandleDrag
+                            : (typeof drawing.onPointHandleDrag === 'function');
+
+                        if (role && hasCustomOverride) {
                             this.startCustomHandleDrag(drawing, role, { sourceEvent: event });
+                            this._directResizeMoveHandler = (e) => {
+                                if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
+                                this.handleCustomHandleDrag({ sourceEvent: e });
+                            };
+                            this._directResizeUpHandler = (e) => {
+                                stopDirectResizeListeners();
+                                this.endCustomHandleDrag({ sourceEvent: e });
+                            };
+                        } else if (!isNaN(idx) && hasCustomOverride && !hasPointOverride) {
+                            this.startCustomHandleDrag(drawing, idx, { sourceEvent: event }, idx);
                             this._directResizeMoveHandler = (e) => {
                                 if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
                                 this.handleCustomHandleDrag({ sourceEvent: e });
@@ -2819,11 +2855,19 @@ class DrawingToolsManager {
                     const handleRole = d3.select(this).attr('data-handle-role');
                     const index = parseInt(d3.select(this).attr('data-point-index'));
                     
-                    // Check if this is a custom handle role (for 8-point box handles)
-                    // OR if the drawing has a custom drag handler
-                    if ((handleRole && typeof drawing.handleCustomHandleDrag === 'function') || 
-                        (!handleRole && typeof drawing.handleCustomHandleDrag === 'function')) {
-                        self.startCustomHandleDrag(drawing, handleRole || index, event, index);
+                    const baseProto = (typeof BaseDrawing !== 'undefined' && BaseDrawing.prototype) ? BaseDrawing.prototype : null;
+                    const hasCustomOverride = baseProto
+                        ? drawing.handleCustomHandleDrag !== baseProto.handleCustomHandleDrag
+                        : (typeof drawing.handleCustomHandleDrag === 'function');
+                    const hasPointOverride = baseProto
+                        ? drawing.onPointHandleDrag !== baseProto.onPointHandleDrag
+                        : (typeof drawing.onPointHandleDrag === 'function');
+
+                    if (handleRole && hasCustomOverride) {
+                        self.startCustomHandleDrag(drawing, handleRole, event, index);
+                    } else if (!isNaN(index) && hasCustomOverride && !hasPointOverride) {
+                        // Tools that rely on custom drag math but expose point-index handles.
+                        self.startCustomHandleDrag(drawing, index, event, index);
                     } else {
                         self.startHandleDrag(drawing, index, event);
                     }
@@ -4919,6 +4963,34 @@ class DrawingToolsManager {
                         hitsById.set(drawing.id, { drawing, distance: 0, z });
                         continue;
                     }
+                }
+            }
+
+            // Risk/Reward tools: allow selecting/dragging by zone interior, not only stroke.
+            if (!hitsById.has(drawing.id) && (drawing.type === 'long-position' || drawing.type === 'short-position')) {
+                try {
+                    const zoneRects = drawing.group.selectAll('.position-zone').nodes();
+                    for (const rect of zoneRects) {
+                        if (!rect) continue;
+
+                        if (typeof rect.isPointInFill === 'function') {
+                            if (rect.isPointInFill(point)) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        } else if (typeof rect.getBBox === 'function') {
+                            const bb = rect.getBBox();
+                            const inside = mouseX >= bb.x && mouseX <= (bb.x + bb.width)
+                                && mouseY >= bb.y && mouseY <= (bb.y + bb.height);
+                            if (inside) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        }
+                    }
+                    if (hitsById.has(drawing.id)) continue;
+                } catch (error) {
+                    console.warn('Error in risk/reward fill hit test for drawing:', drawing.id, error);
                 }
             }
             

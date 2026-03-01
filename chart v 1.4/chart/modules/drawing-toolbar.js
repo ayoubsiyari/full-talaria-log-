@@ -249,6 +249,7 @@ class DrawingToolbar {
         // Template system available for all tools except a few exceptions
         const noTemplateTools = []; // Empty - all tools get templates now
         const isBrushTool = !noTemplateTools.includes(drawing.type);
+        const useBrushToolbarLayout = isBrushTool && !isRiskReward;
         
         // Determine stroke/color label and value
         let strokeLabel, strokeBaseColor;
@@ -682,7 +683,7 @@ class DrawingToolbar {
                 </svg>
             </div>
             
-            ${isBrushTool ? `
+            ${useBrushToolbarLayout ? `
             <!-- BRUSH/HIGHLIGHTER TOOLBAR: Template → Pencil → 8px → Lock → Delete → Settings → More -->
             <!-- Template Button with Dropdown -->
             <div class="toolbar-item toolbar-dropdown-wrapper">
