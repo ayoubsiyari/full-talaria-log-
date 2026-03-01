@@ -348,6 +348,24 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function waitForDukascopyJob(jobId, onUpdate, maxAttempts = 2400, intervalMs = 2000) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const status = await api('/api/admin/datasets/fetch-dukascopy/' + encodeURIComponent(jobId) + '/status');
+      if (onUpdate) onUpdate(status);
+      if (status.status === 'done' || status.status === 'failed') {
+        return { done: true, status };
+      }
+    } catch {
+      // keep polling; job file may not be visible momentarily on distributed workers
+    }
+
+    await sleep(intervalMs);
+  }
+
+  return { done: false, status: null };
+}
+
 async function waitForConversionProgress(fileId, onUpdate, maxAttempts = 1200, intervalMs = 3000) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -574,13 +592,76 @@ async function fetchDukascopyDataset() {
       }),
     });
 
-    const fileId = res.file && res.file.id;
-    const rowCountTxt = fmtN(res.file && res.file.rowCount);
-    const usedChunks = Number((res.params && res.params.chunk_count) || chunkCount || 1);
+    let finalRes = res;
+    let usedChunks = Number((res.params && res.params.chunk_count) || chunkCount || 1);
+
+    if (res && res.job_id) {
+      const jobId = res.job_id;
+      label.textContent = `Queued ${pair.toUpperCase()} download (${usedChunks} chunks)...`;
+
+      const jobResult = await waitForDukascopyJob(jobId, (job) => {
+        const chunks = Array.isArray(job.chunks) ? job.chunks : [];
+        const total = Number(job.chunk_count || usedChunks || 1);
+        const done = Number(job.completed_chunks || chunks.filter(c => c.status === 'done').length || 0);
+        const failed = chunks.filter(c => c.status === 'failed').length;
+        const processing = chunks.find(c => c.status === 'processing');
+
+        if (job.status === 'failed') {
+          pbar.style.width = '100%';
+          label.textContent = `✗ ${job.message || job.error || 'Chunked download failed'}`;
+          return;
+        }
+
+        if (job.phase === 'merge') {
+          pbar.style.width = '78%';
+          label.textContent = `Merging chunks (${done}/${total})...`;
+          return;
+        }
+
+        if (job.phase === 'store') {
+          pbar.style.width = '86%';
+          label.textContent = `Saving merged dataset (${done}/${total} chunks complete)...`;
+          return;
+        }
+
+        if (job.status === 'done') {
+          pbar.style.width = '90%';
+          label.textContent = `✓ All chunks downloaded (${done}/${total}). Starting binary conversion...`;
+          return;
+        }
+
+        const effective = processing ? Math.min(total, done + 0.35) : done;
+        const downloadPct = Math.min(70, 8 + Math.round((effective / Math.max(total, 1)) * 62));
+        pbar.style.width = downloadPct + '%';
+
+        if (processing) {
+          label.textContent = `Downloading chunk ${processing.index}/${total} (${processing.from_date} → ${processing.to_date}) — done ${done}/${total}${failed ? `, failed ${failed}` : ''}`;
+        } else {
+          label.textContent = `Downloading chunks — done ${done}/${total}${failed ? `, failed ${failed}` : ''}`;
+        }
+      });
+
+      if (!jobResult.done || !jobResult.status) {
+        throw new Error('Chunked Dukascopy job is still running. Please refresh in a minute.');
+      }
+
+      if (jobResult.status.status === 'failed') {
+        throw new Error(jobResult.status.message || jobResult.status.error || 'Chunked Dukascopy job failed');
+      }
+
+      usedChunks = Number(jobResult.status.chunk_count || usedChunks || 1);
+      finalRes = jobResult.status.result;
+      if (!finalRes || !finalRes.file || !finalRes.file.id) {
+        throw new Error('Dukascopy job completed but dataset result is missing');
+      }
+    }
+
+    const fileId = finalRes.file && finalRes.file.id;
+    const rowCountTxt = fmtN(finalRes.file && finalRes.file.rowCount);
     let conversionDone = false;
 
     if (fileId) {
-      pbar.style.width = '20%';
+      pbar.style.width = '90%';
       label.textContent = usedChunks > 1
         ? `Downloaded ${rowCountTxt} rows from ${usedChunks} chunks. Converting binaries...`
         : `Downloaded ${rowCountTxt} rows. Converting binaries...`;
@@ -602,7 +683,7 @@ async function fetchDukascopyDataset() {
           return;
         }
 
-        const combinedProgress = Math.min(99, 20 + Math.round(progress * 0.8));
+        const combinedProgress = Math.min(99, 90 + Math.round(progress * 0.1));
         pbar.style.width = combinedProgress + '%';
         label.textContent = `Downloaded ${rowCountTxt} rows. Converting binaries (${ready}/${total})...`;
       });

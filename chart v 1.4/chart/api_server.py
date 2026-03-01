@@ -16,6 +16,8 @@ import json
 import re
 import subprocess
 import tempfile
+import time
+import threading
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from google.oauth2.service_account import Credentials
@@ -187,6 +189,9 @@ DUKASCOPY_SCRIPT_PATH = _APP_DIR / "download" / "fetch-data.js"
 DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
 DUKASCOPY_MAX_RANGE_DAYS = int(os.getenv("DUKASCOPY_MAX_RANGE_DAYS", "365"))
 DUKASCOPY_MAX_TOTAL_DAYS = int(os.getenv("DUKASCOPY_MAX_TOTAL_DAYS", "7300"))
+DUKASCOPY_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_JOB_TTL_SECONDS", "21600"))
+DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
+DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
 
 # Database Model
 class CSVFile(Base):
@@ -664,6 +669,235 @@ def _split_dukascopy_date_ranges(from_dt: datetime, to_dt: datetime, chunk_days:
         ranges.append((cursor, chunk_to))
         cursor = chunk_to + timedelta(days=1)
     return ranges
+
+def _dukascopy_job_path(job_id: str) -> Path:
+    safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "", (job_id or ""))
+    if not safe_job_id:
+        safe_job_id = "invalid"
+    return DUKASCOPY_JOBS_DIR / f"{safe_job_id}.json"
+
+def _dukascopy_cleanup_jobs() -> None:
+    cutoff = time.time() - max(60, DUKASCOPY_JOB_TTL_SECONDS)
+    for p in DUKASCOPY_JOBS_DIR.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+def _dukascopy_write_job(job_id: str, state: dict) -> None:
+    p = _dukascopy_job_path(job_id)
+    state["updated_at"] = datetime.utcnow().isoformat()
+    tmp = p.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(p)
+
+def _dukascopy_read_job(job_id: str) -> dict | None:
+    p = _dukascopy_job_path(job_id)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: datetime, node_binary: str) -> dict:
+    chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
+    total_chunks = len(chunk_ranges)
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+    original_name = f"{instrument}-{DUKASCOPY_DEFAULT_TIMEFRAME}-bid-{from_str}-{to_str}.csv"
+    unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
+    output_path = (UPLOAD_DIR / unique_filename).resolve()
+
+    job_id = f"dk_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    now_iso = datetime.utcnow().isoformat()
+    state = {
+        "job_id": job_id,
+        "status": "queued",          # queued | running | done | failed
+        "phase": "queued",           # queued | download | merge | store | done | failed
+        "message": f"Queued Dukascopy fetch ({total_chunks} chunk{'s' if total_chunks != 1 else ''})",
+        "instrument": instrument,
+        "from_date": from_str,
+        "to_date": to_str,
+        "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+        "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
+        "chunk_count": total_chunks,
+        "completed_chunks": 0,
+        "current_chunk": 0,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "chunks": [
+            {
+                "index": idx,
+                "from_date": c_from.strftime("%Y-%m-%d"),
+                "to_date": c_to.strftime("%Y-%m-%d"),
+                "status": "pending",  # pending | processing | done | failed
+            }
+            for idx, (c_from, c_to) in enumerate(chunk_ranges, start=1)
+        ],
+        "result": None,
+    }
+    _dukascopy_write_job(job_id, state)
+
+    def _worker():
+        current_chunk_idx = 0
+        try:
+            state["status"] = "running"
+            state["phase"] = "download"
+            state["message"] = f"Starting Dukascopy download ({total_chunks} chunk{'s' if total_chunks != 1 else ''})"
+            _dukascopy_write_job(job_id, state)
+
+            with tempfile.TemporaryDirectory(prefix="duka_", dir=str(UPLOAD_DIR.resolve())) as tmp_dir:
+                tmp_dir_path = Path(tmp_dir)
+                chunk_paths: list[Path] = []
+
+                for idx, (chunk_from, chunk_to) in enumerate(chunk_ranges, start=1):
+                    current_chunk_idx = idx
+                    chunk_from_str = chunk_from.strftime("%Y-%m-%d")
+                    chunk_to_str = chunk_to.strftime("%Y-%m-%d")
+                    chunk_path = tmp_dir_path / f"chunk_{idx:04d}.csv"
+
+                    chunk_info = state["chunks"][idx - 1]
+                    chunk_info["status"] = "processing"
+                    chunk_info["started_at"] = datetime.utcnow().isoformat()
+                    state["current_chunk"] = idx
+                    state["message"] = f"Downloading chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})"
+                    _dukascopy_write_job(job_id, state)
+
+                    cmd = [
+                        node_binary,
+                        str(DUKASCOPY_SCRIPT_PATH),
+                        "--instrument", instrument,
+                        "--from", chunk_from_str,
+                        "--to", chunk_to_str,
+                        "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
+                        "--out", str(chunk_path),
+                    ]
+
+                    try:
+                        proc = subprocess.run(
+                            cmd,
+                            cwd=str(_APP_DIR),
+                            capture_output=True,
+                            text=True,
+                            timeout=1200,
+                        )
+                    except subprocess.TimeoutExpired:
+                        raise RuntimeError(f"Chunk {idx}/{total_chunks} timed out ({chunk_from_str} to {chunk_to_str})")
+                    except Exception as exc:
+                        raise RuntimeError(f"Chunk {idx}/{total_chunks} failed to start: {str(exc)}")
+
+                    if proc.returncode != 0:
+                        err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
+                        err_line = err_txt.splitlines()[-1] if err_txt else "Unknown error"
+                        raise RuntimeError(
+                            f"Chunk {idx}/{total_chunks} failed ({chunk_from_str} to {chunk_to_str}): {err_line}"
+                        )
+
+                    if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
+                        raise RuntimeError(
+                            f"Chunk {idx}/{total_chunks} returned empty CSV ({chunk_from_str} to {chunk_to_str})"
+                        )
+
+                    chunk_info["status"] = "done"
+                    chunk_info["rows"] = int(max(count_csv_rows(chunk_path), 0))
+                    chunk_info["completed_at"] = datetime.utcnow().isoformat()
+                    state["completed_chunks"] = idx
+                    state["message"] = f"Completed chunk {idx}/{total_chunks}"
+                    _dukascopy_write_job(job_id, state)
+
+                    chunk_paths.append(chunk_path)
+
+                state["phase"] = "merge"
+                state["message"] = f"Merging {total_chunks} chunk{'s' if total_chunks != 1 else ''} into one CSV"
+                _dukascopy_write_job(job_id, state)
+
+                with open(output_path, "wb") as out_f:
+                    first_header = None
+                    for idx, chunk_path in enumerate(chunk_paths):
+                        with open(chunk_path, "rb") as in_f:
+                            first_line = in_f.readline()
+                            if not first_line:
+                                continue
+
+                            if idx == 0:
+                                first_header = first_line
+                                out_f.write(first_line)
+                            else:
+                                if not first_header or first_line.strip().lower() != first_header.strip().lower():
+                                    out_f.write(first_line)
+
+                            shutil.copyfileobj(in_f, out_f)
+
+            if not output_path.exists() or output_path.stat().st_size <= 0:
+                raise RuntimeError("Merged Dukascopy CSV is empty")
+
+            state["phase"] = "store"
+            state["message"] = "Saving dataset and triggering binary conversion"
+            _dukascopy_write_job(job_id, state)
+
+            result = _store_dataset_file(
+                file_path=output_path,
+                original_name=original_name,
+                description=f"Dukascopy {instrument.upper()} {DUKASCOPY_DEFAULT_TIMEFRAME.upper()} {from_str} to {to_str}"
+            )
+            result["source"] = "dukascopy"
+            result["params"] = {
+                "instrument": instrument,
+                "from_date": from_str,
+                "to_date": to_str,
+                "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+                "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
+                "chunk_count": total_chunks,
+            }
+
+            state["status"] = "done"
+            state["phase"] = "done"
+            state["message"] = f"Completed Dukascopy fetch ({total_chunks} chunk{'s' if total_chunks != 1 else ''})"
+            state["result"] = result
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _dukascopy_write_job(job_id, state)
+        except Exception as exc:
+            err_text = str(exc) or "Unknown Dukascopy job error"
+            if output_path.exists():
+                try:
+                    output_path.unlink()
+                except Exception:
+                    pass
+
+            if current_chunk_idx > 0 and current_chunk_idx <= len(state.get("chunks", [])):
+                c = state["chunks"][current_chunk_idx - 1]
+                if c.get("status") not in {"done", "failed"}:
+                    c["status"] = "failed"
+                    c["error"] = err_text
+                    c["completed_at"] = datetime.utcnow().isoformat()
+
+            state["status"] = "failed"
+            state["phase"] = "failed"
+            state["message"] = err_text
+            state["error"] = err_text
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _dukascopy_write_job(job_id, state)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "status": "queued",
+        "params": {
+            "instrument": instrument,
+            "from_date": from_str,
+            "to_date": to_str,
+            "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+            "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
+            "chunk_count": total_chunks,
+        }
+    }
 
 def file_response_if_exists(path: str):
     p = Path(path)
@@ -2419,114 +2653,22 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
     if not node_binary:
         raise HTTPException(status_code=500, detail="Node.js is not installed on the server")
 
-    from_str = from_dt.strftime("%Y-%m-%d")
-    to_str = to_dt.strftime("%Y-%m-%d")
-    original_name = f"{instrument}-{DUKASCOPY_DEFAULT_TIMEFRAME}-bid-{from_str}-{to_str}.csv"
-    unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
-    output_path = (UPLOAD_DIR / unique_filename).resolve()
-
-    chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
-
-    try:
-        with tempfile.TemporaryDirectory(prefix="duka_", dir=str(UPLOAD_DIR.resolve())) as tmp_dir:
-            tmp_dir_path = Path(tmp_dir)
-            chunk_paths: list[Path] = []
-
-            for idx, (chunk_from, chunk_to) in enumerate(chunk_ranges, start=1):
-                chunk_from_str = chunk_from.strftime("%Y-%m-%d")
-                chunk_to_str = chunk_to.strftime("%Y-%m-%d")
-                chunk_path = tmp_dir_path / f"chunk_{idx:04d}.csv"
-
-                cmd = [
-                    node_binary,
-                    str(DUKASCOPY_SCRIPT_PATH),
-                    "--instrument", instrument,
-                    "--from", chunk_from_str,
-                    "--to", chunk_to_str,
-                    "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
-                    "--out", str(chunk_path),
-                ]
-
-                try:
-                    proc = subprocess.run(
-                        cmd,
-                        cwd=str(_APP_DIR),
-                        capture_output=True,
-                        text=True,
-                        timeout=1200,
-                    )
-                except subprocess.TimeoutExpired:
-                    raise HTTPException(
-                        status_code=504,
-                        detail=f"Dukascopy download timed out on chunk {idx}/{len(chunk_ranges)} ({chunk_from_str} to {chunk_to_str})",
-                    )
-                except Exception as exc:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to start Dukascopy script on chunk {idx}/{len(chunk_ranges)}: {str(exc)}",
-                    )
-
-                if proc.returncode != 0:
-                    err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
-                    err_line = err_txt.splitlines()[-1] if err_txt else "Unknown error"
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Dukascopy fetch failed on chunk {idx}/{len(chunk_ranges)} ({chunk_from_str} to {chunk_to_str}): {err_line}",
-                    )
-
-                if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Dukascopy returned an empty CSV on chunk {idx}/{len(chunk_ranges)} ({chunk_from_str} to {chunk_to_str})",
-                    )
-
-                chunk_paths.append(chunk_path)
-
-            with open(output_path, "wb") as out_f:
-                first_header = None
-                for idx, chunk_path in enumerate(chunk_paths):
-                    with open(chunk_path, "rb") as in_f:
-                        first_line = in_f.readline()
-                        if not first_line:
-                            continue
-
-                        if idx == 0:
-                            first_header = first_line
-                            out_f.write(first_line)
-                        else:
-                            if not first_header or first_line.strip().lower() != first_header.strip().lower():
-                                out_f.write(first_line)
-
-                        shutil.copyfileobj(in_f, out_f)
-    except HTTPException:
-        if output_path.exists():
-            output_path.unlink()
-        raise
-    except Exception as exc:
-        if output_path.exists():
-            output_path.unlink()
-        raise HTTPException(status_code=500, detail=f"Failed to build merged Dukascopy CSV: {str(exc)}")
-
-    if not output_path.exists() or output_path.stat().st_size <= 0:
-        if output_path.exists():
-            output_path.unlink()
-        raise HTTPException(status_code=502, detail="Dukascopy returned an empty CSV")
-
-    result = _store_dataset_file(
-        file_path=output_path,
-        original_name=original_name,
-        description=f"Dukascopy {instrument.upper()} {DUKASCOPY_DEFAULT_TIMEFRAME.upper()} {from_str} to {to_str}"
+    _dukascopy_cleanup_jobs()
+    return _start_dukascopy_fetch_job(
+        instrument=instrument,
+        from_dt=from_dt,
+        to_dt=to_dt,
+        node_binary=node_binary,
     )
-    result["source"] = "dukascopy"
-    result["params"] = {
-        "instrument": instrument,
-        "from_date": from_str,
-        "to_date": to_str,
-        "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
-        "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
-        "chunk_count": len(chunk_ranges),
-    }
-    return result
+
+@app.get("/api/admin/datasets/fetch-dukascopy/{job_id}/status")
+async def admin_fetch_dataset_from_dukascopy_status(job_id: str, request: Request):
+    _require_admin(request)
+    _dukascopy_cleanup_jobs()
+    state = _dukascopy_read_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Dukascopy job not found or expired")
+    return state
 
 @app.patch("/api/admin/datasets/{file_id}/settings")
 async def admin_update_dataset_settings(file_id: int, payload: AdminDatasetSettingsIn, request: Request):
