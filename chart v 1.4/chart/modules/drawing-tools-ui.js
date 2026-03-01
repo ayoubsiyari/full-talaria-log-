@@ -3899,6 +3899,7 @@ body.light-mode .template-save-dialog .dialog-title {
     buildFibonacciLevelsSection(container, drawing, options = {}) {
         const self = this;
         const showCoreStyleControls = options.showCoreStyleControls !== false;
+        const showLevelsStyleControls = options.showLevelsStyleControls !== false;
         const section = document.createElement('div');
         section.className = 'tv-levels-section';
         section.style.cssText = (drawing.type === 'fib-channel' || drawing.type === 'fib-timezone' || drawing.type === 'fib-speed-fan')
@@ -4551,7 +4552,7 @@ body.light-mode .template-save-dialog .dialog-title {
             section.appendChild(optionsRow);
         }
 
-        if (showCoreStyleControls) {
+        if (showLevelsStyleControls) {
             // Global levels type/width controls
             const levelsStyleRow = document.createElement('div');
             levelsStyleRow.className = 'tv-prop-row';
@@ -6628,7 +6629,8 @@ body.light-mode .template-save-dialog .dialog-title {
         const styleControlTools = ['fibonacci-retracement', 'fibonacci-extension', 'trend-fib-extension', 'fib-channel'];
         const moveCoreControlsToStyle = styleControlTools.includes(drawing.type);
         this.buildFibonacciLevelsSection(container, drawing, {
-            showCoreStyleControls: !moveCoreControlsToStyle
+            showCoreStyleControls: !moveCoreControlsToStyle,
+            showLevelsStyleControls: true
         });
     }
 
@@ -6832,51 +6834,6 @@ body.light-mode .template-save-dialog .dialog-title {
         extendWrap.appendChild(extendText);
         optionsRow.appendChild(extendWrap);
         section.appendChild(optionsRow);
-
-        const levelsStyleRow = document.createElement('div');
-        levelsStyleRow.className = 'tv-prop-row';
-        levelsStyleRow.style.cssText = 'display:flex; align-items:center; gap: 8px; margin-bottom: 12px;';
-
-        const levelsLabel = document.createElement('span');
-        levelsLabel.className = 'tv-prop-label';
-        levelsLabel.textContent = 'Levels';
-        levelsStyleRow.appendChild(levelsLabel);
-
-        const levelsControls = document.createElement('div');
-        levelsControls.className = 'tv-prop-controls';
-        levelsControls.style.marginLeft = 'auto';
-
-        const levelsTypeSelect = document.createElement('select');
-        levelsTypeSelect.className = 'tv-select';
-        levelsTypeSelect.style.width = '40px';
-        const currentLevelsType = drawing.style.levelsLineDasharray ?? '';
-        levelsTypeSelect.innerHTML = `
-            <option value="" ${currentLevelsType === '' ? 'selected' : ''}>───────</option>
-            <option value="5,5" ${currentLevelsType === '5,5' ? 'selected' : ''}>─ ─ ─ ─</option>
-            <option value="2,2" ${currentLevelsType === '2,2' ? 'selected' : ''}>··········</option>
-            <option value="8,4,2,4" ${currentLevelsType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
-        `;
-        levelsTypeSelect.onchange = () => {
-            drawing.style.levelsLineDasharray = levelsTypeSelect.value;
-            applyChanges();
-        };
-        levelsControls.appendChild(levelsTypeSelect);
-
-        const levelsWidthSelect = document.createElement('select');
-        levelsWidthSelect.className = 'tv-select';
-        levelsWidthSelect.style.width = '48px';
-        const widths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        const currentLevelsWidth = parseInt(drawing.style.levelsLineWidth) || 2;
-        levelsWidthSelect.innerHTML = widths.map(w => `<option value="${w}" ${currentLevelsWidth === w ? 'selected' : ''}>${w}px</option>`).join('');
-        levelsWidthSelect.onchange = () => {
-            const w = parseInt(levelsWidthSelect.value);
-            drawing.style.levelsLineWidth = (!isNaN(w) && w > 0) ? w : 2;
-            applyChanges();
-        };
-        levelsControls.appendChild(levelsWidthSelect);
-
-        levelsStyleRow.appendChild(levelsControls);
-        section.appendChild(levelsStyleRow);
 
         container.appendChild(section);
     }
