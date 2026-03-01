@@ -22368,20 +22368,31 @@ function showIndicatorsMenu() {
                 toolbarObserver.observe(replayToolbar);
             }
 
-            // Watch chart wrapper for size changes and debounce resize
+            // Watch chart wrapper for size changes and resize in sync with animation
             if (window.ResizeObserver && chartWrapper) {
-                let resizeTimer;
+                let resizeRaf = null;
+                let settleTimer = null;
                 
                 const wrapperObserver = new ResizeObserver(() => {
-                    // Clear previous timer
-                    clearTimeout(resizeTimer);
-                    
-                    // Only resize after changes settle (debounce)
-                    resizeTimer = setTimeout(() => {
+                    if (!resizeRaf) {
+                        resizeRaf = requestAnimationFrame(() => {
+                            resizeRaf = null;
+                            if (window.chart && typeof window.chart.resize === 'function') {
+                                window.chart.resize();
+                            }
+                        });
+                    }
+
+                    // Final pass after animation settles to guarantee exact axis position
+                    clearTimeout(settleTimer);
+                    settleTimer = setTimeout(() => {
                         if (window.chart && typeof window.chart.resize === 'function') {
                             window.chart.resize();
+                            if (typeof window.chart.scheduleRender === 'function') {
+                                window.chart.scheduleRender();
+                            }
                         }
-                    }, 320);
+                    }, 80);
                 });
                 wrapperObserver.observe(chartWrapper);
             }
