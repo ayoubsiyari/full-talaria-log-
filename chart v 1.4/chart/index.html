@@ -1059,7 +1059,7 @@
             border: none;
         }
         
-        body.light-mode .replay-toolbar button:hover:not(.speed-clone-close-btn),
+        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn),
         body.light-mode .replay-toolbar select:hover {
             background: rgba(0, 0, 0, 0.08);
             color: #000000;
@@ -6998,10 +6998,24 @@
             transition: all 0.15s ease;
         }
 
-        .replay-toolbar button:hover:not(.speed-clone-close-btn),
+        .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn),
         .replay-toolbar select:hover {
             background: rgba(255, 255, 255, 0.08);
             color: #ffffff;
+        }
+
+        .replay-toolbar button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background: transparent !important;
+            color: rgba(209, 212, 220, 0.52);
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        body.light-mode .replay-toolbar button:disabled {
+            color: rgba(71, 85, 105, 0.55);
+            background: transparent !important;
         }
 
         .replay-toolbar button.replay-primary {
@@ -23876,11 +23890,22 @@ function showIndicatorsMenu() {
                 }
 
                 function setOriginalSpeedBarOpacity(opacity) {
-                    const fadeIds = ['speedSliderControl', 'replayGoBack', 'replayStepForward', 'goToControl', 'intervalSliderWrapper'];
+                    const fadeIds = ['speedSliderControl', 'replayGoBack', 'replayStepBackward', 'replayStepForward', 'goToControl', 'intervalSliderWrapper'];
                     fadeIds.forEach((id) => {
                         const el = document.getElementById(id);
                         if (el) {
-                            el.style.opacity = opacity;
+                            const preserveDisabledState =
+                                opacity === '1' &&
+                                (id === 'replayGoBack' || id === 'replayStepBackward') &&
+                                typeof el.disabled === 'boolean' &&
+                                el.disabled;
+
+                            if (preserveDisabledState) {
+                                el.style.opacity = '0.3';
+                                el.style.cursor = 'not-allowed';
+                            } else {
+                                el.style.opacity = opacity;
+                            }
                         }
                     });
 
