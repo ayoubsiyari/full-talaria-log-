@@ -244,6 +244,7 @@
 
 <script>
 const S = { datasets: [], sel: null, me: null, polling: new Set() };
+const DUKASCOPY_MAX_RANGE_DAYS = 365;
 
 /* ── Toast ── */
 let _tt;
@@ -268,6 +269,38 @@ function fmtN(n) { return Number(n || 0).toLocaleString(); }
 function esc(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function selDs() { return S.datasets.find(d => d.id === S.sel) || null; }
 
+function parseDateInput(value) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(value + 'T00:00:00Z');
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function dukascopyRangeDays(fromDate, toDate) {
+  const from = parseDateInput(fromDate);
+  const to = parseDateInput(toDate);
+  if (!from || !to) return null;
+  return Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
+}
+
+function clampDukascopyDateFields() {
+  const fromEl = document.getElementById('dk_from');
+  const toEl = document.getElementById('dk_to');
+  if (!fromEl || !toEl) return;
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  fromEl.max = todayIso;
+  toEl.max = todayIso;
+
+  if (fromEl.value && fromEl.value > todayIso) fromEl.value = todayIso;
+  if (toEl.value && toEl.value > todayIso) toEl.value = todayIso;
+
+  const from = parseDateInput(fromEl.value);
+  const to = parseDateInput(toEl.value);
+  if (from && to && from > to) {
+    fromEl.value = toEl.value;
+  }
+}
+
 function setDefaultDukascopyDates() {
   const today = new Date();
   const to = today.toISOString().slice(0, 10);
@@ -278,6 +311,7 @@ function setDefaultDukascopyDates() {
   const toEl = document.getElementById('dk_to');
   if (fromEl && !fromEl.value) fromEl.value = from;
   if (toEl && !toEl.value) toEl.value = to;
+  clampDukascopyDateFields();
 }
 
 function datasetTfSummary(ds) {
@@ -507,7 +541,17 @@ async function fetchDukascopyDataset() {
 
   if (!pair) { toast('Please select a pair.', 'err'); return; }
   if (!fromDate || !toDate) { toast('Please select both from/to dates.', 'err'); return; }
-  if (new Date(fromDate) > new Date(toDate)) { toast('From date must be before To date.', 'err'); return; }
+  const from = parseDateInput(fromDate);
+  const to = parseDateInput(toDate);
+  if (!from || !to) { toast('Invalid date. Please pick valid calendar dates.', 'err'); return; }
+  if (from > to) { toast('From date must be before To date.', 'err'); return; }
+
+  const rangeDays = dukascopyRangeDays(fromDate, toDate);
+  if (!rangeDays) { toast('Invalid date range.', 'err'); return; }
+  if (rangeDays > DUKASCOPY_MAX_RANGE_DAYS) {
+    toast(`Date range too large (${rangeDays} days). Max is ${DUKASCOPY_MAX_RANGE_DAYS} days per fetch.`, 'err');
+    return;
+  }
 
   btn.disabled = true;
   prog.style.display = 'block';
@@ -595,6 +639,8 @@ dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
 dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); uploadFile(e.dataTransfer.files[0]); });
 fi.addEventListener('change', () => { uploadFile(fi.files[0]); fi.value = ''; });
 document.getElementById('dkFetchBtn').addEventListener('click', fetchDukascopyDataset);
+document.getElementById('dk_from').addEventListener('change', clampDukascopyDateFields);
+document.getElementById('dk_to').addEventListener('change', clampDukascopyDateFields);
 
 /* ── Active toggle label ── */
 document.getElementById('f_active').addEventListener('change', function() {

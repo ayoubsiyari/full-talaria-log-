@@ -184,6 +184,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 DUKASCOPY_SCRIPT_PATH = _APP_DIR / "download" / "fetch-data.js"
 DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
+DUKASCOPY_MAX_RANGE_DAYS = int(os.getenv("DUKASCOPY_MAX_RANGE_DAYS", "365"))
 
 # Database Model
 class CSVFile(Base):
@@ -2390,6 +2391,13 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
 
     if from_dt > to_dt:
         raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
+
+    range_days = (to_dt - from_dt).days + 1
+    if range_days > DUKASCOPY_MAX_RANGE_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date range too large ({range_days} days). Max allowed per fetch is {DUKASCOPY_MAX_RANGE_DAYS} days.",
+        )
 
     if not DUKASCOPY_SCRIPT_PATH.exists():
         raise HTTPException(status_code=500, detail=f"Dukascopy script not found: {DUKASCOPY_SCRIPT_PATH}")
