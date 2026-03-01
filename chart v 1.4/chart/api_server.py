@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float
 from sqlalchemy.orm import sessionmaker, declarative_base
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import sqlite3
 import shutil
@@ -15,6 +15,7 @@ import base64
 import json
 import re
 import subprocess
+import tempfile
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from google.oauth2.service_account import Credentials
@@ -185,6 +186,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 DUKASCOPY_SCRIPT_PATH = _APP_DIR / "download" / "fetch-data.js"
 DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
 DUKASCOPY_MAX_RANGE_DAYS = int(os.getenv("DUKASCOPY_MAX_RANGE_DAYS", "365"))
+DUKASCOPY_MAX_TOTAL_DAYS = int(os.getenv("DUKASCOPY_MAX_TOTAL_DAYS", "7300"))
 
 # Database Model
 class CSVFile(Base):
@@ -651,6 +653,17 @@ def _normalize_dukascopy_instrument(value: str) -> str:
     if not re.fullmatch(r"[a-z0-9]{3,20}", instrument):
         raise HTTPException(status_code=400, detail="instrument must contain only letters/numbers (3-20 chars)")
     return instrument
+
+def _split_dukascopy_date_ranges(from_dt: datetime, to_dt: datetime, chunk_days: int) -> list[tuple[datetime, datetime]]:
+    step_days = max(1, int(chunk_days))
+    ranges: list[tuple[datetime, datetime]] = []
+    cursor = from_dt
+    delta = timedelta(days=step_days - 1)
+    while cursor <= to_dt:
+        chunk_to = min(cursor + delta, to_dt)
+        ranges.append((cursor, chunk_to))
+        cursor = chunk_to + timedelta(days=1)
+    return ranges
 
 def file_response_if_exists(path: str):
     p = Path(path)
@@ -2393,10 +2406,10 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
         raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
 
     range_days = (to_dt - from_dt).days + 1
-    if range_days > DUKASCOPY_MAX_RANGE_DAYS:
+    if range_days > DUKASCOPY_MAX_TOTAL_DAYS:
         raise HTTPException(
             status_code=400,
-            detail=f"Date range too large ({range_days} days). Max allowed per fetch is {DUKASCOPY_MAX_RANGE_DAYS} days.",
+            detail=f"Date range too large ({range_days} days). Max allowed per request is {DUKASCOPY_MAX_TOTAL_DAYS} days.",
         )
 
     if not DUKASCOPY_SCRIPT_PATH.exists():
@@ -2412,38 +2425,87 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
     unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
     output_path = (UPLOAD_DIR / unique_filename).resolve()
 
-    cmd = [
-        node_binary,
-        str(DUKASCOPY_SCRIPT_PATH),
-        "--instrument", instrument,
-        "--from", from_str,
-        "--to", to_str,
-        "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
-        "--out", str(output_path),
-    ]
+    chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
 
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(_APP_DIR),
-            capture_output=True,
-            text=True,
-            timeout=1200,
-        )
-    except subprocess.TimeoutExpired:
+        with tempfile.TemporaryDirectory(prefix="duka_", dir=str(UPLOAD_DIR.resolve())) as tmp_dir:
+            tmp_dir_path = Path(tmp_dir)
+            chunk_paths: list[Path] = []
+
+            for idx, (chunk_from, chunk_to) in enumerate(chunk_ranges, start=1):
+                chunk_from_str = chunk_from.strftime("%Y-%m-%d")
+                chunk_to_str = chunk_to.strftime("%Y-%m-%d")
+                chunk_path = tmp_dir_path / f"chunk_{idx:04d}.csv"
+
+                cmd = [
+                    node_binary,
+                    str(DUKASCOPY_SCRIPT_PATH),
+                    "--instrument", instrument,
+                    "--from", chunk_from_str,
+                    "--to", chunk_to_str,
+                    "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
+                    "--out", str(chunk_path),
+                ]
+
+                try:
+                    proc = subprocess.run(
+                        cmd,
+                        cwd=str(_APP_DIR),
+                        capture_output=True,
+                        text=True,
+                        timeout=1200,
+                    )
+                except subprocess.TimeoutExpired:
+                    raise HTTPException(
+                        status_code=504,
+                        detail=f"Dukascopy download timed out on chunk {idx}/{len(chunk_ranges)} ({chunk_from_str} to {chunk_to_str})",
+                    )
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to start Dukascopy script on chunk {idx}/{len(chunk_ranges)}: {str(exc)}",
+                    )
+
+                if proc.returncode != 0:
+                    err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
+                    err_line = err_txt.splitlines()[-1] if err_txt else "Unknown error"
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Dukascopy fetch failed on chunk {idx}/{len(chunk_ranges)} ({chunk_from_str} to {chunk_to_str}): {err_line}",
+                    )
+
+                if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Dukascopy returned an empty CSV on chunk {idx}/{len(chunk_ranges)} ({chunk_from_str} to {chunk_to_str})",
+                    )
+
+                chunk_paths.append(chunk_path)
+
+            with open(output_path, "wb") as out_f:
+                first_header = None
+                for idx, chunk_path in enumerate(chunk_paths):
+                    with open(chunk_path, "rb") as in_f:
+                        first_line = in_f.readline()
+                        if not first_line:
+                            continue
+
+                        if idx == 0:
+                            first_header = first_line
+                            out_f.write(first_line)
+                        else:
+                            if not first_header or first_line.strip().lower() != first_header.strip().lower():
+                                out_f.write(first_line)
+
+                        shutil.copyfileobj(in_f, out_f)
+    except HTTPException:
         if output_path.exists():
             output_path.unlink()
-        raise HTTPException(status_code=504, detail="Dukascopy download timed out")
+        raise
     except Exception as exc:
         if output_path.exists():
             output_path.unlink()
-        raise HTTPException(status_code=500, detail=f"Failed to start Dukascopy script: {str(exc)}")
-
-    if proc.returncode != 0:
-        if output_path.exists():
-            output_path.unlink()
-        err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
-        raise HTTPException(status_code=502, detail=f"Dukascopy fetch failed: {err_txt.splitlines()[-1] if err_txt else 'Unknown error'}")
+        raise HTTPException(status_code=500, detail=f"Failed to build merged Dukascopy CSV: {str(exc)}")
 
     if not output_path.exists() or output_path.stat().st_size <= 0:
         if output_path.exists():
@@ -2461,6 +2523,8 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
         "from_date": from_str,
         "to_date": to_str,
         "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+        "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
+        "chunk_count": len(chunk_ranges),
     }
     return result
 

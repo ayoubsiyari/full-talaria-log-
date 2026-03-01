@@ -244,7 +244,8 @@
 
 <script>
 const S = { datasets: [], sel: null, me: null, polling: new Set() };
-const DUKASCOPY_MAX_RANGE_DAYS = 365;
+const DUKASCOPY_CHUNK_DAYS = 365;
+const DUKASCOPY_MAX_TOTAL_DAYS = 7300;
 
 /* ── Toast ── */
 let _tt;
@@ -548,15 +549,19 @@ async function fetchDukascopyDataset() {
 
   const rangeDays = dukascopyRangeDays(fromDate, toDate);
   if (!rangeDays) { toast('Invalid date range.', 'err'); return; }
-  if (rangeDays > DUKASCOPY_MAX_RANGE_DAYS) {
-    toast(`Date range too large (${rangeDays} days). Max is ${DUKASCOPY_MAX_RANGE_DAYS} days per fetch.`, 'err');
+  if (rangeDays > DUKASCOPY_MAX_TOTAL_DAYS) {
+    toast(`Date range too large (${rangeDays} days). Max is ${DUKASCOPY_MAX_TOTAL_DAYS} days per request.`, 'err');
     return;
   }
+
+  const chunkCount = Math.max(1, Math.ceil(rangeDays / DUKASCOPY_CHUNK_DAYS));
 
   btn.disabled = true;
   prog.style.display = 'block';
   pbar.style.width = '8%';
-  label.textContent = `Downloading ${pair.toUpperCase()} M1 ${fromDate} → ${toDate} from Dukascopy...`;
+  label.textContent = chunkCount > 1
+    ? `Downloading ${pair.toUpperCase()} M1 ${fromDate} → ${toDate} in ${chunkCount} chunks...`
+    : `Downloading ${pair.toUpperCase()} M1 ${fromDate} → ${toDate} from Dukascopy...`;
 
   try {
     const res = await api('/api/admin/datasets/fetch-dukascopy', {
@@ -571,11 +576,14 @@ async function fetchDukascopyDataset() {
 
     const fileId = res.file && res.file.id;
     const rowCountTxt = fmtN(res.file && res.file.rowCount);
+    const usedChunks = Number((res.params && res.params.chunk_count) || chunkCount || 1);
     let conversionDone = false;
 
     if (fileId) {
       pbar.style.width = '20%';
-      label.textContent = `Downloaded ${rowCountTxt} rows. Converting binaries...`;
+      label.textContent = usedChunks > 1
+        ? `Downloaded ${rowCountTxt} rows from ${usedChunks} chunks. Converting binaries...`
+        : `Downloaded ${rowCountTxt} rows. Converting binaries...`;
 
       const conversionResult = await waitForConversionProgress(fileId, (status) => {
         const ready = Number(status.ready || 0);
