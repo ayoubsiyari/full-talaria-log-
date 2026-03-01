@@ -1,0 +1,7 @@
+{
+  "name": "talaria-trading-chart-runtime",
+  "private": true,
+  "dependencies": {
+    "dukascopy-node": "1.46.3"
+  }
+}

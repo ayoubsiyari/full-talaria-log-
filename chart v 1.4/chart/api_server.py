@@ -182,8 +182,7 @@ Base = declarative_base()
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-REPO_ROOT = _APP_DIR.parent.parent
-DUKASCOPY_SCRIPT_PATH = REPO_ROOT / "download" / "fetch-data.js"
+DUKASCOPY_SCRIPT_PATH = _APP_DIR / "download" / "fetch-data.js"
 DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
 
 # Database Model
@@ -2418,7 +2417,7 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
     try:
         proc = subprocess.run(
             cmd,
-            cwd=str(REPO_ROOT),
+            cwd=str(_APP_DIR),
             capture_output=True,
             text=True,
             timeout=1200,
