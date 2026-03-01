@@ -8993,8 +8993,8 @@ class Chart {
         const zoneColor = isLightTheme ? '#e0e3eb' : '#2a2e39';
         
         this.ctx.fillStyle = zoneColor;
-        const timeZoneAlpha = 0.9;
-        const priceZoneAlpha = 0.72;
+        const timeZoneAlpha = 0.1;
+        const priceZoneAlpha = 0.1;
         
         this.axisHighlightZones.forEach(zone => {
             if (zone.type === 'price') {
