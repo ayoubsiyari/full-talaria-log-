@@ -5285,11 +5285,20 @@ class Chart {
 	        const rect = container.getBoundingClientRect();
 	        const nextW = Math.floor(rect.width || 0);
 	        const nextH = Math.floor(rect.height || 0);
+	        const dprChanged = this._lastResizeDpr !== dpr;
+	        const sizeChanged = oldW !== nextW || oldH !== nextH;
 
 	        // Browser minimize/restore can temporarily report 0x0; keep last valid size.
 	        if (nextW < 2 || nextH < 2) {
 	            return;
 	        }
+
+	        // Skip redundant resizes to avoid unnecessary canvas clears/flicker.
+	        if (!sizeChanged && !dprChanged) {
+	            return;
+	        }
+
+	        this._lastResizeDpr = dpr;
 	        
 	        // Set canvas physical size
 	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
@@ -5340,6 +5349,11 @@ class Chart {
 	        }
 	        
 	        this.scheduleRender();
+
+	        // Paint immediately after canvas resize to avoid one-frame blank flashes
+	        // during animated layout transitions (settings panel open/close).
+	        this.render();
+	        this.renderPending = false;
 	        
 	        // Update follow button position after resize
 	        if (this.replaySystem && this.replaySystem.isActive) {
