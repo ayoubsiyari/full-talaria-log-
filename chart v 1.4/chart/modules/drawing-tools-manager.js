@@ -281,7 +281,15 @@ class DrawingToolsManager {
             if (this._rafRenderSet) this._rafRenderSet.clear();
             drawingsToRender.forEach(d => {
                 try {
-                    this.renderDrawing(d);
+                    const stillTracked = this.drawings.find(item => item === d || (item && d && item.id === d.id));
+                    if (!stillTracked) {
+                        if (d && d.group) {
+                            d.group.remove();
+                            d.group = null;
+                        }
+                        return;
+                    }
+                    this.renderDrawing(stillTracked);
                 } catch (e) {
                 }
             });
@@ -2098,6 +2106,18 @@ class DrawingToolsManager {
      * Render a single drawing
      */
     renderDrawing(drawing) {
+        if (!drawing) return;
+
+        const trackedDrawing = this.drawings.find(d => d === drawing || (d && drawing && d.id === drawing.id));
+        if (!trackedDrawing) {
+            if (drawing.group) {
+                drawing.group.remove();
+                drawing.group = null;
+            }
+            return;
+        }
+        drawing = trackedDrawing;
+
         // Ensure scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Cannot render drawing - scales not ready');
@@ -3492,6 +3512,10 @@ class DrawingToolsManager {
     deleteDrawing(drawing) {
         const index = this.drawings.indexOf(drawing);
         if (index > -1) {
+            if (this._rafRenderSet) {
+                this._rafRenderSet.delete(drawing);
+            }
+
             // Record for undo/redo BEFORE removing
             if (this.history) {
                 this.history.recordDelete(drawing, index);
@@ -3643,6 +3667,40 @@ class DrawingToolsManager {
             }
             
             this.drawings.splice(index, 1);
+
+            // If this drawing was being interacted with, clear drag/resize state immediately
+            if (this.draggingDrawing === drawing) {
+                this.isDragging = false;
+                this.draggingDrawing = null;
+                this.dragStartPoint = null;
+                this.dragStartScreen = null;
+                this.dragStartOriginalPos = null;
+                this.draggingMultiple = false;
+                this.multiDragStartPositions = null;
+            }
+            if (this.resizingDrawing === drawing) {
+                this.isResizing = false;
+                this.resizingDrawing = null;
+                this.resizingPointIndex = null;
+                this.resizeBeforeState = null;
+            }
+            if (this.customHandleDrawing === drawing || this.customHandleDraggingDrawing === drawing) {
+                this.isCustomHandleDrag = false;
+                this.isCustomHandleDragging = false;
+                this.customHandleDrawing = null;
+                this.customHandleDraggingDrawing = null;
+                this.customHandleRole = null;
+                this.customHandleStart = null;
+                this.customHandleBeforeState = null;
+            }
+            if (this._hoveredDrawing === drawing) {
+                this._hoveredDrawing = null;
+            }
+            if (this._hoverHandleBoundDrawingId === drawing.id) {
+                this._hoverHandleBoundDrawingId = null;
+                this._hoverHandleBoundGroupNode = null;
+            }
+
             drawing.destroy();
             
             // Hide the drawing toolbar if it was showing this drawing
@@ -3653,6 +3711,12 @@ class DrawingToolsManager {
             // Clear selection if deleted drawing was selected
             if (this.selectedDrawing === drawing) {
                 this.selectedDrawing = null;
+            }
+            if (Array.isArray(this.selectedDrawings) && this.selectedDrawings.length > 0) {
+                this.selectedDrawings = this.selectedDrawings.filter(d => d !== drawing);
+                if (!this.selectedDrawing && this.selectedDrawings.length > 0) {
+                    this.selectedDrawing = this.selectedDrawings[this.selectedDrawings.length - 1] || null;
+                }
             }
             
             // Clear all axis highlights after deletion
