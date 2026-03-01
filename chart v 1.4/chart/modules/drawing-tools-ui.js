@@ -2811,8 +2811,12 @@ body.light-mode .template-save-dialog .dialog-title {
             'fib-timezone'
         ];
         const showFibLevelsInInputsTab = this.isFibonacciInputTabTool(drawing.type);
-        if (fibonacciToolsWithLevels.includes(drawing.type) && !showFibLevelsInInputsTab) {
-            this.buildFibonacciLevelsSection(container, drawing);
+        if (fibonacciToolsWithLevels.includes(drawing.type)) {
+            if (showFibLevelsInInputsTab) {
+                this.buildFibonacciStyleControlsSection(container, drawing);
+            } else {
+                this.buildFibonacciLevelsSection(container, drawing);
+            }
         }
 
         if (drawing.type === 'gann-box') {
@@ -3892,8 +3896,9 @@ body.light-mode .template-save-dialog .dialog-title {
     /**
      * Build Fibonacci Levels Section (DOM-based) - TradingView style
      */
-    buildFibonacciLevelsSection(container, drawing) {
+    buildFibonacciLevelsSection(container, drawing, options = {}) {
         const self = this;
+        const showCoreStyleControls = options.showCoreStyleControls !== false;
         const section = document.createElement('div');
         section.className = 'tv-levels-section';
         section.style.cssText = (drawing.type === 'fib-channel' || drawing.type === 'fib-timezone' || drawing.type === 'fib-speed-fan')
@@ -4199,7 +4204,7 @@ body.light-mode .template-save-dialog .dialog-title {
             self.renderPreview(drawing);
         };
 
-        if (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension' || drawing.type === 'fib-channel') {
+        if (showCoreStyleControls && (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension' || drawing.type === 'fib-channel')) {
             if (drawing.style.reverse === undefined) drawing.style.reverse = false;
             if (drawing.style.showPrices === undefined) drawing.style.showPrices = true;
             if (drawing.style.levelsEnabled === undefined) drawing.style.levelsEnabled = true;
@@ -4315,7 +4320,7 @@ body.light-mode .template-save-dialog .dialog-title {
         }
 
         // Options row (only for tools that support extend/zones)
-        if (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension' || drawing.type === 'fib-channel') {
+        if (showCoreStyleControls && (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension' || drawing.type === 'fib-channel')) {
             const optionsRow = document.createElement('div');
             optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
 
@@ -4546,53 +4551,55 @@ body.light-mode .template-save-dialog .dialog-title {
             section.appendChild(optionsRow);
         }
 
-        // Global levels type/width controls
-        const levelsStyleRow = document.createElement('div');
-        levelsStyleRow.className = 'tv-prop-row';
-        levelsStyleRow.style.cssText = 'display:flex; align-items:center; gap: 8px; margin-bottom: 12px;';
+        if (showCoreStyleControls) {
+            // Global levels type/width controls
+            const levelsStyleRow = document.createElement('div');
+            levelsStyleRow.className = 'tv-prop-row';
+            levelsStyleRow.style.cssText = 'display:flex; align-items:center; gap: 8px; margin-bottom: 12px;';
 
-        const levelsLabel = document.createElement('span');
-        levelsLabel.className = 'tv-prop-label';
-        levelsLabel.textContent = 'Levels';
-        levelsStyleRow.appendChild(levelsLabel);
+            const levelsLabel = document.createElement('span');
+            levelsLabel.className = 'tv-prop-label';
+            levelsLabel.textContent = 'Levels';
+            levelsStyleRow.appendChild(levelsLabel);
 
-        const levelsControls = document.createElement('div');
-        levelsControls.className = 'tv-prop-controls';
-        levelsControls.style.marginLeft = 'auto';
+            const levelsControls = document.createElement('div');
+            levelsControls.className = 'tv-prop-controls';
+            levelsControls.style.marginLeft = 'auto';
 
-        const levelsTypeSelect = document.createElement('select');
-        levelsTypeSelect.className = 'tv-select';
-        levelsTypeSelect.style.width = '40px';
-        const currentLevelsType = drawing.style.levelsLineDasharray ?? '';
-        levelsTypeSelect.innerHTML = `
-            <option value="" ${currentLevelsType === '' ? 'selected' : ''}>───────</option>
-            <option value="5,5" ${currentLevelsType === '5,5' ? 'selected' : ''}>─ ─ ─ ─</option>
-            <option value="2,2" ${currentLevelsType === '2,2' ? 'selected' : ''}>··········</option>
-            <option value="8,4,2,4" ${currentLevelsType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
-        `;
-        levelsTypeSelect.onchange = () => {
-            drawing.style.levelsLineDasharray = levelsTypeSelect.value;
-            levelsRef.forEach(lvl => { if (lvl) lvl.lineType = drawing.style.levelsLineDasharray; });
-            applyChanges();
-        };
-        levelsControls.appendChild(levelsTypeSelect);
+            const levelsTypeSelect = document.createElement('select');
+            levelsTypeSelect.className = 'tv-select';
+            levelsTypeSelect.style.width = '40px';
+            const currentLevelsType = drawing.style.levelsLineDasharray ?? '';
+            levelsTypeSelect.innerHTML = `
+                <option value="" ${currentLevelsType === '' ? 'selected' : ''}>───────</option>
+                <option value="5,5" ${currentLevelsType === '5,5' ? 'selected' : ''}>─ ─ ─ ─</option>
+                <option value="2,2" ${currentLevelsType === '2,2' ? 'selected' : ''}>··········</option>
+                <option value="8,4,2,4" ${currentLevelsType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
+            `;
+            levelsTypeSelect.onchange = () => {
+                drawing.style.levelsLineDasharray = levelsTypeSelect.value;
+                levelsRef.forEach(lvl => { if (lvl) lvl.lineType = drawing.style.levelsLineDasharray; });
+                applyChanges();
+            };
+            levelsControls.appendChild(levelsTypeSelect);
 
-        const levelsWidthSelect = document.createElement('select');
-        levelsWidthSelect.className = 'tv-select';
-        levelsWidthSelect.style.width = '48px';
-        const widths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        const currentLevelsWidth = parseInt(drawing.style.levelsLineWidth) || 2;
-        levelsWidthSelect.innerHTML = widths.map(w => `<option value="${w}" ${currentLevelsWidth === w ? 'selected' : ''}>${w}px</option>`).join('');
-        levelsWidthSelect.onchange = () => {
-            const w = parseInt(levelsWidthSelect.value);
-            drawing.style.levelsLineWidth = (!isNaN(w) && w > 0) ? w : 2;
-            levelsRef.forEach(lvl => { if (lvl) lvl.lineWidth = drawing.style.levelsLineWidth; });
-            applyChanges();
-        };
-        levelsControls.appendChild(levelsWidthSelect);
+            const levelsWidthSelect = document.createElement('select');
+            levelsWidthSelect.className = 'tv-select';
+            levelsWidthSelect.style.width = '48px';
+            const widths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            const currentLevelsWidth = parseInt(drawing.style.levelsLineWidth) || 2;
+            levelsWidthSelect.innerHTML = widths.map(w => `<option value="${w}" ${currentLevelsWidth === w ? 'selected' : ''}>${w}px</option>`).join('');
+            levelsWidthSelect.onchange = () => {
+                const w = parseInt(levelsWidthSelect.value);
+                drawing.style.levelsLineWidth = (!isNaN(w) && w > 0) ? w : 2;
+                levelsRef.forEach(lvl => { if (lvl) lvl.lineWidth = drawing.style.levelsLineWidth; });
+                applyChanges();
+            };
+            levelsControls.appendChild(levelsWidthSelect);
 
-        levelsStyleRow.appendChild(levelsControls);
-        section.appendChild(levelsStyleRow);
+            levelsStyleRow.appendChild(levelsControls);
+            section.appendChild(levelsStyleRow);
+        }
 
         const list = document.createElement('div');
         // Side-by-side layout (match pitchfork levels UI)
@@ -6618,7 +6625,260 @@ body.light-mode .template-save-dialog .dialog-title {
      * Build Fibonacci Input Tab Content
      */
     buildFibonacciInputsTab(container, drawing) {
-        this.buildFibonacciLevelsSection(container, drawing);
+        const styleControlTools = ['fibonacci-retracement', 'fibonacci-extension', 'trend-fib-extension', 'fib-channel'];
+        const moveCoreControlsToStyle = styleControlTools.includes(drawing.type);
+        this.buildFibonacciLevelsSection(container, drawing, {
+            showCoreStyleControls: !moveCoreControlsToStyle
+        });
+    }
+
+    /**
+     * Build Fibonacci style controls in Style tab (without the level rows list)
+     */
+    buildFibonacciStyleControlsSection(container, drawing) {
+        const styleControlTools = ['fibonacci-retracement', 'fibonacci-extension', 'trend-fib-extension', 'fib-channel'];
+        if (!styleControlTools.includes(drawing.type)) return;
+
+        if (!drawing.style) drawing.style = {};
+        if (drawing.style.reverse === undefined) drawing.style.reverse = false;
+        if (drawing.style.showPrices === undefined) drawing.style.showPrices = true;
+        if (drawing.style.levelsEnabled === undefined) drawing.style.levelsEnabled = true;
+        if (drawing.style.levelsLabelMode !== 'percent' && drawing.style.levelsLabelMode !== 'values') {
+            drawing.style.levelsLabelMode = 'values';
+        }
+        if (drawing.style.backgroundOpacity === undefined || drawing.style.backgroundOpacity === null || isNaN(parseFloat(drawing.style.backgroundOpacity))) {
+            drawing.style.backgroundOpacity = 0.08;
+        }
+        if (drawing.style.levelsLineDasharray === undefined) {
+            drawing.style.levelsLineDasharray = '';
+        }
+        if (drawing.style.levelsLineWidth === undefined) {
+            drawing.style.levelsLineWidth = 2;
+        }
+
+        const applyChanges = () => {
+            const levels = Array.isArray(drawing.levels) ? drawing.levels : null;
+            if (levels) {
+                const lineType = drawing.style.levelsLineDasharray ?? '';
+                const lineWidth = parseInt(drawing.style.levelsLineWidth) || 2;
+                levels.forEach(lvl => {
+                    if (!lvl || typeof lvl !== 'object') return;
+                    lvl.lineType = lineType;
+                    lvl.lineWidth = lineWidth;
+                });
+            }
+
+            if (window.drawingManager) {
+                const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id) || drawing;
+                if (!actualDrawing.style) actualDrawing.style = {};
+                Object.assign(actualDrawing.style, drawing.style);
+
+                if (levels) {
+                    actualDrawing.levels = levels;
+                    actualDrawing.style.levels = levels;
+                    if (drawing.type === 'fib-timezone') {
+                        actualDrawing.fibNumbers = levels;
+                        actualDrawing.style.fibNumbers = levels;
+                    }
+                }
+
+                window.drawingManager.renderDrawing(actualDrawing);
+                window.drawingManager.saveDrawings();
+                return;
+            }
+
+            this.renderPreview(drawing);
+        };
+
+        const section = document.createElement('div');
+        section.className = 'tv-levels-section';
+        section.style.cssText = 'margin-top: 16px;';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;';
+        header.textContent = 'Fibonacci Style';
+        section.appendChild(header);
+
+        const controlsWrap = document.createElement('div');
+        controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #363a45;';
+
+        const makeRow = (labelText) => {
+            const row = document.createElement('div');
+            row.className = 'tv-prop-row';
+            row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 12px;';
+
+            const left = document.createElement('div');
+            left.className = 'tv-checkbox-wrapper';
+            left.style.cssText = 'min-width: 0; margin: 0;';
+
+            const cb = document.createElement('div');
+            cb.className = 'tv-checkbox';
+            cb.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            `;
+
+            const label = document.createElement('span');
+            label.className = 'tv-checkbox-label';
+            label.style.cssText = 'white-space: nowrap;';
+            label.textContent = labelText;
+
+            left.appendChild(cb);
+            left.appendChild(label);
+            row.appendChild(left);
+
+            return { row, cb };
+        };
+
+        const bgRow = makeRow('Background');
+        bgRow.cb.classList.toggle('checked', !!drawing.style.showZones);
+        const bgSlider = document.createElement('input');
+        bgSlider.type = 'range';
+        bgSlider.min = '0';
+        bgSlider.max = '1';
+        bgSlider.step = '0.01';
+        bgSlider.value = String(drawing.style.backgroundOpacity);
+        bgSlider.style.cssText = 'width: 180px; height: 6px; margin-left: auto; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none;';
+        bgRow.row.appendChild(bgSlider);
+        bgRow.cb.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            drawing.style.showZones = !drawing.style.showZones;
+            drawing.style.backgroundEnabled = drawing.style.showZones;
+            bgRow.cb.classList.toggle('checked', !!drawing.style.showZones);
+            applyChanges();
+        });
+        bgSlider.addEventListener('input', () => {
+            drawing.style.backgroundOpacity = parseFloat(bgSlider.value);
+            applyChanges();
+        });
+        controlsWrap.appendChild(bgRow.row);
+
+        const reverseRow = makeRow('Reverse');
+        reverseRow.cb.classList.toggle('checked', !!drawing.style.reverse);
+        reverseRow.cb.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            drawing.style.reverse = !drawing.style.reverse;
+            reverseRow.cb.classList.toggle('checked', !!drawing.style.reverse);
+            applyChanges();
+        });
+        controlsWrap.appendChild(reverseRow.row);
+
+        const pricesRow = makeRow('Prices');
+        pricesRow.cb.classList.toggle('checked', !!drawing.style.showPrices);
+        pricesRow.cb.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            drawing.style.showPrices = !drawing.style.showPrices;
+            pricesRow.cb.classList.toggle('checked', !!drawing.style.showPrices);
+            applyChanges();
+        });
+        controlsWrap.appendChild(pricesRow.row);
+
+        const levelsRow = makeRow('Levels');
+        levelsRow.cb.classList.toggle('checked', !!drawing.style.levelsEnabled);
+        const levelsSelect = document.createElement('select');
+        levelsSelect.className = 'tv-select';
+        levelsSelect.style.cssText = 'width: 180px;';
+        levelsSelect.innerHTML = `
+            <option value="values" ${drawing.style.levelsLabelMode === 'values' ? 'selected' : ''}>Values</option>
+            <option value="percent" ${drawing.style.levelsLabelMode === 'percent' ? 'selected' : ''}>Percent</option>
+        `;
+        levelsRow.row.appendChild(levelsSelect);
+        levelsRow.cb.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            drawing.style.levelsEnabled = !drawing.style.levelsEnabled;
+            levelsRow.cb.classList.toggle('checked', !!drawing.style.levelsEnabled);
+            applyChanges();
+        });
+        levelsSelect.addEventListener('change', () => {
+            drawing.style.levelsLabelMode = levelsSelect.value;
+            applyChanges();
+        });
+        controlsWrap.appendChild(levelsRow.row);
+
+        section.appendChild(controlsWrap);
+
+        const optionsRow = document.createElement('div');
+        optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
+
+        const extendWrap = document.createElement('div');
+        extendWrap.className = 'tv-checkbox-wrapper';
+        extendWrap.style.cssText = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+
+        const extendCb = document.createElement('div');
+        extendCb.className = `tv-checkbox ${(drawing.style.extendLines || false) ? 'checked' : ''}`;
+        extendCb.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        `;
+
+        const extendText = document.createElement('span');
+        extendText.className = 'tv-checkbox-label';
+        extendText.style.cssText = 'white-space: nowrap;';
+        extendText.textContent = 'Extend Lines';
+
+        extendCb.addEventListener('click', () => {
+            drawing.style.extendLines = !drawing.style.extendLines;
+            extendCb.classList.toggle('checked', !!drawing.style.extendLines);
+            applyChanges();
+        });
+
+        extendWrap.appendChild(extendCb);
+        extendWrap.appendChild(extendText);
+        optionsRow.appendChild(extendWrap);
+        section.appendChild(optionsRow);
+
+        const levelsStyleRow = document.createElement('div');
+        levelsStyleRow.className = 'tv-prop-row';
+        levelsStyleRow.style.cssText = 'display:flex; align-items:center; gap: 8px; margin-bottom: 12px;';
+
+        const levelsLabel = document.createElement('span');
+        levelsLabel.className = 'tv-prop-label';
+        levelsLabel.textContent = 'Levels';
+        levelsStyleRow.appendChild(levelsLabel);
+
+        const levelsControls = document.createElement('div');
+        levelsControls.className = 'tv-prop-controls';
+        levelsControls.style.marginLeft = 'auto';
+
+        const levelsTypeSelect = document.createElement('select');
+        levelsTypeSelect.className = 'tv-select';
+        levelsTypeSelect.style.width = '40px';
+        const currentLevelsType = drawing.style.levelsLineDasharray ?? '';
+        levelsTypeSelect.innerHTML = `
+            <option value="" ${currentLevelsType === '' ? 'selected' : ''}>───────</option>
+            <option value="5,5" ${currentLevelsType === '5,5' ? 'selected' : ''}>─ ─ ─ ─</option>
+            <option value="2,2" ${currentLevelsType === '2,2' ? 'selected' : ''}>··········</option>
+            <option value="8,4,2,4" ${currentLevelsType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
+        `;
+        levelsTypeSelect.onchange = () => {
+            drawing.style.levelsLineDasharray = levelsTypeSelect.value;
+            applyChanges();
+        };
+        levelsControls.appendChild(levelsTypeSelect);
+
+        const levelsWidthSelect = document.createElement('select');
+        levelsWidthSelect.className = 'tv-select';
+        levelsWidthSelect.style.width = '48px';
+        const widths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const currentLevelsWidth = parseInt(drawing.style.levelsLineWidth) || 2;
+        levelsWidthSelect.innerHTML = widths.map(w => `<option value="${w}" ${currentLevelsWidth === w ? 'selected' : ''}>${w}px</option>`).join('');
+        levelsWidthSelect.onchange = () => {
+            const w = parseInt(levelsWidthSelect.value);
+            drawing.style.levelsLineWidth = (!isNaN(w) && w > 0) ? w : 2;
+            applyChanges();
+        };
+        levelsControls.appendChild(levelsWidthSelect);
+
+        levelsStyleRow.appendChild(levelsControls);
+        section.appendChild(levelsStyleRow);
+
+        container.appendChild(section);
     }
 
     /**
