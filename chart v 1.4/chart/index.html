@@ -26499,6 +26499,8 @@ window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEa
 var panel = null;
 var _spCurrentMode = '';
 var _spBottomInterval = null;
+var _spCloseAnimTimer = null;
+var _spAnimMs = 280;
 
 function _syncSpBottom() {
     if (!panel) return;
@@ -26510,6 +26512,10 @@ function _syncSpBottom() {
 function openPanel(section) {
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
+    if (_spCloseAnimTimer) {
+        clearTimeout(_spCloseAnimTimer);
+        _spCloseAnimTimer = null;
+    }
     ['helpPanel','profilePanel'].forEach(function(id) {
         var p = document.getElementById(id); if (p) p.classList.remove('open');
     });
@@ -26521,7 +26527,7 @@ function openPanel(section) {
     if (w) w.classList.add('settings-open');
     _spBottomInterval = setInterval(_syncSpBottom, 200);
     var c = ch();
-    if (c && c.resize) setTimeout(function() { c.resize(); if (c.scheduleRender) c.scheduleRender(); }, 290);
+    if (c && c.resize) setTimeout(function() { c.resize(); if (c.scheduleRender) c.scheduleRender(); }, _spAnimMs + 10);
 }
 
 window.closePanel = function() {
@@ -26531,12 +26537,16 @@ window.closePanel = function() {
     _spCurrentMode = '';
     var sb = panel.querySelector('.sp-sidebar');
     if (sb) sb.style.display = '';
-    document.body.classList.remove('settings-open');
     if (_spBottomInterval) { clearInterval(_spBottomInterval); _spBottomInterval = null; }
     var w = document.getElementById('chartWrapper');
-    if (w) w.classList.remove('settings-open');
-    var c = ch();
-    if (c && c.resize) setTimeout(function() { c.resize(); if (c.scheduleRender) c.scheduleRender(); }, 290);
+    if (_spCloseAnimTimer) clearTimeout(_spCloseAnimTimer);
+    _spCloseAnimTimer = setTimeout(function() {
+        document.body.classList.remove('settings-open');
+        if (w) w.classList.remove('settings-open');
+        _spCloseAnimTimer = null;
+        var c = ch();
+        if (c && c.resize) setTimeout(function() { c.resize(); if (c.scheduleRender) c.scheduleRender(); }, 16);
+    }, _spAnimMs);
 };
 
 var closePanel = window.closePanel;
