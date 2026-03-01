@@ -280,6 +280,35 @@ function setDefaultDukascopyDates() {
   if (toEl && !toEl.value) toEl.value = to;
 }
 
+function datasetTfSummary(ds) {
+  const raw = Object.values((ds && ds.timeframes) || {});
+  if (!raw.length) {
+    const total = Number((ds && ds.total_timeframes) || 1);
+    const ready = Number((ds && ds.ready_timeframes) || 0);
+    const pending = Math.max(total - ready, 0);
+    return { total, ready, failed: 0, pending, done: pending === 0 };
+  }
+
+  let ready = 0;
+  let failed = 0;
+  let pending = 0;
+
+  raw.forEach((info) => {
+    const st = String((info && info.status) || 'missing').toLowerCase();
+    if (st === 'ready') ready += 1;
+    else if (st === 'failed') failed += 1;
+    else pending += 1;
+  });
+
+  return {
+    total: raw.length,
+    ready,
+    failed,
+    pending,
+    done: pending === 0,
+  };
+}
+
 /* ── Render table ── */
 function renderTable() {
   const tb = document.getElementById('tbody');
@@ -290,15 +319,22 @@ function renderTable() {
   }
   tb.innerHTML = '';
   S.datasets.forEach(ds => {
-    const ready = ds.ready_timeframes || 0;
-    const total = ds.total_timeframes || 1;
-    const converting = ready < total;
+    const tfSummary = datasetTfSummary(ds);
+    const ready = tfSummary.ready;
+    const total = tfSummary.total;
+    const failed = tfSummary.failed;
+    const converting = tfSummary.pending > 0;
     const active = ds.settings && ds.settings.is_active !== false;
     const name = (ds.settings && ds.settings.display_name) || ds.original_name;
     const tfHtml = Object.entries(ds.timeframes || {}).slice(0,9).map(([tf, info]) => {
       const st = (info.status || 'missing').toLowerCase();
       return '<span class="tp ' + st + '">' + tf + '</span>';
     }).join('');
+    const stateHtml = converting
+      ? '<span class="conv-dot"></span><span style="font-size:11px;color:var(--warn)">' + (ready + failed) + '/' + total + '</span>'
+      : (failed > 0
+          ? '<span style="font-size:11px;color:var(--danger)">&#9888; ' + ready + '/' + total + ' ready (' + failed + ' failed)</span>'
+          : '<span style="font-size:11px;color:var(--ok)">&#10003; Ready</span>');
     const tr = document.createElement('tr');
     tr.className = 'drow' + (ds.id === S.sel ? ' sel' : '');
     tr.innerHTML =
@@ -307,7 +343,7 @@ function renderTable() {
       '<td style="white-space:nowrap">' + fmtN(ds.row_count) + '</td>' +
       '<td><div class="tf-bar">' + tfHtml + '</div></td>' +
       '<td>' +
-        (converting ? '<span class="conv-dot"></span><span style="font-size:11px;color:var(--warn)">' + ready + '/' + total + '</span>' : '<span style="font-size:11px;color:var(--ok)">&#10003; Ready</span>') +
+        stateHtml +
         '<br><span class="act-badge ' + (active ? 'yes' : 'no') + '">' + (active ? 'Active' : 'Hidden') + '</span>' +
       '</td>' +
       '<td><button class="btn sm edit-btn" data-id="' + ds.id + '">Edit</button></td>';
@@ -369,7 +405,8 @@ async function loadDatasets(keepSel) {
   else if (!S.sel && S.datasets.length) selectDs(S.datasets[0].id);
   // auto-poll any still converting
   S.datasets.forEach(ds => {
-    if ((ds.ready_timeframes || 0) < (ds.total_timeframes || 1)) startPolling(ds.id);
+    const summary = datasetTfSummary(ds);
+    if (!summary.done) startPolling(ds.id);
   });
 }
 
@@ -385,10 +422,21 @@ function startPolling(id) {
       renderTable();
       if (S.sel) fillForm(selDs());
       const ds = S.datasets.find(d => d.id === id);
-      const done = !ds || (ds.ready_timeframes || 0) >= (ds.total_timeframes || 1);
-      if (done) { S.polling.delete(id); if (done) toast('Dataset #' + id + ' binary ready!', 'ok'); return; }
-      if (++attempts < 120) setTimeout(tick, 3000);
-      else S.polling.delete(id);
+      const summary = ds ? datasetTfSummary(ds) : null;
+      const done = !ds || (summary && summary.done);
+      if (done) {
+        S.polling.delete(id);
+        if (ds && summary) {
+          if (summary.failed > 0) toast('Dataset #' + id + ' conversion finished with ' + summary.failed + ' failed timeframe(s). Use Rebuild to retry.', 'err');
+          else toast('Dataset #' + id + ' binary ready!', 'ok');
+        }
+        return;
+      }
+      if (++attempts < 1200) setTimeout(tick, 3000);
+      else {
+        S.polling.delete(id);
+        toast('Dataset #' + id + ' is still processing. Please refresh in a few minutes.');
+      }
     } catch { S.polling.delete(id); }
   };
   setTimeout(tick, 3000);
