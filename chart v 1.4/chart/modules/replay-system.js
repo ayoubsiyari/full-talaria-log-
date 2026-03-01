@@ -1872,8 +1872,10 @@ class ReplaySystem {
             return;
         }
         
-        // Proactively request more data when within 2000 candles of the end
-        if (this.fullRawData.length - this.currentIndex < 2000 && 
+        // Proactively request more data using speed-aware threshold
+        const remainingCandles = this.fullRawData.length - this.currentIndex;
+        const preloadThreshold = this.getForwardPrefetchThreshold();
+        if (remainingCandles < preloadThreshold &&
             this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
             this.chart.checkViewportLoadMore('forward');
         }
@@ -1959,6 +1961,29 @@ class ReplaySystem {
         
         return targetIndex;
     }
+
+    /**
+     * Dynamic prefetch threshold (in raw candles) for forward replay.
+     * Keeps enough buffered candles based on current replay speed so
+     * pan-loading can finish before playback reaches the edge.
+     */
+    getForwardPrefetchThreshold() {
+        let rawCandleTimeframeMs = 60000;
+        if (this.fullRawData && this.fullRawData.length > 1) {
+            const dt = Number(this.fullRawData[1].t) - Number(this.fullRawData[0].t);
+            if (Number.isFinite(dt) && dt > 0) {
+                rawCandleTimeframeMs = dt;
+            }
+        }
+
+        const rawCandleTimeframeSec = Math.max(1, rawCandleTimeframeMs / 1000);
+        const speed = Math.max(1, Number(this.speed) || 1);
+        const rawCandlesPerSecond = speed / rawCandleTimeframeSec;
+
+        // Keep roughly 12s of runway + safety margin, bounded for memory/network balance.
+        const dynamicThreshold = Math.ceil(rawCandlesPerSecond * 12) + 500;
+        return Math.max(2000, Math.min(20000, dynamicThreshold));
+    }
     
     /**
      * Convert timeframe string to milliseconds
@@ -2032,7 +2057,9 @@ class ReplaySystem {
     startTickAnimation() {
         if (!this.isActive || !this.isPlaying) return;
 
-        if (this.fullRawData.length - this.currentIndex < 2000 &&
+        const remainingCandles = this.fullRawData.length - this.currentIndex;
+        const preloadThreshold = this.getForwardPrefetchThreshold();
+        if (remainingCandles < preloadThreshold &&
             this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
             this.chart.checkViewportLoadMore('forward');
         }

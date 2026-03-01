@@ -7980,29 +7980,80 @@ class Chart {
                 
                 // In replay mode, merge into fullRawData (the master copy)
                 // because replay overwrites rawData on every tick
-                const masterData = isReplay ? this.replaySystem.fullRawData : this.rawData;
-                
-                // Merge: deduplicate by timestamp
-                const existingTs = new Set(masterData.map(c => c.t));
-                const uniqueNew = boundedCandles.filter(c => !existingTs.has(c.t));
-                if (uniqueNew.length === 0) return;
-                
+                const masterData = Array.isArray(isReplay ? this.replaySystem.fullRawData : this.rawData)
+                    ? (isReplay ? this.replaySystem.fullRawData : this.rawData)
+                    : [];
+
+                // Keep incoming candles sorted (API is usually ordered, but enforce defensively)
+                const incoming = boundedCandles.slice().sort((a, b) => a.t - b.t);
+
                 // Save replay position before modifying data
                 let replayTs = null;
+                let replayIndex = null;
                 if (isReplay) {
+                    replayIndex = Number(this.replaySystem.currentIndex);
                     replayTs = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.t;
                 }
-                
-                // Merge new candles into master data
-                const merged = [...masterData, ...uniqueNew].sort((a, b) => a.t - b.t);
+
+                // Fast-path merge based on direction to avoid expensive full-array sort/set
+                let uniqueNew = [];
+                let merged = masterData;
+                if (masterData.length === 0) {
+                    const seen = new Set();
+                    uniqueNew = incoming.filter(c => {
+                        const t = Number(c?.t);
+                        if (!Number.isFinite(t) || seen.has(t)) return false;
+                        seen.add(t);
+                        return true;
+                    });
+                    merged = uniqueNew;
+                } else if (direction === 'forward') {
+                    const lastTs = Number(masterData[masterData.length - 1]?.t);
+                    if (Number.isFinite(lastTs)) {
+                        uniqueNew = incoming.filter(c => Number(c?.t) > lastTs);
+                        merged = uniqueNew.length > 0 ? masterData.concat(uniqueNew) : masterData;
+                    }
+                } else if (direction === 'backward') {
+                    const firstTs = Number(masterData[0]?.t);
+                    if (Number.isFinite(firstTs)) {
+                        uniqueNew = incoming.filter(c => Number(c?.t) < firstTs);
+                        merged = uniqueNew.length > 0 ? uniqueNew.concat(masterData) : masterData;
+                    }
+                }
+
+                // Defensive fallback when fast-path couldn't classify data safely
+                if (uniqueNew.length === 0 && incoming.length > 0 && merged === masterData) {
+                    const existingTs = new Set(masterData.map(c => c.t));
+                    uniqueNew = incoming.filter(c => !existingTs.has(c.t));
+                    if (uniqueNew.length > 0) {
+                        merged = [...masterData, ...uniqueNew].sort((a, b) => a.t - b.t);
+                    }
+                }
+
+                if (uniqueNew.length === 0) return;
                 
                 if (isReplay) {
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
-                    // Restore currentIndex to the same timestamp
-                    if (replayTs != null) {
+                    // Keep replay index stable without scanning entire array when possible
+                    if (Number.isFinite(replayIndex)) {
+                        if (direction === 'backward') {
+                            this.replaySystem.currentIndex = Math.min(
+                                Math.max(replayIndex + uniqueNew.length, 0),
+                                merged.length - 1
+                            );
+                        } else if (direction === 'forward') {
+                            this.replaySystem.currentIndex = Math.min(
+                                Math.max(replayIndex, 0),
+                                merged.length - 1
+                            );
+                        } else if (replayTs != null) {
+                            const newIdx = merged.findIndex(c => c.t >= replayTs);
+                            if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
+                        }
+                    } else if (replayTs != null) {
                         const newIdx = merged.findIndex(c => c.t >= replayTs);
                         if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
                     }
