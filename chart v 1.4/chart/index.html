@@ -6458,7 +6458,7 @@
             pointer-events: none;
         }
 
-        body.speed-slider1  a   ±1-clone-active #speedSliderClone {
+        body.speed-slider-clone-active #speedSliderClone {
             pointer-events: auto;
         }
 
@@ -23759,6 +23759,7 @@ function showIndicatorsMenu() {
                 let isDragging = false;
                 let dragOffset = { x: 0, y: 0 };
                 let floatingClone = null;
+                const SPEED_CLONE_SNAP_DISTANCE = 80;
 
                 function intervalLabelFromTf(tf) {
                     const normalized = String(tf || '').trim().toLowerCase();
@@ -23988,7 +23989,7 @@ function showIndicatorsMenu() {
                             Math.pow(left - originalRect.left, 2) + 
                             Math.pow(top - originalRect.top, 2)
                         );
-                        if (distance < 80) {
+                        if (distance < SPEED_CLONE_SNAP_DISTANCE) {
                             clone.classList.add('snap-ready');
                         } else {
                             clone.classList.remove('snap-ready');
@@ -24008,7 +24009,7 @@ function showIndicatorsMenu() {
                             Math.pow(rect.top - originalRect.top, 2)
                         );
                         
-                        if (distance < 80) {
+                        if (distance < SPEED_CLONE_SNAP_DISTANCE) {
                             // Close clone when dropped near original position
                             clone.remove();
                             localStorage.removeItem('speedSliderClonePosition');
@@ -24482,7 +24483,7 @@ function showIndicatorsMenu() {
                         Math.pow(top - originalRect.top, 2)
                     );
                     
-                    if (distance < 80) {
+                    if (distance < SPEED_CLONE_SNAP_DISTANCE) {
                         floatingClone.style.opacity = '0.5';
                         floatingClone.style.transform = 'scale(0.95)';
                         floatingClone.style.borderColor = 'rgba(239, 68, 68, 0.5)';
@@ -24510,13 +24511,13 @@ function showIndicatorsMenu() {
                         const cloneRect = floatingClone.getBoundingClientRect();
                         const originalRect = speedSliderControl.getBoundingClientRect();
                         
-                        // Check if dragged far enough (at least 50px)
+                        // If dropped near the original, snap back and re-enable original controls.
                         const distance = Math.sqrt(
                             Math.pow(cloneRect.left - originalRect.left, 2) + 
                             Math.pow(cloneRect.top - originalRect.top, 2)
                         );
                         
-                        if (distance > 50) {
+                        if (distance >= SPEED_CLONE_SNAP_DISTANCE) {
                             // Keep clone as floating
                             floatingClone.classList.remove('dragging');
                             floatingClone.style.pointerEvents = 'auto';
