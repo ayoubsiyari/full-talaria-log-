@@ -8648,15 +8648,6 @@
             align-items: center;
             justify-content: center;
             pointer-events: none;
-            border-radius: 50%;
-            background: rgba(74, 222, 128, 0.14);
-        }
-
-        .nav-badge-letters {
-            font-size: 7px;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-            z-index: 2;
         }
 
         .nav-badge-radio {
@@ -8670,27 +8661,11 @@
         }
 
         /* LB state (back navigation enabled) should be red */
-        .nav-integrity-badge.enabled .nav-badge-icon {
-            background: rgba(248, 113, 113, 0.14);
-        }
-
-        .nav-integrity-badge.enabled .nav-badge-letters {
-            color: #f87171;
-        }
-
         .nav-integrity-badge.enabled .nav-badge-radio {
             color: #f87171;
         }
 
         /* BN state (back navigation disabled) should be green */
-        .nav-integrity-badge.disabled .nav-badge-icon {
-            background: rgba(74, 222, 128, 0.16);
-        }
-
-        .nav-integrity-badge.disabled .nav-badge-letters {
-            color: #4ade80;
-        }
-
         .nav-integrity-badge.disabled .nav-badge-radio {
             color: #4ade80;
         }
@@ -18603,7 +18578,6 @@
                                         <path d="M7.753 16.239a6 6 0 0 1 0-8.478"></path>
                                         <circle cx="12" cy="12" r="2"></circle>
                                     </svg>
-                                    <span class="nav-badge-letters">BN</span>
                                 </div>
                                 <div class="nav-badge-tooltip" id="navBadgeTooltip">
                                     <strong>Back Navigation Disabled</strong><br>
@@ -22817,13 +22791,12 @@ function showIndicatorsMenu() {
         
         function initNavigationIntegrity(allowBackNav) {
             const badge = document.getElementById('navIntegrityBadge');
-            const badgeLetters = badge ? badge.querySelector('.nav-badge-letters') : null;
             const badgeTooltip = badge ? badge.querySelector('.nav-badge-tooltip') : null;
             const stepBackwardBtn = document.getElementById('replayStepBackward');
             const stepForwardBtn = document.getElementById('replayStepForward');
             const goBackBtn = document.getElementById('replayGoBack');
             
-            if (!badge || !badgeLetters || !stepBackwardBtn || !stepForwardBtn) {
+            if (!badge || !stepBackwardBtn || !stepForwardBtn) {
                 console.warn('⚠️ Navigation integrity elements not found');
                 return;
             }
@@ -22842,10 +22815,9 @@ function showIndicatorsMenu() {
             // Function to update badge and buttons
             function updateNavigationMode(isAllowed) {
                 if (isAllowed) {
-                    // Back navigation ENABLED - show LB
+                    // Back navigation ENABLED
                     badge.classList.remove('disabled');
                     badge.classList.add('enabled');
-                    badgeLetters.textContent = 'LB';
                     if (badgeTooltip) {
                         badgeTooltip.classList.remove('disabled-tip');
                         badgeTooltip.classList.add('enabled-tip');
@@ -22865,10 +22837,9 @@ function showIndicatorsMenu() {
                         goBackBtn.title = 'Go Back - Pick new start point';
                     }
                 } else {
-                    // Back navigation DISABLED - show BN with strikethrough
+                    // Back navigation DISABLED
                     badge.classList.remove('enabled');
                     badge.classList.add('disabled');
-                    badgeLetters.textContent = 'BN';
                     if (badgeTooltip) {
                         badgeTooltip.classList.remove('enabled-tip');
                         badgeTooltip.classList.add('disabled-tip');
