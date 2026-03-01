@@ -12810,8 +12810,18 @@ class Chart {
         const labelColor = isLightMode ? '#64748b' : '#9aa3b2';
         const valueColor = isLightMode ? '#131722' : '#d1d4dc';
         const borderColor = isLightMode ? 'rgba(15, 23, 42, 0.12)' : 'rgba(120, 131, 155, 0.28)';
-        const upColor = this.chartSettings.candleUpColor || '#089981';
-        const downColor = this.chartSettings.candleDownColor || '#f23645';
+        const rawUpColor = this.chartSettings.candleUpColor || '#089981';
+        const rawDownColor = this.chartSettings.candleDownColor || '#f23645';
+        const upColorIsLight = this.isLightColor ? this.isLightColor(rawUpColor) : true;
+        const downColorIsLight = this.isLightColor ? this.isLightColor(rawDownColor) : true;
+
+        // Keep chart style colors when readable; fallback when they become low-contrast in tooltip theme
+        const upColor = isLightMode
+            ? (upColorIsLight ? '#0f766e' : rawUpColor)
+            : (upColorIsLight ? rawUpColor : '#34d399');
+        const downColor = isLightMode
+            ? (downColorIsLight ? '#dc2626' : rawDownColor)
+            : (downColorIsLight ? rawDownColor : '#f87171');
         
         const html = `
             <div style="font-weight: 600; font-size: 14px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid ${borderColor};">
