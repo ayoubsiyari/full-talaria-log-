@@ -309,6 +309,29 @@ function datasetTfSummary(ds) {
   };
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForConversionProgress(fileId, onUpdate, maxAttempts = 1200, intervalMs = 3000) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const status = await api('/api/file/' + fileId + '/conversion-status');
+      if (onUpdate) onUpdate(status);
+
+      if (status.status === 'ready' || status.status === 'failed') {
+        return { done: true, status };
+      }
+    } catch {
+      // keep polling; conversion rows might not be visible yet
+    }
+
+    await sleep(intervalMs);
+  }
+
+  return { done: false, status: null };
+}
+
 /* ── Render table ── */
 function renderTable() {
   const tb = document.getElementById('tbody');
@@ -488,16 +511,8 @@ async function fetchDukascopyDataset() {
 
   btn.disabled = true;
   prog.style.display = 'block';
-  pbar.style.width = '12%';
-  label.textContent = `Requesting ${pair.toUpperCase()} M1 ${fromDate} → ${toDate}...`;
-
-  let pv = 12;
-  const iv = setInterval(() => {
-    if (pv < 88) {
-      pv += 3;
-      pbar.style.width = pv + '%';
-    }
-  }, 600);
+  pbar.style.width = '8%';
+  label.textContent = `Downloading ${pair.toUpperCase()} M1 ${fromDate} → ${toDate} from Dukascopy...`;
 
   try {
     const res = await api('/api/admin/datasets/fetch-dukascopy', {
@@ -510,20 +525,60 @@ async function fetchDukascopyDataset() {
       }),
     });
 
-    clearInterval(iv);
-    pbar.style.width = '100%';
-    label.textContent = `✓ Saved ${fmtN(res.file && res.file.rowCount)} rows. Converting binaries...`;
-    toast('Dukascopy dataset imported successfully.', 'ok');
+    const fileId = res.file && res.file.id;
+    const rowCountTxt = fmtN(res.file && res.file.rowCount);
+    let conversionDone = false;
+
+    if (fileId) {
+      pbar.style.width = '20%';
+      label.textContent = `Downloaded ${rowCountTxt} rows. Converting binaries...`;
+
+      const conversionResult = await waitForConversionProgress(fileId, (status) => {
+        const ready = Number(status.ready || 0);
+        const total = Number(status.total || 0);
+        const progress = Number(status.progress || 0);
+
+        if (status.status === 'ready') {
+          pbar.style.width = '100%';
+          label.textContent = `✓ Downloaded ${rowCountTxt} rows. Binary ready (${ready}/${total}).`;
+          return;
+        }
+
+        if (status.status === 'failed') {
+          pbar.style.width = '100%';
+          label.textContent = `⚠ Downloaded ${rowCountTxt} rows. Some timeframes failed to convert.`;
+          return;
+        }
+
+        const combinedProgress = Math.min(99, 20 + Math.round(progress * 0.8));
+        pbar.style.width = combinedProgress + '%';
+        label.textContent = `Downloaded ${rowCountTxt} rows. Converting binaries (${ready}/${total})...`;
+      });
+
+      conversionDone = conversionResult.done;
+      if (conversionResult.done && conversionResult.status && conversionResult.status.status === 'failed') {
+        toast('Dataset downloaded, but conversion failed for some timeframes. You can click Rebuild.', 'err');
+      } else if (conversionResult.done) {
+        toast('Dukascopy dataset imported successfully.', 'ok');
+      } else {
+        toast('Dataset downloaded. Conversion still running in background.', 'ok');
+      }
+    } else {
+      pbar.style.width = '100%';
+      label.textContent = `✓ Download completed for ${pair.toUpperCase()}.`;
+      toast('Dukascopy dataset imported successfully.', 'ok');
+    }
 
     await loadDatasets(false);
-    if (res.file && res.file.id) {
-      selectDs(res.file.id);
-      startPolling(res.file.id);
+    if (fileId) {
+      selectDs(fileId);
+      if (!conversionDone) {
+        startPolling(fileId);
+      }
     }
 
     setTimeout(() => { prog.style.display = 'none'; }, 8000);
   } catch (err) {
-    clearInterval(iv);
     pbar.style.width = '0%';
     label.textContent = '✗ ' + err.message;
     toast('Dukascopy fetch failed: ' + err.message, 'err');
