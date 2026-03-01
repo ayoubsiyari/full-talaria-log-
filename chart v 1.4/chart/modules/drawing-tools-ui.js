@@ -2250,15 +2250,17 @@ body.light-mode .template-save-dialog .dialog-title {
         const contentRight = document.createElement('div');
         contentRight.className = 'tv-settings-content';
         
-        // Check if this drawing needs an Inputs tab
-        const hasInputsTab = drawing.type === 'regression-trend';
+        // Check if this drawing needs an Input(s) tab
+        const isFibonacciInputTabTool = this.isFibonacciInputTabTool(drawing.type);
+        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool;
+        const inputTabLabel = isFibonacciInputTabTool ? 'Input' : 'Inputs';
         
         let tabsHTML = '';
         
         if (hasInputsTab) {
             tabsHTML += `
             <button class="tv-collapsible-tab-btn" data-tab="inputs">
-                <span>Inputs</span>
+                <span>${inputTabLabel}</span>
                 <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M9 18l6-6-6-6"/>
                 </svg>
@@ -2325,7 +2327,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (hasInputsTab) {
             const inputsPane = createPane('inputs', false);
-            this.buildRegressionInputsTab(inputsPane, drawing);
+            if (drawing.type === 'regression-trend') {
+                this.buildRegressionInputsTab(inputsPane, drawing);
+            } else if (isFibonacciInputTabTool) {
+                this.buildFibonacciInputsTab(inputsPane, drawing);
+            }
         }
 
         const stylePane = createPane('style', true);
@@ -2804,7 +2810,8 @@ body.light-mode .template-save-dialog .dialog-title {
             'fib-circles', 'fib-arcs', 'fib-wedge', 'trend-fib-extension',
             'fib-timezone'
         ];
-        if (fibonacciToolsWithLevels.includes(drawing.type)) {
+        const showFibLevelsInInputsTab = this.isFibonacciInputTabTool(drawing.type);
+        if (fibonacciToolsWithLevels.includes(drawing.type) && !showFibLevelsInInputsTab) {
             this.buildFibonacciLevelsSection(container, drawing);
         }
 
@@ -6592,6 +6599,26 @@ body.light-mode .template-save-dialog .dialog-title {
             `;
             container.appendChild(orientationSection);
         }
+    }
+
+    /**
+     * Fibonacci tools that should render level controls in the Input tab
+     */
+    isFibonacciInputTabTool(drawingType) {
+        const fibToolsWithInputs = [
+            'fibonacci-retracement', 'fibonacci-extension',
+            'fib-channel', 'fib-speed-fan', 'trend-fib-time',
+            'fib-circles', 'fib-arcs', 'fib-wedge', 'trend-fib-extension',
+            'fib-timezone'
+        ];
+        return fibToolsWithInputs.includes(drawingType);
+    }
+
+    /**
+     * Build Fibonacci Input Tab Content
+     */
+    buildFibonacciInputsTab(container, drawing) {
+        this.buildFibonacciLevelsSection(container, drawing);
     }
 
     /**
