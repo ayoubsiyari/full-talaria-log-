@@ -2456,12 +2456,14 @@ body.light-mode .template-save-dialog .dialog-title {
                     </div>
                 `;
             } else if (isFibTool) {
+                const fibStyleControlsWidth = 180;
                 headerRow.innerHTML = `
-                    <span></span>
-                    <div class="tv-prop-controls" style="pointer-events: none;">
+                    <span style="flex: 1;"></span>
+                    <div class="tv-prop-controls" style="pointer-events: none; margin-left: auto; width: ${fibStyleControlsWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-end;">
                         <span style="width: 30px; text-align: center; font-size: 10px; color: #787b86;">Color</span>
                     </div>
                 `;
+                headerRow.style.cssText = 'display: flex; align-items: center; gap: 12px; margin-bottom: 6px;';
             } else {
                 headerRow.innerHTML = `
                     <span></span>
