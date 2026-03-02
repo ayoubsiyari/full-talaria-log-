@@ -10966,23 +10966,11 @@ class Chart {
                 
                 this.scheduleRender();
             } else if (mode === 'timeAxis') {
-                // Auto-scale time axis: reset zoom while keeping clicked time anchored
-                // Do NOT lock the time scale - allow horizontal pan/zoom to continue
-                const m = this.margin;
-                const anchorX = Math.max(m.l, Math.min(mx, this.w - m.r));
-                const anchorIndex = this.pixelToDataIndex(anchorX);
+                // Jump to latest candle while preserving current zoom level
+                this._chartViewRestored = false;
+                this.fitToView();
 
-                this.candleWidth = 8;  // Default candle width
-                this.zoomLevel.candleWidthIndex = 4;  // Index for width 8
-
-                // Keep the same candle/time under the double-click position
-                const newSpacing = this.getCandleSpacing();
-                this.offsetX = anchorX - m.l - (anchorIndex * newSpacing);
-                
-                // Constrain only after anchor adjustment
-                this.constrainOffset();
-                
-                console.log('📊 Time scale AUTO-SCALED (double-click, anchored)');
+                console.log('🎯 Time axis double-click → jumped to latest candle');
                 
                 this.scheduleRender();
                 this.dispatchScrollSync();
