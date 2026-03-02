@@ -7417,11 +7417,11 @@
             background: #363a45;
             border-radius: 2px;
             cursor: default;
-            transition: background 0.15s ease, width 0.15s ease;
+            transition: none;
         }
         .interval-slider-custom:hover {
-            background: #4a4e5a;
-            width: 5px;
+            background: #363a45;
+            width: 4px;
         }
         .interval-slider-custom-thumb {
             position: absolute;
@@ -7434,12 +7434,12 @@
             left: 50%;
             top: 50%;
             transform: translate(-50%, -50%);
-            transition: top 0.12s cubic-bezier(0.4,0,0.2,1), box-shadow 0.15s;
+            transition: none;
             z-index: 2;
         }
         .interval-slider-custom-thumb:hover {
-            transform: translate(-50%,-50%) scale(1.2);
-            box-shadow: 0 0 0 5px rgba(255,255,255,0.25), 0 0 12px rgba(255,255,255,0.4);
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.14);
         }
         .interval-slider-custom-thumb.dragging {
             cursor: default;
@@ -7455,7 +7455,7 @@
             background: #787b86;
             border-radius: 2px;
             pointer-events: none;
-            transition: height 0.12s cubic-bezier(0.4,0,0.2,1);
+            transition: none;
         }
         body.light-mode #intervalTriggerBtn { color: #131722; border-color: rgba(0,0,0,0.15); background: rgba(0,0,0,0.04); }
         body.light-mode #intervalTriggerBtn:hover { background: rgba(0,0,0,0.08); }
