@@ -1315,8 +1315,12 @@ class BaseRiskRewardTool extends BaseDrawing {
             // Use rrRatio already calculated above
             const targetAmount = Math.round(riskUSD * parseFloat(rrRatio));
 
-            const labelPaddingX = 8;
-            const labelPaddingY = 3;
+            const labelPaddingX = 10;
+            const labelPaddingY = 4;
+            const labelFontSize = 11;
+            const labelFontWeight = '500';
+            const labelFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
+            const labelRadius = 10;
             const edgeSnapGap = 0;
             const compressedGap = 18;
             const wideSnapThreshold = 260;
@@ -1335,8 +1339,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('text-anchor', 'middle')
                     .attr('dominant-baseline', 'hanging')
                     .attr('fill', 'white')
-                    .attr('font-size', '12px')
-                    .attr('font-weight', '600')
+                    .attr('font-size', `${labelFontSize}px`)
+                    .attr('font-weight', labelFontWeight)
+                    .attr('font-family', labelFontFamily)
                     .text(text);
 
                 const textBBox = textNode.node().getBBox();
@@ -1360,7 +1365,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('width', labelWidth)
                     .attr('height', labelHeight)
                     .attr('fill', fill)
-                    .attr('rx', 12);
+                    .attr('rx', labelRadius);
 
                 textNode
                     .attr('x', rectX + (labelWidth / 2))
@@ -1386,31 +1391,63 @@ class BaseRiskRewardTool extends BaseDrawing {
                 side: 'bottom'
             });
 
-            // Center Info Box (Green background pill)
+            // Center Info Box (TradingView-like red pill with border)
             const pnl = 0; // Will be calculated when order is active
-            const centerInfoText = `Open P&l: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}, Risk/Reward Ratio: ${rrRatio}`;
+            const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
+            const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
             const centerInfo = this.group.append('g').attr('class', 'center-info');
 
             // Calculate center X position of the zone
             const zoneCenterX = zoneX1 + (zoneWidth / 2);
 
             const centerTextNode = centerInfo.append('text')
-                .attr('x', zoneCenterX)
-                .attr('y', entryY + 5)
+                .attr('x', 0)
+                .attr('y', 0)
                 .attr('text-anchor', 'middle')
+                .attr('dominant-baseline', 'hanging')
                 .attr('fill', 'white')
-                .attr('font-size', '12px')
-                .attr('font-weight', '600')
-                .text(centerInfoText);
+                .attr('font-size', `${labelFontSize}px`)
+                .attr('font-weight', labelFontWeight)
+                .attr('font-family', labelFontFamily);
+
+            centerTextNode.append('tspan')
+                .attr('x', 0)
+                .attr('y', 0)
+                .text(centerInfoLine1);
+
+            centerTextNode.append('tspan')
+                .attr('x', 0)
+                .attr('dy', Math.round(labelFontSize * 1.2))
+                .text(centerInfoLine2);
 
             const centerTextBBox = centerTextNode.node().getBBox();
+            const centerPaddingX = 12;
+            const centerPaddingY = 6;
+            const centerWidth = centerTextBBox.width + (centerPaddingX * 2);
+            const centerHeight = centerTextBBox.height + (centerPaddingY * 2);
+
+            let centerRectX = zoneCenterX - (centerWidth / 2);
+            centerRectX = Math.max(chartLeft + 2, Math.min(centerRectX, chartRight - centerWidth - 2));
+
+            let centerRectY = entryY - (centerHeight / 2);
+            centerRectY = Math.max(chartTop + 2, Math.min(centerRectY, chartBottom - centerHeight - 2));
+
             centerInfo.insert('rect', 'text')
-                .attr('x', centerTextBBox.x - 8)
-                .attr('y', centerTextBBox.y - 3)
-                .attr('width', centerTextBBox.width + 16)
-                .attr('height', centerTextBBox.height + 6)
-                .attr('fill', '#22c55e')
-                .attr('rx', 8);
+                .attr('x', centerRectX)
+                .attr('y', centerRectY)
+                .attr('width', centerWidth)
+                .attr('height', centerHeight)
+                .attr('fill', '#f25566')
+                .attr('stroke', '#ffffff')
+                .attr('stroke-width', 2)
+                .attr('rx', labelRadius);
+
+            centerTextNode
+                .attr('x', centerRectX + (centerWidth / 2))
+                .attr('y', centerRectY + centerPaddingY);
+
+            centerTextNode.selectAll('tspan')
+                .attr('x', centerRectX + (centerWidth / 2));
 
             // Execute button moved to floating toolbar
         }
