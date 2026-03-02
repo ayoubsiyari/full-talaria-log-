@@ -664,9 +664,14 @@ class BaseDrawing {
             this.axisHighlightGroup.remove();
             this.axisHighlightGroup = null;
         }
+        if (this._labelGroup) {
+            this._labelGroup.remove();
+            this._labelGroup = null;
+        }
         // Also remove orphaned groups for this drawing only (do not affect other drawings)
         if (this.chart?.svg) {
             this.chart.svg.selectAll(`.axis-highlight-group[data-drawing-id="${this.id}"]`).remove();
+            this.chart.svg.selectAll(`.drawings-labels [data-id="${this.id}"]`).remove();
         }
         // Clear canvas-based zones only if this drawing had set them
         if (this.hasAxisHighlightZones && this.chart?.clearAxisHighlightZones) {
@@ -767,6 +772,11 @@ class BaseDrawing {
     destroy() {
         // Hide axis highlights before removing the drawing
         this.hideAxisHighlights();
+
+        // Safety cleanup for any detached label groups outside the drawing group
+        if (this.chart?.svg) {
+            this.chart.svg.selectAll(`.drawings-labels [data-id="${this.id}"]`).remove();
+        }
         
         if (this.group) {
             this.group.remove();

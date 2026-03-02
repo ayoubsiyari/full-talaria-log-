@@ -3899,6 +3899,9 @@ class DrawingToolsManager {
         
         // Clear existing SVG elements
         this.drawingsGroup.selectAll('*').remove();
+        if (this.labelsGroup) {
+            this.labelsGroup.selectAll('*').remove();
+        }
         
         // Re-render all drawings with updated scales
         this.drawings.forEach(drawing => {
