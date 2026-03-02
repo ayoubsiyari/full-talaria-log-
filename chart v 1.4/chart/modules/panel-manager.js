@@ -450,8 +450,7 @@ class PanelManager {
                         <div class="sync-info" title="When enabled, changing symbol in one panel changes it in all panels">i</div>
                     </div>
                     <label class="sync-toggle">
-                        <input type="checkbox" id="symbol-sync-toggle">
-                        <span class="sync-toggle-slider"></span>
+                        <input type="checkbox" class="tv-native-checkbox" id="symbol-sync-toggle">
                     </label>
                 </div>
                 
@@ -462,8 +461,7 @@ class PanelManager {
                         <div class="sync-info" title="When enabled, changing timeframe in one panel changes it in all panels">i</div>
                     </div>
                     <label class="sync-toggle">
-                        <input type="checkbox" id="interval-sync-toggle">
-                        <span class="sync-toggle-slider"></span>
+                        <input type="checkbox" class="tv-native-checkbox" id="interval-sync-toggle">
                     </label>
                 </div>
                 
@@ -474,8 +472,7 @@ class PanelManager {
                         <div class="sync-info" title="Synchronize crosshair position across all panels">i</div>
                     </div>
                     <label class="sync-toggle">
-                        <input type="checkbox" id="crosshair-sync-toggle" checked>
-                        <span class="sync-toggle-slider"></span>
+                        <input type="checkbox" class="tv-native-checkbox" id="crosshair-sync-toggle" checked>
                     </label>
                 </div>
                 
@@ -486,8 +483,7 @@ class PanelManager {
                         <div class="sync-info" title="Synchronize scroll position (time) across all panels">i</div>
                     </div>
                     <label class="sync-toggle">
-                        <input type="checkbox" id="time-sync-toggle" checked>
-                        <span class="sync-toggle-slider"></span>
+                        <input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked>
                     </label>
                 </div>
                 
@@ -498,8 +494,7 @@ class PanelManager {
                         <div class="sync-info" title="Synchronize visible date range across all panels">i</div>
                     </div>
                     <label class="sync-toggle">
-                        <input type="checkbox" id="daterange-sync-toggle">
-                        <span class="sync-toggle-slider"></span>
+                        <input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle">
                     </label>
                 </div>
                 
@@ -510,8 +505,7 @@ class PanelManager {
                         <div class="sync-info" title="Synchronize drawings and shapes across all panels">i</div>
                     </div>
                     <label class="sync-toggle">
-                        <input type="checkbox" id="drawings-sync-toggle">
-                        <span class="sync-toggle-slider"></span>
+                        <input type="checkbox" class="tv-native-checkbox" id="drawings-sync-toggle">
                     </label>
                 </div>
             </div>
@@ -545,45 +539,15 @@ class PanelManager {
                 stroke: #d1d4dc;
             }
             
-            /* Toggle Switch Styling */
+            /* Sync checkbox styling (match trendline settings) */
             .sync-toggle {
-                position: relative;
-                display: inline-block;
-                width: 44px;
-                height: 24px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 16px;
+            }
+            .sync-toggle input[type="checkbox"] {
                 cursor: default;
-            }
-            .sync-toggle input {
-                opacity: 0;
-                width: 0;
-                height: 0;
-            }
-            .sync-toggle-slider {
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-color: #ccc;
-                border-radius: 24px;
-                transition: 0.3s;
-            }
-            .sync-toggle-slider:before {
-                position: absolute;
-                content: "";
-                height: 18px;
-                width: 18px;
-                left: 3px;
-                bottom: 3px;
-                background-color: white;
-                border-radius: 50%;
-                transition: 0.3s;
-            }
-            .sync-toggle input:checked + .sync-toggle-slider {
-                background-color: #2962ff;
-            }
-            .sync-toggle input:checked + .sync-toggle-slider:before {
-                transform: translateX(20px);
             }
         `;
         document.head.appendChild(style);
