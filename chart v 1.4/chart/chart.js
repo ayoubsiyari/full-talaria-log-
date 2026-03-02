@@ -232,7 +232,7 @@ class Chart {
         // Zoom level with quantized candle widths (Fibonacci-like)
         this.zoomLevel = {
             candleWidthIndex: 8,         // Index into allowedWidths (default = 8)
-            allowedWidths: [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
+            allowedWidths: [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
         };
         
         // Cursor tracking state
@@ -1035,7 +1035,7 @@ class Chart {
                 if (typeof v.candleWidth === 'number' && Number.isFinite(v.candleWidth)) {
                     const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                         ? this.zoomLevel.allowedWidths
-                        : [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                        : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                     const minWidth = widths[0];
                     const maxWidth = widths[widths.length - 1];
                     this.candleWidth = Math.max(minWidth, Math.min(maxWidth, v.candleWidth));
@@ -5845,7 +5845,7 @@ class Chart {
         // Use Fibonacci-like sequence for cleaner candle widths
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
         const minWidth = allowedWidths[0];
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
@@ -5882,7 +5882,7 @@ class Chart {
         const minOffset = cw - totalDataWidth - targetCandleSpacing * 2;
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
         const minWidth = allowedWidths[0];
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
@@ -5952,7 +5952,7 @@ class Chart {
         const selectedCandles = Math.max(1, endIdx - startIdx);
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
         const minWidth = allowedWidths[0];
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         const newCandleWidth = Math.max(minWidth, Math.min(maxWidth, chartWidth / selectedCandles - 2));
@@ -8571,7 +8571,7 @@ class Chart {
         const oldCandleWidth = this.candleWidth;
         const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
         const minWidth = widths[0];
         const maxWidth = widths[widths.length - 1];
         
@@ -10610,7 +10610,7 @@ class Chart {
                 }
 
                 // Smooth horizontal zoom using a small factor, then snap zoom index
-                const widths = this.zoomLevel.allowedWidths || [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                 const minWidth = widths[0];
                 const maxWidth = widths[widths.length - 1];
 
@@ -10831,7 +10831,7 @@ class Chart {
                     // Like price axis: dx controls horizontal zoom, anchored at right edge
                     const sensitivity = 0.008;
                     const zoomFactor = 1 + dx * sensitivity;
-                    const widths = this.zoomLevel.allowedWidths || [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                    const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                     const minWidth = widths[0];
                     const maxWidth = widths[widths.length - 1];
                     const newWidth = Math.max(minWidth, Math.min(maxWidth, this.candleWidth * zoomFactor));
@@ -11857,7 +11857,7 @@ class Chart {
                 const scale = currentDistance / initialPinchDistance;
                 const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                     ? this.zoomLevel.allowedWidths
-                    : [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                    : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                 const minWidth = widths[0];
                 const maxWidth = widths[widths.length - 1];
                 this.candleWidth = Math.max(minWidth, Math.min(maxWidth, initialCandleWidth * scale));
@@ -12752,13 +12752,11 @@ class Chart {
             if (this.chartSettings.cursorLabelTextColor) priceLabel.style.color = this.chartSettings.cursorLabelTextColor;
         }
         
-        // Update time label position with snapped X
-        if (timeLabel) {
-            timeLabel.style.left = (snappedX - 80) + 'px';
-        }
-        
+        const snappedDataIdx = Math.round(this.pixelToDataIndex(x));
+        const hasSnappedCandle = snappedDataIdx >= 0 && snappedDataIdx < this.data.length;
+        const snappedCandle = hasSnappedCandle ? this.data[snappedDataIdx] : null;
+
         if (timeLabel && this.xScale && this.data.length > 0) {
-            const dataIdx = Math.round(this.pixelToDataIndex(x));
             
             // Calculate timeframe interval from actual data (same as x-axis does)
             let timeframeMs = 60000; // Default 1 minute
@@ -12771,13 +12769,12 @@ class Chart {
                 timeframeMs = tfMap[timeframe] || 60000;
             }
             
-            // Calculate timestamp based on position (consistent with x-axis display)
-            let timestamp = null;
-            if (this.data.length > 0) {
-                // Always calculate based on first candle + offset for consistency
-                // This matches how x-axis positions labels
+            // Use the real snapped candle time when available.
+            // Fallback to synthetic time only when cursor is in empty left/right chart space.
+            let timestamp = snappedCandle ? snappedCandle.t : null;
+            if ((timestamp == null || !Number.isFinite(timestamp)) && this.data.length > 0) {
                 const firstCandle = this.data[0];
-                timestamp = firstCandle.t + (dataIdx * timeframeMs);
+                timestamp = firstCandle.t + (snappedDataIdx * timeframeMs);
             }
             
             // Show time label if we have a valid timestamp
@@ -12813,8 +12810,8 @@ class Chart {
                 timeLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
             }
             
-            if (dataIdx >= 0 && dataIdx < this.data.length) {
-                const candle = this.data[dataIdx];
+            if (hasSnappedCandle) {
+                const candle = snappedCandle;
                 
                 // Store and broadcast timestamp for panel sync
                 this.currentCrosshairTimestamp = candle.t;
