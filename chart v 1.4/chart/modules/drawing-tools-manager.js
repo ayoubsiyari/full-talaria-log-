@@ -2529,6 +2529,8 @@ class DrawingToolsManager {
                     const isUpperFill = targetSelection.classed('upper-fill');
                     const isLowerFill = targetSelection.classed('lower-fill');
                     const isPositionZone = targetSelection.classed('position-zone');
+                    const isRangeFillHit = targetSelection.classed('range-fill-hit');
+                    const isRangeInfoBox = targetSelection.classed('range-info-box');
                     
                     // Block dragging from shape-fill elements completely
                     if (isShapeFill || isUpperFill || isLowerFill) {
@@ -2602,9 +2604,10 @@ class DrawingToolsManager {
                         }
                     }
                     
-                    // Allow drag from: position zones, lines, paths, shape borders, stroked elements, or emoji/text
+                    // Allow drag from: position zones, range tool hit areas, lines/paths,
+                    // shape borders, stroked elements, or emoji/text
                     // Block drag from: filled areas and resize handles
-                    const canDrag = isPositionZone || isLineElement || isShapeBorder || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
+                    const canDrag = isPositionZone || isRangeFillHit || isRangeInfoBox || isLineElement || isShapeBorder || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
                     
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
                 })
