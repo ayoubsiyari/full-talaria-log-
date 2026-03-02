@@ -706,6 +706,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.style.riskColor = style.riskColor || 'rgba(242, 54, 69, 0.25)';
         this.style.rewardColor = style.rewardColor || 'rgba(8, 153, 129, 0.25)';
         this.style.entryColor = style.entryColor || '#787b86';
+        this.style.labelTextColor = style.labelTextColor || '#FFFFFF';
+        this.style.labelFontSize = Number.isFinite(style.labelFontSize) ? style.labelFontSize : 11;
         this.meta.orientation = style.orientation || 'long';
         if (typeof this.meta.zoneWidth !== 'number') {
             this.meta.zoneWidth = null;
@@ -1317,9 +1319,13 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const labelPaddingX = 10;
             const labelPaddingY = 4;
-            const labelFontSize = 11;
+            const rawLabelFontSize = Number(this.style.labelFontSize);
+            const labelFontSize = Number.isFinite(rawLabelFontSize)
+                ? Math.max(8, Math.min(24, rawLabelFontSize))
+                : 11;
             const labelFontWeight = '500';
             const labelFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
+            const labelTextColor = this.style.labelTextColor || '#FFFFFF';
             const edgeLabelRadius = 8;
             const centerLabelRadius = 10;
             const edgeSnapGap = 0;
@@ -1339,7 +1345,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('y', 0)
                     .attr('text-anchor', 'middle')
                     .attr('dominant-baseline', 'hanging')
-                    .attr('fill', 'white')
+                    .attr('fill', labelTextColor)
                     .attr('font-size', `${labelFontSize}px`)
                     .attr('font-weight', labelFontWeight)
                     .attr('font-family', labelFontFamily)
@@ -1408,7 +1414,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y', 0)
                 .attr('text-anchor', 'middle')
                 .attr('dominant-baseline', 'hanging')
-                .attr('fill', 'white')
+                .attr('fill', labelTextColor)
                 .attr('font-size', `${labelFontSize}px`)
                 .attr('font-weight', labelFontWeight)
                 .attr('font-family', labelFontFamily);

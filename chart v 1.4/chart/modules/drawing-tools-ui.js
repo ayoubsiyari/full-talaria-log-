@@ -11403,6 +11403,14 @@ applyTemplate(drawing, templateId, modal) {
             this.addColorPicker(styleSection, 'Entry Line Color', drawing.style.entryColor || '#787b86', (color) => {
                 drawing.style.entryColor = color;
             });
+
+            this.addColorPicker(styleSection, 'Label Text Color', drawing.style.labelTextColor || '#FFFFFF', (color) => {
+                drawing.style.labelTextColor = color;
+            });
+
+            this.addSlider(styleSection, 'Label Text Size', drawing.style.labelFontSize || 11, 8, 24, (value) => {
+                drawing.style.labelFontSize = value;
+            });
         }
         // Text tool
         else if (isTextTool) {
