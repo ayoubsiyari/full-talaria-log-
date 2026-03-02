@@ -379,6 +379,7 @@ class DatePriceRangeTool extends BaseDrawing {
         }
 
         const selectionRect = this.group.append('rect')
+            .attr('class', 'range-fill-hit')
             .attr('x', left)
             .attr('y', top)
             .attr('width', Math.max(0, right - left))
@@ -451,6 +452,7 @@ class DatePriceRangeTool extends BaseDrawing {
                 const boxHeight = bbox.height + 22;
 
                 labelGroup.insert('rect', 'text')
+                    .attr('class', 'range-info-box')
                     .attr('x', boxX)
                     .attr('y', boxY)
                     .attr('width', boxWidth)
@@ -525,6 +527,7 @@ class PriceRangeTool extends DatePriceRangeTool {
         }
 
         const selectionRect = this.group.append('rect')
+            .attr('class', 'range-fill-hit')
             .attr('x', left)
             .attr('y', top)
             .attr('width', selectionWidth)
@@ -604,6 +607,7 @@ class PriceRangeTool extends DatePriceRangeTool {
             const bbox = text.node().getBBox();
             if (this.style.showLabelBackground) {
                 labelGroup.insert('rect', 'text')
+                    .attr('class', 'range-info-box')
                     .attr('x', bbox.x - 16)
                     .attr('y', bbox.y - 10)
                     .attr('width', bbox.width + 32)
@@ -677,6 +681,7 @@ class DateRangeTool extends DatePriceRangeTool {
         }
 
         const selectionRect = this.group.append('rect')
+            .attr('class', 'range-fill-hit')
             .attr('x', left)
             .attr('y', top)
             .attr('width', Math.max(0, right - left))
@@ -743,6 +748,7 @@ class DateRangeTool extends DatePriceRangeTool {
             const bbox = text.node().getBBox();
             if (this.style.showLabelBackground) {
                 labelGroup.insert('rect', 'text')
+                    .attr('class', 'range-info-box')
                     .attr('x', bbox.x - 16)
                     .attr('y', bbox.y - 10)
                     .attr('width', bbox.width + 32)

@@ -4996,6 +4996,34 @@ class DrawingToolsManager {
                     console.warn('Error in risk/reward fill hit test for drawing:', drawing.id, error);
                 }
             }
+
+            // Range tools: allow selecting/dragging by interior and info label box.
+            if (!hitsById.has(drawing.id) && (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range')) {
+                try {
+                    const fillHits = drawing.group.selectAll('.range-fill-hit, .range-info-box').nodes();
+                    for (const el of fillHits) {
+                        if (!el) continue;
+
+                        if (typeof el.isPointInFill === 'function') {
+                            if (el.isPointInFill(point)) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        } else if (typeof el.getBBox === 'function') {
+                            const bb = el.getBBox();
+                            const inside = mouseX >= bb.x && mouseX <= (bb.x + bb.width)
+                                && mouseY >= bb.y && mouseY <= (bb.y + bb.height);
+                            if (inside) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        }
+                    }
+                    if (hitsById.has(drawing.id)) continue;
+                } catch (error) {
+                    console.warn('Error in range fill hit test for drawing:', drawing.id, error);
+                }
+            }
             
             // Special handling for tools that use isPointInside() (images, emojis, etc.)
             if (drawing.type === 'emoji' || drawing.type === 'image') {
