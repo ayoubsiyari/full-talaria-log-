@@ -609,9 +609,9 @@ class PriceRangeTool extends DatePriceRangeTool {
                     .attr('width', bbox.width + 32)
                     .attr('height', bbox.height + 20)
                     .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                    .attr('stroke', this.style.borderEnabled ? (this.style.borderColor || '#2a2e39') : 'none')
-                    .attr('stroke-width', this.style.borderEnabled ? (this.style.borderWidth || 1) : 0)
-                    .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
+                    .attr('stroke', 'none')
+                    .attr('stroke-width', 0)
+                    .attr('stroke-dasharray', null)
                     .attr('rx', 8);
             }
         }
@@ -748,9 +748,9 @@ class DateRangeTool extends DatePriceRangeTool {
                     .attr('width', bbox.width + 32)
                     .attr('height', bbox.height + 20)
                     .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                    .attr('stroke', this.style.borderEnabled ? (this.style.borderColor || '#2a2e39') : 'none')
-                    .attr('stroke-width', this.style.borderEnabled ? (this.style.borderWidth || 1) : 0)
-                    .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
+                    .attr('stroke', 'none')
+                    .attr('stroke-width', 0)
+                    .attr('stroke-dasharray', null)
                     .attr('rx', 8);
             }
         }
