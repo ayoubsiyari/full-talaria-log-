@@ -5511,9 +5511,9 @@ body.light-mode .template-save-dialog .dialog-title {
         const timeLabelChecked = drawing.style.showTimeLabel !== false;
         const axisLabelRow = document.createElement('div');
         axisLabelRow.className = 'tv-prop-row';
-        axisLabelRow.style.cssText = 'margin-top: 2px; align-items: flex-start;';
+        axisLabelRow.style.cssText = 'margin-top: 2px; align-items: center;';
         axisLabelRow.innerHTML = `
-            <span class="tv-checkbox-label" style="margin-top: 2px;">Axis Labels</span>
+            <span class="tv-checkbox-label">Axis Labels</span>
             <div class="tv-prop-controls" style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;">
                 <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
                     <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-prop="showPriceLabel">
