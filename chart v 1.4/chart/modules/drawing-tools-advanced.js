@@ -1317,9 +1317,9 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const labelPaddingX = 8;
             const labelPaddingY = 3;
-            const edgeSnapGap = 4;
+            const edgeSnapGap = 0;
             const compressedGap = 18;
-            const minInnerHorizontalPadding = 20;
+            const wideSnapThreshold = 260;
             const chartLeft = Math.min(xRange[0], xRange[1]);
             const chartRight = Math.max(xRange[0], xRange[1]);
             const yRange = scales.yScale.range();
@@ -1343,7 +1343,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const labelWidth = textBBox.width + (labelPaddingX * 2);
                 const labelHeight = textBBox.height + (labelPaddingY * 2);
 
-                const hasInnerSpace = zoneWidth >= (labelWidth + minInnerHorizontalPadding);
+                const hasInnerSpace = zoneWidth >= wideSnapThreshold;
                 const offset = hasInnerSpace ? edgeSnapGap : compressedGap;
                 let rectTop = side === 'top'
                     ? lineY - labelHeight - offset
