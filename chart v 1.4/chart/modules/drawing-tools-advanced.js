@@ -1532,12 +1532,14 @@ class BaseRiskRewardTool extends BaseDrawing {
             let centerRectY = entryY - (centerHeight / 2);
             centerRectY = Math.max(chartTop + 2, Math.min(centerRectY, chartBottom - centerHeight - 2));
 
+            const centerInfoFill = this.isLong ? '#f25566' : '#22c55e';
+
             centerInfo.insert('rect', 'text')
                 .attr('x', centerRectX)
                 .attr('y', centerRectY)
                 .attr('width', centerWidth)
                 .attr('height', centerHeight)
-                .attr('fill', '#f25566')
+                .attr('fill', centerInfoFill)
                 .attr('stroke', '#ffffff')
                 .attr('stroke-width', 2)
                 .attr('rx', centerLabelRadius);
