@@ -3135,19 +3135,41 @@ body.light-mode .template-save-dialog .dialog-title {
         const optionsRow = document.createElement('div');
         optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45; align-items: center;';
 
-        const zonesLabel = document.createElement('label');
-        zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
-        const zonesCheck = document.createElement('input');
-        zonesCheck.type = 'checkbox';
-        zonesCheck.checked = drawing.style.showZones !== false;
-        zonesCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
-        zonesCheck.onchange = () => {
-            drawing.style.showZones = zonesCheck.checked;
+        const zonesWrap = document.createElement('div');
+        zonesWrap.className = 'tv-checkbox-wrapper';
+        zonesWrap.style.cssText = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+
+        const zonesCb = document.createElement('div');
+        zonesCb.className = `tv-checkbox ${(drawing.style.showZones || false) ? 'checked' : ''}`;
+        zonesCb.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        `;
+
+        const zonesText = document.createElement('span');
+        zonesText.className = 'tv-checkbox-label';
+        zonesText.style.whiteSpace = 'nowrap';
+        zonesText.textContent = 'Show Zones';
+
+        const toggleZones = () => {
+            drawing.style.showZones = !drawing.style.showZones;
+            zonesCb.classList.toggle('checked', !!drawing.style.showZones);
             applyChanges();
         };
-        zonesLabel.appendChild(zonesCheck);
-        zonesLabel.appendChild(document.createTextNode('Show Zones'));
-        optionsRow.appendChild(zonesLabel);
+
+        zonesCb.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleZones();
+        });
+        zonesText.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleZones();
+        });
+
+        zonesWrap.appendChild(zonesCb);
+        zonesWrap.appendChild(zonesText);
+        optionsRow.appendChild(zonesWrap);
 
         const opacity = document.createElement('input');
         opacity.type = 'range';
@@ -3190,26 +3212,20 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const checkboxWrapper = document.createElement('div');
             const currentEnabled = level.enabled !== false;
-            checkboxWrapper.style.cssText = `
-                width: 20px; height: 20px; border: 2px solid #363a45; border-radius: 4px;
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; background: ${currentEnabled ? '#2962ff' : 'transparent'};
-                transition: all 0.15s;
+            checkboxWrapper.className = `tv-checkbox ${currentEnabled ? 'checked' : ''}`;
+            checkboxWrapper.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             `;
-            checkboxWrapper.innerHTML = currentEnabled
-                ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
-                : '';
-            checkboxWrapper.onclick = (e) => {
+            checkboxWrapper.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const enabledNow = level.enabled !== false;
                 const enabledNext = !enabledNow;
                 level.enabled = enabledNext;
-                checkboxWrapper.style.background = enabledNext ? '#2962ff' : 'transparent';
-                checkboxWrapper.innerHTML = enabledNext
-                    ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
-                    : '';
+                checkboxWrapper.classList.toggle('checked', enabledNext);
                 applyChanges();
-            };
+            });
             row.appendChild(checkboxWrapper);
 
             const valueWrapper = document.createElement('div');
@@ -3498,19 +3514,41 @@ body.light-mode .template-save-dialog .dialog-title {
         const optionsRow = document.createElement('div');
         optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45; align-items: center;';
 
-        const zonesLabel = document.createElement('label');
-        zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
-        const zonesCheck = document.createElement('input');
-        zonesCheck.type = 'checkbox';
-        zonesCheck.checked = drawing.style.showZones !== false;
-        zonesCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
-        zonesCheck.onchange = () => {
-            drawing.style.showZones = zonesCheck.checked;
+        const zonesWrap = document.createElement('div');
+        zonesWrap.className = 'tv-checkbox-wrapper';
+        zonesWrap.style.cssText = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+
+        const zonesCb = document.createElement('div');
+        zonesCb.className = `tv-checkbox ${(drawing.style.showZones || false) ? 'checked' : ''}`;
+        zonesCb.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        `;
+
+        const zonesText = document.createElement('span');
+        zonesText.className = 'tv-checkbox-label';
+        zonesText.style.whiteSpace = 'nowrap';
+        zonesText.textContent = 'Show Zones';
+
+        const toggleZones = () => {
+            drawing.style.showZones = !drawing.style.showZones;
+            zonesCb.classList.toggle('checked', !!drawing.style.showZones);
             applyChanges();
         };
-        zonesLabel.appendChild(zonesCheck);
-        zonesLabel.appendChild(document.createTextNode('Show Zones'));
-        optionsRow.appendChild(zonesLabel);
+
+        zonesCb.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleZones();
+        });
+        zonesText.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleZones();
+        });
+
+        zonesWrap.appendChild(zonesCb);
+        zonesWrap.appendChild(zonesText);
+        optionsRow.appendChild(zonesWrap);
 
         const opacity = document.createElement('input');
         opacity.type = 'range';
@@ -3552,26 +3590,20 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const checkboxWrapper = document.createElement('div');
             const currentEnabled = level.enabled !== false;
-            checkboxWrapper.style.cssText = `
-                width: 20px; height: 20px; border: 2px solid #363a45; border-radius: 4px;
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; background: ${currentEnabled ? '#2962ff' : 'transparent'};
-                transition: all 0.15s;
+            checkboxWrapper.className = `tv-checkbox ${currentEnabled ? 'checked' : ''}`;
+            checkboxWrapper.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             `;
-            checkboxWrapper.innerHTML = currentEnabled
-                ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
-                : '';
-            checkboxWrapper.onclick = (e) => {
+            checkboxWrapper.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const enabledNow = level.enabled !== false;
                 const enabledNext = !enabledNow;
                 level.enabled = enabledNext;
-                checkboxWrapper.style.background = enabledNext ? '#2962ff' : 'transparent';
-                checkboxWrapper.innerHTML = enabledNext
-                    ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
-                    : '';
+                checkboxWrapper.classList.toggle('checked', enabledNext);
                 applyChanges();
-            };
+            });
             row.appendChild(checkboxWrapper);
 
             const valueWrapper = document.createElement('div');
