@@ -2233,7 +2233,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Check if this drawing type should have a Text tab
         // Text-type drawings use STYLE tab for text controls, so they don't need a separate TEXT tab
         // Arrow-marker tools also show text in STYLE tab
-        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'price-range', 'date-range'];
+        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'price-range', 'date-range', 'long-position', 'short-position'];
         const hasTextTab = !noTextTabTypes.includes(drawing.type);
         
         const body = document.createElement('div');
@@ -5492,6 +5492,20 @@ body.light-mode .template-save-dialog .dialog-title {
             </div>
         `;
         colorsSection.appendChild(entryRow);
+
+        const labelSize = parseInt(drawing.style.fontSize || drawing.style.labelFontSize || 11);
+        const labelRow = document.createElement('div');
+        labelRow.className = 'tv-prop-row';
+        labelRow.innerHTML = `
+            <span class="tv-checkbox-label">Label Text</span>
+            <div class="tv-prop-controls" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || drawing.style.labelTextColor || '#ffffff'};"></button>
+                <select class="tv-select" data-prop="fontSize" style="min-width: 70px;">
+                    ${[8,9,10,11,12,14,16,18,20,24].map(s => `<option value="${s}" ${labelSize === s ? 'selected' : ''}>${s}</option>`).join('')}
+                </select>
+            </div>
+        `;
+        colorsSection.appendChild(labelRow);
         container.appendChild(colorsSection);
         
         // Risk Settings Section
