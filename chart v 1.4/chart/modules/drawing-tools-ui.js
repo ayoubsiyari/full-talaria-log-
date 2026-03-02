@@ -5499,10 +5499,11 @@ body.light-mode .template-save-dialog .dialog-title {
         labelRow.innerHTML = `
             <span class="tv-checkbox-label">Label Text</span>
             <div class="tv-prop-controls" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || drawing.style.labelTextColor || '#ffffff'};"></button>
                 <select class="tv-select" data-prop="fontSize" style="min-width: 70px;">
                     ${[8,9,10,11,12,14,16,18,20,24].map(s => `<option value="${s}" ${labelSize === s ? 'selected' : ''}>${s}</option>`).join('')}
                 </select>
+                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || drawing.style.labelTextColor || '#ffffff'};"></button>
+
             </div>
         `;
         colorsSection.appendChild(labelRow);
