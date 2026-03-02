@@ -4295,7 +4295,7 @@ body.light-mode .template-save-dialog .dialog-title {
             controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #363a45;';
 
             const fibControlsColumnWidth = 180;
-            const levelsModeSelectWidth = 120;
+            const levelsModeSelectWidth = 96;
 
             const makeRow = (labelText) => {
                 const row = document.createElement('div');
@@ -6837,7 +6837,7 @@ body.light-mode .template-save-dialog .dialog-title {
         controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #363a45;';
 
         const fibControlsColumnWidth = 180;
-        const levelsModeSelectWidth = 120;
+        const levelsModeSelectWidth = 96;
 
         const makeRow = (labelText) => {
             const row = document.createElement('div');
