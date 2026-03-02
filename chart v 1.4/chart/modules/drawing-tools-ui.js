@@ -4617,20 +4617,16 @@ body.light-mode .template-save-dialog .dialog-title {
 
             // Visibility checkbox
             const checkboxWrapper = document.createElement('div');
-            checkboxWrapper.style.cssText = `
-                width: 20px; height: 20px; border: 2px solid #363a45; border-radius: 4px;
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; background: ${isEnabled(level) ? '#2962ff' : 'transparent'};
-                transition: all 0.15s;
+            checkboxWrapper.className = `tv-checkbox ${isEnabled(level) ? 'checked' : ''}`;
+            checkboxWrapper.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             `;
-            checkboxWrapper.innerHTML = isEnabled(level) ? 
-                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : '';
             checkboxWrapper.onclick = (e) => {
                 e.stopPropagation();
                 setEnabled(level, !isEnabled(level));
-                checkboxWrapper.style.background = isEnabled(level) ? '#2962ff' : 'transparent';
-                checkboxWrapper.innerHTML = isEnabled(level) ? 
-                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : '';
+                checkboxWrapper.classList.toggle('checked', isEnabled(level));
                 applyChanges();
             };
             row.appendChild(checkboxWrapper);
