@@ -2252,8 +2252,9 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Check if this drawing needs an Input(s) tab
         const isFibonacciInputTabTool = this.isFibonacciInputTabTool(drawing.type);
-        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool;
-        const inputTabLabel = isFibonacciInputTabTool ? 'Input' : 'Inputs';
+        const isGannInputTabTool = this.isGannInputTabTool(drawing.type);
+        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool;
+        const inputTabLabel = (isFibonacciInputTabTool || isGannInputTabTool) ? 'Input' : 'Inputs';
         
         let tabsHTML = '';
         
@@ -2331,6 +2332,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 this.buildRegressionInputsTab(inputsPane, drawing);
             } else if (isFibonacciInputTabTool) {
                 this.buildFibonacciInputsTab(inputsPane, drawing);
+            } else if (isGannInputTabTool) {
+                this.buildGannInputsTab(inputsPane, drawing);
             }
         }
 
@@ -2858,15 +2861,16 @@ body.light-mode .template-save-dialog .dialog-title {
             }
         }
 
-        if (drawing.type === 'gann-box') {
+        const showGannLevelsInInputsTab = this.isGannInputTabTool(drawing.type);
+        if (!showGannLevelsInInputsTab && drawing.type === 'gann-box') {
             this.buildGannBoxLevelsSection(container, drawing);
         }
 
-        if (drawing.type === 'gann-square-fixed') {
+        if (!showGannLevelsInInputsTab && drawing.type === 'gann-square-fixed') {
             this.buildGannSquareFixedLevelsSection(container, drawing);
         }
 
-        if (drawing.type === 'gann-fan') {
+        if (!showGannLevelsInInputsTab && drawing.type === 'gann-fan') {
             this.buildGannFanLevelsSection(container, drawing);
         }
 
@@ -6676,6 +6680,14 @@ body.light-mode .template-save-dialog .dialog-title {
     }
 
     /**
+     * Gann tools that should render level controls in the Input tab
+     */
+    isGannInputTabTool(drawingType) {
+        const gannToolsWithInputs = ['gann-box', 'gann-square-fixed', 'gann-fan'];
+        return gannToolsWithInputs.includes(drawingType);
+    }
+
+    /**
      * Build Fibonacci Input Tab Content
      */
     buildFibonacciInputsTab(container, drawing) {
@@ -6685,6 +6697,25 @@ body.light-mode .template-save-dialog .dialog-title {
             showCoreStyleControls: !moveCoreControlsToStyle,
             showLevelsStyleControls: true
         });
+    }
+
+    /**
+     * Build Gann Input Tab Content
+     */
+    buildGannInputsTab(container, drawing) {
+        if (drawing.type === 'gann-box') {
+            this.buildGannBoxLevelsSection(container, drawing);
+            return;
+        }
+
+        if (drawing.type === 'gann-square-fixed') {
+            this.buildGannSquareFixedLevelsSection(container, drawing);
+            return;
+        }
+
+        if (drawing.type === 'gann-fan') {
+            this.buildGannFanLevelsSection(container, drawing);
+        }
     }
 
     /**
