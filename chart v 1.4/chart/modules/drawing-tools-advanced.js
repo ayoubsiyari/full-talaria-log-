@@ -1320,7 +1320,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             const labelFontSize = 11;
             const labelFontWeight = '500';
             const labelFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
-            const labelRadius = 10;
+            const edgeLabelRadius = 0;
+            const centerLabelRadius = 10;
             const edgeSnapGap = 0;
             const compressedGap = 18;
             const wideSnapThreshold = 260;
@@ -1365,7 +1366,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('width', labelWidth)
                     .attr('height', labelHeight)
                     .attr('fill', fill)
-                    .attr('rx', labelRadius);
+                    .attr('rx', edgeLabelRadius);
 
                 textNode
                     .attr('x', rectX + (labelWidth / 2))
@@ -1442,7 +1443,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('fill', '#f25566')
                 .attr('stroke', '#ffffff')
                 .attr('stroke-width', 2)
-                .attr('rx', labelRadius);
+                .attr('rx', centerLabelRadius);
 
             const centerTextX = centerRectX + (centerWidth / 2);
             const centerTextY = centerRectY + centerPaddingY;
