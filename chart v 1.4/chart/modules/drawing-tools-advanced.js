@@ -166,7 +166,8 @@ class DatePriceRangeTool extends BaseDrawing {
             percentChange: true,
             changeInPips: true,
             barsRange: true,
-            dateTimeRange: true
+            dateTimeRange: true,
+            volume: true
         };
     }
 
@@ -190,21 +191,28 @@ class DatePriceRangeTool extends BaseDrawing {
 
         const priceDiff = p2.y - p1.y;
         const pct = (p1.y !== 0) ? (priceDiff / p1.y * 100) : 0;
-        const ticks = tickSize ? Math.round(priceDiff / tickSize) : 0;
+        const rawPips = tickSize ? (priceDiff / tickSize) : 0;
 
-        let priceDiffStr = this.normalizeNegativeZeroString(priceDiff.toFixed(decimals));
-        let pctStr = this.normalizeNegativeZeroString(pct.toFixed(2));
+        const priceDiffStr = this.normalizeNegativeZeroString(priceDiff.toFixed(decimals));
+        const pctStr = this.normalizeNegativeZeroString(pct.toFixed(2));
+        const normalizedPips = Math.abs(rawPips) < 1e-9 ? 0 : rawPips;
+        const pipsDecimals = Math.abs(normalizedPips % 1) > 1e-6 ? 1 : 0;
+        const pipsStr = normalizedPips.toLocaleString(undefined, {
+            minimumFractionDigits: pipsDecimals,
+            maximumFractionDigits: 1
+        });
 
         const bars = Math.abs(Math.round(p2.x) - Math.round(p1.x));
         const t1 = this.getTimestampAtIndex(Math.round(p1.x), scales);
         const t2 = this.getTimestampAtIndex(Math.round(p2.x), scales);
-        const duration = this.formatDuration(t2 - t1);
+        const duration = this.formatDurationCompact(t2 - t1);
+        const volume = this.getVolumeInRange(p1.x, p2.x, scales);
 
         const neutral = this.style.textColor || '#d1d4dc';
         const priceParts = [];
         if (info.priceRange !== false) priceParts.push(priceDiffStr);
         if (info.percentChange !== false) priceParts.push(`(${pctStr}%)`);
-        if (info.changeInPips !== false) priceParts.push(`${ticks}`);
+        if (info.changeInPips !== false) priceParts.push(`${pipsStr}`);
         const priceLine = priceParts.length > 0 ? priceParts.join(' ') : '';
 
         const timeParts = [];
@@ -214,10 +222,13 @@ class DatePriceRangeTool extends BaseDrawing {
 
         const lines = [];
         if (priceLine) {
-            lines.push({ text: priceLine, fill: this.getSignedColor(priceDiff, neutral) });
+            lines.push({ text: priceLine, fill: neutral });
         }
         if (timeLine) {
             lines.push({ text: timeLine, fill: neutral });
+        }
+        if (info.volume !== false && volume !== null) {
+            lines.push({ text: `Vol ${this.formatCompactVolume(volume)}`, fill: neutral });
         }
         return lines;
     }
@@ -257,6 +268,68 @@ class DatePriceRangeTool extends BaseDrawing {
         const data = chart?.data || [];
         const timeframe = chart?.currentTimeframe || null;
         return CoordinateUtils.indexToTimestamp(index, data, timeframe);
+    }
+
+    getVolumeInRange(startIndex, endIndex, scales) {
+        const chart = scales?.chart || this.chart;
+        const data = chart?.data;
+        if (!Array.isArray(data) || data.length === 0) return null;
+
+        let start = Math.min(Math.round(startIndex), Math.round(endIndex));
+        let end = Math.max(Math.round(startIndex), Math.round(endIndex));
+        start = Math.max(0, start);
+        end = Math.min(data.length - 1, end);
+        if (end < start) return null;
+
+        let totalVolume = 0;
+        let hasVolume = false;
+        for (let i = start; i <= end; i++) {
+            const candle = data[i];
+            if (!candle) continue;
+
+            const candleVolume = Number(candle.v ?? candle.volume ?? 0);
+            if (!Number.isFinite(candleVolume) || candleVolume <= 0) continue;
+
+            totalVolume += candleVolume;
+            hasVolume = true;
+        }
+
+        return hasVolume ? totalVolume : null;
+    }
+
+    formatCompactVolume(volume) {
+        const absVolume = Math.abs(Number(volume) || 0);
+        if (!Number.isFinite(absVolume)) return '0';
+
+        const units = [
+            { value: 1e12, suffix: 'T' },
+            { value: 1e9, suffix: 'B' },
+            { value: 1e6, suffix: 'M' },
+            { value: 1e3, suffix: 'K' }
+        ];
+
+        for (const unit of units) {
+            if (absVolume < unit.value) continue;
+
+            const scaled = absVolume / unit.value;
+            const maxFractionDigits = scaled >= 100 ? 0 : (scaled >= 10 ? 1 : 2);
+            return `${scaled.toLocaleString(undefined, { maximumFractionDigits: maxFractionDigits })} ${unit.suffix}`;
+        }
+
+        return absVolume.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
+
+    formatDurationCompact(ms) {
+        const absMs = Math.abs(ms);
+        const totalMinutes = Math.floor(absMs / 60000);
+        const totalHours = Math.floor(totalMinutes / 60);
+        const days = Math.floor(totalHours / 24);
+        const hours = totalHours % 24;
+        const minutes = totalMinutes % 60;
+
+        if (days > 0) return `${days}d ${hours}h`;
+        if (totalHours > 0) return `${totalHours}h ${minutes}m`;
+        return `${totalMinutes}m`;
     }
 
     formatDuration(ms) {
@@ -348,39 +421,62 @@ class DatePriceRangeTool extends BaseDrawing {
                 .attr('class', 'date-price-range-label')
                 .style('pointer-events', 'none');
 
-            const baseY = bottom + 34;
+            const fontSize = parseInt(this.style.fontSize || 12);
+            const lineHeight = Math.max(16, Math.round(fontSize * 1.45));
+            const requiredHeight = (lines.length * lineHeight) + 26;
+            const hasRoomInside = (bottom - top) >= requiredHeight;
+            const totalTextHeight = (lines.length - 1) * lineHeight;
+            const baseY = hasRoomInside
+                ? (midY - (totalTextHeight / 2))
+                : (bottom + 30);
+
             const text = labelGroup.append('text')
                 .attr('x', midX)
                 .attr('y', baseY)
                 .attr('text-anchor', 'middle')
                 .attr('fill', this.style.textColor || '#d1d4dc')
                 .attr('font-size', `${this.style.fontSize || 12}px`)
-                .attr('font-weight', '600')
+                .attr('font-weight', '500')
                 .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif');
 
-            const fontSize = parseInt(this.style.fontSize || 12);
-            const lineHeight = Math.max(14, Math.round(fontSize * 1.4));
             lines.forEach((line, idx) => {
                 text.append('tspan')
                     .attr('x', midX)
                     .attr('y', baseY + (idx * lineHeight))
-                    .attr('font-weight', idx === 0 ? '600' : '500')
+                    .attr('font-weight', '500')
                     .attr('fill', line.fill || (this.style.textColor || '#d1d4dc'))
                     .text(line.text);
             });
 
-            const bbox = labelGroup.node().getBBox();
+            const bbox = text.node().getBBox();
             if (this.style.showLabelBackground) {
+                const boxX = bbox.x - 18;
+                const boxY = bbox.y - 11;
+                const boxWidth = bbox.width + 36;
+                const boxHeight = bbox.height + 22;
+
                 labelGroup.insert('rect', 'text')
-                    .attr('x', bbox.x - 18)
-                    .attr('y', bbox.y - 12)
-                    .attr('width', bbox.width + 36)
-                    .attr('height', bbox.height + 24)
+                    .attr('x', boxX)
+                    .attr('y', boxY)
+                    .attr('width', boxWidth)
+                    .attr('height', boxHeight)
                     .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
                     .attr('stroke', this.style.borderEnabled ? (this.style.borderColor || '#2a2e39') : 'none')
                     .attr('stroke-width', this.style.borderEnabled ? (this.style.borderWidth || 1) : 0)
                     .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
-                    .attr('rx', 8);
+                    .attr('rx', 9);
+
+                if (hasRoomInside) {
+                    const pointerTop = boxY - 20;
+                    const pointerBottom = boxY - 10;
+                    labelGroup.insert('path', 'text')
+                        .attr('d', `M ${midX - 14} ${pointerTop} L ${midX} ${pointerBottom} L ${midX + 14} ${pointerTop}`)
+                        .attr('fill', 'none')
+                        .attr('stroke', this.style.stroke || '#2962ff')
+                        .attr('stroke-width', 2)
+                        .attr('stroke-linecap', 'round')
+                        .attr('stroke-linejoin', 'round');
+                }
             }
         }
 

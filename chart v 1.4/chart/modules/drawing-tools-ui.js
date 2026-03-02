@@ -5640,7 +5640,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 percentChange: true,
                 changeInPips: true,
                 barsRange: true,
-                dateTimeRange: true
+                dateTimeRange: true,
+                volume: true
             };
         }
 
@@ -5702,6 +5703,7 @@ body.light-mode .template-save-dialog .dialog-title {
         container.appendChild(bgRow);
 
         if (drawing.type === 'date-price-range') {
+            const statsSummary = this.getInfoSummaryText(drawing);
             const infoHeader = document.createElement('div');
             infoHeader.style.cssText = 'color: #787b86; font-size: 12px; margin: 16px 0 12px 0; text-transform: uppercase;';
             infoHeader.textContent = 'Info';
@@ -5713,7 +5715,7 @@ body.light-mode .template-save-dialog .dialog-title {
             statsRow.innerHTML = `
                 <span class="tv-checkbox-label" style="white-space: nowrap;">Stats</span>
                 <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px; min-width: 160px; justify-content: space-between;">
-                    <span>Select</span>
+                    <span>${statsSummary}</span>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M6 9l6 6 6-6"/>
                     </svg>
@@ -8211,22 +8213,26 @@ body.light-mode .template-save-dialog .dialog-title {
                 // Handle Show Info toggle
                 if (prop === 'showInfo') {
                     if (!drawing.style.infoSettings || Object.keys(drawing.style.infoSettings).length === 0) {
-                        drawing.style.infoSettings = {
-                            showInfo: false,
-                            priceRange: true,
-                            percentChange: false,
-                            changeInPips: false,
-                            barsRange: false,
-                            dateTimeRange: false,
-                            distance: false,
-                            angle: false
-                        };
+                        const defaultInfoSettings = { showInfo: false };
+                        this.getInfoDropdownOptions(drawing.type).forEach(option => {
+                            defaultInfoSettings[option.prop] = option.prop === 'priceRange';
+                        });
+
+                        if (drawing.type === 'date-price-range' && defaultInfoSettings.volume !== undefined) {
+                            defaultInfoSettings.volume = true;
+                        }
+
+                        drawing.style.infoSettings = defaultInfoSettings;
                     }
 
-                    const infoOptionProps = ['priceRange', 'percentChange', 'changeInPips', 'barsRange', 'dateTimeRange', 'distance', 'angle'];
+                    const infoOptionProps = this.getInfoDropdownOptions(drawing.type).map(option => option.prop);
                     const anySelected = infoOptionProps.some(p => drawing.style.infoSettings[p] === true);
                     if (!anySelected) {
-                        drawing.style.infoSettings.priceRange = true;
+                        if (drawing.style.infoSettings.priceRange !== undefined) {
+                            drawing.style.infoSettings.priceRange = true;
+                        } else if (infoOptionProps.length > 0) {
+                            drawing.style.infoSettings[infoOptionProps[0]] = true;
+                        }
                     }
 
                     drawing.style.infoSettings.showInfo = isChecked;
@@ -9660,145 +9666,171 @@ body.light-mode .template-save-dialog .dialog-title {
         this.hide();
     }
 
+    getInfoDropdownOptions(drawingType) {
+        if (drawingType === 'date-price-range') {
+            return [
+                { prop: 'priceRange', label: 'Price range' },
+                { prop: 'percentChange', label: 'Percent change' },
+                { prop: 'changeInPips', label: 'Change in pips' },
+                { prop: 'barsRange', label: 'Bars range' },
+                { prop: 'dateTimeRange', label: 'Date/time range' },
+                { prop: 'volume', label: 'Volume' }
+            ];
+        }
+
+        if (drawingType === 'price-range') {
+            return [
+                { prop: 'priceRange', label: 'Price range' },
+                { prop: 'percentChange', label: 'Percent change' },
+                { prop: 'changeInPips', label: 'Change in pips' }
+            ];
+        }
+
+        if (drawingType === 'date-range') {
+            return [
+                { prop: 'barsRange', label: 'Bars range' },
+                { prop: 'dateTimeRange', label: 'Date/time range' }
+            ];
+        }
+
+        return [
+            { prop: 'priceRange', label: 'Price range' },
+            { prop: 'percentChange', label: 'Percent change' },
+            { prop: 'changeInPips', label: 'Change in pips' },
+            { prop: 'barsRange', label: 'Bars range' },
+            { prop: 'dateTimeRange', label: 'Date/time range' },
+            { prop: 'distance', label: 'Distance' },
+            { prop: 'angle', label: 'Angle' }
+        ];
+    }
+
+    getInfoSummaryText(drawing) {
+        const options = this.getInfoDropdownOptions(drawing.type);
+        const infoSettings = drawing.style?.infoSettings || {};
+        const selectedLabels = options
+            .filter(option => infoSettings[option.prop] === true)
+            .map(option => option.label);
+
+        if (selectedLabels.length === 0) return 'Select';
+        if (selectedLabels.length === 1) return selectedLabels[0];
+        return `${selectedLabels[0]}, ...`;
+    }
+
     /**
      * Show info dropdown (floating like template)
      */
     showInfoDropdown(btn, drawing, modal) {
+        const setButtonOpenState = (isOpen) => {
+            const icon = btn.querySelector('svg');
+            if (icon) {
+                icon.style.transition = 'transform 0.15s ease';
+                icon.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+        };
+
         const existingDropdown = document.querySelector('.settings-info-dropdown');
         if (existingDropdown) {
             existingDropdown.remove();
-            return; // Toggle off if already open
+            setButtonOpenState(false);
+            return;
         }
-        
+
+        const infoOptions = this.getInfoDropdownOptions(drawing.type);
+        const infoDefaults = { showInfo: false };
+        infoOptions.forEach(option => {
+            infoDefaults[option.prop] = false;
+        });
+        if (infoDefaults.priceRange !== undefined) {
+            infoDefaults.priceRange = true;
+        }
+        if (drawing.type === 'date-price-range' && infoDefaults.volume !== undefined) {
+            infoDefaults.volume = true;
+        }
+
         const infoSettings = {
-            showInfo: false,
-            priceRange: true,
-            percentChange: false,
-            changeInPips: false,
-            barsRange: false,
-            dateTimeRange: false,
-            distance: false,
-            angle: false,
+            ...infoDefaults,
             ...(drawing.style.infoSettings || {})
         };
 
-        const infoOptionProps = ['priceRange', 'percentChange', 'changeInPips', 'barsRange', 'dateTimeRange', 'distance', 'angle'];
+        const infoOptionProps = infoOptions.map(option => option.prop);
         const anySelected = infoOptionProps.some(p => infoSettings[p] === true);
-        const shouldForceDefaultPriceRange = !anySelected;
-        if (shouldForceDefaultPriceRange) {
-            infoSettings.priceRange = true;
+        if (!anySelected) {
             if (!drawing.style.infoSettings) drawing.style.infoSettings = {};
-            drawing.style.infoSettings.priceRange = true;
+
+            if (infoSettings.priceRange !== undefined) {
+                infoSettings.priceRange = true;
+                drawing.style.infoSettings.priceRange = true;
+            } else if (infoOptionProps.length > 0) {
+                const firstProp = infoOptionProps[0];
+                infoSettings[firstProp] = true;
+                drawing.style.infoSettings[firstProp] = true;
+            }
 
             if (drawing.style.infoSettings.showInfo === true) {
                 this.applyChangesImmediately(drawing);
             }
         }
-        
+
         const dropdown = document.createElement('div');
         dropdown.className = 'settings-info-dropdown';
         dropdown.style.cssText = `
             position: fixed;
-            background: #050028;
-            border: 1px solid #2a2e39;
-            border-radius: 8px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-            padding: 8px;
-            min-width: 180px;
+            background: #1e1f24;
+            border: 1px solid #2f323a;
+            border-radius: 10px;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+            padding: 8px 0;
+            min-width: 220px;
             z-index: 12550;
         `;
-        
-        dropdown.innerHTML = `
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
-                <div class="tv-checkbox tv-info-checkbox ${infoSettings.priceRange ? 'checked' : ''}" data-info-prop="priceRange">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                <span style="color: #d1d4dc; font-size: 13px;">Price range</span>
-            </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
-                <div class="tv-checkbox tv-info-checkbox ${infoSettings.percentChange ? 'checked' : ''}" data-info-prop="percentChange">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                <span style="color: #d1d4dc; font-size: 13px;">Percent change</span>
-            </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
-                <div class="tv-checkbox tv-info-checkbox ${infoSettings.changeInPips ? 'checked' : ''}" data-info-prop="changeInPips">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                <span style="color: #d1d4dc; font-size: 13px;">Change in pips</span>
-            </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
-                <div class="tv-checkbox tv-info-checkbox ${infoSettings.barsRange ? 'checked' : ''}" data-info-prop="barsRange">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                <span style="color: #d1d4dc; font-size: 13px;">Bars range</span>
-            </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
-                <div class="tv-checkbox tv-info-checkbox ${infoSettings.dateTimeRange ? 'checked' : ''}" data-info-prop="dateTimeRange">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                <span style="color: #d1d4dc; font-size: 13px;">Date/time range</span>
-            </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
-                <div class="tv-checkbox tv-info-checkbox ${infoSettings.distance ? 'checked' : ''}" data-info-prop="distance">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                <span style="color: #d1d4dc; font-size: 13px;">Distance</span>
-            </label>
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 4px;">
-                <div class="tv-checkbox tv-info-checkbox ${infoSettings.angle ? 'checked' : ''}" data-info-prop="angle">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                <span style="color: #d1d4dc; font-size: 13px;">Angle</span>
-            </label>
-        `;
 
-        if (shouldForceDefaultPriceRange) {
-            const priceRangeCheckbox = dropdown.querySelector('.tv-info-checkbox[data-info-prop="priceRange"]');
-            if (priceRangeCheckbox) priceRangeCheckbox.classList.add('checked');
-        }
-        
+        dropdown.innerHTML = infoOptions.map(option => `
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; border-radius: 0;">
+                <div class="tv-checkbox tv-info-checkbox ${infoSettings[option.prop] ? 'checked' : ''}" data-info-prop="${option.prop}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+                <span style="color: #d1d4dc; font-size: 13px;">${option.label}</span>
+            </label>
+        `).join('');
+
         document.body.appendChild(dropdown);
-        
-        // Position below button
+        setButtonOpenState(true);
+
+        const btnLabel = btn.querySelector('span');
+        if (btnLabel) {
+            btnLabel.textContent = this.getInfoSummaryText(drawing);
+        }
+
         const btnRect = btn.getBoundingClientRect();
         dropdown.style.top = `${btnRect.bottom + 4}px`;
         dropdown.style.left = `${btnRect.right - dropdown.offsetWidth}px`;
-        
-        // Checkbox handlers — whole row is clickable
+
         const self = this;
         dropdown.querySelectorAll('.tv-info-option').forEach(label => {
             label.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const checkbox = label.querySelector('.tv-info-checkbox');
                 if (!checkbox) return;
+
                 const infoProp = checkbox.dataset.infoProp;
                 checkbox.classList.toggle('checked');
                 const isChecked = checkbox.classList.contains('checked');
-                
+
                 if (!drawing.style.infoSettings) {
                     drawing.style.infoSettings = {};
                 }
                 drawing.style.infoSettings[infoProp] = isChecked;
-                
+
                 if (!self.pendingChanges.infoSettings) {
                     self.pendingChanges.infoSettings = {};
                 }
                 self.pendingChanges.infoSettings[infoProp] = isChecked;
+
+                if (btnLabel) {
+                    btnLabel.textContent = self.getInfoSummaryText(drawing);
+                }
 
                 if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
                     self.applyChangesImmediately(drawing);
@@ -9807,21 +9839,20 @@ body.light-mode .template-save-dialog .dialog-title {
                 }
             });
         });
-        
-        // Hover effect
+
         dropdown.querySelectorAll('.tv-info-option').forEach(item => {
             item.addEventListener('mouseenter', () => {
-                item.style.background = '#1a1c20';
+                item.style.background = 'rgba(255, 255, 255, 0.08)';
             });
             item.addEventListener('mouseleave', () => {
                 item.style.background = 'transparent';
             });
         });
-        
-        // Close on outside click
+
         const closeHandler = (e) => {
             if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
                 dropdown.remove();
+                setButtonOpenState(false);
                 document.removeEventListener('click', closeHandler);
             }
         };
