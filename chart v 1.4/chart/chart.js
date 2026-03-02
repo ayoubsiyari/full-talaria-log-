@@ -11016,13 +11016,11 @@ class Chart {
                 
                 this.scheduleRender();
             } else if (mode === 'timeAxis') {
-                // Jump to latest candle while preserving current zoom level
-                this._chartViewRestored = false;
-                this.fitToView();
+                // TradingView-style: reset zoom/size and jump to latest (current) candle
+                this.jumpToLatest();
 
-                console.log('🎯 Time axis double-click → jumped to latest candle');
-                
-                this.scheduleRender();
+                console.log('🎯 Time axis double-click → reset zoom + jump to latest candle');
+
                 this.dispatchScrollSync();
             }
         });
