@@ -5821,14 +5821,58 @@ class DrawingToolsManager {
     /**
      * Save tool style to localStorage
      */
-    saveToolStyle(toolType, style) {
+    saveToolStyle(toolType, style, options = {}) {
         if (!toolType || !style) return;
         
         // Clone style and remove non-persistent properties
         const styleToSave = { ...style };
         delete styleToSave.id;
-        
-        this.savedToolStyles[toolType] = styleToSave;
+
+        const isPositionTool = toolType === 'long-position' || toolType === 'short-position';
+        const existingRiskSettings = this.getSavedToolRiskSettings(toolType);
+        let riskSettingsToSave = existingRiskSettings;
+
+        if (isPositionTool && options && options.riskSettings && typeof options.riskSettings === 'object') {
+            const src = options.riskSettings;
+            const normalized = {};
+
+            if (src.riskMode === 'risk-percent' || src.riskMode === 'risk-usd') {
+                normalized.riskMode = src.riskMode;
+            }
+
+            const riskPercent = Number(src.riskPercent);
+            if (Number.isFinite(riskPercent)) {
+                normalized.riskPercent = Math.max(0.0001, riskPercent);
+            }
+
+            const riskAmountUSD = Number(src.riskAmountUSD);
+            if (Number.isFinite(riskAmountUSD)) {
+                normalized.riskAmountUSD = Math.max(0, riskAmountUSD);
+            }
+
+            const lotSize = Number(src.lotSize);
+            if (Number.isFinite(lotSize)) {
+                normalized.lotSize = Math.max(0.01, lotSize);
+            }
+
+            const leverage = Number(src.leverage);
+            if (Number.isFinite(leverage)) {
+                normalized.leverage = Math.max(1, leverage);
+            }
+
+            if (Object.keys(normalized).length > 0) {
+                riskSettingsToSave = normalized;
+            }
+        }
+
+        if (isPositionTool) {
+            this.savedToolStyles[toolType] = { style: styleToSave };
+            if (riskSettingsToSave && Object.keys(riskSettingsToSave).length > 0) {
+                this.savedToolStyles[toolType].riskSettings = { ...riskSettingsToSave };
+            }
+        } else {
+            this.savedToolStyles[toolType] = styleToSave;
+        }
         
         try {
             localStorage.setItem('drawingToolStyles', JSON.stringify(this.savedToolStyles));
@@ -5842,7 +5886,27 @@ class DrawingToolsManager {
      * Get saved style for a tool type
      */
     getSavedToolStyle(toolType) {
-        return this.savedToolStyles[toolType] || null;
+        const saved = this.savedToolStyles[toolType];
+        if (!saved) return null;
+
+        // New structured format (for tools that persist additional input settings)
+        if (saved && typeof saved === 'object' && saved.style && typeof saved.style === 'object') {
+            return saved.style;
+        }
+
+        // Legacy format (style object only)
+        return saved;
+    }
+
+    /**
+     * Get saved extra risk settings for position tools
+     */
+    getSavedToolRiskSettings(toolType) {
+        const saved = this.savedToolStyles[toolType];
+        if (!saved || typeof saved !== 'object' || !saved.riskSettings || typeof saved.riskSettings !== 'object') {
+            return null;
+        }
+        return saved.riskSettings;
     }
     
     /**
@@ -5870,6 +5934,22 @@ class DrawingToolsManager {
                 }
             });
             // [debug removed]
+        }
+
+        // Apply persisted risk inputs for long/short position tools
+        if ((drawing.type === 'long-position' || drawing.type === 'short-position') && typeof drawing.ensureRiskSettings === 'function') {
+            const savedRiskSettings = this.getSavedToolRiskSettings(drawing.type);
+            if (savedRiskSettings) {
+                if (!drawing.meta) drawing.meta = {};
+                drawing.meta.risk = {
+                    ...(drawing.meta.risk || {}),
+                    ...savedRiskSettings
+                };
+                drawing.ensureRiskSettings();
+                if (typeof drawing.recalculateLotSizeFromRisk === 'function') {
+                    drawing.recalculateLotSizeFromRisk();
+                }
+            }
         }
     }
 }

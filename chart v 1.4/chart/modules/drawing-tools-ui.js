@@ -7847,7 +7847,18 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawingManager.saveDrawings();
                 }
                 // Save as default style for this tool type
-                drawingManager.saveToolStyle(drawing.type, drawing.style);
+                const saveOptions = {};
+                const isPositionTool = drawing.type === 'long-position' || drawing.type === 'short-position';
+                if (isPositionTool && drawing.meta && drawing.meta.risk) {
+                    saveOptions.riskSettings = {
+                        riskMode: drawing.meta.risk.riskMode,
+                        riskPercent: drawing.meta.risk.riskPercent,
+                        riskAmountUSD: drawing.meta.risk.riskAmountUSD,
+                        lotSize: drawing.meta.risk.lotSize,
+                        leverage: drawing.meta.risk.leverage
+                    };
+                }
+                drawingManager.saveToolStyle(drawing.type, drawing.style, saveOptions);
             }
             
             // Cleanup external dropdowns
