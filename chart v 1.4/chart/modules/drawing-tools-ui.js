@@ -5506,6 +5506,34 @@ body.light-mode .template-save-dialog .dialog-title {
             </div>
         `;
         colorsSection.appendChild(labelRow);
+
+        const priceLabelChecked = drawing.style.showPriceLabel !== false;
+        const timeLabelChecked = drawing.style.showTimeLabel !== false;
+        const axisLabelRow = document.createElement('div');
+        axisLabelRow.className = 'tv-prop-row';
+        axisLabelRow.style.cssText = 'margin-top: 2px; align-items: flex-start;';
+        axisLabelRow.innerHTML = `
+            <span class="tv-checkbox-label" style="margin-top: 2px;">Axis Labels</span>
+            <div class="tv-prop-controls" style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;">
+                <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-prop="showPriceLabel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    <span class="tv-checkbox-label" style="white-space: nowrap;">Price labels</span>
+                </div>
+                <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <div class="tv-checkbox ${timeLabelChecked ? 'checked' : ''}" data-prop="showTimeLabel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    <span class="tv-checkbox-label" style="white-space: nowrap;">Time labels</span>
+                </div>
+            </div>
+        `;
+        colorsSection.appendChild(axisLabelRow);
         container.appendChild(colorsSection);
         
         // Risk Settings Section
