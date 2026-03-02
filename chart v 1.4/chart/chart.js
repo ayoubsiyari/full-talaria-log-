@@ -12942,33 +12942,23 @@ class Chart {
             return val.toFixed(0);
         };
         
-        const isLightMode = document.body.classList.contains('light-mode');
-        const titleColor = isLightMode ? '#131722' : '#d1d4dc';
-        const borderColor = isLightMode ? 'rgba(15, 23, 42, 0.12)' : 'rgba(120, 131, 155, 0.28)';
-        const rawUpColor = this.chartSettings.candleUpColor || '#089981';
-        const rawDownColor = this.chartSettings.candleDownColor || '#f23645';
-        const upColorIsLight = this.isLightColor ? this.isLightColor(rawUpColor) : true;
-        const downColorIsLight = this.isLightColor ? this.isLightColor(rawDownColor) : true;
-
-        // Keep chart style colors when readable; fallback when they become low-contrast in tooltip theme
-        const upColor = isLightMode
-            ? (upColorIsLight ? '#0f766e' : rawUpColor)
-            : (upColorIsLight ? rawUpColor : '#34d399');
-        const downColor = isLightMode
-            ? (downColorIsLight ? '#dc2626' : rawDownColor)
-            : (downColorIsLight ? rawDownColor : '#f87171');
+        const labelColor = '#ffffff';
+        const titleColor = '#ffffff';
+        const borderColor = 'rgba(120, 131, 155, 0.28)';
+        const upColor = '#089981';
+        const downColor = '#f23645';
         const directionColor = candle.c >= candle.o ? upColor : downColor;
         
         const html = `
-            <div style="font-weight: 600; font-size: 14px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid ${borderColor}; color: ${titleColor};">
+            <div style="font-weight: 600; font-size: 9px; line-height: 11px; margin-bottom: 4px; padding-bottom: 3px; border-bottom: 1px solid ${borderColor}; color: ${titleColor}; white-space: nowrap;">
                 ${dateStr} ${timeStr}
             </div>
-            <div style="display: grid; grid-template-columns: 60px 1fr; gap: 6px 16px; font-size: 13px;">
-                <span style="color: ${directionColor}; font-weight: 500;">Open:</span><span style="color: ${directionColor}; font-weight: 600;">${formatPrice(candle.o)}</span>
-                <span style="color: ${upColor}; font-weight: 500;">High:</span><span style="color: ${upColor}; font-weight: 600;">${formatPrice(candle.h)}</span>
-                <span style="color: ${downColor}; font-weight: 500;">Low:</span><span style="color: ${downColor}; font-weight: 600;">${formatPrice(candle.l)}</span>
-                <span style="color: ${directionColor}; font-weight: 500;">Close:</span><span style="color: ${directionColor}; font-weight: 600;">${formatPrice(candle.c)}</span>
-                <span style="color: ${directionColor}; font-weight: 500;">Volume:</span><span style="color: ${directionColor}; font-weight: 600;">${formatVol(candle.v)}</span>
+            <div style="display: grid; grid-template-columns: 32px auto; gap: 2px 8px; font-size: 9px; line-height: 11px;">
+                <span style="color: ${labelColor}; font-weight: 500;">Open:</span><span style="color: ${directionColor}; font-weight: 600;">${formatPrice(candle.o)}</span>
+                <span style="color: ${labelColor}; font-weight: 500;">High:</span><span style="color: ${upColor}; font-weight: 600;">${formatPrice(candle.h)}</span>
+                <span style="color: ${labelColor}; font-weight: 500;">Low:</span><span style="color: ${downColor}; font-weight: 600;">${formatPrice(candle.l)}</span>
+                <span style="color: ${labelColor}; font-weight: 500;">Close:</span><span style="color: ${directionColor}; font-weight: 600;">${formatPrice(candle.c)}</span>
+                <span style="color: ${labelColor}; font-weight: 500;">Volume:</span><span style="color: ${directionColor}; font-weight: 600;">${formatVol(candle.v)}</span>
             </div>
         `;
         
