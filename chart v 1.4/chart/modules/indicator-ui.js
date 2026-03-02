@@ -1276,11 +1276,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         } else if (param.type === 'checkbox') {
             input = document.createElement('input');
             input.type = 'checkbox';
+            input.className = 'tv-native-checkbox';
             input.checked = currentValue !== false;
-            input.style.width = '18px';
-            input.style.height = '18px';
             input.style.cursor = 'pointer';
-            input.style.accentColor = '#2962ff';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);

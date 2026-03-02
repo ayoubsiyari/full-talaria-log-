@@ -1700,6 +1700,21 @@
         body.light-mode .settings-checkbox-label {
             color: #050028;
         }
+
+        body.light-mode .settings-checkbox {
+            border-color: #94a3b8;
+        }
+
+        body.light-mode input[type="checkbox"].tv-native-checkbox,
+        body.light-mode .tv-settings-modal input[type="checkbox"] {
+            border-color: #94a3b8;
+        }
+
+        body.light-mode .settings-checkbox-item.checked .settings-checkbox,
+        body.light-mode input[type="checkbox"].tv-native-checkbox:checked,
+        body.light-mode .tv-settings-modal input[type="checkbox"]:checked {
+            border-color: rgba(41, 98, 255, 0.85);
+        }
         
         body.light-mode .settings-label {
             color: #666666;
@@ -2939,31 +2954,91 @@
         }
 
         .settings-checkbox {
-            width: 20px;
-            height: 20px;
-            border: 2px solid #787b86;
-            border-radius: 4px;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #363a45;
+            border-radius: 3px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
             transition: all 0.15s ease;
+            background: transparent;
+        }
+
+        .settings-checkbox-item:hover .settings-checkbox {
+            border-color: #4b5567;
         }
 
         .settings-checkbox-item.checked .settings-checkbox {
-            background: #2962ff;
-            border-color: #2962ff;
+            background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+            border-color: rgba(41, 98, 255, 0.85);
+        }
+
+        .settings-checkbox-item.checked:hover .settings-checkbox {
+            background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
+            border-color: rgba(41, 98, 255, 0.85);
+            box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
         }
 
         .settings-checkbox svg {
-            width: 14px;
-            height: 14px;
-            color: white;
-            display: none;
+            width: 11px;
+            height: 11px;
+            stroke: #ffffff;
+            opacity: 0;
+            transition: opacity 0.15s ease;
         }
 
         .settings-checkbox-item.checked .settings-checkbox svg {
-            display: block;
+            opacity: 1;
+        }
+
+        input[type="checkbox"].tv-native-checkbox,
+        .tv-settings-modal input[type="checkbox"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            border: 2px solid #363a45;
+            border-radius: 3px;
+            background: transparent;
+            cursor: default;
+            display: inline-grid;
+            place-content: center;
+            transition: all 0.15s ease;
+            vertical-align: middle;
+        }
+
+        input[type="checkbox"].tv-native-checkbox::after,
+        .tv-settings-modal input[type="checkbox"]::after {
+            content: '';
+            width: 5px;
+            height: 9px;
+            border-right: 2px solid #ffffff;
+            border-bottom: 2px solid #ffffff;
+            transform: rotate(45deg) scale(0);
+            opacity: 0;
+            transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+
+        input[type="checkbox"].tv-native-checkbox:checked,
+        .tv-settings-modal input[type="checkbox"]:checked {
+            background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+            border-color: rgba(41, 98, 255, 0.85);
+        }
+
+        input[type="checkbox"].tv-native-checkbox:checked:hover,
+        .tv-settings-modal input[type="checkbox"]:checked:hover {
+            background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
+            border-color: rgba(41, 98, 255, 0.85);
+            box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+        }
+
+        input[type="checkbox"].tv-native-checkbox:checked::after,
+        .tv-settings-modal input[type="checkbox"]:checked::after {
+            transform: rotate(45deg) scale(1);
+            opacity: 1;
         }
 
         .settings-checkbox-label {
@@ -13238,6 +13313,10 @@
         }
 
         .alert-checkbox-label input[type="checkbox"] {
+            margin: 0;
+        }
+
+        .alert-checkbox-label input[type="checkbox"]:not(.tv-native-checkbox) {
             width: 18px;
             height: 18px;
             accent-color: #4a9eff;
@@ -19219,7 +19298,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260228_TF_PIN_V12"></script>
     
-         <script src="chart.js?v=20260302_TF_PIN_V21"></script>
+         <script src="chart.js?v=20260302_TF_PIN_V22"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260301_TF_PIN_V19"></script>
@@ -19232,7 +19311,7 @@
     <script src="modules/screenshot-manager.js?v=20260228_TF_PIN_V12"></script>
     
     <!-- Alert System -->
-    <script src="modules/alert-system.js?v=20260228_TF_PIN_V12"></script>
+    <script src="modules/alert-system.js?v=20260302_TF_PIN_V13"></script>
     
     <!-- Force Screenshot Manager Initialization -->
     <script>
@@ -19352,7 +19431,7 @@
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
     <script src="modules/chart-indicators-full.js?v=20260228_TF_PIN_V12"></script>
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
-    <script src="modules/indicator-ui.js?v=20260228_TF_PIN_V12"></script>
+    <script src="modules/indicator-ui.js?v=20260302_TF_PIN_V13"></script>
     
     <!-- Initialize Indicator UI -->
     <script>

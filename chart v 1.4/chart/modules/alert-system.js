@@ -933,11 +933,11 @@ class AlertSystem {
                     </div>
                     <div class="alert-form-group alert-checkboxes">
                         <label class="alert-checkbox-label">
-                            <input type="checkbox" id="alertShowPopup" ${options.showPopup ? 'checked' : ''}>
+                            <input type="checkbox" class="tv-native-checkbox" id="alertShowPopup" ${options.showPopup ? 'checked' : ''}>
                             Show popup
                         </label>
                         <label class="alert-checkbox-label">
-                            <input type="checkbox" id="alertPlaySound" ${options.playSound ? 'checked' : ''}>
+                            <input type="checkbox" class="tv-native-checkbox" id="alertPlaySound" ${options.playSound ? 'checked' : ''}>
                             Play sound
                         </label>
                     </div>

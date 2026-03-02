@@ -3717,11 +3717,8 @@ class Chart {
         
         const input = wrapper.append('input')
             .attr('type', 'checkbox')
-            .property('checked', checked)  // Use .property() instead of .attr() for dynamic updates
-            .style('width', '20px')
-            .style('height', '20px')
-            .style('cursor', 'default')
-            .style('accent-color', '#2962ff');
+            .attr('class', 'tv-native-checkbox')
+            .property('checked', checked);  // Use .property() instead of .attr() for dynamic updates
         
         wrapper.append('span')
             .style('font-size', '15px')
