@@ -423,12 +423,7 @@ class DatePriceRangeTool extends BaseDrawing {
 
             const fontSize = parseInt(this.style.fontSize || 12);
             const lineHeight = Math.max(16, Math.round(fontSize * 1.45));
-            const requiredHeight = (lines.length * lineHeight) + 26;
-            const hasRoomInside = (bottom - top) >= requiredHeight;
-            const totalTextHeight = (lines.length - 1) * lineHeight;
-            const baseY = hasRoomInside
-                ? (midY - (totalTextHeight / 2))
-                : (bottom + 30);
+            const baseY = bottom + 30;
 
             const text = labelGroup.append('text')
                 .attr('x', midX)
@@ -465,18 +460,6 @@ class DatePriceRangeTool extends BaseDrawing {
                     .attr('stroke-width', this.style.borderEnabled ? (this.style.borderWidth || 1) : 0)
                     .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
                     .attr('rx', 9);
-
-                if (hasRoomInside) {
-                    const pointerTop = boxY - 20;
-                    const pointerBottom = boxY - 10;
-                    labelGroup.insert('path', 'text')
-                        .attr('d', `M ${midX - 14} ${pointerTop} L ${midX} ${pointerBottom} L ${midX + 14} ${pointerTop}`)
-                        .attr('fill', 'none')
-                        .attr('stroke', this.style.stroke || '#2962ff')
-                        .attr('stroke-width', 2)
-                        .attr('stroke-linecap', 'round')
-                        .attr('stroke-linejoin', 'round');
-                }
             }
         }
 
