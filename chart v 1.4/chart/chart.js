@@ -5950,11 +5950,11 @@ class Chart {
         // Calculate new candle width to fit selected range
         const chartWidth = this.w - m.l - m.r;
         const selectedCandles = Math.max(1, endIdx - startIdx);
-        const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+        const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
             : [0.25, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-        const minWidth = widths[0];
-        const maxWidth = widths[widths.length - 1];
+        const minWidth = allowedWidths[0];
+        const maxWidth = allowedWidths[allowedWidths.length - 1];
         const newCandleWidth = Math.max(minWidth, Math.min(maxWidth, chartWidth / selectedCandles - 2));
         
         // Map rectangle to price range
@@ -5992,11 +5992,10 @@ class Chart {
         this.offsetX = chartWidth / 2 + m.l - centerIdx * newSpacing;
         
         // Update zoom level index to nearest
-        const widths = this.zoomLevel.allowedWidths;
         let nearestIdx = 0;
-        let minDiff = Math.abs(this.candleWidth - widths[0]);
-        for (let i = 1; i < widths.length; i++) {
-            const diff = Math.abs(this.candleWidth - widths[i]);
+        let minDiff = Math.abs(this.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const diff = Math.abs(this.candleWidth - allowedWidths[i]);
             if (diff < minDiff) {
                 minDiff = diff;
                 nearestIdx = i;
