@@ -201,6 +201,7 @@ class Chart {
         this._sessionStateLoadedFor = null;
         this._pendingSessionStatePatch = null;
         this._sessionStateSaveTimer = null;
+        this._pendingChartViewSanityCheck = false;
 
         // ═══════════════════════════════════════════════════════════════════
         // STEP 1 — TradingView State Definition
@@ -1028,11 +1029,24 @@ class Chart {
             // Restore chart view (pan/zoom position)
             if (state.chartView && typeof state.chartView === 'object') {
                 const v = state.chartView;
-                if (typeof v.offsetX === 'number')       this.offsetX = v.offsetX;
-                if (typeof v.candleWidth === 'number')   this.candleWidth = v.candleWidth;
-                if (typeof v.priceOffset === 'number')   this.priceOffset = v.priceOffset;
-                if (typeof v.priceZoom === 'number')     this.priceZoom = v.priceZoom;
-                if (typeof v.autoScale === 'boolean')    this.autoScale = v.autoScale;
+                if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX)) {
+                    this.offsetX = v.offsetX;
+                }
+                if (typeof v.candleWidth === 'number' && Number.isFinite(v.candleWidth)) {
+                    this.candleWidth = Math.max(1, Math.min(89, v.candleWidth));
+                }
+                if (typeof v.priceOffset === 'number' && Number.isFinite(v.priceOffset)) {
+                    this.priceOffset = v.priceOffset;
+                }
+                if (typeof v.priceZoom === 'number' && Number.isFinite(v.priceZoom)) {
+                    this.priceZoom = Math.max(0.05, Math.min(20, v.priceZoom));
+                }
+                if (typeof v.autoScale === 'boolean') {
+                    this.autoScale = v.autoScale;
+                    if (this.priceScale) {
+                        this.priceScale.autoScale = v.autoScale;
+                    }
+                }
                 if (typeof v.candleWidthIndex === 'number' && this.zoomLevel) {
                     this.zoomLevel.candleWidthIndex = v.candleWidthIndex;
                 }
@@ -1054,6 +1068,8 @@ class Chart {
                 }
                 // Set flag to prevent fitToView() from overriding the restored position
                 this._chartViewRestored = true;
+                // Validate restored view against real candles on next scale calculation
+                this._pendingChartViewSanityCheck = true;
                 this.scheduleRender();
                 console.log('📍 Restored chart view from session state');
             }
@@ -8425,6 +8441,36 @@ class Chart {
             // Apply price offset for vertical panning relative to fixed base range
             domainMin = this.manualCenterPrice - halfRange + this.priceOffset;
             domainMax = this.manualCenterPrice + halfRange + this.priceOffset;
+        }
+
+        // One-time guard for restored sessions: if saved vertical viewport is stale/invalid,
+        // recover to a visible auto-scale so chart doesn't appear empty after reload.
+        if (this._pendingChartViewSanityCheck) {
+            const invalidDomain = !Number.isFinite(domainMin) || !Number.isFinite(domainMax) || domainMax <= domainMin;
+            const offscreenDomain = domainMax < minPrice || domainMin > maxPrice;
+
+            if (invalidDomain || offscreenDomain) {
+                domainMin = minPrice - padding;
+                domainMax = maxPrice + padding;
+
+                this.autoScale = true;
+                if (this.priceScale) {
+                    this.priceScale.autoScale = true;
+                }
+                this.priceZoom = 1;
+                this.priceOffset = 0;
+                this.manualCenterPrice = (domainMin + domainMax) / 2;
+                this.manualRange = domainMax - domainMin;
+
+                console.warn('⚠️ Restored chart view was out of range; auto-reset vertical scale', {
+                    minPrice,
+                    maxPrice,
+                    domainMin,
+                    domainMax
+                });
+            }
+
+            this._pendingChartViewSanityCheck = false;
         }
         
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
