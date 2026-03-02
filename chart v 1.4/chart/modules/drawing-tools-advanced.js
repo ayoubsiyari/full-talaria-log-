@@ -1410,14 +1410,16 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('font-weight', labelFontWeight)
                 .attr('font-family', labelFontFamily);
 
-            centerTextNode.append('tspan')
+            const centerLineHeight = Math.round(labelFontSize * 1.2);
+
+            const centerLine1 = centerTextNode.append('tspan')
                 .attr('x', 0)
                 .attr('y', 0)
                 .text(centerInfoLine1);
 
-            centerTextNode.append('tspan')
+            const centerLine2 = centerTextNode.append('tspan')
                 .attr('x', 0)
-                .attr('dy', Math.round(labelFontSize * 1.2))
+                .attr('y', centerLineHeight)
                 .text(centerInfoLine2);
 
             const centerTextBBox = centerTextNode.node().getBBox();
@@ -1442,12 +1444,16 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 2)
                 .attr('rx', labelRadius);
 
-            centerTextNode
-                .attr('x', centerRectX + (centerWidth / 2))
-                .attr('y', centerRectY + centerPaddingY);
+            const centerTextX = centerRectX + (centerWidth / 2);
+            const centerTextY = centerRectY + centerPaddingY;
 
-            centerTextNode.selectAll('tspan')
-                .attr('x', centerRectX + (centerWidth / 2));
+            centerLine1
+                .attr('x', centerTextX)
+                .attr('y', centerTextY);
+
+            centerLine2
+                .attr('x', centerTextX)
+                .attr('y', centerTextY + centerLineHeight);
 
             // Execute button moved to floating toolbar
         }
