@@ -2257,6 +2257,14 @@ body.light-mode .template-save-dialog .dialog-title {
         
         let tabsHTML = '';
         
+        tabsHTML += `
+            <button class="tv-collapsible-tab-btn active" data-tab="style">
+                <span>Style</span>
+                <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18l6-6-6-6"/>
+                </svg>
+            </button>`;
+
         if (hasInputsTab) {
             tabsHTML += `
             <button class="tv-collapsible-tab-btn" data-tab="inputs">
@@ -2266,14 +2274,6 @@ body.light-mode .template-save-dialog .dialog-title {
                 </svg>
             </button>`;
         }
-        
-        tabsHTML += `
-            <button class="tv-collapsible-tab-btn active" data-tab="style">
-                <span>Style</span>
-                <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M9 18l6-6-6-6"/>
-                </svg>
-            </button>`;
         
         if (hasTextTab) {
             tabsHTML += `
@@ -2459,7 +2459,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 const fibStyleControlsWidth = 180;
                 headerRow.innerHTML = `
                     <span style="flex: 1;"></span>
-                    <div class="tv-prop-controls" style="pointer-events: none; margin-left: auto; width: ${fibStyleControlsWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-end;">
+                    <div class="tv-prop-controls" style="pointer-events: none; margin-left: auto; width: ${fibStyleControlsWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: center;">
                         <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; text-align: center; font-size: 10px; color: #787b86;">Color</span>
                     </div>
                 `;
@@ -2540,7 +2540,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         trendControls.style.minHeight = '30px';
                         trendControls.style.display = 'flex';
                         trendControls.style.alignItems = 'center';
-                        trendControls.style.justifyContent = 'flex-end';
+                        trendControls.style.justifyContent = 'center';
                     }
 
                     trendRow.style.paddingBottom = '12px';
