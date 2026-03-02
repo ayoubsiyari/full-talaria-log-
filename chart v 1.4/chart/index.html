@@ -24515,9 +24515,9 @@ function showIndicatorsMenu() {
                     };
                     floatingClone.appendChild(stepForwardClone);
 
-                    // Interval control with themed dropdown
+                    // Interval control with vertical slider panel (match main replay toolbar)
                     const intervalCloneWrapper = document.createElement('div');
-                    intervalCloneWrapper.className = 'interval-clone-wrapper';
+                    intervalCloneWrapper.className = 'interval-slider-wrapper interval-clone-wrapper';
 
                     const intervalCloneBtn = document.createElement('button');
                     intervalCloneBtn.type = 'button';
@@ -24527,49 +24527,170 @@ function showIndicatorsMenu() {
                     intervalCloneValue.textContent = getCurrentIntervalLabel();
                     intervalCloneBtn.appendChild(intervalCloneValue);
 
-                    const intervalCloneMenu = document.createElement('div');
-                    intervalCloneMenu.className = 'interval-clone-menu';
+                    const intervalClonePanel = document.createElement('div');
+                    intervalClonePanel.className = 'interval-slider-panel interval-clone-panel';
 
-                    function renderIntervalCloneMenu() {
-                        const selectedTf = getCurrentIntervalTf();
-                        const choices = getIntervalChoicesForClone();
-                        intervalCloneMenu.innerHTML = '';
-                        choices.forEach((choice) => {
-                            const optionBtn = document.createElement('button');
-                            optionBtn.type = 'button';
-                            optionBtn.className = 'interval-clone-option' + (choice.tf === selectedTf ? ' active' : '');
-                            optionBtn.textContent = choice.label;
-                            optionBtn.addEventListener('click', (optionEvent) => {
-                                optionEvent.stopPropagation();
-                                applyReplayIntervalFromClone(choice.tf);
-                                intervalCloneValue.textContent = intervalLabelFromTf(choice.tf);
-                                intervalCloneMenu.classList.remove('open');
-                                intervalCloneBtn.classList.remove('active');
-                            });
-                            intervalCloneMenu.appendChild(optionBtn);
+                    const intervalClonePanelTop = document.createElement('div');
+                    intervalClonePanelTop.className = 'interval-slider-panel-top';
+
+                    const intervalCloneLabel = document.createElement('div');
+                    intervalCloneLabel.className = 'interval-slider-label';
+                    const intervalCloneLabelPrefix = document.createElement('span');
+                    intervalCloneLabelPrefix.textContent = '';
+                    const intervalCloneCurValue = document.createElement('span');
+                    intervalCloneCurValue.className = 'interval-cur-value';
+                    intervalCloneCurValue.textContent = intervalCloneValue.textContent;
+                    intervalCloneLabel.appendChild(intervalCloneLabelPrefix);
+                    intervalCloneLabel.appendChild(intervalCloneCurValue);
+
+                    const intervalCloneTrackContainer = document.createElement('div');
+                    intervalCloneTrackContainer.className = 'interval-slider-track-container';
+
+                    const intervalCloneTicks = document.createElement('div');
+                    intervalCloneTicks.className = 'interval-slider-ticks';
+
+                    const intervalCloneTrack = document.createElement('div');
+                    intervalCloneTrack.className = 'interval-slider-custom';
+
+                    const intervalCloneFill = document.createElement('div');
+                    intervalCloneFill.className = 'interval-slider-custom-fill';
+
+                    const intervalCloneThumb = document.createElement('div');
+                    intervalCloneThumb.className = 'interval-slider-custom-thumb';
+
+                    intervalCloneTrack.appendChild(intervalCloneFill);
+                    intervalCloneTrack.appendChild(intervalCloneThumb);
+
+                    const intervalCloneLabels = document.createElement('div');
+                    intervalCloneLabels.className = 'interval-slider-labels-row';
+
+                    intervalCloneTrackContainer.appendChild(intervalCloneTicks);
+                    intervalCloneTrackContainer.appendChild(intervalCloneTrack);
+                    intervalCloneTrackContainer.appendChild(intervalCloneLabels);
+
+                    intervalClonePanelTop.appendChild(intervalCloneLabel);
+                    intervalClonePanelTop.appendChild(intervalCloneTrackContainer);
+                    intervalClonePanel.appendChild(intervalClonePanelTop);
+
+                    let cloneIntervals = [];
+                    let cloneIntervalIndex = 0;
+                    let cloneIntervalDragging = false;
+
+                    function cloneIntervalMaxIndex() {
+                        return Math.max(1, cloneIntervals.length - 1);
+                    }
+
+                    function getCloneIntervalIndexFromY(clientY) {
+                        const rect = intervalCloneTrack.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+                        return pct * cloneIntervalMaxIndex();
+                    }
+
+                    function updateCloneIntervalActiveLabel(index) {
+                        const labels = intervalCloneLabels.querySelectorAll('.tick-label');
+                        labels.forEach((labelNode, i) => {
+                            labelNode.classList.toggle('active', i === index);
                         });
                     }
 
-                    intervalCloneBtn.addEventListener('click', (btnEvent) => {
-                        btnEvent.stopPropagation();
-                        const willOpen = !intervalCloneMenu.classList.contains('open');
-                        intervalCloneMenu.classList.toggle('open', willOpen);
-                        intervalCloneBtn.classList.toggle('active', willOpen);
-                        if (willOpen) renderIntervalCloneMenu();
+                    function updateCloneIntervalSliderPosition(index, animate) {
+                        const pct = (index / cloneIntervalMaxIndex()) * 100;
+                        if (!animate) {
+                            intervalCloneThumb.style.transition = 'none';
+                            intervalCloneFill.style.transition = 'none';
+                        }
+                        intervalCloneThumb.style.top = pct + '%';
+                        intervalCloneFill.style.height = pct + '%';
+                        if (!animate) {
+                            intervalCloneThumb.offsetHeight; // Force reflow
+                            intervalCloneThumb.style.transition = '';
+                            intervalCloneFill.style.transition = '';
+                        }
+                    }
+
+                    function setCloneIntervalByIndex(index, skipApply) {
+                        if (!cloneIntervals.length) return;
+                        index = Math.max(0, Math.min(cloneIntervals.length - 1, Math.round(index)));
+                        cloneIntervalIndex = index;
+
+                        const choice = cloneIntervals[index];
+                        intervalCloneValue.textContent = choice.label;
+                        intervalCloneCurValue.textContent = choice.label;
+                        updateCloneIntervalSliderPosition(index, !cloneIntervalDragging);
+                        updateCloneIntervalActiveLabel(index);
+
+                        if (!skipApply) {
+                            applyReplayIntervalFromClone(choice.tf);
+                        }
+                    }
+
+                    function rebuildCloneIntervalSlider() {
+                        const selectedTf = getCurrentIntervalTf();
+                        cloneIntervals = getIntervalChoicesForClone();
+
+                        intervalCloneTicks.innerHTML = '';
+                        intervalCloneLabels.innerHTML = '';
+
+                        cloneIntervals.forEach((choice) => {
+                            const tick = document.createElement('span');
+                            tick.className = 'tick';
+                            intervalCloneTicks.appendChild(tick);
+
+                            const labelNode = document.createElement('span');
+                            labelNode.className = 'tick-label' + (choice.tf === 'auto' ? ' auto-label' : '');
+                            labelNode.textContent = choice.label;
+                            intervalCloneLabels.appendChild(labelNode);
+                        });
+
+                        let selectedIndex = cloneIntervals.findIndex((choice) => choice.tf === selectedTf);
+                        if (selectedIndex === -1) selectedIndex = cloneIntervals.length - 1;
+                        setCloneIntervalByIndex(selectedIndex, true);
+                    }
+
+                    intervalCloneWrapper.addEventListener('mouseenter', rebuildCloneIntervalSlider);
+
+                    intervalCloneTrack.addEventListener('click', (trackEvent) => {
+                        if (trackEvent.target === intervalCloneThumb) return;
+                        setCloneIntervalByIndex(Math.round(getCloneIntervalIndexFromY(trackEvent.clientY)), false);
+                        trackEvent.stopPropagation();
                     });
 
-                    intervalCloneMenu.addEventListener('click', (menuEvent) => {
-                        menuEvent.stopPropagation();
+                    intervalCloneThumb.addEventListener('mousedown', (thumbEvent) => {
+                        cloneIntervalDragging = true;
+                        intervalCloneThumb.classList.add('dragging');
+                        rebuildCloneIntervalSlider();
+                        thumbEvent.preventDefault();
+                        thumbEvent.stopPropagation();
                     });
 
-                    intervalCloneWrapper.addEventListener('mouseleave', () => {
-                        intervalCloneMenu.classList.remove('open');
-                        intervalCloneBtn.classList.remove('active');
+                    document.addEventListener('mousemove', (moveEvent) => {
+                        if (!cloneIntervalDragging || !cloneIntervals.length) return;
+                        const snapped = Math.round(getCloneIntervalIndexFromY(moveEvent.clientY));
+                        const clamped = Math.max(0, Math.min(cloneIntervals.length - 1, snapped));
+                        cloneIntervalIndex = clamped;
+
+                        const preview = cloneIntervals[clamped];
+                        if (preview) {
+                            intervalCloneValue.textContent = preview.label;
+                            intervalCloneCurValue.textContent = preview.label;
+                            updateCloneIntervalActiveLabel(clamped);
+                            updateCloneIntervalSliderPosition(clamped, false);
+                        }
+
+                        moveEvent.preventDefault();
+                    });
+
+                    document.addEventListener('mouseup', (upEvent) => {
+                        if (!cloneIntervalDragging) return;
+                        cloneIntervalDragging = false;
+                        intervalCloneThumb.classList.remove('dragging');
+                        setCloneIntervalByIndex(Math.round(getCloneIntervalIndexFromY(upEvent.clientY)), false);
                     });
 
                     intervalCloneWrapper.appendChild(intervalCloneBtn);
-                    intervalCloneWrapper.appendChild(intervalCloneMenu);
+                    intervalCloneWrapper.appendChild(intervalClonePanel);
                     floatingClone.appendChild(intervalCloneWrapper);
+                    rebuildCloneIntervalSlider();
 
                     // Go To button (use existing goToMenu to avoid duplicate IDs)
                     const goToClone = document.createElement('button');
