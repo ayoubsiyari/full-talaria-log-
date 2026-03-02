@@ -2510,8 +2510,6 @@ body.light-mode .template-save-dialog .dialog-title {
                     if (drawing.style.trendLineEnabled === undefined) {
                         drawing.style.trendLineEnabled = true;
                     }
-                    drawing.style.trendLineDasharray = '10,6';
-                    drawing.style.trendLineWidth = 1;
 
                     const trendRow = this.createPropertyRow(
                         'Trend line',
@@ -6727,14 +6725,17 @@ body.light-mode .template-save-dialog .dialog-title {
         const controlsWrap = document.createElement('div');
         controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #363a45;';
 
+        const fibControlsColumnWidth = 180;
+        const levelsModeSelectWidth = 132;
+
         const makeRow = (labelText) => {
             const row = document.createElement('div');
             row.className = 'tv-prop-row';
-            row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 12px;';
+            row.style.cssText = 'display: flex; align-items: center; gap: 12px; min-height: 30px;';
 
             const left = document.createElement('div');
             left.className = 'tv-checkbox-wrapper';
-            left.style.cssText = 'min-width: 0; margin: 0;';
+            left.style.cssText = 'min-width: 0; margin: 0; flex: 1; display: flex; align-items: center;';
 
             const cb = document.createElement('div');
             cb.className = 'tv-checkbox';
@@ -6753,7 +6754,12 @@ body.light-mode .template-save-dialog .dialog-title {
             left.appendChild(label);
             row.appendChild(left);
 
-            return { row, cb };
+            const controls = document.createElement('div');
+            controls.className = 'tv-prop-controls';
+            controls.style.cssText = `margin-left: auto; width: ${fibControlsColumnWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-end;`;
+            row.appendChild(controls);
+
+            return { row, cb, controls };
         };
 
         const bgRow = makeRow('Background');
@@ -6764,8 +6770,8 @@ body.light-mode .template-save-dialog .dialog-title {
         bgSlider.max = '1';
         bgSlider.step = '0.01';
         bgSlider.value = String(drawing.style.backgroundOpacity);
-        bgSlider.style.cssText = 'width: 180px; height: 6px; margin-left: auto; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none;';
-        bgRow.row.appendChild(bgSlider);
+        bgSlider.style.cssText = 'width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none;';
+        bgRow.controls.appendChild(bgSlider);
         bgRow.cb.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopImmediatePropagation();
@@ -6806,12 +6812,12 @@ body.light-mode .template-save-dialog .dialog-title {
         levelsRow.cb.classList.toggle('checked', !!drawing.style.levelsEnabled);
         const levelsSelect = document.createElement('select');
         levelsSelect.className = 'tv-select';
-        levelsSelect.style.cssText = 'width: 180px;';
+        levelsSelect.style.cssText = `width: ${levelsModeSelectWidth}px; min-width: ${levelsModeSelectWidth}px;`;
         levelsSelect.innerHTML = `
             <option value="values" ${drawing.style.levelsLabelMode === 'values' ? 'selected' : ''}>Values</option>
             <option value="percent" ${drawing.style.levelsLabelMode === 'percent' ? 'selected' : ''}>Percent</option>
         `;
-        levelsRow.row.appendChild(levelsSelect);
+        levelsRow.controls.appendChild(levelsSelect);
         levelsRow.cb.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopImmediatePropagation();
