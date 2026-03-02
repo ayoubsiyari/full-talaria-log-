@@ -215,8 +215,8 @@ class FibonacciRetracementTool extends BaseDrawing {
         // Draw main trend line connecting the two anchor points
         const trendEnabled = this.style.trendLineEnabled !== false;
         const trendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
-        const trendDash = (this.style.trendLineDasharray != null ? this.style.trendLineDasharray : (this.style.strokeDasharray || ''));
-        const baseTrendWidth = (this.style.trendLineWidth != null ? this.style.trendLineWidth : (baseLevelStrokeWidth + 1));
+        const trendDash = '10,6';
+        const baseTrendWidth = 1;
         const scaledTrendWidth = Math.max(0.5, baseTrendWidth * scaleFactor);
 
         if (trendEnabled) {
@@ -465,8 +465,8 @@ class FibonacciExtensionTool extends BaseDrawing {
         // Draw main trend line
         const trendEnabled = this.style.trendLineEnabled !== false;
         const trendColor = this.style.trendLineColor || this.style.stroke || '#9c27b0';
-        const trendDash = (this.style.trendLineDasharray != null ? this.style.trendLineDasharray : (this.style.strokeDasharray || ''));
-        const baseTrendWidth = (this.style.trendLineWidth != null ? this.style.trendLineWidth : (baseLevelStrokeWidth + 1));
+        const trendDash = '10,6';
+        const baseTrendWidth = 1;
         const scaledTrendWidth = Math.max(0.5, baseTrendWidth * scaleFactor);
 
         if (trendEnabled) {

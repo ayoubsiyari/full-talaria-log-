@@ -2440,6 +2440,7 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Controls Header - hide for arrow-marker tools, hide Type for brush/highlighter
         const isArrowMarker = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
+        const isFibTool = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension';
         if (!isArrowMarker && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
             const isBrushOrHighlighterHeader = drawing.type === 'brush' || drawing.type === 'highlighter';
             const headerRow = document.createElement('div');
@@ -2452,6 +2453,13 @@ body.light-mode .template-save-dialog .dialog-title {
                     <div class="tv-prop-controls" style="pointer-events: none;">
                         <span style="width: 30px; text-align: center; font-size: 10px; color: #787b86;">Color</span>
                         <span style="width: ${widthLabelSize}; text-align: center; font-size: 10px; color: #787b86;">Width</span>
+                    </div>
+                `;
+            } else if (isFibTool) {
+                headerRow.innerHTML = `
+                    <span></span>
+                    <div class="tv-prop-controls" style="pointer-events: none;">
+                        <span style="width: 30px; text-align: center; font-size: 10px; color: #787b86;">Color</span>
                     </div>
                 `;
             } else {
@@ -2470,15 +2478,14 @@ body.light-mode .template-save-dialog .dialog-title {
         // Line Property Row (skip for arrow-marker - it only needs fill color)
         const skipLineRow = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down' || drawing.type === 'fib-channel' || drawing.type === 'fib-timezone' || drawing.type === 'fib-speed-fan' || drawing.type === 'trend-fib-time' || drawing.type === 'fib-circles' || drawing.type === 'fib-arcs' || drawing.type === 'fib-wedge' || drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan';
         if (!skipLineRow) {
-            const isFibTool = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension';
             const lineValues = {
                 // For pitchfork tools, use medianColor for Line row
                 // For fib tools, this row controls ONLY the middle trend line
                 color: (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') 
                     ? (drawing.style.medianColor || '#e91e63') 
                     : (isFibTool ? (drawing.style.trendLineColor || drawing.style.stroke || '#787b86') : (drawing.style.stroke || '#EF5350')),
-                lineType: isFibTool ? (drawing.style.trendLineDasharray ?? drawing.style.strokeDasharray ?? '') : (drawing.style.strokeDasharray || ''),
-                lineWidth: isFibTool ? (drawing.style.trendLineWidth ?? ((drawing.style.strokeWidth || 2) + 1)) : (drawing.style.strokeWidth || 2)
+                lineType: isFibTool ? '10,6' : (drawing.style.strokeDasharray || ''),
+                lineWidth: isFibTool ? 1 : (drawing.style.strokeWidth || 2)
             };
             if (isBrushTool || isLineTool || isPolyline || isShapeTool) {
                 // Use brush-style row (no checkbox) for brush tools, line tools, polyline, and shapes
@@ -2499,11 +2506,21 @@ body.light-mode .template-save-dialog .dialog-title {
 	            if (drawing.type === 'rectangle') rectangleBorderRow = brushLineRow;
             } else {
                 if (isFibTool) {
-                    // Fib tools: Trend line should always be enabled (no checkbox)
-                    if (drawing.style && drawing.style.trendLineEnabled === false) {
+                    if (!drawing.style) drawing.style = {};
+                    if (drawing.style.trendLineEnabled === undefined) {
                         drawing.style.trendLineEnabled = true;
                     }
-                    const trendRow = this.createBrushPropertyRow('Trend line', lineValues, 'trendLine', drawing);
+                    drawing.style.trendLineDasharray = '10,6';
+                    drawing.style.trendLineWidth = 1;
+
+                    const trendRow = this.createPropertyRow(
+                        'Trend line',
+                        drawing.style.trendLineEnabled !== false,
+                        lineValues,
+                        drawing,
+                        'trendLine',
+                        { showType: false, showWidth: false }
+                    );
                     trendRow.style.paddingBottom = '12px';
                     trendRow.style.marginBottom = '12px';
                     container.appendChild(trendRow);
@@ -6253,7 +6270,28 @@ body.light-mode .template-save-dialog .dialog-title {
      * Create a property row with checkbox, color, type, width
      * Checkbox is aligned under the color column
      */
-    createPropertyRow(label, checked, values, drawing, propKey) {
+    createPropertyRow(label, checked, values, drawing, propKey, options = {}) {
+        const showType = options.showType !== false;
+        const showWidth = options.showWidth !== false;
+
+        const typeControl = showType ? `
+                <select class="tv-select" data-prop="${propKey}Type" style="width: 40px;">
+                    <option value="" ${values.lineType === '' ? 'selected' : ''}>───────</option>
+                    <option value="10,6" ${(values.lineType === '10,6' || values.lineType === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
+                    <option value="2,2" ${values.lineType === '2,2' ? 'selected' : ''}>··········</option>
+                    <option value="8,4,2,4" ${values.lineType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
+                </select>
+        ` : '';
+
+        const widthControl = showWidth ? `
+                <select class="tv-select" data-prop="${propKey}Width" style="width: 40px;">
+                    <option value="1" ${values.lineWidth == 1 ? 'selected' : ''}>1px</option>
+                    <option value="2" ${values.lineWidth == 2 ? 'selected' : ''}>2px</option>
+                    <option value="3" ${values.lineWidth == 3 ? 'selected' : ''}>3px</option>
+                    <option value="4" ${values.lineWidth == 4 ? 'selected' : ''}>4px</option>
+                </select>
+        ` : '';
+
         const row = document.createElement('div');
         row.className = 'tv-prop-row';
         
@@ -6268,19 +6306,8 @@ body.light-mode .template-save-dialog .dialog-title {
             </span>
             <div class="tv-prop-controls">
                 <button class="tv-color-btn" data-prop="${propKey}Color" style="background: ${values.color};"></button>
-                <select class="tv-select" data-prop="${propKey}Type" style="width: 40px;">
-                    <option value="" ${values.lineType === '' ? 'selected' : ''}>───────</option>
-                    <option value="10,6" ${(values.lineType === '10,6' || values.lineType === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
-                    <option value="2,2" ${values.lineType === '2,2' ? 'selected' : ''}>··········</option>
-                    <option value="8,4,2,4" ${values.lineType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
-                </select>
-                <select class="tv-select" data-prop="${propKey}Width" style="width: 40px;">
-                    <option value="1" ${values.lineWidth == 1 ? 'selected' : ''}>1px</option>
-                    <option value="2" ${values.lineWidth == 2 ? 'selected' : ''}>2px</option>
-                    <option value="3" ${values.lineWidth == 3 ? 'selected' : ''}>3px</option>
-                    <option value="4" ${values.lineWidth == 4 ? 'selected' : ''}>4px</option>
-                    
-                </select>
+                ${typeControl}
+                ${widthControl}
             </div>
         `;
         
@@ -9089,6 +9116,10 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.trendLineType !== undefined) drawing.style.trendLineDasharray = this.pendingChanges.trendLineType;
         if (this.pendingChanges.trendLineWidth) drawing.style.trendLineWidth = parseInt(this.pendingChanges.trendLineWidth);
         if (this.pendingChanges.trendLineEnabled !== undefined) drawing.style.trendLineEnabled = this.pendingChanges.trendLineEnabled;
+        if (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension') {
+            drawing.style.trendLineDasharray = '10,6';
+            drawing.style.trendLineWidth = 1;
+        }
         
         // Middle line properties
         if (this.pendingChanges.middleLineColor) drawing.style.middleLineColor = this.pendingChanges.middleLineColor;

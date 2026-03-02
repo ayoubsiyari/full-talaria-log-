@@ -3238,6 +3238,10 @@ class TrendFibExtensionTool extends BaseDrawing {
         this.requiredPoints = 3;
         this.style.stroke = style.stroke || '#2962ff';
         this.style.strokeWidth = style.strokeWidth || 1;
+        if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
+        if (!this.style.trendLineColor) this.style.trendLineColor = this.style.stroke;
+        this.style.trendLineDasharray = '10,6';
+        this.style.trendLineWidth = 1;
         // TradingView-like Fibonacci levels (fixed 20 like Fib Retracement)
         const defaultLevels = [
             { value: -0.618, label: '-0.618', color: '#9c27b0', enabled: false },
@@ -3275,13 +3279,10 @@ class TrendFibExtensionTool extends BaseDrawing {
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
 
         const scaleFactor = this.getZoomScaleFactor(scales);
+        const trendEnabled = this.style.trendLineEnabled !== false;
         const trendColor = this.style.trendLineColor || this.style.stroke;
-        const trendDash = (this.style.trendLineDasharray != null && `${this.style.trendLineDasharray}` !== '' && `${this.style.trendLineDasharray}` !== 'none')
-            ? `${this.style.trendLineDasharray}`
-            : null;
-        const trendBaseWidth = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth)))
-            ? parseInt(this.style.trendLineWidth)
-            : (this.style.strokeWidth != null ? this.style.strokeWidth : 2);
+        const trendDash = '10,6';
+        const trendBaseWidth = 1;
         const scaledStrokeWidth = Math.max(0.5, trendBaseWidth * scaleFactor);
 
         this.group = container.append('g')
@@ -3310,15 +3311,17 @@ class TrendFibExtensionTool extends BaseDrawing {
         const y2 = getY(this.points[1]);
         
         // Draw trend line (first leg)
-        this.group.append('line')
-            .attr('class', 'fib-trend-line')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', trendColor)
-            .attr('stroke-width', scaledStrokeWidth)
-            .attr('stroke-dasharray', trendDash || 'none')
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        if (trendEnabled) {
+            this.group.append('line')
+                .attr('class', 'fib-trend-line')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', x2).attr('y2', y2)
+                .attr('stroke', trendColor)
+                .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', trendDash)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         // Preview: 2 points - show first line with endpoint dots
         if (this.points.length === 2) {
@@ -3404,15 +3407,17 @@ class TrendFibExtensionTool extends BaseDrawing {
             };
 
             // Draw second leg (to third point)
-            this.group.append('line')
-                .attr('class', 'fib-trend-line')
-                .attr('x1', x2).attr('y1', y2)
-                .attr('x2', x3).attr('y2', y3)
-                .attr('stroke', trendColor)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', trendDash || 'none')
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+            if (trendEnabled) {
+                this.group.append('line')
+                    .attr('class', 'fib-trend-line')
+                    .attr('x1', x2).attr('y1', y2)
+                    .attr('x2', x3).attr('y2', y3)
+                    .attr('stroke', trendColor)
+                    .attr('stroke-width', scaledStrokeWidth)
+                    .attr('stroke-dasharray', trendDash)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            }
 
             if (showZones) {
                 const zoneLevels = this.levels
