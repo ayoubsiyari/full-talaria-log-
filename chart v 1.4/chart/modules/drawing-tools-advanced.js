@@ -1315,47 +1315,76 @@ class BaseRiskRewardTool extends BaseDrawing {
             // Use rrRatio already calculated above
             const targetAmount = Math.round(riskUSD * parseFloat(rrRatio));
 
-            // Target Label (Green background pill)
+            const labelPaddingX = 8;
+            const labelPaddingY = 3;
+            const edgeSnapGap = 4;
+            const compressedGap = 18;
+            const minInnerHorizontalPadding = 20;
+            const chartLeft = Math.min(xRange[0], xRange[1]);
+            const chartRight = Math.max(xRange[0], xRange[1]);
+            const yRange = scales.yScale.range();
+            const chartTop = Math.min(yRange[0], yRange[1]);
+            const chartBottom = Math.max(yRange[0], yRange[1]);
+
+            const createEdgeLabel = ({ className, text, lineY, fill, side }) => {
+                const labelGroup = this.group.append('g').attr('class', className);
+
+                const textNode = labelGroup.append('text')
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('text-anchor', 'middle')
+                    .attr('dominant-baseline', 'hanging')
+                    .attr('fill', 'white')
+                    .attr('font-size', '12px')
+                    .attr('font-weight', '600')
+                    .text(text);
+
+                const textBBox = textNode.node().getBBox();
+                const labelWidth = textBBox.width + (labelPaddingX * 2);
+                const labelHeight = textBBox.height + (labelPaddingY * 2);
+
+                const hasInnerSpace = zoneWidth >= (labelWidth + minInnerHorizontalPadding);
+                const offset = hasInnerSpace ? edgeSnapGap : compressedGap;
+                let rectTop = side === 'top'
+                    ? lineY - labelHeight - offset
+                    : lineY + offset;
+
+                rectTop = Math.max(chartTop + 2, Math.min(rectTop, chartBottom - labelHeight - 2));
+
+                let rectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
+                rectX = Math.max(chartLeft + 2, Math.min(rectX, chartRight - labelWidth - 2));
+
+                labelGroup.insert('rect', 'text')
+                    .attr('x', rectX)
+                    .attr('y', rectTop)
+                    .attr('width', labelWidth)
+                    .attr('height', labelHeight)
+                    .attr('fill', fill)
+                    .attr('rx', 12);
+
+                textNode
+                    .attr('x', rectX + (labelWidth / 2))
+                    .attr('y', rectTop + labelPaddingY);
+            };
+
+            // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
             const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
-            const targetLabel = this.group.append('g').attr('class', 'target-label');
+            createEdgeLabel({
+                className: 'target-label',
+                text: targetLabelText,
+                lineY: targetY,
+                fill: this.isLong ? '#22c55e' : '#ef4444',
+                side: 'top'
+            });
 
-            const targetTextNode = targetLabel.append('text')
-                .attr('x', zoneX1 + 10)
-                .attr('y', targetY - 10)
-                .attr('fill', 'white')
-                .attr('font-size', '12px')
-                .attr('font-weight', '600')
-                .text(targetLabelText);
-
-            const targetTextBBox = targetTextNode.node().getBBox();
-            targetLabel.insert('rect', 'text')
-                .attr('x', targetTextBBox.x - 8)
-                .attr('y', targetTextBBox.y - 3)
-                .attr('width', targetTextBBox.width + 16)
-                .attr('height', targetTextBBox.height + 6)
-                .attr('fill', this.isLong ? '#22c55e' : '#ef4444')
-                .attr('rx', 12);
-
-            // Stop Label (Red background pill)
             const stopLabelText = `Stop: ${stopPrice.toFixed(5)} (${stopPercent}%) ${stopTicks}, Amount: ${stopAmount}`;
-            const stopLabel = this.group.append('g').attr('class', 'stop-label');
-
-            const stopTextNode = stopLabel.append('text')
-                .attr('x', zoneX1 + 10)
-                .attr('y', stopY + 25)
-                .attr('fill', 'white')
-                .attr('font-size', '12px')
-                .attr('font-weight', '600')
-                .text(stopLabelText);
-
-            const stopTextBBox = stopTextNode.node().getBBox();
-            stopLabel.insert('rect', 'text')
-                .attr('x', stopTextBBox.x - 8)
-                .attr('y', stopTextBBox.y - 3)
-                .attr('width', stopTextBBox.width + 16)
-                .attr('height', stopTextBBox.height + 6)
-                .attr('fill', this.isLong ? '#ef4444' : '#22c55e')
-                .attr('rx', 12);
+            createEdgeLabel({
+                className: 'stop-label',
+                text: stopLabelText,
+                lineY: stopY,
+                fill: this.isLong ? '#ef4444' : '#22c55e',
+                side: 'bottom'
+            });
 
             // Center Info Box (Green background pill)
             const pnl = 0; // Will be calculated when order is active
