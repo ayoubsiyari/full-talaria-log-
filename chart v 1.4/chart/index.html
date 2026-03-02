@@ -2699,6 +2699,103 @@
             min-height: 100%;
         }
 
+        /* Panel layouts (settings panel mode): grouped rows */
+        .pl-layout-rows {
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .pl-layout-row {
+            display: grid;
+            grid-template-columns: 28px 1fr;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .pl-layout-row.is-last {
+            border-bottom: none;
+        }
+
+        .pl-layout-count {
+            font-size: 34px;
+            line-height: 1;
+            color: #7f8aa3;
+            font-variant-numeric: tabular-nums;
+            text-align: left;
+        }
+
+        .pl-layout-row-icons {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .pl-layout-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 42px;
+            padding: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            color: #7f8aa3;
+            cursor: default;
+            transition: all 0.15s ease;
+        }
+
+        .pl-layout-btn:hover {
+            border-color: rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.06);
+            color: #d7dded;
+        }
+
+        .pl-layout-btn.active {
+            border-color: #2962ff;
+            background: rgba(41, 98, 255, 0.16);
+            color: #e8f0ff;
+        }
+
+        .pl-layout-btn svg {
+            width: 40px;
+            height: 26px;
+        }
+
+        body.light-mode .pl-layout-rows {
+            border-top-color: rgba(5, 0, 40, 0.12);
+            border-bottom-color: rgba(5, 0, 40, 0.12);
+        }
+
+        body.light-mode .pl-layout-row {
+            border-bottom-color: rgba(5, 0, 40, 0.12);
+        }
+
+        body.light-mode .pl-layout-count {
+            color: #787b86;
+        }
+
+        body.light-mode .pl-layout-btn {
+            border-color: rgba(5, 0, 40, 0.14);
+            background: rgba(5, 0, 40, 0.03);
+            color: #616772;
+        }
+
+        body.light-mode .pl-layout-btn:hover {
+            border-color: rgba(5, 0, 40, 0.25);
+            background: rgba(5, 0, 40, 0.06);
+            color: #131722;
+        }
+
+        body.light-mode .pl-layout-btn.active {
+            border-color: #2962ff;
+            background: rgba(41, 98, 255, 0.12);
+            color: #1d4fd8;
+        }
+
         /* Panel layouts (settings panel mode): sync rows */
         .pl-sync-list {
             border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -26182,7 +26279,17 @@ P['watchlist']={
 
 /* ── Panel Layouts ── */
 P['panellayout']={
-    _options:['1','2v','2h','3v','3h','3l','4','4v','4h','4t','4b','4r','5a','5b','5c','5v','5h','6','6b','6v','6h','7v','7a','8','8b','8v','8h'],
+    _options:['1','2v','2h','3v','3h','3l','4','4h','4v','4t','4b','4r','5a','5b','5c','5v','5h','6','6b','6v','6h','7a','7v','8','8b','8v','8h'],
+    _layoutGroups:[
+        { count:'1', codes:['1'] },
+        { count:'2', codes:['2v','2h'] },
+        { count:'3', codes:['3v','3h','3l'] },
+        { count:'4', codes:['4','4h','4v','4t','4b','4r'] },
+        { count:'5', codes:['5a','5b','5c','5v','5h'] },
+        { count:'6', codes:['6','6b','6v','6h'] },
+        { count:'7', codes:['7a','7v'] },
+        { count:'8', codes:['8','8b','8v','8h'] }
+    ],
     _labels:{
         '1':'Single panel','2v':'Two vertical','2h':'Two horizontal','3v':'Three vertical','3h':'Three horizontal','3l':'Left + two right',
         '4':'2x2 grid','4v':'Four vertical','4h':'Four horizontal','4t':'Top + three bottom','4b':'Three top + bottom','4r':'Three left + right',
@@ -26235,12 +26342,23 @@ P['panellayout']={
         var current=(pm&&typeof pm.getCurrentLayout==='function'&&pm.getCurrentLayout())||'1';
         var sync=(pm&&pm.syncSettings)||{};
         var self=this;
-        var rows=this._options.map(function(code){
-            var active=(code===current);
-            var label=self._labels[code]||code.toUpperCase();
-            return '<button type="button" class="pl-layout-btn'+(active?' active':'')+'" data-layout="'+code+'" title="'+label+'" style="display:flex;align-items:center;justify-content:center;padding:8px 6px;height:48px;border:1px solid '+(active?'#2962ff':'rgba(255,255,255,0.08)')+';background:'+(active?'rgba(41,98,255,0.16)':'rgba(255,255,255,0.02)')+';border-radius:8px;color:'+(active?'#e8f0ff':'#7f8aa3')+';cursor:pointer;">'+
-                self._iconSvg(code)+
-            '</button>';
+        var groups=(this._layoutGroups||[]).map(function(group){
+            var availableCodes=(group.codes||[]).filter(function(code){
+                return self._options.indexOf(code)!==-1;
+            });
+            return { count:group.count, codes:availableCodes };
+        }).filter(function(group){
+            return group.codes.length>0;
+        });
+        var rows=groups.map(function(group,idx){
+            var buttons=group.codes.map(function(code){
+                var active=(code===current);
+                var label=self._labels[code]||code.toUpperCase();
+                return '<button type="button" class="pl-layout-btn'+(active?' active':'')+'" data-layout="'+code+'" title="'+label+'">'+
+                    self._iconSvg(code)+
+                '</button>';
+            }).join('');
+            return '<div class="pl-layout-row'+(idx===groups.length-1?' is-last':'')+'"><div class="pl-layout-count">'+group.count+'</div><div class="pl-layout-row-icons">'+buttons+'</div></div>';
         }).join('');
         function chk(v){ return v?' checked':''; }
         function syncRow(label,id,enabled){
@@ -26248,7 +26366,7 @@ P['panellayout']={
         }
         return '<div class="sp-embedded" style="padding:20px 24px;min-height:100%;box-sizing:border-box;">'+
             '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Panel layouts</div>'+
-            '<div id="pl_layout_grid" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;">'+rows+'</div>'+
+            '<div class="pl-layout-rows">'+rows+'</div>'+
             '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Sync in layout</div>'+
             '<div class="pl-sync-list">'+
                 syncRow('Symbol','symbol-sync-toggle',!!sync.symbol)+
@@ -26267,14 +26385,8 @@ P['panellayout']={
         var setActive=function(btn){
             ctx.querySelectorAll('.pl-layout-btn').forEach(function(b){
                 b.classList.remove('active');
-                b.style.borderColor='rgba(255,255,255,0.08)';
-                b.style.background='rgba(255,255,255,0.02)';
-                b.style.color='#7f8aa3';
             });
             btn.classList.add('active');
-            btn.style.borderColor='#2962ff';
-            btn.style.background='rgba(41,98,255,0.16)';
-            btn.style.color='#e8f0ff';
         };
         ctx.querySelectorAll('.pl-layout-btn').forEach(function(btn){
             btn.addEventListener('click',function(){
