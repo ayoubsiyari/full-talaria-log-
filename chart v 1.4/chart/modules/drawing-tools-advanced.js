@@ -1320,7 +1320,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const labelFontSize = 11;
             const labelFontWeight = '500';
             const labelFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
-            const edgeLabelRadius = 0;
+            const edgeLabelRadius = 8;
             const centerLabelRadius = 10;
             const edgeSnapGap = 0;
             const compressedGap = 18;
@@ -1375,21 +1375,23 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
             const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
+            const targetSide = targetY <= entryY ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
                 text: targetLabelText,
                 lineY: targetY,
-                fill: this.isLong ? '#22c55e' : '#ef4444',
-                side: 'top'
+                fill: '#22c55e',
+                side: targetSide
             });
 
             const stopLabelText = `Stop: ${stopPrice.toFixed(5)} (${stopPercent}%) ${stopTicks}, Amount: ${stopAmount}`;
+            const stopSide = stopY <= entryY ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'stop-label',
                 text: stopLabelText,
                 lineY: stopY,
-                fill: this.isLong ? '#ef4444' : '#22c55e',
-                side: 'bottom'
+                fill: '#ef4444',
+                side: stopSide
             });
 
             // Center Info Box (TradingView-like red pill with border)
