@@ -4026,7 +4026,9 @@ class Chart {
                 <option value="bloomberg">Bloomberg</option>
             </optgroup>
             <optgroup label="Dark Themes">
-                <option value="classic-dark">Classic Dark</option>
+                <option value="classic-dark">Talaria Classic</option>
+                <option value="payout">Payout</option>
+                <option value="dark-blue">Dark blue</option>
                 <option value="night-blue">Night Blue</option>
                 <option value="midnight">Midnight Purple</option>
                 <option value="crypto-green">Crypto Green</option>
@@ -4038,6 +4040,7 @@ class Chart {
                 <option value="sepia">Sepia Vintage</option>
                 <option value="arctic">Arctic Ice</option>
                 <option value="monochrome">Monochrome</option>
+                <option value="hermes">Hermes</option>
             </optgroup>
             <optgroup label="Creative">
                 <option value="matrix">Matrix</option>
@@ -4162,7 +4165,7 @@ class Chart {
                 volumeDownColor: 'rgba(242, 54, 69, 0.5)'
             },
             'classic-dark': {
-                name: 'Classic Dark',
+                name: 'Talaria Classic',
                 backgroundColor: '#050028',
                 gridColor: 'rgba(255, 255, 255, 0.06)',
                 bodyUpColor: '#26a69a',
@@ -4178,6 +4181,44 @@ class Chart {
                 cursorLabelBgColor: '#2a2e39',
                 volumeUpColor: 'rgba(38, 166, 154, 0.5)',
                 volumeDownColor: 'rgba(239, 83, 80, 0.5)'
+            },
+            'payout': {
+                name: 'Payout',
+                backgroundColor: '#1a1a1a',
+                gridColor: 'rgba(207, 207, 207, 0.1)',
+                bodyUpColor: '#008080',
+                bodyDownColor: '#2f4f4f',
+                borderUpColor: '#5f9ea0',
+                borderDownColor: '#2f4f4f',
+                wickUpColor: '#5f9ea0',
+                wickDownColor: '#2f4f4f',
+                scaleTextColor: '#cfcfcf',
+                scaleLinesColor: '#cfcfcf',
+                symbolTextColor: '#cfcfcf',
+                crosshairColor: 'rgba(207, 207, 207, 0.35)',
+                cursorLabelTextColor: '#1a1a1a',
+                cursorLabelBgColor: '#cfcfcf',
+                volumeUpColor: 'rgba(0, 128, 128, 0.5)',
+                volumeDownColor: 'rgba(47, 79, 79, 0.5)'
+            },
+            'dark-blue': {
+                name: 'Dark blue',
+                backgroundColor: '#141414',
+                gridColor: 'rgba(224, 255, 255, 0.12)',
+                bodyUpColor: '#e0ffff',
+                bodyDownColor: '#4682b4',
+                borderUpColor: '#c0d9d9',
+                borderDownColor: '#3b6a93',
+                wickUpColor: '#e0ffff',
+                wickDownColor: '#4682b4',
+                scaleTextColor: '#e0ffff',
+                scaleLinesColor: '#e0ffff',
+                symbolTextColor: '#e0ffff',
+                crosshairColor: 'rgba(224, 255, 255, 0.35)',
+                cursorLabelTextColor: '#141414',
+                cursorLabelBgColor: '#e0ffff',
+                volumeUpColor: 'rgba(224, 255, 255, 0.5)',
+                volumeDownColor: 'rgba(70, 130, 180, 0.5)'
             },
             'night-blue': {
                 name: 'Night Blue',
@@ -4430,6 +4471,25 @@ class Chart {
                 cursorLabelBgColor: '#333333',
                 volumeUpColor: 'rgba(51, 51, 51, 0.5)',
                 volumeDownColor: 'rgba(153, 153, 153, 0.5)'
+            },
+            'hermes': {
+                name: 'Hermes',
+                backgroundColor: '#f0f0f0',
+                gridColor: 'rgba(47, 79, 79, 0.12)',
+                bodyUpColor: '#2f4f4f',
+                bodyDownColor: '#a9a9a9',
+                borderUpColor: '#3e5f5f',
+                borderDownColor: '#909090',
+                wickUpColor: '#556b2f',
+                wickDownColor: '#696969',
+                scaleTextColor: '#2f4f4f',
+                scaleLinesColor: '#2f4f4f',
+                symbolTextColor: '#2f4f4f',
+                crosshairColor: 'rgba(47, 79, 79, 0.35)',
+                cursorLabelTextColor: '#f0f0f0',
+                cursorLabelBgColor: '#2f4f4f',
+                volumeUpColor: 'rgba(47, 79, 79, 0.5)',
+                volumeDownColor: 'rgba(169, 169, 169, 0.5)'
             },
             'blood': {
                 name: 'Blood Red',
