@@ -2462,8 +2462,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 const fibStyleControlsWidth = 180;
                 headerRow.innerHTML = `
                     <span style="flex: 1;"></span>
-                    <div class="tv-prop-controls" style="pointer-events: none; margin-left: auto; width: ${fibStyleControlsWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: center;">
-                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; text-align: center; font-size: 10px; color: #787b86;">Color</span>
+                    <div class="tv-prop-controls" style="pointer-events: none; margin-left: auto; width: ${fibStyleControlsWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-start;">
+                        <span style="display: inline-flex; align-items: center; justify-content: flex-start; width: 30px; text-align: left; font-size: 10px; color: #787b86;">Color</span>
                     </div>
                 `;
                 headerRow.style.cssText = 'display: flex; align-items: center; gap: 12px; margin-bottom: 6px;';
@@ -2543,7 +2543,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         trendControls.style.minHeight = '30px';
                         trendControls.style.display = 'flex';
                         trendControls.style.alignItems = 'center';
-                        trendControls.style.justifyContent = 'center';
+                        trendControls.style.justifyContent = 'flex-start';
                     }
 
                     trendRow.style.paddingBottom = '12px';
@@ -4325,7 +4325,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const controls = document.createElement('div');
                 controls.className = 'tv-prop-controls';
-                controls.style.cssText = `margin-left: auto; width: ${fibControlsColumnWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-end;`;
+                controls.style.cssText = `margin-left: auto; width: ${fibControlsColumnWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-start;`;
                 row.appendChild(controls);
 
                 return { row, cb, controls };
@@ -6867,7 +6867,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const controls = document.createElement('div');
             controls.className = 'tv-prop-controls';
-            controls.style.cssText = `margin-left: auto; width: ${fibControlsColumnWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-end;`;
+            controls.style.cssText = `margin-left: auto; width: ${fibControlsColumnWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: flex-start;`;
             row.appendChild(controls);
 
             return { row, cb, controls };
