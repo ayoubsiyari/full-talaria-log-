@@ -20495,6 +20495,35 @@
                     const dropdown = this.closest('.tool-dropdown');
                     const isDropdownOpen = dropdown && dropdown.classList.contains('show');
                     const isAlreadyActive = !isGroupButtonClick && !isDropdownOpen && toolName && chart && chart.drawingManager && chart.drawingManager.currentTool === toolName;
+
+                    if (dropdown && dropdown.id === 'visibility-toolbar-dropdown') {
+                        const visibilityMainBtn = document.getElementById('toggleAllDrawingsToolbar');
+                        if (visibilityMainBtn) {
+                            const selectedSvg = this.querySelector('svg');
+                            const mainSvg = visibilityMainBtn.querySelector('svg');
+
+                            if (selectedSvg && mainSvg) {
+                                mainSvg.innerHTML = selectedSvg.innerHTML;
+                                mainSvg.setAttribute('viewBox', selectedSvg.getAttribute('viewBox') || '0 0 24 24');
+                                mainSvg.setAttribute('fill', selectedSvg.getAttribute('fill') || 'none');
+                                mainSvg.setAttribute('stroke-width', selectedSvg.getAttribute('stroke-width') || '1');
+                                if (selectedSvg.getAttribute('stroke-linecap')) {
+                                    mainSvg.setAttribute('stroke-linecap', selectedSvg.getAttribute('stroke-linecap'));
+                                }
+                                if (selectedSvg.getAttribute('stroke-linejoin')) {
+                                    mainSvg.setAttribute('stroke-linejoin', selectedSvg.getAttribute('stroke-linejoin'));
+                                }
+                            }
+
+                            const selectedTooltip = this.getAttribute('data-tooltip');
+                            if (selectedTooltip) {
+                                visibilityMainBtn.setAttribute('data-tooltip', selectedTooltip);
+                            }
+                        }
+
+                        dropdown.querySelectorAll('.tool-btn').forEach(vb => vb.classList.remove('active'));
+                        this.classList.add('active');
+                    }
                     
                     if (isAlreadyActive) {
                         isDeselecting = true; // Set flag to prevent re-activation
@@ -22662,6 +22691,34 @@ function showIndicatorsMenu() {
                     }
                 }
 
+                function syncMagnetButtonIcon(mode) {
+                    if (!magnetDropdown) return;
+
+                    const iconKey = mode === 'off' ? 'off' : (mode === 'weak' ? 'weak' : 'strong');
+                    const sourceItem = magnetDropdown.querySelector(`.tool-dropdown-item[data-magnet="${iconKey}"]`);
+                    const sourceSvg = sourceItem ? sourceItem.querySelector('svg') : null;
+                    if (!sourceSvg) return;
+
+                    const btns = [document.getElementById('magnetMode'), document.getElementById('magnetModeToolbar')];
+                    btns.forEach((btn) => {
+                        if (!btn) return;
+                        const targetSvg = btn.querySelector('svg');
+                        if (!targetSvg) return;
+
+                        targetSvg.innerHTML = sourceSvg.innerHTML;
+                        targetSvg.setAttribute('viewBox', sourceSvg.getAttribute('viewBox') || '0 0 24 24');
+                        targetSvg.setAttribute('fill', sourceSvg.getAttribute('fill') || 'none');
+                        targetSvg.setAttribute('stroke-width', sourceSvg.getAttribute('stroke-width') || '1');
+
+                        if (sourceSvg.getAttribute('stroke-linecap')) {
+                            targetSvg.setAttribute('stroke-linecap', sourceSvg.getAttribute('stroke-linecap'));
+                        }
+                        if (sourceSvg.getAttribute('stroke-linejoin')) {
+                            targetSvg.setAttribute('stroke-linejoin', sourceSvg.getAttribute('stroke-linejoin'));
+                        }
+                    });
+                }
+
                 function updateMagnetButtons(mode) {
                     const btns = [document.getElementById('magnetMode'), document.getElementById('magnetModeToolbar')];
                     magnetActive = mode !== 'off';
@@ -22677,6 +22734,8 @@ function showIndicatorsMenu() {
                             btn.setAttribute('data-tooltip', 'Magnet Mode (OFF) - Click to enable');
                         }
                     });
+
+                    syncMagnetButtonIcon(mode);
                 }
 
                 function getCurrentMagnetMode() {
