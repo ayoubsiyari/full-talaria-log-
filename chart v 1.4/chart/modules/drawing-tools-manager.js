@@ -451,6 +451,7 @@ class DrawingToolsManager {
         this.toolbar.onUpdate = (drawing) => {
             commitStyleChange(drawing);
             self.renderDrawing(drawing);
+            self.persistPositionToolDefaults(drawing);
             self.saveDrawings();
         };
         
@@ -477,6 +478,7 @@ class DrawingToolsManager {
                         self.history.recordModify(updatedDrawing, beforeState);
                     }
                     self.renderDrawing(updatedDrawing);
+                    self.persistPositionToolDefaults(updatedDrawing);
                     self.saveDrawings();
                 }
             );
@@ -2074,6 +2076,54 @@ class DrawingToolsManager {
         return { rewardRatio, stopOffset };
     }
 
+    capturePositionRiskSettings(drawing) {
+        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) {
+            return null;
+        }
+
+        if (typeof drawing.ensureRiskSettings === 'function') {
+            drawing.ensureRiskSettings();
+        }
+
+        const existingRisk = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
+        const entry = Number(drawing.points && drawing.points[0] ? drawing.points[0].y : NaN);
+        const stop = Number(drawing.points && drawing.points[1] ? drawing.points[1].y : NaN);
+        const target = Number(drawing.points && drawing.points[2] ? drawing.points[2].y : NaN);
+
+        const stopTicks = Number.isFinite(entry) && Number.isFinite(stop)
+            ? Math.abs(entry - stop)
+            : Number(existingRisk.stopTicks);
+        const profitTicks = Number.isFinite(entry) && Number.isFinite(target)
+            ? Math.abs(target - entry)
+            : Number(existingRisk.profitTicks);
+
+        const computedRatio = Number.isFinite(stopTicks) && stopTicks > 0 && Number.isFinite(profitTicks)
+            ? (profitTicks / stopTicks)
+            : Number(existingRisk.rewardRatio);
+
+        return {
+            riskMode: existingRisk.riskMode,
+            riskPercent: existingRisk.riskPercent,
+            riskAmountUSD: existingRisk.riskAmountUSD,
+            lotSize: existingRisk.lotSize,
+            leverage: existingRisk.leverage,
+            rewardRatio: computedRatio,
+            stopTicks,
+            profitTicks
+        };
+    }
+
+    persistPositionToolDefaults(drawing) {
+        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) {
+            return;
+        }
+
+        const riskSettings = this.capturePositionRiskSettings(drawing);
+        if (!riskSettings) return;
+
+        this.saveToolStyle(drawing.type, drawing.style || {}, { riskSettings });
+    }
+
     buildDefaultRiskReward(entry, isLong) {
         const chart = this.chart;
         const toolType = isLong ? 'long-position' : 'short-position';
@@ -2129,6 +2179,7 @@ class DrawingToolsManager {
         
         this.drawings.push(drawing);
         this.renderDrawing(drawing);
+        this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
         
         // Record for undo/redo
@@ -3042,6 +3093,7 @@ class DrawingToolsManager {
         this.svg.style('cursor', '');
         // Recalculate timestamps from new positions
         drawing.recalculateTimestamps();
+        this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
         
         // Broadcast update to other panels
@@ -3139,6 +3191,7 @@ class DrawingToolsManager {
         const canvas = document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
+        this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
         
         // Broadcast update to other panels
@@ -3463,6 +3516,7 @@ class DrawingToolsManager {
             y,
             (updatedDrawing) => {
                 this.renderDrawing(updatedDrawing);
+                this.persistPositionToolDefaults(updatedDrawing);
                 this.saveDrawings();
             },
             (drawingToDelete) => {
