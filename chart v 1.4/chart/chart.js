@@ -4059,6 +4059,7 @@ class Chart {
                 <option value="arctic">Arctic Ice</option>
                 <option value="monochrome">Monochrome</option>
                 <option value="hermes">Hermes</option>
+                <option value="kaito">Kaito</option>
             </optgroup>
             <optgroup label="Creative">
                 <option value="matrix">Matrix</option>
@@ -4507,6 +4508,25 @@ class Chart {
                 cursorLabelTextColor: '#f0f0f0',
                 cursorLabelBgColor: '#2f4f4f',
                 volumeUpColor: 'rgba(47, 79, 79, 0.5)',
+                volumeDownColor: 'rgba(169, 169, 169, 0.5)'
+            },
+            'kaito': {
+                name: 'Kaito',
+                backgroundColor: '#f5f5f5',
+                gridColor: 'rgba(51, 51, 51, 0.12)',
+                bodyUpColor: '#4d4d4d',
+                bodyDownColor: '#a9a9a9',
+                borderUpColor: '#3d3d3d',
+                borderDownColor: '#8a8a8a',
+                wickUpColor: '#696969',
+                wickDownColor: '#b0b0b0',
+                scaleTextColor: '#333333',
+                scaleLinesColor: '#333333',
+                symbolTextColor: '#333333',
+                crosshairColor: 'rgba(51, 51, 51, 0.3)',
+                cursorLabelTextColor: '#f5f5f5',
+                cursorLabelBgColor: '#333333',
+                volumeUpColor: 'rgba(77, 77, 77, 0.5)',
                 volumeDownColor: 'rgba(169, 169, 169, 0.5)'
             },
             'blood': {
