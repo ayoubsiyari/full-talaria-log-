@@ -3,6 +3,8 @@
  * Implements: Ruler/Measure, Risk-Reward, Path/Pen, Brush
  */
 
+const TRENDLINE_INFO_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
+
 // ============================================================================
 // Ruler/Measure Tool
 // ============================================================================
@@ -453,7 +455,7 @@ class DatePriceRangeTool extends BaseDrawing {
                 .attr('fill', this.style.textColor || '#d1d4dc')
                 .attr('font-size', `${this.style.fontSize || 12}px`)
                 .attr('font-weight', '500')
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif');
+                .attr('font-family', TRENDLINE_INFO_FONT_FAMILY);
 
             lines.forEach((line, idx) => {
                 text.append('tspan')
@@ -616,7 +618,7 @@ class PriceRangeTool extends DatePriceRangeTool {
                 .attr('fill', this.style.textColor || '#d1d4dc')
                 .attr('font-size', `${this.style.fontSize || 12}px`)
                 .attr('font-weight', '600')
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
+                .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
                 .text('');
 
             const neutral = this.style.textColor || '#d1d4dc';
@@ -766,7 +768,7 @@ class DateRangeTool extends DatePriceRangeTool {
                 .attr('fill', this.style.textColor || '#d1d4dc')
                 .attr('font-size', `${this.style.fontSize || 12}px`)
                 .attr('font-weight', '600')
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
+                .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
                 .text(label);
 
             const bbox = text.node().getBBox();
