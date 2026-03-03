@@ -523,6 +523,15 @@ class DrawingSettingsPanel {
     margin-left: 0 !important;
 }
 
+.tv-prop-controls > .tv-color-btn {
+    flex: 0 0 30px;
+}
+
+.tv-prop-row.brush-prop-row.trendline-controls-row > .tv-prop-controls {
+    width: 210px;
+    min-width: 210px;
+}
+
 /* Color Swatch Button */
 .tv-color-btn {
     width: 30px;
@@ -6410,6 +6419,9 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Check if this is a trendline or similar tool to add arrow buttons
         const isTrendline = drawing && ['trendline', 'curve', 'arrow', 'path'].includes(drawing.type);
+        if (isTrendline) {
+            row.classList.add('trendline-controls-row');
+        }
         const startStyle = isTrendline ? (drawing.style.startStyle || 'normal') : '';
         const endStyle = isTrendline ? (drawing.style.endStyle || 'normal') : '';
         
@@ -6448,24 +6460,25 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Line type dropdown (not for highlighter or brush)
         const lineTypeDropdown = isHighlighterOrBrushNoLineType ? '' : `
-                <select class="tv-select" data-prop="${propKey}Type" style="width: 40px;">
+                <select class="tv-select" data-prop="${propKey}Type" style="width: 40px; min-width: 40px;">
                     <option value="" ${values.lineType === '' ? 'selected' : ''}>───────</option>
                     <option value="10,6" ${(values.lineType === '10,6' || values.lineType === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
                     <option value="2,2" ${values.lineType === '2,2' ? 'selected' : ''}>··········</option>
                     <option value="8,4,2,4" ${values.lineType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
                 </select>`;
+        const lineWidthSelectWidth = isHighlighter || isBrush ? '70px' : '40px';
         
         row.innerHTML = `
             <span class="tv-prop-label" style="cursor: default;">${label}</span>
             <div class="tv-prop-controls">
                 <button class="tv-color-btn" data-prop="${propKey}Color" style="background: ${values.color};"></button>
                 ${lineTypeDropdown}
-                <select class="tv-select" data-prop="${propKey}Width" style="width: ${isHighlighter || isBrush ? '70px' : '40px'};">
+                <select class="tv-select" data-prop="${propKey}Width" style="width: ${lineWidthSelectWidth}; min-width: ${lineWidthSelectWidth};">
                     ${lineWidthOptions}
                 </select>
                 ${isTrendline ? `
                     <div class="tv-ending-dropdown" data-prop="startStyle" style="position: relative;">
-                        <button class="tv-ending-dropdown-btn" style="width: 30px; height: 30px; padding: 0px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                        <button class="tv-ending-dropdown-btn" style="width: 30px; min-width: 30px; flex: 0 0 30px; height: 30px; padding: 0px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
                             <svg viewBox="0 0 100 100" width="20" height="20" style="display: block;">
                                 ${startStyle === 'arrow' ? 
                                     '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/><path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>' : 
@@ -6490,7 +6503,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         </div>
                     </div>
                     <div class="tv-ending-dropdown" data-prop="endStyle" style="position: relative;">
-                        <button class="tv-ending-dropdown-btn" style="width: 30px; height: 30px; padding: 0px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                        <button class="tv-ending-dropdown-btn" style="width: 30px; min-width: 30px; flex: 0 0 30px; height: 30px; padding: 0px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
                             <svg viewBox="0 0 100 100" width="20" height="20" style="display: block;">
                                 ${endStyle === 'arrow' ? 
                                     '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/><path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>' : 
