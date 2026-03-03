@@ -5454,9 +5454,6 @@ body.light-mode .template-save-dialog .dialog-title {
      * Build Position Tool specific Style Tab
      */
     buildPositionStyleTab(container, drawing) {
-        const isLong = drawing.type === 'long-position';
-        const risk = drawing.meta?.risk || {};
-        
         // Zone Colors Section
         const colorsSection = document.createElement('div');
         colorsSection.style.cssText = 'margin-bottom: 20px;';
@@ -5540,88 +5537,8 @@ body.light-mode .template-save-dialog .dialog-title {
         `;
         colorsSection.appendChild(axisLabelRow);
         container.appendChild(colorsSection);
-        
-        // Risk Settings Section
-        const riskSection = document.createElement('div');
-        riskSection.style.cssText = 'border-top: 1px solid #363a45; padding-top: 16px;';
-        riskSection.innerHTML = `
-            <div style="color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;">Risk Settings</div>
-        `;
-        
-        // Risk Mode
-        const riskModeRow = document.createElement('div');
-        riskModeRow.className = 'tv-prop-row';
-        riskModeRow.innerHTML = `
-            <span class="tv-checkbox-label">Risk Mode</span>
-            <div class="tv-prop-controls" style="margin-left: auto;">
-                <select class="tv-select" data-prop="riskMode" style="min-width: 120px;">
-                    <option value="risk-percent" ${risk.riskMode === 'risk-percent' ? 'selected' : ''}>% of Account</option>
-                    <option value="risk-usd" ${risk.riskMode === 'risk-usd' || !risk.riskMode ? 'selected' : ''}>Fixed USD</option>
-                </select>
-            </div>
-        `;
-        riskSection.appendChild(riskModeRow);
-        
-        // Risk Percent
-        const riskPercentRow = document.createElement('div');
-        riskPercentRow.className = 'tv-prop-row';
-        riskPercentRow.innerHTML = `
-            <span class="tv-checkbox-label">Risk %</span>
-            <div class="tv-prop-controls" style="margin-left: auto;">
-                <input type="number" class="tv-input" data-prop="riskPercent" value="${risk.riskPercent || 1}" min="0.1" max="100" step="0.1" style="width: 80px;">
-            </div>
-        `;
-        riskSection.appendChild(riskPercentRow);
-        
-        // Risk Amount USD
-        const riskAmountRow = document.createElement('div');
-        riskAmountRow.className = 'tv-prop-row';
-        riskAmountRow.innerHTML = `
-            <span class="tv-checkbox-label">Risk Amount ($)</span>
-            <div class="tv-prop-controls" style="margin-left: auto;">
-                <input type="number" class="tv-input" data-prop="riskAmountUSD" value="${risk.riskAmountUSD || 100}" min="1" step="10" style="width: 80px;">
-            </div>
-        `;
-        riskSection.appendChild(riskAmountRow);
-        
-        // Lot Size (calculated)
-        const lotSizeRow = document.createElement('div');
-        lotSizeRow.className = 'tv-prop-row';
-        lotSizeRow.innerHTML = `
-            <span class="tv-checkbox-label">Lot Size</span>
-            <div class="tv-prop-controls" style="margin-left: auto;">
-                <input type="number" class="tv-input" data-prop="lotSize" value="${(risk.lotSize || 0.01).toFixed(2)}" min="0.01" step="0.01" style="width: 80px;">
-            </div>
-        `;
-        riskSection.appendChild(lotSizeRow);
-        
-        container.appendChild(riskSection);
-        
-        // Position Info (read-only)
-        const infoSection = document.createElement('div');
-        infoSection.style.cssText = 'border-top: 1px solid #363a45; padding-top: 16px; margin-top: 16px;';
-        
-        const entryPrice = drawing.points[0]?.y || 0;
-        const stopPrice = drawing.points[1]?.y || 0;
-        const targetPrice = drawing.points[2]?.y || 0;
-        const stopPips = Math.abs(entryPrice - stopPrice) / 0.0001;
-        const targetPips = Math.abs(targetPrice - entryPrice) / 0.0001;
-        const rrRatio = stopPips > 0 ? (targetPips / stopPips).toFixed(2) : '0.00';
-        
-        infoSection.innerHTML = `
-            <div style="color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;">Position Info</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
-                <div style="color: #787b86;">Entry:</div>
-                <div style="color: #d1d4dc; text-align: right;">${entryPrice.toFixed(5)}</div>
-                <div style="color: #787b86;">Stop Loss:</div>
-                <div style="color: #ef4444; text-align: right;">${stopPrice.toFixed(5)} (${stopPips.toFixed(1)} pips)</div>
-                <div style="color: #787b86;">Take Profit:</div>
-                <div style="color: #22c55e; text-align: right;">${targetPrice.toFixed(5)} (${targetPips.toFixed(1)} pips)</div>
-                <div style="color: #787b86;">R:R Ratio:</div>
-                <div style="color: #2962ff; text-align: right;">${rrRatio}</div>
-            </div>
-        `;
-        container.appendChild(infoSection);
+
+        // Risk inputs and live metrics are now handled in the Inputs tab.
     }
 
     buildRangeToolsStyleTab(container, drawing) {
@@ -12542,6 +12459,15 @@ applyTemplate(drawing, templateId, modal) {
             .style('color', '#d1d4dc')
             .style('margin-bottom', '12px');
 
+        section.append('div')
+            .text('Risk Settings')
+            .style('color', '#787b86')
+            .style('font-size', '11px')
+            .style('font-weight', '600')
+            .style('letter-spacing', '0.08em')
+            .style('text-transform', 'uppercase')
+            .style('margin-bottom', '10px');
+
         const risk = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
         
         // Initialize risk mode and defaults if not set
@@ -12741,6 +12667,49 @@ applyTemplate(drawing, templateId, modal) {
             .style('color', '#d1d4dc')
             .style('font-size', '12px');
 
+        const infoSection = section.append('div')
+            .attr('class', 'risk-position-info')
+            .style('border-top', '1px solid #363a45')
+            .style('padding-top', '14px')
+            .style('margin-top', '14px');
+
+        infoSection.append('div')
+            .text('Position Info')
+            .style('color', '#787b86')
+            .style('font-size', '11px')
+            .style('font-weight', '600')
+            .style('letter-spacing', '0.08em')
+            .style('text-transform', 'uppercase')
+            .style('margin-bottom', '10px');
+
+        const infoGrid = infoSection.append('div')
+            .style('display', 'grid')
+            .style('grid-template-columns', '1fr 1fr')
+            .style('gap', '8px')
+            .style('font-size', '12px');
+
+        const addInfoRow = (label, valueColor = '#d1d4dc') => {
+            infoGrid.append('div')
+                .style('color', '#787b86')
+                .text(label);
+
+            return infoGrid.append('div')
+                .style('color', valueColor)
+                .style('text-align', 'right');
+        };
+
+        const openPnlValueText = addInfoRow('Open P&L:');
+        const qtyValueText = addInfoRow('Qty:');
+        const entryValueText = addInfoRow('Entry:');
+        const stopValueText = addInfoRow('Stop Loss:', '#ef4444');
+        const targetValueText = addInfoRow('Take Profit:', '#22c55e');
+        const rrValueText = addInfoRow('R:R Ratio:', '#2962ff');
+
+        const toFiniteNumber = (value, fallback = 0) => {
+            const num = Number(value);
+            return Number.isFinite(num) ? num : fallback;
+        };
+
         const refreshRisk = (propagate = false) => {
             drawing.ensureRiskSettings?.();
             const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
@@ -12765,8 +12734,29 @@ applyTemplate(drawing, templateId, modal) {
                 riskUSD = ((state.accountSize || 10000) * (state.riskPercent || 1)) / 100;
             }
 
+            const entry = toFiniteNumber(state.entryPrice, drawing.points?.[0]?.y || 0);
+            const stop = toFiniteNumber(state.stopPrice, drawing.points?.[1]?.y || entry);
+            const target = toFiniteNumber(state.targetPrice, drawing.points?.[2]?.y || entry);
+
+            const stopPips = Math.abs(entry - stop) / 0.0001;
+            const targetPips = Math.abs(target - entry) / 0.0001;
+            const stopPercent = entry !== 0 ? (Math.abs(stop - entry) / Math.abs(entry)) * 100 : 0;
+            const targetPercent = entry !== 0 ? (Math.abs(target - entry) / Math.abs(entry)) * 100 : 0;
+            const rrRatio = stopPips > 0 ? (targetPips / stopPips) : 0;
+
+            const qty = toFiniteNumber(state.lotSize, 0.01);
+            const stopAmount = Math.round(riskUSD);
+            const targetAmount = Math.round(riskUSD * rrRatio);
+
             riskAmountText.text(`Risk Amount: $${this.formatNumericValue(riskUSD, 2)}`);
             rewardRatioText.text(`Reward Ratio: 1:${this.formatNumericValue(state.rewardRatio, 2)}`);
+
+            openPnlValueText.text('0');
+            qtyValueText.text(this.formatNumericValue(qty, 2));
+            entryValueText.text(this.formatNumericValue(entry, 5));
+            stopValueText.text(`${this.formatNumericValue(stop, 5)} (${this.formatNumericValue(stopPercent, 3)}%) ${this.formatNumericValue(stopPips, 1)} pips, Amount: ${stopAmount}`);
+            targetValueText.text(`${this.formatNumericValue(target, 5)} (${this.formatNumericValue(targetPercent, 3)}%) ${this.formatNumericValue(targetPips, 1)} pips, Amount: ${targetAmount}`);
+            rrValueText.text(this.formatNumericValue(rrRatio, 2));
 
             if (propagate && this.onUpdate) {
                 this.onUpdate(drawing);

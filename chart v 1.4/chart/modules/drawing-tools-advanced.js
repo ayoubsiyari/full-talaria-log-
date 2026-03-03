@@ -1478,8 +1478,13 @@ class BaseRiskRewardTool extends BaseDrawing {
 
                 rectTop = Math.max(chartTop + 2, Math.min(rectTop, chartBottom - labelHeight - 2));
 
-                let rectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
-                rectX = Math.max(chartLeft + 2, Math.min(rectX, chartRight - labelWidth - 2));
+                const minRectX = chartLeft + 2;
+                const maxRectX = Math.max(minRectX, chartRight - labelWidth - 2);
+                const centeredRectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
+                const rightSnappedRectX = zoneX2 - labelWidth;
+
+                let rectX = hasInnerSpace ? rightSnappedRectX : centeredRectX;
+                rectX = Math.max(minRectX, Math.min(rectX, maxRectX));
 
                 labelGroup.insert('rect', 'text')
                     .attr('x', rectX)
@@ -1494,6 +1499,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('y', rectTop + labelPaddingY);
             };
 
+            const targetLabelFill = '#22c55e';
+            const stopLabelFill = '#ef4444';
+
             // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
             const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
             const targetSide = targetY <= entryY ? 'top' : 'bottom';
@@ -1501,7 +1509,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 className: 'target-label',
                 text: targetLabelText,
                 lineY: targetY,
-                fill: '#22c55e',
+                fill: targetLabelFill,
                 side: targetSide
             });
 
@@ -1511,7 +1519,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 className: 'stop-label',
                 text: stopLabelText,
                 lineY: stopY,
-                fill: '#ef4444',
+                fill: stopLabelFill,
                 side: stopSide
             });
 
@@ -1558,7 +1566,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             let centerRectY = entryY - (centerHeight / 2);
             centerRectY = Math.max(chartTop + 2, Math.min(centerRectY, chartBottom - centerHeight - 2));
 
-            const centerInfoFill = this.isLong ? '#f25566' : '#22c55e';
+            const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
             centerInfo.insert('rect', 'text')
                 .attr('x', centerRectX)

@@ -19287,7 +19287,7 @@
             </div>
             <div class="custom-timeframe-actions">
                 <button class="custom-timeframe-cancel" id="customTimeframeCancel">Cancel</button>
-                <button class="custom-timeframe-apply" id="customTimeframeApply">Apply</button>
+                <button class="custom-timeframe-apply" id="customTimeframeApply">Add</button>
             </div>
         </div>
     </div>
@@ -19360,12 +19360,12 @@
     <script src="modules/emoji-picker.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/emoji-picker-simple.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-tools-advanced-volume.js?v=20260228_TF_PIN_V12"></script>
-    <script src="modules/drawing-tools-advanced.js?v=20260302_TF_PIN_V30"></script>
+    <script src="modules/drawing-tools-advanced.js?v=20260303_TF_PIN_V32"></script>
     <script src="modules/drawing-tools-extended.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-tools-patterns.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-tools-fib-gann.js?v=20260303_TF_PIN_V15"></script>
     <script src="modules/drawing-tools-channels.js?v=20260228_TF_PIN_V12"></script>
-     <script src="modules/drawing-tools-ui.js?v=20260302_TF_PIN_V37"></script>
+     <script src="modules/drawing-tools-ui.js?v=20260303_TF_PIN_V38"></script>
     <script src="modules/color-picker.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-toolbar.js?v=20260301_TF_PIN_V13"></script>
     <script src="modules/undo-redo-manager.js?v=20260228_TF_PIN_V12"></script>
@@ -27448,13 +27448,14 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
                 return iv.ms <= chartMs;
             });
             if (activeIntervals.length === 0) activeIntervals = [ALL_INTERVALS[0]];
-            activeIntervals.push(AUTO_INTERVAL); // Auto always last
+            activeIntervals.sort(function(a, b) { return b.ms - a.ms; }); // largest → smallest
+            activeIntervals.unshift(AUTO_INTERVAL); // Auto always first (top)
             buildTicks(activeIntervals);
 
             // Try to keep the same tf selected; otherwise default to Auto
             var saved = localStorage.getItem('replayUpdateInterval') || 'auto';
             var idx = activeIntervals.findIndex(function(iv) { return iv.tf === saved; });
-            if (idx === -1) idx = activeIntervals.length - 1; // fallback to Auto
+            if (idx === -1) idx = 0; // fallback to Auto
             setByIndex(idx, true);
         }
 
