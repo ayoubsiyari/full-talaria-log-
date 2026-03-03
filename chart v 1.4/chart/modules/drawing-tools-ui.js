@@ -7940,6 +7940,11 @@ body.light-mode .template-save-dialog .dialog-title {
                 
                 cb.addEventListener(eventType, () => {
                     const prop = cb.dataset.prop;
+                    if (!prop) {
+                        // Some specialized controls (e.g., Fibonacci levels list) manage
+                        // their own checkbox state and apply cycle.
+                        return;
+                    }
                     if (prop === 'timeframeRangeEnabled') {
                         return;
                     }
