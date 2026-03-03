@@ -9011,24 +9011,17 @@ class Chart {
         const lastVisibleIdxData = Math.min(this.data.length - 1, lastVisibleIdx);
         const visibleBarsCount   = Math.ceil(Math.max(0, lastVisibleIdxData) - Math.max(0, firstVisibleIdx));
 
-        // Detect timeframe from data
-        let timeframe = this.currentTimeframe || '1m';
-        let timeframeMs = 60000;
-        if (this.data.length >= 2) {
-            timeframeMs = this.data[1].t - this.data[0].t;
-            const d = timeframeMs / 60000;
-            if (d >= 37000) timeframe = '1mo';
-            else if (d >= 10000) timeframe = '1w';
-            else if (d >= 1380)  timeframe = '1d';
-            else if (d >= 220)   timeframe = '4h';
-            else if (d >= 55)    timeframe = '1h';
-            else if (d >= 25)    timeframe = '30m';
-            else if (d >= 13)    timeframe = '15m';
-            else if (d >= 4)     timeframe = '5m';
-            else                 timeframe = '1m';
-        } else {
-            const tfMap = {'1m':60000,'2m':120000,'3m':180000,'4m':240000,'5m':300000,'10m':600000,'15m':900000,'30m':1800000,'45m':2700000,'1h':3600000,'2h':7200000,'4h':14400000,'6h':21600000,'12h':43200000,'1d':86400000,'1w':604800000,'1mo':2592000000};
-            timeframeMs = tfMap[timeframe] || 60000;
+        // Prefer the explicit chart timeframe (supports custom intervals like 13m)
+        // and only fall back to data-detection when needed.
+        const timeframe = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        let timeframeMs = this.parseTimeframe(timeframe);
+        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) {
+            if (this.data.length >= 2) {
+                const detectedMs = this.data[1].t - this.data[0].t;
+                timeframeMs = Number.isFinite(detectedMs) && detectedMs > 0 ? detectedMs : 60000;
+            } else {
+                timeframeMs = 60000;
+            }
         }
 
         // Adaptive label interval (candles between ticks)
@@ -9077,8 +9070,7 @@ class Chart {
         }
 
         const labelIntervalMs   = labelInterval * timeframeMs;
-        const intervalMinutes   = labelIntervalMs / 60000;
-        const isCalendarTf      = timeframe === '1w' || /mo$/i.test(timeframe);
+        const isCalendarTf      = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
         const isDailyOrHigher   = timeframeMs >= 86400000;
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
@@ -9110,8 +9102,11 @@ class Chart {
             if (isCalendarTf) {
                 isRound = (idx - scanFrom) % Math.max(1, labelInterval) === 0;
             } else {
-                const tot = tzDate.getHours() * 60 + tzDate.getMinutes();
-                isRound = intervalMinutes > 0 && tot % intervalMinutes === 0;
+                // Use absolute (timezone-adjusted) timestamp alignment so custom
+                // intervals that do not divide a day (e.g., 13m) stay consistent
+                // across midnight boundaries.
+                const tzAlignedTs = tzDate.getTime();
+                isRound = labelIntervalMs > 0 && tzAlignedTs % labelIntervalMs === 0;
             }
 
             if (!isBoundary && !isRound) continue;
@@ -9129,12 +9124,12 @@ class Chart {
 
         // Extrapolate future ticks
         const lastRealIdx = this.data.length - 1;
-        if (this.data.length > 0 && !isCalendarTf && lastVisibleIdx > lastRealIdx) {
+        if (this.data.length > 0 && !isCalendarTf && labelIntervalMs > 0 && lastVisibleIdx > lastRealIdx) {
             const last = this.data[this.data.length - 1];
             const ltz  = this.convertToTimezone(last.t);
-            const lMin = ltz.getHours() * 60 + ltz.getMinutes();
-            const next = Math.ceil((lMin + 1) / intervalMinutes) * intervalMinutes;
-            let futureIdx = lastRealIdx + Math.ceil(((next - lMin) * 60000) / timeframeMs);
+            const lastTzTs = ltz.getTime();
+            const nextAlignedTzTs = Math.ceil((lastTzTs + 1) / labelIntervalMs) * labelIntervalMs;
+            let futureIdx = lastRealIdx + Math.ceil((nextAlignedTzTs - lastTzTs) / timeframeMs);
             for (; futureIdx <= lastVisibleIdx; futureIdx += labelInterval) {
                 const ri  = Math.round(futureIdx);
                 const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
