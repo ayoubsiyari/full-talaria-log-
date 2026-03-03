@@ -12463,24 +12463,17 @@ applyTemplate(drawing, templateId, modal) {
 
         const section = container.append('div')
             .attr('class', 'settings-section risk-reward-settings')
-            .style('margin-top', '12px');
+            .style('margin-top', '16px');
 
         const title = drawing.type === 'long-position' ? 'Long Position Inputs' : 'Short Position Inputs';
-        section.append('h4')
-            .text(title)
-            .style('font-size', '13px')
-            .style('font-weight', '600')
-            .style('color', '#d1d4dc')
-            .style('margin-bottom', '12px');
-
         section.append('div')
-            .text('Risk Settings')
-            .style('color', '#787b86')
-            .style('font-size', '11px')
+            .text(title)
+            .style('font-size', '12px')
             .style('font-weight', '600')
-            .style('letter-spacing', '0.08em')
+            .style('color', '#787b86')
+            .style('letter-spacing', '0.04em')
             .style('text-transform', 'uppercase')
-            .style('margin-bottom', '10px');
+            .style('margin-bottom', '12px');
 
         const risk = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
         
@@ -12494,65 +12487,76 @@ applyTemplate(drawing, templateId, modal) {
         if (drawing.meta) {
             drawing.meta.risk = risk;
         }
-        
-        // Risk Mode Toggle (USD / Percent)
-        const riskModeWrapper = section.append('div')
-            .style('margin-bottom', '12px');
-        
-        riskModeWrapper.append('label')
-            .text('Risk Mode')
-            .style('display', 'block')
-            .style('font-size', '11px')
-            .style('color', '#787b86')
-            .style('margin-bottom', '6px');
-        
-        const riskModeTabs = riskModeWrapper.append('div')
+        const controlsWrap = section.append('div')
             .style('display', 'flex')
-            .style('gap', '4px')
-            .style('background', 'rgba(255,255,255,0.03)')
-            .style('padding', '3px')
-            .style('border-radius', '6px');
-        
-        const usdTab = riskModeTabs.append('button')
-            .text('USD')
-            .style('flex', '1')
-            .style('padding', '6px')
-            .style('background', risk.riskMode === 'risk-usd' ? '#787b86' : 'transparent')
-            .style('border', 'none')
-            .style('border-radius', '4px')
-            .style('color', risk.riskMode === 'risk-usd' ? '#ffffff' : '#787b86')
-            .style('font-size', '11px')
-            .style('cursor', 'default')
-            .style('font-weight', '600')
-            .on('click', () => {
-                risk.riskMode = 'risk-usd';
-                usdTab.style('background', '#787b86').style('color', '#ffffff');
-                percentTab.style('background', 'transparent').style('color', '#787b86');
-                refreshRisk(true);
-            });
-        
-        const percentTab = riskModeTabs.append('button')
-            .text('%')
-            .style('flex', '1')
-            .style('padding', '6px')
-            .style('background', risk.riskMode === 'risk-percent' ? '#787b86' : 'transparent')
-            .style('border', 'none')
-            .style('border-radius', '4px')
-            .style('color', risk.riskMode === 'risk-percent' ? '#ffffff' : '#787b86')
-            .style('font-size', '11px')
-            .style('cursor', 'default')
-            .style('font-weight', '600')
-            .on('click', () => {
-                risk.riskMode = 'risk-percent';
-                percentTab.style('background', '#787b86').style('color', '#ffffff');
-                usdTab.style('background', 'transparent').style('color', '#787b86');
-                refreshRisk(true);
-            });
+            .style('flex-direction', 'column')
+            .style('gap', '10px')
+            .style('margin-bottom', '12px')
+            .style('padding-bottom', '12px')
+            .style('border-bottom', '1px solid #363a45');
 
-        const grid = section.append('div')
-            .style('display', 'grid')
-            .style('grid-template-columns', 'repeat(auto-fit, minmax(180px, 1fr))')
-            .style('gap', '12px');
+        const controlsColumnWidth = 180;
+
+        const createControlRow = (labelText) => {
+            const row = controlsWrap.append('div')
+                .attr('class', 'tv-prop-row')
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('gap', '12px')
+                .style('min-height', '30px')
+                .style('padding', '0');
+
+            const label = row.append('span')
+                .attr('class', 'tv-prop-label')
+                .style('min-width', '0')
+                .style('flex', '1')
+                .text(labelText);
+
+            const controls = row.append('div')
+                .attr('class', 'tv-prop-controls')
+                .style('margin-left', 'auto')
+                .style('width', `${controlsColumnWidth}px`)
+                .style('min-height', '30px')
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('justify-content', 'flex-start');
+
+            return { row, label, controls };
+        };
+
+        const createNumberControl = (controls, initialValue, onInput, options = {}) => {
+            const {
+                min = null,
+                max = null,
+                step = null,
+                decimals = 2
+            } = options;
+
+            const input = controls.append('input')
+                .attr('type', 'number')
+                .attr('class', 'tv-input')
+                .style('width', '100%')
+                .style('max-width', `${controlsColumnWidth}px`);
+
+            if (min !== null) input.attr('min', min);
+            if (max !== null) input.attr('max', max);
+            if (step !== null) input.attr('step', step);
+
+            input.node().__decimals = decimals;
+            input.property('value', this.formatNumericValue(initialValue, decimals));
+
+            const commit = () => {
+                const raw = input.property('value');
+                if (raw === '' || raw === null || raw === undefined) return;
+                const parsed = Number.parseFloat(raw);
+                if (!Number.isFinite(parsed)) return;
+                onInput(parsed);
+            };
+
+            input.on('input', commit);
+            input.on('change', commit);
+            return input;
+        };
 
         const setInputValue = (input, value) => {
             if (!input || typeof input.property !== 'function') return;
@@ -12560,132 +12564,182 @@ applyTemplate(drawing, templateId, modal) {
             input.property('value', this.formatNumericValue(value, decimals));
         };
 
-        // Account Size
-        const accountInput = this.addNumberInput(grid, 'Account Size', risk.accountSize ?? 10000, (value) => {
-            if (value === null) return;
+        const riskModeRow = createControlRow('Risk Mode');
+        const riskModeSelect = riskModeRow.controls.append('select')
+            .attr('class', 'tv-select')
+            .style('width', '100%')
+            .style('min-width', `${controlsColumnWidth}px`)
+            .html(`
+                <option value="risk-usd">Fixed USD</option>
+                <option value="risk-percent">% of Account</option>
+            `);
+
+        riskModeSelect.property('value', risk.riskMode);
+        riskModeSelect.on('change', () => {
+            risk.riskMode = riskModeSelect.property('value');
+            refreshRisk(true);
+        });
+
+        const accountRow = createControlRow('Account Size');
+        const accountInput = createNumberControl(accountRow.controls, risk.accountSize ?? 10000, (value) => {
+            risk.accountSize = value;
             drawing.setAccountSize?.(value);
             drawing.ensureRiskSettings?.();
             refreshRisk(true);
         }, { min: 0, step: 100, decimals: 2 });
 
-        // Risk Amount (USD or Percent based on mode)
-        let riskInputContainer = grid.append('div');
+        const riskAmountRow = createControlRow('Risk Amount (USD)');
         let riskInput = null;
-        
+
+        const calculateLotSizeFromRisk = () => {
+            const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : risk;
+            const entry = state.entryPrice || 0;
+            const stop = state.stopPrice || 0;
+            const slDistance = Math.abs(entry - stop);
+
+            if (slDistance === 0 || entry === 0) {
+                state.lotSize = 0.01;
+                lotSizeValue.text('0.01 Lots');
+                drawing.setLotSize?.(state.lotSize);
+                return;
+            }
+
+            let riskUSD = 0;
+            if (state.riskMode === 'risk-usd') {
+                riskUSD = state.riskAmountUSD || 100;
+            } else {
+                const accountSize = state.accountSize || 10000;
+                riskUSD = (accountSize * (state.riskPercent || 1)) / 100;
+            }
+
+            const slPips = slDistance / 0.0001;
+            const pipValue = 10;
+            const calculatedLots = riskUSD / (slPips * pipValue);
+            state.lotSize = Math.max(0.01, calculatedLots);
+
+            lotSizeValue.text(`${state.lotSize.toFixed(2)} Lots`);
+            drawing.setLotSize?.(state.lotSize);
+        };
+
         const createRiskInput = () => {
-            riskInputContainer.selectAll('*').remove();
-            if (risk.riskMode === 'risk-usd') {
-                riskInput = this.addNumberInput(riskInputContainer, 'Risk Amount (USD)', risk.riskAmountUSD ?? 100, (value) => {
-                    if (value === null) return;
-                    risk.riskAmountUSD = value;
+            const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : risk;
+            const mode = state.riskMode || 'risk-usd';
+
+            riskAmountRow.controls.selectAll('*').remove();
+            if (mode === 'risk-usd') {
+                riskAmountRow.label.text('Risk Amount (USD)');
+                riskInput = createNumberControl(riskAmountRow.controls, state.riskAmountUSD ?? 100, (value) => {
+                    state.riskAmountUSD = value;
                     calculateLotSizeFromRisk();
                     refreshRisk(true);
                 }, { min: 0, step: 10, decimals: 2 });
             } else {
-                riskInput = this.addNumberInput(riskInputContainer, 'Risk Percent (%)', risk.riskPercent ?? 1, (value) => {
-                    if (value === null) return;
-                    risk.riskPercent = value;
+                riskAmountRow.label.text('Risk Percent (%)');
+                riskInput = createNumberControl(riskAmountRow.controls, state.riskPercent ?? 1, (value) => {
+                    state.riskPercent = value;
                     calculateLotSizeFromRisk();
                     refreshRisk(true);
                 }, { min: 0, step: 0.1, decimals: 2 });
             }
         };
 
-        const entryInput = this.addNumberInput(grid, 'Entry Price', risk.entryPrice ?? drawing.points?.[0]?.y ?? 0, (value) => {
-            if (value === null) return;
+        const entryRow = createControlRow('Entry Price');
+        const entryInput = createNumberControl(entryRow.controls, risk.entryPrice ?? drawing.points?.[0]?.y ?? 0, (value) => {
+            risk.entryPrice = value;
             drawing.setEntryPrice?.(value);
             calculateLotSizeFromRisk();
             refreshRisk(true);
         }, { step: 0.00001, decimals: 5 });
 
-        const stopPriceInput = this.addNumberInput(grid, 'Stop Price', risk.stopPrice ?? drawing.points?.[1]?.y ?? 0, (value) => {
-            if (value === null) return;
+        const stopRow = createControlRow('Stop Price');
+        const stopPriceInput = createNumberControl(stopRow.controls, risk.stopPrice ?? drawing.points?.[1]?.y ?? 0, (value) => {
+            risk.stopPrice = value;
             drawing.setStopPrice?.(value);
             calculateLotSizeFromRisk();
             refreshRisk(true);
         }, { step: 0.00001, decimals: 5 });
 
-        const profitPriceInput = this.addNumberInput(grid, 'Target Price', risk.targetPrice ?? drawing.points?.[2]?.y ?? 0, (value) => {
-            if (value === null) return;
+        const targetRow = createControlRow('Target Price');
+        const profitPriceInput = createNumberControl(targetRow.controls, risk.targetPrice ?? drawing.points?.[2]?.y ?? 0, (value) => {
+            risk.targetPrice = value;
             drawing.setTargetPrice?.(value);
             refreshRisk(true);
         }, { step: 0.00001, decimals: 5 });
 
-        // Calculated Lot Size (Read-only display)
-        const lotSizeDisplay = grid.append('div');
-        lotSizeDisplay.append('label')
-            .text('Calculated Lot Size')
-            .style('display', 'block')
+        const lotSizeRow = createControlRow('Calculated Lot Size');
+        const lotSizeValue = lotSizeRow.controls.append('div')
+            .style('width', '100%')
+            .style('max-width', `${controlsColumnWidth}px`)
+            .style('height', '27px')
+            .style('box-sizing', 'border-box')
+            .style('padding', '0 9px')
+            .style('border-radius', '4px')
+            .style('border', '1px solid rgba(255, 255, 255, 0.12)')
+            .style('background', 'rgba(255, 255, 255, 0.04)')
+            .style('color', '#d1d4dc')
             .style('font-size', '11px')
-            .style('color', '#787b86')
-            .style('margin-bottom', '4px');
-        
-        const lotSizeValue = lotSizeDisplay.append('div')
-            .style('padding', '8px 12px')
-            .style('background', 'rgba(41, 98, 255, 0.1)')
-            .style('border', '1px solid #787b86')
-            .style('border-radius', '6px')
-            .style('color', '#787b86')
-            .style('font-size', '13px')
-            .style('font-weight', '700')
+            .style('font-weight', '600')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('justify-content', 'flex-end')
             .text('0.00 Lots');
-        
-        // Function to calculate lot size from risk
-        const calculateLotSizeFromRisk = () => {
-            const entry = risk.entryPrice || 0;
-            const stop = risk.stopPrice || 0;
-            const slDistance = Math.abs(entry - stop);
-            
-            if (slDistance === 0 || entry === 0) {
-                risk.lotSize = 0.01;
-                lotSizeValue.text('0.01 Lots');
-                return;
-            }
-            
-            let riskUSD = 0;
-            if (risk.riskMode === 'risk-usd') {
-                riskUSD = risk.riskAmountUSD || 100;
-            } else {
-                const accountSize = risk.accountSize || 10000;
-                riskUSD = (accountSize * (risk.riskPercent || 1)) / 100;
-            }
-            
-            // Calculate lot size using proper pip value formula
-            // P&L = (Price Difference in Pips) × Position Size (Lots) × Pip Value ($10)
-            // Rearranged: Position Size = Risk USD / (SL Distance in Pips × Pip Value)
-            const slPips = slDistance / 0.0001; // Convert to pips
-            const pipValue = 10; // $10 per pip per lot
-            const calculatedLots = riskUSD / (slPips * pipValue);
-            risk.lotSize = Math.max(0.01, calculatedLots);
-            
-            lotSizeValue.text(`${risk.lotSize.toFixed(2)} Lots`);
-            drawing.setLotSize?.(risk.lotSize);
+
+        const createReadOnlyRow = (parent, labelText, valueColor = '#d1d4dc') => {
+            const row = parent.append('div')
+                .attr('class', 'tv-prop-row')
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('gap', '12px')
+                .style('min-height', '30px')
+                .style('padding', '0');
+
+            row.append('span')
+                .attr('class', 'tv-prop-label')
+                .style('min-width', '0')
+                .style('flex', '1')
+                .text(labelText);
+
+            return row.append('span')
+                .style('margin-left', 'auto')
+                .style('width', `${controlsColumnWidth}px`)
+                .style('text-align', 'right')
+                .style('color', valueColor)
+                .style('font-size', '11px')
+                .style('font-weight', '500');
         };
 
-        const summary = section.append('div')
-            .attr('class', 'risk-summary')
-            .style('margin-top', '8px')
-            .style('padding', '12px')
-            .style('border', '1px solid rgba(255,255,255,0.08)')
-            .style('border-radius', '8px')
+        const summarySection = section.append('div')
+            .style('border-top', '1px solid #363a45')
+            .style('padding-top', '12px')
+            .style('margin-top', '4px')
             .style('display', 'flex')
             .style('flex-direction', 'column')
-            .style('gap', '4px')
-            .style('background', 'rgba(30, 32, 45, 0.6)');
+            .style('gap', '8px');
 
-        const riskAmountText = summary.append('div')
-            .style('color', '#d1d4dc')
-            .style('font-size', '12px');
+        summarySection.append('div')
+            .text('Summary')
+            .style('color', '#787b86')
+            .style('font-size', '11px')
+            .style('font-weight', '600')
+            .style('letter-spacing', '0.08em')
+            .style('text-transform', 'uppercase');
 
-        const rewardRatioText = summary.append('div')
-            .style('color', '#d1d4dc')
-            .style('font-size', '12px');
+        const summaryRows = summarySection.append('div')
+            .style('display', 'flex')
+            .style('flex-direction', 'column')
+            .style('gap', '6px');
+
+        const riskAmountText = createReadOnlyRow(summaryRows, 'Risk Amount');
+        const rewardRatioText = createReadOnlyRow(summaryRows, 'Reward Ratio');
 
         const infoSection = section.append('div')
             .attr('class', 'risk-position-info')
             .style('border-top', '1px solid #363a45')
-            .style('padding-top', '14px')
-            .style('margin-top', '14px');
+            .style('padding-top', '12px')
+            .style('margin-top', '12px')
+            .style('display', 'flex')
+            .style('flex-direction', 'column')
+            .style('gap', '8px');
 
         infoSection.append('div')
             .text('Position Info')
@@ -12693,31 +12747,19 @@ applyTemplate(drawing, templateId, modal) {
             .style('font-size', '11px')
             .style('font-weight', '600')
             .style('letter-spacing', '0.08em')
-            .style('text-transform', 'uppercase')
-            .style('margin-bottom', '10px');
+            .style('text-transform', 'uppercase');
 
-        const infoGrid = infoSection.append('div')
-            .style('display', 'grid')
-            .style('grid-template-columns', '1fr 1fr')
-            .style('gap', '8px')
-            .style('font-size', '12px');
+        const infoRows = infoSection.append('div')
+            .style('display', 'flex')
+            .style('flex-direction', 'column')
+            .style('gap', '6px');
 
-        const addInfoRow = (label, valueColor = '#d1d4dc') => {
-            infoGrid.append('div')
-                .style('color', '#787b86')
-                .text(label);
-
-            return infoGrid.append('div')
-                .style('color', valueColor)
-                .style('text-align', 'right');
-        };
-
-        const openPnlValueText = addInfoRow('Open P&L:');
-        const qtyValueText = addInfoRow('Qty:');
-        const entryValueText = addInfoRow('Entry:');
-        const stopValueText = addInfoRow('Stop Loss:', '#ef4444');
-        const targetValueText = addInfoRow('Take Profit:', '#22c55e');
-        const rrValueText = addInfoRow('R:R Ratio:', '#2962ff');
+        const openPnlValueText = createReadOnlyRow(infoRows, 'Open P&L');
+        const qtyValueText = createReadOnlyRow(infoRows, 'Qty');
+        const entryValueText = createReadOnlyRow(infoRows, 'Entry');
+        const stopValueText = createReadOnlyRow(infoRows, 'Stop Loss', '#ef4444');
+        const targetValueText = createReadOnlyRow(infoRows, 'Take Profit', '#22c55e');
+        const rrValueText = createReadOnlyRow(infoRows, 'R:R Ratio', '#2962ff');
 
         const toFiniteNumber = (value, fallback = 0) => {
             const num = Number(value);
@@ -12727,6 +12769,11 @@ applyTemplate(drawing, templateId, modal) {
         const refreshRisk = (propagate = false) => {
             drawing.ensureRiskSettings?.();
             const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
+
+            if (state.riskMode !== 'risk-usd' && state.riskMode !== 'risk-percent') {
+                state.riskMode = 'risk-usd';
+            }
+            riskModeSelect.property('value', state.riskMode);
             
             // Recreate risk input if mode changed
             createRiskInput();
@@ -12762,8 +12809,8 @@ applyTemplate(drawing, templateId, modal) {
             const stopAmount = Math.round(riskUSD);
             const targetAmount = Math.round(riskUSD * rrRatio);
 
-            riskAmountText.text(`Risk Amount: $${this.formatNumericValue(riskUSD, 2)}`);
-            rewardRatioText.text(`Reward Ratio: 1:${this.formatNumericValue(state.rewardRatio, 2)}`);
+            riskAmountText.text(`$${this.formatNumericValue(riskUSD, 2)}`);
+            rewardRatioText.text(`1:${this.formatNumericValue(rrRatio, 2)}`);
 
             openPnlValueText.text('0');
             qtyValueText.text(this.formatNumericValue(qty, 2));

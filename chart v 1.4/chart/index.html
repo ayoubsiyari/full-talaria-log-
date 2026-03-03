@@ -7434,7 +7434,8 @@
             left: 50%;
             top: 50%;
             transform: translate(-50%, -50%);
-            transition: none;
+            transition: top 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.12s ease, box-shadow 0.12s ease;
+            will-change: top, transform;
             z-index: 2;
         }
         .interval-slider-custom-thumb:hover {
@@ -7455,7 +7456,8 @@
             background: #787b86;
             border-radius: 2px;
             pointer-events: none;
-            transition: none;
+            transition: height 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+            will-change: height;
         }
         body.light-mode #intervalTriggerBtn { color: #131722; border-color: rgba(0,0,0,0.15); background: rgba(0,0,0,0.04); }
         body.light-mode #intervalTriggerBtn:hover { background: rgba(0,0,0,0.08); }
@@ -19365,7 +19367,7 @@
     <script src="modules/drawing-tools-patterns.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-tools-fib-gann.js?v=20260303_TF_PIN_V15"></script>
     <script src="modules/drawing-tools-channels.js?v=20260228_TF_PIN_V12"></script>
-     <script src="modules/drawing-tools-ui.js?v=20260303_TF_PIN_V39"></script>
+     <script src="modules/drawing-tools-ui.js?v=20260303_TF_PIN_V40"></script>
     <script src="modules/color-picker.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-toolbar.js?v=20260301_TF_PIN_V13"></script>
     <script src="modules/undo-redo-manager.js?v=20260228_TF_PIN_V12"></script>
@@ -24648,6 +24650,8 @@ function showIndicatorsMenu() {
                     let cloneIntervals = [];
                     let cloneIntervalIndex = 0;
                     let cloneIntervalDragging = false;
+                    const cloneIntervalThumbTransition = 'top 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.12s ease, box-shadow 0.12s ease';
+                    const cloneIntervalFillTransition = 'height 0.2s cubic-bezier(0.22, 1, 0.36, 1)';
 
                     function cloneIntervalMaxIndex() {
                         return Math.max(1, cloneIntervals.length - 1);
@@ -24668,7 +24672,10 @@ function showIndicatorsMenu() {
 
                     function updateCloneIntervalSliderPosition(index, animate) {
                         const pct = (index / cloneIntervalMaxIndex()) * 100;
-                        if (!animate) {
+                        if (animate) {
+                            intervalCloneThumb.style.transition = cloneIntervalThumbTransition;
+                            intervalCloneFill.style.transition = cloneIntervalFillTransition;
+                        } else {
                             intervalCloneThumb.style.transition = 'none';
                             intervalCloneFill.style.transition = 'none';
                         }
@@ -24676,8 +24683,8 @@ function showIndicatorsMenu() {
                         intervalCloneFill.style.height = pct + '%';
                         if (!animate) {
                             intervalCloneThumb.offsetHeight; // Force reflow
-                            intervalCloneThumb.style.transition = '';
-                            intervalCloneFill.style.transition = '';
+                            intervalCloneThumb.style.transition = cloneIntervalThumbTransition;
+                            intervalCloneFill.style.transition = cloneIntervalFillTransition;
                         }
                     }
 
@@ -27363,6 +27370,9 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 
         if (!sliderTrack || !sliderThumb) return;
 
+        var intervalThumbSlideTransition = 'top 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.12s ease, box-shadow 0.12s ease';
+        var intervalFillSlideTransition = 'height 0.2s cubic-bezier(0.22, 1, 0.36, 1)';
+
         var activeIntervals = ALL_INTERVALS.slice(); // filtered list
         var currentIndex = 0;
 
@@ -27463,7 +27473,10 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
         function updateSliderPosition(index, animate) {
             var maxIdx = Math.max(1, activeIntervals.length - 1);
             var pct = (index / maxIdx) * 100;
-            if (!animate) {
+            if (animate) {
+                sliderThumb.style.transition = intervalThumbSlideTransition;
+                sliderFill.style.transition  = intervalFillSlideTransition;
+            } else {
                 sliderThumb.style.transition = 'none';
                 sliderFill.style.transition  = 'none';
             }
@@ -27471,8 +27484,8 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             sliderFill.style.height = pct + '%';
             if (!animate) {
                 sliderThumb.offsetHeight; // force reflow
-                sliderThumb.style.transition = '';
-                sliderFill.style.transition  = '';
+                sliderThumb.style.transition = intervalThumbSlideTransition;
+                sliderFill.style.transition  = intervalFillSlideTransition;
             }
         }
 
