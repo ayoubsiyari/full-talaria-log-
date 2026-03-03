@@ -1659,15 +1659,17 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.cornerDragState = null;
     }
 
-    // Override createHandles to use square hollow handles for risk/reward tool
+    // Match default drawing handle visuals (same size/style as other tools)
     createHandles(group, scales) {
-        const handleSize = 10;
-        const handleStroke = '#2962FF'; // Blue color
-        const handleStrokeWidth = 1.5;
+        const handleRadius = 3;
+        const hitRadius = 12;
+        const handleStroke = '#2962FF';
+        const handleStrokeWidth = 2;
         
         // Remove existing handles
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
+        group.selectAll('.resize-handle-hit').remove();
         
         // Get positions for the 3 key points: Entry, Stop, Target
         const entry = this.points[0];
@@ -1680,43 +1682,54 @@ class BaseRiskRewardTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(entry.x) : scales.xScale(entry.x);
         
         const positions = [
-            { point: target, index: 2, y: scales.yScale(target.y) },  // Target
-            { point: entry, index: 0, y: scales.yScale(entry.y) },    // Entry
-            { point: stop, index: 1, y: scales.yScale(stop.y) }       // Stop
+            { index: 2, y: scales.yScale(target.y) },  // Target
+            { index: 0, y: scales.yScale(entry.y) },   // Entry
+            { index: 1, y: scales.yScale(stop.y) }     // Stop
         ];
         
-        positions.forEach(({ point, index, y }) => {
+        positions.forEach(({ index, y }) => {
             const handleGroup = group.append('g')
                 .attr('class', 'resize-handle-group')
                 .attr('data-point-index', index);
+
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle-hit')
+                .attr('cx', entryX)
+                .attr('cy', y)
+                .attr('r', hitRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', 'ns-resize')
+                .style('pointer-events', this.selected ? 'all' : 'none')
+                .attr('data-point-index', index);
             
-            // Square hollow handle (like TradingView)
-            const handle = handleGroup.append('rect')
+            const handle = handleGroup.append('circle')
                 .attr('class', 'resize-handle')
-                .attr('x', entryX - handleSize / 2)
-                .attr('y', y - handleSize / 2)
-                .attr('width', handleSize)
-                .attr('height', handleSize)
-                .attr('rx', 2)
-                .attr('ry', 2)
+                .attr('cx', entryX)
+                .attr('cy', y)
+                .attr('r', handleRadius)
                 .attr('fill', 'transparent')
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', 'ns-resize')
-                .style('pointer-events', 'all')
+                .style('pointer-events', this.selected ? 'all' : 'none')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-point-index', index);
             
             // Hover effect
             handle.on('mouseenter', function() {
                 d3.select(this)
-                    .attr('stroke-width', handleStrokeWidth + 1)
-                    .attr('stroke', '#4a90d9');
+                    .transition()
+                    .duration(150)
+                    .attr('r', handleRadius + 1)
+                    .attr('stroke-width', handleStrokeWidth + 0.5);
             })
             .on('mouseleave', function() {
                 d3.select(this)
-                    .attr('stroke-width', handleStrokeWidth)
-                    .attr('stroke', handleStroke);
+                    .transition()
+                    .duration(150)
+                    .attr('r', handleRadius)
+                    .attr('stroke-width', handleStrokeWidth);
             });
             
             this.handles.push(handleGroup);
@@ -1724,9 +1737,9 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY) {
-        const handleSize = 10;
-        const handleStroke = '#2962FF'; // Blue color
-        const handleStrokeWidth = 1.5;
+        const handleRadius = 3;
+        const handleStroke = '#2962FF';
+        const handleStrokeWidth = 2;
         
         // Only create corner handles on entry line (for width adjustment)
         const entryY = scales.yScale(this.points[0].y);
@@ -1740,15 +1753,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('class', 'custom-handle-group')
                 .attr('data-handle-role', pos.role);
 
-            const handle = group.append('rect')
+            const handle = group.append('circle')
                 .attr('class', 'custom-handle')
                 .attr('data-handle-role', pos.role)
-                .attr('x', pos.x - handleSize / 2)
-                .attr('y', pos.y - handleSize / 2)
-                .attr('width', handleSize)
-                .attr('height', handleSize)
-                .attr('rx', 2)
-                .attr('ry', 2)
+                .attr('cx', pos.x)
+                .attr('cy', pos.y)
+                .attr('r', handleRadius)
                 .attr('fill', 'transparent')
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
@@ -1759,13 +1769,17 @@ class BaseRiskRewardTool extends BaseDrawing {
             // Hover effect
             handle.on('mouseenter', function() {
                 d3.select(this)
-                    .attr('stroke-width', handleStrokeWidth + 1)
-                    .attr('stroke', '#4a90d9');
+                    .transition()
+                    .duration(150)
+                    .attr('r', handleRadius + 1)
+                    .attr('stroke-width', handleStrokeWidth + 0.5);
             })
             .on('mouseleave', function() {
                 d3.select(this)
-                    .attr('stroke-width', handleStrokeWidth)
-                    .attr('stroke', handleStroke);
+                    .transition()
+                    .duration(150)
+                    .attr('r', handleRadius)
+                    .attr('stroke-width', handleStrokeWidth);
             });
 
             this.handles.push(group);
