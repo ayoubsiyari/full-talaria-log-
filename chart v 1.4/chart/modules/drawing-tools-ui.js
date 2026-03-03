@@ -396,7 +396,7 @@ class DrawingSettingsPanel {
 
 .tv-prop-row > .tv-prop-label,
 .tv-prop-row > .tv-checkbox-label,
-.tv-prop-row:not(.fib-level-row) > .tv-checkbox-wrapper:first-child:not(:only-child) {
+.tv-prop-row:not(.fib-level-row):not(.tv-checkbox-stack-row) > .tv-checkbox-wrapper:first-child:not(:only-child) {
     min-width: 0;
     width: var(--tv-prop-label-width);
     flex: 0 0 var(--tv-prop-label-width);
@@ -2742,7 +2742,7 @@ body.light-mode .template-save-dialog .dialog-title {
             extendSection.style.cssText = 'margin-top: 16px;';
             
             const extendRow = document.createElement('div');
-            extendRow.className = 'tv-prop-row';
+            extendRow.className = 'tv-prop-row tv-checkbox-stack-row';
             extendRow.style.cssText = 'margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start;';
             extendRow.innerHTML = `
                 <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
@@ -2866,7 +2866,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 extendSection.style.cssText = 'margin-top: 16px; padding-top: 12px; border-top: 1px solid #2a2e39;';
                 
                 const extendRow = document.createElement('div');
-                extendRow.className = 'tv-prop-row';
+                extendRow.className = 'tv-prop-row tv-checkbox-stack-row';
                 extendRow.style.cssText = 'margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start;';
                 extendRow.innerHTML = `
                     <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
@@ -2945,7 +2945,7 @@ body.light-mode .template-save-dialog .dialog-title {
             extendSection.style.cssText = 'padding-top: 12px; border-top: 1px solid #2a2e39;';
             
             const extendRow = document.createElement('div');
-            extendRow.className = 'tv-prop-row';
+            extendRow.className = 'tv-prop-row tv-checkbox-stack-row';
             extendRow.style.cssText = 'margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start;';
             extendRow.innerHTML = `
                 <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
