@@ -2071,6 +2071,12 @@ class ReplaySystem {
     startTickAnimation() {
         if (!this.isActive || !this.isPlaying) return;
 
+        if (!Array.isArray(this.fullRawData) || this.fullRawData.length === 0) {
+            console.warn('⚠️ Cannot start tick animation - replay data unavailable');
+            this.pause();
+            return;
+        }
+
         const remainingCandles = this.fullRawData.length - this.currentIndex;
         const preloadThreshold = this.getForwardPrefetchThreshold();
         if (remainingCandles < preloadThreshold &&
@@ -2081,6 +2087,10 @@ class ReplaySystem {
         if (this.currentIndex >= this.fullRawData.length - 1) {
             if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
                 this.chart.checkViewportLoadMore('forward');
+                if (this._nextCandleTimer) {
+                    clearTimeout(this._nextCandleTimer);
+                    this._nextCandleTimer = null;
+                }
                 this._nextCandleTimer = setTimeout(() => {
                     this._nextCandleTimer = null;
                     if (this.isPlaying) this.startTickAnimation();
@@ -2452,8 +2462,13 @@ class ReplaySystem {
             if (this.currentIndex >= this.fullRawData.length - 1) {
                 if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
                     this.chart.checkViewportLoadMore('forward');
+                    if (this._nextCandleTimer) {
+                        clearTimeout(this._nextCandleTimer);
+                        this._nextCandleTimer = null;
+                    }
                     if (this.isPlaying) {
-                        setTimeout(() => {
+                        this._nextCandleTimer = setTimeout(() => {
+                            this._nextCandleTimer = null;
                             if (this.isPlaying) this.animateFastMode();
                         }, 120);
                     }
@@ -3018,6 +3033,10 @@ class ReplaySystem {
         
         // Start animation for next candle if still playing
         if (this.isPlaying && this.currentIndex < this.fullRawData.length - 1) {
+            if (this._nextCandleTimer) {
+                clearTimeout(this._nextCandleTimer);
+                this._nextCandleTimer = null;
+            }
             this._nextCandleTimer = setTimeout(() => {
                 this._nextCandleTimer = null;
                 if (this.isPlaying) this.startTickAnimation();
@@ -3026,6 +3045,10 @@ class ReplaySystem {
             if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
                 this.chart.checkViewportLoadMore('forward');
                 if (this.isPlaying) {
+                    if (this._nextCandleTimer) {
+                        clearTimeout(this._nextCandleTimer);
+                        this._nextCandleTimer = null;
+                    }
                     this._nextCandleTimer = setTimeout(() => {
                         this._nextCandleTimer = null;
                         if (this.isPlaying) this.startTickAnimation();

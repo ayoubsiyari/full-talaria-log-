@@ -19390,7 +19390,7 @@
          <script src="chart.js?v=20260303_TF_PIN_V34"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260301_TF_PIN_V19"></script>
+    <script src="modules/replay-system.js?v=20260303_TF_PIN_V20"></script>
     
     
     <!-- Order Management System -->
@@ -24067,13 +24067,15 @@ function showIndicatorsMenu() {
             if (playBtn) {
                 playBtn.addEventListener('click', function() {
                     if (window.chart && window.chart.replaySystem) {
-                        const isPlaying = window.chart.replaySystem.isPlaying;
-                        if (isPlaying) {
-                            window.chart.replaySystem.pause();
-                            this.classList.remove('playing');
+                        const replay = window.chart.replaySystem;
+                        if (typeof replay.togglePlay === 'function') {
+                            replay.togglePlay();
                         } else {
-                            window.chart.replaySystem.play();
-                            this.classList.add('playing');
+                            if (replay.isPlaying) replay.pause();
+                            else replay.play();
+                        }
+                        if (typeof replay.syncPlayPauseUI === 'function') {
+                            replay.syncPlayPauseUI();
                         }
                     }
                 });
@@ -24084,15 +24086,15 @@ function showIndicatorsMenu() {
             if (speedSliderPlayBtn) {
                 speedSliderPlayBtn.addEventListener('click', function() {
                     if (window.chart && window.chart.replaySystem) {
-                        const isPlaying = window.chart.replaySystem.isPlaying;
-                        if (isPlaying) {
-                            window.chart.replaySystem.pause();
-                            this.classList.remove('playing');
-                            if (playBtn) playBtn.classList.remove('playing');
+                        const replay = window.chart.replaySystem;
+                        if (typeof replay.togglePlay === 'function') {
+                            replay.togglePlay();
                         } else {
-                            window.chart.replaySystem.play();
-                            this.classList.add('playing');
-                            if (playBtn) playBtn.classList.add('playing');
+                            if (replay.isPlaying) replay.pause();
+                            else replay.play();
+                        }
+                        if (typeof replay.syncPlayPauseUI === 'function') {
+                            replay.syncPlayPauseUI();
                         }
                     }
                 });
@@ -24416,10 +24418,15 @@ function showIndicatorsMenu() {
                             e.stopPropagation();
                             // Toggle play state on replay system
                             if (window.chart && window.chart.replaySystem) {
-                                if (window.chart.replaySystem.isPlaying) {
-                                    window.chart.replaySystem.pause();
+                                const replay = window.chart.replaySystem;
+                                if (typeof replay.togglePlay === 'function') {
+                                    replay.togglePlay();
                                 } else {
-                                    window.chart.replaySystem.play();
+                                    if (replay.isPlaying) replay.pause();
+                                    else replay.play();
+                                }
+                                if (typeof replay.syncPlayPauseUI === 'function') {
+                                    replay.syncPlayPauseUI();
                                 }
                             }
                             // Sync button states
