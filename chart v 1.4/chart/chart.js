@@ -9005,11 +9005,10 @@ class Chart {
         const candleSpacing = this.getCandleSpacing();
         const cw = this.w - m.l - m.r;
         const firstVisibleIdx = -this.offsetX / candleSpacing;
-        const isReplayMode = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
-        const maxDataLength = isReplayMode ? this.replaySystem.fullRawData.length : this.data.length;
         const lastVisibleIdx     = firstVisibleIdx + cw / candleSpacing;
-        const lastVisibleIdxData = Math.min(this.data.length - 1, lastVisibleIdx);
-        const visibleBarsCount   = Math.ceil(Math.max(0, lastVisibleIdxData) - Math.max(0, firstVisibleIdx));
+        // Use viewport span (not loaded-data span) so label density stays stable
+        // when replay grows candle count near the right edge.
+        const visibleBarsCount   = Math.max(1, Math.ceil(Math.max(0, lastVisibleIdx - firstVisibleIdx)));
 
         // Prefer the explicit chart timeframe (supports custom intervals like 13m)
         // and only fall back to data-detection when needed.
@@ -9072,6 +9071,8 @@ class Chart {
         const labelIntervalMs   = labelInterval * timeframeMs;
         const isCalendarTf      = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
         const isDailyOrHigher   = timeframeMs >= 86400000;
+        const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher;
+        const allowStandaloneBoundaries = !useUniformIntradayTicks;
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
 
@@ -9109,17 +9110,23 @@ class Chart {
                 isRound = labelIntervalMs > 0 && tzAlignedTs % labelIntervalMs === 0;
             }
 
-            if (!isBoundary && !isRound) continue;
+            const hasBoundary = isBoundary && !!boundaryLabel;
+            const shouldEmitTick = isRound || (allowStandaloneBoundaries && hasBoundary);
+            if (!shouldEmitTick) continue;
+
+            // TradingView-like intraday behavior: keep tick spacing uniform,
+            // and only show boundary text when it lands on an existing round tick.
+            const useBoundaryLabel = hasBoundary && (allowStandaloneBoundaries || isRound);
 
             let label;
-            if (isBoundary && boundaryLabel) {
+            if (useBoundaryLabel) {
                 label = boundaryLabel;
             } else if (isDailyOrHigher) {
                 label = monthNames[month] + ' ' + day;
             } else {
                 label = String(tzDate.getHours()).padStart(2,'0') + ':' + String(tzDate.getMinutes()).padStart(2,'0');
             }
-            candidates.push({ idx, isBoundary, label });
+            candidates.push({ idx, isBoundary: useBoundaryLabel, label });
         }
 
         // Extrapolate future ticks
@@ -9147,7 +9154,7 @@ class Chart {
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
             if (x < m.l + 20 || x > this.w - m.r - 20) continue;
-            const gap = c.isBoundary ? minSpacing * 0.7 : minSpacing;
+            const gap = (c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing;
             if (x - lastX >= gap || lastX === -Infinity) {
                 ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
                 lastX = x;

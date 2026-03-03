@@ -557,7 +557,7 @@ class TimeframeFavorites {
             this.selectTimeframe(timeframe);
         });
 
-        // Apply on Enter key
+        //  on Enter key
         valueInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 applyBtn.click();
