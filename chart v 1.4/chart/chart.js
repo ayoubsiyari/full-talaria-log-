@@ -9068,13 +9068,21 @@ class Chart {
             labelInterval = Math.max(1, Math.ceil(visibleBarsCount / 8));
         }
 
-        const labelIntervalMs   = labelInterval * timeframeMs;
         const isCalendarTf      = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
         const isDailyOrHigher   = timeframeMs >= 86400000;
         const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
+
+        // Keep intraday tick cadence deterministic and stable while panning/replay.
+        // This avoids left-edge dependent thinning that can make spacing look uneven.
+        if (useUniformIntradayTicks) {
+            const minBarsPerTick = Math.max(1, Math.ceil(minSpacing / Math.max(0.0001, candleSpacing)));
+            labelInterval = Math.max(labelInterval, minBarsPerTick);
+        }
+
+        const labelIntervalMs   = labelInterval * timeframeMs;
 
         const scanFrom = Math.max(0, Math.floor(Math.max(0, firstVisibleIdx)));
         const scanTo   = Math.min(this.data.length - 1, Math.ceil(lastVisibleIdx));
@@ -9154,8 +9162,8 @@ class Chart {
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
             if (x < m.l + 20 || x > this.w - m.r - 20) continue;
-            const gap = (c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing;
-            if (x - lastX >= gap || lastX === -Infinity) {
+            const gap = useUniformIntradayTicks ? 0 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
+            if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
                 ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
                 lastX = x;
             }
