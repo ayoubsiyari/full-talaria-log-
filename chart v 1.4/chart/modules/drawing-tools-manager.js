@@ -1632,7 +1632,9 @@ class DrawingToolsManager {
                 let preview = this.riskRewardPreview && this.riskRewardPreview.previewPoints;
                 if (!preview && this.riskRewardPreview) {
                     const point = this.getDataPoint(event);
-                    preview = this.buildRiskRewardPoints(this.riskRewardPreview.entry, point, this.currentTool === 'long-position');
+                    const isLong = this.currentTool === 'long-position';
+                    const previewPoint = this.getRiskRewardPreviewPoint(this.riskRewardPreview.entry, point, isLong);
+                    preview = this.buildRiskRewardPoints(this.riskRewardPreview.entry, previewPoint, isLong);
                 }
                 if (preview) {
                     this.drawingState.tempPoints = preview.map(p => ({ ...p }));
@@ -2037,10 +2039,16 @@ class DrawingToolsManager {
         this.svg.style('pointer-events', 'none');
     }
 
-    buildRiskRewardPoints(entry, current, isLong) {
+    buildRiskRewardPoints(entry, current, isLong, rewardRatio = null) {
         const magnitude = Math.max(Math.abs(current.y - entry.y), 0.0000001);
+        const ratioSource = rewardRatio !== null && rewardRatio !== undefined ? rewardRatio : current && current.rewardRatio;
+        const ratioValue = Number(ratioSource);
+        const normalizedRatio = Number.isFinite(ratioValue) && ratioValue > 0 ? ratioValue : 2;
+        const clampedRatio = Math.max(0.01, Math.min(100, normalizedRatio));
         const stopY = isLong ? entry.y - magnitude : entry.y + magnitude;
-        const targetY = isLong ? entry.y + magnitude : entry.y - magnitude;
+        const targetY = isLong
+            ? entry.y + (magnitude * clampedRatio)
+            : entry.y - (magnitude * clampedRatio);
         const entryX = entry.x;
 
         return [
@@ -2050,11 +2058,32 @@ class DrawingToolsManager {
         ];
     }
 
+    getPositionRiskDefaults(toolType) {
+        const savedRisk = this.getSavedToolRiskSettings(toolType) || {};
+
+        const parsedRatio = Number(savedRisk.rewardRatio);
+        const rewardRatio = Number.isFinite(parsedRatio) && parsedRatio > 0
+            ? Math.max(0.01, Math.min(100, parsedRatio))
+            : 2;
+
+        const parsedStopOffset = Number(savedRisk.stopTicks);
+        const stopOffset = Number.isFinite(parsedStopOffset) && parsedStopOffset > 0
+            ? Math.abs(parsedStopOffset)
+            : null;
+
+        return { rewardRatio, stopOffset };
+    }
+
     buildDefaultRiskReward(entry, isLong) {
         const chart = this.chart;
+        const toolType = isLong ? 'long-position' : 'short-position';
+        const positionDefaults = this.getPositionRiskDefaults(toolType);
+
         // Calculate a reasonable default size based on visible price range
         let stopOffset;
-        if (chart && chart.yScale) {
+        if (positionDefaults.stopOffset) {
+            stopOffset = positionDefaults.stopOffset;
+        } else if (chart && chart.yScale) {
             const domain = chart.yScale.domain();
             const priceRange = Math.abs(domain[1] - domain[0]);
             stopOffset = priceRange * 0.05; // 5% of visible range
@@ -2062,7 +2091,11 @@ class DrawingToolsManager {
             const priceStep = chart && chart.priceIncrement ? chart.priceIncrement : 0.0001;
             stopOffset = priceStep * 100; // Fallback to larger default
         }
-        const targetOffset = stopOffset * 2;
+
+        const priceStep = chart && chart.priceIncrement ? chart.priceIncrement : 0.0001;
+        stopOffset = Math.max(Math.abs(stopOffset), priceStep * 5);
+
+        const targetOffset = stopOffset * positionDefaults.rewardRatio;
         const stopPrice = isLong ? entry.y - stopOffset : entry.y + stopOffset;
         const targetPrice = isLong ? entry.y + targetOffset : entry.y - targetOffset;
         // [debug removed]
@@ -2075,11 +2108,16 @@ class DrawingToolsManager {
 
     getRiskRewardPreviewPoint(entry, currentPoint, isLong) {
         const chart = this.chart;
+        const toolType = isLong ? 'long-position' : 'short-position';
+        const positionDefaults = this.getPositionRiskDefaults(toolType);
         const priceStep = chart && chart.priceIncrement ? chart.priceIncrement : 0.0001;
         const delta = Math.max(Math.abs(currentPoint.y - entry.y), priceStep * 5);
         const stopPrice = isLong ? entry.y - delta : entry.y + delta;
-        const targetPrice = isLong ? entry.y + delta * 2 : entry.y - delta * 2;
-        return { x: entry.x, y: isLong ? targetPrice : stopPrice };
+        return {
+            x: entry.x,
+            y: stopPrice,
+            rewardRatio: positionDefaults.rewardRatio
+        };
     }
 
     /**
@@ -5853,6 +5891,21 @@ class DrawingToolsManager {
             const lotSize = Number(src.lotSize);
             if (Number.isFinite(lotSize)) {
                 normalized.lotSize = Math.max(0.01, lotSize);
+            }
+
+            const rewardRatio = Number(src.rewardRatio);
+            if (Number.isFinite(rewardRatio) && rewardRatio > 0) {
+                normalized.rewardRatio = Math.max(0.01, rewardRatio);
+            }
+
+            const stopTicks = Number(src.stopTicks);
+            if (Number.isFinite(stopTicks) && stopTicks > 0) {
+                normalized.stopTicks = Math.abs(stopTicks);
+            }
+
+            const profitTicks = Number(src.profitTicks);
+            if (Number.isFinite(profitTicks) && profitTicks > 0) {
+                normalized.profitTicks = Math.abs(profitTicks);
             }
 
             const leverage = Number(src.leverage);

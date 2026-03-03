@@ -7855,7 +7855,10 @@ body.light-mode .template-save-dialog .dialog-title {
                         riskPercent: drawing.meta.risk.riskPercent,
                         riskAmountUSD: drawing.meta.risk.riskAmountUSD,
                         lotSize: drawing.meta.risk.lotSize,
-                        leverage: drawing.meta.risk.leverage
+                        leverage: drawing.meta.risk.leverage,
+                        rewardRatio: drawing.meta.risk.rewardRatio,
+                        stopTicks: drawing.meta.risk.stopTicks,
+                        profitTicks: drawing.meta.risk.profitTicks
                     };
                 }
                 drawingManager.saveToolStyle(drawing.type, drawing.style, saveOptions);
