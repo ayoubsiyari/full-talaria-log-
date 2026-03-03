@@ -2253,7 +2253,8 @@ body.light-mode .template-save-dialog .dialog-title {
         // Check if this drawing needs an Input(s) tab
         const isFibonacciInputTabTool = this.isFibonacciInputTabTool(drawing.type);
         const isGannInputTabTool = this.isGannInputTabTool(drawing.type);
-        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool;
+        const isPositionInputsTool = drawing.type === 'long-position' || drawing.type === 'short-position';
+        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool;
         const inputTabLabel = (isFibonacciInputTabTool || isGannInputTabTool) ? 'Input' : 'Inputs';
         
         let tabsHTML = '';
@@ -2334,6 +2335,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 this.buildFibonacciInputsTab(inputsPane, drawing);
             } else if (isGannInputTabTool) {
                 this.buildGannInputsTab(inputsPane, drawing);
+            } else if (isPositionInputsTool) {
+                this.buildPositionInputsTab(inputsPane, drawing);
             }
         }
 
@@ -6730,6 +6733,17 @@ body.light-mode .template-save-dialog .dialog-title {
         if (drawing.type === 'gann-fan') {
             this.buildGannFanLevelsSection(container, drawing);
         }
+    }
+
+    /**
+     * Build Position Inputs Tab Content
+     */
+    buildPositionInputsTab(container, drawing) {
+        if (typeof d3 === 'undefined' || typeof d3.select !== 'function') {
+            return;
+        }
+
+        this.addRiskRewardInputs(d3.select(container), drawing);
     }
 
     /**

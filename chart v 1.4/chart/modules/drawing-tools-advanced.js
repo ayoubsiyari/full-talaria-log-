@@ -1446,11 +1446,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             const edgeSnapGap = 0;
             const compressedGap = 18;
             const wideSnapThreshold = 260;
-            const chartLeft = Math.min(xRange[0], xRange[1]);
-            const chartRight = Math.max(xRange[0], xRange[1]);
-            const yRange = scales.yScale.range();
-            const chartTop = Math.min(yRange[0], yRange[1]);
-            const chartBottom = Math.max(yRange[0], yRange[1]);
 
             const createEdgeLabel = ({ className, text, lineY, fill, side }) => {
                 const labelGroup = this.group.append('g').attr('class', className);
@@ -1472,19 +1467,13 @@ class BaseRiskRewardTool extends BaseDrawing {
 
                 const hasInnerSpace = zoneWidth >= wideSnapThreshold;
                 const offset = hasInnerSpace ? edgeSnapGap : compressedGap;
-                let rectTop = side === 'top'
+                const rectTop = side === 'top'
                     ? lineY - labelHeight - offset
                     : lineY + offset;
-
-                rectTop = Math.max(chartTop + 2, Math.min(rectTop, chartBottom - labelHeight - 2));
-
-                const minRectX = chartLeft + 2;
-                const maxRectX = Math.max(minRectX, chartRight - labelWidth - 2);
                 const centeredRectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
-                const rightSnappedRectX = zoneX2 - labelWidth;
+                const rightSnappedRectX = zoneX2 + edgeSnapGap;
 
-                let rectX = hasInnerSpace ? rightSnappedRectX : centeredRectX;
-                rectX = Math.max(minRectX, Math.min(rectX, maxRectX));
+                const rectX = hasInnerSpace ? rightSnappedRectX : centeredRectX;
 
                 labelGroup.insert('rect', 'text')
                     .attr('x', rectX)
@@ -1560,11 +1549,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const centerWidth = centerTextBBox.width + (centerPaddingX * 2);
             const centerHeight = centerTextBBox.height + (centerPaddingY * 2);
 
-            let centerRectX = zoneCenterX - (centerWidth / 2);
-            centerRectX = Math.max(chartLeft + 2, Math.min(centerRectX, chartRight - centerWidth - 2));
+            const centerRectX = zoneCenterX - (centerWidth / 2);
 
-            let centerRectY = entryY - (centerHeight / 2);
-            centerRectY = Math.max(chartTop + 2, Math.min(centerRectY, chartBottom - centerHeight - 2));
+            const centerRectY = entryY - (centerHeight / 2);
 
             const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
