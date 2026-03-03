@@ -3240,8 +3240,8 @@ class TrendFibExtensionTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
         if (!this.style.trendLineColor) this.style.trendLineColor = this.style.stroke;
-        this.style.trendLineDasharray = '10,6';
-        this.style.trendLineWidth = 1;
+        if (this.style.trendLineDasharray === undefined || this.style.trendLineDasharray === null) this.style.trendLineDasharray = '2,2';
+        if (this.style.trendLineWidth === undefined || this.style.trendLineWidth === null) this.style.trendLineWidth = 1;
         // TradingView-like Fibonacci levels (fixed 20 like Fib Retracement)
         const defaultLevels = [
             { value: -0.618, label: '-0.618', color: '#9c27b0', enabled: false },
@@ -3281,8 +3281,8 @@ class TrendFibExtensionTool extends BaseDrawing {
         const scaleFactor = this.getZoomScaleFactor(scales);
         const trendEnabled = this.style.trendLineEnabled !== false;
         const trendColor = this.style.trendLineColor || this.style.stroke;
-        const trendDash = '10,6';
-        const trendBaseWidth = 1;
+        const trendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '2,2';
+        const trendBaseWidth = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth))) ? parseInt(this.style.trendLineWidth) : 1;
         const scaledStrokeWidth = Math.max(0.5, trendBaseWidth * scaleFactor);
 
         this.group = container.append('g')

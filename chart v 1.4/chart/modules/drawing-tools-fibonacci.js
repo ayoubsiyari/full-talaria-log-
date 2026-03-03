@@ -10,6 +10,8 @@ class FibonacciRetracementTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fibonacci-retracement', points, style);
         this.requiredPoints = 2;
+        if (this.style.trendLineDasharray === undefined || this.style.trendLineDasharray === null) this.style.trendLineDasharray = '2,2';
+        if (this.style.trendLineWidth === undefined || this.style.trendLineWidth === null) this.style.trendLineWidth = 1;
         if (this.style.levelsLineDasharray === undefined) this.style.levelsLineDasharray = '';
         if (this.style.levelsLineWidth === undefined) this.style.levelsLineWidth = 2;
         const globalLineType = `${this.style.levelsLineDasharray ?? ''}`;
@@ -215,8 +217,8 @@ class FibonacciRetracementTool extends BaseDrawing {
         // Draw main trend line connecting the two anchor points
         const trendEnabled = this.style.trendLineEnabled !== false;
         const trendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
-        const trendDash = '10,6';
-        const baseTrendWidth = 1;
+        const trendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '2,2';
+        const baseTrendWidth = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth))) ? parseInt(this.style.trendLineWidth) : 1;
         const scaledTrendWidth = Math.max(0.5, baseTrendWidth * scaleFactor);
 
         if (trendEnabled) {
@@ -281,6 +283,8 @@ class FibonacciExtensionTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fibonacci-extension', points, style);
         this.requiredPoints = 2;
+        if (this.style.trendLineDasharray === undefined || this.style.trendLineDasharray === null) this.style.trendLineDasharray = '2,2';
+        if (this.style.trendLineWidth === undefined || this.style.trendLineWidth === null) this.style.trendLineWidth = 1;
         
         // Fibonacci extension levels (beyond 1.0)
         const defaultLevels = [
@@ -465,8 +469,8 @@ class FibonacciExtensionTool extends BaseDrawing {
         // Draw main trend line
         const trendEnabled = this.style.trendLineEnabled !== false;
         const trendColor = this.style.trendLineColor || this.style.stroke || '#9c27b0';
-        const trendDash = '10,6';
-        const baseTrendWidth = 1;
+        const trendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '2,2';
+        const baseTrendWidth = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth))) ? parseInt(this.style.trendLineWidth) : 1;
         const scaledTrendWidth = Math.max(0.5, baseTrendWidth * scaleFactor);
 
         if (trendEnabled) {

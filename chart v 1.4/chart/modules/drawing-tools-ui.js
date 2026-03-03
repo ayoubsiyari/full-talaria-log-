@@ -2489,8 +2489,12 @@ body.light-mode .template-save-dialog .dialog-title {
                 color: (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') 
                     ? (drawing.style.medianColor || '#e91e63') 
                     : (isFibTool ? (drawing.style.trendLineColor || drawing.style.stroke || '#787b86') : (drawing.style.stroke || '#EF5350')),
-                lineType: isFibTool ? '10,6' : (drawing.style.strokeDasharray || ''),
-                lineWidth: isFibTool ? 1 : (drawing.style.strokeWidth || 2)
+                lineType: isFibTool
+                    ? ((drawing.style.trendLineDasharray != null) ? `${drawing.style.trendLineDasharray}` : '2,2')
+                    : (drawing.style.strokeDasharray || ''),
+                lineWidth: isFibTool
+                    ? ((drawing.style.trendLineWidth != null && !isNaN(parseInt(drawing.style.trendLineWidth))) ? parseInt(drawing.style.trendLineWidth) : 1)
+                    : (drawing.style.strokeWidth || 2)
             };
             if (isBrushTool || isLineTool || isPolyline || isShapeTool) {
                 // Use brush-style row (no checkbox) for brush tools, line tools, polyline, and shapes
@@ -9297,8 +9301,11 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.trendLineWidth) drawing.style.trendLineWidth = parseInt(this.pendingChanges.trendLineWidth);
         if (this.pendingChanges.trendLineEnabled !== undefined) drawing.style.trendLineEnabled = this.pendingChanges.trendLineEnabled;
         if (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension') {
-            drawing.style.trendLineDasharray = '10,6';
-            drawing.style.trendLineWidth = 1;
+            if (drawing.style.trendLineDasharray === undefined || drawing.style.trendLineDasharray === null) {
+                drawing.style.trendLineDasharray = '2,2';
+            }
+            const parsedTrendWidth = parseInt(drawing.style.trendLineWidth);
+            drawing.style.trendLineWidth = Number.isFinite(parsedTrendWidth) ? parsedTrendWidth : 1;
         }
         
         // Middle line properties

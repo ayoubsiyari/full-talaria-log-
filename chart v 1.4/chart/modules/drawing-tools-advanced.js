@@ -446,10 +446,12 @@ class DatePriceRangeTool extends BaseDrawing {
 
             const bbox = text.node().getBBox();
             if (this.style.showLabelBackground) {
-                const boxX = bbox.x - 18;
-                const boxY = bbox.y - 11;
-                const boxWidth = bbox.width + 36;
-                const boxHeight = bbox.height + 22;
+                const horizontalPadding = 8;
+                const verticalPadding = 8;
+                const boxX = bbox.x - horizontalPadding;
+                const boxY = bbox.y - verticalPadding;
+                const boxWidth = bbox.width + (horizontalPadding * 2);
+                const boxHeight = bbox.height + (verticalPadding * 2);
 
                 labelGroup.insert('rect', 'text')
                     .attr('class', 'range-info-box')
@@ -606,12 +608,14 @@ class PriceRangeTool extends DatePriceRangeTool {
 
             const bbox = text.node().getBBox();
             if (this.style.showLabelBackground) {
+                const horizontalPadding = 8;
+                const verticalPadding = 8;
                 labelGroup.insert('rect', 'text')
                     .attr('class', 'range-info-box')
-                    .attr('x', bbox.x - 16)
-                    .attr('y', bbox.y - 10)
-                    .attr('width', bbox.width + 32)
-                    .attr('height', bbox.height + 20)
+                    .attr('x', bbox.x - horizontalPadding)
+                    .attr('y', bbox.y - verticalPadding)
+                    .attr('width', bbox.width + (horizontalPadding * 2))
+                    .attr('height', bbox.height + (verticalPadding * 2))
                     .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
                     .attr('stroke', 'none')
                     .attr('stroke-width', 0)
@@ -747,12 +751,14 @@ class DateRangeTool extends DatePriceRangeTool {
 
             const bbox = text.node().getBBox();
             if (this.style.showLabelBackground) {
+                const horizontalPadding = 8;
+                const verticalPadding = 8;
                 labelGroup.insert('rect', 'text')
                     .attr('class', 'range-info-box')
-                    .attr('x', bbox.x - 16)
-                    .attr('y', bbox.y - 10)
-                    .attr('width', bbox.width + 32)
-                    .attr('height', bbox.height + 20)
+                    .attr('x', bbox.x - horizontalPadding)
+                    .attr('y', bbox.y - verticalPadding)
+                    .attr('width', bbox.width + (horizontalPadding * 2))
+                    .attr('height', bbox.height + (verticalPadding * 2))
                     .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
                     .attr('stroke', 'none')
                     .attr('stroke-width', 0)
