@@ -20302,14 +20302,96 @@
                 return candidates.find(ch => ch && typeof ch.handleVisibilityMenuAction === 'function') || null;
             };
 
+            const visibilityMainBtn = document.getElementById('toggleAllDrawingsToolbar');
+            const visibilityMainSvg = visibilityMainBtn ? visibilityMainBtn.querySelector('svg') : null;
+            const visibilityMainDefault = visibilityMainSvg
+                ? {
+                    innerHTML: visibilityMainSvg.innerHTML,
+                    viewBox: visibilityMainSvg.getAttribute('viewBox') || '0 0 24 24',
+                    fill: visibilityMainSvg.getAttribute('fill') || 'none',
+                    strokeWidth: visibilityMainSvg.getAttribute('stroke-width') || '1',
+                    strokeLinecap: visibilityMainSvg.getAttribute('stroke-linecap') || '',
+                    strokeLinejoin: visibilityMainSvg.getAttribute('stroke-linejoin') || '',
+                    tooltip: visibilityMainBtn.getAttribute('data-tooltip') || 'Show/Hide All Drawings'
+                }
+                : null;
+
+            const copyVisibilityMainFrom = function(sourceBtn) {
+                if (!visibilityMainBtn || !visibilityMainSvg || !sourceBtn) return;
+                const sourceSvg = sourceBtn.querySelector('svg');
+                if (!sourceSvg) return;
+
+                visibilityMainSvg.innerHTML = sourceSvg.innerHTML;
+                visibilityMainSvg.setAttribute('viewBox', sourceSvg.getAttribute('viewBox') || '0 0 24 24');
+                visibilityMainSvg.setAttribute('fill', sourceSvg.getAttribute('fill') || 'none');
+                visibilityMainSvg.setAttribute('stroke-width', sourceSvg.getAttribute('stroke-width') || '1');
+
+                const sourceLinecap = sourceSvg.getAttribute('stroke-linecap');
+                if (sourceLinecap) visibilityMainSvg.setAttribute('stroke-linecap', sourceLinecap);
+                else visibilityMainSvg.removeAttribute('stroke-linecap');
+
+                const sourceLinejoin = sourceSvg.getAttribute('stroke-linejoin');
+                if (sourceLinejoin) visibilityMainSvg.setAttribute('stroke-linejoin', sourceLinejoin);
+                else visibilityMainSvg.removeAttribute('stroke-linejoin');
+
+                const sourceTooltip = sourceBtn.getAttribute('data-tooltip');
+                if (sourceTooltip) visibilityMainBtn.setAttribute('data-tooltip', sourceTooltip);
+            };
+
+            const restoreVisibilityMainDefault = function() {
+                if (!visibilityMainBtn || !visibilityMainSvg || !visibilityMainDefault) return;
+                visibilityMainSvg.innerHTML = visibilityMainDefault.innerHTML;
+                visibilityMainSvg.setAttribute('viewBox', visibilityMainDefault.viewBox);
+                visibilityMainSvg.setAttribute('fill', visibilityMainDefault.fill);
+                visibilityMainSvg.setAttribute('stroke-width', visibilityMainDefault.strokeWidth);
+
+                if (visibilityMainDefault.strokeLinecap) visibilityMainSvg.setAttribute('stroke-linecap', visibilityMainDefault.strokeLinecap);
+                else visibilityMainSvg.removeAttribute('stroke-linecap');
+
+                if (visibilityMainDefault.strokeLinejoin) visibilityMainSvg.setAttribute('stroke-linejoin', visibilityMainDefault.strokeLinejoin);
+                else visibilityMainSvg.removeAttribute('stroke-linejoin');
+
+                visibilityMainBtn.setAttribute('data-tooltip', visibilityMainDefault.tooltip);
+            };
+
+            const syncVisibilityToolbarState = function(chartInstance) {
+                const activeChart = chartInstance || getActiveChartForVisibility();
+                const drawingsBtn = document.getElementById('toggleAllDrawingsToolbarDropdown');
+                const indicatorsBtn = document.getElementById('toggleIndicatorsToolbar');
+                const positionsBtn = document.getElementById('togglePositionsToolbar');
+                if (!drawingsBtn || !indicatorsBtn || !positionsBtn) return;
+
+                const states = [
+                    { hidden: !!(activeChart && activeChart.drawingsHidden), btn: drawingsBtn },
+                    { hidden: !!(activeChart && activeChart.indicatorsHidden), btn: indicatorsBtn },
+                    { hidden: !!(activeChart && activeChart.positionsHidden), btn: positionsBtn }
+                ];
+
+                states.forEach(state => state.btn.classList.toggle('active', state.hidden));
+                const firstHidden = states.find(state => state.hidden);
+
+                if (visibilityMainBtn) {
+                    visibilityMainBtn.classList.toggle('visibility-selected', !!firstHidden);
+                }
+
+                if (firstHidden) {
+                    copyVisibilityMainFrom(firstHidden.btn);
+                } else {
+                    restoreVisibilityMainDefault();
+                }
+            };
+
             const runVisibilityToolbarAction = function(action) {
                 const activeChart = getActiveChartForVisibility();
                 if (!activeChart) return;
                 activeChart.handleVisibilityMenuAction(action);
+                syncVisibilityToolbarState(activeChart);
                 if (typeof window.closeAllToolDropdowns === 'function') {
                     window.closeAllToolDropdowns();
                 }
             };
+
+            syncVisibilityToolbarState();
 
             window.toggleDrawingsVisibility = function() {
                 runVisibilityToolbarAction('drawings');
@@ -20554,34 +20636,8 @@
                     const isAlreadyActive = !isGroupButtonClick && !isDropdownOpen && toolName && chart && chart.drawingManager && chart.drawingManager.currentTool === toolName;
 
                     if (dropdown && dropdown.id === 'visibility-toolbar-dropdown') {
-                        const visibilityMainBtn = document.getElementById('toggleAllDrawingsToolbar');
-                        if (visibilityMainBtn) {
-                            const selectedSvg = this.querySelector('svg');
-                            const mainSvg = visibilityMainBtn.querySelector('svg');
-
-                            if (selectedSvg && mainSvg) {
-                                mainSvg.innerHTML = selectedSvg.innerHTML;
-                                mainSvg.setAttribute('viewBox', selectedSvg.getAttribute('viewBox') || '0 0 24 24');
-                                mainSvg.setAttribute('fill', selectedSvg.getAttribute('fill') || 'none');
-                                mainSvg.setAttribute('stroke-width', selectedSvg.getAttribute('stroke-width') || '1');
-                                if (selectedSvg.getAttribute('stroke-linecap')) {
-                                    mainSvg.setAttribute('stroke-linecap', selectedSvg.getAttribute('stroke-linecap'));
-                                }
-                                if (selectedSvg.getAttribute('stroke-linejoin')) {
-                                    mainSvg.setAttribute('stroke-linejoin', selectedSvg.getAttribute('stroke-linejoin'));
-                                }
-                            }
-
-                            const selectedTooltip = this.getAttribute('data-tooltip');
-                            if (selectedTooltip) {
-                                visibilityMainBtn.setAttribute('data-tooltip', selectedTooltip);
-                            }
-
-                            visibilityMainBtn.classList.add('visibility-selected');
-                        }
-
-                        dropdown.querySelectorAll('.tool-btn').forEach(vb => vb.classList.remove('active'));
-                        this.classList.add('active');
+                        // Inline onclick handlers toggle chart hidden flags; defer sync to next tick.
+                        setTimeout(() => syncVisibilityToolbarState(), 0);
                     }
                     
                     if (isAlreadyActive) {
