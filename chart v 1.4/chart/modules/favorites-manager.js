@@ -668,28 +668,67 @@ class FavoritesManager {
         
         this.updateActiveState(toolType);
     }
+
+    getMinToolbarTop() {
+        const topToolbar = document.querySelector('.toolbar');
+        if (topToolbar && typeof topToolbar.getBoundingClientRect === 'function') {
+            const rect = topToolbar.getBoundingClientRect();
+            if (Number.isFinite(rect.bottom)) {
+                return Math.max(0, Math.ceil(rect.bottom + 4));
+            }
+        }
+        return 52;
+    }
+
+    clampToolbarPosition(left, top) {
+        const rect = this.toolbar && typeof this.toolbar.getBoundingClientRect === 'function'
+            ? this.toolbar.getBoundingClientRect()
+            : { width: 0, height: 0 };
+
+        const minTop = this.getMinToolbarTop();
+        const maxLeft = Math.max(0, window.innerWidth - (rect.width || 0));
+        const maxTop = Math.max(minTop, window.innerHeight - (rect.height || 0));
+
+        const safeLeft = Number.isFinite(left) ? left : 56;
+        const safeTop = Number.isFinite(top) ? top : minTop;
+
+        return {
+            left: Math.round(Math.max(0, Math.min(safeLeft, maxLeft))),
+            top: Math.round(Math.max(minTop, Math.min(safeTop, maxTop)))
+        };
+    }
     
     // Load saved position from localStorage
     loadPosition() {
+        const defaultPosition = this.clampToolbarPosition(56, this.getMinToolbarTop());
         try {
             const stored = localStorage.getItem(this.positionKey);
             if (stored) {
                 const position = JSON.parse(stored);
-                this.toolbar.style.left = position.left + 'px';
-                this.toolbar.style.top = position.top + 'px';
-                console.log('📍 Loaded position:', position);
+                const clamped = this.clampToolbarPosition(Number(position.left), Number(position.top));
+                this.toolbar.style.left = clamped.left + 'px';
+                this.toolbar.style.top = clamped.top + 'px';
+                console.log('📍 Loaded position:', clamped);
+                return;
             }
         } catch (error) {
             console.error('❌ Error loading position:', error);
         }
+
+        this.toolbar.style.left = defaultPosition.left + 'px';
+        this.toolbar.style.top = defaultPosition.top + 'px';
     }
     
     // Save position to localStorage
     savePosition() {
         try {
+            const clamped = this.clampToolbarPosition(
+                parseInt(this.toolbar.style.left, 10),
+                parseInt(this.toolbar.style.top, 10)
+            );
             const position = {
-                left: parseInt(this.toolbar.style.left) || 50,
-                top: parseInt(this.toolbar.style.top) || 44
+                left: clamped.left,
+                top: clamped.top
             };
             localStorage.setItem(this.positionKey, JSON.stringify(position));
             console.log('💾 Saved position:', position);
@@ -752,11 +791,12 @@ class FavoritesManager {
                     
                     // Constrain to viewport
                     const rect = this.toolbar.getBoundingClientRect();
-                    const maxLeft = window.innerWidth - rect.width;
-                    const maxTop = window.innerHeight - rect.height;
-                    
+                    const minTop = this.getMinToolbarTop();
+                    const maxLeft = Math.max(0, window.innerWidth - rect.width);
+                    const maxTop = Math.max(minTop, window.innerHeight - rect.height);
+
                     left = Math.max(0, Math.min(left, maxLeft));
-                    top = Math.max(0, Math.min(top, maxTop));
+                    top = Math.max(minTop, Math.min(top, maxTop));
                     
                     // Apply position using transform for better performance
                     this.toolbar.style.left = left + 'px';
