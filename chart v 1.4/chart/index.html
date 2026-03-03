@@ -7395,10 +7395,13 @@
             box-sizing: border-box;
         }
         .interval-slider-labels-row .tick-label {
+            display: flex;
+            align-items: center;
+            height: 12px;
             font-size: 10px;
             color: #787b86;
             text-align: left;
-            line-height: 1;
+            line-height: 12px;
         }
         .interval-slider-labels-row .tick-label.active {
             color: #6366f1;
@@ -24758,9 +24761,24 @@ function showIndicatorsMenu() {
                         return Math.max(1, cloneIntervals.length - 1);
                     }
 
-                    function getCloneIntervalIndexFromY(clientY) {
+                    function getCloneIntervalTrackMetrics() {
                         const rect = intervalCloneTrack.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+                        const thumbSize = intervalCloneThumb.offsetHeight || 12;
+                        const halfThumb = thumbSize / 2;
+                        const usable = Math.max(1, (rect.height || intervalCloneTrack.clientHeight || 1) - thumbSize);
+                        return { rect, halfThumb, usable };
+                    }
+
+                    function getCloneIntervalThumbTop(index) {
+                        const maxIdx = cloneIntervalMaxIndex();
+                        const clamped = Math.max(0, Math.min(maxIdx, Number(index) || 0));
+                        const metrics = getCloneIntervalTrackMetrics();
+                        return metrics.halfThumb + ((clamped / maxIdx) * metrics.usable);
+                    }
+
+                    function getCloneIntervalIndexFromY(clientY) {
+                        const metrics = getCloneIntervalTrackMetrics();
+                        const pct = Math.max(0, Math.min(1, (clientY - metrics.rect.top - metrics.halfThumb) / metrics.usable));
                         return pct * cloneIntervalMaxIndex();
                     }
 
@@ -24772,7 +24790,10 @@ function showIndicatorsMenu() {
                     }
 
                     function updateCloneIntervalSliderPosition(index, animate) {
-                        const pct = (index / cloneIntervalMaxIndex()) * 100;
+                        const maxIdx = cloneIntervalMaxIndex();
+                        const clamped = Math.max(0, Math.min(maxIdx, Number(index) || 0));
+                        const pct = (clamped / maxIdx) * 100;
+                        const topPx = getCloneIntervalThumbTop(clamped);
                         if (animate) {
                             intervalCloneThumb.style.transition = cloneIntervalThumbTransition;
                             intervalCloneFill.style.transition = cloneIntervalFillTransition;
@@ -24780,7 +24801,7 @@ function showIndicatorsMenu() {
                             intervalCloneThumb.style.transition = 'none';
                             intervalCloneFill.style.transition = 'none';
                         }
-                        intervalCloneThumb.style.top = pct + '%';
+                        intervalCloneThumb.style.top = topPx + 'px';
                         intervalCloneFill.style.height = pct + '%';
                         if (!animate) {
                             intervalCloneThumb.offsetHeight; // Force reflow
@@ -27573,7 +27594,10 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
         // ── Apply an interval by index ───────────────────────────────
         function updateSliderPosition(index, animate) {
             var maxIdx = Math.max(1, activeIntervals.length - 1);
-            var pct = (index / maxIdx) * 100;
+            var clamped = Math.max(0, Math.min(maxIdx, Number(index) || 0));
+            var metrics = getSliderTrackMetrics();
+            var pct = (clamped / maxIdx) * 100;
+            var topPx = metrics.halfThumb + ((clamped / maxIdx) * metrics.usable);
             if (animate) {
                 sliderThumb.style.transition = intervalThumbSlideTransition;
                 sliderFill.style.transition  = intervalFillSlideTransition;
@@ -27581,13 +27605,21 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
                 sliderThumb.style.transition = 'none';
                 sliderFill.style.transition  = 'none';
             }
-            sliderThumb.style.top = pct + '%';
+            sliderThumb.style.top = topPx + 'px';
             sliderFill.style.height = pct + '%';
             if (!animate) {
                 sliderThumb.offsetHeight; // force reflow
                 sliderThumb.style.transition = intervalThumbSlideTransition;
                 sliderFill.style.transition  = intervalFillSlideTransition;
             }
+        }
+
+        function getSliderTrackMetrics() {
+            var rect = sliderTrack.getBoundingClientRect();
+            var thumbSize = sliderThumb.offsetHeight || 12;
+            var halfThumb = thumbSize / 2;
+            var usable = Math.max(1, (rect.height || sliderTrack.clientHeight || 1) - thumbSize);
+            return { rect: rect, halfThumb: halfThumb, usable: usable };
         }
 
         function setByIndex(index, skipSave) {
@@ -27639,8 +27671,8 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 
         // ── Drag logic (identical to speed slider) ───────────────────
         function getIndexFromPosition(clientY) {
-            var rect = sliderTrack.getBoundingClientRect();
-            var pct  = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+            var metrics = getSliderTrackMetrics();
+            var pct  = Math.max(0, Math.min(1, (clientY - metrics.rect.top - metrics.halfThumb) / metrics.usable));
             return pct * Math.max(1, activeIntervals.length - 1);
         }
 
@@ -27661,12 +27693,9 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
             if (!isDragging) return;
             var rawIdx     = getIndexFromPosition(e.clientY);
             var snapped    = Math.round(rawIdx);
-            var maxIdx     = Math.max(1, activeIntervals.length - 1);
-            var pct        = (snapped / maxIdx) * 100;
             sliderThumb.style.transition = 'transform 0.1s, box-shadow 0.15s';
             sliderFill.style.transition  = 'none';
-            sliderThumb.style.top = pct + '%';
-            sliderFill.style.height = pct + '%';
+            updateSliderPosition(snapped, false);
             if (snapped !== currentIndex) {
                 currentIndex = snapped;
                 if (activeIntervals[snapped]) {
