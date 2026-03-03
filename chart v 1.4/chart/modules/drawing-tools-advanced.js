@@ -235,12 +235,32 @@ class DatePriceRangeTool extends BaseDrawing {
 
     getTickSize(scales) {
         const chart = scales?.chart || this.chart;
-        const ts = chart?.priceScale?.tickSize;
-        if (typeof ts === 'number' && isFinite(ts) && ts > 0 && ts !== 0.01) return ts;
-        const decimals = this.getPriceDecimals(scales);
-        if (typeof decimals === 'number' && isFinite(decimals) && decimals >= 0) {
+        const marketPipSize = Number(chart?.orderManager?.pipSize);
+        if (isFinite(marketPipSize) && marketPipSize > 0) return marketPipSize;
+
+        let savedPipSize = NaN;
+        if (typeof localStorage !== 'undefined') {
+            savedPipSize = Number(localStorage.getItem('chart_pipSize'));
+        }
+        if (isFinite(savedPipSize) && savedPipSize > 0) return savedPipSize;
+
+        const ts = Number(chart?.priceScale?.tickSize);
+        if (isFinite(ts) && ts > 0) return ts;
+
+        const decimals = Number(chart?.priceDecimals);
+        if (isFinite(decimals) && decimals >= 0) {
             return Math.pow(10, -decimals);
         }
+
+        if (typeof chart?.getPriceDecimals === 'function' && chart?.yScale) {
+            const d = chart.yScale.domain();
+            const range = (Array.isArray(d) && d.length === 2) ? Math.abs(d[1] - d[0]) : 0;
+            const autoDecimals = chart.getPriceDecimals(range);
+            if (typeof autoDecimals === 'number' && isFinite(autoDecimals) && autoDecimals >= 0) {
+                return Math.pow(10, -autoDecimals);
+            }
+        }
+
         return 0.0001;
     }
 

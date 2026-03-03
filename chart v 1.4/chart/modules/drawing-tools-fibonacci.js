@@ -115,7 +115,7 @@ class FibonacciRetracementTool extends BaseDrawing {
 
         const reverse = !!this.style.reverse;
         const showPrices = this.style.showPrices !== false;
-        const levelsEnabled = this.style.levelsEnabled !== false;
+        const showLevelValues = this.style.levelsEnabled !== false;
         const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
         const zonesEnabled = !!this.style.showZones;
         const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
@@ -159,8 +159,6 @@ class FibonacciRetracementTool extends BaseDrawing {
                     .style('pointer-events', 'none');
             }
 
-            if (!levelsEnabled) continue;
-
             const levelDash = (globalLevelsDash !== null) ? globalLevelsDash : ((level.lineType != null) ? `${level.lineType}` : (level.value === 0 || level.value === 1 ? '' : '4,3'));
             const baseLevelWidth = (globalLevelsWidth !== null) ? globalLevelsWidth : ((level.lineWidth != null && !isNaN(parseInt(level.lineWidth))) ? parseInt(level.lineWidth) : baseLevelStrokeWidth);
             const scaledLevelWidth = Math.max(0.5, baseLevelWidth * scaleFactor);
@@ -194,6 +192,8 @@ class FibonacciRetracementTool extends BaseDrawing {
                 .attr('stroke-dasharray', levelDash)
                 .attr('opacity', 0.85)
                 .style('pointer-events', 'stroke');
+
+            if (!showLevelValues) continue;
 
             // Draw level label
             const baseText = formatLevelText(level);
@@ -369,7 +369,7 @@ class FibonacciExtensionTool extends BaseDrawing {
 
         const reverse = !!this.style.reverse;
         const showPrices = this.style.showPrices !== false;
-        const levelsEnabled = this.style.levelsEnabled !== false;
+        const showLevelValues = this.style.levelsEnabled !== false;
         const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
         const zonesEnabled = !!this.style.showZones;
         const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
@@ -412,8 +412,6 @@ class FibonacciExtensionTool extends BaseDrawing {
                     .style('pointer-events', 'none');
             }
 
-            if (!levelsEnabled) continue;
-
             const levelDash = (globalLevelsDash !== null) ? globalLevelsDash : ((level.lineType != null) ? `${level.lineType}` : (level.value === 0 || level.value === 1 ? '' : '4,3'));
             const baseLevelWidth = (globalLevelsWidth !== null) ? globalLevelsWidth : ((level.lineWidth != null && !isNaN(parseInt(level.lineWidth))) ? parseInt(level.lineWidth) : baseLevelStrokeWidth);
             const scaledLevelWidth = Math.max(0.5, baseLevelWidth * scaleFactor);
@@ -446,6 +444,8 @@ class FibonacciExtensionTool extends BaseDrawing {
                 .attr('stroke-dasharray', levelDash)
                 .attr('opacity', 0.85)
                 .style('pointer-events', 'stroke');
+
+            if (!showLevelValues) continue;
 
             // Draw level label
             const baseText = formatLevelText(level);

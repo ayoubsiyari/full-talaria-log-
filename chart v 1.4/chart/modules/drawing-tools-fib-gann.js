@@ -74,7 +74,7 @@ class FibChannelTool extends BaseDrawing {
         const zonesEnabled = !!this.style.showZones;
         const reverse = !!this.style.reverse;
         const showPrices = this.style.showPrices !== false;
-        const levelsEnabled = this.style.levelsEnabled !== false;
+        const showLevelValues = this.style.levelsEnabled !== false;
         const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
         const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
         const xRange = scales.xScale.range();
@@ -197,7 +197,7 @@ class FibChannelTool extends BaseDrawing {
                 }
             }
 
-            if (levelsEnabled) this.levels.forEach(levelObj => {
+            this.levels.forEach(levelObj => {
                 const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
                 const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
                 const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
@@ -257,6 +257,7 @@ class FibChannelTool extends BaseDrawing {
                     const p = scales.yScale.invert(seg.y2);
                     if (isFinite(p)) priceText = ` (${p.toFixed(priceDecimals)})`;
                 }
+                if (!showLevelValues) return;
                 const labelText = `${baseLabel}${priceText}`;
 
                 this.group.append('text')
@@ -3355,7 +3356,7 @@ class TrendFibExtensionTool extends BaseDrawing {
 
             const reverse = !!this.style.reverse;
             const showPrices = this.style.showPrices !== false;
-            const levelsEnabled = this.style.levelsEnabled !== false;
+            const showLevelValues = this.style.levelsEnabled !== false;
             const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
             const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
 
@@ -3452,7 +3453,7 @@ class TrendFibExtensionTool extends BaseDrawing {
 
             // Draw extension levels projecting from point 3
             // Extension projects in the SAME direction as the first leg (A→B)
-            if (levelsEnabled) this.levels.forEach(levelObj => {
+            this.levels.forEach(levelObj => {
                 const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
                 const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
                 const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
@@ -3506,6 +3507,7 @@ class TrendFibExtensionTool extends BaseDrawing {
                     }
                     return `${level}`;
                 })();
+                if (!showLevelValues) return;
                 const labelText = showPrices ? `${levelLabel} (${priceAtLevel.toFixed(priceDecimals)})` : `${levelLabel}`;
                 
                 this.group.append('text')
