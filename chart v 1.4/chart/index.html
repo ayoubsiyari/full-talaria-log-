@@ -10597,7 +10597,11 @@
         /* Allow active state on visibility dropdown items */
         #visibility-toolbar-dropdown .tool-btn.active {
             background: rgba(47, 114, 255, 0.25) !important;
-            color: #ffffff !important;
+            color: #2962ff !important;
+        }
+
+        #visibility-toolbar-dropdown .tool-btn.active > svg:first-child {
+            opacity: 1 !important;
         }
         
         /* Allow active state on delete dropdown items */
@@ -10625,6 +10629,14 @@
             display: none !important;
             visibility: hidden !important;
             opacity: 0 !important;
+        }
+
+        #toggleAllDrawingsToolbar.visibility-selected {
+            color: #2962ff !important;
+        }
+
+        #toggleAllDrawingsToolbar.visibility-selected svg {
+            color: inherit !important;
         }
 
         .tool-dropdown-grid .tool-btn > svg:first-child {
@@ -19363,7 +19375,7 @@
     <script src="modules/favorites-manager.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/keyboard-shortcuts.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/panel-manager.js?v=20260302_TF_PIN_V15"></script>
-    <script src="modules/timeframe-favorites.js?v=20260228_TF_PIN_V12"></script>
+    <script src="modules/timeframe-favorites.js?v=20260303_TF_PIN_V13"></script>
     <script src="modules/propfirm-tracker.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/compare-overlay.js?v=20260228_TF_PIN_V12"></script>
     
@@ -20519,6 +20531,8 @@
                             if (selectedTooltip) {
                                 visibilityMainBtn.setAttribute('data-tooltip', selectedTooltip);
                             }
+
+                            visibilityMainBtn.classList.add('visibility-selected');
                         }
 
                         dropdown.querySelectorAll('.tool-btn').forEach(vb => vb.classList.remove('active'));

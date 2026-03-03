@@ -5,6 +5,7 @@ class TimeframeFavorites {
     constructor(chart) {
         this.chart = chart;
         this.favorites = this.loadFavorites();
+        this.customTimeframes = this.loadCustomTimeframes();
         this.currentTimeframe = chart.currentTimeframe || '1m';
         
         // Initialize UI
@@ -21,15 +22,25 @@ class TimeframeFavorites {
      */
     loadFavorites() {
         try {
+            if (typeof window !== 'undefined' && typeof window.loadTimeframeFavorites === 'function') {
+                const synced = window.loadTimeframeFavorites();
+                if (Array.isArray(synced) && synced.length > 0) {
+                    return this.normalizeTimeframeList(synced);
+                }
+            }
+
             const saved = localStorage.getItem('chart_timeframe_favorites');
             if (saved) {
-                return JSON.parse(saved);
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return this.normalizeTimeframeList(parsed);
+                }
             }
         } catch (e) {
             console.error('Failed to load timeframe favorites:', e);
         }
         // Default favorites: 1m, 5m, 15m, 1h
-        return ['1m', '5m', '15m', '1h'];
+        return this.normalizeTimeframeList(['1m', '5m', '15m', '1h']);
     }
 
     /**
@@ -37,17 +48,224 @@ class TimeframeFavorites {
      */
     saveFavorites() {
         try {
+            this.favorites = this.normalizeTimeframeList(this.favorites);
             localStorage.setItem('chart_timeframe_favorites', JSON.stringify(this.favorites));
+
+            if (typeof window !== 'undefined' && typeof window.saveTimeframeFavorites === 'function') {
+                window.saveTimeframeFavorites(this.favorites);
+            }
         } catch (e) {
             console.error('Failed to save timeframe favorites:', e);
         }
+    }
+
+    getMaxFavorites() {
+        return 10;
+    }
+
+    getDefaultTimeframes() {
+        return ['1m', '2m', '3m', '4m', '5m', '10m', '15m', '30m', '45m', '1h', '2h', '4h', '6h', '12h', '1d', '1w', '1mo'];
+    }
+
+    normalizeTimeframe(timeframe) {
+        if (timeframe === null || timeframe === undefined) return null;
+        const tf = String(timeframe).toLowerCase().trim();
+        const match = tf.match(/^(\d+)(m|h|d|w|mo)$/);
+        if (!match) return null;
+
+        const value = parseInt(match[1], 10);
+        const unit = match[2];
+        if (!Number.isFinite(value) || value < 1) return null;
+
+        return `${value}${unit}`;
+    }
+
+    normalizeTimeframeList(timeframes) {
+        if (!Array.isArray(timeframes)) return [];
+        const normalized = [];
+        const seen = new Set();
+
+        timeframes.forEach((tf) => {
+            const clean = this.normalizeTimeframe(tf);
+            if (!clean || seen.has(clean)) return;
+            seen.add(clean);
+            normalized.push(clean);
+        });
+
+        return normalized;
+    }
+
+    isBuiltInTimeframe(timeframe) {
+        const tf = this.normalizeTimeframe(timeframe);
+        if (!tf) return false;
+        return this.getDefaultTimeframes().includes(tf);
+    }
+
+    getTimeframeUnit(timeframe) {
+        const tf = this.normalizeTimeframe(timeframe);
+        if (!tf) return null;
+        const match = tf.match(/^\d+(m|h|d|w|mo)$/);
+        return match ? match[1] : null;
+    }
+
+    loadCustomTimeframes() {
+        try {
+            const saved = localStorage.getItem('chart_custom_timeframes');
+            const parsed = saved ? JSON.parse(saved) : [];
+            const fromFavorites = (this.favorites || []).filter(tf => !this.isBuiltInTimeframe(tf));
+
+            return this.normalizeTimeframeList([...(Array.isArray(parsed) ? parsed : []), ...fromFavorites])
+                .filter(tf => !this.isBuiltInTimeframe(tf));
+        } catch (e) {
+            console.error('Failed to load custom timeframes:', e);
+            return [];
+        }
+    }
+
+    saveCustomTimeframes() {
+        try {
+            this.customTimeframes = this.normalizeTimeframeList(this.customTimeframes)
+                .filter(tf => !this.isBuiltInTimeframe(tf));
+            localStorage.setItem('chart_custom_timeframes', JSON.stringify(this.customTimeframes));
+        } catch (e) {
+            console.error('Failed to save custom timeframes:', e);
+        }
+    }
+
+    createTimeframeStarIcon(isActive = false) {
+        const star = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        star.setAttribute('class', `timeframe-dropdown-item-star${isActive ? ' active' : ''}`);
+        star.setAttribute('viewBox', '0 0 24 24');
+        star.setAttribute('fill', 'none');
+        star.setAttribute('stroke', 'currentColor');
+        star.setAttribute('stroke-width', '1.5');
+
+        const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p1.setAttribute('d', 'M12 17v5');
+        const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p2.setAttribute('d', 'M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z');
+        star.appendChild(p1);
+        star.appendChild(p2);
+
+        return star;
+    }
+
+    renderCustomTimeframesInDropdown() {
+        const menu = document.getElementById('timeframeDropdownMenu');
+        if (!menu) return;
+
+        menu.querySelectorAll('.timeframe-dropdown-item.custom-timeframe-item').forEach(item => item.remove());
+
+        const sortedCustom = [...this.customTimeframes].sort((a, b) => this.timeframeToMinutes(a) - this.timeframeToMinutes(b));
+        sortedCustom.forEach((timeframe) => {
+            const unit = this.getTimeframeUnit(timeframe);
+            if (!unit) return;
+
+            const sectionKey = unit === 'm' ? 'minutes' : (unit === 'h' ? 'hours' : 'days');
+            const section = menu.querySelector(`.timeframe-dropdown-section[data-section="${sectionKey}"]`);
+            if (!section) return;
+
+            const target = sectionKey === 'minutes'
+                ? section
+                : (section.querySelector('.timeframe-dropdown-section-content') || section);
+
+            const item = document.createElement('div');
+            item.className = 'timeframe-dropdown-item custom-timeframe-item';
+            item.dataset.timeframe = timeframe;
+
+            const label = document.createElement('span');
+            label.textContent = this.getTimeframeFullName(timeframe);
+            item.appendChild(label);
+            item.appendChild(this.createTimeframeStarIcon(this.isFavorite(timeframe)));
+
+            target.appendChild(item);
+        });
+    }
+
+    addCustomTimeframe(timeframe, { autoFavorite = false } = {}) {
+        const normalized = this.normalizeTimeframe(timeframe);
+        if (!normalized) return null;
+
+        let customChanged = false;
+        let favoritesChanged = false;
+
+        if (!this.isBuiltInTimeframe(normalized) && !this.customTimeframes.includes(normalized)) {
+            this.customTimeframes.push(normalized);
+            this.saveCustomTimeframes();
+            customChanged = true;
+        }
+
+        if (autoFavorite && !this.isFavorite(normalized)) {
+            if (this.favorites.length < this.getMaxFavorites()) {
+                this.favorites.push(normalized);
+                this.saveFavorites();
+                favoritesChanged = true;
+            } else {
+                console.warn(`Maximum ${this.getMaxFavorites()} timeframes allowed`);
+            }
+        }
+
+        if (customChanged) {
+            this.renderCustomTimeframesInDropdown();
+        }
+
+        if (favoritesChanged) {
+            this.updateUI();
+        }
+
+        return normalized;
+    }
+
+    getTimeframeCategories() {
+        const categories = [
+            {
+                label: 'Minutes',
+                units: ['m'],
+                values: ['1m', '2m', '3m', '4m', '5m', '10m', '15m', '30m', '45m']
+            },
+            {
+                label: 'Hours',
+                units: ['h'],
+                values: ['1h', '2h', '4h', '6h', '12h']
+            },
+            {
+                label: 'Days',
+                units: ['d', 'w', 'mo'],
+                values: ['1d', '1w', '1mo']
+            }
+        ];
+
+        return categories.map((category) => {
+            const customValues = this.customTimeframes.filter((tf) => {
+                const unit = this.getTimeframeUnit(tf);
+                return unit && category.units.includes(unit);
+            });
+
+            const mergedValues = [...new Set([...category.values, ...customValues])]
+                .sort((a, b) => this.timeframeToMinutes(a) - this.timeframeToMinutes(b));
+
+            return {
+                label: category.label,
+                values: mergedValues
+            };
+        });
     }
 
     /**
      * Toggle favorite status of a timeframe
      */
     toggleFavorite(timeframe) {
-        const MAX_FAVORITES = 10;
+        const MAX_FAVORITES = this.getMaxFavorites();
+        const normalizedTimeframe = this.normalizeTimeframe(timeframe);
+        if (!normalizedTimeframe) return;
+        timeframe = normalizedTimeframe;
+
+        if (!this.isBuiltInTimeframe(timeframe) && !this.customTimeframes.includes(timeframe)) {
+            this.customTimeframes.push(timeframe);
+            this.saveCustomTimeframes();
+            this.renderCustomTimeframesInDropdown();
+        }
+
         const index = this.favorites.indexOf(timeframe);
         if (index > -1) {
             // Remove from favorites
@@ -237,32 +455,26 @@ class TimeframeFavorites {
             });
         });
 
-        // Handle timeframe item clicks
-        const items = menu.querySelectorAll('.timeframe-dropdown-item:not(.timeframe-custom-btn)');
-        items.forEach(item => {
-            const timeframe = item.dataset.timeframe;
-            
-            // Click on item text to select timeframe
-            item.addEventListener('click', (e) => {
-                if (e.target.closest('.timeframe-dropdown-item-star')) {
-                    // Clicked on star, toggle favorite
-                    this.toggleFavorite(timeframe);
-                } else {
-                    // Clicked on item, select timeframe
-                    this.selectTimeframe(timeframe);
-                    menu.style.display = 'none';
-                    dropdown.classList.remove('open');
-                }
-            });
+        // Render persisted custom timeframes inside minutes/hours/days sections
+        this.renderCustomTimeframesInDropdown();
 
-            // Star icon click
-            const star = item.querySelector('.timeframe-dropdown-item-star');
-            if (star) {
-                star.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.toggleFavorite(timeframe);
-                });
+        // Handle timeframe item clicks (event delegation supports dynamic custom rows)
+        menu.addEventListener('click', (e) => {
+            const item = e.target.closest('.timeframe-dropdown-item:not(.timeframe-custom-btn)');
+            if (!item || !menu.contains(item)) return;
+
+            const timeframe = this.normalizeTimeframe(item.dataset.timeframe);
+            if (!timeframe) return;
+
+            if (e.target.closest('.timeframe-dropdown-item-star')) {
+                e.stopPropagation();
+                this.toggleFavorite(timeframe);
+                return;
             }
+
+            this.selectTimeframe(timeframe);
+            menu.style.display = 'none';
+            if (dropdown) dropdown.classList.remove('open');
         });
 
         // Initialize custom timeframe modal
@@ -324,11 +536,22 @@ class TimeframeFavorites {
             }
 
             // Build timeframe string (e.g., "7m", "2h", "3d")
-            const timeframe = `${value}${unit}`;
+            const timeframe = this.normalizeTimeframe(`${value}${unit}`);
+            if (!timeframe) {
+                valueInput.focus();
+                valueInput.style.borderColor = '#f23645';
+                setTimeout(() => {
+                    valueInput.style.borderColor = '';
+                }, 1500);
+                return;
+            }
             console.log('⌚ Custom timeframe:', timeframe);
 
             // Close modal
             modal.classList.remove('open');
+
+            // Persist it with other timeframes and add to favorites
+            this.addCustomTimeframe(timeframe, { autoFavorite: true });
 
             // Select the custom timeframe
             this.selectTimeframe(timeframe);
@@ -366,6 +589,19 @@ class TimeframeFavorites {
      * Select a timeframe
      */
     selectTimeframe(timeframe) {
+        const normalizedTimeframe = this.normalizeTimeframe(timeframe);
+        if (!normalizedTimeframe) {
+            console.warn('Invalid timeframe:', timeframe);
+            return;
+        }
+        timeframe = normalizedTimeframe;
+
+        if (!this.isBuiltInTimeframe(timeframe) && !this.customTimeframes.includes(timeframe)) {
+            this.customTimeframes.push(timeframe);
+            this.saveCustomTimeframes();
+            this.renderCustomTimeframesInDropdown();
+        }
+
         this.currentTimeframe = timeframe;
         
         // Update label
@@ -466,6 +702,9 @@ class TimeframeFavorites {
     updateUI() {
         // Update favorite buttons in toolbar
         this.renderFavoriteButtons();
+
+        // Keep dropdown sections in sync with persisted custom timeframes
+        this.renderCustomTimeframesInDropdown();
 
         // Update star icons in dropdown
         const items = document.querySelectorAll('.timeframe-dropdown-item');
@@ -573,20 +812,7 @@ class TimeframeFavorites {
         const chartTypeArrow = document.getElementById('chartTypeDropdownArrow');
         if (chartTypeArrow) chartTypeArrow.classList.remove('dropdown-open');
 
-        const TF_CATEGORIES = [
-            {
-                label: 'Minutes',
-                values: ['1m','2m','3m','4m','5m','10m','15m','30m','45m']
-            },
-            {
-                label: 'Hours',
-                values: ['1h','2h','4h','6h','12h']
-            },
-            {
-                label: 'Days',
-                values: ['1d','1w','1mo']
-            }
-        ];
+        const TF_CATEGORIES = this.getTimeframeCategories();
 
         // Build flyout DOM
         const flyout = document.createElement('div');
