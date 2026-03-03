@@ -1471,9 +1471,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     ? lineY - labelHeight - offset
                     : lineY + offset;
                 const centeredRectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
-                const rightSnappedRectX = zoneX2 + edgeSnapGap;
-
-                const rectX = hasInnerSpace ? rightSnappedRectX : centeredRectX;
+                const rectX = centeredRectX;
 
                 labelGroup.insert('rect', 'text')
                     .attr('x', rectX)
