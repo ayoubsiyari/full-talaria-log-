@@ -5457,88 +5457,86 @@ body.light-mode .template-save-dialog .dialog-title {
      * Build Position Tool specific Style Tab
      */
     buildPositionStyleTab(container, drawing) {
-        // Zone Colors Section
         const colorsSection = document.createElement('div');
         colorsSection.style.cssText = 'margin-bottom: 20px;';
-        colorsSection.innerHTML = `
-            <div style="color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;">Zone Colors</div>
+
+        const sectionHeader = document.createElement('div');
+        sectionHeader.style.cssText = 'color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;';
+        sectionHeader.textContent = 'Zone Colors';
+        colorsSection.appendChild(sectionHeader);
+
+        const controlsColumnWidth = 180;
+        const createStyleRow = (labelText) => {
+            const row = document.createElement('div');
+            row.className = 'tv-prop-row';
+            row.style.cssText = 'display: flex; align-items: center; gap: 12px; min-height: 30px; padding: 0;';
+
+            const label = document.createElement('span');
+            label.className = 'tv-prop-label';
+            label.style.cssText = 'min-width: 0; flex: 1;';
+            label.textContent = labelText;
+            row.appendChild(label);
+
+            const controls = document.createElement('div');
+            controls.className = 'tv-prop-controls';
+            controls.style.cssText = `margin-left: auto; width: ${controlsColumnWidth}px; min-height: 30px; display: flex; align-items: center; justify-content: center;`;
+            row.appendChild(controls);
+
+            colorsSection.appendChild(row);
+            return { row, label, controls };
+        };
+
+        const profitRow = createStyleRow('Profit Zone');
+        profitRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="rewardColor" style="background: ${drawing.style.rewardColor || 'rgba(8, 153, 129, 0.25)'};"></button>
         `;
-        
-        // Profit Zone Color
-        const profitRow = document.createElement('div');
-        profitRow.className = 'tv-prop-row';
-        profitRow.innerHTML = `
-            <span class="tv-checkbox-label">Profit Zone</span>
-            <div class="tv-prop-controls" style="margin-left: auto;">
-                <button class="tv-color-btn" data-prop="rewardColor" style="background: ${drawing.style.rewardColor || 'rgba(8, 153, 129, 0.25)'};"></button>
-            </div>
+
+        const lossRow = createStyleRow('Loss Zone');
+        lossRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="riskColor" style="background: ${drawing.style.riskColor || 'rgba(242, 54, 69, 0.25)'};"></button>
         `;
-        colorsSection.appendChild(profitRow);
-        
-        // Loss Zone Color
-        const lossRow = document.createElement('div');
-        lossRow.className = 'tv-prop-row';
-        lossRow.innerHTML = `
-            <span class="tv-checkbox-label">Loss Zone</span>
-            <div class="tv-prop-controls" style="margin-left: auto;">
-                <button class="tv-color-btn" data-prop="riskColor" style="background: ${drawing.style.riskColor || 'rgba(242, 54, 69, 0.25)'};"></button>
-            </div>
+
+        const entryRow = createStyleRow('Entry Line');
+        entryRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="entryColor" style="background: ${drawing.style.entryColor || '#787b86'};"></button>
         `;
-        colorsSection.appendChild(lossRow);
-        
-        // Entry Line Color
-        const entryRow = document.createElement('div');
-        entryRow.className = 'tv-prop-row';
-        entryRow.innerHTML = `
-            <span class="tv-checkbox-label">Entry Line</span>
-            <div class="tv-prop-controls" style="margin-left: auto;">
-                <button class="tv-color-btn" data-prop="entryColor" style="background: ${drawing.style.entryColor || '#787b86'};"></button>
-            </div>
-        `;
-        colorsSection.appendChild(entryRow);
 
         const labelSize = parseInt(drawing.style.fontSize || drawing.style.labelFontSize || 11);
-        const labelRow = document.createElement('div');
-        labelRow.className = 'tv-prop-row';
-        labelRow.innerHTML = `
-            <span class="tv-checkbox-label">Label Text</span>
-            <div class="tv-prop-controls" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-                <select class="tv-select" data-prop="fontSize" style="min-width: 70px;">
-                    ${[8,9,10,11,12,14,16,18,20,24].map(s => `<option value="${s}" ${labelSize === s ? 'selected' : ''}>${s}</option>`).join('')}
-                </select>
-                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || drawing.style.labelTextColor || '#ffffff'};"></button>
-
-            </div>
+        const labelRow = createStyleRow('Label Text');
+        labelRow.controls.style.gap = '8px';
+        labelRow.controls.innerHTML = `
+            <select class="tv-select" data-prop="fontSize" style="width: 92px; min-width: 92px;">
+                ${[8,9,10,11,12,14,16,18,20,24].map(s => `<option value="${s}" ${labelSize === s ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
+            <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || drawing.style.labelTextColor || '#ffffff'};"></button>
         `;
-        colorsSection.appendChild(labelRow);
 
         const priceLabelChecked = drawing.style.showPriceLabel !== false;
         const timeLabelChecked = drawing.style.showTimeLabel !== false;
-        const axisLabelRow = document.createElement('div');
-        axisLabelRow.className = 'tv-prop-row';
-        axisLabelRow.style.cssText = 'margin-top: 2px; align-items: center;';
-        axisLabelRow.innerHTML = `
-            <span class="tv-checkbox-label">Axis Labels</span>
-            <div class="tv-prop-controls" style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;">
-                <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-prop="showPriceLabel">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                            <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                    </div>
-                    <span class="tv-checkbox-label" style="white-space: nowrap;">Price labels</span>
+        const axisLabelRow = createStyleRow('Axis Labels');
+        axisLabelRow.row.style.marginTop = '2px';
+        axisLabelRow.controls.style.flexDirection = 'column';
+        axisLabelRow.controls.style.alignItems = 'flex-start';
+        axisLabelRow.controls.style.justifyContent = 'center';
+        axisLabelRow.controls.style.gap = '8px';
+        axisLabelRow.controls.innerHTML = `
+            <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
+                <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-prop="showPriceLabel">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
                 </div>
-                <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <div class="tv-checkbox ${timeLabelChecked ? 'checked' : ''}" data-prop="showTimeLabel">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                            <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                    </div>
-                    <span class="tv-checkbox-label" style="white-space: nowrap;">Time labels</span>
+                <span class="tv-checkbox-label" style="white-space: nowrap;">Price labels</span>
+            </div>
+            <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
+                <div class="tv-checkbox ${timeLabelChecked ? 'checked' : ''}" data-prop="showTimeLabel">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
                 </div>
+                <span class="tv-checkbox-label" style="white-space: nowrap;">Time labels</span>
             </div>
         `;
-        colorsSection.appendChild(axisLabelRow);
         container.appendChild(colorsSection);
 
         // Risk inputs and live metrics are now handled in the Inputs tab.
