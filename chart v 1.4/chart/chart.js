@@ -9083,6 +9083,9 @@ class Chart {
         }
 
         const labelIntervalMs   = labelInterval * timeframeMs;
+        const tickAlignmentBaseTs = this.data[0] && Number.isFinite(this.data[0].t)
+            ? this.data[0].t
+            : 0;
 
         const scanFrom = Math.max(0, Math.floor(Math.max(0, firstVisibleIdx)));
         const scanTo   = Math.min(this.data.length - 1, Math.ceil(lastVisibleIdx));
@@ -9111,11 +9114,12 @@ class Chart {
             if (isCalendarTf) {
                 isRound = (idx - scanFrom) % Math.max(1, labelInterval) === 0;
             } else {
-                // Use absolute (timezone-adjusted) timestamp alignment so custom
-                // intervals that do not divide a day (e.g., 13m) stay consistent
-                // across midnight boundaries.
-                const tzAlignedTs = tzDate.getTime();
-                isRound = labelIntervalMs > 0 && tzAlignedTs % labelIntervalMs === 0;
+                // Keep intraday cadence deterministic without depending on timezone offset.
+                // This prevents custom intervals like 13m from losing all round ticks
+                // in non-divisible timezones.
+                const deltaFromBase = candle.t - tickAlignmentBaseTs;
+                isRound = labelIntervalMs > 0 && Number.isFinite(deltaFromBase)
+                    && deltaFromBase % labelIntervalMs === 0;
             }
 
             const hasBoundary = isBoundary && !!boundaryLabel;
@@ -9141,10 +9145,10 @@ class Chart {
         const lastRealIdx = this.data.length - 1;
         if (this.data.length > 0 && !isCalendarTf && labelIntervalMs > 0 && lastVisibleIdx > lastRealIdx) {
             const last = this.data[this.data.length - 1];
-            const ltz  = this.convertToTimezone(last.t);
-            const lastTzTs = ltz.getTime();
-            const nextAlignedTzTs = Math.ceil((lastTzTs + 1) / labelIntervalMs) * labelIntervalMs;
-            let futureIdx = lastRealIdx + Math.ceil((nextAlignedTzTs - lastTzTs) / timeframeMs);
+            const lastTs = last.t;
+            const nextAlignedTs = tickAlignmentBaseTs
+                + Math.ceil((lastTs - tickAlignmentBaseTs + 1) / labelIntervalMs) * labelIntervalMs;
+            let futureIdx = lastRealIdx + Math.ceil((nextAlignedTs - lastTs) / timeframeMs);
             for (; futureIdx <= lastVisibleIdx; futureIdx += labelInterval) {
                 const ri  = Math.round(futureIdx);
                 const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
