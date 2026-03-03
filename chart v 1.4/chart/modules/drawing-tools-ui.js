@@ -190,6 +190,9 @@ class DrawingSettingsPanel {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
     font-size: 12px;
     color: #d1d4dc;
+    --tv-prop-label-width: 170px;
+    --tv-prop-controls-width: 180px;
+    --tv-prop-row-gap: 16px;
 }
 
 .tv-settings-modal.compact {
@@ -384,11 +387,19 @@ class DrawingSettingsPanel {
 
 /* Property Row with Checkbox */
 .tv-prop-row {
-    display: grid;
-    grid-template-columns: 90px auto;
+    display: flex;
     align-items: center;
-    padding: 9px 0;
-    column-gap: 9px;
+    gap: var(--tv-prop-row-gap);
+    min-height: 46px;
+    padding: 0;
+}
+
+.tv-prop-row > .tv-prop-label,
+.tv-prop-row > .tv-checkbox-label,
+.tv-prop-row:not(.fib-level-row) > .tv-checkbox-wrapper:first-child:not(:only-child) {
+    min-width: 0;
+    width: var(--tv-prop-label-width);
+    flex: 0 0 var(--tv-prop-label-width);
 }
 
 .tv-prop-row:last-child {
@@ -457,39 +468,59 @@ class DrawingSettingsPanel {
 
 /* Controls Header */
 .tv-controls-header {
-    display: grid;
-    grid-template-columns: 90px auto;
-    gap: 9px;
+    display: flex;
+    align-items: center;
+    gap: var(--tv-prop-row-gap);
     color: #787b86;
     font-size: 10px;
-    align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+}
+
+.tv-controls-header > span:first-child,
+.tv-controls-header > .tv-checkbox-label:first-child {
+    min-width: 0;
+    width: var(--tv-prop-label-width);
+    flex: 0 0 var(--tv-prop-label-width);
 }
 
 .tv-controls-header-labels {
+    width: var(--tv-prop-controls-width);
+    min-height: 34px;
     display: flex;
-    gap: 38px;
+    gap: 8px;
     align-items: center;
-    
+    justify-content: flex-start;
 }
 
 .tv-controls-header-labels span {
-    text-align: center;
+    text-align: left;
     cursor: default;
     user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
-    min-width: 23px;
-    max-width: 23px;
-    flex-shrink: 0;
+    min-width: 40px;
+    max-width: none;
+    flex: 0 0 40px;
+}
+
+.tv-controls-header-labels span:first-child {
+    min-width: 30px;
+    flex: 0 0 30px;
 }
 
 /* Property Controls */
 .tv-prop-controls {
+    width: var(--tv-prop-controls-width);
+    min-height: 34px;
     display: flex;
-    gap: 9px;
+    gap: 8px;
     align-items: center;
+    justify-content: flex-start;
+}
+
+.tv-prop-row > .tv-prop-controls {
+    margin-left: 0 !important;
 }
 
 /* Color Swatch Button */
@@ -2890,10 +2921,10 @@ body.light-mode .template-save-dialog .dialog-title {
             // Background row
             const bgRow = document.createElement('div');
             bgRow.className = 'tv-prop-row';
-            bgRow.style.cssText = 'display: grid; grid-template-columns: 90px auto; align-items: center; padding: 9px 0; column-gap: 9px; margin-bottom: 8px;';
+            bgRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0; margin-bottom: 8px;';
             bgRow.innerHTML = `
                 <span class="tv-prop-label">Background</span>
-                <div class="tv-prop-controls" style="display: flex; align-items: center; gap: 9px;">
+                <div class="tv-prop-controls" style="width: 180px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
                     <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(41, 98, 255, 0.2)'};"></button>
                 </div>
             `;
@@ -2948,10 +2979,10 @@ body.light-mode .template-save-dialog .dialog-title {
             // Upper background row
             const upperBgRow = document.createElement('div');
             upperBgRow.className = 'tv-prop-row';
-            upperBgRow.style.cssText = 'display: grid; grid-template-columns: 90px auto; align-items: center; padding: 9px 0; column-gap: 9px; margin-bottom: 8px;';
+            upperBgRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0; margin-bottom: 8px;';
             upperBgRow.innerHTML = `
                 <span class="tv-prop-label">Upper Background</span>
-                <div class="tv-prop-controls" style="display: flex; align-items: center; gap: 9px;">
+                <div class="tv-prop-controls" style="width: 180px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
                     <button class="tv-color-btn" data-prop="upperFill" style="background: ${drawing.style.upperFill || 'rgba(156, 39, 176, 0.1)'};"></button>
                 </div>
             `;
@@ -2971,10 +3002,10 @@ body.light-mode .template-save-dialog .dialog-title {
             // Lower background row
             const lowerBgRow = document.createElement('div');
             lowerBgRow.className = 'tv-prop-row';
-            lowerBgRow.style.cssText = 'display: grid; grid-template-columns: 90px auto; align-items: center; padding: 9px 0; column-gap: 9px;';
+            lowerBgRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
             lowerBgRow.innerHTML = `
                 <span class="tv-prop-label">Lower Background</span>
-                <div class="tv-prop-controls" style="display: flex; align-items: center; gap: 9px;">
+                <div class="tv-prop-controls" style="width: 180px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
                     <button class="tv-color-btn" data-prop="lowerFill" style="background: ${drawing.style.lowerFill || 'rgba(156, 39, 176, 0.1)'};"></button>
                 </div>
             `;
@@ -5563,116 +5594,127 @@ body.light-mode .template-save-dialog .dialog-title {
             };
         }
 
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
+
+        const labelColumnWidth = 170;
+        const controlsColumnWidth = 180;
+
+        const createStyleRow = (labelText) => {
+            const row = document.createElement('div');
+            row.className = 'tv-prop-row';
+            row.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
+
+            const label = document.createElement('span');
+            label.className = 'tv-prop-label';
+            label.style.cssText = `min-width: 0; width: ${labelColumnWidth}px; flex: 0 0 ${labelColumnWidth}px;`;
+            label.textContent = labelText;
+            row.appendChild(label);
+
+            const controls = document.createElement('div');
+            controls.className = 'tv-prop-controls';
+            controls.style.cssText = `width: ${controlsColumnWidth}px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;`;
+            row.appendChild(controls);
+
+            section.appendChild(row);
+            return { row, label, controls };
+        };
+
         const lineRow = this.createBrushPropertyRow('Line', {
             color: drawing.style.stroke || '#2962ff',
             lineType: drawing.style.strokeDasharray || '',
             lineWidth: drawing.style.strokeWidth || 2
         }, 'line', drawing);
-        container.appendChild(lineRow);
+        section.appendChild(lineRow);
 
-        const borderRow = document.createElement('div');
-        borderRow.className = 'tv-prop-row';
         const borderEnabled = drawing.style.borderEnabled !== false;
         const borderDash = drawing.style.borderDasharray || '';
         const borderWidth = drawing.style.borderWidth || 1;
-        borderRow.innerHTML = `
-            <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${borderEnabled ? 'checked' : ''}" data-prop="showBorder">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                Border
-            </span>
-            <div class="tv-prop-controls">
-                <button class="tv-color-btn" data-prop="borderColor" style="background: ${drawing.style.borderColor || drawing.style.stroke || '#2962ff'};"></button>
-                <select class="tv-select" data-prop="borderType" style="width: 40px;">
-                    <option value="" ${borderDash === '' ? 'selected' : ''}>───────</option>
-                    <option value="10,6" ${(borderDash === '10,6' || borderDash === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
-                    <option value="2,2" ${borderDash === '2,2' ? 'selected' : ''}>··········</option>
-                    <option value="8,4,2,4" ${borderDash === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
-                </select>
-                <select class="tv-select" data-prop="borderWidth" style="width: 48px;">
-                    ${[1,2,3,4].map(w => `<option value="${w}" ${parseInt(borderWidth) === w ? 'selected' : ''}>${w}px</option>`).join('')}
-                </select>
+        const borderRow = createStyleRow('');
+        borderRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        borderRow.label.innerHTML = `
+            <div class="tv-checkbox ${borderEnabled ? 'checked' : ''}" data-prop="showBorder">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Border</span>
         `;
-        borderRow.style.borderBottom = '1px solid #2a2e39';
-        borderRow.style.paddingBottom = '12px';
-        borderRow.style.marginBottom = '12px';
-        container.appendChild(borderRow);
+        borderRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="borderColor" style="background: ${drawing.style.borderColor || drawing.style.stroke || '#2962ff'};"></button>
+            <select class="tv-select" data-prop="borderType" style="width: 40px;">
+                <option value="" ${borderDash === '' ? 'selected' : ''}>───────</option>
+                <option value="10,6" ${(borderDash === '10,6' || borderDash === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
+                <option value="2,2" ${borderDash === '2,2' ? 'selected' : ''}>··········</option>
+                <option value="8,4,2,4" ${borderDash === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
+            </select>
+            <select class="tv-select" data-prop="borderWidth" style="width: 48px;">
+                ${[1,2,3,4].map(w => `<option value="${w}" ${parseInt(borderWidth, 10) === w ? 'selected' : ''}>${w}px</option>`).join('')}
+            </select>
+        `;
+        borderRow.row.style.borderBottom = '1px solid #2a2e39';
+        borderRow.row.style.paddingBottom = '12px';
+        borderRow.row.style.marginBottom = '12px';
 
-        const bgRow = document.createElement('div');
-        bgRow.className = 'tv-prop-row';
         const hasFill = drawing.style.showBackground !== false && drawing.style.fill && drawing.style.fill !== 'none' && drawing.style.fill !== 'transparent';
-        bgRow.innerHTML = `
-            <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${hasFill ? 'checked' : ''}" data-prop="showBackground">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                Background
-            </span>
-            <div class="tv-prop-controls">
-                <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(41, 98, 255, 0.15)'};"></button>
+        const bgRow = createStyleRow('');
+        bgRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        bgRow.label.innerHTML = `
+            <div class="tv-checkbox ${hasFill ? 'checked' : ''}" data-prop="showBackground">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Background</span>
         `;
-        container.appendChild(bgRow);
+        bgRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(41, 98, 255, 0.15)'};"></button>
+        `;
 
         if (drawing.type === 'date-price-range') {
-            const statsSummary = this.getInfoSummaryText(drawing);
             const infoHeader = document.createElement('div');
             infoHeader.style.cssText = 'color: #787b86; font-size: 12px; margin: 16px 0 12px 0; text-transform: uppercase;';
             infoHeader.textContent = 'Info';
-            container.appendChild(infoHeader);
+            section.appendChild(infoHeader);
 
-            const statsRow = document.createElement('div');
-            statsRow.className = 'tv-prop-row';
-            statsRow.style.cssText = 'margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;';
-            statsRow.innerHTML = `
-                <span class="tv-checkbox-label" style="white-space: nowrap;">Stats</span>
-                <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px; min-width: 160px; justify-content: space-between;">
-                    <span>${statsSummary}</span>
+            const statsSummary = this.getInfoSummaryText(drawing);
+            const statsRow = createStyleRow('Stats');
+            statsRow.row.style.marginBottom = '12px';
+            statsRow.controls.innerHTML = `
+                <button class="tv-info-dropdown-btn" style="width: 100%; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: space-between;">
+                    <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statsSummary}</span>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M6 9l6 6 6-6"/>
                     </svg>
                 </button>
             `;
-            container.appendChild(statsRow);
         }
 
-        const labelRow = document.createElement('div');
-        labelRow.className = 'tv-prop-row';
-        labelRow.style.cssText = 'margin-top: 16px;';
-        labelRow.innerHTML = `
-            <span class="tv-checkbox-label" style="white-space: nowrap;">Label</span>
-            <div class="tv-prop-controls" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#ffffff'}; width: 28px; height: 28px;"></button>
-                <select class="tv-select" data-prop="fontSize" style="min-width: 80px;">
-                    ${[8,9,10,11,12,14,16,18,20,24,28,32].map(s => `<option value="${s}" ${parseInt(drawing.style.fontSize || 12) === s ? 'selected' : ''}>${s}</option>`).join('')}
-                </select>
-            </div>
+        const labelRow = createStyleRow('Label');
+        labelRow.row.style.marginTop = '16px';
+        labelRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#ffffff'};"></button>
+            <select class="tv-select" data-prop="fontSize" style="width: 92px; min-width: 92px;">
+                ${[8,9,10,11,12,14,16,18,20,24,28,32].map(s => `<option value="${s}" ${parseInt(drawing.style.fontSize || 12, 10) === s ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
         `;
-        container.appendChild(labelRow);
 
-        const labelBgRow = document.createElement('div');
-        labelBgRow.className = 'tv-prop-row';
         const labelBgEnabled = drawing.style.showLabelBackground !== false;
-        labelBgRow.innerHTML = `
-            <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${labelBgEnabled ? 'checked' : ''}" data-prop="showLabelBackground">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                Label background
-            </span>
-            <div class="tv-prop-controls">
-                <button class="tv-color-btn" data-prop="labelBackgroundColor" style="background: ${drawing.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)'};"></button>
+        const labelBgRow = createStyleRow('');
+        labelBgRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        labelBgRow.label.innerHTML = `
+            <div class="tv-checkbox ${labelBgEnabled ? 'checked' : ''}" data-prop="showLabelBackground">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Label background</span>
         `;
-        container.appendChild(labelBgRow);
+        labelBgRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="labelBackgroundColor" style="background: ${drawing.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)'};"></button>
+        `;
+
+        container.appendChild(section);
     }
 
     /**
@@ -6414,7 +6456,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </select>`;
         
         row.innerHTML = `
-            <span class="tv-checkbox-label" style="cursor: default;">${label}</span>
+            <span class="tv-prop-label" style="cursor: default;">${label}</span>
             <div class="tv-prop-controls">
                 <button class="tv-color-btn" data-prop="${propKey}Color" style="background: ${values.color};"></button>
                 ${lineTypeDropdown}

@@ -19367,7 +19367,7 @@
     <script src="modules/drawing-tools-patterns.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-tools-fib-gann.js?v=20260303_TF_PIN_V15"></script>
     <script src="modules/drawing-tools-channels.js?v=20260228_TF_PIN_V12"></script>
-     <script src="modules/drawing-tools-ui.js?v=20260303_TF_PIN_V42"></script>
+     <script src="modules/drawing-tools-ui.js?v=20260303_TF_PIN_V44"></script>
     <script src="modules/color-picker.js?v=20260228_TF_PIN_V12"></script>
     <script src="modules/drawing-toolbar.js?v=20260301_TF_PIN_V13"></script>
     <script src="modules/undo-redo-manager.js?v=20260228_TF_PIN_V12"></script>
@@ -20289,6 +20289,40 @@
                 });
             };
 
+            const getActiveChartForVisibility = function() {
+                const candidates = [];
+                if (window.panelManager && typeof window.panelManager.getSelectedPanel === 'function') {
+                    const selectedPanel = window.panelManager.getSelectedPanel();
+                    if (selectedPanel && selectedPanel.chartInstance) {
+                        candidates.push(selectedPanel.chartInstance);
+                    }
+                }
+                if (window.chart) candidates.push(window.chart);
+                if (window.mainChart && window.mainChart !== window.chart) candidates.push(window.mainChart);
+                return candidates.find(ch => ch && typeof ch.handleVisibilityMenuAction === 'function') || null;
+            };
+
+            const runVisibilityToolbarAction = function(action) {
+                const activeChart = getActiveChartForVisibility();
+                if (!activeChart) return;
+                activeChart.handleVisibilityMenuAction(action);
+                if (typeof window.closeAllToolDropdowns === 'function') {
+                    window.closeAllToolDropdowns();
+                }
+            };
+
+            window.toggleDrawingsVisibility = function() {
+                runVisibilityToolbarAction('drawings');
+            };
+
+            window.toggleIndicatorsVisibility = function() {
+                runVisibilityToolbarAction('indicators');
+            };
+
+            window.togglePositionsVisibility = function() {
+                runVisibilityToolbarAction('positions');
+            };
+
             // Close any open tool dropdowns (lines/arrows/etc.) and magnet dropdown
             window.closeAllToolDropdowns = function() {
                 document.querySelectorAll('.tool-dropdown').forEach(dd => {
@@ -20313,7 +20347,8 @@
             // When opening Visibility, always close any other dropdowns first (capture phase)
             const visibilityButtons = [
                 document.getElementById('toggleVisibilityMenu'),
-                document.getElementById('toggleVisibilityMenuToolbar')
+                document.getElementById('toggleVisibilityMenuToolbar'),
+                document.getElementById('toggleAllDrawingsToolbar')
             ];
             visibilityButtons.forEach(btn => {
                 if (!btn) return;
@@ -20412,6 +20447,14 @@
             groupButtons.forEach(button => {
                 button.addEventListener('click', function(e) {
                     e.stopPropagation();
+
+                    if (this.dataset.group === 'visibility-toolbar') {
+                        const visibilityArrow = document.getElementById('visibilityDropdownArrowToolbar');
+                        if (visibilityArrow) {
+                            visibilityArrow.click();
+                        }
+                        return;
+                    }
                     
                     // Check if this group button is already active - if so, deselect it
                     const isAlreadyActive = this.classList.contains('active');
@@ -22875,7 +22918,9 @@ function showIndicatorsMenu() {
                 const activeChart = window.chart || window.mainChart;
                 if (activeChart && activeChart.visibilityMenuVisible) {
                     const visibilityMenu = document.querySelector('.visibility-menu');
-                    const visibilityBtn = document.getElementById('toggleVisibilityMenu');
+                    const visibilityBtn = document.getElementById('toggleVisibilityMenu')
+                        || document.getElementById('toggleVisibilityMenuToolbar')
+                        || document.getElementById('toggleAllDrawingsToolbar');
                     if (visibilityMenu && !visibilityMenu.contains(e.target) && 
                         visibilityBtn && !visibilityBtn.contains(e.target)) {
                         if (typeof activeChart.hideVisibilityMenu === 'function') {
