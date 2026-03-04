@@ -1679,7 +1679,7 @@ class DrawingToolsManager {
         }
 
         // If chart consumed a right-drag gesture for box zoom, suppress context menu.
-        if (this.chart && typeof this.chart.shouldSuppressRightClickContextMenu === 'function' && this.chart.shouldSuppressRightClickContextMenu()) {
+        if (this.chart && typeof this.chart.shouldSuppressRightClickContextMenu === 'function' && this.chart.shouldSuppressRightClickContextMenu(event)) {
             event.preventDefault();
             event.stopPropagation();
             return;
@@ -2530,6 +2530,12 @@ class DrawingToolsManager {
         
         // Context menu handler
         const handleContextMenu = function(event) {
+            if (self.chart && typeof self.chart.shouldSuppressRightClickContextMenu === 'function' && self.chart.shouldSuppressRightClickContextMenu(event)) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+
             event.preventDefault();
             event.stopPropagation();
             // Hide any existing chart context menus
