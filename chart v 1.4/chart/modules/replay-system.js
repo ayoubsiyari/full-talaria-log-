@@ -1665,9 +1665,8 @@ class ReplaySystem {
             const chartAreaW = this.chart.w - m.l - m.r;
             const numVisibleCandles = Math.floor(chartAreaW / candleSpacing);
             
-            // Position offsetX so the latest candles are visible on the right side
-            // Show last ~80% of visible area filled with candles (keeps last candle near right edge)
-            const scrollPosition = Math.max(0, this.chart.data.length - Math.floor(numVisibleCandles * 0.8));
+            // Fill the visible window so replay does not leave an unnecessary right-side gap.
+            const scrollPosition = Math.max(0, this.chart.data.length - Math.max(1, numVisibleCandles));
             this.chart.offsetX = -scrollPosition * candleSpacing;
             
             console.log(`📍 Auto-scroll: data=${this.chart.data.length}, visible=${numVisibleCandles}, offset=${this.chart.offsetX}`);
@@ -2540,7 +2539,7 @@ class ReplaySystem {
             const m = this.chart.margin || { l: 0, r: 70 };
             const chartAreaW = this.chart.w - m.l - m.r;
             const numVisibleCandles = Math.floor(chartAreaW / candleSpacing);
-            const scrollPosition = Math.max(0, this.chart.data.length - Math.floor(numVisibleCandles * 0.8));
+            const scrollPosition = Math.max(0, this.chart.data.length - Math.max(1, numVisibleCandles));
             this.chart.offsetX = -scrollPosition * candleSpacing;
         }
         
@@ -2992,7 +2991,7 @@ class ReplaySystem {
                                                  panel.chartInstance.getCandleSpacing() : 
                                                  (panel.chartInstance.candleWidth + (panel.chartInstance.candleGap || 2));
                             const numVisibleCandles = Math.floor(panel.chartInstance.w / candleSpacing);
-                            const scrollPosition = Math.max(0, panel.chartInstance.data.length - Math.floor(numVisibleCandles * 0.8));
+                            const scrollPosition = Math.max(0, panel.chartInstance.data.length - Math.max(1, numVisibleCandles));
                             panel.chartInstance.offsetX = -scrollPosition * candleSpacing;
                         }
                     }
@@ -3779,7 +3778,7 @@ class ReplaySystem {
                                              panel.chartInstance.getCandleSpacing() : 
                                              (panel.chartInstance.candleWidth + (panel.chartInstance.candleGap || 2));
                         const numVisibleCandles = Math.floor(panel.chartInstance.w / candleSpacing);
-                        const scrollPosition = Math.max(0, panel.chartInstance.data.length - Math.floor(numVisibleCandles * 0.8));
+                        const scrollPosition = Math.max(0, panel.chartInstance.data.length - Math.max(1, numVisibleCandles));
                         panel.chartInstance.offsetX = -scrollPosition * candleSpacing;
                     }
                     

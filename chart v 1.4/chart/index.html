@@ -4143,6 +4143,19 @@
             transition: background 0.15s ease, color 0.15s ease;
         }
 
+        #intervalValueDisplay,
+        .interval-clone-value {
+            display: inline-block;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .interval-clone-btn {
+            width: 64px;
+            min-width: 64px;
+            justify-content: center;
+        }
+
         .timeframe-dropdown-toggle:hover {
             background: rgba(255, 255, 255, 0.12);
             color: #ffffff;
@@ -7033,8 +7046,8 @@
 
         /* Floating clone styles */
         .replay-toolbar.floating-clone {
-            width: auto !important;
-            min-width: 500px;
+            width: fit-content !important;
+            min-width: 0;
             border-radius: 12px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             border: 1px solid rgba(124, 58, 237, 0.3);
@@ -7288,7 +7301,8 @@
             justify-content: center;
             gap: 0;
             height: 30px;
-            padding: 0 8px;
+            width: 64px;
+            padding: 0 10px;
             background: transparent;
             border: none;
             border-radius: 4px;
@@ -19390,7 +19404,7 @@
          <script src="chart.js?v=20260304_TF_PIN_V40"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260303_TF_PIN_V20"></script>
+    <script src="modules/replay-system.js?v=20260304_TF_PIN_V21"></script>
     
     
     <!-- Order Management System -->
@@ -25031,7 +25045,7 @@ function showIndicatorsMenu() {
                             floatingClone.classList.remove('dragging');
                             floatingClone.style.pointerEvents = 'auto';
                             floatingClone.style.opacity = '1';
-                            floatingClone.style.paddingRight = '32px';
+                            floatingClone.style.paddingRight = '8px';
                             
                             // Add close button
                             addCloseButton(floatingClone);
