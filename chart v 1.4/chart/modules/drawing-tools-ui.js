@@ -5506,7 +5506,7 @@ body.light-mode .template-save-dialog .dialog-title {
         colorsSection.appendChild(sectionHeader);
 
         const labelColumnWidth = 170;
-        const controlsColumnWidth = 180;
+        const controlsColumnWidth = 140;
         const createStyleRow = (labelText) => {
             const row = document.createElement('div');
             row.className = 'tv-prop-row';
@@ -12544,13 +12544,13 @@ applyTemplate(drawing, templateId, modal) {
         const controlsWrap = section.append('div')
             .style('display', 'grid')
             .style('grid-template-columns', 'repeat(2, minmax(0, 1fr))')
-            .style('column-gap', '10px')
-            .style('row-gap', '8px')
+            .style('column-gap', '8px')
+            .style('row-gap', '6px')
             .style('margin-bottom', '12px')
             .style('padding-bottom', '12px')
             .style('border-bottom', '1px solid #363a45');
 
-        const controlsColumnWidth = 180;
+        const controlsColumnWidth = 128;
 
         const createControlRow = (labelText) => {
             const row = controlsWrap.append('div')
@@ -12591,8 +12591,11 @@ applyTemplate(drawing, templateId, modal) {
             const input = controls.append('input')
                 .attr('type', 'number')
                 .attr('class', 'tv-input')
-                .style('width', '100%')
-                .style('max-width', '100%');
+                .style('width', `${controlsColumnWidth}px`)
+                .style('max-width', '100%')
+                .style('height', '26px')
+                .style('padding', '0 8px')
+                .style('font-size', '11px');
 
             if (min !== null) input.attr('min', min);
             if (max !== null) input.attr('max', max);
@@ -12627,8 +12630,11 @@ applyTemplate(drawing, templateId, modal) {
         const riskModeRow = createControlRow('Risk Mode');
         const riskModeSelect = riskModeRow.controls.append('select')
             .attr('class', 'tv-select')
-            .style('width', '100%')
+            .style('width', `${controlsColumnWidth}px`)
+            .style('max-width', '100%')
             .style('min-width', '0')
+            .style('height', '26px')
+            .style('font-size', '11px')
             .html(`
                 <option value="risk-usd">Fixed USD</option>
                 <option value="risk-percent">% of Account</option>
@@ -12729,12 +12735,13 @@ applyTemplate(drawing, templateId, modal) {
         }, { step: 0.00001, decimals: 5 });
 
         const lotSizeRow = createControlRow('Calculated Lot Size');
+        lotSizeRow.row.style('grid-column', '1 / -1');
         const lotSizeValue = lotSizeRow.controls.append('div')
-            .style('width', '100%')
+            .style('width', `${controlsColumnWidth}px`)
             .style('max-width', '100%')
-            .style('height', '27px')
+            .style('height', '26px')
             .style('box-sizing', 'border-box')
-            .style('padding', '0 9px')
+            .style('padding', '0 8px')
             .style('border-radius', '4px')
             .style('border', '1px solid rgba(255, 255, 255, 0.12)')
             .style('background', 'rgba(255, 255, 255, 0.04)')
@@ -12763,7 +12770,7 @@ applyTemplate(drawing, templateId, modal) {
 
             return row.append('span')
                 .style('margin-left', 'auto')
-                .style('width', `${controlsColumnWidth}px`)
+                .style('min-width', '0')
                 .style('text-align', 'right')
                 .style('color', valueColor)
                 .style('font-size', '11px')
