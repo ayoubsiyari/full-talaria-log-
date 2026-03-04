@@ -269,7 +269,7 @@ class Chart {
 
         // Right-click gesture state
         this._rightClickDragThreshold = 6;
-        this._contextMenuSuppressMs = 500;
+        this._contextMenuSuppressMs = 220;
         this._rightMouseDragged = false;
         this._suppressContextMenuUntil = 0;
         
@@ -6072,6 +6072,12 @@ class Chart {
 
     shouldSuppressRightClickContextMenu(event = null) {
         const now = performance.now();
+
+        // While right-button box-zoom gesture is active, always suppress native context menu.
+        if (this.boxZoom && this.boxZoom.active && this.drag && this.drag.type === 'boxZoom') {
+            return true;
+        }
+
         if (this._rightMouseDragged) {
             return true;
         }
@@ -11058,6 +11064,25 @@ class Chart {
                     this._suppressContextMenuUntil = performance.now() + this._contextMenuSuppressMs;
                 } else {
                     this.boxZoom.active = false;
+
+                    // Native contextmenu is suppressed during box-zoom gesture.
+                    // For a true right-click (no drag), emit one synthetic contextmenu now.
+                    const target = document.elementFromPoint(e.clientX, e.clientY) || this.canvas;
+                    if (target && typeof target.dispatchEvent === 'function') {
+                        const syntheticContextMenu = new MouseEvent('contextmenu', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            button: 2,
+                            buttons: 2,
+                            clientX: e.clientX,
+                            clientY: e.clientY
+                        });
+                        target.dispatchEvent(syntheticContextMenu);
+                    }
+
+                    // Suppress any trailing native contextmenu event from the same gesture.
+                    this._suppressContextMenuUntil = performance.now() + this._contextMenuSuppressMs;
                 }
             }
             // Handle pan end - no inertia, stop immediately
