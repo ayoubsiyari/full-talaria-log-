@@ -12614,6 +12614,10 @@ applyTemplate(drawing, templateId, modal) {
 
         const setInputValue = (input, value) => {
             if (!input || typeof input.property !== 'function') return;
+            const node = input.node && input.node();
+            if (node && document.activeElement === node) {
+                return;
+            }
             const decimals = input.node().__decimals;
             input.property('value', this.formatNumericValue(value, decimals));
         };
