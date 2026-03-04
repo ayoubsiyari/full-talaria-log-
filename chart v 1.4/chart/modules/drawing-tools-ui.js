@@ -4735,15 +4735,15 @@ body.light-mode .template-save-dialog .dialog-title {
         const list = document.createElement('div');
         // Side-by-side layout (match pitchfork levels UI)
         list.style.cssText = lockFixedLevelCount
-            ? 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow-y: visible; align-items: start;'
-            : 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 280px; overflow-y: auto; align-items: start;';
+            ? 'display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 10px; row-gap: 4px; width: 100%; overflow-y: visible; align-items: start;'
+            : 'display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 10px; row-gap: 4px; width: 100%; max-height: 280px; overflow-y: auto; align-items: start;';
 
         const addLevelRow = (level, idx) => {
             const row = document.createElement('div');
             row.className = 'tv-prop-row fib-level-row';
             row.style.cssText = lockFixedLevelCount
-                ? 'display: grid; grid-template-columns: 24px 80px auto; align-items: center; gap: 8px; padding: 4px 0;'
-                : 'display: grid; grid-template-columns: 24px 80px auto 24px; align-items: center; gap: 8px; padding: 4px 0;';
+                ? 'display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;'
+                : 'display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
 
             // Visibility checkbox
             const checkboxWrapper = document.createElement('div');
@@ -4811,6 +4811,7 @@ body.light-mode .template-save-dialog .dialog-title {
             // Controls wrapper (color)
             const controlsWrapper = document.createElement('div');
             controlsWrapper.className = 'tv-prop-controls';
+            controlsWrapper.style.cssText = 'width: 30px; min-width: 30px; min-height: 0; margin-left: 0; display: flex; align-items: center; justify-content: center;';
             
             const colorBtn = document.createElement('button');
             colorBtn.className = 'tv-color-btn';
