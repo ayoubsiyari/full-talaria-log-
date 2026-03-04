@@ -193,6 +193,15 @@ DUKASCOPY_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_JOB_TTL_SECONDS", "21600"))
 DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
 DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
 
+# Conservative data-sanity smoothing for isolated bad ticks.
+# Enabled by default; tuned to only touch obvious one-bar anomalies where
+# surrounding candles are stable and the middle bar is far away.
+SPIKE_FILTER_ENABLED = os.getenv("SPIKE_FILTER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+SPIKE_FILTER_NEIGHBOR_GAP_PCT = float(os.getenv("SPIKE_FILTER_NEIGHBOR_GAP_PCT", "0.0015"))
+SPIKE_FILTER_MIN_DEVIATION_PCT = float(os.getenv("SPIKE_FILTER_MIN_DEVIATION_PCT", "0.0035"))
+SPIKE_FILTER_MAX_ADJUST_RATIO = float(os.getenv("SPIKE_FILTER_MAX_ADJUST_RATIO", "0.10"))
+EXCLUDE_WEEKEND_CANDLES = os.getenv("EXCLUDE_WEEKEND_CANDLES", "true").strip().lower() in {"1", "true", "yes", "on"}
+
 # Database Model
 class CSVFile(Base):
     __tablename__ = "csv_files"
@@ -1338,6 +1347,129 @@ def _parse_date_and_time_parts(raw_date, raw_time):
     except Exception:
         return None
 
+def _sanitize_candle_record(c):
+    """Return normalized candle dict or None for invalid input."""
+    try:
+        t = int(float(c['t']))
+        o = float(c['o'])
+        h = float(c['h'])
+        l = float(c['l'])
+        cl = float(c['c'])
+        v = float(c.get('v', 0) or 0)
+    except Exception:
+        return None
+
+    if not (
+        math.isfinite(t) and math.isfinite(o) and math.isfinite(h)
+        and math.isfinite(l) and math.isfinite(cl) and math.isfinite(v)
+    ):
+        return None
+
+    # Reject fully zero/negative placeholders which can collapse chart scales.
+    if max(o, h, l, cl) <= 0:
+        return None
+
+    high = max(h, o, l, cl)
+    low = min(l, o, h, cl)
+
+    return {
+        't': t,
+        'o': o,
+        'h': high,
+        'l': low,
+        'c': cl,
+        'v': v if math.isfinite(v) else 0.0
+    }
+
+def _is_weekend_timestamp_ms(ts):
+    """Return True when timestamp (epoch ms) falls on Saturday or Sunday in UTC."""
+    try:
+        day = datetime.utcfromtimestamp(float(ts) / 1000.0).weekday()
+        return day >= 5
+    except Exception:
+        return False
+
+def _filter_weekend_candles(candles):
+    if not EXCLUDE_WEEKEND_CANDLES or not candles:
+        return candles
+    filtered = [c for c in candles if not _is_weekend_timestamp_ms(c.get('t'))]
+    return filtered
+
+def _smooth_isolated_candle_spikes(candles):
+    """
+    Smooth only obvious isolated one-bar spikes.
+    Keeps timestamps/candle count unchanged so paging/cursors remain stable.
+    """
+    if not SPIKE_FILTER_ENABLED or not candles or len(candles) < 3:
+        return candles
+
+    filtered = [dict(c) for c in candles]
+    adjusted = 0
+
+    for i in range(1, len(filtered) - 1):
+        prev_c = filtered[i - 1]
+        curr_c = filtered[i]
+        next_c = filtered[i + 1]
+
+        prev_close = float(prev_c['c'])
+        curr_close = float(curr_c['c'])
+        next_close = float(next_c['c'])
+
+        ref = max(abs(prev_close), abs(curr_close), abs(next_close), 1e-12)
+        neighbor_gap = abs(next_close - prev_close) / ref
+        dev_prev = abs(curr_close - prev_close) / ref
+        dev_next = abs(curr_close - next_close) / ref
+
+        # Full-body isolated spike: bridge between neighboring closes.
+        if (
+            neighbor_gap <= SPIKE_FILTER_NEIGHBOR_GAP_PCT
+            and dev_prev >= SPIKE_FILTER_MIN_DEVIATION_PCT
+            and dev_next >= SPIKE_FILTER_MIN_DEVIATION_PCT
+        ):
+            bridged_open = prev_close
+            bridged_close = next_close
+            curr_c['o'] = bridged_open
+            curr_c['c'] = bridged_close
+            curr_c['h'] = max(bridged_open, bridged_close)
+            curr_c['l'] = min(bridged_open, bridged_close)
+            adjusted += 1
+            continue
+
+        # Wick-only anomaly: cap wick when body is already aligned with neighbors.
+        if neighbor_gap <= SPIKE_FILTER_NEIGHBOR_GAP_PCT:
+            top_neighbor = max(prev_close, next_close)
+            bottom_neighbor = min(prev_close, next_close)
+            max_high = top_neighbor * (1.0 + SPIKE_FILTER_MIN_DEVIATION_PCT)
+            min_low = bottom_neighbor * (1.0 - SPIKE_FILTER_MIN_DEVIATION_PCT)
+
+            body_top = max(float(curr_c['o']), float(curr_c['c']))
+            body_bottom = min(float(curr_c['o']), float(curr_c['c']))
+            touched = False
+
+            # Cap upside wick only if body itself is not the outlier.
+            if float(curr_c['h']) > max_high and body_top <= max_high:
+                curr_c['h'] = max(body_top, max_high)
+                touched = True
+
+            # Cap downside wick only if body itself is not the outlier.
+            if float(curr_c['l']) < min_low and body_bottom >= min_low:
+                curr_c['l'] = min(body_bottom, min_low)
+                touched = True
+
+            if touched:
+                adjusted += 1
+
+    if adjusted == 0:
+        return candles
+
+    adjusted_ratio = adjusted / max(1, len(filtered))
+    if adjusted_ratio > SPIKE_FILTER_MAX_ADJUST_RATIO:
+        # Too many changes implies trending/volatile market, not isolated bad ticks.
+        return candles
+
+    print(f"🧹 Spike filter adjusted {adjusted}/{len(filtered)} candles ({adjusted_ratio:.2%})")
+    return filtered
+
 def _canonicalize_candles(candles):
     """Normalize candles into ascending timestamp order and merge duplicate timestamps."""
     if not candles:
@@ -1345,22 +1477,18 @@ def _canonicalize_candles(candles):
 
     cleaned = []
     for c in candles:
-        try:
-            cleaned.append({
-                't': int(float(c['t'])),
-                'o': float(c['o']),
-                'h': float(c['h']),
-                'l': float(c['l']),
-                'c': float(c['c']),
-                'v': float(c.get('v', 0) or 0)
-            })
-        except Exception:
-            continue
+        normalized = _sanitize_candle_record(c)
+        if normalized is not None:
+            cleaned.append(normalized)
 
     if not cleaned:
         return []
 
     cleaned.sort(key=lambda x: x['t'])
+    cleaned = _filter_weekend_candles(cleaned)
+    if not cleaned:
+        return []
+
     merged = []
     for c in cleaned:
         if merged and merged[-1]['t'] == c['t']:
@@ -1371,7 +1499,7 @@ def _canonicalize_candles(candles):
             prev['v'] += c['v']
         else:
             merged.append(c)
-    return merged
+    return _smooth_isolated_candle_spikes(merged)
 
 def _parse_candles_from_csv(file_path):
     """Parse a CSV file into a list of candle dicts {t,o,h,l,c,v}."""
@@ -3222,9 +3350,15 @@ async def get_file_smart(
                     candles = candles[-limit:]
                     has_more_left = True
 
+        raw_first_cursor = str(candles[0]['t']) if candles else None
+        raw_last_cursor = str(candles[-1]['t']) if candles else None
+
+        candles = _filter_weekend_candles(candles)
+        candles = _smooth_isolated_candle_spikes(candles)
+
         # ── Build cursors ──
-        first_cursor = str(candles[0]['t']) if candles else None
-        last_cursor = str(candles[-1]['t']) if candles else None
+        first_cursor = raw_first_cursor
+        last_cursor = raw_last_cursor
 
         # ── Convert to CSV for frontend ──
         output = StringIO()
@@ -3350,8 +3484,14 @@ async def get_file_candles(
             has_more_left = cursor_ts is not None
             has_more_right = len(candles) == limit
 
-        prev_cursor = str(candles[0]['t']) if candles else None
-        next_cursor = str(candles[-1]['t']) if candles else None
+        raw_prev_cursor = str(candles[0]['t']) if candles else None
+        raw_next_cursor = str(candles[-1]['t']) if candles else None
+
+        candles = _filter_weekend_candles(candles)
+        candles = _smooth_isolated_candle_spikes(candles)
+
+        prev_cursor = raw_prev_cursor
+        next_cursor = raw_next_cursor
 
         result_data = {
             "t": [c['t'] for c in candles],
