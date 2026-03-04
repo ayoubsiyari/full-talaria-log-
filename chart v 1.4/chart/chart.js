@@ -8060,13 +8060,27 @@ class Chart {
             : this._serverCursors.lastTs;
 
         // Replay can consume candles much faster than normal panning.
-        // Use larger chunks at higher replay speeds to avoid starvation pauses.
+        // Size chunk by replay consumption rate + timeframe to avoid long waits
+        // while also preventing oversized requests on larger raw timeframes.
         let panLimit = 5000;
         if (isReplay) {
             const replaySpeed = Math.max(1, Number(this.replaySystem?.speed) || 1);
-            if (replaySpeed >= 3600) panLimit = 30000;
-            else if (replaySpeed >= 600) panLimit = 15000;
-            else if (replaySpeed >= 120) panLimit = 10000;
+            let rawCandleTimeframeMs = this.parseTimeframe(tf);
+            if (!Number.isFinite(rawCandleTimeframeMs) || rawCandleTimeframeMs <= 0) {
+                rawCandleTimeframeMs = 60 * 1000;
+            }
+
+            if (Array.isArray(this.replaySystem?.fullRawData) && this.replaySystem.fullRawData.length > 1) {
+                const dt = Number(this.replaySystem.fullRawData[1].t) - Number(this.replaySystem.fullRawData[0].t);
+                if (Number.isFinite(dt) && dt > 0) {
+                    rawCandleTimeframeMs = dt;
+                }
+            }
+
+            const rawCandlesPerSecond = replaySpeed / Math.max(1, rawCandleTimeframeMs / 1000);
+            const targetRunwaySeconds = 24;
+            panLimit = Math.ceil(rawCandlesPerSecond * targetRunwaySeconds) + 1500;
+            panLimit = Math.max(1500, Math.min(10000, panLimit));
         }
         this._panLoadLimit = panLimit;
         
@@ -8079,11 +8093,22 @@ class Chart {
             cursor: cursor,
             direction: direction
         });
+
+        const loadStartTs = Date.now();
         
         fetch(`${this.apiUrl}/file/${this.currentFileId}/candles?${params.toString()}`)
             .then(res => res.ok ? res.json() : null)
             .then(result => {
                 if (!result || !result.data || !result.data.t) return;
+
+                if (isReplay && direction === 'forward' && this.replaySystem) {
+                    const apiElapsedMs = Number(result.elapsed_ms);
+                    const measuredLoadMs = Number.isFinite(apiElapsedMs) && apiElapsedMs > 0
+                        ? apiElapsedMs
+                        : Math.max(1, Date.now() - loadStartTs);
+                    const prevLatency = Math.max(200, Number(this.replaySystem.forwardLoadLatencyMs) || measuredLoadMs);
+                    this.replaySystem.forwardLoadLatencyMs = Math.round((prevLatency * 0.7) + (measuredLoadMs * 0.3));
+                }
 
                 // Always update cursors/has-more flags, even when no candles were returned.
                 // This prevents replay from repeatedly requesting beyond the end.
@@ -8284,6 +8309,19 @@ class Chart {
                 }
                 
                 console.log(`📦 Pan ${direction}: +${uniqueNew.length} candles (master: ${isReplay ? this.replaySystem.fullRawData.length : this.rawData.length})`);
+
+                if (isReplay &&
+                    direction === 'forward' &&
+                    this.replaySystem &&
+                    this.replaySystem.isPlaying &&
+                    this._serverCursors.hasMoreRight &&
+                    typeof this.replaySystem.getForwardPrefetchThreshold === 'function') {
+                    const remainingCandles = Math.max(0, this.replaySystem.fullRawData.length - this.replaySystem.currentIndex);
+                    const preloadThreshold = this.replaySystem.getForwardPrefetchThreshold();
+                    if (remainingCandles < preloadThreshold) {
+                        setTimeout(() => this.checkViewportLoadMore('forward'), 90);
+                    }
+                }
             })
             .catch(err => console.warn('Pan load failed:', err))
             .finally(() => { 

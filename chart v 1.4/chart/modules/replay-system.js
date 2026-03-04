@@ -43,6 +43,7 @@ class ReplaySystem {
         this.useConstantTickInterval = true; // Keeps replay cadence stable (prevents stop/run feel)
         this.interCandleDelayMs = 8; // Tiny handoff delay between candles to keep UI responsive
         this.dataLoadRetryDelayMs = 120; // Retry delay when waiting for more server candles
+        this.forwardLoadLatencyMs = 1500; // EWMA forward-load latency used to size replay prefetch runway
 
         this.toolbar = null;
         this.handle = null;
@@ -2030,9 +2031,14 @@ class ReplaySystem {
         const speed = Math.max(1, Number(this.speed) || 1);
         const rawCandlesPerSecond = speed / rawCandleTimeframeSec;
 
-        // Keep roughly 12s of runway + safety margin, bounded for memory/network balance.
-        const dynamicThreshold = Math.ceil(rawCandlesPerSecond * 12) + 500;
-        return Math.max(2000, Math.min(20000, dynamicThreshold));
+        // Adapt runway to observed forward-load latency so replay asks for data
+        // early enough even when API responses are temporarily slow.
+        const observedLoadMs = Math.max(500, Number(this.forwardLoadLatencyMs) || 1500);
+        const runwaySeconds = Math.max(12, Math.min(75, Math.ceil((observedLoadMs / 1000) * 3)));
+
+        const dynamicThreshold = Math.ceil(rawCandlesPerSecond * runwaySeconds) + 800;
+        const minThreshold = Math.max(2000, Math.ceil(rawCandlesPerSecond * 8) + 300);
+        return Math.max(minThreshold, Math.min(60000, dynamicThreshold));
     }
     
     /**
