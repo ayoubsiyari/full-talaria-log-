@@ -12546,9 +12546,9 @@ applyTemplate(drawing, templateId, modal) {
             .style('grid-template-columns', 'repeat(2, minmax(0, 1fr))')
             .style('column-gap', '8px')
             .style('row-gap', '6px')
-            .style('margin-bottom', '12px')
-            .style('padding-bottom', '12px')
-            .style('border-bottom', '1px solid #363a45');
+            .style('margin-bottom', '8px')
+            .style('padding-bottom', '0')
+            .style('border-bottom', 'none');
 
         const controlsColumnWidth = 112;
 
@@ -12568,6 +12568,7 @@ applyTemplate(drawing, templateId, modal) {
                 .style('min-width', '0')
                 .style('width', 'auto')
                 .style('flex', 'none')
+                .style('text-align', 'center')
                 .style('font-size', '11px')
                 .style('color', '#9aa1b7')
                 .text(labelText);
@@ -12578,7 +12579,7 @@ applyTemplate(drawing, templateId, modal) {
                 .style('min-height', '24px')
                 .style('display', 'flex')
                 .style('align-items', 'center')
-                .style('justify-content', 'flex-start');
+                .style('justify-content', 'center');
 
             return { row, label, controls };
         };
@@ -12598,6 +12599,7 @@ applyTemplate(drawing, templateId, modal) {
                 .style('max-width', '100%')
                 .style('height', '24px')
                 .style('padding', '0 6px')
+                .style('text-align', 'center')
                 .style('font-size', '10px');
 
             if (min !== null) input.attr('min', min);
@@ -12637,6 +12639,8 @@ applyTemplate(drawing, templateId, modal) {
             .style('max-width', '100%')
             .style('min-width', '0')
             .style('height', '24px')
+            .style('text-align', 'center')
+            .style('text-align-last', 'center')
             .style('font-size', '10px')
             .html(`
                 <option value="risk-usd">Fixed USD</option>
@@ -12809,9 +12813,9 @@ applyTemplate(drawing, templateId, modal) {
 
         const infoSection = section.append('div')
             .attr('class', 'risk-position-info')
-            .style('border-top', '1px solid #363a45')
-            .style('padding-top', '12px')
-            .style('margin-top', '12px')
+            .style('border-top', 'none')
+            .style('padding-top', '0')
+            .style('margin-top', '8px')
             .style('display', 'flex')
             .style('flex-direction', 'column')
             .style('gap', '8px');
