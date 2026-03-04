@@ -1677,6 +1677,13 @@ class DrawingToolsManager {
             event.stopPropagation();
             return;
         }
+
+        // If chart consumed a right-drag gesture for box zoom, suppress context menu.
+        if (this.chart && typeof this.chart.shouldSuppressRightClickContextMenu === 'function' && this.chart.shouldSuppressRightClickContextMenu()) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
         
         event.preventDefault();
         event.stopPropagation();

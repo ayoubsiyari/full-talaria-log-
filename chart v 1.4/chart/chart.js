@@ -266,6 +266,12 @@ class Chart {
             endX: 0,
             endY: 0
         };
+
+        // Right-click gesture state
+        this._rightClickDragThreshold = 6;
+        this._contextMenuSuppressMs = 220;
+        this._rightMouseDragged = false;
+        this._suppressContextMenuUntil = 0;
         
         // Inertia/momentum state for smooth pan
         this.inertia = {
@@ -536,6 +542,12 @@ class Chart {
         } else {
             // For panels, still setup canvas right-click context menu
             this.canvas.addEventListener('contextmenu', (e) => {
+                if (this.shouldSuppressRightClickContextMenu()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+
                 // Only show context menu if not on a drawing
                 if (!this.tool && !this.findDrawingAtPoint(e.offsetX, e.offsetY)) {
                     e.preventDefault();
@@ -1479,6 +1491,12 @@ class Chart {
         
         // Setup canvas right-click
         this.canvas.addEventListener('contextmenu', (e) => {
+            if (this.shouldSuppressRightClickContextMenu()) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
             // Only show context menu if not on a drawing
             if (!this.tool && !this.findDrawingAtPoint(e.offsetX, e.offsetY)) {
                 e.preventDefault();
@@ -6051,6 +6069,14 @@ class Chart {
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
         ctx.setLineDash([]);
     }
+
+    shouldSuppressRightClickContextMenu() {
+        const now = performance.now();
+        if ((this.boxZoom && this.boxZoom.active) || (this.drag && this.drag.type === 'boxZoom')) {
+            return true;
+        }
+        return !!(this._suppressContextMenuUntil && now < this._suppressContextMenuUntil);
+    }
     
     // Apply momentum/inertia after mouse release
     applyMomentum() {
@@ -10439,6 +10465,12 @@ class Chart {
         
         // Prevent default context menu
         this.svg.node().addEventListener('contextmenu', (e) => {
+            if (this.shouldSuppressRightClickContextMenu()) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
             e.preventDefault();
             
             // Store current tool state
@@ -10745,10 +10777,12 @@ class Chart {
             this.movement.startX = e.clientX;
             this.movement.startY = e.clientY;
             this.movement.lastTime = performance.now();
+            this._rightMouseDragged = false;
             
             // ─── STEP 8: Box Zoom (right-click) ───
             if (e.button === 2) {
                 this.drag.type = 'boxZoom';
+                this._suppressContextMenuUntil = 0;
                 this.boxZoom.active = true;
                 this.boxZoom.startX = mx;
                 this.boxZoom.startY = my;
@@ -10913,6 +10947,13 @@ class Chart {
                 else if (this.drag.type === 'boxZoom') {
                     this.boxZoom.endX = mx;
                     this.boxZoom.endY = my;
+                    const dragDistance = Math.hypot(
+                        this.boxZoom.endX - this.boxZoom.startX,
+                        this.boxZoom.endY - this.boxZoom.startY
+                    );
+                    if (dragDistance >= this._rightClickDragThreshold) {
+                        this._rightMouseDragged = true;
+                    }
                     this.scheduleRender();
                 }
                 
@@ -10965,8 +11006,13 @@ class Chart {
             
             // Handle box zoom
             if (dragType === 'boxZoom' && this.boxZoom.active) {
-                this.applyBoxZoom();
-                this.scheduleChartViewSave();
+                if (this._rightMouseDragged) {
+                    this.applyBoxZoom();
+                    this.scheduleChartViewSave();
+                    this._suppressContextMenuUntil = performance.now() + this._contextMenuSuppressMs;
+                } else {
+                    this.boxZoom.active = false;
+                }
             }
             // Handle pan end - no inertia, stop immediately
             else if (dragType === 'pan' && wasDragging) {
@@ -10980,6 +11026,7 @@ class Chart {
             this.boxZoom.active = false;
             this.movement.isDragging = false;
             this.isZooming = false;
+            this._rightMouseDragged = false;
             
             if (!this.tool) {
                 this.canvas.style.cursor = this.getCurrentCursorStyle();
@@ -11016,8 +11063,13 @@ class Chart {
         
         // Prevent context menu for box zoom
         this.canvas.addEventListener('contextmenu', e => {
-            if (this.boxZoom.active || this.drag.type === 'boxZoom') {
+            if (this.shouldSuppressRightClickContextMenu()) {
                 e.preventDefault();
+                if (typeof e.stopImmediatePropagation === 'function') {
+                    e.stopImmediatePropagation();
+                }
+                e.stopPropagation();
+                return;
             }
         });
 
@@ -11502,11 +11554,10 @@ class Chart {
                     console.log('🎯 Drawing selected:', foundDrawing.drawing.type);
                     this.selectedDrawing = foundDrawing.index;
                     this.scheduleRender();
-                    
-                    // Show context menu on right-click only
-                    if (event.button === 2) {
-                        this.showContextMenu(event.clientX, event.clientY, foundDrawing, this.tool);
-                    }
+
+                    // Context menu is handled on contextmenu (right-click release),
+                    // not on mousedown. This allows right-drag box zoom without
+                    // opening the menu at the same time.
                 } else {
                     console.log('   No drawing found - deselecting on canvas click');
                     this.selectedDrawing = null;
@@ -12626,6 +12677,9 @@ class Chart {
                 element.on('contextmenu', (event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    if (chart.shouldSuppressRightClickContextMenu()) {
+                        return;
+                    }
                     console.log('🖱️ Right-click on drawing');
                     chart.selectedDrawing = idx;
                     chart.showContextMenu(event.clientX, event.clientY, {index: idx, drawing}, null);
@@ -13359,6 +13413,10 @@ class Chart {
     }
     
     showChartContextMenu(clientX, clientY, offsetX, offsetY) {
+        if (this.shouldSuppressRightClickContextMenu()) {
+            return;
+        }
+
         // Hide ALL chart context menus (from all panels and main chart)
         d3.selectAll('.chart-context-menu').style('visibility', 'hidden');
         
