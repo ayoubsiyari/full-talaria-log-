@@ -874,6 +874,23 @@ class DrawingToolsManager {
                     'path'
                 ]);
 
+                const isFibLikeType = (type) => !!type && (
+                    type.startsWith('fibonacci-') ||
+                    type.startsWith('fib-') ||
+                    type.startsWith('trend-fib-')
+                );
+
+                const isPatternLikeType = (type) => !!type && (
+                    type.includes('pattern') ||
+                    type.startsWith('elliott-') ||
+                    type === 'head-shoulders' ||
+                    type === 'three-drives'
+                );
+
+                const allowsDirectMoveFromHitZone = (type) => (
+                    lineTypeSet.has(type) || isFibLikeType(type) || isPatternLikeType(type)
+                );
+
                 const shapeTypeSet = new Set([
                     'rectangle',
                     'triangle',
@@ -889,7 +906,7 @@ class DrawingToolsManager {
                 const bestIsCircleLike = best && (best.type === 'circle' || best.type === 'ellipse');
                 if (bestIsCircleLike) {
                     const linesAtPoint = this.findLinesAtPoint(mouseX, mouseY)
-                        .filter(info => info && info.drawing && lineTypeSet.has(info.drawing.type));
+                        .filter(info => info && info.drawing && allowsDirectMoveFromHitZone(info.drawing.type));
 
                     if (linesAtPoint.length > 0) {
                         linesAtPoint.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
@@ -907,7 +924,7 @@ class DrawingToolsManager {
                     }
                 }
 
-                if (best && !best.locked && lineTypeSet.has(best.type)) {
+                if (best && !best.locked && allowsDirectMoveFromHitZone(best.type)) {
                     event.preventDefault();
                     event.stopPropagation();
                     this.selectDrawing(best, false);
