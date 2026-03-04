@@ -542,7 +542,7 @@ class Chart {
         } else {
             // For panels, still setup canvas right-click context menu
             this.canvas.addEventListener('contextmenu', (e) => {
-                if (this.shouldSuppressRightClickContextMenu()) {
+                if (this.shouldSuppressRightClickContextMenu(e)) {
                     e.preventDefault();
                     e.stopPropagation();
                     return;
@@ -1491,7 +1491,7 @@ class Chart {
         
         // Setup canvas right-click
         this.canvas.addEventListener('contextmenu', (e) => {
-            if (this.shouldSuppressRightClickContextMenu()) {
+            if (this.shouldSuppressRightClickContextMenu(e)) {
                 e.preventDefault();
                 e.stopPropagation();
                 return;
@@ -6070,12 +6070,33 @@ class Chart {
         ctx.setLineDash([]);
     }
 
-    shouldSuppressRightClickContextMenu() {
+    shouldSuppressRightClickContextMenu(event = null) {
         const now = performance.now();
-        if ((this.boxZoom && this.boxZoom.active) || (this.drag && this.drag.type === 'boxZoom')) {
+        if (this._rightMouseDragged) {
             return true;
         }
-        return !!(this._suppressContextMenuUntil && now < this._suppressContextMenuUntil);
+        if (this._suppressContextMenuUntil && now < this._suppressContextMenuUntil) {
+            return true;
+        }
+
+        // Handle browsers that emit contextmenu before mouseup:
+        // suppress only if right-drag distance already crossed threshold.
+        if (
+            event &&
+            this.boxZoom && this.boxZoom.active &&
+            this.drag && this.drag.type === 'boxZoom' &&
+            this.canvas
+        ) {
+            const rect = this.canvas.getBoundingClientRect();
+            const mx = event.clientX - rect.left;
+            const my = event.clientY - rect.top;
+            const dragDistance = Math.hypot(mx - this.boxZoom.startX, my - this.boxZoom.startY);
+            if (dragDistance >= this._rightClickDragThreshold) {
+                return true;
+            }
+        }
+
+        return false;
     }
     
     // Apply momentum/inertia after mouse release
@@ -10465,7 +10486,7 @@ class Chart {
         
         // Prevent default context menu
         this.svg.node().addEventListener('contextmenu', (e) => {
-            if (this.shouldSuppressRightClickContextMenu()) {
+            if (this.shouldSuppressRightClickContextMenu(e)) {
                 e.preventDefault();
                 e.stopPropagation();
                 return;
@@ -11063,7 +11084,7 @@ class Chart {
         
         // Prevent context menu for box zoom
         this.canvas.addEventListener('contextmenu', e => {
-            if (this.shouldSuppressRightClickContextMenu()) {
+            if (this.shouldSuppressRightClickContextMenu(e)) {
                 e.preventDefault();
                 if (typeof e.stopImmediatePropagation === 'function') {
                     e.stopImmediatePropagation();
@@ -12677,7 +12698,7 @@ class Chart {
                 element.on('contextmenu', (event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    if (chart.shouldSuppressRightClickContextMenu()) {
+                    if (chart.shouldSuppressRightClickContextMenu(event)) {
                         return;
                     }
                     console.log('🖱️ Right-click on drawing');
