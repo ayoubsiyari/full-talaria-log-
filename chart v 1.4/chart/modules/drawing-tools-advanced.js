@@ -829,6 +829,9 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (typeof this.meta.zoneWidth !== 'number') {
             this.meta.zoneWidth = null;
         }
+        if (typeof this.meta.zoneWidthRatio !== 'number') {
+            this.meta.zoneWidthRatio = null;
+        }
         this.lastRenderMeta = null;
         this.ensureRiskSettings();
     }
@@ -1330,15 +1333,21 @@ class BaseRiskRewardTool extends BaseDrawing {
         const target = this.points[2];
 
         const xRange = scales.xScale.range();
-        const chartWidth = xRange[1] - xRange[0];
+        const chartWidth = Math.abs(xRange[1] - xRange[0]);
         const defaultWidth = Math.min(chartWidth * 0.25, 320);
         const minWidth = 24;
-        let zoneWidth = typeof this.meta.zoneWidth === 'number' ? this.meta.zoneWidth : defaultWidth;
-        if (!zoneWidth || Number.isNaN(zoneWidth)) {
+        const hasWidthRatio = Number.isFinite(this.meta.zoneWidthRatio) && this.meta.zoneWidthRatio > 0;
+        let zoneWidth = hasWidthRatio
+            ? (this.meta.zoneWidthRatio * chartWidth)
+            : this.meta.zoneWidth;
+        if (!Number.isFinite(zoneWidth) || zoneWidth <= 0) {
             zoneWidth = defaultWidth;
         }
         zoneWidth = Math.max(minWidth, zoneWidth);
         this.meta.zoneWidth = zoneWidth;
+        if (chartWidth > 0) {
+            this.meta.zoneWidthRatio = zoneWidth / chartWidth;
+        }
 
         const entryX = scales.chart && scales.chart.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(entry.x) : scales.xScale(entry.x);
@@ -1590,6 +1599,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.lastRenderMeta = {
             entryX,
             minWidth,
+            chartWidth,
             zoneX1,
             zoneX2,
             upperY,
@@ -1640,7 +1650,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             return false;
         }
 
-        const { entryX, minWidth, zoneX2 } = this.lastRenderMeta;
+        const { entryX, minWidth, zoneX2, chartWidth } = this.lastRenderMeta;
         const screenX = context.screen ? context.screen.x : null;
         if (typeof screenX !== 'number' || Number.isNaN(screenX)) {
             return false;
@@ -1660,6 +1670,9 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
 
         this.meta.zoneWidth = newWidth;
+        if (Number.isFinite(chartWidth) && chartWidth > 0) {
+            this.meta.zoneWidthRatio = newWidth / chartWidth;
+        }
 
         if (context.point) {
             if (this.isLong) {
