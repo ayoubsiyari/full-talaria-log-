@@ -20534,9 +20534,8 @@
                     e.stopPropagation();
 
                     if (this.dataset.group === 'visibility-toolbar') {
-                        const visibilityArrow = document.getElementById('visibilityDropdownArrowToolbar');
-                        if (visibilityArrow) {
-                            visibilityArrow.click();
+                        if (typeof window.toggleDrawingsVisibility === 'function') {
+                            window.toggleDrawingsVisibility();
                         }
                         return;
                     }
