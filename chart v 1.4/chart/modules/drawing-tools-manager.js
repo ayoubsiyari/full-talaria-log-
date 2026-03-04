@@ -1807,7 +1807,7 @@ class DrawingToolsManager {
             const maxX = this.chart.w - m.r;
             const maxY = this.chart.h - m.b;
             screenX = Math.max(m.l, Math.min(maxX, screenX));
-            screenY = Math.max(m.t, Math.min(maxY, screenY));
+            screenY = Math.max(0, Math.min(maxY, screenY));
         }
         
         // Check if current tool is a freehand/continuous drawing tool

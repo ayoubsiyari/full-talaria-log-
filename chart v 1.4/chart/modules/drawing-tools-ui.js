@@ -12542,9 +12542,10 @@ applyTemplate(drawing, templateId, modal) {
             drawing.meta.risk = risk;
         }
         const controlsWrap = section.append('div')
-            .style('display', 'flex')
-            .style('flex-direction', 'column')
-            .style('gap', '10px')
+            .style('display', 'grid')
+            .style('grid-template-columns', 'repeat(2, minmax(0, 1fr))')
+            .style('column-gap', '10px')
+            .style('row-gap', '8px')
             .style('margin-bottom', '12px')
             .style('padding-bottom', '12px')
             .style('border-bottom', '1px solid #363a45');
@@ -12555,22 +12556,23 @@ applyTemplate(drawing, templateId, modal) {
             const row = controlsWrap.append('div')
                 .attr('class', 'tv-prop-row')
                 .style('display', 'flex')
-                .style('align-items', 'center')
-                .style('gap', '12px')
-                .style('min-height', '30px')
+                .style('flex-direction', 'column')
+                .style('align-items', 'stretch')
+                .style('gap', '4px')
+                .style('min-width', '0')
                 .style('padding', '0');
 
             const label = row.append('span')
                 .attr('class', 'tv-prop-label')
                 .style('min-width', '0')
-                .style('flex', '1')
+                .style('font-size', '11px')
+                .style('color', '#9aa1b7')
                 .text(labelText);
 
             const controls = row.append('div')
                 .attr('class', 'tv-prop-controls')
-                .style('margin-left', 'auto')
-                .style('width', `${controlsColumnWidth}px`)
-                .style('min-height', '30px')
+                .style('width', '100%')
+                .style('min-height', '28px')
                 .style('display', 'flex')
                 .style('align-items', 'center')
                 .style('justify-content', 'flex-start');
@@ -12590,7 +12592,7 @@ applyTemplate(drawing, templateId, modal) {
                 .attr('type', 'number')
                 .attr('class', 'tv-input')
                 .style('width', '100%')
-                .style('max-width', `${controlsColumnWidth}px`);
+                .style('max-width', '100%');
 
             if (min !== null) input.attr('min', min);
             if (max !== null) input.attr('max', max);
@@ -12626,7 +12628,7 @@ applyTemplate(drawing, templateId, modal) {
         const riskModeSelect = riskModeRow.controls.append('select')
             .attr('class', 'tv-select')
             .style('width', '100%')
-            .style('min-width', `${controlsColumnWidth}px`)
+            .style('min-width', '0')
             .html(`
                 <option value="risk-usd">Fixed USD</option>
                 <option value="risk-percent">% of Account</option>
@@ -12729,7 +12731,7 @@ applyTemplate(drawing, templateId, modal) {
         const lotSizeRow = createControlRow('Calculated Lot Size');
         const lotSizeValue = lotSizeRow.controls.append('div')
             .style('width', '100%')
-            .style('max-width', `${controlsColumnWidth}px`)
+            .style('max-width', '100%')
             .style('height', '27px')
             .style('box-sizing', 'border-box')
             .style('padding', '0 9px')
@@ -12769,9 +12771,9 @@ applyTemplate(drawing, templateId, modal) {
         };
 
         const summarySection = section.append('div')
-            .style('border-top', '1px solid #363a45')
-            .style('padding-top', '12px')
-            .style('margin-top', '4px')
+            .style('border-bottom', '1px solid #363a45')
+            .style('padding-bottom', '12px')
+            .style('margin-bottom', '12px')
             .style('display', 'flex')
             .style('flex-direction', 'column')
             .style('gap', '8px');
@@ -12791,6 +12793,9 @@ applyTemplate(drawing, templateId, modal) {
 
         const riskAmountText = createReadOnlyRow(summaryRows, 'Risk Amount');
         const rewardRatioText = createReadOnlyRow(summaryRows, 'Reward Ratio');
+
+        // Keep summary at the top (just below the section title).
+        section.node().insertBefore(summarySection.node(), controlsWrap.node());
 
         const infoSection = section.append('div')
             .attr('class', 'risk-position-info')
