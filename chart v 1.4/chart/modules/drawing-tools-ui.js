@@ -12550,7 +12550,7 @@ applyTemplate(drawing, templateId, modal) {
             .style('padding-bottom', '12px')
             .style('border-bottom', '1px solid #363a45');
 
-        const controlsColumnWidth = 128;
+        const controlsColumnWidth = 112;
 
         const createControlRow = (labelText) => {
             const row = controlsWrap.append('div')
@@ -12560,11 +12560,14 @@ applyTemplate(drawing, templateId, modal) {
                 .style('align-items', 'stretch')
                 .style('gap', '4px')
                 .style('min-width', '0')
+                .style('min-height', '0')
                 .style('padding', '0');
 
             const label = row.append('span')
                 .attr('class', 'tv-prop-label')
                 .style('min-width', '0')
+                .style('width', 'auto')
+                .style('flex', 'none')
                 .style('font-size', '11px')
                 .style('color', '#9aa1b7')
                 .text(labelText);
@@ -12572,7 +12575,7 @@ applyTemplate(drawing, templateId, modal) {
             const controls = row.append('div')
                 .attr('class', 'tv-prop-controls')
                 .style('width', '100%')
-                .style('min-height', '28px')
+                .style('min-height', '24px')
                 .style('display', 'flex')
                 .style('align-items', 'center')
                 .style('justify-content', 'flex-start');
@@ -12593,9 +12596,9 @@ applyTemplate(drawing, templateId, modal) {
                 .attr('class', 'tv-input')
                 .style('width', `${controlsColumnWidth}px`)
                 .style('max-width', '100%')
-                .style('height', '26px')
-                .style('padding', '0 8px')
-                .style('font-size', '11px');
+                .style('height', '24px')
+                .style('padding', '0 6px')
+                .style('font-size', '10px');
 
             if (min !== null) input.attr('min', min);
             if (max !== null) input.attr('max', max);
@@ -12633,8 +12636,8 @@ applyTemplate(drawing, templateId, modal) {
             .style('width', `${controlsColumnWidth}px`)
             .style('max-width', '100%')
             .style('min-width', '0')
-            .style('height', '26px')
-            .style('font-size', '11px')
+            .style('height', '24px')
+            .style('font-size', '10px')
             .html(`
                 <option value="risk-usd">Fixed USD</option>
                 <option value="risk-percent">% of Account</option>
@@ -12739,14 +12742,14 @@ applyTemplate(drawing, templateId, modal) {
         const lotSizeValue = lotSizeRow.controls.append('div')
             .style('width', `${controlsColumnWidth}px`)
             .style('max-width', '100%')
-            .style('height', '26px')
+            .style('height', '24px')
             .style('box-sizing', 'border-box')
-            .style('padding', '0 8px')
+            .style('padding', '0 6px')
             .style('border-radius', '4px')
             .style('border', '1px solid rgba(255, 255, 255, 0.12)')
             .style('background', 'rgba(255, 255, 255, 0.04)')
             .style('color', '#d1d4dc')
-            .style('font-size', '11px')
+            .style('font-size', '10px')
             .style('font-weight', '600')
             .style('display', 'flex')
             .style('align-items', 'center')
