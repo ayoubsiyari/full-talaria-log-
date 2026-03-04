@@ -843,19 +843,24 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (window.chart && window.chart.orderManager) {
             actualBalance = window.chart.orderManager.balance || 10000;
         }
+
+        const existingRisk = this.meta.risk || null;
+        const persistedAccountSize = existingRisk && Number.isFinite(Number(existingRisk.accountSize)) && Number(existingRisk.accountSize) > 0
+            ? Number(existingRisk.accountSize)
+            : null;
+        const accountSize = persistedAccountSize || actualBalance;
         
         if (!this.meta.risk) {
             this.meta.risk = {
-                accountSize: actualBalance,
+                accountSize,
                 lotSize: 0.01,
                 leverage: 1,
                 riskPercent: 1,
                 riskMode: 'risk-usd',
                 riskAmountUSD: 100
             };
-        } else {
-            // Sync account size with actual balance
-            this.meta.risk.accountSize = actualBalance;
+        } else if (!persistedAccountSize) {
+            this.meta.risk.accountSize = accountSize;
         }
 
         if (!Array.isArray(this.points) || this.points.length < 1) {
@@ -874,14 +879,14 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         this.meta.risk = {
             ...this.meta.risk, // Preserve existing settings
-            accountSize: actualBalance, // Always use current balance
+            accountSize,
             entryPrice,
             stopPrice: stop.y,
             targetPrice: target.y,
             stopTicks: parseFloat(stopDiff.toFixed(5)),
             profitTicks: parseFloat(profitDiff.toFixed(5)),
             rewardRatio: parseFloat(rewardRatio.toFixed(2)),
-            riskAmount: parseFloat(((actualBalance) * (riskPercent / 100)).toFixed(2))
+            riskAmount: parseFloat(((accountSize) * (riskPercent / 100)).toFixed(2))
         };
     }
 

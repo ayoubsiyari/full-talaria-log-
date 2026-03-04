@@ -12644,6 +12644,7 @@ applyTemplate(drawing, templateId, modal) {
 
         const riskAmountRow = createControlRow('Risk Amount (USD)');
         let riskInput = null;
+        let activeRiskInputMode = null;
 
         const calculateLotSizeFromRisk = () => {
             const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : risk;
@@ -12678,6 +12679,7 @@ applyTemplate(drawing, templateId, modal) {
         const createRiskInput = () => {
             const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : risk;
             const mode = state.riskMode || 'risk-usd';
+            activeRiskInputMode = mode;
 
             riskAmountRow.controls.selectAll('*').remove();
             if (mode === 'risk-usd') {
@@ -12829,8 +12831,19 @@ applyTemplate(drawing, templateId, modal) {
             }
             riskModeSelect.property('value', state.riskMode);
             
-            // Recreate risk input if mode changed
-            createRiskInput();
+            // Recreate risk input only when mode changed; otherwise keep current element
+            // so user typing/focus isn't interrupted.
+            if (!riskInput || activeRiskInputMode !== state.riskMode) {
+                createRiskInput();
+            }
+
+            if (riskInput) {
+                if (state.riskMode === 'risk-usd') {
+                    setInputValue(riskInput, state.riskAmountUSD);
+                } else {
+                    setInputValue(riskInput, state.riskPercent);
+                }
+            }
             
             // Update all input values
             setInputValue(accountInput, state.accountSize);
