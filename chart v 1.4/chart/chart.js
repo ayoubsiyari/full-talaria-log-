@@ -2472,13 +2472,21 @@ class Chart {
     }
 
     setDrawingsHidden(hidden) {
+        const changed = this.drawingsHidden !== hidden;
         this.drawingsHidden = hidden;
         this.applyDrawingVisibilityStates();
+        if (changed && this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
+            this.drawingManager.redrawAll();
+        }
     }
 
     setPositionsHidden(hidden) {
+        const changed = this.positionsHidden !== hidden;
         this.positionsHidden = hidden;
         this.applyDrawingVisibilityStates();
+        if (changed && this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
+            this.drawingManager.redrawAll();
+        }
     }
 
     setIndicatorsHidden(hidden) {
@@ -2498,15 +2506,18 @@ class Chart {
         drawingsList.forEach(drawing => {
             if (!drawing) return;
             const isPosition = drawing.type === 'long-position' || drawing.type === 'short-position';
+            const locallyHidden = drawing.visible === false || drawing.hidden === true;
             
             // Determine if this drawing should be hidden
-            let shouldHide = false;
-            if (hideAll) {
-                shouldHide = true; // Hide everything
-            } else if (isPosition && hidePositions) {
-                shouldHide = true; // Hide only positions
-            } else if (!isPosition && this.drawingsHidden) {
-                shouldHide = true; // Hide only non-position drawings
+            let shouldHide = locallyHidden;
+            if (!shouldHide) {
+                if (hideAll) {
+                    shouldHide = true; // Hide everything
+                } else if (isPosition && hidePositions) {
+                    shouldHide = true; // Hide only positions
+                } else if (!isPosition && this.drawingsHidden) {
+                    shouldHide = true; // Hide only non-position drawings
+                }
             }
             
             if (drawing.group) {
@@ -2518,31 +2529,9 @@ class Chart {
             }
         });
 
-        if (this.svg) {
-            if (hideAll) {
-                // Hide everything
-                this.svg.selectAll('.drawing').style('display', 'none');
-                this.svg.selectAll('.axis-highlight-group').remove();
-                this.svg.selectAll('.drawings-labels [data-id]').remove();
-            } else {
-                // First show all drawings
-                this.svg.selectAll('.drawing').style('display', null);
-                
-                // Then hide positions if needed
-                if (hidePositions) {
-                    this.svg.selectAll('.drawing.long-position, .drawing.short-position').style('display', 'none');
-                }
-                
-                // Then hide non-position drawings if needed
-                if (this.drawingsHidden) {
-                    this.svg.selectAll('.drawing').each(function() {
-                        const classList = this.classList;
-                        if (!classList.contains('long-position') && !classList.contains('short-position')) {
-                            this.style.display = 'none';
-                        }
-                    });
-                }
-            }
+        if (this.svg && hideAll) {
+            this.svg.selectAll('.axis-highlight-group').remove();
+            this.svg.selectAll('.drawings-labels [data-id]').remove();
         }
 
         if (this.drawingManager && this.drawingManager.tempGroup) {
@@ -11168,6 +11157,27 @@ class Chart {
                 return;
             }
             btn.addEventListener('click', () => {
+                const isSameToolActive = !!(
+                    this.drawingManager &&
+                    this.drawingManager.currentTool === tool &&
+                    btn.classList.contains('active')
+                );
+
+                // Toggle behavior: clicking the active tool again deselects it and returns to cursor mode.
+                if (isSameToolActive) {
+                    this.drawingManager.clearTool();
+                    if (typeof this.drawingManager.deselectAll === 'function') {
+                        this.drawingManager.deselectAll();
+                    }
+                    this.setCursorType('cross');
+                    document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
+                    const cursorBtn = document.getElementById('cursorTool');
+                    if (cursorBtn) cursorBtn.classList.add('active');
+                    this.hideContextMenu();
+                    this.syncMagnetButton();
+                    return;
+                }
+
                 // If we were in eraser cursor mode, turn it off when selecting any drawing tool
                 // Do NOT call setCursorType('cross') here, because that would clear the
                 // drawingManager tool we are about to set. Instead, manually reset eraser state
