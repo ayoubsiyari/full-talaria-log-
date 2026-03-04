@@ -2273,7 +2273,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Check if this drawing type should have a Text tab
         // Text-type drawings use STYLE tab for text controls, so they don't need a separate TEXT tab
         // Arrow-marker tools also show text in STYLE tab
-        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'price-range', 'date-range', 'long-position', 'short-position', 'elliott-impulse', 'elliott-correction', 'elliott-triangle', 'elliott-double-combo', 'elliott-triple-combo'];
+        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'price-range', 'date-range', 'long-position', 'short-position', 'elliott-impulse', 'elliott-correction', 'elliott-triangle', 'elliott-double-combo', 'elliott-triple-combo', 'bars-pattern', 'xabcd-pattern', 'cypher-pattern', 'head-shoulders', 'abcd-pattern', 'triangle-pattern', 'three-drives'];
         const hasTextTab = !noTextTabTypes.includes(drawing.type);
         
         const body = document.createElement('div');
@@ -2661,6 +2661,10 @@ body.light-mode .template-save-dialog .dialog-title {
         const isBrushType = drawing.type === 'brush' || drawing.type === 'highlighter';
         const isArrowMarkerType = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
         const isElliottWaveType = typeof drawing.type === 'string' && drawing.type.startsWith('elliott-');
+        const patternTypes = ['bars-pattern', 'xabcd-pattern', 'cypher-pattern', 'head-shoulders', 'abcd-pattern', 'triangle-pattern', 'three-drives'];
+        const patternTypesWithBackground = ['bars-pattern', 'xabcd-pattern'];
+        const isPatternType = patternTypes.includes(drawing.type);
+        const allowPatternBackgroundControls = !isPatternType || patternTypesWithBackground.includes(drawing.type);
         
         // For polyline and shapes: show background color picker without checkbox
         if (isPolyline || isShapeTool || isArrowMarkerType) {
@@ -2716,7 +2720,7 @@ body.light-mode .template-save-dialog .dialog-title {
             container.appendChild(bgRow);
         }
         // For other tools: show background with checkbox
-        else if (!isBrushType && !isLineTool && !isElliottWaveType && drawing.type !== 'fibonacci-retracement' && drawing.type !== 'fibonacci-extension' && drawing.type !== 'trend-fib-extension' && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'fib-spiral' && drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
+        else if (!isBrushType && !isLineTool && !isElliottWaveType && allowPatternBackgroundControls && drawing.type !== 'fibonacci-retracement' && drawing.type !== 'fibonacci-extension' && drawing.type !== 'trend-fib-extension' && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'fib-spiral' && drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
             const bgRow = document.createElement('div');
             bgRow.className = 'tv-prop-row';
             const hasFill = drawing.style.fill && drawing.style.fill !== 'none';
