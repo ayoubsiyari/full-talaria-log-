@@ -1025,10 +1025,12 @@ class BaseRiskRewardTool extends BaseDrawing {
         const newTarget = this.isLong ? entryPrice + newTargetDiff : entryPrice - newTargetDiff;
 
         const entryX = entry.x;
+        const stopX = Number.isFinite(stop?.x) ? stop.x : entryX;
+        const targetX = Number.isFinite(target?.x) ? target.x : entryX;
         this.points = [
             { ...entry, x: entryX, y: entryPrice },
-            { ...stop, x: entryX, y: this.sanitizeStopPrice(newStop) },
-            { ...target, x: entryX, y: this.sanitizeTargetPrice(newTarget) }
+            { ...stop, x: stopX, y: this.sanitizeStopPrice(newStop) },
+            { ...target, x: targetX, y: this.sanitizeTargetPrice(newTarget) }
         ];
 
         this.meta.risk.riskPercent = percent;
@@ -1336,24 +1338,64 @@ class BaseRiskRewardTool extends BaseDrawing {
         const chartWidth = Math.abs(xRange[1] - xRange[0]);
         const defaultWidth = Math.min(chartWidth * 0.25, 320);
         const minWidth = 24;
-        const hasWidthRatio = Number.isFinite(this.meta.zoneWidthRatio) && this.meta.zoneWidthRatio > 0;
-        let zoneWidth = hasWidthRatio
-            ? (this.meta.zoneWidthRatio * chartWidth)
-            : this.meta.zoneWidth;
-        if (!Number.isFinite(zoneWidth) || zoneWidth <= 0) {
-            zoneWidth = defaultWidth;
+        const toPixel = (index) => (scales.chart && scales.chart.dataIndexToPixel)
+            ? scales.chart.dataIndexToPixel(index)
+            : scales.xScale(index);
+        const toIndex = (pixel) => (scales.chart && scales.chart.pixelToDataIndex)
+            ? scales.chart.pixelToDataIndex(pixel)
+            : scales.xScale.invert(pixel);
+
+        const entryIndex = Number.isFinite(entry?.x) ? entry.x : 0;
+        const stopIndex = Number.isFinite(stop?.x) ? stop.x : entryIndex;
+        const targetIndex = Number.isFinite(target?.x) ? target.x : entryIndex;
+        const entryX = toPixel(entryIndex);
+
+        let rightIndex = Math.max(entryIndex, stopIndex, targetIndex);
+
+        // Backward compatibility for legacy drawings saved with pixel-only width.
+        if ((rightIndex - entryIndex) <= 1e-6) {
+            const hasWidthRatio = Number.isFinite(this.meta.zoneWidthRatio) && this.meta.zoneWidthRatio > 0;
+            let fallbackWidth = hasWidthRatio
+                ? (this.meta.zoneWidthRatio * chartWidth)
+                : this.meta.zoneWidth;
+
+            if (!Number.isFinite(fallbackWidth) || fallbackWidth <= 0) {
+                fallbackWidth = defaultWidth;
+            }
+
+            fallbackWidth = Math.max(minWidth, fallbackWidth);
+            const migratedRightIndex = toIndex(entryX + fallbackWidth);
+            if (Number.isFinite(migratedRightIndex)) {
+                rightIndex = Math.max(entryIndex, migratedRightIndex);
+                this.points[1] = { ...this.points[1], x: rightIndex };
+                this.points[2] = { ...this.points[2], x: rightIndex };
+            }
         }
-        zoneWidth = Math.max(minWidth, zoneWidth);
+
+        const zoneX1 = entryX;
+        let zoneX2 = toPixel(rightIndex);
+        if (!Number.isFinite(zoneX2) || zoneX2 <= zoneX1) {
+            zoneX2 = zoneX1 + defaultWidth;
+        }
+
+        let zoneWidth = zoneX2 - zoneX1;
+        if (zoneWidth < minWidth) {
+            zoneWidth = minWidth;
+            zoneX2 = zoneX1 + zoneWidth;
+            const minRightIndex = toIndex(zoneX2);
+            if (Number.isFinite(minRightIndex)) {
+                rightIndex = Math.max(entryIndex, minRightIndex);
+                this.points[1] = { ...this.points[1], x: rightIndex };
+                this.points[2] = { ...this.points[2], x: rightIndex };
+                zoneX2 = toPixel(rightIndex);
+                zoneWidth = Math.max(minWidth, zoneX2 - zoneX1);
+            }
+        }
+
         this.meta.zoneWidth = zoneWidth;
         if (chartWidth > 0) {
             this.meta.zoneWidthRatio = zoneWidth / chartWidth;
         }
-
-        const entryX = scales.chart && scales.chart.dataIndexToPixel ?
-            scales.chart.dataIndexToPixel(entry.x) : scales.xScale(entry.x);
-
-        const zoneX1 = entryX;
-        const zoneX2 = entryX + zoneWidth;
 
         const entryY = scales.yScale(entry.y);
         const stopY = scales.yScale(stop.y);
@@ -1656,18 +1698,49 @@ class BaseRiskRewardTool extends BaseDrawing {
             return false;
         }
 
-        let newWidth = this.meta.zoneWidth;
+        const toIndex = (pixel) => (context.scales?.chart && context.scales.chart.pixelToDataIndex)
+            ? context.scales.chart.pixelToDataIndex(pixel)
+            : context.scales?.xScale?.invert?.(pixel);
+        const toPixel = (index) => (context.scales?.chart && context.scales.chart.dataIndexToPixel)
+            ? context.scales.chart.dataIndexToPixel(index)
+            : context.scales?.xScale?.(index);
+
+        const entryIndex = Number.isFinite(this.points?.[0]?.x) ? this.points[0].x : 0;
+        let newRightIndex = Number.isFinite(this.points?.[1]?.x) ? this.points[1].x : entryIndex;
+
+        const minRightIndexFromPixels = toIndex(entryX + minWidth);
+        const minRightIndex = Number.isFinite(minRightIndexFromPixels)
+            ? Math.max(entryIndex, minRightIndexFromPixels)
+            : entryIndex;
 
         if (handleRole.includes('right')) {
-            const desiredWidth = Math.max(minWidth, screenX - entryX);
-            newWidth = desiredWidth;
+            const desiredIndex = Number.isFinite(context.dataPoint?.x)
+                ? context.dataPoint.x
+                : toIndex(screenX);
+            if (Number.isFinite(desiredIndex)) {
+                newRightIndex = desiredIndex;
+            }
         } else if (handleRole.includes('left')) {
-            const clampedX = Math.min(Math.max(screenX, entryX), zoneX2 - minWidth);
-            newWidth = Math.max(minWidth, zoneX2 - clampedX);
+            const desiredIndex = Number.isFinite(context.dataPoint?.x)
+                ? context.dataPoint.x
+                : toIndex(screenX);
+            if (Number.isFinite(desiredIndex)) {
+                newRightIndex = desiredIndex;
+            }
         } else {
-            const delta = Math.abs(screenX - entryX);
-            newWidth = Math.max(minWidth, delta * 2);
+            const desiredIndex = toIndex(screenX);
+            if (Number.isFinite(desiredIndex)) {
+                newRightIndex = desiredIndex;
+            }
         }
+
+        newRightIndex = Math.max(newRightIndex, minRightIndex);
+        this.points[1] = { ...this.points[1], x: newRightIndex };
+        this.points[2] = { ...this.points[2], x: newRightIndex };
+
+        const newRightX = toPixel(newRightIndex);
+        const computedWidth = Number.isFinite(newRightX) ? (newRightX - entryX) : this.meta.zoneWidth;
+        const newWidth = Math.max(minWidth, computedWidth || 0);
 
         this.meta.zoneWidth = newWidth;
         if (Number.isFinite(chartWidth) && chartWidth > 0) {
