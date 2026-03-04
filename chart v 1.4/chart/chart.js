@@ -269,7 +269,7 @@ class Chart {
 
         // Right-click gesture state
         this._rightClickDragThreshold = 6;
-        this._contextMenuSuppressMs = 220;
+        this._contextMenuSuppressMs = 500;
         this._rightMouseDragged = false;
         this._suppressContextMenuUntil = 0;
         
@@ -6080,19 +6080,28 @@ class Chart {
         }
 
         // Handle browsers that emit contextmenu before mouseup:
-        // suppress only if right-drag distance already crossed threshold.
+        // prefer tracked box-zoom distance (event coordinates can be stale).
         if (
-            event &&
             this.boxZoom && this.boxZoom.active &&
-            this.drag && this.drag.type === 'boxZoom' &&
-            this.canvas
+            this.drag && this.drag.type === 'boxZoom'
         ) {
-            const rect = this.canvas.getBoundingClientRect();
-            const mx = event.clientX - rect.left;
-            const my = event.clientY - rect.top;
-            const dragDistance = Math.hypot(mx - this.boxZoom.startX, my - this.boxZoom.startY);
-            if (dragDistance >= this._rightClickDragThreshold) {
+            const trackedDistance = Math.hypot(
+                this.boxZoom.endX - this.boxZoom.startX,
+                this.boxZoom.endY - this.boxZoom.startY
+            );
+            if (trackedDistance >= this._rightClickDragThreshold) {
                 return true;
+            }
+
+            // Fallback: compute with event position when available.
+            if (event && this.canvas) {
+                const rect = this.canvas.getBoundingClientRect();
+                const mx = event.clientX - rect.left;
+                const my = event.clientY - rect.top;
+                const eventDistance = Math.hypot(mx - this.boxZoom.startX, my - this.boxZoom.startY);
+                if (eventDistance >= this._rightClickDragThreshold) {
+                    return true;
+                }
             }
         }
 
@@ -11024,6 +11033,22 @@ class Chart {
         const handleMouseUp = (e) => {
             const wasDragging = this.drag.active;
             const dragType = this.drag.type;
+
+            // If mousemove events were missed, compute final right-drag distance from mouseup.
+            if (dragType === 'boxZoom' && this.boxZoom.active && this.canvas) {
+                const rect = this.canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                this.boxZoom.endX = mx;
+                this.boxZoom.endY = my;
+                const finalDistance = Math.hypot(
+                    this.boxZoom.endX - this.boxZoom.startX,
+                    this.boxZoom.endY - this.boxZoom.startY
+                );
+                if (finalDistance >= this._rightClickDragThreshold) {
+                    this._rightMouseDragged = true;
+                }
+            }
             
             // Handle box zoom
             if (dragType === 'boxZoom' && this.boxZoom.active) {
@@ -11079,6 +11104,21 @@ class Chart {
         // element owns the event (canvas, SVG overlay, resize handles, etc.).
         // This is the single source of truth for crosshair position.
         document.addEventListener('mousemove', (e) => {
+            // Keep right-drag box-zoom tracking in capture phase so we don't miss
+            // movement when another layer consumes bubble-phase mousemove events.
+            if (this.drag && this.drag.active && this.drag.type === 'boxZoom' && this.boxZoom && this.boxZoom.active && this.canvas) {
+                const rect = this.canvas.getBoundingClientRect();
+                this.boxZoom.endX = e.clientX - rect.left;
+                this.boxZoom.endY = e.clientY - rect.top;
+                const dragDistance = Math.hypot(
+                    this.boxZoom.endX - this.boxZoom.startX,
+                    this.boxZoom.endY - this.boxZoom.startY
+                );
+                if (dragDistance >= this._rightClickDragThreshold) {
+                    this._rightMouseDragged = true;
+                }
+            }
+
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
         }, true);
         
