@@ -59,6 +59,7 @@ class ReplaySystem {
         this.pauseTextEl = null;
         this.toolbarVisible = false;
         this._lastFollowIndicatorCheckTs = 0;
+        this.replayRightPaddingRatio = 0.2;
 
         this.dragState = {
             isDragging: false,
@@ -1605,6 +1606,44 @@ class ReplaySystem {
         console.log('✅ Replay Mode Exited');
     }
 
+    getReplayAutoScrollState(chartInstance = this.chart) {
+        if (!chartInstance || !Array.isArray(chartInstance.data)) return null;
+
+        const candleSpacing = chartInstance.getCandleSpacing
+            ? chartInstance.getCandleSpacing()
+            : (chartInstance.candleWidth + (chartInstance.candleGap || 2));
+
+        if (!Number.isFinite(candleSpacing) || candleSpacing <= 0) return null;
+
+        const m = chartInstance.margin || { l: 0, r: 70 };
+        const chartAreaW = Math.max(0, (chartInstance.w || 0) - (m.l || 0) - (m.r || 0));
+        const numVisibleCandles = Math.max(1, Math.floor(chartAreaW / candleSpacing));
+
+        const configuredGapCandles = Math.max(
+            0,
+            Math.round(
+                Number.isFinite(chartInstance.timeScale?.rightOffsetCandles)
+                    ? chartInstance.timeScale.rightOffsetCandles
+                    : 0
+            )
+        );
+        const ratioGapCandles = Math.max(
+            0,
+            Math.floor(numVisibleCandles * (Number.isFinite(this.replayRightPaddingRatio) ? this.replayRightPaddingRatio : 0.2))
+        );
+        const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
+
+        const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
+        const scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
+
+        return {
+            offsetX: -scrollPosition * candleSpacing,
+            numVisibleCandles,
+            rightGapCandles,
+            scrollPosition
+        };
+    }
+
     /**
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
@@ -1660,17 +1699,11 @@ class ReplaySystem {
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
         if (autoScroll && this.autoScrollEnabled) {
-            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : 
-                                 (this.chart.candleWidth + (this.chart.candleGap || 2));
-            const m = this.chart.margin || { l: 0, r: 70 };
-            const chartAreaW = this.chart.w - m.l - m.r;
-            const numVisibleCandles = Math.floor(chartAreaW / candleSpacing);
-            
-            // Fill the visible window so replay does not leave an unnecessary right-side gap.
-            const scrollPosition = Math.max(0, this.chart.data.length - Math.max(1, numVisibleCandles));
-            this.chart.offsetX = -scrollPosition * candleSpacing;
-            
-            console.log(`📍 Auto-scroll: data=${this.chart.data.length}, visible=${numVisibleCandles}, offset=${this.chart.offsetX}`);
+            const autoScrollState = this.getReplayAutoScrollState(this.chart);
+            if (autoScrollState) {
+                this.chart.offsetX = autoScrollState.offsetX;
+                console.log(`📍 Auto-scroll: data=${this.chart.data.length}, visible=${autoScrollState.numVisibleCandles}, rightGap=${autoScrollState.rightGapCandles}, offset=${this.chart.offsetX}`);
+            }
         } else {
             console.log(`📍 Keeping current view position (no auto-scroll)`);
         }
@@ -2535,13 +2568,10 @@ class ReplaySystem {
         
         // Auto-scroll if enabled
         if (this.autoScrollEnabled) {
-            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : 
-                                 (this.chart.candleWidth + (this.chart.candleGap || 2));
-            const m = this.chart.margin || { l: 0, r: 70 };
-            const chartAreaW = this.chart.w - m.l - m.r;
-            const numVisibleCandles = Math.floor(chartAreaW / candleSpacing);
-            const scrollPosition = Math.max(0, this.chart.data.length - Math.max(1, numVisibleCandles));
-            this.chart.offsetX = -scrollPosition * candleSpacing;
+            const autoScrollState = this.getReplayAutoScrollState(this.chart);
+            if (autoScrollState) {
+                this.chart.offsetX = autoScrollState.offsetX;
+            }
         }
         
         // Update UI
@@ -2998,12 +3028,10 @@ class ReplaySystem {
                         if (panel.chartInstance.fitToView) {
                             panel.chartInstance.fitToView();
                         } else {
-                            const candleSpacing = panel.chartInstance.getCandleSpacing ? 
-                                                 panel.chartInstance.getCandleSpacing() : 
-                                                 (panel.chartInstance.candleWidth + (panel.chartInstance.candleGap || 2));
-                            const numVisibleCandles = Math.floor(panel.chartInstance.w / candleSpacing);
-                            const scrollPosition = Math.max(0, panel.chartInstance.data.length - Math.max(1, numVisibleCandles));
-                            panel.chartInstance.offsetX = -scrollPosition * candleSpacing;
+                            const panelAutoScrollState = this.getReplayAutoScrollState(panel.chartInstance);
+                            if (panelAutoScrollState) {
+                                panel.chartInstance.offsetX = panelAutoScrollState.offsetX;
+                            }
                         }
                     }
                     
@@ -3785,12 +3813,10 @@ class ReplaySystem {
                     
                     // Auto-scroll panel if enabled
                     if (this.autoScrollEnabled) {
-                        const candleSpacing = panel.chartInstance.getCandleSpacing ? 
-                                             panel.chartInstance.getCandleSpacing() : 
-                                             (panel.chartInstance.candleWidth + (panel.chartInstance.candleGap || 2));
-                        const numVisibleCandles = Math.floor(panel.chartInstance.w / candleSpacing);
-                        const scrollPosition = Math.max(0, panel.chartInstance.data.length - Math.max(1, numVisibleCandles));
-                        panel.chartInstance.offsetX = -scrollPosition * candleSpacing;
+                        const panelAutoScrollState = this.getReplayAutoScrollState(panel.chartInstance);
+                        if (panelAutoScrollState) {
+                            panel.chartInstance.offsetX = panelAutoScrollState.offsetX;
+                        }
                     }
                     
                     // Apply constraints
