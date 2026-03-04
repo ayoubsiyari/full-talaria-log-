@@ -19400,7 +19400,7 @@
          <script src="chart.js?v=20260304_TF_PIN_V42"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260304_TF_PIN_V23"></script>
+    <script src="modules/replay-system.js?v=20260304_TF_PIN_V25"></script>
     
     
     <!-- Order Management System -->
@@ -24704,7 +24704,15 @@ function showIndicatorsMenu() {
                     stepForwardClone.onmouseleave = () => { stepForwardClone.style.background = 'transparent'; stepForwardClone.style.color = 'rgba(209, 212, 220, 0.6)'; };
                     stepForwardClone.onclick = () => {
                         const rs = window.chart && window.chart.replaySystem;
-                        if (rs && typeof rs.stepForward === 'function') {
+                        if (!rs) {
+                            return;
+                        }
+                        if (typeof rs.requestStepForward === 'function') {
+                            rs.requestStepForward();
+                        } else if (typeof rs.stepForward === 'function') {
+                            if (rs.isPlaying && typeof rs.pause === 'function') {
+                                rs.pause();
+                            }
                             rs.stepForward();
                         }
                     };

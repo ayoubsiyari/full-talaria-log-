@@ -39,7 +39,10 @@ class ReplaySystem {
         this.tickPathCache = {};  // { timestamp: [price0, price1, ...price59] }
         this.tickPathCacheBuilt = false;
         this._prngSeed = 12345; // Seeded PRNG state
-        this._nextCandleTimer = null; // Tracks the between-candle 50ms delay so it can be cancelled
+        this._nextCandleTimer = null; // Tracks the between-candle timer so it can be cancelled
+        this.useConstantTickInterval = true; // Keeps replay cadence stable (prevents stop/run feel)
+        this.interCandleDelayMs = 8; // Tiny handoff delay between candles to keep UI responsive
+        this.dataLoadRetryDelayMs = 120; // Retry delay when waiting for more server candles
 
         this.toolbar = null;
         this.handle = null;
@@ -204,11 +207,11 @@ class ReplaySystem {
         }
 
         if (this.stepForwardBtn) {
-            this.stepForwardBtn.addEventListener('click', () => this.stepForward());
+            this.stepForwardBtn.addEventListener('click', () => this.requestStepForward());
         }
 
         if (this.stepBackwardBtn) {
-            this.stepBackwardBtn.addEventListener('click', () => this.stepBackward());
+            this.stepBackwardBtn.addEventListener('click', () => this.requestStepBackward());
         }
 
         if (this.exitBtn) {
@@ -559,14 +562,14 @@ class ReplaySystem {
         const stepForwardBtn = clone.querySelector('#replayStepForward');
         if (stepForwardBtn) {
             stepForwardBtn.id = 'replayStepForwardClone';
-            stepForwardBtn.addEventListener('click', () => this.stepForward());
+            stepForwardBtn.addEventListener('click', () => this.requestStepForward());
         }
-        
+
         // Step backward
         const stepBackwardBtn = clone.querySelector('#replayStepBackward');
         if (stepBackwardBtn) {
             stepBackwardBtn.id = 'replayStepBackwardClone';
-            stepBackwardBtn.addEventListener('click', () => this.stepBackward());
+            stepBackwardBtn.addEventListener('click', () => this.requestStepBackward());
         }
         
         // Exit button
@@ -2124,10 +2127,11 @@ class ReplaySystem {
                     clearTimeout(this._nextCandleTimer);
                     this._nextCandleTimer = null;
                 }
+                const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
                 this._nextCandleTimer = setTimeout(() => {
                     this._nextCandleTimer = null;
                     if (this.isPlaying) this.startTickAnimation();
-                }, 120);
+                }, dataLoadRetryDelay);
                 return;
             }
             this.pause();
@@ -2253,18 +2257,28 @@ class ReplaySystem {
             
             // Base tick interval = candle duration / ticks
             const baseTickInterval = Math.max(16, realTimeCandleDuration / this.currentTicksPerCandle);
-            
-            // VOLUME-WEIGHTED TICK SPEED
-            const volumeMultiplier = this.calculateVolumeMultiplier(targetCandle, nextIndex);
-            
-            this.volumeTickData = {
-                baseInterval: baseTickInterval,
-                volumeMultiplier: volumeMultiplier,
-                candleVolume: targetCandle.v || 0,
-                tickVolumes: this.generateVolumeDistribution(60, volumeMultiplier, targetCandle.t)
-            };
-            
-            console.log(`🎬 SMOOTH MODE: Speed=${this.speed}x, Duration=${realTimeCandleDuration.toFixed(0)}ms, Interval=${baseTickInterval.toFixed(0)}ms`);
+
+            if (this.useConstantTickInterval) {
+                // Use fixed cadence to avoid perceived pause/surge behavior,
+                // especially visible on larger display timeframes (e.g., 45m).
+                this.volumeTickData = {
+                    baseInterval: baseTickInterval,
+                    volumeMultiplier: 1,
+                    candleVolume: targetCandle.v || 0,
+                    tickVolumes: null
+                };
+                console.log(`🎬 SMOOTH MODE (constant cadence): Speed=${this.speed}x, Duration=${realTimeCandleDuration.toFixed(0)}ms, Interval=${baseTickInterval.toFixed(0)}ms`);
+            } else {
+                // Optional legacy mode with volume-weighted cadence.
+                const volumeMultiplier = this.calculateVolumeMultiplier(targetCandle, nextIndex);
+                this.volumeTickData = {
+                    baseInterval: baseTickInterval,
+                    volumeMultiplier: volumeMultiplier,
+                    candleVolume: targetCandle.v || 0,
+                    tickVolumes: this.generateVolumeDistribution(60, volumeMultiplier, targetCandle.t)
+                };
+                console.log(`🎬 SMOOTH MODE (volume-weighted): Speed=${this.speed}x, Duration=${realTimeCandleDuration.toFixed(0)}ms, Interval=${baseTickInterval.toFixed(0)}ms`);
+            }
         }
         
         // Clear any existing tick interval
@@ -2500,10 +2514,11 @@ class ReplaySystem {
                         this._nextCandleTimer = null;
                     }
                     if (this.isPlaying) {
+                        const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
                         this._nextCandleTimer = setTimeout(() => {
                             this._nextCandleTimer = null;
                             if (this.isPlaying) this.animateFastMode();
-                        }, 120);
+                        }, dataLoadRetryDelay);
                     }
                     return;
                 }
@@ -3075,10 +3090,13 @@ class ReplaySystem {
                 clearTimeout(this._nextCandleTimer);
                 this._nextCandleTimer = null;
             }
+            const nextCandleDelay = this.useConstantTickInterval
+                ? Math.max(0, Number(this.interCandleDelayMs) || 0)
+                : 50;
             this._nextCandleTimer = setTimeout(() => {
                 this._nextCandleTimer = null;
                 if (this.isPlaying) this.startTickAnimation();
-            }, 50);
+            }, nextCandleDelay);
         } else if (this.currentIndex >= this.fullRawData.length - 1) {
             if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
                 this.chart.checkViewportLoadMore('forward');
@@ -3087,10 +3105,11 @@ class ReplaySystem {
                         clearTimeout(this._nextCandleTimer);
                         this._nextCandleTimer = null;
                     }
+                    const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
                     this._nextCandleTimer = setTimeout(() => {
                         this._nextCandleTimer = null;
                         if (this.isPlaying) this.startTickAnimation();
-                    }, 120);
+                    }, dataLoadRetryDelay);
                 }
             } else {
                 this.pause();
@@ -3176,6 +3195,28 @@ class ReplaySystem {
      */
     stop() {
         this.pause();
+    }
+
+    /**
+     * Manual step forward request from UI controls/clone.
+     * Ensures replay does not continue running after a single-step action.
+     */
+    requestStepForward() {
+        if (this.isPlaying) {
+            this.pause();
+        }
+        this.stepForward();
+    }
+
+    /**
+     * Manual step backward request from UI controls/clone.
+     * Pauses active playback first for deterministic stepping.
+     */
+    requestStepBackward() {
+        if (this.isPlaying) {
+            this.pause();
+        }
+        this.stepBackward();
     }
 
     /**
