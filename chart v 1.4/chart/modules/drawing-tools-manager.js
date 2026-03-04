@@ -2252,7 +2252,7 @@ class DrawingToolsManager {
         // [debug removed]
         
         // Handle visibility
-        if (drawing.visible === false) {
+        if (drawing.visible === false || drawing.hidden === true) {
             // Hide the drawing
             if (drawing.group) {
                 drawing.group.style('display', 'none');
@@ -3623,20 +3623,31 @@ class DrawingToolsManager {
      * Toggle hide state of drawing
      */
     toggleHide(drawing) {
-        drawing.hidden = !drawing.hidden;
-        
-        if (drawing.hidden) {
-            if (drawing.group) {
-                drawing.group.style('display', 'none');
+        const currentlyHidden = drawing.hidden === true || drawing.visible === false;
+        const nextHidden = !currentlyHidden;
+
+        // Keep both flags in sync: visible is persisted in toJSON/fromJSON,
+        // while hidden is used by object-tree/context-menu hide toggles.
+        drawing.hidden = nextHidden;
+        drawing.visible = !nextHidden;
+
+        if (nextHidden) {
+            if (typeof drawing.deselect === 'function') {
+                drawing.deselect();
             }
-            // [debug removed]
-        } else {
-            if (drawing.group) {
-                drawing.group.style('display', null);
+            if (this.selectedDrawing === drawing) {
+                this.selectedDrawing = null;
             }
-            // [debug removed]
+            const selectedIdx = this.selectedDrawings.indexOf(drawing);
+            if (selectedIdx > -1) {
+                this.selectedDrawings.splice(selectedIdx, 1);
+            }
+            if (this.selectedDrawings.length === 0) {
+                this.toolbar.hide();
+            }
         }
-        
+
+        this.renderDrawing(drawing);
         this.saveDrawings();
         
         // Refresh object tree if available
