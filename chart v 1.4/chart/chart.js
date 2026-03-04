@@ -9168,6 +9168,9 @@ class Chart {
         const isCalendarTf      = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
         const isDailyOrHigher   = timeframeMs >= 86400000;
         const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher;
+        const isReplayRunning = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
+        const useReplayIndexCadence = useUniformIntradayTicks && isReplayRunning;
+        const suppressIntradayBoundaryLabels = useReplayIndexCadence;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
@@ -9210,6 +9213,10 @@ class Chart {
             let isRound = false;
             if (isCalendarTf) {
                 isRound = (idx - scanFrom) % Math.max(1, labelInterval) === 0;
+            } else if (useReplayIndexCadence) {
+                // Replay-running intraday mode: keep axis cadence tied to candle index
+                // so labels stay visually ranged while new candles stream in.
+                isRound = idx % Math.max(1, labelInterval) === 0;
             } else {
                 // Keep intraday cadence deterministic without depending on timezone offset.
                 // This prevents custom intervals like 13m from losing all round ticks
@@ -9220,12 +9227,14 @@ class Chart {
             }
 
             const hasBoundary = isBoundary && !!boundaryLabel;
-            const shouldEmitTick = isRound || (allowStandaloneBoundaries && hasBoundary);
+            const shouldEmitTick = isRound || (!suppressIntradayBoundaryLabels && allowStandaloneBoundaries && hasBoundary);
             if (!shouldEmitTick) continue;
 
             // TradingView-like intraday behavior: keep tick spacing uniform,
             // and only show boundary text when it lands on an existing round tick.
-            const useBoundaryLabel = hasBoundary && (allowStandaloneBoundaries || isRound);
+            const useBoundaryLabel = !suppressIntradayBoundaryLabels
+                && hasBoundary
+                && (allowStandaloneBoundaries || isRound);
 
             let label;
             if (useBoundaryLabel) {
