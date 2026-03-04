@@ -26397,6 +26397,11 @@ P['symbol']={title:'Symbol',build:function(){
     var aL=cs.areaLineColor||bU,aF=cs.areaFillColor||'rgba(8,153,129,0.28)';
     var isCandleType=['candles','hollow','heikinashi'].indexOf(type)!==-1;
     var colorSec='';
+    var templateSec='';
+    if(c&&typeof c.getTemplateSelectorOptionsHtml==='function'){
+        templateSec=sec(st('TEMPLATE')+
+            '<div class="settings-input-row"><span class="settings-input-label">Template</span><select id="sl_chart_template" class="settings-select" style="margin-left:auto;max-width:220px;">'+c.getTemplateSelectorOptionsHtml()+'</select></div>');
+    }
     if(isCandleType){
         colorSec=sec(st('CANDLES')+
             '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div>'+
@@ -26413,7 +26418,8 @@ P['symbol']={title:'Symbol',build:function(){
     } else if(type==='baseline'){
         colorSec=sec(st('BASELINE')+clr('Upper color','bodyUp',bU)+clr('Lower color','bodyDn',bD));
     }
-    return sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type))+
+    return templateSec+
+    sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type))+
     colorSec+
     sec((st('DATA')+
         sel('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
@@ -26441,6 +26447,24 @@ P['symbol']={title:'Symbol',build:function(){
         if(c.saveSettings)c.saveSettings();
     });
     wSel('sym_tz',function(v){set('timezone',v);var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
+
+    var tplSel=document.getElementById('sl_chart_template');
+    if(tplSel){
+        var cTpl=ch();
+        if(cTpl&&cTpl._lastTemplateSelected)tplSel.value=cTpl._lastTemplateSelected;
+        tplSel.addEventListener('change',function(){
+            var c=ch();
+            if(!c||typeof c.applyTemplate!=='function')return;
+            var v=this.value;
+            if(v){
+                c._lastTemplateSelected=v;
+                c.applyTemplate(v);
+            }else{
+                c._lastTemplateSelected=null;
+            }
+            try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}}
+        });
+    }
 }};
 
 /* ── STATUS LINE ── */
