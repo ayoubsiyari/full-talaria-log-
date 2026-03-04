@@ -11089,6 +11089,16 @@ class Chart {
             else if (dragType === 'pan' && wasDragging) {
                 this.dispatchScrollSync();
                 this.scheduleChartViewSave();
+
+                // Re-check replay follow indicator after the pan settles.
+                // This prevents needing an extra click for the jump-to-latest button to appear.
+                if (this.replaySystem && this.replaySystem.isActive) {
+                    requestAnimationFrame(() => {
+                        if (this.replaySystem && this.replaySystem.isActive) {
+                            this.replaySystem.updateAutoScrollIndicator();
+                        }
+                    });
+                }
             }
             
             // Reset states

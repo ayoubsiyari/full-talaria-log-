@@ -58,6 +58,7 @@ class ReplaySystem {
         this.playTextEl = null;
         this.pauseTextEl = null;
         this.toolbarVisible = false;
+        this._lastFollowIndicatorCheckTs = 0;
 
         this.dragState = {
             isDragging: false,
@@ -2554,6 +2555,16 @@ class ReplaySystem {
         }
         this.chart.renderPending = true;
         this.chart.render();
+
+        // Keep follow/jump-to-latest button responsive in fast mode too.
+        // Throttle checks to avoid unnecessary work at high replay speeds.
+        if (!this.autoScrollEnabled) {
+            const now = performance.now();
+            if (!this._lastFollowIndicatorCheckTs || now - this._lastFollowIndicatorCheckTs >= 100) {
+                this._lastFollowIndicatorCheckTs = now;
+                this.updateAutoScrollIndicator();
+            }
+        }
     }
     
     /**
