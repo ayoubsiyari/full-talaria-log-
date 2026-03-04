@@ -15,6 +15,23 @@ function generateUUID() {
     });
 }
 
+const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
+    'trendline',
+    'horizontal',
+    'vertical',
+    'ray',
+    'horizontal-ray',
+    'extended-line',
+    'cross-line',
+    'path',
+    'curve',
+    'double-curve',
+    'parallel-channel',
+    'regression-trend',
+    'flat-top-bottom',
+    'disjoint-channel'
+]);
+
 // ============================================================================
 // Base Drawing Class
 // ============================================================================
@@ -106,6 +123,20 @@ class BaseDrawing {
     setText(text) {
         this.text = typeof text === 'string' ? text : '';
         this.meta.updatedAt = Date.now();
+    }
+
+    isAxisLabelDefaultEnabled() {
+        return AXIS_LABEL_DEFAULT_LINE_TYPES.has(this.type);
+    }
+
+    isAxisLabelEnabled(labelType) {
+        const prop = labelType === 'time' ? 'showTimeLabel' : 'showPriceLabel';
+        const explicitValue = this.style ? this.style[prop] : undefined;
+
+        if (explicitValue === true) return true;
+        if (explicitValue === false) return false;
+
+        return this.isAxisLabelDefaultEnabled();
     }
 
     /**
@@ -344,6 +375,8 @@ class BaseDrawing {
         
         // Prepare canvas-based zone highlights (drawn behind labels)
         const canvasZones = [];
+        const showPriceLabels = this.isAxisLabelEnabled('price');
+        const showTimeLabels = this.isAxisLabelEnabled('time');
         
         // Calculate price axis zone (Y-axis)
         if (this.points.length >= 2) {
@@ -386,7 +419,7 @@ class BaseDrawing {
             timeZoneWidth = maxX - minX;
         }
         
-        if (this.style.showTimeLabel !== false && timeZoneWidth > 0 && timeZoneStartX !== null) {
+        if (showTimeLabels && timeZoneWidth > 0 && timeZoneStartX !== null) {
             canvasZones.push({
                 type: 'time',
                 x: timeZoneStartX,
@@ -553,7 +586,7 @@ class BaseDrawing {
             
             // Price highlight on Y-axis (right side)
             const yPos = yScale(price);
-            if (this.style.showPriceLabel !== false && yPos >= margin.t && yPos <= chartHeight - margin.b) {
+            if (showPriceLabels && yPos >= margin.t && yPos <= chartHeight - margin.b) {
                 const priceText = price.toFixed(this.chart.priceDecimals || 5);
                 const boxWidth = 58;
                 const boxHeight = 20;
@@ -583,7 +616,7 @@ class BaseDrawing {
             
             // Time highlight on X-axis (bottom) - only add if not already added for this x position
             const roundedIndex = Math.round(index);
-            if (this.style.showTimeLabel !== false && !timePositions.has(roundedIndex)) {
+            if (showTimeLabels && !timePositions.has(roundedIndex)) {
                 timePositions.add(roundedIndex);
                 
                 // Use dataIndexToPixel if available, otherwise use xScale

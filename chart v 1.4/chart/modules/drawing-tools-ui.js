@@ -2777,8 +2777,12 @@ body.light-mode .template-save-dialog .dialog-title {
             const labelsSection = document.createElement('div');
             labelsSection.style.cssText = 'margin-top: 12px; display: flex; flex-direction: column; gap: 6px;';
 
-            const priceLabelChecked = drawing.style.showPriceLabel !== false;
-            const timeLabelChecked = drawing.style.showTimeLabel !== false;
+            const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
+                ? drawing.isAxisLabelEnabled('price')
+                : drawing.style.showPriceLabel !== false;
+            const timeLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
+                ? drawing.isAxisLabelEnabled('time')
+                : drawing.style.showTimeLabel !== false;
 
             labelsSection.innerHTML = `
                 <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
@@ -5557,8 +5561,12 @@ body.light-mode .template-save-dialog .dialog-title {
             <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || drawing.style.labelTextColor || '#ffffff'};"></button>
         `;
 
-        const priceLabelChecked = drawing.style.showPriceLabel !== false;
-        const timeLabelChecked = drawing.style.showTimeLabel !== false;
+        const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
+            ? drawing.isAxisLabelEnabled('price')
+            : drawing.style.showPriceLabel !== false;
+        const timeLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
+            ? drawing.isAxisLabelEnabled('time')
+            : drawing.style.showTimeLabel !== false;
 
         const createToggleRow = (prop, text, checked) => {
             const row = document.createElement('div');

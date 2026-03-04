@@ -2776,7 +2776,7 @@ class CrossLineTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Add price label if enabled
-        if (this.style.showPriceLabel) {
+        if (typeof this.isAxisLabelEnabled === 'function' ? this.isAxisLabelEnabled('price') : this.style.showPriceLabel !== false) {
             const priceText = p.y.toFixed(2);
             this.group.append('text')
                 .attr('x', xRange[1] - 5)
