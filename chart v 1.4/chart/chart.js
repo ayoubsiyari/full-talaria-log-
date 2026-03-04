@@ -9204,10 +9204,23 @@ class Chart {
         const lastRealIdx = this.data.length - 1;
         if (this.data.length > 0 && !isCalendarTf && labelIntervalMs > 0 && lastVisibleIdx > lastRealIdx) {
             const last = this.data[this.data.length - 1];
-            const lastTs = last.t;
-            const nextAlignedTs = tickAlignmentBaseTs
-                + Math.ceil((lastTs - tickAlignmentBaseTs + 1) / labelIntervalMs) * labelIntervalMs;
-            let futureIdx = lastRealIdx + Math.ceil((nextAlignedTs - lastTs) / timeframeMs);
+            let futureIdx;
+
+            if (useUniformIntradayTicks) {
+                // Keep extrapolated replay labels on the same candle-index cadence
+                // so spacing stays visually uniform even across session gaps.
+                const lastRealTick = candidates.length > 0 ? candidates[candidates.length - 1] : null;
+                futureIdx = lastRealTick ? (lastRealTick.idx + labelInterval) : (lastRealIdx + labelInterval);
+                while (futureIdx <= lastRealIdx) {
+                    futureIdx += labelInterval;
+                }
+            } else {
+                const lastTs = last.t;
+                const nextAlignedTs = tickAlignmentBaseTs
+                    + Math.ceil((lastTs - tickAlignmentBaseTs + 1) / labelIntervalMs) * labelIntervalMs;
+                futureIdx = lastRealIdx + Math.ceil((nextAlignedTs - lastTs) / timeframeMs);
+            }
+
             for (; futureIdx <= lastVisibleIdx; futureIdx += labelInterval) {
                 const ri  = Math.round(futureIdx);
                 const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
