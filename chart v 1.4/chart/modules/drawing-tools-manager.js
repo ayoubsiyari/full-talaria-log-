@@ -5043,7 +5043,21 @@ class DrawingToolsManager {
                 }
             }
 
-            const hitTolerance = (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension') ? 18 : baseHitTolerance;
+            const isFibLikeType = !!drawing.type && (
+                drawing.type.startsWith('fibonacci-') ||
+                drawing.type.startsWith('fib-') ||
+                drawing.type.startsWith('trend-fib-')
+            );
+
+            const isPatternLikeType = !!drawing.type && (
+                drawing.type.includes('pattern') ||
+                drawing.type.startsWith('elliott-') ||
+                drawing.type === 'head-shoulders' ||
+                drawing.type === 'three-drives'
+            );
+
+            const hitTolerance = isFibLikeType ? 18 : baseHitTolerance;
+            const minLineHitTolerance = isFibLikeType ? 14 : (isPatternLikeType ? 10 : 0);
 
             // Polyline/Path: allow vertex proximity hits so endpoints are easy to grab even if not exactly on the stroke
             if ((drawing.type === 'polyline' || drawing.type === 'path') && !hitsById.has(drawing.id)) {
@@ -5212,8 +5226,8 @@ class DrawingToolsManager {
                         const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
                         const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
                         // Match actual stroke hit area (approx): stroke extends ~strokeWidth/2 from the path.
-                        // Using a generous tolerance here makes hover bigger than the selectable zone.
-                        const effectiveTolerance = (strokeWidth / 2) + 0.5;
+                        // For Fib/Elliott/Pattern tools, enforce a minimum tolerance so thin lines are easier to select.
+                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, minLineHitTolerance);
                         
                         isStrokeHit = distance <= effectiveTolerance;
                         if (isStrokeHit) hitDistance = distance;
