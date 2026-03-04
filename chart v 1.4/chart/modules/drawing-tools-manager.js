@@ -349,6 +349,15 @@ class DrawingToolsManager {
         return parsed.value >= minV && parsed.value <= maxV;
     }
 
+    _isHiddenByGlobalVisibility(drawing) {
+        if (!drawing || !this.chart) return false;
+        const isPosition = drawing.type === 'long-position' || drawing.type === 'short-position';
+        if (isPosition) {
+            return !!this.chart.positionsHidden;
+        }
+        return !!this.chart.drawingsHidden;
+    }
+
     /**
      * Initialize the drawing manager
      */
@@ -2252,10 +2261,13 @@ class DrawingToolsManager {
         // [debug removed]
         
         // Handle visibility
-        if (drawing.visible === false || drawing.hidden === true) {
+        if (drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) {
             // Hide the drawing
             if (drawing.group) {
                 drawing.group.style('display', 'none');
+            }
+            if (typeof drawing.hideAxisHighlights === 'function') {
+                drawing.hideAxisHighlights();
             }
             return;
         }
@@ -2264,6 +2276,9 @@ class DrawingToolsManager {
         if (!this._isVisibleForCurrentTimeframe(drawing)) {
             if (drawing.group) {
                 drawing.group.style('display', 'none');
+            }
+            if (typeof drawing.hideAxisHighlights === 'function') {
+                drawing.hideAxisHighlights();
             }
             return;
         }
@@ -4998,7 +5013,7 @@ class DrawingToolsManager {
         let z = 0;
         for (const drawing of this.drawings) {
             z++;
-            if (!drawing.group || !drawing.visible) continue;
+            if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
 
             // Arrow tools: allow fill-based hit testing
             if (!hitsById.has(drawing.id) && (drawing.type === 'arrow' || drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down')) {
@@ -5337,7 +5352,7 @@ class DrawingToolsManager {
         const linesAtPoint = [];
         
         for (const drawing of this.drawings) {
-            if (!drawing.group || !drawing.visible) continue;
+            if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
             
             try {
                 // Get all line elements and paths with strokes (not fills)

@@ -2496,7 +2496,7 @@ class Chart {
             : (Array.isArray(this.drawings) ? this.drawings : []);
 
         drawingsList.forEach(drawing => {
-            if (!drawing || !drawing.group) return;
+            if (!drawing) return;
             const isPosition = drawing.type === 'long-position' || drawing.type === 'short-position';
             
             // Determine if this drawing should be hidden
@@ -2509,13 +2509,21 @@ class Chart {
                 shouldHide = true; // Hide only non-position drawings
             }
             
-            drawing.group.style('display', shouldHide ? 'none' : null);
+            if (drawing.group) {
+                drawing.group.style('display', shouldHide ? 'none' : null);
+            }
+
+            if (shouldHide && typeof drawing.hideAxisHighlights === 'function') {
+                drawing.hideAxisHighlights();
+            }
         });
 
         if (this.svg) {
             if (hideAll) {
                 // Hide everything
                 this.svg.selectAll('.drawing').style('display', 'none');
+                this.svg.selectAll('.axis-highlight-group').remove();
+                this.svg.selectAll('.drawings-labels [data-id]').remove();
             } else {
                 // First show all drawings
                 this.svg.selectAll('.drawing').style('display', null);
