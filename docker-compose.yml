@@ -69,6 +69,54 @@ services:
       SESSION_COOKIE_SECURE: "false"
       SESSION_COOKIE_SAMESITE: "lax"
       WEB_CONCURRENCY: "4"
+      APP_ROLE: "api"
+      BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
+      BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-2.0}
+      BINARY_ONLY_RUNTIME: ${BINARY_ONLY_RUNTIME:-false}
+      TILE_CDN_BASE_URL: ${TILE_CDN_BASE_URL:-}
+      TILE_CDN_REDIRECT: ${TILE_CDN_REDIRECT:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  trading-chart-worker:
+    build:
+      context: "./chart v 1.4/chart"
+      dockerfile: Dockerfile.local
+    command:
+      [
+        "gunicorn",
+        "api_server:app",
+        "-w",
+        "1",
+        "-k",
+        "uvicorn.workers.UvicornWorker",
+        "--bind",
+        "0.0.0.0:8000",
+        "--timeout",
+        "1800",
+      ]
+    volumes:
+      - chart_uploads:/app/uploads
+      - chart_data:/app/data
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
+      REDIS_URL: "redis://redis:6379"
+      APP_ROLE: "worker"
+      BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
+      BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-2.0}
+      BINARY_ONLY_RUNTIME: ${BINARY_ONLY_RUNTIME:-false}
+      AUTH_ENABLED: "false"
     depends_on:
       db:
         condition: service_healthy

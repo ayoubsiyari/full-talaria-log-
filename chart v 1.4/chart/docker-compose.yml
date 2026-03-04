@@ -22,6 +22,12 @@ services:
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
       - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE:-lax}
       - SESSION_COOKIE_MAX_AGE_SECONDS=${SESSION_COOKIE_MAX_AGE_SECONDS:-1209600}
+      - APP_ROLE=api
+      - BINARY_BUILD_MODE=${BINARY_BUILD_MODE:-queue}
+      - BINARY_QUEUE_POLL_SECONDS=${BINARY_QUEUE_POLL_SECONDS:-2.0}
+      - BINARY_ONLY_RUNTIME=${BINARY_ONLY_RUNTIME:-false}
+      - TILE_CDN_BASE_URL=${TILE_CDN_BASE_URL:-}
+      - TILE_CDN_REDIRECT=${TILE_CDN_REDIRECT:-false}
       - GOOGLE_SHEETS_SPREADSHEET_ID=${GOOGLE_SHEETS_SPREADSHEET_ID:-}
       - GOOGLE_SHEETS_WORKSHEET=${GOOGLE_SHEETS_WORKSHEET:-Registrations}
       - GOOGLE_SERVICE_ACCOUNT_JSON=${GOOGLE_SERVICE_ACCOUNT_JSON:-}
@@ -34,6 +40,38 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  trading-chart-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: trading-chart-worker
+    command:
+      [
+        "gunicorn",
+        "api_server:app",
+        "-w",
+        "1",
+        "-k",
+        "uvicorn.workers.UvicornWorker",
+        "--bind",
+        "0.0.0.0:8000",
+        "--timeout",
+        "1800",
+      ]
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - chart_db:/app/db
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./db/chart_data.db}
+      - APP_ROLE=worker
+      - AUTH_ENABLED=false
+      - BINARY_BUILD_MODE=${BINARY_BUILD_MODE:-queue}
+      - BINARY_QUEUE_POLL_SECONDS=${BINARY_QUEUE_POLL_SECONDS:-2.0}
+      - BINARY_ONLY_RUNTIME=${BINARY_ONLY_RUNTIME:-false}
+    restart: unless-stopped
 
 volumes:
   chart_db:

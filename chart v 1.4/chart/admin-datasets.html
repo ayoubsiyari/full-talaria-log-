@@ -493,18 +493,39 @@ function startPolling(id) {
   let attempts = 0;
   const tick = async () => {
     try {
-      const data = await api('/api/admin/datasets');
-      S.datasets = data.datasets || [];
-      renderTable();
-      if (S.sel) fillForm(selDs());
+      const [data, conversion] = await Promise.all([
+        api('/api/admin/datasets').catch(() => null),
+        api('/api/file/' + id + '/conversion-status').catch(() => null),
+      ]);
+
+      if (data) {
+        S.datasets = data.datasets || [];
+        renderTable();
+        if (S.sel) fillForm(selDs());
+      }
+
       const ds = S.datasets.find(d => d.id === id);
       const summary = ds ? datasetTfSummary(ds) : null;
-      const done = !ds || (summary && summary.done);
+      const conversionStatus = String((conversion && conversion.status) || '').toLowerCase();
+      const conversionReady = conversionStatus === 'ready';
+      const conversionFailed = conversionStatus === 'failed';
+      const datasetMissing = !!data && !ds;
+      const done = datasetMissing || conversionReady || conversionFailed || (summary && summary.done);
       if (done) {
         S.polling.delete(id);
-        if (ds && summary) {
-          if (summary.failed > 0) toast('Dataset #' + id + ' conversion finished with ' + summary.failed + ' failed timeframe(s). Use Rebuild to retry.', 'err');
-          else toast('Dataset #' + id + ' binary ready!', 'ok');
+        if (ds) {
+          if (conversionFailed || (summary && summary.failed > 0)) {
+            const errRaw = conversion && (conversion.error || conversion.message || conversion.detail);
+            const errTxt = errRaw ? String(errRaw).slice(0, 180) : null;
+            toast(
+              errTxt
+                ? ('Dataset #' + id + ' conversion failed: ' + errTxt)
+                : ('Dataset #' + id + ' conversion finished with errors. Use Rebuild to retry.'),
+              'err'
+            );
+          } else {
+            toast('Dataset #' + id + ' binary ready!', 'ok');
+          }
         }
         return;
       }

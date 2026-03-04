@@ -17,6 +17,20 @@ docker-compose logs -f
 
 The application will be available at: `http://localhost:8000`
 
+### Queue Worker Mode (recommended for large datasets)
+
+This project now supports queue-based binary builds with a dedicated worker service.
+
+```bash
+# API + worker + dependencies
+docker-compose up -d --build
+
+# Check worker logs
+docker-compose logs -f trading-chart-worker
+```
+
+When queue mode is enabled, uploads/rebuilds enqueue jobs and the worker processes them asynchronously.
+
 ### 2. Stop the Application
 
 ```bash
@@ -64,6 +78,12 @@ This adds:
 | `NGINX_SSL_PORT` | `443` | Nginx HTTPS port |
 | `DATABASE_URL` | `sqlite:///./db/chart_data.db` | Database connection URL |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins |
+| `APP_ROLE` | `api` | Runtime role (`api` or `worker`) |
+| `BINARY_BUILD_MODE` | `queue` | Binary build mode (`thread` or `queue`) |
+| `BINARY_QUEUE_POLL_SECONDS` | `2.0` | Worker queue poll interval |
+| `BINARY_ONLY_RUNTIME` | `false` | Disable CSV fallback when binaries are missing |
+| `TILE_CDN_BASE_URL` | empty | Base URL for tile CDN redirects |
+| `TILE_CDN_REDIRECT` | `false` | Enable 307 redirect for tile requests |
 
 ### Custom Port
 
@@ -165,8 +185,25 @@ docker exec -it trading-chart-app /bin/bash
 # Check health
 curl http://localhost:8000/api/status
 
+# Worker queue processing logs
+docker-compose logs -f trading-chart-worker
+
 # Remove everything (including volumes)
 docker-compose down -v
+```
+
+---
+
+## Load Testing (k6)
+
+Use the bundled script at `load-tests/k6-backtesting.js` to test candle/tile throughput.
+
+```bash
+k6 run \
+  -e BASE_URL=http://localhost:8000 \
+  -e FILE_ID=1 \
+  -e TIMEFRAME=1m \
+  load-tests/k6-backtesting.js
 ```
 
 ---

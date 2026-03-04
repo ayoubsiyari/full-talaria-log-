@@ -202,6 +202,20 @@ SPIKE_FILTER_MIN_DEVIATION_PCT = float(os.getenv("SPIKE_FILTER_MIN_DEVIATION_PCT
 SPIKE_FILTER_MAX_ADJUST_RATIO = float(os.getenv("SPIKE_FILTER_MAX_ADJUST_RATIO", "0.10"))
 EXCLUDE_WEEKEND_CANDLES = os.getenv("EXCLUDE_WEEKEND_CANDLES", "true").strip().lower() in {"1", "true", "yes", "on"}
 
+# Scale/runtime controls
+BINARY_ONLY_RUNTIME = os.getenv("BINARY_ONLY_RUNTIME", "false").strip().lower() in {"1", "true", "yes", "on"}
+BINARY_BUILD_MODE = (os.getenv("BINARY_BUILD_MODE", "thread").strip().lower() or "thread")
+BINARY_QUEUE_POLL_SECONDS = float(os.getenv("BINARY_QUEUE_POLL_SECONDS", "2.0"))
+APP_ROLE = (os.getenv("APP_ROLE", "api").strip().lower() or "api")
+
+# CSV archival support (cold storage on same filesystem/volume by default)
+CSV_ARCHIVE_DIR = UPLOAD_DIR / "archive"
+CSV_ARCHIVE_DIR.mkdir(exist_ok=True)
+
+# Optional tile CDN redirect mode
+TILE_CDN_BASE_URL = os.getenv("TILE_CDN_BASE_URL", "").strip().rstrip("/")
+TILE_CDN_REDIRECT = os.getenv("TILE_CDN_REDIRECT", "false").strip().lower() in {"1", "true", "yes", "on"}
+
 # Database Model
 class CSVFile(Base):
     __tablename__ = "csv_files"
@@ -240,6 +254,21 @@ class DatasetSettings(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class BinaryBuildJob(Base):
+    __tablename__ = "binary_build_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(Integer, ForeignKey("csv_files.id"), index=True, nullable=False)
+    source_path = Column(String, nullable=False)
+    original_name = Column(String, nullable=False)
+    trigger = Column(String, nullable=False, default="manual")
+    status = Column(String, nullable=False, default="queued")  # queued | processing | done | failed
+    attempt_count = Column(Integer, nullable=False, default=0)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
 
 DATASET_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo']
 
@@ -292,6 +321,7 @@ _CHART_TABLES = [
     CSVFile.__table__,
     CSVAggregate.__table__,
     DatasetSettings.__table__,
+    BinaryBuildJob.__table__,
     UserSession.__table__,
     TradingSession.__table__,
     TradingSessionState.__table__,
@@ -543,6 +573,10 @@ async def auth_middleware(request: Request, call_next):
 # ── Startup: backfill binary files for existing CSV files ──
 def _backfill_binaries():
     """Check all existing CSV files and build binary files for any that are missing."""
+    if APP_ROLE == "worker":
+        print("⏭️ Skipping binary backfill in worker role")
+        return
+
     import threading
 
     def _run():
@@ -576,7 +610,7 @@ def _backfill_binaries():
                 if not (missing_or_unready or missing_files or missing_tiles or invalid_1m):
                     continue
 
-                fpath = UPLOAD_DIR / f.filename
+                fpath = _resolve_dataset_csv_path(f.filename)
                 if fpath.exists():
                     reason = []
                     if missing_or_unready:
@@ -588,7 +622,13 @@ def _backfill_binaries():
                     if invalid_1m:
                         reason.append("invalid 1m timestamps")
                     print(f"📦 Backfilling binary for file {f.id} ({f.original_name}) - {', '.join(reason)}")
-                    build_binary_for_file(f.id, fpath, f.original_name)
+                    build_binary_for_file(
+                        f.id,
+                        fpath,
+                        f.original_name,
+                        run_async=True,
+                        trigger="backfill",
+                    )
         except Exception as exc:
             print(f"⚠️ Backfill check error: {exc}")
         finally:
@@ -1837,15 +1877,125 @@ def _write_candles_csv(candles, out_path):
         for c in candles:
             f.write(f"{c['t']},{c['o']},{c['h']},{c['l']},{c['c']},{c['v']}\n")
 
-def build_binary_for_file(file_id: int, file_path, original_filename: str):
+def _resolve_dataset_csv_path(filename: str) -> Path:
+    """Resolve dataset CSV path from hot uploads or archive storage."""
+    primary = UPLOAD_DIR / filename
+    if primary.exists():
+        return primary
+    archived = CSV_ARCHIVE_DIR / filename
+    if archived.exists():
+        return archived
+    return primary
+
+def _resolve_dataset_csv_for_file(db_file: CSVFile) -> Path:
+    return _resolve_dataset_csv_path(db_file.filename)
+
+def _delete_dataset_source_csv(filename: str):
+    for candidate in (UPLOAD_DIR / filename, CSV_ARCHIVE_DIR / filename):
+        if candidate.exists():
+            try:
+                candidate.unlink()
+            except Exception:
+                pass
+
+def _dataset_binary_integrity(db, file_id: int) -> tuple[bool, list[str]]:
+    """Validate that required TF binaries + tile metadata are all ready for a dataset."""
+    issues: list[str] = []
+    aggregate_rows = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+    aggregate_map = {a.timeframe: a for a in aggregate_rows}
+
+    for tf in DATASET_TIMEFRAMES:
+        agg = aggregate_map.get(tf)
+        if not agg:
+            issues.append(f"missing aggregate row ({tf})")
+            continue
+        if agg.status != "ready":
+            issues.append(f"aggregate not ready ({tf}={agg.status})")
+        bin_path = BIN_DIR / f"bin_{file_id}_{tf}.bin"
+        if not bin_path.exists():
+            issues.append(f"missing binary ({tf})")
+        if _load_tile_meta(file_id, tf) is None:
+            issues.append(f"missing tile meta ({tf})")
+
+    return len(issues) == 0, issues
+
+def _archive_source_csv_if_ready(file_id: int, source_path: Path):
+    """Move CSV from hot uploads to archive once binaries/tiles are fully ready."""
+    source_path = Path(source_path)
+    if not source_path.exists():
+        return
+
+    try:
+        if source_path.resolve().parent != UPLOAD_DIR.resolve():
+            return
+    except Exception:
+        return
+
+    db = SessionLocal()
+    try:
+        ok, issues = _dataset_binary_integrity(db, file_id)
+    finally:
+        db.close()
+
+    if not ok:
+        sample = ", ".join(issues[:3]) if issues else "integrity check failed"
+        print(f"ℹ️ Skipping CSV archive for file {file_id}: {sample}")
+        return
+
+    archived_path = CSV_ARCHIVE_DIR / source_path.name
+    try:
+        if archived_path.exists():
+            archived_path.unlink()
+        shutil.move(str(source_path), str(archived_path))
+        print(f"🗄️ Archived CSV for file {file_id} -> {archived_path}")
+    except Exception as exc:
+        print(f"⚠️ Failed to archive CSV for file {file_id}: {exc}")
+
+def _enqueue_binary_build_job(file_id: int, file_path: Path, original_filename: str, trigger: str = "manual") -> int:
+    db = SessionLocal()
+    try:
+        existing = db.query(BinaryBuildJob).filter(
+            BinaryBuildJob.file_id == file_id,
+            BinaryBuildJob.status.in_(["queued", "processing"]),
+        ).order_by(BinaryBuildJob.id.desc()).first()
+        if existing:
+            return int(existing.id)
+
+        job = BinaryBuildJob(
+            file_id=file_id,
+            source_path=str(file_path),
+            original_name=original_filename,
+            trigger=trigger,
+            status="queued",
+            attempt_count=0,
+            error=None,
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        return int(job.id)
+    finally:
+        db.close()
+
+def build_binary_for_file(file_id: int, file_path, original_filename: str, run_async: bool = True, trigger: str = "manual"):
     """
     Background job: parse CSV once, write binary (.bin) files for 1m + all TFs.
     Binary format: 48 bytes per candle (6 x float64: t,o,h,l,c,v).
     This replaces the old CSV aggregation — binary is 100x faster to read.
     """
+    if run_async and BINARY_BUILD_MODE == "queue":
+        _enqueue_binary_build_job(
+            file_id=file_id,
+            file_path=Path(file_path),
+            original_filename=original_filename,
+            trigger=trigger,
+        )
+        return True
+
     import threading
 
     def _run():
+        all_ok = True
         ALL_TFS = {
             '1m': 60000,
             '5m': 300000, '15m': 900000, '30m': 1800000,
@@ -1880,11 +2030,12 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str):
             print(f"📦 Parsing CSV for file {file_id} ({original_filename})...")
             candles = _parse_candles_from_csv(file_path)
             if not candles:
+                all_ok = False
                 db.query(CSVAggregate).filter(
                     CSVAggregate.file_id == file_id
                 ).update({"status": "failed"})
                 db.commit()
-                return
+                return False
 
             # Write binary for each timeframe
             for tf, ms in ALL_TFS.items():
@@ -1924,6 +2075,7 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str):
                     tile_count = math.ceil(len(resampled) / TILE_SIZE) if resampled else 0
                     print(f"  ✅ {tf}: {len(resampled)} candles → {bin_name} + {tile_count} tiles")
                 except Exception as exc:
+                    all_ok = False
                     print(f"  ⚠️ {tf} failed: {exc}")
                     db.query(CSVAggregate).filter(
                         CSVAggregate.file_id == file_id,
@@ -1932,16 +2084,124 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str):
                     db.commit()
 
             print(f"✅ Binary conversion complete for file {file_id} ({original_filename})")
+            if all_ok:
+                _archive_source_csv_if_ready(file_id, Path(file_path))
+            return all_ok
         except Exception as exc:
             print(f"❌ Binary pipeline error for file {file_id}: {exc}")
+            return False
         finally:
             db.close()
 
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
+    if run_async:
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return True
+    return _run()
 
-# Run backfill on startup (all helpers are now defined)
-_backfill_binaries()
+
+def _claim_next_binary_build_job() -> dict | None:
+    """Atomically claim the next queued binary build job."""
+    db = SessionLocal()
+    try:
+        while True:
+            job = db.query(BinaryBuildJob).filter(
+                BinaryBuildJob.status == "queued"
+            ).order_by(BinaryBuildJob.created_at.asc(), BinaryBuildJob.id.asc()).first()
+            if not job:
+                return None
+
+            next_attempt = int(job.attempt_count or 0) + 1
+            updated = db.query(BinaryBuildJob).filter(
+                BinaryBuildJob.id == job.id,
+                BinaryBuildJob.status == "queued",
+            ).update(
+                {
+                    "status": "processing",
+                    "started_at": datetime.utcnow(),
+                    "error": None,
+                    "attempt_count": next_attempt,
+                },
+                synchronize_session=False,
+            )
+            if updated:
+                db.commit()
+                return {
+                    "id": int(job.id),
+                    "file_id": int(job.file_id),
+                    "source_path": job.source_path,
+                    "original_name": job.original_name,
+                    "trigger": job.trigger,
+                }
+            db.rollback()
+    finally:
+        db.close()
+
+
+def _mark_binary_build_job_done(job_id: int, ok: bool, error: str | None = None):
+    db = SessionLocal()
+    try:
+        row = db.query(BinaryBuildJob).filter(BinaryBuildJob.id == job_id).first()
+        if row:
+            row.status = "done" if ok else "failed"
+            row.finished_at = datetime.utcnow()
+            row.error = None if ok else ((error or "binary build failed")[:2000])
+            db.commit()
+    finally:
+        db.close()
+
+
+def _process_next_binary_build_job() -> bool:
+    """Process one queued binary build job. Returns True if a job was processed."""
+    job = _claim_next_binary_build_job()
+    if not job:
+        return False
+
+    source_path = Path(job["source_path"])
+    if not source_path.exists():
+        db = SessionLocal()
+        try:
+            db_file = db.query(CSVFile).filter(CSVFile.id == int(job["file_id"])).first()
+            if db_file:
+                source_path = _resolve_dataset_csv_for_file(db_file)
+        finally:
+            db.close()
+
+    if not source_path.exists():
+        _mark_binary_build_job_done(int(job["id"]), ok=False, error=f"source file missing: {source_path}")
+        return True
+
+    try:
+        ok = bool(
+            build_binary_for_file(
+                int(job["file_id"]),
+                source_path,
+                str(job["original_name"]),
+                run_async=False,
+                trigger=f"worker:{job['trigger']}",
+            )
+        )
+        _mark_binary_build_job_done(int(job["id"]), ok=ok, error=None if ok else "binary build returned failure")
+    except Exception as exc:
+        _mark_binary_build_job_done(int(job["id"]), ok=False, error=str(exc))
+
+    return True
+
+
+def _run_binary_build_worker():
+    """Long-running poll loop for queued binary build jobs."""
+    poll_seconds = max(0.2, float(BINARY_QUEUE_POLL_SECONDS))
+    print(f"👷 Binary build worker started (poll={poll_seconds:.1f}s)")
+    while True:
+        did_work = _process_next_binary_build_job()
+        if not did_work:
+            time.sleep(poll_seconds)
+
+# Startup background behavior
+if APP_ROLE == "worker" and BINARY_BUILD_MODE == "queue":
+    threading.Thread(target=_run_binary_build_worker, daemon=True).start()
+elif APP_ROLE == "api":
+    _backfill_binaries()
 
 # API Endpoints
 
@@ -1970,6 +2230,11 @@ async def get_tile(file_id: int, tf: str, tile_idx: int, response: Response):
         raise HTTPException(status_code=404, detail="Tiles not ready")
     if tile_idx < 0 or tile_idx >= meta["tile_count"]:
         raise HTTPException(status_code=404, detail="Tile index out of range")
+
+    if TILE_CDN_REDIRECT and TILE_CDN_BASE_URL:
+        tile_path = f"api/file/{file_id}/tile/{tf}/{tile_idx}"
+        return RedirectResponse(url=f"{TILE_CDN_BASE_URL}/{tile_path}", status_code=307)
+
     tp = _tile_path(file_id, tf, tile_idx)
     if not tp.exists():
         raise HTTPException(status_code=404, detail="Tile file missing")
@@ -1985,18 +2250,75 @@ async def get_conversion_status(file_id: int):
     try:
         aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
         if not aggs:
-            return {"status": "pending", "progress": 0, "timeframes": {}}
+            latest_job = db.query(BinaryBuildJob).filter(
+                BinaryBuildJob.file_id == file_id
+            ).order_by(BinaryBuildJob.created_at.desc(), BinaryBuildJob.id.desc()).first()
+            if latest_job:
+                job_status = str(latest_job.status or "").lower()
+                if job_status == "failed":
+                    return {
+                        "status": "failed",
+                        "progress": 100,
+                        "ready": 0,
+                        "failed": 0,
+                        "pending": 0,
+                        "total": 0,
+                        "job_status": job_status,
+                        "job_id": int(latest_job.id),
+                        "error": latest_job.error,
+                        "timeframes": {},
+                    }
+                mapped = "processing" if job_status in {"queued", "processing"} else "pending"
+                return {
+                    "status": mapped,
+                    "progress": 0,
+                    "ready": 0,
+                    "failed": 0,
+                    "pending": 0,
+                    "total": 0,
+                    "job_status": job_status,
+                    "job_id": int(latest_job.id),
+                    "timeframes": {},
+                }
+            return {
+                "status": "pending",
+                "progress": 0,
+                "ready": 0,
+                "failed": 0,
+                "pending": 0,
+                "total": 0,
+                "timeframes": {},
+            }
         total = len(aggs)
         ready = sum(1 for a in aggs if a.status == "ready")
         failed = sum(1 for a in aggs if a.status == "failed")
-        overall = "ready" if ready == total else ("failed" if failed == total else "processing")
-        return {
+        pending = max(total - ready - failed, 0)
+        completed = ready + failed
+        latest_job = db.query(BinaryBuildJob).filter(
+            BinaryBuildJob.file_id == file_id
+        ).order_by(BinaryBuildJob.created_at.desc(), BinaryBuildJob.id.desc()).first()
+        job_status = str(latest_job.status or "").lower() if latest_job else None
+        overall = "processing"
+        if pending == 0:
+            overall = "failed" if failed > 0 else "ready"
+        elif job_status == "failed":
+            overall = "failed"
+
+        payload = {
             "status": overall,
-            "progress": round(ready / total * 100),
+            "progress": round(completed / total * 100) if total else 0,
             "ready": ready,
+            "failed": failed,
+            "pending": pending,
             "total": total,
             "timeframes": {a.timeframe: a.status for a in aggs},
         }
+        if latest_job:
+            payload["job_status"] = job_status
+            payload["job_id"] = int(latest_job.id)
+            if overall == "failed" and latest_job.error:
+                payload["error"] = latest_job.error
+        return payload
     finally:
         db.close()
 
@@ -2703,23 +3025,40 @@ async def admin_list_datasets(request: Request):
         files = db.query(CSVFile).order_by(CSVFile.upload_date.desc()).all()
         aggs = db.query(CSVAggregate).all()
         settings_rows = db.query(DatasetSettings).all()
+        jobs = db.query(BinaryBuildJob).order_by(BinaryBuildJob.created_at.desc(), BinaryBuildJob.id.desc()).all()
 
         aggs_by_file: dict[int, dict[str, CSVAggregate]] = {}
         for agg in aggs:
             aggs_by_file.setdefault(int(agg.file_id), {})[agg.timeframe] = agg
 
         settings_by_file = {int(s.file_id): s for s in settings_rows}
+        latest_job_by_file: dict[int, BinaryBuildJob] = {}
+        for job in jobs:
+            fid = int(job.file_id)
+            if fid not in latest_job_by_file:
+                latest_job_by_file[fid] = job
 
         datasets = []
         for f in files:
             file_aggs = aggs_by_file.get(int(f.id), {})
+            latest_job = latest_job_by_file.get(int(f.id))
+            job_status = str(latest_job.status or "").lower() if latest_job else ""
             tf_info = {}
             ready_count = 0
             for tf in DATASET_TIMEFRAMES:
                 agg = file_aggs.get(tf)
                 agg_filename = agg.agg_filename if agg and agg.agg_filename else f"bin_{f.id}_{tf}.bin"
                 bin_path = BIN_DIR / agg_filename
-                status = agg.status if agg else ("ready" if bin_path.exists() else "missing")
+                if agg:
+                    status = agg.status
+                elif bin_path.exists():
+                    status = "ready"
+                elif job_status in {"queued", "processing"}:
+                    status = "pending"
+                elif job_status == "failed":
+                    status = "failed"
+                else:
+                    status = "missing"
                 if status == "ready":
                     ready_count += 1
                 tf_info[tf] = {
@@ -2742,6 +3081,12 @@ async def admin_list_datasets(request: Request):
                 "timeframes": tf_info,
                 "ready_timeframes": ready_count,
                 "total_timeframes": len(DATASET_TIMEFRAMES),
+                "build_job": {
+                    "id": int(latest_job.id),
+                    "status": job_status,
+                    "attempt_count": int(latest_job.attempt_count or 0),
+                    "error": latest_job.error,
+                } if latest_job else None,
             })
 
         return {
@@ -2858,7 +3203,7 @@ async def admin_rebuild_dataset_binary(file_id: int, request: Request):
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
 
-        file_path = UPLOAD_DIR / db_file.filename
+        file_path = _resolve_dataset_csv_for_file(db_file)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="File not found on disk")
 
@@ -2885,9 +3230,7 @@ async def admin_delete_dataset(file_id: int, request: Request):
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
 
-        file_path = UPLOAD_DIR / db_file.filename
-        if file_path.exists():
-            file_path.unlink()
+        _delete_dataset_source_csv(db_file.filename)
 
         aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
         for agg in aggs:
@@ -2912,6 +3255,7 @@ async def admin_delete_dataset(file_id: int, request: Request):
             _shutil.rmtree(tile_file_dir, ignore_errors=True)
 
         db.query(DatasetSettings).filter(DatasetSettings.file_id == file_id).delete()
+        db.query(BinaryBuildJob).filter(BinaryBuildJob.file_id == file_id).delete()
         db.delete(db_file)
         db.commit()
 
@@ -3168,7 +3512,7 @@ async def get_file(file_id: int, offset: int = 0, limit: int = 10000):
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
         
-        file_path = UPLOAD_DIR / db_file.filename
+        file_path = _resolve_dataset_csv_for_file(db_file)
         
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="File not found on disk")
@@ -3325,8 +3669,10 @@ async def get_file_smart(
                         has_more_left = True
             else:
                 # ── Fallback: CSV parsing (binary not built yet) ──
+                if BINARY_ONLY_RUNTIME:
+                    raise HTTPException(status_code=503, detail="Binary data not ready for requested timeframe")
                 source = "csv-fallback"
-                file_path = UPLOAD_DIR / db_file.filename
+                file_path = _resolve_dataset_csv_for_file(db_file)
                 if not file_path.exists():
                     raise HTTPException(status_code=404, detail="File not found on disk")
 
@@ -3468,7 +3814,11 @@ async def get_file_candles(
                 has_more_right = (start + count) < total
         else:
             # Fallback to CSV-based reading
-            file_path = UPLOAD_DIR / db_file.filename
+            if BINARY_ONLY_RUNTIME:
+                raise HTTPException(status_code=503, detail="Binary data not ready for requested timeframe")
+            file_path = _resolve_dataset_csv_for_file(db_file)
+            if not file_path.exists():
+                raise HTTPException(status_code=404, detail="File not found on disk")
             raw = _parse_candles_from_csv(file_path)
             if timeframe == "1mo":
                 candles = _resample_candles_monthly(raw)
@@ -3575,10 +3925,8 @@ async def delete_file(file_id: int):
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
         
-        # Delete raw file from disk
-        file_path = UPLOAD_DIR / db_file.filename
-        if file_path.exists():
-            file_path.unlink()
+        # Delete raw source file from disk (hot uploads + archive)
+        _delete_dataset_source_csv(db_file.filename)
         
         # Delete binary + aggregate files from disk and DB
         aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
@@ -3590,13 +3938,22 @@ async def delete_file(file_id: int):
                     p.unlink()
             db.delete(agg)
 
+        # Remove known timeframe binaries even if aggregate rows are missing.
+        for tf in DATASET_TIMEFRAMES:
+            p = BIN_DIR / f"bin_{file_id}_{tf}.bin"
+            if p.exists():
+                p.unlink()
+
         # Remove tile directory for this file
         tile_file_dir = TILES_DIR / str(file_id)
         if tile_file_dir.exists():
+            for tp in tile_file_dir.rglob("tile_*.bin"):
+                _mmap_cache.invalidate(tp)
             import shutil as _shutil2
             _shutil2.rmtree(tile_file_dir, ignore_errors=True)
         
         # Delete from database
+        db.query(BinaryBuildJob).filter(BinaryBuildJob.file_id == file_id).delete()
         db.delete(db_file)
         db.commit()
         
