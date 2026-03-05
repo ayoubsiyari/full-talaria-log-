@@ -681,8 +681,15 @@ class HeadShouldersTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('head-shoulders', points, style);
         this.requiredPoints = 7;
-        this.style.stroke = style.stroke || '#ff9800';
+        this.style.stroke = style.stroke || '#00bfa5';
         this.style.strokeWidth = style.strokeWidth || 2;
+        this.style.fill = style.fill || 'rgba(0, 191, 165, 0.14)';
+        this.style.necklineDasharray = style.necklineDasharray || '2,6';
+        this.style.necklineWidth = style.necklineWidth || 2;
+        this.style.labelFill = style.labelFill || this.style.stroke;
+        this.style.labelTextColor = style.labelTextColor || '#ffffff';
+        this.style.pointStroke = style.pointStroke || '#2f5dff';
+        this.style.pointFill = style.pointFill || '#0b1220';
     }
 
     render(container, scales) {
@@ -697,35 +704,125 @@ class HeadShouldersTool extends BaseDrawing {
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const getY = (p) => scales.yScale(p.y);
+        const pointsPx = this.points.map((p) => ({ x: getX(p), y: getY(p) }));
 
-        for (let i = 0; i < this.points.length - 1; i++) {
-            this.group.append('line')
-                .attr('x1', getX(this.points[i]))
-                .attr('y1', getY(this.points[i]))
-                .attr('x2', getX(this.points[i + 1]))
-                .attr('y2', getY(this.points[i + 1]))
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.strokeWidth)
-                .attr('opacity', this.style.opacity)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+        const outlinePath = pointsPx
+            .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
+            .join(' ');
+
+        if (pointsPx.length >= 3) {
+            const fillPath = `${outlinePath} L ${pointsPx[0].x} ${pointsPx[0].y} Z`;
+            this.group.append('path')
+                .attr('d', fillPath)
+                .attr('fill', this.style.fill)
+                .attr('stroke', 'none')
+                .style('pointer-events', 'none');
         }
 
-        // Draw neckline if we have enough points
-        if (this.points.length >= 5) {
+        this.group.append('path')
+            .attr('d', outlinePath)
+            .attr('fill', 'none')
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-linejoin', 'round')
+            .attr('stroke-linecap', 'round')
+            .attr('opacity', this.style.opacity)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        // Draw neckline from first to last anchor
+        if (pointsPx.length >= 2) {
+            const first = pointsPx[0];
+            const last = pointsPx[pointsPx.length - 1];
             this.group.append('line')
-                .attr('x1', getX(this.points[1]))
-                .attr('y1', getY(this.points[1]))
-                .attr('x2', getX(this.points[this.points.length - 2]))
-                .attr('y2', getY(this.points[this.points.length - 2]))
+                .attr('x1', first.x)
+                .attr('y1', first.y)
+                .attr('x2', last.x)
+                .attr('y2', last.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', '5,5')
-                .attr('opacity', 0.7);
+                .attr('stroke-width', this.style.necklineWidth)
+                .attr('stroke-dasharray', this.style.necklineDasharray)
+                .attr('stroke-linecap', 'round')
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
         }
+
+        // TradingView-like point markers
+        pointsPx.forEach((p) => {
+            this.group.append('circle')
+                .attr('cx', p.x)
+                .attr('cy', p.y)
+                .attr('r', 6)
+                .attr('fill', this.style.pointFill)
+                .attr('stroke', this.style.pointStroke)
+                .attr('stroke-width', 2)
+                .style('pointer-events', 'none');
+        });
+
+        // Shoulder/head labels
+        const labels = [
+            { index: 1, text: 'Left Shoulder' },
+            { index: 3, text: 'Head' },
+            { index: 5, text: 'Right Shoulder' }
+        ];
+
+        labels.forEach((label) => {
+            const point = pointsPx[label.index];
+            if (!point) return;
+
+            const necklineY = this._getNecklineYAtX(pointsPx, point.x);
+            const placeAbove = point.y <= necklineY;
+            this.drawShoulderLabel(point.x, point.y, label.text, placeAbove);
+        });
 
         this.createHandles(this.group, scales);
         return this.group;
+    }
+
+    _getNecklineYAtX(pointsPx, x) {
+        if (!Array.isArray(pointsPx) || pointsPx.length < 2) return x;
+
+        const first = pointsPx[0];
+        const last = pointsPx[pointsPx.length - 1];
+        const dx = last.x - first.x;
+
+        if (Math.abs(dx) < 0.0001) {
+            return (first.y + last.y) / 2;
+        }
+
+        const t = (x - first.x) / dx;
+        return first.y + ((last.y - first.y) * t);
+    }
+
+    drawShoulderLabel(x, y, text, placeAbove = true) {
+        const fontSize = 13;
+        const paddingX = 9;
+        const paddingY = 4;
+        const textWidth = Math.max(42, text.length * 7.1);
+        const labelWidth = textWidth + (paddingX * 2);
+        const labelHeight = fontSize + (paddingY * 2);
+        const labelY = placeAbove ? (y - labelHeight - 14) : (y + 14);
+
+        this.group.append('rect')
+            .attr('x', x - (labelWidth / 2))
+            .attr('y', labelY)
+            .attr('width', labelWidth)
+            .attr('height', labelHeight)
+            .attr('rx', 4)
+            .attr('fill', this.style.labelFill)
+            .attr('opacity', 0.95)
+            .style('pointer-events', 'none');
+
+        this.group.append('text')
+            .attr('x', x)
+            .attr('y', labelY + (labelHeight / 2))
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'middle')
+            .attr('fill', this.style.labelTextColor)
+            .attr('font-size', `${fontSize}px`)
+            .attr('font-weight', '600')
+            .style('pointer-events', 'none')
+            .text(text);
     }
 
     static fromJSON(data, chart = null) {
