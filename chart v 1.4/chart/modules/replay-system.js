@@ -45,6 +45,8 @@ class ReplaySystem {
         this.interCandleDelayMs = 8; // Tiny handoff delay between candles to keep UI responsive
         this.dataLoadRetryDelayMs = 120; // Retry delay when waiting for more server candles
         this.forwardLoadLatencyMs = 1500; // EWMA forward-load latency used to size replay prefetch runway
+        this.edgeProbeRetryCount = 0; // Number of forced forward probes after local cursor says no-more-right
+        this.maxEdgeProbeRetries = 12; // Prevent infinite waiting when replay truly reached dataset/session end
 
         this.toolbar = null;
         this.handle = null;
@@ -1985,11 +1987,11 @@ class ReplaySystem {
     simpleStepForward() {
         if (this._timeframeChanging) return;
         if (this.currentIndex >= this.fullRawData.length - 1) {
-            // Before giving up, try to trigger pan-loading for more data
-            if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
-                console.log('⏳ Reached end of loaded data, requesting more...');
-                this.chart.checkViewportLoadMore('forward');
-                return; // Don't pause — data will arrive and we can continue
+            // Before giving up, try to trigger pan-loading for more data.
+            // We also allow a few forced probes in case local hasMoreRight got stale.
+            if (this.tryRequestForwardDataProbe()) {
+                console.log('⏳ Reached end of loaded data, requesting/probing more...');
+                return; // Don't pause yet — data may still arrive
             }
             console.log('⏭️ Reached end of all data');
             this.pause();
@@ -2009,6 +2011,7 @@ class ReplaySystem {
         const targetIndex = this.calculateNextIndex();
         console.log(`🎯 simpleStepForward: ${oldIndex} -> ${targetIndex} (jumped ${targetIndex - oldIndex} candles)`);
         this.currentIndex = targetIndex;
+        this.edgeProbeRetryCount = 0;
         
         // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -2113,6 +2116,46 @@ class ReplaySystem {
         const minThreshold = Math.max(2000, Math.ceil(rawCandlesPerSecond * 8) + 300);
         return Math.max(minThreshold, Math.min(60000, dynamicThreshold));
     }
+
+    tryRequestForwardDataProbe() {
+        const canLoadForward = !!(this.chart
+            && typeof this.chart.checkViewportLoadMore === 'function'
+            && this.chart.currentFileId);
+        if (!canLoadForward) {
+            return false;
+        }
+
+        const hasMoreRight = !!(this.chart._serverCursors && this.chart._serverCursors.hasMoreRight);
+        if (hasMoreRight) {
+            this.edgeProbeRetryCount = 0;
+            this.chart.checkViewportLoadMore('forward');
+            return true;
+        }
+
+        if (this.edgeProbeRetryCount >= this.maxEdgeProbeRetries) {
+            return false;
+        }
+
+        this.edgeProbeRetryCount += 1;
+        this.chart.checkViewportLoadMore('forward', true);
+        console.log(`⏳ Forward edge probe ${this.edgeProbeRetryCount}/${this.maxEdgeProbeRetries}`);
+        return true;
+    }
+
+    scheduleForwardEdgeRetry(retryFn) {
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
+
+        const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
+        this._nextCandleTimer = setTimeout(() => {
+            this._nextCandleTimer = null;
+            if (this.isPlaying && typeof retryFn === 'function') {
+                retryFn();
+            }
+        }, dataLoadRetryDelay);
+    }
     
     /**
      * Convert timeframe string to milliseconds
@@ -2200,22 +2243,14 @@ class ReplaySystem {
         }
         
         if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
-                this.chart.checkViewportLoadMore('forward');
-                if (this._nextCandleTimer) {
-                    clearTimeout(this._nextCandleTimer);
-                    this._nextCandleTimer = null;
-                }
-                const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
-                this._nextCandleTimer = setTimeout(() => {
-                    this._nextCandleTimer = null;
-                    if (this.isPlaying) this.startTickAnimation();
-                }, dataLoadRetryDelay);
+            if (this.tryRequestForwardDataProbe()) {
+                this.scheduleForwardEdgeRetry(() => this.startTickAnimation());
                 return;
             }
             this.pause();
             return;
         }
+        this.edgeProbeRetryCount = 0;
         
         // Determine timeframe for speed calculations
         let candleTimeframeMs = 60000; // Default 1 minute
@@ -2602,18 +2637,9 @@ class ReplaySystem {
         for (let i = 0; i < candlesToComplete; i++) {
             // Check bounds
             if (this.currentIndex >= this.fullRawData.length - 1) {
-                if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
-                    this.chart.checkViewportLoadMore('forward');
-                    if (this._nextCandleTimer) {
-                        clearTimeout(this._nextCandleTimer);
-                        this._nextCandleTimer = null;
-                    }
+                if (this.tryRequestForwardDataProbe()) {
                     if (this.isPlaying) {
-                        const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
-                        this._nextCandleTimer = setTimeout(() => {
-                            this._nextCandleTimer = null;
-                            if (this.isPlaying) this.animateFastMode();
-                        }, dataLoadRetryDelay);
+                        this.scheduleForwardEdgeRetry(() => this.animateFastMode());
                     }
                     return;
                 }
@@ -2623,6 +2649,7 @@ class ReplaySystem {
             
             // Advance to next candle
             this.currentIndex++;
+            this.edgeProbeRetryCount = 0;
             
             // Update virtual time
             if (this.fullRawData[this.currentIndex]) {
@@ -3165,6 +3192,7 @@ class ReplaySystem {
         // ALWAYS advance by 1 raw candle for smooth animation on all TFs
         // The display timeframe only affects how data is shown, not playback
         this.currentIndex = this.currentIndex + 1;
+        this.edgeProbeRetryCount = 0;
         
         // === UPDATE VIRTUAL TIME: Set to the new candle's timestamp ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -3193,18 +3221,9 @@ class ReplaySystem {
                 if (this.isPlaying) this.startTickAnimation();
             }, nextCandleDelay);
         } else if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
-                this.chart.checkViewportLoadMore('forward');
+            if (this.tryRequestForwardDataProbe()) {
                 if (this.isPlaying) {
-                    if (this._nextCandleTimer) {
-                        clearTimeout(this._nextCandleTimer);
-                        this._nextCandleTimer = null;
-                    }
-                    const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
-                    this._nextCandleTimer = setTimeout(() => {
-                        this._nextCandleTimer = null;
-                        if (this.isPlaying) this.startTickAnimation();
-                    }, dataLoadRetryDelay);
+                    this.scheduleForwardEdgeRetry(() => this.startTickAnimation());
                 }
             } else {
                 this.pause();

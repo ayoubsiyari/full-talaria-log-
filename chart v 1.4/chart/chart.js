@@ -8022,8 +8022,9 @@ class Chart {
      * Pan-load: fetch older/newer candles when user scrolls to data edge.
      * Merges new candles into existing data seamlessly.
      * @param {string} direction - 'backward' (pan left) or 'forward' (pan right)
+     * @param {boolean} force - when true, probe server even if local hasMore flags are stale
      */
-    checkViewportLoadMore(direction) {
+    checkViewportLoadMore(direction, force = false) {
         if (this._panLoading) return;
         if (!this.currentFileId) return;
         if (!this._serverCursors) return;
@@ -8037,8 +8038,8 @@ class Chart {
         const hasSessionEnd = Number.isFinite(sessionEndTs);
         
         // Check if there's more data in this direction
-        if (direction === 'backward' && !this._serverCursors.hasMoreLeft) return;
-        if (direction === 'forward' && !this._serverCursors.hasMoreRight) return;
+        if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) return;
+        if (!force && direction === 'forward' && !this._serverCursors.hasMoreRight) return;
 
         // Respect configured backtesting bounds
         if (direction === 'forward' && hasSessionEnd) {
