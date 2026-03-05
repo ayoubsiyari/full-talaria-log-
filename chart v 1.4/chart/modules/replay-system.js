@@ -26,6 +26,7 @@ class ReplaySystem {
         this.tickElapsedMs = 0;           // Elapsed milliseconds within current candle animation
 
         // Tick animation state
+        this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
         this.tickAnimationEnabled = true;
         this.tickInterval = null;
         this.animatingCandle = null;
@@ -53,6 +54,7 @@ class ReplaySystem {
         this.followBtn = null;
         this.speedSelect = null;
         this.timeframeSelect = null;
+        this.playbackModeSelect = null;
         this.playPauseBtn = null;
         this.stepForwardBtn = null;
         this.stepBackwardBtn = null;
@@ -132,6 +134,9 @@ class ReplaySystem {
                 this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
                 this.speed = typeof state.speed === 'number' ? state.speed : this.speed;
+                if (typeof state.playbackMode === 'string') {
+                    this.setPlaybackMode(state.playbackMode, { restartPlayback: false });
+                }
                 this.isPlaying = false;
                 // Sync speed bar UI to the restored speed so it doesn't mismatch on first play
                 this.updateSpeedButtonUI(this.speed);
@@ -162,6 +167,7 @@ class ReplaySystem {
         this.followBtn = document.getElementById('replayFollow');
         this.speedSelect = document.getElementById('replaySpeed');
         this.timeframeSelect = document.getElementById('replayTimeframe');
+        this.playbackModeSelect = document.getElementById('replayPlaybackMode');
         this.playPauseBtn = document.getElementById('replayPlayPause');
         this.stepForwardBtn = document.getElementById('replayStepForward');
         this.stepBackwardBtn = document.getElementById('replayStepBackward');
@@ -184,6 +190,8 @@ class ReplaySystem {
             console.error('❌ Replay toolbar elements missing');
             return;
         }
+
+        this.syncPlaybackModeControls();
 
         this.attachButtonEvents();
         this.attachSliderEvents();
@@ -241,6 +249,12 @@ class ReplaySystem {
         if (this.timeframeSelect) {
             this.timeframeSelect.addEventListener('change', (e) => {
                 console.log(`⏱️ Replay timeframe changed to ${e.target.value}`);
+            });
+        }
+
+        if (this.playbackModeSelect) {
+            this.playbackModeSelect.addEventListener('change', (e) => {
+                this.setPlaybackMode(e.target.value);
             });
         }
 
