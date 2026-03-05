@@ -711,45 +711,33 @@ class HeadShouldersTool extends BaseDrawing {
             .join(' ');
 
         if (pointsPx.length >= 3) {
-            const referenceIndex = Math.min(3, pointsPx.length - 1);
-            const referencePoint = pointsPx[referenceIndex];
-            const referenceNecklineY = this._getNecklineYAtX(pointsPx, referencePoint.x);
-            const fillAboveNeckline = referencePoint.y <= referenceNecklineY;
+            const fillAboveNeckline = this._shouldFillAboveNeckline(pointsPx);
+            const fillRuns = this._buildNecklineFillRuns(pointsPx, fillAboveNeckline);
 
-            // Build fill between the zig-zag and the neckline so the shaded area
-            // remains correct even if some anchors are not exactly on the trendline.
-            const upperBoundary = pointsPx.map((p, index) => {
-                const necklineY = this._getNecklineYAtX(pointsPx, p.x);
-                const isNecklineAnchor = index % 2 === 0;
+            fillRuns.forEach((run) => {
+                if (!run || run.length < 2) return;
 
-                if (isNecklineAnchor) {
-                    return { x: p.x, y: necklineY };
-                }
+                const necklineBoundary = run
+                    .slice()
+                    .reverse()
+                    .map((p) => ({
+                        x: p.x,
+                        y: this._getNecklineYAtX(pointsPx, p.x)
+                    }));
 
-                return {
-                    x: p.x,
-                    y: fillAboveNeckline ? Math.min(p.y, necklineY) : Math.max(p.y, necklineY)
-                };
+                const fillPathPoints = [...run, ...necklineBoundary];
+                if (fillPathPoints.length < 3) return;
+
+                const fillPath = `${fillPathPoints
+                    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
+                    .join(' ')} Z`;
+
+                this.group.append('path')
+                    .attr('d', fillPath)
+                    .attr('fill', this.style.fill)
+                    .attr('stroke', 'none')
+                    .style('pointer-events', 'none');
             });
-
-            const necklineBoundary = pointsPx
-                .slice()
-                .reverse()
-                .map((p) => ({
-                    x: p.x,
-                    y: this._getNecklineYAtX(pointsPx, p.x)
-                }));
-
-            const fillPathPoints = [...upperBoundary, ...necklineBoundary];
-            const fillPath = `${fillPathPoints
-                .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
-                .join(' ')} Z`;
-
-            this.group.append('path')
-                .attr('d', fillPath)
-                .attr('fill', this.style.fill)
-                .attr('stroke', 'none')
-                .style('pointer-events', 'none');
         }
 
         this.group.append('path')
@@ -825,6 +813,114 @@ class HeadShouldersTool extends BaseDrawing {
 
         const t = (x - first.x) / dx;
         return first.y + ((last.y - first.y) * t);
+    }
+
+    _shouldFillAboveNeckline(pointsPx) {
+        const shoulderHeadIndexes = [1, 3, 5];
+        const deltas = shoulderHeadIndexes
+            .filter(index => index < pointsPx.length)
+            .map(index => {
+                const point = pointsPx[index];
+                return point.y - this._getNecklineYAtX(pointsPx, point.x);
+            })
+            .filter(delta => Number.isFinite(delta));
+
+        if (deltas.length === 0) {
+            const midPoint = pointsPx[Math.floor(pointsPx.length / 2)];
+            if (!midPoint) return true;
+            const midDelta = midPoint.y - this._getNecklineYAtX(pointsPx, midPoint.x);
+            return midDelta <= 0;
+        }
+
+        const avgDelta = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length;
+        return avgDelta <= 0;
+    }
+
+    _buildNecklineFillRuns(pointsPx, fillAboveNeckline) {
+        const runs = [];
+        let currentRun = null;
+        const epsilon = 0.0001;
+
+        const isInside = (delta) => (fillAboveNeckline ? delta <= epsilon : delta >= -epsilon);
+
+        const pushPoint = (target, point) => {
+            if (!target || !point) return;
+            const last = target[target.length - 1];
+            if (
+                !last ||
+                Math.abs(last.x - point.x) > 0.01 ||
+                Math.abs(last.y - point.y) > 0.01
+            ) {
+                target.push(point);
+            }
+        };
+
+        for (let i = 0; i < pointsPx.length - 1; i++) {
+            const a = pointsPx[i];
+            const b = pointsPx[i + 1];
+            const dA = a.y - this._getNecklineYAtX(pointsPx, a.x);
+            const dB = b.y - this._getNecklineYAtX(pointsPx, b.x);
+
+            const inA = isInside(dA);
+            const inB = isInside(dB);
+            const crossing = (inA !== inB);
+            const intersection = crossing
+                ? this._getNecklineSegmentIntersection(pointsPx, a, b, dA, dB)
+                : null;
+
+            if (inA && !currentRun) currentRun = [];
+            if (inA && currentRun) pushPoint(currentRun, a);
+
+            if (inA && inB) {
+                if (!currentRun) currentRun = [];
+                pushPoint(currentRun, b);
+            } else if (inA && !inB) {
+                if (intersection) pushPoint(currentRun, intersection);
+                if (currentRun && currentRun.length >= 2) runs.push(currentRun);
+                currentRun = null;
+            } else if (!inA && inB) {
+                currentRun = [];
+                if (intersection) pushPoint(currentRun, intersection);
+                pushPoint(currentRun, b);
+            }
+        }
+
+        if (currentRun && currentRun.length >= 2) {
+            runs.push(currentRun);
+        }
+
+        return runs;
+    }
+
+    _getNecklineSegmentIntersection(pointsPx, a, b, dA, dB) {
+        if (!Array.isArray(pointsPx) || pointsPx.length < 2 || !a || !b) return null;
+
+        const first = pointsPx[0];
+        const last = pointsPx[pointsPx.length - 1];
+        const neckDx = last.x - first.x;
+
+        if (Math.abs(neckDx) < 0.0001) {
+            const segDx = b.x - a.x;
+            if (Math.abs(segDx) < 0.0001) return null;
+            const tVertical = (first.x - a.x) / segDx;
+            if (tVertical < 0 || tVertical > 1) return null;
+            const y = a.y + ((b.y - a.y) * tVertical);
+            return { x: first.x, y };
+        }
+
+        const m = (last.y - first.y) / neckDx;
+        const neckB = first.y - (m * first.x);
+
+        const da = Number.isFinite(dA) ? dA : (a.y - ((m * a.x) + neckB));
+        const db = Number.isFinite(dB) ? dB : (b.y - ((m * b.x) + neckB));
+        const denom = db - da;
+        if (Math.abs(denom) < 0.0001) return null;
+
+        const t = -da / denom;
+        const clampedT = Math.max(0, Math.min(1, t));
+        const x = a.x + ((b.x - a.x) * clampedT);
+        const y = (m * x) + neckB;
+        return { x, y };
     }
 
     drawShoulderLabel(x, y, text, placeAbove = true) {
