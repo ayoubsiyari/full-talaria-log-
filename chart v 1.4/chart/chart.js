@@ -4175,6 +4175,46 @@ class Chart {
 
             return fallback;
         };
+
+        const toRgbArray = (color, fallback = [41, 98, 255]) => {
+            if (!color) return fallback.slice();
+            const value = String(color).trim();
+
+            const rgbMatch = value.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+            if (rgbMatch) {
+                return [
+                    Math.max(0, Math.min(255, parseInt(rgbMatch[1], 10))),
+                    Math.max(0, Math.min(255, parseInt(rgbMatch[2], 10))),
+                    Math.max(0, Math.min(255, parseInt(rgbMatch[3], 10)))
+                ];
+            }
+
+            const hex = value.startsWith('#') ? value.slice(1) : value;
+            if (/^[0-9a-f]{3}$/i.test(hex)) {
+                return [
+                    parseInt(hex[0] + hex[0], 16),
+                    parseInt(hex[1] + hex[1], 16),
+                    parseInt(hex[2] + hex[2], 16)
+                ];
+            }
+            if (/^[0-9a-f]{6}$/i.test(hex)) {
+                return [
+                    parseInt(hex.slice(0, 2), 16),
+                    parseInt(hex.slice(2, 4), 16),
+                    parseInt(hex.slice(4, 6), 16)
+                ];
+            }
+
+            return fallback.slice();
+        };
+
+        const mixRgb = (from, to, weight = 0.5) => {
+            const w = Math.max(0, Math.min(1, weight));
+            return [0, 1, 2].map((i) => Math.round(from[i] * (1 - w) + to[i] * w));
+        };
+
+        const rgbToCss = (rgb) => `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+        const rgbaToCss = (rgb, alpha = 1) => `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
         
         // If a specific setting was changed, only apply that to the target chart
         if (settingKey && settingValue !== null && targetChart !== this) {
@@ -4187,17 +4227,28 @@ class Chart {
             const accentColor = targetChart.chartSettings.settingsPanelAccentColor || '#2962ff';
             const panelBg = targetChart.chartSettings.settingsPanelBgColor || '#050028';
             const sidebarBg = targetChart.chartSettings.settingsPanelSidebarBgColor || '#04001f';
+            const panelRgb = toRgbArray(panelBg, [5, 0, 40]);
+            const sidebarRgb = toRgbArray(sidebarBg, [4, 0, 31]);
+            const deepUiBase = [8, 12, 28];
+            const chromeBg = mixRgb(panelRgb, deepUiBase, 0.72);
+            const surfaceBg = mixRgb(panelRgb, deepUiBase, 0.58);
+            const sidebarUiBg = mixRgb(sidebarRgb, deepUiBase, 0.62);
+            const borderColorRgb = mixRgb(surfaceBg, [162, 176, 216], 0.24);
             root.style.setProperty('--sp-accent', accentColor);
             root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
             root.style.setProperty('--sp-bg', panelBg);
             root.style.setProperty('--sp-sidebar-bg', sidebarBg);
-            root.style.setProperty('--tv-panel-bg', panelBg);
-            root.style.setProperty('--tv-settings-gradient-bg', panelBg);
-            root.style.setProperty('--tv-settings-gradient-bg-overlay', panelBg);
+            root.style.setProperty('--sp-ui-chrome-bg', rgbToCss(chromeBg));
+            root.style.setProperty('--sp-ui-surface-bg', rgbToCss(surfaceBg));
+            root.style.setProperty('--sp-ui-sidebar-bg', rgbToCss(sidebarUiBg));
+            root.style.setProperty('--sp-ui-border', rgbaToCss(borderColorRgb, 0.42));
+            root.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
+            root.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
+            root.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
             if (document.body) {
-                document.body.style.setProperty('--tv-panel-bg', panelBg);
-                document.body.style.setProperty('--tv-settings-gradient-bg', panelBg);
-                document.body.style.setProperty('--tv-settings-gradient-bg-overlay', panelBg);
+                document.body.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
+                document.body.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
+                document.body.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
             }
         }
         

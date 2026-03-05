@@ -162,7 +162,7 @@
         }
         
         .toolbar-drawing-icons .dropdown-arrow:hover {
-            background: var(--sp-bg);
+            background: var(--sp-ui-surface-bg, var(--sp-bg));
             color: #ffffff;
         }
         
@@ -348,7 +348,7 @@
         .tf-flyout-categories {
             display: flex;
             flex-direction: column;
-            background: var(--tv-panel-bg, var(--sp-bg));
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
             padding: 4px;
@@ -397,7 +397,7 @@
         .tf-flyout-values {
             display: none;
             flex-direction: column;
-            background: var(--tv-panel-bg, var(--sp-bg));
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
             padding: 4px;
@@ -1560,7 +1560,7 @@
         }
         
         .help-modal {
-            background: var(--tv-panel-bg, var(--sp-bg));
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
             border: 1px solid #363a45;
             border-radius: 12px;
             width: 90%;
@@ -1803,6 +1803,10 @@
     --sp-accent-rgb: 41, 98, 255;
     --sp-bg: #050028;
     --sp-sidebar-bg: #04001f;
+    --sp-ui-chrome-bg: #0d142b;
+    --sp-ui-surface-bg: #111a35;
+    --sp-ui-sidebar-bg: #0b1227;
+    --sp-ui-border: rgba(98, 116, 160, 0.42);
 }
 
         /* Toolbar Styles - TradingView Style */
@@ -1815,8 +1819,8 @@
             align-items: center;
             justify-content: space-between;
             padding: 2px 8px;
-            background: var(--sp-bg);
-            border-bottom: 1px solid rgba(50, 50, 60, 0.9);
+            background: var(--sp-ui-chrome-bg, var(--sp-bg));
+            border-bottom: 1px solid var(--sp-ui-border, rgba(50, 50, 60, 0.9));
             color: #d1d5db;
             height: 48px;
             gap: 6px;
@@ -2024,8 +2028,8 @@
             left: 0;
             top: 100%;
             margin-top: 8px;
-            background: var(--tv-panel-bg, var(--sp-bg));
-            border: 1px solid rgba(50, 50, 60, 0.9);
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            border: 1px solid var(--sp-ui-border, rgba(50, 50, 60, 0.9));
             border-radius: 8px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
             display: none;
@@ -2077,8 +2081,8 @@
             top: calc(100% + 8px);
             right: 0;
             min-width: 220px;
-            background: var(--tv-panel-bg, var(--sp-bg));
-            border: 1px solid #363a45;
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            border: 1px solid var(--sp-ui-border, #363a45);
             border-radius: 8px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             z-index: 10000;
@@ -2161,8 +2165,8 @@
             align-items: center;
             gap: 8px;
             padding: 8px 14px;
-            background: var(--tv-panel-bg, var(--sp-bg));
-            border: 1px solid #363a45;
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            border: 1px solid var(--sp-ui-border, #363a45);
             border-radius: 6px;
             color: #ffffff;
             font-size: 13px;
@@ -2196,8 +2200,8 @@
             align-items: center;
             gap: 6px;
             padding: 4px;
-            background: var(--tv-panel-bg, var(--sp-bg));
-            border: 1px solid #363a45;
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            border: 1px solid var(--sp-ui-border, #363a45);
             border-radius: 6px;
         }
 
@@ -2586,8 +2590,10 @@
             top: 48px;
             right: -440px;
             width: 420px;
-            background: var(--sp-bg);
-            border-left: 1px solid rgba(255,255,255,0.07);
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)),
+                var(--sp-bg);
+            border-left: 1px solid var(--sp-ui-border, rgba(255,255,255,0.07));
             z-index: 1000010;
             display: flex;
             flex-direction: row;
@@ -2604,8 +2610,10 @@
         .sp-sidebar {
             width: 130px;
             min-width: 130px;
-            background: var(--sp-sidebar-bg);
-            border-right: 1px solid rgba(255,255,255,0.06);
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.08)),
+                var(--sp-ui-sidebar-bg, var(--sp-sidebar-bg));
+            border-right: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
             display: flex;
             flex-direction: column;
             overflow-y: auto;
@@ -2619,7 +2627,7 @@
             font-size: 14px;
             font-weight: 700;
             letter-spacing: 0.02em;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            border-bottom: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
         }
         .sp-sidebar-header svg { color: var(--sp-accent); flex-shrink: 0; }
 
@@ -2665,7 +2673,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 18px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            border-bottom: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
             flex-shrink: 0;
         }
         #spContentTitle {
@@ -3222,7 +3230,7 @@
         .number-input-wrapper {
             display: flex;
             align-items: stretch;
-            background: var(--sp-bg);
+            background: var(--sp-ui-surface-bg, var(--sp-bg));
             border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 4px;
             overflow: hidden;
@@ -3535,7 +3543,7 @@
         .symbol-switcher-dropdown {
             display: none;
             position: fixed;
-            background: var(--tv-panel-bg, var(--sp-bg));
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
             border: 1px solid rgba(59, 130, 246, 0.3);
             border-radius: 8px;
             min-width: 420px;
@@ -3590,7 +3598,7 @@
         .symbol-switcher-item .symbol-icon {
             width: 28px;
             height: 28px;
-            background: var(--tv-panel-bg, var(--sp-bg));
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
             border-radius: 6px;
             display: flex;
             align-items: center;
@@ -4788,7 +4796,7 @@
         }
 
         .compare-modal {
-            background: var(--tv-panel-bg, var(--sp-bg));
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 16px;
             width: 520px;
@@ -15778,19 +15786,19 @@
         }
 
         body:not(.light-mode) {
-            --tv-settings-gradient-bg: var(--sp-bg);
-            --tv-settings-gradient-bg-overlay: var(--sp-bg);
-            --tv-panel-bg: var(--sp-bg);
+            --tv-settings-gradient-bg: var(--sp-ui-chrome-bg, var(--sp-bg));
+            --tv-settings-gradient-bg-overlay: var(--sp-ui-surface-bg, var(--sp-bg));
+            --tv-panel-bg: var(--sp-ui-surface-bg, var(--sp-bg));
         }
 
         body:not(.light-mode) .toolbar,
         body:not(.light-mode) .right-sidebar-panel {
-            background: var(--sp-bg) !important;
+            background: var(--sp-ui-chrome-bg, var(--sp-bg)) !important;
         }
 
         body:not(.light-mode) .left-sidebar,
         body:not(.light-mode) .right-sidebar-icons {
-            background: var(--sp-sidebar-bg) !important;
+            background: var(--sp-ui-sidebar-bg, var(--sp-sidebar-bg)) !important;
         }
 
         body:not(.light-mode) .replay-toolbar::before {
@@ -15798,22 +15806,22 @@
         }
         
         body:not(.light-mode) .right-sidebar-panel {
-            background: var(--sp-bg) !important;
+            background: var(--sp-ui-chrome-bg, var(--sp-bg)) !important;
         }
 
         body:not(.light-mode) .unified-right-panel {
             background: var(--tv-panel-bg) !important;
             backdrop-filter: blur(20px) !important;
             -webkit-backdrop-filter: blur(20px) !important;
-            border-left: 1px solid rgba(63, 84, 124, 0.35) !important;
+            border-left: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35)) !important;
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important;
         }
 
         body:not(.light-mode) .replay-toolbar {
-            background: var(--sp-bg) !important;
+            background: var(--sp-ui-chrome-bg, var(--sp-bg)) !important;
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
-            border-top: 1px solid rgba(63, 84, 124, 0.35) !important;
+            border-top: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35)) !important;
         }
 
         body:not(.light-mode) #timeAxisZone,
@@ -15840,7 +15848,7 @@
             background: var(--tv-panel-bg) !important;
             backdrop-filter: blur(20px) !important;
             -webkit-backdrop-filter: blur(20px) !important;
-            border-color: rgba(63, 84, 124, 0.35) !important;
+            border-color: var(--sp-ui-border, rgba(63, 84, 124, 0.35)) !important;
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important;
         }
 
@@ -19449,7 +19457,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260305_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260305_TF_PIN_V59"></script>
+         <script src="chart.js?v=20260305_TF_PIN_V60"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260305_TF_PIN_V58"></script>
