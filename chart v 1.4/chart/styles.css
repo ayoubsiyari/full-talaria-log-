@@ -118,7 +118,7 @@ body {
     font-size: 16px;
     font-weight: 700;
     margin-right: 12px;
-    background: linear-gradient(135deg, #2962ff 0%, #4e8cff 100%);
+    background: linear-gradient(135deg, var(--sp-accent) 0%, rgba(var(--sp-accent-rgb), 0.78) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -148,8 +148,8 @@ body {
 }
 
 .symbol-selector select:focus {
-    border-color: #2962ff;
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.15);
+    border-color: var(--sp-accent);
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.15);
 }
 
 .timeframe-selector {
@@ -180,9 +180,9 @@ body {
 }
 
 .timeframe-btn.active {
-    background: #2962ff;
+    background: var(--sp-accent);
     color: white;
-    box-shadow: 0 2px 4px rgba(41, 98, 255, 0.3);
+    box-shadow: 0 2px 4px rgba(var(--sp-accent-rgb), 0.3);
 }
 
 .timeframe-btn:active {
@@ -231,9 +231,9 @@ body {
 }
 
 .tool-btn.active {
-    background: #2962ff;
+    background: var(--sp-accent);
     color: white;
-    box-shadow: 0 2px 4px rgba(41, 98, 255, 0.3);
+    box-shadow: 0 2px 4px rgba(var(--sp-accent-rgb), 0.3);
 }
 
 /* Keep Drawing Mode button - special green color when active */
@@ -330,7 +330,7 @@ body {
 
 #drawingSvg line:hover {
     stroke-width: 3;
-    filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
+    filter: drop-shadow(0 0 4px rgba(var(--sp-accent-rgb), 0.5));
 }
 
 #drawingSvg rect {
@@ -339,7 +339,7 @@ body {
 
 #drawingSvg rect:hover {
     stroke-width: 3;
-    filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
+    filter: drop-shadow(0 0 4px rgba(var(--sp-accent-rgb), 0.5));
 }
 
 #drawingSvg text {
@@ -354,7 +354,7 @@ body {
 
 #drawingSvg circle:hover {
     r: 6;
-    filter: drop-shadow(0 2px 6px rgba(41, 98, 255, 0.6));
+    filter: drop-shadow(0 2px 6px rgba(var(--sp-accent-rgb), 0.6));
 }
 
 /* Crosshair */
@@ -513,7 +513,7 @@ body {
     width: 40px;
     height: 40px;
     border: 3px solid #2a2e39;
-    border-top-color: #2962ff;
+    border-top-color: var(--sp-accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -627,7 +627,7 @@ body {
 }
 
 .settings-item:hover {
-    background: rgba(41, 98, 255, 0.1);
+    background: rgba(var(--sp-accent-rgb), 0.1);
 }
 
 .settings-item-label {
@@ -661,7 +661,7 @@ body {
 
 .color-preview:hover {
     transform: scale(1.1);
-    border-color: #2962ff;
+    border-color: var(--sp-accent);
 }
 
 .color-picker-input {
@@ -681,7 +681,7 @@ body {
 }
 
 .settings-toggle.active {
-    background: #2962ff;
+    background: var(--sp-accent);
 }
 
 .settings-toggle::after {
@@ -733,14 +733,14 @@ body {
 }
 
 .settings-btn-save {
-    background: #2962ff;
+    background: var(--sp-accent);
     color: white;
 }
 
 .settings-btn-save:hover {
-    background: #1e53e5;
+    background: rgba(var(--sp-accent-rgb), 0.9);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(41, 98, 255, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--sp-accent-rgb), 0.4);
 }
 
 .settings-btn-save:active {
@@ -843,7 +843,7 @@ body {
 
 .emoji-picker-tab:hover,
 .emoji-picker-tab.active {
-    background: rgba(41, 98, 255, 0.22);
+    background: rgba(var(--sp-accent-rgb), 0.22);
     color: #ffffff;
 }
 
@@ -929,9 +929,9 @@ body {
 }
 
 #replayModeBtn.active {
-    background: rgba(41, 98, 255, 0.15);
-    border-color: #2962ff;
-    color: #2962ff;
+    background: rgba(var(--sp-accent-rgb), 0.15);
+    border-color: var(--sp-accent);
+    color: var(--sp-accent);
 }
 
 #replayModeBtn svg {
@@ -1005,14 +1005,14 @@ body {
 }
 
 .replay-btn-primary {
-    background: rgba(41, 98, 255, 0.2);
-    border-color: rgba(41, 98, 255, 0.4);
-    color: #2962ff;
+    background: rgba(var(--sp-accent-rgb), 0.2);
+    border-color: rgba(var(--sp-accent-rgb), 0.4);
+    color: var(--sp-accent);
 }
 
 .replay-btn-primary:hover {
-    background: rgba(41, 98, 255, 0.3);
-    border-color: rgba(41, 98, 255, 0.6);
+    background: rgba(var(--sp-accent-rgb), 0.3);
+    border-color: rgba(var(--sp-accent-rgb), 0.6);
 }
 
 .replay-speed-selector select {
@@ -1085,7 +1085,7 @@ body {
     appearance: none;
     width: 14px;
     height: 14px;
-    background: #2962ff;
+    background: var(--sp-accent);
     border: 2px solid #ffffff;
     border-radius: 50%;
     cursor: grab;
@@ -1111,7 +1111,7 @@ body {
 .replay-slider::-moz-range-thumb {
     width: 14px;
     height: 14px;
-    background: #2962ff;
+    background: var(--sp-accent);
     border: 2px solid #ffffff;
     border-radius: 50%;
     cursor: grab;
@@ -1133,7 +1133,7 @@ body {
 
 .replay-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #2962ff 0%, #3d7eff 100%);
+    background: linear-gradient(90deg, var(--sp-accent) 0%, rgba(var(--sp-accent-rgb), 0.82) 100%);
     border-radius: 3px;
     transition: width 0.1s ease-out;
     width: 0%;

@@ -523,12 +523,12 @@ class PanelManager {
                 transition: all 0.15s ease;
             }
             .layout-option:hover {
-                border-color: rgba(41, 98, 255, 0.5);
-                background: rgba(41, 98, 255, 0.1);
+                border-color: rgba(var(--sp-accent-rgb), 0.5);
+                background: rgba(var(--sp-accent-rgb), 0.1);
             }
             .layout-option.active {
-                border-color: #2962ff;
-                background: rgba(41, 98, 255, 0.2);
+                border-color: var(--sp-accent);
+                background: rgba(var(--sp-accent-rgb), 0.2);
             }
             .layout-option svg {
                 display: block;
@@ -1704,7 +1704,7 @@ class PanelManager {
             
             // Highlight selected panel using outline (not clipped by overflow:hidden)
             if (panel.element) {
-                panel.element.style.outline = '3px solid #2962ff';
+                panel.element.style.outline = '3px solid var(--sp-accent)';
                 panel.element.style.outlineOffset = '-3px';
             }
             
@@ -2106,7 +2106,7 @@ class PanelManager {
         
         // Hover effect - subtle blue line
         handle.addEventListener('mouseenter', () => {
-            handle.style.background = 'rgba(41, 98, 255, 0.6)';
+            handle.style.background = 'rgba(var(--sp-accent-rgb), 0.6)';
         });
         handle.addEventListener('mouseleave', () => {
             if (!this.isResizing) {
@@ -2153,7 +2153,7 @@ class PanelManager {
             return null;
         });
         
-        handle.style.background = 'rgba(41, 98, 255, 0.7)';
+        handle.style.background = 'rgba(var(--sp-accent-rgb), 0.7)';
         document.body.style.cursor = type === 'vertical' ? 'col-resize' : 'row-resize';
         document.body.style.userSelect = 'none';
         

@@ -22247,18 +22247,21 @@ function showIndicatorsMenu() {
     const searchWrap = menu.querySelector('.indicator-search');
     const listWrap = menu.querySelector('.indicator-list');
     const settingsPanel = menu.querySelector('.indicator-settings-panel');
+    const indicatorThemeStyles = getComputedStyle(document.documentElement);
+    const indicatorAccentColor = indicatorThemeStyles.getPropertyValue('--sp-accent').trim();
+    const indicatorAccentRgb = indicatorThemeStyles.getPropertyValue('--sp-accent-rgb').trim();
 
     const indicatorDefinitions = {
-        sma: { name: 'Simple Moving Average', params: [{ id: 'period', label: 'Length', type: 'number', min: 1, default: 20 }, { id: 'color', label: 'Color', type: 'color', default: '#2962ff' }] },
+        sma: { name: 'Simple Moving Average', params: [{ id: 'period', label: 'Length', type: 'number', min: 1, default: 20 }, { id: 'color', label: 'Color', type: 'color', default: indicatorAccentColor }] },
         ema: { name: 'Exponential Moving Average', params: [{ id: 'period', label: 'Length', type: 'number', min: 1, default: 20 }, { id: 'color', label: 'Color', type: 'color', default: '#f23645' }] },
         wma: { name: 'Weighted Moving Average', params: [{ id: 'period', label: 'Length', type: 'number', min: 1, default: 20 }, { id: 'color', label: 'Color', type: 'color', default: '#ff9800' }] },
         bb: { name: 'Bollinger Bands', params: [
             { id: 'period', label: 'Length', type: 'number', min: 1, default: 20 },
             { id: 'stdDev', label: 'Std Dev', type: 'number', min: 0.1, step: 0.1, default: 2 },
-            { id: 'upperColor', label: 'Upper Color', type: 'color', default: '#2962ff' },
+            { id: 'upperColor', label: 'Upper Color', type: 'color', default: indicatorAccentColor },
             { id: 'middleColor', label: 'Middle Color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower Color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.05)' }
+            { id: 'lowerColor', label: 'Lower Color', type: 'color', default: indicatorAccentColor },
+            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(' + indicatorAccentRgb + ',0.05)' }
         ] },
         vwap: { name: 'Volume Weighted Average Price', params: [{ id: 'color', label: 'Color', type: 'color', default: '#9c27b0' }] },
         rsi: { name: 'Relative Strength Index', params: [{ id: 'period', label: 'Length', type: 'number', min: 1, default: 14 }, { id: 'color', label: 'Color', type: 'color', default: '#9c27b0' }] },
@@ -22266,7 +22269,7 @@ function showIndicatorsMenu() {
             { id: 'fast', label: 'Fast Length', type: 'number', min: 1, default: 12 },
             { id: 'slow', label: 'Slow Length', type: 'number', min: 1, default: 26 },
             { id: 'signal', label: 'Signal Length', type: 'number', min: 1, default: 9 },
-            { id: 'macdColor', label: 'MACD Color', type: 'color', default: '#2962ff' },
+            { id: 'macdColor', label: 'MACD Color', type: 'color', default: indicatorAccentColor },
             { id: 'signalColor', label: 'Signal Color', type: 'color', default: '#f23645' },
             { id: 'histogramColor', label: 'Histogram Color', type: 'color', default: '#787b86' }
         ] },
@@ -22274,7 +22277,7 @@ function showIndicatorsMenu() {
             { id: 'period', label: 'Length', type: 'number', min: 1, default: 14 },
             { id: 'smoothK', label: '%K Smoothing', type: 'number', min: 1, default: 3 },
             { id: 'smoothD', label: '%D Smoothing', type: 'number', min: 1, default: 3 },
-            { id: 'kColor', label: '%K Color', type: 'color', default: '#2962ff' },
+            { id: 'kColor', label: '%K Color', type: 'color', default: indicatorAccentColor },
             { id: 'dColor', label: '%D Color', type: 'color', default: '#f23645' }
         ] }
     };
@@ -26279,8 +26282,8 @@ window._openCrosshairPicker=function(btn){
     var curWidth=cs.crosshairWidth||1;
     var curStyle=cs.crosshairPattern||'dashed';
     var rootStyles=getComputedStyle(document.documentElement);
-    var accentColor=(rootStyles.getPropertyValue('--sp-accent').trim()||'#2962ff');
-    var accentRgb=(rootStyles.getPropertyValue('--sp-accent-rgb').trim()||'41, 98, 255');
+    var accentColor=rootStyles.getPropertyValue('--sp-accent').trim();
+    var accentRgb=rootStyles.getPropertyValue('--sp-accent-rgb').trim();
     var accentSoft='rgba('+accentRgb+',0.15)';
     var colors=['#ffffff','#d1d4dc','#787b86','#434651','#131722','#f23645','#ff9800','#ffeb3b','#26a69a',accentColor,'#9c27b0','#e91e63','#00bcd4','#4caf50','#ff5722'];
     var swatches=colors.map(function(col){return '<div onclick="window._crosshairPickColor(\''+col+'\')" style="width:22px;height:22px;border-radius:4px;background:'+col+';cursor:pointer;border:2px solid transparent;flex-shrink:0;"></div>';}).join('');
@@ -26290,7 +26293,7 @@ window._openCrosshairPicker=function(btn){
     var popup=document.createElement('div');
     popup.id='_crosshairPickerPopup';
     popup.style.cssText='position:fixed;z-index:1000020;background:#1e222d;border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:16px;width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
-    popup.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">'+swatches+'</div><div style="height:1px;background:rgba(255,255,255,0.08);margin-bottom:12px;"></div><div style="color:#d1d4dc;font-size:12px;margin-bottom:6px;">Opacity</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><input id="_cxOpacity" type="range" min="0" max="1" step="0.05" value="'+curOpacity+'" style="flex:1;height:6px;-webkit-appearance:none;appearance:none;border-radius:3px;cursor:pointer;outline:none;background:linear-gradient(to right,#2962ff '+(curOpacity*100)+'%,#363a45 '+(curOpacity*100)+'%);"><span id="_cxOpacityVal" style="color:#2962ff;font-size:12px;font-weight:600;min-width:38px;text-align:right;">'+(Math.round(curOpacity*100))+'%</span></div><div style="color:#d1d4dc;font-size:12px;margin-bottom:6px;">Thickness</div><div style="display:flex;gap:6px;margin-bottom:14px;">'+thickBtns+'</div><div style="color:#d1d4dc;font-size:12px;margin-bottom:6px;">Line style</div><div style="display:flex;gap:6px;">'+styleBtns+'</div>';
+    popup.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">'+swatches+'</div><div style="height:1px;background:rgba(255,255,255,0.08);margin-bottom:12px;"></div><div style="color:#d1d4dc;font-size:12px;margin-bottom:6px;">Opacity</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><input id="_cxOpacity" type="range" min="0" max="1" step="0.05" value="'+curOpacity+'" style="flex:1;height:6px;-webkit-appearance:none;appearance:none;border-radius:3px;cursor:pointer;outline:none;background:linear-gradient(to right,'+accentColor+' '+(curOpacity*100)+'%,#363a45 '+(curOpacity*100)+'%);"><span id="_cxOpacityVal" style="color:'+accentColor+';font-size:12px;font-weight:600;min-width:38px;text-align:right;">'+(Math.round(curOpacity*100))+'%</span></div><div style="color:#d1d4dc;font-size:12px;margin-bottom:6px;">Thickness</div><div style="display:flex;gap:6px;margin-bottom:14px;">'+thickBtns+'</div><div style="color:#d1d4dc;font-size:12px;margin-bottom:6px;">Line style</div><div style="display:flex;gap:6px;">'+styleBtns+'</div>';
     var rect=btn.getBoundingClientRect();
     popup.style.left=Math.min(rect.left,window.innerWidth-280)+'px';
     popup.style.top=(rect.bottom+6)+'px';
@@ -26312,8 +26315,8 @@ window._openCrosshairPicker=function(btn){
     },100);
 };
 window._crosshairPickColor=function(color){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;p._color=color;window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
-window._crosshairPickWidth=function(w){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;var rs=getComputedStyle(document.documentElement);var ac=(rs.getPropertyValue('--sp-accent').trim()||'#2962ff');var ar=(rs.getPropertyValue('--sp-accent-rgb').trim()||'41, 98, 255');p._width=w;p.querySelectorAll('[data-w]').forEach(function(d){var a=parseInt(d.dataset.w)===w;d.style.borderColor=a?ac:'rgba(255,255,255,0.12)';d.style.background=a?('rgba('+ar+',0.15)'):'transparent';});window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
-window._crosshairPickStyle=function(s){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;var rs=getComputedStyle(document.documentElement);var ac=(rs.getPropertyValue('--sp-accent').trim()||'#2962ff');var ar=(rs.getPropertyValue('--sp-accent-rgb').trim()||'41, 98, 255');p._style=s;p.querySelectorAll('[data-s]').forEach(function(d){var a=d.dataset.s===s;d.style.borderColor=a?ac:'rgba(255,255,255,0.12)';d.style.background=a?('rgba('+ar+',0.15)'):'transparent';});window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
+window._crosshairPickWidth=function(w){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;var rs=getComputedStyle(document.documentElement);var ac=rs.getPropertyValue('--sp-accent').trim();var ar=rs.getPropertyValue('--sp-accent-rgb').trim();p._width=w;p.querySelectorAll('[data-w]').forEach(function(d){var a=parseInt(d.dataset.w)===w;d.style.borderColor=a?ac:'rgba(255,255,255,0.12)';d.style.background=a?('rgba('+ar+',0.15)'):'transparent';});window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
+window._crosshairPickStyle=function(s){var p=document.getElementById('_crosshairPickerPopup');if(!p)return;var rs=getComputedStyle(document.documentElement);var ac=rs.getPropertyValue('--sp-accent').trim();var ar=rs.getPropertyValue('--sp-accent-rgb').trim();p._style=s;p.querySelectorAll('[data-s]').forEach(function(d){var a=d.dataset.s===s;d.style.borderColor=a?ac:'rgba(255,255,255,0.12)';d.style.background=a?('rgba('+ar+',0.15)'):'transparent';});window._applyCrosshairSettings(p._color,p._opacity,p._width,p._style);};
 window._openCrosshairColorPicker=function(btn){
     var c=window.chart||window.mainChart;
     var cs=(c&&c.chartSettings)||{};
@@ -26403,7 +26406,7 @@ window._openScaleLinesColorPicker=function(btn){
     }
 };
 window._spClr=function(btn){
-    var c=btn.dataset.color||getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim()||'#2962ff';
+    var c=btn.dataset.color||getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim();
     console.log('[SP] _spClr called, color=',c,'openColorPicker=',typeof window.openColorPicker);
     if(window.openColorPicker){
         window.openColorPicker(c,function(v){
@@ -26579,7 +26582,8 @@ P['statusline']={title:'Status line',build:function(){
 P['scales']={title:'Scales and lines',build:function(){
     var c=ch(),cs=(c&&c.chartSettings)||{};
     var pm=(c&&c.priceScale&&c.priceScale.mode)||cs.priceScaleMode||'linear';
-    return sec(st('PRICE SCALE')+sel('Mode','sc_mode',[['linear','Normal (linear)'],['log','Logarithmic'],['percent','Percentage']],pm)+chk('Show price line','sc_priceLine',cs.showPriceLine!==false)+clr('Price line color','sc_priceClr',cs.priceLineColor||'#2962ff'))+
+    var panelAccent=getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim();
+    return sec(st('PRICE SCALE')+sel('Mode','sc_mode',[['linear','Normal (linear)'],['log','Logarithmic'],['percent','Percentage']],pm)+chk('Show price line','sc_priceLine',cs.showPriceLine!==false)+clr('Price line color','sc_priceClr',cs.priceLineColor||panelAccent))+
     sec(st('GRID')+chk('Show grid lines','sc_grid',cs.showGrid!==false)+clr('Grid color','sc_gridClr',cs.gridColor||'rgba(42,46,57,0.6)'))+
     sec(st('CROSSHAIR')+chk('Show crosshair','sc_cross',cs.showCrosshair!==false)+clr('Crosshair color','sc_crossClr',cs.crosshairColor||'rgba(120,123,134,0.6)')+sel('Style','sc_crossStyle',[['dashed','Dashed'],['solid','Solid'],['dotted','Dotted']],cs.crosshairPattern||'dashed')+chk('Magnet to OHLC','sc_magnet',!!(gLoad().magnetCrosshair)))+
     sec(st('SCALE LABELS')+clr('Text color','sc_textClr',cs.scaleTextColor||'#d1d4dc')+sel('Font size','sc_font',[['10','10px'],['11','11px'],['12','12px'],['14','14px'],['16','16px']],String(cs.scaleFontSize||'12'))+irow('Right margin (bars)','sc_rOff',(c&&c.timeScale&&c.timeScale.rightOffset)||50,0,300));
@@ -26599,6 +26603,7 @@ P['canvas']={title:'Canvas',build:function(){
     var c=ch(),cs=(c&&c.chartSettings)||{};
     var gridStyle=cs.gridStyle||'Vert and horz';
     var ro=(c&&c.timeScale&&c.timeScale.rightOffset!=null)?c.timeScale.rightOffset:10;
+    var panelAccent=getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim();
     return sec(st('CHART BASIC STYLES')+
         '<div class="tv-row" style="margin-bottom:10px;">'+
             '<span class="settings-input-label" style="flex:1;">Background</span>'+
@@ -26637,7 +26642,7 @@ P['canvas']={title:'Canvas',build:function(){
     sec(st('MARGINS')+
         irow('Right (bars)','cv_marginRight',ro,0,300))+
     sec(st('SETTINGS PANEL THEME')+
-        clr('Accent','sp_acc',cs.settingsPanelAccentColor||'#2962ff')+
+        clr('Accent','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
         clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
         clr('Sidebar background','sp_sbg',cs.settingsPanelSidebarBgColor||'#04001f'));
 },wire:function(){
@@ -26902,7 +26907,7 @@ P['objecttree']={
                 var vis=d.visible!==false;
                 var locked=d.locked||false;
                 return '<div class="ot-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;" onmouseenter="this.style.background=\'rgba(255,255,255,0.03)\'" onmouseleave="this.style.background=\'none\'">'+
-                    '<div style="width:8px;height:8px;border-radius:50%;background:'+(d.color||d.stroke||'#2962ff')+';flex-shrink:0;"></div>'+
+                    '<div style="width:8px;height:8px;border-radius:50%;background:'+(d.color||d.stroke||'var(--sp-accent)')+';flex-shrink:0;"></div>'+
                     '<span style="flex:1;font-size:13px;color:'+(vis?'#e0e3ea':'#555a6e')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+label+'</span>'+
                     '<button class="ot-jump-btn" data-idx="'+i+'" title="Jump to shape" style="background:none;border:none;color:#4a90d9;cursor:pointer;padding:2px;display:flex;align-items:center;">'+
                         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="15" height="15" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>'+
@@ -26996,7 +27001,7 @@ P['objecttree']={
                 var name=ind.name||ind.type||'Indicator';
                 var vis=ind.visible!==false;
                 return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">'+
-                    '<div style="width:8px;height:8px;border-radius:50%;background:'+(ind.color||ind.stroke||'#2962ff')+';flex-shrink:0;"></div>'+
+                    '<div style="width:8px;height:8px;border-radius:50%;background:'+(ind.color||ind.stroke||'var(--sp-accent)')+';flex-shrink:0;"></div>'+
                     '<span style="flex:1;font-size:13px;color:'+(vis?'#e0e3ea':'#555a6e')+';">'+ name+'</span>'+
                     '<button class="ot-ind-vis" data-idx="'+i+'" title="'+(vis?'Hide':'Show')+'" style="background:none;border:none;color:#787b86;cursor:pointer;padding:2px;">'+
                         (vis?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>')+

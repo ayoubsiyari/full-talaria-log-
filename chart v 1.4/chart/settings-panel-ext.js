@@ -50,7 +50,7 @@
                         el.textContent='$'+val.toLocaleString('en-US',{minimumFractionDigits:2});
                     });
                     this.textContent='Saved ✓'; this.style.background='#089981';
-                    var self=this; setTimeout(function(){self.textContent='Save Balance'; self.style.background='#2962ff';},1800);
+                    var self=this; setTimeout(function(){self.textContent='Save Balance'; self.style.background='var(--sp-accent)';},1800);
                 });
             }
         };
@@ -82,7 +82,7 @@
                     var s=sess(); s.leverage=v; saveSess(s);
                     document.querySelectorAll('#challengeLeverage,.leverage-value').forEach(function(el){ el.textContent='1:'+v; });
                     this.textContent='Saved ✓'; this.style.background='#089981';
-                    var self=this; setTimeout(function(){self.textContent='Save'; self.style.background='#2962ff';},1800);
+                    var self=this; setTimeout(function(){self.textContent='Save'; self.style.background='var(--sp-accent)';},1800);
                 });
                 var canB=document.getElementById('cancelLev');
                 if(canB) canB.addEventListener('click',function(){ if(window._spPanels&&window._spPanels.leverage) { var c=document.getElementById('settingsPanelContent'); if(c){c.innerHTML=B.hdr('Leverage')+P['leverage'].build(); var bk=document.getElementById('spBack'); if(bk) bk.addEventListener('click',function(){ if(window._spShowRoot) window._spShowRoot(); }); P['leverage'].wire(); } } });
@@ -167,7 +167,7 @@
                     s.swapShort       = nv('swapShort');
                     saveSess(s);
                     this.textContent='Saved ✓'; this.style.background='#089981';
-                    var self=this; setTimeout(function(){self.textContent='Save'; self.style.background='#2962ff';},1800);
+                    var self=this; setTimeout(function(){self.textContent='Save'; self.style.background='var(--sp-accent)';},1800);
                 });
                 var canC=document.getElementById('cancelComm');
                 if(canC) canC.addEventListener('click',function(){

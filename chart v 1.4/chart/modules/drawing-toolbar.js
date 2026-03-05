@@ -443,7 +443,7 @@ class DrawingToolbar {
                 }
                 .toolbar-number-input:focus {
                     border-color: #787b86;
-                    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.15);
+                    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.15);
                 }
                 .toolbar-textarea {
                     flex: 1 1 100%;
@@ -595,23 +595,23 @@ class DrawingToolbar {
                 }
                 
                 .toolbar-dropdown-item:hover {
-                    background: rgba(41, 98, 255, 0.15);
+                    background: rgba(var(--sp-accent-rgb), 0.15);
                     color: #ffffff;
                 }
                 
                 body.light-mode .toolbar-dropdown-item:hover {
-                    background: rgba(41, 98, 255, 0.12);
-                    color: #2962ff;
+                    background: rgba(var(--sp-accent-rgb), 0.12);
+                    color: var(--sp-accent);
                 }
                 
                 .toolbar-dropdown-item.active {
-                    background: rgba(41, 98, 255, 0.25);
+                    background: rgba(var(--sp-accent-rgb), 0.25);
                     color: #ffffff;
                 }
                 
                 body.light-mode .toolbar-dropdown-item.active {
-                    background: rgba(41, 98, 255, 0.15);
-                    color: #2962ff;
+                    background: rgba(var(--sp-accent-rgb), 0.15);
+                    color: var(--sp-accent);
                 }
                 .toolbar-dropdown-item svg {
                     flex-shrink: 0;
@@ -1835,7 +1835,7 @@ class DrawingToolbar {
                 ">Cancel</button>
                 <button id="template-save-btn" style="
                     padding: 6px 14px;
-                    background: #2962ff;
+                    background: var(--sp-accent);
                     border: none;
                     border-radius: 4px;
                     color: #fff;
