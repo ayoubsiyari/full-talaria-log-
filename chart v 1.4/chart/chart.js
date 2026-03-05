@@ -9178,8 +9178,8 @@ class Chart {
         const isCalendarTf      = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
         const isDailyOrHigher   = timeframeMs >= 86400000;
         const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher;
-        const isReplayRunning = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
-        const useReplayIndexCadence = useUniformIntradayTicks && isReplayRunning;
+        const isReplayActive = !!(this.replaySystem && this.replaySystem.isActive);
+        const useReplayIndexCadence = useUniformIntradayTicks && isReplayActive;
         const suppressIntradayBoundaryLabels = useReplayIndexCadence;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -9224,8 +9224,8 @@ class Chart {
             if (isCalendarTf) {
                 isRound = (idx - scanFrom) % Math.max(1, labelInterval) === 0;
             } else if (useReplayIndexCadence) {
-                // Replay-running intraday mode: keep axis cadence tied to candle index
-                // so labels stay visually ranged while new candles stream in.
+                // Replay intraday mode: keep axis cadence tied to candle index
+                // so labels stay visually ranged while running and paused.
                 isRound = idx % Math.max(1, labelInterval) === 0;
             } else {
                 // Keep intraday cadence deterministic without depending on timezone offset.
