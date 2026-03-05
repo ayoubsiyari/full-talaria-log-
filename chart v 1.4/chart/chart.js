@@ -3093,7 +3093,7 @@ class Chart {
             .style('color', '#131722')
             .style('min-width', '150px')
             .text('Accent');
-        this.addColorPreview(panelAccentRow, this.chartSettings.settingsPanelAccentColor, 'settingsPanelAccentColor');
+        const panelAccentPreview = this.addColorPreview(panelAccentRow, this.chartSettings.settingsPanelAccentColor, 'settingsPanelAccentColor');
 
         const panelBgRow = this.addSettingRow(section);
         panelBgRow.append('span')
@@ -3101,7 +3101,51 @@ class Chart {
             .style('color', '#131722')
             .style('min-width', '150px')
             .text('Panel background');
-        this.addColorPreview(panelBgRow, this.chartSettings.settingsPanelBgColor, 'settingsPanelBgColor');
+        const panelBgPreview = this.addColorPreview(panelBgRow, this.chartSettings.settingsPanelBgColor, 'settingsPanelBgColor');
+
+        const panelThemeActionsRow = section.append('div')
+            .style('display', 'flex')
+            .style('justify-content', 'flex-end')
+            .style('padding', '8px 0 0 0');
+
+        panelThemeActionsRow.append('button')
+            .attr('type', 'button')
+            .style('padding', '7px 12px')
+            .style('border', '1px solid #d0d5df')
+            .style('border-radius', '6px')
+            .style('background', '#ffffff')
+            .style('color', '#131722')
+            .style('font-size', '12px')
+            .style('font-weight', '600')
+            .style('cursor', 'default')
+            .style('transition', 'all 0.15s ease')
+            .text('Reset theme')
+            .on('mouseenter', function() {
+                d3.select(this).style('border-color', '#2962ff').style('color', '#2962ff');
+            })
+            .on('mouseleave', function() {
+                d3.select(this).style('border-color', '#d0d5df').style('color', '#131722');
+            })
+            .on('click', () => {
+                const defaultAccent = (this._defaultChartSettings && this._defaultChartSettings.settingsPanelAccentColor)
+                    || '#2962ff';
+                const defaultBg = (this._defaultChartSettings && this._defaultChartSettings.settingsPanelBgColor)
+                    || '#050028';
+
+                this.chartSettings.settingsPanelAccentColor = defaultAccent;
+                this.chartSettings.settingsPanelBgColor = defaultBg;
+                this.chartSettings.settingsPanelSidebarBgColor = defaultBg;
+
+                if (panelAccentPreview) panelAccentPreview.style('background', defaultAccent);
+                if (panelBgPreview) panelBgPreview.style('background', defaultBg);
+
+                this.applyChartSettings('settingsPanelAccentColor', defaultAccent);
+                this.applyChartSettings('settingsPanelBgColor', defaultBg);
+
+                if (typeof this._updateThemePreview === 'function' && this._themePreviewChartSettings) {
+                    this._updateThemePreview(this._themePreviewChartSettings);
+                }
+            });
         
         // DATA MODIFICATION section
         section.append('h3')
@@ -3557,6 +3601,8 @@ class Chart {
                     }
                 });
             });
+
+        return preview;
     }
     
     showColorPalettePopup(previewElement, currentColor, onChange) {
@@ -9355,11 +9401,11 @@ class Chart {
 
         // Draw Y-axis background area
         this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
-        this.ctx.fillRect(axisX, 0, axisW, this.h - m.b);
+        this.ctx.fillRect(axisX, 0, axisW, this.h);
         
         // Draw X-axis background area (time axis on the bottom) - uses same background as chart
         this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
-        this.ctx.fillRect(0, this.h - m.b, this.w, m.b);
+        this.ctx.fillRect(axisLeft ? axisW : 0, this.h - m.b, this.w - axisW, m.b);
         
         // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
         this.drawAxisHighlightZones();
@@ -9383,7 +9429,7 @@ class Chart {
         applyScaleLineStyle();
         this.ctx.beginPath();
         this.ctx.moveTo(axisBorderX, 0);
-        this.ctx.lineTo(axisBorderX, this.h - m.b);
+        this.ctx.lineTo(axisBorderX, this.h);
         this.ctx.stroke();
         
         // Draw X-axis border line (top edge of time axis) - subtle gray

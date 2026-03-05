@@ -12279,7 +12279,7 @@
             height: calc(100vh - 44px);
             background: #050028;
             border: none !important;
-            border-right: 1px solid rgba(63, 84, 124, 0.2) !important;
+            border-right: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.2)) !important;
             z-index: 101;
             display: flex;
             flex-direction: column;
@@ -12325,7 +12325,7 @@
         }
 
         body:not(.light-mode) .right-sidebar-bottom {
-            background: #050028;
+            background: var(--sp-ui-sidebar-bg, var(--sp-sidebar-bg));
         }
         
         .right-sidebar-icons *,
@@ -19464,7 +19464,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260305_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260305_TF_PIN_V61"></script>
+         <script src="chart.js?v=20260305_TF_PIN_V62"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260305_TF_PIN_V58"></script>
