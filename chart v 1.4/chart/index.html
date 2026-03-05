@@ -6540,7 +6540,8 @@
         .replay-toolbar:not(.floating-clone) #goToControl,
         .replay-toolbar:not(.floating-clone) .replay-timezone-selector,
         .replay-toolbar:not(.floating-clone) .replay-tz-menu,
-        .replay-toolbar:not(.floating-clone) .interval-slider-wrapper {
+        .replay-toolbar:not(.floating-clone) .interval-slider-wrapper,
+        .replay-toolbar:not(.floating-clone) .replay-playback-mode-settings {
             pointer-events: auto;
         }
 
@@ -7300,14 +7301,66 @@
             margin-left: -10px;
         }
 
-        .replay-playback-mode {
+        .replay-playback-mode-settings {
+            position: relative;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 0 2px;
+            justify-content: center;
         }
 
-        .replay-playback-mode-label {
+        .replay-mode-gear-btn {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            padding: 0;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .replay-mode-gear-btn svg {
+            width: 18px;
+            height: 18px;
+            transition: transform 0.2s ease;
+        }
+
+        .replay-playback-mode-settings:hover .replay-mode-gear-btn svg,
+        .replay-playback-mode-settings:focus-within .replay-mode-gear-btn svg {
+            transform: rotate(20deg);
+        }
+
+        .replay-mode-popover {
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            transform: translate(-50%, 6px);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 148px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: #050028;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+            z-index: 10000;
+        }
+
+        .replay-playback-mode-settings:hover .replay-mode-popover,
+        .replay-playback-mode-settings:focus-within .replay-mode-popover,
+        .replay-mode-popover:hover {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: translate(-50%, 0);
+        }
+
+        .replay-mode-popover-label {
             color: #cbd5f5;
             font-size: 11px;
             font-weight: 600;
@@ -7315,17 +7368,72 @@
             user-select: none;
         }
 
-        #replayPlaybackMode {
-            min-width: 92px;
-            height: 30px;
-            padding: 0 24px 0 8px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
+        .replay-mode-toggle {
+            display: inline-flex;
+            align-items: center;
+            width: 100%;
+            padding: 2px;
+            gap: 2px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.08);
         }
 
-        body.light-mode .replay-playback-mode-label {
+        .replay-mode-toggle .replay-mode-option {
+            flex: 1 1 0;
+            height: 26px;
+            min-width: 0;
+            padding: 0 8px;
+            border: none;
+            border-radius: 999px;
+            background: transparent;
+            color: #cbd5f5;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .replay-mode-toggle .replay-mode-option:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+
+        .replay-mode-toggle .replay-mode-option.active {
+            background: var(--sp-accent, #2962ff);
+            color: #ffffff;
+        }
+
+        body.light-mode .replay-mode-popover {
+            background: #ffffff;
+            border-color: rgba(148, 163, 184, 0.45);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+        }
+
+        body.light-mode .replay-mode-popover-label {
             color: #475569;
+        }
+
+        body.light-mode .replay-mode-toggle {
+            background: rgba(148, 163, 184, 0.15);
+            border-color: rgba(148, 163, 184, 0.32);
+        }
+
+        body.light-mode .replay-mode-toggle .replay-mode-option {
+            color: #334155;
+        }
+
+        body.light-mode .replay-mode-toggle .replay-mode-option:hover {
+            background: rgba(51, 65, 85, 0.1);
+            color: #0f172a;
+        }
+
+        body.light-mode .replay-mode-toggle .replay-mode-option.active {
+            background: var(--sp-accent, #2962ff);
+            color: #ffffff;
         }
 
         /* ── Replay Interval Slider ── */
@@ -18056,9 +18164,21 @@
                         <option value="1" selected>1x</option>
                     </select>
 
-                    <div class="replay-playback-mode" title="Replay Playback Mode">
-                        <span class="replay-playback-mode-label">Mode</span>
-                        <select id="replayPlaybackMode" title="Replay Playback Mode">
+                    <div class="replay-playback-mode-settings" title="Replay Playback Mode">
+                        <button type="button" class="replay-toolbar-btn replay-icon-btn replay-mode-gear-btn" aria-label="Replay mode settings">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3.2"></circle>
+                                <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a1.6 1.6 0 1 1-2.26 2.26l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V19a1.6 1.6 0 1 1-3.2 0v-.2a1 1 0 0 0-.7-.95 1 1 0 0 0-1.05.24l-.1.1a1.6 1.6 0 0 1-2.26-2.26l.1-.1a1 1 0 0 0 .23-1.06 1 1 0 0 0-.95-.67H5a1.6 1.6 0 1 1 0-3.2h.2a1 1 0 0 0 .95-.67 1 1 0 0 0-.23-1.06l-.1-.1A1.6 1.6 0 0 1 8.08 5.6l.1.1a1 1 0 0 0 1.06.23 1 1 0 0 0 .67-.95V5a1.6 1.6 0 1 1 3.2 0v.2a1 1 0 0 0 .67.95 1 1 0 0 0 1.06-.23l.1-.1a1.6 1.6 0 0 1 2.26 2.26l-.1.1a1 1 0 0 0-.23 1.06 1 1 0 0 0 .95.67H19a1.6 1.6 0 1 1 0 3.2h-.2a1 1 0 0 0-.95.67Z"></path>
+                            </svg>
+                        </button>
+                        <div class="replay-mode-popover" role="menu" aria-label="Replay mode settings">
+                            <span class="replay-mode-popover-label">Mode</span>
+                            <div class="replay-mode-toggle" role="group" aria-label="Replay mode toggle">
+                                <button type="button" class="replay-mode-option active" data-mode="tick" aria-pressed="true">Tick</button>
+                                <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
+                            </div>
+                        </div>
+                        <select id="replayPlaybackMode" title="Replay Playback Mode" style="display:none;">
                             <option value="tick" selected>Tick</option>
                             <option value="candle">Candle</option>
                         </select>
@@ -19467,7 +19587,7 @@
          <script src="chart.js?v=20260305_TF_PIN_V62"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260305_TF_PIN_V58"></script>
+    <script src="modules/replay-system.js?v=20260305_TF_PIN_V59"></script>
     
     
     <!-- Order Management System -->

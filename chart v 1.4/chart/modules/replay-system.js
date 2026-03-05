@@ -194,6 +194,7 @@ class ReplaySystem {
             return;
         }
 
+        this.attachPlaybackModeOptionEvents(this.toolbar);
         this.syncPlaybackModeControls();
 
         this.attachButtonEvents();
@@ -265,6 +266,24 @@ class ReplaySystem {
             this.followBtn.addEventListener('click', () => this.enableAutoScroll());
         }
     }
+
+    attachPlaybackModeOptionEvents(root = document) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+
+        const modeButtons = root.querySelectorAll('.replay-mode-option');
+        modeButtons.forEach((button) => {
+            if (!button || button.dataset.modeBound === '1') return;
+
+            button.dataset.modeBound = '1';
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const mode = button.dataset.mode === 'candle' ? 'candle' : 'tick';
+                this.setPlaybackMode(mode);
+            });
+        });
+    }
     
     /**
      * Attach event listeners for speed selection buttons
@@ -318,6 +337,17 @@ class ReplaySystem {
             if (select && select.value !== mode) {
                 select.value = mode;
             }
+        });
+
+        const modeButtons = document.querySelectorAll('.replay-mode-option');
+        modeButtons.forEach((button) => {
+            if (!button) return;
+
+            const optionMode = button.dataset.mode === 'candle' ? 'candle' : 'tick';
+            const isActive = optionMode === mode;
+
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
     }
 
@@ -693,6 +723,9 @@ class ReplaySystem {
                 this.setPlaybackMode(e.target.value);
             });
         }
+
+        this.attachPlaybackModeOptionEvents(clone);
+        this.syncPlaybackModeControls();
     }
 
     saveFloatingClonePosition(left, top) {
