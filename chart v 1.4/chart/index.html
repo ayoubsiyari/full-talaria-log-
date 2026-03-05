@@ -2165,7 +2165,7 @@
             align-items: center;
             gap: 8px;
             padding: 8px 14px;
-            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            background: var(--sp-ui-chrome-bg, var(--sp-bg));
             border: 1px solid var(--sp-ui-border, #363a45);
             border-radius: 6px;
             color: #ffffff;
@@ -2176,8 +2176,8 @@
         }
 
         .layout-selector-btn:hover {
-            background: #2a2e39;
-            border-color: #434651;
+            background: var(--sp-ui-surface-bg, #2a2e39);
+            border-color: var(--sp-ui-border, #434651);
         }
 
         .layout-checkbox {
@@ -2200,7 +2200,7 @@
             align-items: center;
             gap: 6px;
             padding: 4px;
-            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            background: var(--sp-ui-chrome-bg, var(--sp-bg));
             border: 1px solid var(--sp-ui-border, #363a45);
             border-radius: 6px;
         }
@@ -2220,7 +2220,7 @@
         }
 
         .toolbar-icon-btn-dark:hover {
-            background: rgba(42, 46, 57, 0.85);
+            background: rgba(255, 255, 255, 0.08);
             color: #a0aec0;
         }
 
@@ -15817,6 +15817,15 @@
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important;
         }
 
+        body:not(.light-mode) .layout-selector-btn,
+        body:not(.light-mode) .toolbar-icon-group {
+            background: var(--sp-ui-chrome-bg, var(--sp-bg)) !important;
+            border-color: var(--sp-ui-border, rgba(63, 84, 124, 0.35)) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: none !important;
+        }
+
         body:not(.light-mode) .replay-toolbar {
             background: var(--sp-ui-chrome-bg, var(--sp-bg)) !important;
             backdrop-filter: none !important;
@@ -15838,8 +15847,6 @@
         body:not(.light-mode) .symbol-switcher-dropdown,
         body:not(.light-mode) .help-modal,
         body:not(.light-mode) .compare-modal,
-        body:not(.light-mode) .layout-selector-btn,
-        body:not(.light-mode) .toolbar-icon-group,
         body:not(.light-mode) .tf-flyout-categories,
         body:not(.light-mode) .tf-flyout-values,
         body:not(.light-mode) .chart-context-menu,
