@@ -1220,8 +1220,14 @@ class ABCDPatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('abcd-pattern', points, style);
         this.requiredPoints = 4;
-        this.style.stroke = style.stroke || '#00bcd4';
-        this.style.strokeWidth = style.strokeWidth || 2;
+        this.style.stroke = style.stroke || '#00bfa5';
+        this.style.strokeWidth = style.strokeWidth || 3;
+        this.style.guideDasharray = style.guideDasharray || '2,8';
+        this.style.guideWidth = style.guideWidth || 3;
+        this.style.labelFill = style.labelFill || this.style.stroke;
+        this.style.labelTextColor = style.labelTextColor || '#ffffff';
+        this.style.ratioFill = style.ratioFill || this.style.stroke;
+        this.style.ratioTextColor = style.ratioTextColor || '#ffffff';
         this.labels = ['A', 'B', 'C', 'D'];
     }
 
@@ -1234,50 +1240,189 @@ class ABCDPatternTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
-        const getX = (p) => scales.chart?.dataIndexToPixel ? 
+        const getX = (p) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const getY = (p) => scales.yScale(p.y);
+        const pointsPx = this.points.map((p) => ({ x: getX(p), y: getY(p) }));
+        const lineOpacity = this.style.opacity ?? 1;
 
-        for (let i = 0; i < this.points.length - 1; i++) {
+        // Main ABCD legs (solid)
+        for (let i = 0; i < pointsPx.length - 1; i++) {
+            const a = pointsPx[i];
+            const b = pointsPx[i + 1];
             this.group.append('line')
-                .attr('x1', getX(this.points[i]))
-                .attr('y1', getY(this.points[i]))
-                .attr('x2', getX(this.points[i + 1]))
-                .attr('y2', getY(this.points[i + 1]))
+                .attr('x1', a.x)
+                .attr('y1', a.y)
+                .attr('x2', b.x)
+                .attr('y2', b.y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', this.style.strokeWidth)
-                .attr('opacity', this.style.opacity)
+                .attr('stroke-linejoin', 'round')
+                .attr('stroke-linecap', 'round')
+                .attr('opacity', lineOpacity)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
         }
 
-        // Draw AD diagonal line (dashed)
-        if (this.points.length === 4) {
+        // AC projection guide (dotted) + BC/AB ratio label.
+        if (pointsPx.length >= 3) {
+            const a = pointsPx[0];
+            const c = pointsPx[2];
+
             this.group.append('line')
-                .attr('x1', getX(this.points[0]))
-                .attr('y1', getY(this.points[0]))
-                .attr('x2', getX(this.points[3]))
-                .attr('y2', getY(this.points[3]))
+                .attr('x1', a.x)
+                .attr('y1', a.y)
+                .attr('x2', c.x)
+                .attr('y2', c.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', '4,4')
-                .attr('opacity', 0.5);
+                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-dasharray', this.style.guideDasharray)
+                .attr('stroke-linecap', 'round')
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
+
+            const bcOverAb = this._formatLegRatio(this.points[1], this.points[2], this.points[0], this.points[1]);
+            if (bcOverAb) {
+                const pos = this._pointOnSegment(a, c, 0.52);
+                const offset = this._getPerpendicularOffset(a, c, 18);
+                this._drawTag(pos.x + offset.x, pos.y + offset.y, bcOverAb, {
+                    minWidth: 52,
+                    fill: this.style.ratioFill,
+                    textColor: this.style.ratioTextColor,
+                    fontSize: 11
+                });
+            }
         }
 
-        this.points.forEach((p, i) => {
-            this.group.append('text')
-                .attr('x', getX(p))
-                .attr('y', getY(p) - 12)
-                .attr('text-anchor', 'middle')
-                .attr('fill', this.style.stroke)
-                .attr('font-size', '12px')
-                .attr('font-weight', 'bold')
-                .style('pointer-events', 'none')
-                .text(this.labels[i]);
+        // BD projection guide (dotted) + CD/BC ratio label.
+        if (pointsPx.length >= 4) {
+            const b = pointsPx[1];
+            const d = pointsPx[3];
+
+            this.group.append('line')
+                .attr('x1', b.x)
+                .attr('y1', b.y)
+                .attr('x2', d.x)
+                .attr('y2', d.y)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-dasharray', this.style.guideDasharray)
+                .attr('stroke-linecap', 'round')
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
+
+            const cdOverBc = this._formatLegRatio(this.points[2], this.points[3], this.points[1], this.points[2]);
+            if (cdOverBc) {
+                const pos = this._pointOnSegment(b, d, 0.48);
+                const offset = this._getPerpendicularOffset(b, d, 18);
+                this._drawTag(pos.x + offset.x, pos.y + offset.y, cdOverBc, {
+                    minWidth: 52,
+                    fill: this.style.ratioFill,
+                    textColor: this.style.ratioTextColor,
+                    fontSize: 11
+                });
+            }
+        }
+
+        pointsPx.forEach((pointPx, i) => {
+            const label = this.labels[i];
+            if (!label) return;
+
+            this.group.append('circle')
+                .attr('cx', pointPx.x)
+                .attr('cy', pointPx.y)
+                .attr('r', 6)
+                .attr('fill', '#0b1220')
+                .attr('stroke', '#2f5dff')
+                .attr('stroke-width', 3)
+                .style('pointer-events', 'none');
+
+            const prev = pointsPx[i - 1];
+            const next = pointsPx[i + 1];
+            let isTop = false;
+
+            if (prev && next) {
+                isTop = pointPx.y < prev.y && pointPx.y < next.y;
+            } else if (next) {
+                isTop = pointPx.y < next.y;
+            } else if (prev) {
+                isTop = pointPx.y < prev.y;
+            }
+
+            const offsetY = isTop ? -26 : 26;
+            this._drawTag(pointPx.x, pointPx.y + offsetY, label, {
+                minWidth: 28,
+                fill: this.style.labelFill,
+                textColor: this.style.labelTextColor,
+                fontSize: 15
+            });
         });
 
         this.createHandles(this.group, scales);
         return this.group;
+    }
+
+    _formatLegRatio(numStart, numEnd, denStart, denEnd) {
+        if (!numStart || !numEnd || !denStart || !denEnd) return null;
+
+        const numerator = Math.abs((numEnd.y ?? 0) - (numStart.y ?? 0));
+        const denominator = Math.abs((denEnd.y ?? 0) - (denStart.y ?? 0));
+        if (denominator < 0.000001) return null;
+
+        const ratio = numerator / denominator;
+        return ratio.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    }
+
+    _pointOnSegment(start, end, t = 0.5) {
+        return {
+            x: start.x + ((end.x - start.x) * t),
+            y: start.y + ((end.y - start.y) * t)
+        };
+    }
+
+    _getPerpendicularOffset(start, end, distance = 18) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const length = Math.sqrt((dx * dx) + (dy * dy));
+        if (length < 0.0001) return { x: 0, y: -distance };
+
+        return {
+            x: (-dy / length) * distance,
+            y: (dx / length) * distance
+        };
+    }
+
+    _drawTag(x, y, text, options = {}) {
+        const tagText = String(text || '');
+        if (!tagText) return;
+
+        const fontSize = Number(options.fontSize) || 12;
+        const paddingX = Number(options.paddingX) || 10;
+        const paddingY = Number(options.paddingY) || 5;
+        const minWidth = Number(options.minWidth) || 24;
+        const estimatedTextWidth = Math.max(minWidth, (tagText.length * (fontSize * 0.62)) + (paddingX * 2));
+        const tagHeight = fontSize + (paddingY * 2);
+
+        this.group.append('rect')
+            .attr('x', x - (estimatedTextWidth / 2))
+            .attr('y', y - (tagHeight / 2))
+            .attr('width', estimatedTextWidth)
+            .attr('height', tagHeight)
+            .attr('rx', 8)
+            .attr('fill', options.fill || this.style.labelFill)
+            .attr('opacity', options.opacity ?? 0.97)
+            .style('pointer-events', 'none');
+
+        this.group.append('text')
+            .attr('x', x)
+            .attr('y', y)
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'middle')
+            .attr('fill', options.textColor || this.style.labelTextColor)
+            .attr('font-size', `${fontSize}px`)
+            .attr('font-weight', '600')
+            .style('pointer-events', 'none')
+            .text(tagText);
     }
 
     static fromJSON(data, chart = null) {
