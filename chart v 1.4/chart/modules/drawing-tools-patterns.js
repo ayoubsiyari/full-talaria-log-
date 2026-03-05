@@ -751,21 +751,22 @@ class HeadShouldersTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Draw neckline from first to last anchor
+        // Draw neckline using the two anchors around the head (fallback to first/last while drawing)
         if (pointsPx.length >= 2) {
-            const first = pointsPx[0];
-            const last = pointsPx[pointsPx.length - 1];
-            this.group.append('line')
-                .attr('x1', first.x)
-                .attr('y1', first.y)
-                .attr('x2', last.x)
-                .attr('y2', last.y)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.necklineWidth)
-                .attr('stroke-dasharray', this.style.necklineDasharray)
-                .attr('stroke-linecap', 'round')
-                .attr('opacity', 0.95)
-                .style('pointer-events', 'none');
+            const neckline = this._getNecklinePoints(pointsPx);
+            if (neckline) {
+                this.group.append('line')
+                    .attr('x1', neckline.start.x)
+                    .attr('y1', neckline.start.y)
+                    .attr('x2', neckline.end.x)
+                    .attr('y2', neckline.end.y)
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', this.style.necklineWidth)
+                    .attr('stroke-dasharray', this.style.necklineDasharray)
+                    .attr('stroke-linecap', 'round')
+                    .attr('opacity', 0.95)
+                    .style('pointer-events', 'none');
+            }
         }
 
         // TradingView-like point markers
@@ -800,19 +801,42 @@ class HeadShouldersTool extends BaseDrawing {
         return this.group;
     }
 
-    _getNecklineYAtX(pointsPx, x) {
-        if (!Array.isArray(pointsPx) || pointsPx.length < 2) return 0;
+    _getNecklinePoints(pointsPx) {
+        if (!Array.isArray(pointsPx) || pointsPx.length < 2) return null;
+
+        // Standard H&S neckline: valley after left shoulder to valley after head.
+        if (pointsPx.length >= 5) {
+            const leftNeck = pointsPx[2];
+            const rightNeck = pointsPx[4];
+
+            if (leftNeck && rightNeck) {
+                return leftNeck.x <= rightNeck.x
+                    ? { start: leftNeck, end: rightNeck }
+                    : { start: rightNeck, end: leftNeck };
+            }
+        }
 
         const first = pointsPx[0];
         const last = pointsPx[pointsPx.length - 1];
-        const dx = last.x - first.x;
+        if (!first || !last) return null;
+
+        return first.x <= last.x
+            ? { start: first, end: last }
+            : { start: last, end: first };
+    }
+
+    _getNecklineYAtX(pointsPx, x) {
+        const neckline = this._getNecklinePoints(pointsPx);
+        if (!neckline) return 0;
+
+        const dx = neckline.end.x - neckline.start.x;
 
         if (Math.abs(dx) < 0.0001) {
-            return (first.y + last.y) / 2;
+            return (neckline.start.y + neckline.end.y) / 2;
         }
 
-        const t = (x - first.x) / dx;
-        return first.y + ((last.y - first.y) * t);
+        const t = (x - neckline.start.x) / dx;
+        return neckline.start.y + ((neckline.end.y - neckline.start.y) * t);
     }
 
     _shouldFillAboveNeckline(pointsPx) {
@@ -895,8 +919,11 @@ class HeadShouldersTool extends BaseDrawing {
     _getNecklineSegmentIntersection(pointsPx, a, b, dA, dB) {
         if (!Array.isArray(pointsPx) || pointsPx.length < 2 || !a || !b) return null;
 
-        const first = pointsPx[0];
-        const last = pointsPx[pointsPx.length - 1];
+        const neckline = this._getNecklinePoints(pointsPx);
+        if (!neckline) return null;
+
+        const first = neckline.start;
+        const last = neckline.end;
         const neckDx = last.x - first.x;
 
         if (Math.abs(neckDx) < 0.0001) {
