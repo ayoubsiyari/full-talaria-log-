@@ -975,6 +975,29 @@ class HeadShouldersTool extends BaseDrawing {
     }
 
     _shouldFillAboveNeckline(pointsPx) {
+        const epsilon = 0.0001;
+
+        // Keep fill side anchored to the head first, so shoulder drag does not
+        // unexpectedly flip the whole filled region.
+        const headPoint = pointsPx[3];
+        if (headPoint) {
+            const headDelta = headPoint.y - this._getNecklineYAtX(pointsPx, headPoint.x);
+            if (Number.isFinite(headDelta) && Math.abs(headDelta) > epsilon) {
+                return headDelta <= 0;
+            }
+        }
+
+        // Then prefer shoulders if head is exactly on neckline.
+        const shoulderPriority = [1, 5];
+        for (const index of shoulderPriority) {
+            if (index >= pointsPx.length) continue;
+            const point = pointsPx[index];
+            const delta = point.y - this._getNecklineYAtX(pointsPx, point.x);
+            if (Number.isFinite(delta) && Math.abs(delta) > epsilon) {
+                return delta <= 0;
+            }
+        }
+
         const shoulderHeadIndexes = [1, 3, 5];
         const deltas = shoulderHeadIndexes
             .filter(index => index < pointsPx.length)
