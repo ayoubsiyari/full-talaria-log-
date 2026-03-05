@@ -664,6 +664,8 @@ class DrawingToolsManager {
         // Canvas-level events for rectangular selection and deselection
         const canvas = document.getElementById('chartCanvas');
         if (canvas) {
+            let suppressNextCanvasClick = false;
+
             const existing = canvas.__drawingToolsCanvasHandlers;
             if (existing) {
                 canvas.removeEventListener('mousedown', existing.mousedown);
@@ -677,12 +679,50 @@ class DrawingToolsManager {
                 if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
                     // [debug removed]
                     this.startRectangularSelection(event);
+                    return;
                 }
+
+                // Make drag-start use the same geometric hover hit zone, even when the
+                // cursor is not exactly on an SVG stroke target.
+                if (event.button !== 0 || this.currentTool || this.isRectSelecting || event.shiftKey || event.altKey) {
+                    return;
+                }
+
+                const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
+                if (!svgNode) return;
+
+                const svgRect = svgNode.getBoundingClientRect();
+                const mouseX = event.clientX - svgRect.left;
+                const mouseY = event.clientY - svgRect.top;
+                const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+                if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
+
+                const selectedAtPoint = (this.selectedDrawings || []).filter(d => drawingsAtPoint.includes(d) && !d.locked);
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                if (selectedAtPoint.length > 0) {
+                    this._startDirectMoveDrag(selectedAtPoint, event);
+                } else {
+                    const best = drawingsAtPoint[0];
+                    if (!best || best.locked) return;
+
+                    this.selectDrawing(best, false);
+                    this._startDirectMoveDrag(best, event);
+                }
+
+                suppressNextCanvasClick = true;
             };
             canvas.addEventListener('mousedown', onMouseDown);
             
             // Click on canvas to deselect all drawings
             const onClick = (event) => {
+                if (suppressNextCanvasClick) {
+                    suppressNextCanvasClick = false;
+                    return;
+                }
+
                 // Skip if click originated from toolbar or UI elements
                 if (event.target.closest('.tool-btn') || 
                     event.target.closest('.tool-dropdown') || 
