@@ -3394,14 +3394,12 @@ class Chart {
             .style('min-width', '150px')
             .text('Lines');
         this.addPatternPicker(linesRow, 'scaleLinePattern', this.chartSettings.scaleLinePattern);
-        const scaleLineWidthDropdown = this.addDropdown(linesRow, ['1', '2', '3', '4'], String(this.chartSettings.scaleLineWidth || 2));
-        scaleLineWidthDropdown
-            .style('min-width', '110px')
-            .on('change', () => {
-                const width = Math.max(1, parseInt(scaleLineWidthDropdown.property('value'), 10) || 2);
-                this.chartSettings.scaleLineWidth = width;
-                this.applyChartSettings('scaleLineWidth', width);
-            });
+        this.addLineWidthPicker(
+            linesRow,
+            'scaleLineWidth',
+            this.chartSettings.scaleLineWidth || 2,
+            (width) => this.applyChartSettings('scaleLineWidth', width)
+        );
         
         // CURSOR LABELS section (crosshair price/time labels)
         section.append('h3')
@@ -3935,6 +3933,68 @@ class Chart {
             });
         }
         
+        return picker;
+    }
+
+    addLineWidthPicker(container, setting, currentValue, onChange = null) {
+        const widths = [1, 2, 3, 4];
+        let width = widths.includes(Number(currentValue)) ? Number(currentValue) : 2;
+
+        const picker = container.append('div')
+            .style('width', '40px')
+            .style('height', '40px')
+            .style('border', '1px solid #e0e0e0')
+            .style('border-radius', '6px')
+            .style('background', '#ffffff')
+            .style('cursor', 'default')
+            .style('transition', 'all 0.2s ease')
+            .style('position', 'relative')
+            .on('mouseenter', function() {
+                d3.select(this).style('border-color', '#2962ff');
+            })
+            .on('mouseleave', function() {
+                d3.select(this).style('border-color', '#e0e0e0');
+            });
+
+        const linePreview = picker.append('div')
+            .style('position', 'absolute')
+            .style('left', '7px')
+            .style('right', '7px')
+            .style('top', '50%')
+            .style('transform', 'translateY(-50%)')
+            .style('background', '#2962ff')
+            .style('border-radius', '2px');
+
+        const valueTag = picker.append('span')
+            .style('position', 'absolute')
+            .style('right', '4px')
+            .style('bottom', '2px')
+            .style('font-size', '9px')
+            .style('line-height', '1')
+            .style('color', '#667085')
+            .style('font-weight', '600');
+
+        const render = () => {
+            linePreview.style('height', `${width}px`);
+            valueTag.text(String(width));
+        };
+        render();
+
+        if (setting) {
+            picker.on('click', () => {
+                const idx = widths.indexOf(width);
+                width = widths[(idx + 1) % widths.length];
+                this.chartSettings[setting] = width;
+                render();
+
+                if (typeof onChange === 'function') {
+                    onChange(width);
+                } else {
+                    this.scheduleRender();
+                }
+            });
+        }
+
         return picker;
     }
     
