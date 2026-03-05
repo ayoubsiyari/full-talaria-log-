@@ -930,14 +930,19 @@ class DrawingToolsManager {
                 const isFibLikeType = (type) => !!type && (
                     type.startsWith('fibonacci-') ||
                     type.startsWith('fib-') ||
-                    type.startsWith('trend-fib-')
+                    type.startsWith('trend-fib-') ||
+                    type === 'pitchfork' ||
+                    type === 'pitchfan'
                 );
 
                 const isPatternLikeType = (type) => !!type && (
                     type.includes('pattern') ||
                     type.startsWith('elliott-') ||
                     type === 'head-shoulders' ||
-                    type === 'three-drives'
+                    type === 'three-drives' ||
+                    type === 'cyclic-lines' ||
+                    type === 'time-cycles' ||
+                    type === 'sine-line'
                 );
 
                 const allowsDirectMoveFromHitZone = (type) => (
@@ -5129,18 +5134,23 @@ class DrawingToolsManager {
             const isFibLikeType = !!drawing.type && (
                 drawing.type.startsWith('fibonacci-') ||
                 drawing.type.startsWith('fib-') ||
-                drawing.type.startsWith('trend-fib-')
+                drawing.type.startsWith('trend-fib-') ||
+                drawing.type === 'pitchfork' ||
+                drawing.type === 'pitchfan'
             );
 
             const isPatternLikeType = !!drawing.type && (
                 drawing.type.includes('pattern') ||
                 drawing.type.startsWith('elliott-') ||
                 drawing.type === 'head-shoulders' ||
-                drawing.type === 'three-drives'
+                drawing.type === 'three-drives' ||
+                drawing.type === 'cyclic-lines' ||
+                drawing.type === 'time-cycles' ||
+                drawing.type === 'sine-line'
             );
 
-            const hitTolerance = isFibLikeType ? 18 : baseHitTolerance;
-            const minLineHitTolerance = isFibLikeType ? 14 : (isPatternLikeType ? 10 : 0);
+            const hitTolerance = (isFibLikeType || isPatternLikeType) ? 18 : baseHitTolerance;
+            const minLineHitTolerance = (isFibLikeType || isPatternLikeType) ? 14 : 0;
 
             // Polyline/Path: allow vertex proximity hits so endpoints are easy to grab even if not exactly on the stroke
             if ((drawing.type === 'polyline' || drawing.type === 'path') && !hitsById.has(drawing.id)) {
@@ -5394,15 +5404,41 @@ class DrawingToolsManager {
             'cross-line',
             'arrow',
             'arrow-marker',
+            'arrow-mark-up',
+            'arrow-mark-down',
             'curve',
             'double-curve',
             'polyline',
             'path'
         ]);
 
+        const isFibLikeDrawingType = (type) => !!type && (
+            type.startsWith('fibonacci-') ||
+            type.startsWith('fib-') ||
+            type.startsWith('trend-fib-') ||
+            type === 'pitchfork' ||
+            type === 'pitchfan'
+        );
+
+        const isPatternLikeDrawingType = (type) => !!type && (
+            type.includes('pattern') ||
+            type.startsWith('elliott-') ||
+            type === 'head-shoulders' ||
+            type === 'three-drives' ||
+            type === 'cyclic-lines' ||
+            type === 'time-cycles' ||
+            type === 'sine-line'
+        );
+
+        const isLineLikeDrawingType = (type) => (
+            lineTypeSet.has(type) || isFibLikeDrawingType(type) || isPatternLikeDrawingType(type)
+        );
+
         hits.sort((a, b) => {
-            const aIsLine = lineTypeSet.has(a.drawing && a.drawing.type);
-            const bIsLine = lineTypeSet.has(b.drawing && b.drawing.type);
+            const aType = a.drawing && a.drawing.type;
+            const bType = b.drawing && b.drawing.type;
+            const aIsLine = isLineLikeDrawingType(aType);
+            const bIsLine = isLineLikeDrawingType(bType);
 
             const aIsCircleLike = a.drawing && (a.drawing.type === 'circle' || a.drawing.type === 'ellipse');
             const bIsCircleLike = b.drawing && (b.drawing.type === 'circle' || b.drawing.type === 'ellipse');
@@ -5450,6 +5486,11 @@ class DrawingToolsManager {
         
         for (const drawing of this.drawings) {
             if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
+
+            const drawingType = drawing.type || '';
+            const isFibLikeDrawing = drawingType.startsWith('fibonacci-') || drawingType.startsWith('fib-') || drawingType.startsWith('trend-fib-') || drawingType === 'pitchfork' || drawingType === 'pitchfan';
+            const isPatternLikeDrawing = drawingType.includes('pattern') || drawingType.startsWith('elliott-') || drawingType === 'head-shoulders' || drawingType === 'three-drives' || drawingType === 'cyclic-lines' || drawingType === 'time-cycles' || drawingType === 'sine-line';
+            const lineHitTolerance = (isFibLikeDrawing || isPatternLikeDrawing) ? 14 : hitTolerance;
             
             try {
                 // Get all line elements and paths with strokes (not fills)
@@ -5493,12 +5534,12 @@ class DrawingToolsManager {
                     // Check if mouseX is within the line's X range (for horizontal-ish lines)
                     const minX = Math.min(x1, x2);
                     const maxX = Math.max(x1, x2);
-                    const isWithinXRange = mouseX >= minX - hitTolerance && mouseX <= maxX + hitTolerance;
+                    const isWithinXRange = mouseX >= minX - lineHitTolerance && mouseX <= maxX + lineHitTolerance;
                     
                     if (isWithinXRange) {
                         const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
                         const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = Math.max(hitTolerance, strokeWidth * 2);
+                        const effectiveTolerance = Math.max(lineHitTolerance, strokeWidth * 2);
                         
                         if (distance <= effectiveTolerance) {
                             linesAtPoint.push({
