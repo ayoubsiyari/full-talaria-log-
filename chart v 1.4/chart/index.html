@@ -26670,7 +26670,9 @@ P['canvas']={title:'Canvas',build:function(){
     sec(st('SETTINGS PANEL THEME')+
         clr('Accent','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
         clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
-        clr('Sidebar background','sp_sbg',cs.settingsPanelSidebarBgColor||'#04001f'));
+        '<div class="settings-input-row" style="justify-content:flex-end; padding-top:4px;">'+
+            '<button id="btn_sp_reset_theme" type="button" style="padding:7px 12px;border:1px solid rgba(255,255,255,0.18);border-radius:6px;background:transparent;color:#d1d4dc;font-size:12px;font-weight:600;cursor:pointer;">Reset theme</button>'+
+        '</div>');
 },wire:function(){
     wClr('cv_bg',function(v){
         var c=ch();if(!c)return;
@@ -26710,8 +26712,33 @@ P['canvas']={title:'Canvas',build:function(){
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
     wClr('sp_acc',function(v){set('settingsPanelAccentColor',v);});
-    wClr('sp_bg',function(v){set('settingsPanelBgColor',v);});
-    wClr('sp_sbg',function(v){set('settingsPanelSidebarBgColor',v);});
+    wClr('sp_bg',function(v){
+        var c=ch();if(!c)return;
+        c.chartSettings=c.chartSettings||{};
+        c.chartSettings.settingsPanelBgColor=v;
+        c.chartSettings.settingsPanelSidebarBgColor=v;
+        apply();
+    });
+
+    var resetThemeBtn=document.getElementById('btn_sp_reset_theme');
+    if(resetThemeBtn) resetThemeBtn.addEventListener('click',function(){
+        var c=ch();if(!c)return;
+        c.chartSettings=c.chartSettings||{};
+        var defaults=(c._defaultChartSettings||{});
+        var accent=defaults.settingsPanelAccentColor||'#2962ff';
+        var bg=defaults.settingsPanelBgColor||'#050028';
+
+        c.chartSettings.settingsPanelAccentColor=accent;
+        c.chartSettings.settingsPanelBgColor=bg;
+        c.chartSettings.settingsPanelSidebarBgColor=bg;
+
+        var swAccent=document.getElementById('sw_sp_acc');
+        if(swAccent){swAccent.dataset.color=accent;swAccent.style.background=accent;}
+        var swBg=document.getElementById('sw_sp_bg');
+        if(swBg){swBg.dataset.color=bg;swBg.style.background=bg;}
+
+        apply();
+    });
     wNum('cv_marginRight',function(v){var c=ch();if(!c)return;c.timeScale=c.timeScale||{};c.timeScale.rightOffset=v;if(c.scheduleRender)c.scheduleRender();});
 }};
 
