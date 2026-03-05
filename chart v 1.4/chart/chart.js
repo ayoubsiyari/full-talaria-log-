@@ -387,6 +387,7 @@ class Chart {
             // Crosshair
             crosshairColor: 'rgba(120, 123, 134, 0.4)',
             crosshairPattern: 'dashed',
+            crosshairWidth: 2,
             showCrosshair: true,
             crosshairLocked: false,
             
@@ -3254,6 +3255,7 @@ class Chart {
         if (typeof this.chartSettings.gridColor === 'undefined') this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.4)';
         if (typeof this.chartSettings.sessionBreaksPattern === 'undefined') this.chartSettings.sessionBreaksPattern = 'solid';
         if (typeof this.chartSettings.crosshairPattern === 'undefined') this.chartSettings.crosshairPattern = 'dashed';
+        if (typeof this.chartSettings.crosshairWidth === 'undefined') this.chartSettings.crosshairWidth = 2;
         if (typeof this.chartSettings.watermarkPattern === 'undefined') this.chartSettings.watermarkPattern = 'solid';
         if (typeof this.chartSettings.watermarkColor === 'undefined') this.chartSettings.watermarkColor = 'rgba(120, 123, 134, 0.1)';
         if (typeof this.chartSettings.scaleLinePattern === 'undefined') this.chartSettings.scaleLinePattern = 'solid';
@@ -3391,11 +3393,23 @@ class Chart {
         linesRow.append('span')
             .style('font-size', '15px')
             .style('color', '#d1d4dc')
-            .style('min-width', '150px')
+            .style('min-width', '100px')
             .text('Lines');
-        this.addColorStylePicker(linesRow, this.chartSettings.scaleLinesColor, 'scaleLinesColor');
+
+        const linesControls = linesRow.append('div')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('gap', '8px')
+            .style('margin-left', 'auto')
+            .style('flex-shrink', '0');
+
+        const axisLineColorControl = this.addColorStylePicker(linesControls, this.chartSettings.scaleLinesColor, 'scaleLinesColor');
+        axisLineColorControl
+            .style('padding', '6px 8px')
+            .style('gap', '6px');
+
         this.addLineWidthPicker(
-            linesRow,
+            linesControls,
             'scaleLineWidth',
             this.chartSettings.scaleLineWidth || 2,
             (width) => this.applyChartSettings('scaleLineWidth', width)
@@ -3941,16 +3955,14 @@ class Chart {
         let width = widths.includes(Number(currentValue)) ? Number(currentValue) : 2;
 
         const picker = container.append('div')
-            .style('display', 'flex')
-            .style('align-items', 'center')
-            .style('gap', '8px')
-            .style('min-width', '78px')
-            .style('padding', '8px 10px')
+            .style('width', '40px')
+            .style('height', '40px')
             .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
             .style('background', '#ffffff')
             .style('cursor', 'default')
             .style('transition', 'all 0.2s ease')
+            .style('position', 'relative')
             .on('mouseenter', function() {
                 d3.select(this).style('border-color', '#2962ff');
             })
@@ -3959,22 +3971,26 @@ class Chart {
             });
 
         const linePreview = picker.append('div')
-            .style('flex', '1')
-            .style('min-width', '24px')
+            .style('position', 'absolute')
+            .style('left', '7px')
+            .style('right', '7px')
+            .style('top', '50%')
+            .style('transform', 'translateY(-50%)')
             .style('background', '#2962ff')
             .style('border-radius', '2px');
 
         const valueTag = picker.append('span')
-            .style('font-size', '12px')
+            .style('position', 'absolute')
+            .style('right', '4px')
+            .style('bottom', '2px')
+            .style('font-size', '9px')
             .style('line-height', '1')
             .style('color', '#667085')
-            .style('font-weight', '600')
-            .style('min-width', '24px')
-            .style('text-align', 'right');
+            .style('font-weight', '600');
 
         const render = () => {
             linePreview.style('height', `${width}px`);
-            valueTag.text(`${width}px`);
+            valueTag.text(String(width));
         };
         render();
 
@@ -4047,8 +4063,11 @@ class Chart {
         const container = targetChart.isPanel ? targetChart.canvas.parentElement : document;
         const vLine = container.querySelector('.crosshair-vertical');
         const hLine = container.querySelector('.crosshair-horizontal');
+        const crosshairWidth = Math.max(1, parseInt(targetChart.chartSettings.crosshairWidth, 10) || 2);
         if (vLine) vLine.style.background = targetChart.chartSettings.crosshairColor;
         if (hLine) hLine.style.background = targetChart.chartSettings.crosshairColor;
+        if (vLine) vLine.style.width = `${crosshairWidth}px`;
+        if (hLine) hLine.style.height = `${crosshairWidth}px`;
         
         // Apply cursor label colors (price/time labels on crosshair)
         const priceLabel = container.querySelector('.price-label');
@@ -13038,7 +13057,7 @@ class Chart {
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
-        const crossWidth = 1;
+        const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
         const vBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
@@ -15184,7 +15203,7 @@ class Chart {
         
         // Check if x is within visible bounds
         const isXVisible = x >= m.l && x <= this.w - m.r;
-        const crossWidth = 1;
+        const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
         
         // Vertical line styles (dashed like TradingView)
         const vBaseStyle = `
