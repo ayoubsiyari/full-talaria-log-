@@ -12956,7 +12956,7 @@ class Chart {
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
-        const crossWidth = (this.chartSettings && this.chartSettings.crosshairWidth) || 1;
+        const crossWidth = (this.chartSettings && this.chartSettings.crosshairWidth) || 2;
         const vBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
@@ -15107,7 +15107,7 @@ class Chart {
         const vBaseStyle = `
             position: absolute;
             top: ${m.t}px;
-            width: 1px;
+            width: 2px;
             height: ${this.h - m.t - m.b}px;
             background: repeating-linear-gradient(to bottom, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
@@ -15128,7 +15128,7 @@ class Chart {
             position: absolute;
             left: ${m.l}px;
             width: ${this.w - m.l - m.r}px;
-            height: 1px;
+            height: 2px;
             background: repeating-linear-gradient(to right, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
             z-index: 100;
