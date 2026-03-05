@@ -1156,6 +1156,110 @@ def _tiles_read_window(file_id: int, tf: str, meta: dict,
 
     return candles, range_total, has_more_left, has_more_right
 
+
+def _tiles_read_cursor_window(file_id: int, tf: str, meta: dict,
+                              limit: int, cursor_ts: int, direction: str):
+    """
+    Cursor pagination on tile metadata without scanning the full remaining range.
+    Reads only the tiles/candles required to produce up to `limit` candles.
+    Returns candles in ascending time order.
+    """
+    tiles = (meta or {}).get("tiles") or []
+    if not tiles or limit <= 0:
+        return [], False, False
+
+    if direction == "forward":
+        start_ts = cursor_ts + 1 if cursor_ts is not None else None
+
+        start_tile = None
+        for i, t in enumerate(tiles):
+            if start_ts is None or t["end_ts"] >= start_ts:
+                start_tile = i
+                break
+
+        has_more_left = cursor_ts is not None
+        if start_tile is None:
+            return [], has_more_left, False
+
+        candles = []
+        for ti in range(start_tile, len(tiles)):
+            tp = _tile_path(file_id, tf, ti)
+            n = tiles[ti]["count"]
+            chunk = _mmap_read_range(tp, 0, n)
+
+            if ti == start_tile and start_ts is not None:
+                chunk = [c for c in chunk if c['t'] >= start_ts]
+
+            if not chunk:
+                continue
+
+            need = limit - len(candles)
+            if need <= 0:
+                break
+
+            if len(chunk) > need:
+                candles.extend(chunk[:need])
+                break
+
+            candles.extend(chunk)
+            if len(candles) >= limit:
+                break
+
+        if not candles:
+            return [], has_more_left, False
+
+        has_more_right = candles[-1]['t'] < tiles[-1]['end_ts']
+        return candles, has_more_left, has_more_right
+
+    # backward
+    end_ts = cursor_ts - 1 if cursor_ts is not None else None
+
+    end_tile = None
+    for i in range(len(tiles) - 1, -1, -1):
+        if end_ts is None or tiles[i]["start_ts"] <= end_ts:
+            end_tile = i
+            break
+
+    has_more_right = cursor_ts is not None
+    if end_tile is None:
+        return [], False, has_more_right
+
+    parts = []
+    collected = 0
+    for ti in range(end_tile, -1, -1):
+        tp = _tile_path(file_id, tf, ti)
+        n = tiles[ti]["count"]
+        chunk = _mmap_read_range(tp, 0, n)
+
+        if ti == end_tile and end_ts is not None:
+            chunk = [c for c in chunk if c['t'] <= end_ts]
+
+        if not chunk:
+            continue
+
+        need = limit - collected
+        if need <= 0:
+            break
+
+        if len(chunk) > need:
+            chunk = chunk[-need:]
+
+        parts.append(chunk)
+        collected += len(chunk)
+
+        if collected >= limit:
+            break
+
+    candles = []
+    for part in reversed(parts):
+        candles.extend(part)
+
+    if not candles:
+        return [], False, has_more_right
+
+    has_more_left = candles[0]['t'] > tiles[0]['start_ts']
+    return candles, has_more_left, has_more_right
+
 def _csv_to_bin(csv_path, bin_path):
     """Convert a CSV file to binary format. Each candle = 48 bytes (6 x float64)."""
     candles = _parse_candles_from_csv(csv_path)
@@ -3771,17 +3875,16 @@ async def get_file_candles(
 
         if tile_meta is not None and cursor_ts is not None:
             # ── Fast path: tile-based cursor pan via mmap ──
+            # Use cursor-optimized reader to avoid scanning full remaining ranges.
+            candles, has_more_left, has_more_right = _tiles_read_cursor_window(
+                file_id, timeframe, tile_meta,
+                limit=limit,
+                cursor_ts=cursor_ts,
+                direction=direction
+            )
             if direction == "backward":
-                candles, _, has_more_left, has_more_right = _tiles_read_window(
-                    file_id, timeframe, tile_meta,
-                    limit=limit, anchor="end", end_ts=cursor_ts - 1
-                )
                 has_more_right = True
             else:
-                candles, _, has_more_left, has_more_right = _tiles_read_window(
-                    file_id, timeframe, tile_meta,
-                    limit=limit, anchor="start", start_ts=cursor_ts + 1
-                )
                 has_more_left = True
             total = tile_meta["total"]
         elif tile_meta is not None and cursor_ts is None:
