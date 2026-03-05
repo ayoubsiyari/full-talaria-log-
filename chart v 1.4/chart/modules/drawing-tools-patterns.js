@@ -710,11 +710,10 @@ class HeadShouldersTool extends BaseDrawing {
             .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
             .join(' ');
 
-        // TradingView-like fill: only shade head zone between the two neckline pivots.
+        // Shade pattern zones on the head side of neckline until each leg crosses/touches it.
         if (pointsPx.length >= 5) {
             const fillAboveNeckline = this._shouldFillAboveNeckline(pointsPx);
-            const headZonePoints = pointsPx.slice(2, 5);
-            const fillRuns = this._buildNecklineFillRuns(pointsPx, fillAboveNeckline, headZonePoints);
+            const fillRuns = this._buildNecklineFillRuns(pointsPx, fillAboveNeckline);
 
             fillRuns.forEach((run) => {
                 if (!run || run.length < 2) return;
