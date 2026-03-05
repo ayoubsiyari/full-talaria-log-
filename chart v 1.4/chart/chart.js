@@ -3393,7 +3393,7 @@ class Chart {
             .style('color', '#d1d4dc')
             .style('min-width', '150px')
             .text('Lines');
-        this.addPatternPicker(linesRow, 'scaleLinePattern', this.chartSettings.scaleLinePattern);
+        this.addColorStylePicker(linesRow, this.chartSettings.scaleLinesColor, 'scaleLinesColor');
         this.addLineWidthPicker(
             linesRow,
             'scaleLineWidth',
@@ -3941,14 +3941,16 @@ class Chart {
         let width = widths.includes(Number(currentValue)) ? Number(currentValue) : 2;
 
         const picker = container.append('div')
-            .style('width', '40px')
-            .style('height', '40px')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('gap', '8px')
+            .style('min-width', '78px')
+            .style('padding', '8px 10px')
             .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
             .style('background', '#ffffff')
             .style('cursor', 'default')
             .style('transition', 'all 0.2s ease')
-            .style('position', 'relative')
             .on('mouseenter', function() {
                 d3.select(this).style('border-color', '#2962ff');
             })
@@ -3957,26 +3959,22 @@ class Chart {
             });
 
         const linePreview = picker.append('div')
-            .style('position', 'absolute')
-            .style('left', '7px')
-            .style('right', '7px')
-            .style('top', '50%')
-            .style('transform', 'translateY(-50%)')
+            .style('flex', '1')
+            .style('min-width', '24px')
             .style('background', '#2962ff')
             .style('border-radius', '2px');
 
         const valueTag = picker.append('span')
-            .style('position', 'absolute')
-            .style('right', '4px')
-            .style('bottom', '2px')
-            .style('font-size', '9px')
+            .style('font-size', '12px')
             .style('line-height', '1')
             .style('color', '#667085')
-            .style('font-weight', '600');
+            .style('font-weight', '600')
+            .style('min-width', '24px')
+            .style('text-align', 'right');
 
         const render = () => {
             linePreview.style('height', `${width}px`);
-            valueTag.text(String(width));
+            valueTag.text(`${width}px`);
         };
         render();
 
