@@ -303,6 +303,43 @@ class ReplaySystem {
             }
         });
     }
+
+    getPlaybackMode() {
+        return this.playbackMode === 'candle' ? 'candle' : 'tick';
+    }
+
+    syncPlaybackModeControls() {
+        const mode = this.getPlaybackMode();
+        const modeSelects = document.querySelectorAll('#replayPlaybackMode, #replayPlaybackModeClone');
+        modeSelects.forEach(select => {
+            if (select && select.value !== mode) {
+                select.value = mode;
+            }
+        });
+    }
+
+    setPlaybackMode(mode, { restartPlayback = true } = {}) {
+        const normalizedMode = mode === 'candle' ? 'candle' : 'tick';
+        const previousMode = this.getPlaybackMode();
+        const modeChanged = normalizedMode !== previousMode;
+
+        this.playbackMode = normalizedMode;
+        this.tickAnimationEnabled = normalizedMode === 'tick';
+        this.syncPlaybackModeControls();
+
+        if (!modeChanged) return;
+
+        console.log(`🎛️ Replay playback mode set to ${normalizedMode}`);
+
+        if (this.isPlaying && restartPlayback) {
+            // Restart playback immediately so mode change applies without extra clicks.
+            this._preserveTickProgress = false;
+            this.animatingCandle = null;
+            this.tickProgress = 0;
+            this.tickElapsedMs = 0;
+            this.play();
+        }
+    }
     
     /**
      * Show/hide tick progress indicator
@@ -644,6 +681,15 @@ class ReplaySystem {
                 }
             });
         }
+
+        const playbackModeSelect = clone.querySelector('#replayPlaybackMode');
+        if (playbackModeSelect) {
+            playbackModeSelect.id = 'replayPlaybackModeClone';
+            playbackModeSelect.value = this.getPlaybackMode();
+            playbackModeSelect.addEventListener('change', (e) => {
+                this.setPlaybackMode(e.target.value);
+            });
+        }
     }
 
     saveFloatingClonePosition(left, top) {
@@ -699,6 +745,7 @@ class ReplaySystem {
         this.toolbarVisible = true;
         this.updateReplayButtonState(true);
         this.togglePlayUI(this.isPlaying);
+        this.syncPlaybackModeControls();
         // Always sync the speed bar UI to the actual running speed
         this.updateSpeedButtonUI(this.speed);
         if (typeof window.updateSpeedDisplay === 'function') {
@@ -1789,6 +1836,7 @@ class ReplaySystem {
                     currentIndex: this.currentIndex,
                     tickElapsedMs: this.tickElapsedMs,
                     speed: this.speed,
+                    playbackMode: this.getPlaybackMode(),
                     timeframe: this.chart.currentTimeframe,
                     isActive: true
                 }
@@ -1836,7 +1884,7 @@ class ReplaySystem {
     }
 
     /**
-     * Start playback - tick animation for 0.5x, candle-by-candle for 1x+
+     * Start playback using selected replay mode.
      */
     play() {
         if (!this.isActive) {
@@ -1844,12 +1892,17 @@ class ReplaySystem {
             this.syncPlayPauseUI();
             return;
         }
+
+        const playbackMode = this.getPlaybackMode();
+        const useTickAnimation = playbackMode === 'tick';
         
-        // Check if we're RESUMING from pause (have existing animation state)
-        const isResuming = this.animatingCandle && this.tickProgress > 0;
-        if (isResuming) {
+        // Tick mode can resume partial animation state. Candle mode always resumes on full candles.
+        const isResumingTick = useTickAnimation && this.animatingCandle && this.tickProgress > 0;
+        if (isResumingTick) {
             this._preserveTickProgress = true;
             console.log(`▶️ RESUMING from tick ${this.tickProgress}, price=${this.animatingCandle.close}`);
+        } else {
+            this._preserveTickProgress = false;
         }
         
         // Stop any existing playback first (will preserve state if _preserveTickProgress is set)
@@ -1860,12 +1913,20 @@ class ReplaySystem {
         // Update button UI immediately
         this.togglePlayUI(true);
         
-        // Always use tick animation for realistic candle building effect
         this.showTickProgress(false);
-        this.startTickAnimation();
-        
-        if (!isResuming) {
-            console.log(`▶️ Playing at ${this.speed}x speed with TICK animation`);
+
+        if (useTickAnimation) {
+            this.startTickAnimation();
+            if (!isResumingTick) {
+                console.log(`▶️ Playing at ${this.speed}x speed with TICK animation`);
+            }
+        } else {
+            // Candle mode should advance complete candles only.
+            this.animatingCandle = null;
+            this.tickProgress = 0;
+            this.tickElapsedMs = 0;
+            this.startCandleByCandle(true);
+            console.log(`▶️ Playing at ${this.speed}x speed with CANDLE mode`);
         }
     }
     
@@ -1887,7 +1948,7 @@ class ReplaySystem {
     /**
      * Start candle-by-candle playback (no tick animation)
      */
-    startCandleByCandle() {
+    startCandleByCandle(startImmediately = true) {
         if (!this.isActive || !this.isPlaying) {
             console.log('⚠️ Cannot start candle-by-candle - not active or not playing');
             this.syncPlayPauseUI();
@@ -1900,8 +1961,10 @@ class ReplaySystem {
         const interval = Math.max(20, 1000 / this.speed); // Min 20ms
         console.log('⏱️ Candle interval:', interval, 'ms');
         
-        // Start immediately with first step
-        this.simpleStepForward();
+        // Optionally advance immediately (used on first play).
+        if (startImmediately) {
+            this.simpleStepForward();
+        }
         
         this.playInterval = setInterval(() => {
             // Double-check state on each tick
@@ -1911,12 +1974,7 @@ class ReplaySystem {
                 this.syncPlayPauseUI();
                 return;
             }
-            
-            if (this.currentIndex >= this.fullRawData.length - 1) {
-                this.pause();
-                return;
-            }
-            
+
             this.simpleStepForward();
         }, interval);
     }
@@ -3465,9 +3523,28 @@ class ReplaySystem {
         
         // Update button UI to show active state
         this.updateSpeedButtonUI(speed);
+
+        const playbackMode = this.getPlaybackMode();
         
-        // If playing, restart tick animation with new speed but PRESERVE progress
+        // If playing, restart the active playback mode with the new speed.
         if (this.isPlaying) {
+            if (playbackMode === 'candle') {
+                if (this._nextCandleTimer) {
+                    clearTimeout(this._nextCandleTimer);
+                    this._nextCandleTimer = null;
+                }
+                if (this.tickInterval) {
+                    clearTimeout(this.tickInterval);
+                    this.tickInterval = null;
+                }
+                if (this.playInterval) {
+                    clearInterval(this.playInterval);
+                    this.playInterval = null;
+                }
+                this.startCandleByCandle(false);
+                return;
+            }
+
             // Save current animation state before stopping
             const savedTickProgress = this.tickProgress;
             const savedTickElapsedMs = this.tickElapsedMs;

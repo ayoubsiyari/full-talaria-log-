@@ -6630,6 +6630,7 @@
         body.speed-slider-clone-active #replayPlayPause,
         body.speed-slider-clone-active #replayStepForward,
         body.speed-slider-clone-active #goToControl,
+        body.speed-slider-clone-active #replayPlaybackMode,
         body.speed-slider-clone-active #intervalSliderWrapper {
             pointer-events: none;
         }
@@ -7286,6 +7287,34 @@
         
         #replayStepForward:hover svg {
             margin-left: -10px;
+        }
+
+        .replay-playback-mode {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 2px;
+        }
+
+        .replay-playback-mode-label {
+            color: #cbd5f5;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            user-select: none;
+        }
+
+        #replayPlaybackMode {
+            min-width: 92px;
+            height: 30px;
+            padding: 0 24px 0 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        body.light-mode .replay-playback-mode-label {
+            color: #475569;
         }
 
         /* ── Replay Interval Slider ── */
@@ -17996,6 +18025,14 @@
                     <select id="replaySpeed" title="Playback Speed" style="display: none;">
                         <option value="1" selected>1x</option>
                     </select>
+
+                    <div class="replay-playback-mode" title="Replay Playback Mode">
+                        <span class="replay-playback-mode-label">Mode</span>
+                        <select id="replayPlaybackMode" title="Replay Playback Mode">
+                            <option value="tick" selected>Tick</option>
+                            <option value="candle">Candle</option>
+                        </select>
+                    </div>
                     
                     <!-- Go Back Button - Pick new start point -->
                     <button id="replayGoBack" class="replay-toolbar-btn" title="Go Back - Pick new start point">
@@ -19400,7 +19437,7 @@
          <script src="chart.js?v=20260304_TF_PIN_V44"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260304_TF_PIN_V27"></script>
+    <script src="modules/replay-system.js?v=20260305_TF_PIN_V28"></script>
     
     
     <!-- Order Management System -->
