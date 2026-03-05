@@ -718,6 +718,12 @@ class HeadShouldersTool extends BaseDrawing {
             fillRuns.forEach((run) => {
                 if (!run || run.length < 2) return;
 
+                const runStart = run[0];
+                const runEnd = run[run.length - 1];
+                const startTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runStart);
+                const endTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runEnd);
+                if (!startTouchesNeckline || !endTouchesNeckline) return;
+
                 const necklineBoundary = run
                     .slice()
                     .reverse()
@@ -973,6 +979,12 @@ class HeadShouldersTool extends BaseDrawing {
 
         const t = (x - neckline.start.x) / dx;
         return neckline.start.y + ((neckline.end.y - neckline.start.y) * t);
+    }
+
+    _isPointTouchingNeckline(pointsPx, point, tolerancePx = 0.75) {
+        if (!point || !Array.isArray(pointsPx) || pointsPx.length < 2) return false;
+        const necklineY = this._getNecklineYAtX(pointsPx, point.x);
+        return Number.isFinite(necklineY) && Math.abs(point.y - necklineY) <= tolerancePx;
     }
 
     _shouldFillAboveNeckline(pointsPx) {
