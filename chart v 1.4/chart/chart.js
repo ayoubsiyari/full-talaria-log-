@@ -2524,6 +2524,13 @@ class Chart {
         this.updateVisibilityMenuItems();
     }
 
+    isPositionDrawing(drawing) {
+        if (!drawing) return false;
+        const rawType = drawing.type || drawing.toolType || drawing.meta?.toolType || '';
+        const compact = String(rawType).toLowerCase().replace(/[^a-z]/g, '');
+        return compact === 'longposition' || compact === 'shortposition';
+    }
+
     applyDrawingVisibilityStates() {
         const hideAll = this.drawingsHidden;
         const hidePositions = this.positionsHidden;
@@ -2534,7 +2541,7 @@ class Chart {
 
         drawingsList.forEach(drawing => {
             if (!drawing) return;
-            const isPosition = drawing.type === 'long-position' || drawing.type === 'short-position';
+            const isPosition = this.isPositionDrawing(drawing);
             const locallyHidden = drawing.visible === false || drawing.hidden === true;
             
             // Determine if this drawing should be hidden
@@ -2622,8 +2629,7 @@ class Chart {
             : (Array.isArray(this.drawings) ? this.drawings : []);
         return drawingsList.reduce((count, drawing) => {
             if (!drawing) return count;
-            const type = drawing.type || drawing.toolType;
-            if (type === 'long-position' || type === 'short-position') {
+            if (this.isPositionDrawing(drawing)) {
                 return count + 1;
             }
             return count;

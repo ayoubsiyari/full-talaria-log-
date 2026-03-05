@@ -349,13 +349,26 @@ class DrawingToolsManager {
         return parsed.value >= minV && parsed.value <= maxV;
     }
 
+    _isPositionDrawing(drawing) {
+        if (!drawing) return false;
+        const rawType = drawing.type || drawing.toolType || drawing.meta?.toolType || '';
+        const compact = String(rawType).toLowerCase().replace(/[^a-z]/g, '');
+        return compact === 'longposition' || compact === 'shortposition';
+    }
+
     _isHiddenByGlobalVisibility(drawing) {
         if (!drawing || !this.chart) return false;
-        const isPosition = drawing.type === 'long-position' || drawing.type === 'short-position';
-        if (isPosition) {
+
+        // Global drawings toggle should hide every drawing type, including
+        // long/short position tools.
+        if (this.chart.drawingsHidden) {
+            return true;
+        }
+
+        if (this._isPositionDrawing(drawing)) {
             return !!this.chart.positionsHidden;
         }
-        return !!this.chart.drawingsHidden;
+        return false;
     }
 
     /**
