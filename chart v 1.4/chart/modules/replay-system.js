@@ -63,6 +63,7 @@ class ReplaySystem {
         this.pauseTextEl = null;
         this.toolbarVisible = false;
         this._lastFollowIndicatorCheckTs = 0;
+        this._lastFastModePrefetchTs = 0;
         this.replayRightPaddingRatio = 0.2;
 
         this.dragState = {
@@ -2509,6 +2510,22 @@ class ReplaySystem {
      */
     animateFastMode() {
         const candlesToComplete = this.candlesPerFrame || 1;
+
+        // Proactive prefetch in FAST MODE (high-speed replay):
+        // previously we only loaded when we hit the end, which caused visible pauses
+        // while waiting on network responses.
+        const canLoadForward = !!(this.chart && this.chart._serverCursors && this.chart._serverCursors.hasMoreRight);
+        if (canLoadForward) {
+            const remainingCandles = Math.max(0, this.fullRawData.length - this.currentIndex);
+            const preloadThreshold = this.getForwardPrefetchThreshold();
+            if (remainingCandles < preloadThreshold) {
+                const now = Date.now();
+                if (!this._lastFastModePrefetchTs || now - this._lastFastModePrefetchTs >= 90) {
+                    this._lastFastModePrefetchTs = now;
+                    this.chart.checkViewportLoadMore('forward');
+                }
+            }
+        }
         
         for (let i = 0; i < candlesToComplete; i++) {
             // Check bounds
