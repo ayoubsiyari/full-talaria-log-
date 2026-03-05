@@ -400,6 +400,7 @@ class Chart {
             scaleTextSize: 12,
             scaleLinesColor: '#2a2e39',
             scaleLinePattern: 'solid',
+            scaleLineWidth: 2,
             
             // Cursor (crosshair labels)
             cursorLabelTextColor: '#d1d4dc',
@@ -3256,6 +3257,7 @@ class Chart {
         if (typeof this.chartSettings.watermarkPattern === 'undefined') this.chartSettings.watermarkPattern = 'solid';
         if (typeof this.chartSettings.watermarkColor === 'undefined') this.chartSettings.watermarkColor = 'rgba(120, 123, 134, 0.1)';
         if (typeof this.chartSettings.scaleLinePattern === 'undefined') this.chartSettings.scaleLinePattern = 'solid';
+        if (typeof this.chartSettings.scaleLineWidth === 'undefined') this.chartSettings.scaleLineWidth = 2;
         if (typeof this.chartSettings.scaleTextColor === 'undefined') this.chartSettings.scaleTextColor = '#ffffff';
         if (typeof this.chartSettings.cursorLabelTextColor === 'undefined') this.chartSettings.cursorLabelTextColor = '#d1d4dc';
         if (typeof this.chartSettings.cursorLabelBgColor === 'undefined') this.chartSettings.cursorLabelBgColor = '#363a45';
@@ -3392,6 +3394,14 @@ class Chart {
             .style('min-width', '150px')
             .text('Lines');
         this.addPatternPicker(linesRow, 'scaleLinePattern', this.chartSettings.scaleLinePattern);
+        const scaleLineWidthDropdown = this.addDropdown(linesRow, ['1', '2', '3', '4'], String(this.chartSettings.scaleLineWidth || 2));
+        scaleLineWidthDropdown
+            .style('min-width', '110px')
+            .on('change', () => {
+                const width = Math.max(1, parseInt(scaleLineWidthDropdown.property('value'), 10) || 2);
+                this.chartSettings.scaleLineWidth = width;
+                this.applyChartSettings('scaleLineWidth', width);
+            });
         
         // CURSOR LABELS section (crosshair price/time labels)
         section.append('h3')
@@ -9054,10 +9064,24 @@ class Chart {
         
         // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
         this.drawAxisHighlightZones();
+
+        const scaleLineColor = this.chartSettings.scaleLinesColor || '#e0e3eb';
+        const scaleLineWidth = Math.max(1, parseInt(this.chartSettings.scaleLineWidth, 10) || 2);
+        const scaleLinePattern = this.chartSettings.scaleLinePattern || 'solid';
+        const applyScaleLineStyle = () => {
+            this.ctx.strokeStyle = scaleLineColor;
+            this.ctx.lineWidth = scaleLineWidth;
+            if (scaleLinePattern === 'dashed') {
+                this.ctx.setLineDash([6, 4]);
+            } else if (scaleLinePattern === 'dotted') {
+                this.ctx.setLineDash([2, 4]);
+            } else {
+                this.ctx.setLineDash([]);
+            }
+        };
         
         // Draw Y-axis border line
-        this.ctx.strokeStyle = '#e0e3eb';
-        this.ctx.lineWidth = 1;
+        applyScaleLineStyle();
         this.ctx.beginPath();
         this.ctx.moveTo(axisBorderX, 0);
         this.ctx.lineTo(axisBorderX, this.h - m.b);
@@ -9097,8 +9121,7 @@ class Chart {
             for (let i = 0; i < this._timeTicks.length; i++) {
                 const tick = this._timeTicks[i];
                 const x = tick.x;
-                this.ctx.strokeStyle = '#e0e3eb';
-                this.ctx.lineWidth = 1;
+                applyScaleLineStyle();
                 this.ctx.beginPath();
                 this.ctx.moveTo(x, this.h - m.b);
                 this.ctx.lineTo(x, this.h - m.b + 5);
@@ -9108,6 +9131,7 @@ class Chart {
                 this.ctx.fillText(tick.label, x, this.h - 10);
             }
         }
+        this.ctx.setLineDash([]);
         this.ctx.font = scaleFont;
 
     }
@@ -12956,7 +12980,7 @@ class Chart {
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
-        const crossWidth = (this.chartSettings && this.chartSettings.crosshairWidth) || 2;
+        const crossWidth = 1;
         const vBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
@@ -15102,12 +15126,13 @@ class Chart {
         
         // Check if x is within visible bounds
         const isXVisible = x >= m.l && x <= this.w - m.r;
+        const crossWidth = 1;
         
         // Vertical line styles (dashed like TradingView)
         const vBaseStyle = `
             position: absolute;
             top: ${m.t}px;
-            width: 2px;
+            width: ${crossWidth}px;
             height: ${this.h - m.t - m.b}px;
             background: repeating-linear-gradient(to bottom, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
@@ -15128,7 +15153,7 @@ class Chart {
             position: absolute;
             left: ${m.l}px;
             width: ${this.w - m.l - m.r}px;
-            height: 2px;
+            height: ${crossWidth}px;
             background: repeating-linear-gradient(to right, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
             z-index: 100;
