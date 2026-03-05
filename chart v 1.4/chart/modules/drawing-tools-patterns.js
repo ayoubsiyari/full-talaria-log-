@@ -751,8 +751,8 @@ class HeadShouldersTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Draw neckline using neck pivots, extended to shoulder-side legs when available.
-        if (pointsPx.length >= 2) {
+        // Show neckline only once head point exists, then keep it extended style.
+        if (pointsPx.length >= 4) {
             const neckline = this._getRenderedNecklinePoints(pointsPx, scales);
             if (neckline) {
                 this.group.append('line')
@@ -828,6 +828,11 @@ class HeadShouldersTool extends BaseDrawing {
     _getRenderedNecklinePoints(pointsPx, scales = null) {
         const baseNeckline = this._getNecklinePoints(pointsPx);
         if (!baseNeckline) return null;
+
+        // Avoid showing neckline too early while only shoulder setup points are being placed.
+        if (!Array.isArray(pointsPx) || pointsPx.length < 4) {
+            return null;
+        }
 
         // Prefer a full-width rendered neckline (TradingView-like extended trendline look).
         const viewportRange = this._getViewportXRange(scales, pointsPx);
