@@ -8026,9 +8026,9 @@ class Chart {
      * @param {boolean} force - when true, probe server even if local hasMore flags are stale
      */
     checkViewportLoadMore(direction, force = false) {
-        if (this._panLoading) return;
-        if (!this.currentFileId) return;
-        if (!this._serverCursors) return;
+        if (this._panLoading) return true;
+        if (!this.currentFileId) return false;
+        if (!this._serverCursors) return false;
 
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
 
@@ -8039,29 +8039,29 @@ class Chart {
         const hasSessionEnd = Number.isFinite(sessionEndTs);
         
         // Check if there's more data in this direction
-        if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) return;
-        if (!force && direction === 'forward' && !this._serverCursors.hasMoreRight) return;
+        if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) return false;
+        if (!force && direction === 'forward' && !this._serverCursors.hasMoreRight) return false;
 
         // Respect configured backtesting bounds
         if (direction === 'forward' && hasSessionEnd) {
             const lastCursorTs = Number(this._serverCursors.lastTs);
             if (Number.isFinite(lastCursorTs) && lastCursorTs >= sessionEndTs) {
                 this._serverCursors.hasMoreRight = false;
-                return;
+                return false;
             }
         }
         if (direction === 'backward' && hasSessionStart) {
             const firstCursorTs = Number(this._serverCursors.firstTs);
             if (Number.isFinite(firstCursorTs) && firstCursorTs <= sessionStartTs) {
                 this._serverCursors.hasMoreLeft = false;
-                return;
+                return false;
             }
         }
         
         // Debounce: replay needs tighter turnaround than manual panning.
         const debounceMs = isReplay ? 80 : 500;
         const now = Date.now();
-        if (this._lastPanLoadTime && now - this._lastPanLoadTime < debounceMs) return;
+        if (!force && this._lastPanLoadTime && now - this._lastPanLoadTime < debounceMs) return true;
         
         this._panLoading = true;
 
@@ -8096,7 +8096,7 @@ class Chart {
         }
         this._panLoadLimit = panLimit;
         
-        if (!cursor) { this._panLoading = false; return; }
+        if (!cursor) { this._panLoading = false; return false; }
         
         // Load chunk sized to mode/speed (larger during replay).
         const params = new URLSearchParams({
@@ -8340,6 +8340,8 @@ class Chart {
                 this._panLoading = false; 
                 this._lastPanLoadTime = Date.now();
             });
+
+        return true;
     }
     
     resampleData(data, timeframe) {

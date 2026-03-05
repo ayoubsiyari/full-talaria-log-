@@ -46,7 +46,8 @@ class ReplaySystem {
         this.dataLoadRetryDelayMs = 120; // Retry delay when waiting for more server candles
         this.forwardLoadLatencyMs = 1500; // EWMA forward-load latency used to size replay prefetch runway
         this.edgeProbeRetryCount = 0; // Number of forced forward probes after local cursor says no-more-right
-        this.maxEdgeProbeRetries = 12; // Prevent infinite waiting when replay truly reached dataset/session end
+        this.minEdgeProbeRetries = 12; // Always allow a minimum number of recovery probes
+        this.maxEdgeProbeRetries = 90; // Hard cap to prevent infinite waiting at true dataset/session end
 
         this.toolbar = null;
         this.handle = null;
@@ -1977,6 +1978,12 @@ class ReplaySystem {
                 return;
             }
 
+            // While waiting on a forward-edge retry timer, skip interval ticks
+            // so we don't continuously re-enter simpleStepForward in a tight loop.
+            if (this._nextCandleTimer) {
+                return;
+            }
+
             this.simpleStepForward();
         }, interval);
     }
@@ -1991,6 +1998,13 @@ class ReplaySystem {
             // We also allow a few forced probes in case local hasMoreRight got stale.
             if (this.tryRequestForwardDataProbe()) {
                 console.log('⏳ Reached end of loaded data, requesting/probing more...');
+                if (this.isPlaying && !this._nextCandleTimer) {
+                    this.scheduleForwardEdgeRetry(() => {
+                        if (this.isPlaying) {
+                            this.simpleStepForward();
+                        }
+                    });
+                }
                 return; // Don't pause yet — data may still arrive
             }
             console.log('⏭️ Reached end of all data');
@@ -2117,6 +2131,26 @@ class ReplaySystem {
         return Math.max(minThreshold, Math.min(60000, dynamicThreshold));
     }
 
+    getForwardEdgeRetryDelayMs() {
+        const configured = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
+        const observedLoadMs = Math.max(300, Number(this.forwardLoadLatencyMs) || 1500);
+
+        // Poll several times within the observed load window, but keep bounded.
+        const adaptive = Math.round(observedLoadMs / 6);
+        return Math.max(60, Math.min(450, Math.max(configured, adaptive)));
+    }
+
+    getAdaptiveEdgeProbeLimit() {
+        const retryDelayMs = this.getForwardEdgeRetryDelayMs();
+        const observedLoadMs = Math.max(300, Number(this.forwardLoadLatencyMs) || 1500);
+        const minRetries = Math.max(1, Number(this.minEdgeProbeRetries) || 12);
+        const maxRetries = Math.max(minRetries, Number(this.maxEdgeProbeRetries) || 90);
+
+        // Wait up to ~3x observed load latency before treating edge as definitive.
+        const adaptiveRetries = Math.ceil((observedLoadMs * 3) / Math.max(1, retryDelayMs));
+        return Math.max(minRetries, Math.min(maxRetries, adaptiveRetries));
+    }
+
     tryRequestForwardDataProbe() {
         const canLoadForward = !!(this.chart
             && typeof this.chart.checkViewportLoadMore === 'function'
@@ -2125,20 +2159,32 @@ class ReplaySystem {
             return false;
         }
 
-        const hasMoreRight = !!(this.chart._serverCursors && this.chart._serverCursors.hasMoreRight);
-        if (hasMoreRight) {
-            this.edgeProbeRetryCount = 0;
-            this.chart.checkViewportLoadMore('forward');
+        // If a pan-load is already in flight, keep waiting without consuming retries.
+        if (this.chart._panLoading) {
             return true;
         }
 
-        if (this.edgeProbeRetryCount >= this.maxEdgeProbeRetries) {
+        const hasMoreRight = !!(this.chart._serverCursors && this.chart._serverCursors.hasMoreRight);
+        if (hasMoreRight) {
+            this.edgeProbeRetryCount = 0;
+            return !!this.chart.checkViewportLoadMore('forward');
+        }
+
+        const retryLimit = this.getAdaptiveEdgeProbeLimit();
+        if (this.edgeProbeRetryCount >= retryLimit) {
+            return false;
+        }
+
+        // Force a probe when local hasMoreRight may be stale.
+        const requested = !!this.chart.checkViewportLoadMore('forward', true);
+        if (!requested && !this.chart._panLoading) {
             return false;
         }
 
         this.edgeProbeRetryCount += 1;
-        this.chart.checkViewportLoadMore('forward', true);
-        console.log(`⏳ Forward edge probe ${this.edgeProbeRetryCount}/${this.maxEdgeProbeRetries}`);
+        if (this.edgeProbeRetryCount === 1 || this.edgeProbeRetryCount % 5 === 0 || this.edgeProbeRetryCount >= retryLimit) {
+            console.log(`⏳ Forward edge probe ${this.edgeProbeRetryCount}/${retryLimit}`);
+        }
         return true;
     }
 
@@ -2148,7 +2194,7 @@ class ReplaySystem {
             this._nextCandleTimer = null;
         }
 
-        const dataLoadRetryDelay = Math.max(16, Number(this.dataLoadRetryDelayMs) || 120);
+        const dataLoadRetryDelay = this.getForwardEdgeRetryDelayMs();
         this._nextCandleTimer = setTimeout(() => {
             this._nextCandleTimer = null;
             if (this.isPlaying && typeof retryFn === 'function') {
