@@ -783,18 +783,6 @@ class HeadShouldersTool extends BaseDrawing {
             }
         }
 
-        // TradingView-like point markers
-        pointsPx.forEach((p) => {
-            this.group.append('circle')
-                .attr('cx', p.x)
-                .attr('cy', p.y)
-                .attr('r', 6)
-                .attr('fill', this.style.pointFill)
-                .attr('stroke', this.style.pointStroke)
-                .attr('stroke-width', 2)
-                .style('pointer-events', 'none');
-        });
-
         // Shoulder/head labels
         const labels = [
             { index: 1, text: 'Left Shoulder' },
