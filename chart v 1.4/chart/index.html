@@ -26300,7 +26300,7 @@ window._openCrosshairPicker=function(btn){
     var opVal=document.getElementById('_cxOpacityVal');
     opSlider.addEventListener('input',function(){
         var v=parseFloat(opSlider.value);
-        opSlider.style.background='linear-gradient(to right,#2962ff '+(v*100)+'%,#363a45 '+(v*100)+'%)';
+        opSlider.style.background='linear-gradient(to right,'+accentColor+' '+(v*100)+'%,#363a45 '+(v*100)+'%)';
         opVal.textContent=Math.round(v*100)+'%';
         popup._opacity=v;
         window._applyCrosshairSettings(popup._color,popup._opacity,popup._width,popup._style);
