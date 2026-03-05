@@ -26350,6 +26350,51 @@ window._openCrosshairColorPicker=function(btn){
         });
     }
 };
+window._openScaleLinesColorPicker=function(btn){
+    var c=window.chart||window.mainChart;
+    var cs=(c&&c.chartSettings)||{};
+    var curColor=cs.scaleLinesColor||'#2a2e39';
+    var curWidth=Math.max(1,parseInt(cs.scaleLineWidth,10)||2);
+    var curStyle=cs.scaleLinePattern||'solid';
+    if(window.openColorPicker){
+        window.openColorPicker(curColor,function(v){
+            var swatch=document.getElementById('_slColorSwatch');
+            if(swatch)swatch.style.background=v;
+            var c2=window.chart||window.mainChart;
+            if(!c2)return;
+            c2.chartSettings=c2.chartSettings||{};
+            c2.chartSettings.scaleLinesColor=v;
+            if(c2.scheduleRender)c2.scheduleRender();
+            try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+        },btn,{
+            showThickness:true,
+            thickness:curWidth,
+            onThickness:function(w){
+                var c2=window.chart||window.mainChart;
+                if(!c2)return;
+                c2.chartSettings=c2.chartSettings||{};
+                c2.chartSettings.scaleLineWidth=w;
+                if(c2.scheduleRender)c2.scheduleRender();
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+                var lineEl=document.getElementById('_slLinePreview');
+                if(lineEl)lineEl.setAttribute('stroke-width',String(w));
+            },
+            showLineStyle:true,
+            lineStyle:curStyle,
+            onLineStyle:function(s){
+                var c2=window.chart||window.mainChart;
+                if(!c2)return;
+                c2.chartSettings=c2.chartSettings||{};
+                c2.chartSettings.scaleLinePattern=s;
+                if(c2.scheduleRender)c2.scheduleRender();
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+                var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
+                var lineEl=document.getElementById('_slLinePreview');
+                if(lineEl)lineEl.setAttribute('stroke-dasharray',dashMap[s]||'none');
+            }
+        });
+    }
+};
 window._spClr=function(btn){
     var c=btn.dataset.color||'#2962ff';
     console.log('[SP] _spClr called, color=',c,'openColorPicker=',typeof window.openColorPicker);
@@ -26570,7 +26615,13 @@ P['canvas']={title:'Canvas',build:function(){
             '</div>'+
             '<div class="tv-row" style="margin-bottom:4px;">'+
                 '<span class="settings-input-label" style="flex:1;">Lines</span>'+
-                clr('','cv_scaleLines',cs.scaleLinesColor||'#2a2e39')+
+                (function(){
+                    var col=cs.scaleLinesColor||'#2a2e39';
+                    var w=Math.max(1,parseInt(cs.scaleLineWidth,10)||2);
+                    var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
+                    var dash=dashMap[cs.scaleLinePattern||'solid']||'none';
+                    return '<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+w+'" stroke-dasharray="'+dash+'" stroke-linecap="round"/></svg></button>';
+                })()+
             '</div>')+
     sec(st('MARGINS')+
         irow('Right (bars)','cv_marginRight',ro,0,300));
@@ -26609,10 +26660,6 @@ P['canvas']={title:'Canvas',build:function(){
     wClr('cv_scaleLines',function(v){
         var c=ch();if(!c)return;
         c.chartSettings.scaleLinesColor=v;
-        c.chartSettings.cursorLabelBgColor=v;
-        var pl=document.querySelector('.price-label'),tl=document.querySelector('.time-label');
-        if(pl)pl.style.background=v;
-        if(tl)tl.style.background=v;
         if(c.scheduleRender)c.scheduleRender();
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
