@@ -710,9 +710,11 @@ class HeadShouldersTool extends BaseDrawing {
             .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
             .join(' ');
 
-        if (pointsPx.length >= 3) {
+        // TradingView-like fill: only shade head zone between the two neckline pivots.
+        if (pointsPx.length >= 5) {
             const fillAboveNeckline = this._shouldFillAboveNeckline(pointsPx);
-            const fillRuns = this._buildNecklineFillRuns(pointsPx, fillAboveNeckline);
+            const headZonePoints = pointsPx.slice(2, 5);
+            const fillRuns = this._buildNecklineFillRuns(pointsPx, fillAboveNeckline, headZonePoints);
 
             fillRuns.forEach((run) => {
                 if (!run || run.length < 2) return;
@@ -1018,7 +1020,11 @@ class HeadShouldersTool extends BaseDrawing {
         return avgDelta <= 0;
     }
 
-    _buildNecklineFillRuns(pointsPx, fillAboveNeckline) {
+    _buildNecklineFillRuns(pointsPx, fillAboveNeckline, sourcePoints = null) {
+        const activePoints = (Array.isArray(sourcePoints) && sourcePoints.length >= 2)
+            ? sourcePoints
+            : pointsPx;
+
         const runs = [];
         let currentRun = null;
         const epsilon = 0.0001;
@@ -1037,9 +1043,9 @@ class HeadShouldersTool extends BaseDrawing {
             }
         };
 
-        for (let i = 0; i < pointsPx.length - 1; i++) {
-            const a = pointsPx[i];
-            const b = pointsPx[i + 1];
+        for (let i = 0; i < activePoints.length - 1; i++) {
+            const a = activePoints[i];
+            const b = activePoints[i + 1];
             const dA = a.y - this._getNecklineYAtX(pointsPx, a.x);
             const dB = b.y - this._getNecklineYAtX(pointsPx, b.x);
 
