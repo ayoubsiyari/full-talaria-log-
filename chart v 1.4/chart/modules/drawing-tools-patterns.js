@@ -753,7 +753,7 @@ class HeadShouldersTool extends BaseDrawing {
 
         // Draw neckline using neck pivots, extended to shoulder-side legs when available.
         if (pointsPx.length >= 2) {
-            const neckline = this._getRenderedNecklinePoints(pointsPx);
+            const neckline = this._getRenderedNecklinePoints(pointsPx, scales);
             if (neckline) {
                 this.group.append('line')
                     .attr('x1', neckline.start.x)
@@ -825,9 +825,21 @@ class HeadShouldersTool extends BaseDrawing {
             : { start: last, end: first };
     }
 
-    _getRenderedNecklinePoints(pointsPx) {
+    _getRenderedNecklinePoints(pointsPx, scales = null) {
         const baseNeckline = this._getNecklinePoints(pointsPx);
         if (!baseNeckline) return null;
+
+        // Prefer a full-width rendered neckline (TradingView-like extended trendline look).
+        const viewportRange = this._getViewportXRange(scales, pointsPx);
+        if (viewportRange) {
+            const [minX, maxX] = viewportRange;
+            if (Number.isFinite(minX) && Number.isFinite(maxX) && Math.abs(maxX - minX) > 0.01) {
+                return {
+                    start: { x: minX, y: this._getNecklineYAtX(pointsPx, minX) },
+                    end: { x: maxX, y: this._getNecklineYAtX(pointsPx, maxX) }
+                };
+            }
+        }
 
         // Full Head & Shoulders: extend neckline until it touches outer shoulder legs.
         if (pointsPx.length >= 7) {
@@ -874,6 +886,40 @@ class HeadShouldersTool extends BaseDrawing {
         }
 
         return baseNeckline;
+    }
+
+    _getViewportXRange(scales, pointsPx) {
+        const xScale = scales && scales.xScale;
+        if (xScale && typeof xScale.range === 'function') {
+            const range = xScale.range();
+            if (Array.isArray(range) && range.length >= 2) {
+                const first = Number(range[0]);
+                const last = Number(range[range.length - 1]);
+                if (Number.isFinite(first) && Number.isFinite(last)) {
+                    return first <= last ? [first, last] : [last, first];
+                }
+            }
+        }
+
+        const chart = (scales && scales.chart) || this.chart || window.chart;
+        const chartWidth = Number(chart && (chart.width || (chart.canvas && chart.canvas.width)));
+        if (Number.isFinite(chartWidth) && chartWidth > 0) {
+            return [0, chartWidth];
+        }
+
+        if (Array.isArray(pointsPx) && pointsPx.length >= 2) {
+            const xs = pointsPx
+                .map(p => Number(p && p.x))
+                .filter(x => Number.isFinite(x));
+            if (xs.length >= 2) {
+                const min = Math.min(...xs);
+                const max = Math.max(...xs);
+                const pad = Math.max(120, (max - min) * 0.8);
+                return [min - pad, max + pad];
+            }
+        }
+
+        return null;
     }
 
     _getInfiniteLineIntersection(lineA, lineB, lineC, lineD) {
