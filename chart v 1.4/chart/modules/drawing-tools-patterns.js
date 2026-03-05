@@ -1328,15 +1328,6 @@ class ABCDPatternTool extends BaseDrawing {
             const label = this.labels[i];
             if (!label) return;
 
-            this.group.append('circle')
-                .attr('cx', pointPx.x)
-                .attr('cy', pointPx.y)
-                .attr('r', 6)
-                .attr('fill', '#0b1220')
-                .attr('stroke', '#2f5dff')
-                .attr('stroke-width', 3)
-                .style('pointer-events', 'none');
-
             const prev = pointsPx[i - 1];
             const next = pointsPx[i + 1];
             let isTop = false;
