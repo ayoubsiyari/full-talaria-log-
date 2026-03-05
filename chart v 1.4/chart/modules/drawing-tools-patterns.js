@@ -848,17 +848,7 @@ class HeadShouldersTool extends BaseDrawing {
             return null;
         }
 
-        // Prefer a full-width rendered neckline (TradingView-like extended trendline look).
-        const viewportRange = this._getViewportXRange(scales, pointsPx);
-        if (viewportRange) {
-            const [minX, maxX] = viewportRange;
-            if (Number.isFinite(minX) && Number.isFinite(maxX) && Math.abs(maxX - minX) > 0.01) {
-                return {
-                    start: { x: minX, y: this._getNecklineYAtX(pointsPx, minX) },
-                    end: { x: maxX, y: this._getNecklineYAtX(pointsPx, maxX) }
-                };
-            }
-        }
+        let renderedNeckline = baseNeckline;
 
         // Full Head & Shoulders: extend neckline until it touches outer shoulder legs.
         if (pointsPx.length >= 7) {
@@ -898,13 +888,39 @@ class HeadShouldersTool extends BaseDrawing {
                 : baseNeckline.end);
 
             if (leftPoint && rightPoint) {
-                return leftPoint.x <= rightPoint.x
+                renderedNeckline = leftPoint.x <= rightPoint.x
                     ? { start: leftPoint, end: rightPoint }
                     : { start: rightPoint, end: leftPoint };
             }
         }
 
-        return baseNeckline;
+        // Hide neckline outside visible chart area without extending beyond touch/cross endpoints.
+        const viewportRange = this._getViewportXRange(scales, pointsPx);
+        if (viewportRange && renderedNeckline) {
+            const [minX, maxX] = viewportRange;
+            if (Number.isFinite(minX) && Number.isFinite(maxX) && Math.abs(maxX - minX) > 0.01) {
+                const ordered = renderedNeckline.start.x <= renderedNeckline.end.x
+                    ? renderedNeckline
+                    : { start: renderedNeckline.end, end: renderedNeckline.start };
+
+                if (ordered.end.x < minX || ordered.start.x > maxX) {
+                    return null;
+                }
+
+                const clippedStartX = Math.max(minX, ordered.start.x);
+                const clippedEndX = Math.min(maxX, ordered.end.x);
+                if ((clippedEndX - clippedStartX) <= 0.01) {
+                    return null;
+                }
+
+                return {
+                    start: { x: clippedStartX, y: this._getNecklineYAtX(pointsPx, clippedStartX) },
+                    end: { x: clippedEndX, y: this._getNecklineYAtX(pointsPx, clippedEndX) }
+                };
+            }
+        }
+
+        return renderedNeckline;
     }
 
     _getViewportXRange(scales, pointsPx) {
