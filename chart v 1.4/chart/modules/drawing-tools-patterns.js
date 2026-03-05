@@ -829,25 +829,13 @@ class HeadShouldersTool extends BaseDrawing {
         const baseNeckline = this._getNecklinePoints(pointsPx);
         if (!baseNeckline) return null;
 
-        // Extend from neckline start pivot toward the right side of the visible chart.
+        // Prefer a full-width rendered neckline (TradingView-like extended trendline look).
         const viewportRange = this._getViewportXRange(scales, pointsPx);
         if (viewportRange) {
             const [minX, maxX] = viewportRange;
             if (Number.isFinite(minX) && Number.isFinite(maxX) && Math.abs(maxX - minX) > 0.01) {
-                const anchorStartX = Number(baseNeckline.start && baseNeckline.start.x);
-                const startX = Number.isFinite(anchorStartX)
-                    ? Math.min(Math.max(anchorStartX, minX), maxX)
-                    : minX;
-
-                if ((maxX - startX) <= 0.01) {
-                    return {
-                        start: { x: minX, y: this._getNecklineYAtX(pointsPx, minX) },
-                        end: { x: maxX, y: this._getNecklineYAtX(pointsPx, maxX) }
-                    };
-                }
-
                 return {
-                    start: { x: startX, y: this._getNecklineYAtX(pointsPx, startX) },
+                    start: { x: minX, y: this._getNecklineYAtX(pointsPx, minX) },
                     end: { x: maxX, y: this._getNecklineYAtX(pointsPx, maxX) }
                 };
             }
