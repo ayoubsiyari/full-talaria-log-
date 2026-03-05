@@ -710,41 +710,47 @@ class HeadShouldersTool extends BaseDrawing {
             .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
             .join(' ');
 
-        // Shade pattern zones on the head side of neckline until each leg crosses/touches it.
+        // TradingView-like behavior:
+        // - Always shade head zone (between neckline pivots)
+        // - Shade each shoulder zone only if its outer leg touches/crosses neckline
         if (pointsPx.length >= 5) {
             const fillAboveNeckline = this._shouldFillAboveNeckline(pointsPx);
-            const fillRuns = this._buildNecklineFillRuns(pointsPx, fillAboveNeckline);
+            const fillZones = this._getNecklineFillZones(pointsPx);
 
-            fillRuns.forEach((run) => {
-                if (!run || run.length < 2) return;
+            fillZones.forEach((zonePoints) => {
+                const fillRuns = this._buildNecklineFillRuns(pointsPx, fillAboveNeckline, zonePoints);
 
-                const runStart = run[0];
-                const runEnd = run[run.length - 1];
-                const startTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runStart);
-                const endTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runEnd);
-                // Show fill for each zone that touches/crosses neckline at either side.
-                if (!startTouchesNeckline && !endTouchesNeckline) return;
+                fillRuns.forEach((run) => {
+                    if (!run || run.length < 2) return;
 
-                const necklineBoundary = run
-                    .slice()
-                    .reverse()
-                    .map((p) => ({
-                        x: p.x,
-                        y: this._getNecklineYAtX(pointsPx, p.x)
-                    }));
+                    const runStart = run[0];
+                    const runEnd = run[run.length - 1];
+                    const startTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runStart);
+                    const endTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runEnd);
+                    // Show fill for each zone that touches/crosses neckline at either side.
+                    if (!startTouchesNeckline && !endTouchesNeckline) return;
 
-                const fillPathPoints = [...run, ...necklineBoundary];
-                if (fillPathPoints.length < 3) return;
+                    const necklineBoundary = run
+                        .slice()
+                        .reverse()
+                        .map((p) => ({
+                            x: p.x,
+                            y: this._getNecklineYAtX(pointsPx, p.x)
+                        }));
 
-                const fillPath = `${fillPathPoints
-                    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
-                    .join(' ')} Z`;
+                    const fillPathPoints = [...run, ...necklineBoundary];
+                    if (fillPathPoints.length < 3) return;
 
-                this.group.append('path')
-                    .attr('d', fillPath)
-                    .attr('fill', this.style.fill)
-                    .attr('stroke', 'none')
-                    .style('pointer-events', 'none');
+                    const fillPath = `${fillPathPoints
+                        .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
+                        .join(' ')} Z`;
+
+                    this.group.append('path')
+                        .attr('d', fillPath)
+                        .attr('fill', this.style.fill)
+                        .attr('stroke', 'none')
+                        .style('pointer-events', 'none');
+                });
             });
         }
 
@@ -982,7 +988,42 @@ class HeadShouldersTool extends BaseDrawing {
         return neckline.start.y + ((neckline.end.y - neckline.start.y) * t);
     }
 
-    _isPointTouchingNeckline(pointsPx, point, tolerancePx = 0.75) {
+    _getNecklineFillZones(pointsPx) {
+        if (!Array.isArray(pointsPx) || pointsPx.length < 5) return [];
+
+        // Head zone (neckline pivot -> head -> neckline pivot)
+        const zones = [pointsPx.slice(2, 5)];
+
+        // Shoulder zones are optional and appear only if their outer leg
+        // touches/crosses neckline.
+        if (pointsPx.length >= 7) {
+            if (this._segmentTouchesOrCrossesNeckline(pointsPx, pointsPx[0], pointsPx[1])) {
+                zones.push(pointsPx.slice(0, 3));
+            }
+
+            if (this._segmentTouchesOrCrossesNeckline(pointsPx, pointsPx[5], pointsPx[6])) {
+                zones.push(pointsPx.slice(4, 7));
+            }
+        }
+
+        return zones;
+    }
+
+    _segmentTouchesOrCrossesNeckline(pointsPx, a, b, tolerancePx = 0.2) {
+        if (!a || !b || !Array.isArray(pointsPx) || pointsPx.length < 2) return false;
+
+        const dA = a.y - this._getNecklineYAtX(pointsPx, a.x);
+        const dB = b.y - this._getNecklineYAtX(pointsPx, b.x);
+        if (!Number.isFinite(dA) || !Number.isFinite(dB)) return false;
+
+        if (Math.abs(dA) <= tolerancePx || Math.abs(dB) <= tolerancePx) {
+            return true;
+        }
+
+        return (dA < 0 && dB > 0) || (dA > 0 && dB < 0);
+    }
+
+    _isPointTouchingNeckline(pointsPx, point, tolerancePx = 0.2) {
         if (!point || !Array.isArray(pointsPx) || pointsPx.length < 2) return false;
         const necklineY = this._getNecklineYAtX(pointsPx, point.x);
         return Number.isFinite(necklineY) && Math.abs(point.y - necklineY) <= tolerancePx;
