@@ -107,6 +107,14 @@ class OrderManager {
 
         // Trade journal helpers
         this.currentTradeNote = null; // Currently active trade note form
+
+        // Replay behavior on automatic closes (TP/SL).
+        // Default is to continue replay; opt-in to legacy auto-pause via:
+        // localStorage.setItem('replayAutoPauseOnClose', '1')
+        this.autoPauseReplayOnAutoClose = false;
+        try {
+            this.autoPauseReplayOnAutoClose = localStorage.getItem('replayAutoPauseOnClose') === '1';
+        } catch (e) {}
         
         // POSITION SCALING FEATURE
         this.enablePositionScaling = true; // Master toggle for scaling feature
@@ -11209,10 +11217,12 @@ class OrderManager {
         // Continue tracking MFE/MAE for closed positions
         this.updateMfeMaeTracking(currentCandle, high, low);
         
-        // Pause replay if any positions were closed due to TP/SL
+        // Optional legacy behavior: pause replay after auto-close events.
         if (positionsToClose.length > 0 && this.replaySystem && this.replaySystem.isPlaying) {
-            console.log('⏸️ Pausing replay due to TP/SL hit');
-            this.replaySystem.pause();
+            if (this.autoPauseReplayOnAutoClose) {
+                console.log('⏸️ Pausing replay due to TP/SL hit (autoPauseReplayOnAutoClose=1)');
+                this.replaySystem.pause();
+            }
         }
         
         this.equity = this.balance + totalPnL;
