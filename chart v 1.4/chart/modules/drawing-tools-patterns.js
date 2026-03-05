@@ -831,26 +831,39 @@ class HeadShouldersTool extends BaseDrawing {
 
         // Full Head & Shoulders: extend neckline until it touches outer shoulder legs.
         if (pointsPx.length >= 7) {
-            const leftOuterIntersection = this._getInfiniteLineSegmentIntersection(
+            const leftShoulder = pointsPx[1];
+            const leftOuter = pointsPx[0];
+            const rightShoulder = pointsPx[5];
+            const rightOuter = pointsPx[6];
+
+            const rawLeftIntersection = this._getInfiniteLineIntersection(
                 baseNeckline.start,
                 baseNeckline.end,
-                pointsPx[0],
-                pointsPx[1]
+                leftOuter,
+                leftShoulder
             );
 
-            const rightOuterIntersection = this._getInfiniteLineSegmentIntersection(
+            const rawRightIntersection = this._getInfiniteLineIntersection(
                 baseNeckline.start,
                 baseNeckline.end,
-                pointsPx[5],
-                pointsPx[6]
+                rightShoulder,
+                rightOuter
             );
 
-            const leftPoint = leftOuterIntersection || (pointsPx[1]
-                ? { x: pointsPx[1].x, y: this._getNecklineYAtX(pointsPx, pointsPx[1].x) }
+            const leftOuterIntersection = this._isPointOnShoulderRay(rawLeftIntersection, leftShoulder, leftOuter)
+                ? rawLeftIntersection
+                : null;
+
+            const rightOuterIntersection = this._isPointOnShoulderRay(rawRightIntersection, rightShoulder, rightOuter)
+                ? rawRightIntersection
+                : null;
+
+            const leftPoint = leftOuterIntersection || (leftShoulder
+                ? { x: leftShoulder.x, y: this._getNecklineYAtX(pointsPx, leftShoulder.x) }
                 : baseNeckline.start);
 
-            const rightPoint = rightOuterIntersection || (pointsPx[5]
-                ? { x: pointsPx[5].x, y: this._getNecklineYAtX(pointsPx, pointsPx[5].x) }
+            const rightPoint = rightOuterIntersection || (rightShoulder
+                ? { x: rightShoulder.x, y: this._getNecklineYAtX(pointsPx, rightShoulder.x) }
                 : baseNeckline.end);
 
             if (leftPoint && rightPoint) {
@@ -863,25 +876,37 @@ class HeadShouldersTool extends BaseDrawing {
         return baseNeckline;
     }
 
-    _getInfiniteLineSegmentIntersection(lineA, lineB, segA, segB) {
-        if (!lineA || !lineB || !segA || !segB) return null;
+    _getInfiniteLineIntersection(lineA, lineB, lineC, lineD) {
+        if (!lineA || !lineB || !lineC || !lineD) return null;
 
         const r = { x: lineB.x - lineA.x, y: lineB.y - lineA.y };
-        const s = { x: segB.x - segA.x, y: segB.y - segA.y };
+        const s = { x: lineD.x - lineC.x, y: lineD.y - lineC.y };
         const denominator = (r.x * s.y) - (r.y * s.x);
 
         if (Math.abs(denominator) < 0.0001) return null;
 
-        const delta = { x: segA.x - lineA.x, y: segA.y - lineA.y };
+        const delta = { x: lineC.x - lineA.x, y: lineC.y - lineA.y };
         const t = ((delta.x * s.y) - (delta.y * s.x)) / denominator;
-        const u = ((delta.x * r.y) - (delta.y * r.x)) / denominator;
-
-        if (u < -0.0001 || u > 1.0001) return null;
 
         return {
             x: lineA.x + (t * r.x),
             y: lineA.y + (t * r.y)
         };
+    }
+
+    _isPointOnShoulderRay(intersection, shoulderPoint, outerPoint) {
+        if (!intersection || !shoulderPoint || !outerPoint) return false;
+
+        const dirX = outerPoint.x - shoulderPoint.x;
+        const dirY = outerPoint.y - shoulderPoint.y;
+        const dirLenSq = (dirX * dirX) + (dirY * dirY);
+        if (dirLenSq < 0.0001) return false;
+
+        const toX = intersection.x - shoulderPoint.x;
+        const toY = intersection.y - shoulderPoint.y;
+        const dot = (toX * dirX) + (toY * dirY);
+
+        return dot >= -0.0001;
     }
 
     _getNecklineYAtX(pointsPx, x) {
