@@ -722,7 +722,8 @@ class HeadShouldersTool extends BaseDrawing {
                 const runEnd = run[run.length - 1];
                 const startTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runStart);
                 const endTouchesNeckline = this._isPointTouchingNeckline(pointsPx, runEnd);
-                if (!startTouchesNeckline || !endTouchesNeckline) return;
+                // Show fill for each zone that touches/crosses neckline at either side.
+                if (!startTouchesNeckline && !endTouchesNeckline) return;
 
                 const necklineBoundary = run
                     .slice()
