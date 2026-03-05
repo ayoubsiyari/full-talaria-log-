@@ -426,7 +426,7 @@ class Chart {
             // Settings panel theme
             settingsPanelAccentColor: '#2962ff',
             settingsPanelBgColor: '#050028',
-            settingsPanelSidebarBgColor: '#04001f',
+            settingsPanelSidebarBgColor: '#050028',
             
             // Volume
             volumeUpColor: 'rgba(8, 153, 129, 0.5)',
@@ -2872,7 +2872,7 @@ class Chart {
         if (typeof this.chartSettings.unifiedBarColor === 'undefined') this.chartSettings.unifiedBarColor = this.chartSettings.bodyUpColor || '#089981';
         if (typeof this.chartSettings.settingsPanelAccentColor === 'undefined') this.chartSettings.settingsPanelAccentColor = '#2962ff';
         if (typeof this.chartSettings.settingsPanelBgColor === 'undefined') this.chartSettings.settingsPanelBgColor = '#050028';
-        if (typeof this.chartSettings.settingsPanelSidebarBgColor === 'undefined') this.chartSettings.settingsPanelSidebarBgColor = '#04001f';
+        if (typeof this.chartSettings.settingsPanelSidebarBgColor === 'undefined') this.chartSettings.settingsPanelSidebarBgColor = this.chartSettings.settingsPanelBgColor || '#050028';
         if (typeof this.chartSettings.sessionType === 'undefined') this.chartSettings.sessionType = 'Extended trading hours';
         if (typeof this.chartSettings.precision === 'undefined') this.chartSettings.precision = 'Default';
         if (typeof this.chartSettings.timezone === 'undefined') this.chartSettings.timezone = '(UTC-5) Toronto';
@@ -3102,14 +3102,6 @@ class Chart {
             .style('min-width', '150px')
             .text('Panel background');
         this.addColorPreview(panelBgRow, this.chartSettings.settingsPanelBgColor, 'settingsPanelBgColor');
-
-        const panelSidebarBgRow = this.addSettingRow(section);
-        panelSidebarBgRow.append('span')
-            .style('font-size', '15px')
-            .style('color', '#131722')
-            .style('min-width', '150px')
-            .text('Sidebar background');
-        this.addColorPreview(panelSidebarBgRow, this.chartSettings.settingsPanelSidebarBgColor, 'settingsPanelSidebarBgColor');
         
         // DATA MODIFICATION section
         section.append('h3')
@@ -4221,12 +4213,33 @@ class Chart {
             targetChart.chartSettings[settingKey] = settingValue;
         }
 
+        // Unified chrome background: panel + sidebar share one color input
+        if (targetChart.chartSettings) {
+            if (settingKey === 'settingsPanelSidebarBgColor' && settingValue !== null) {
+                targetChart.chartSettings.settingsPanelBgColor = settingValue;
+            } else if (settingKey === 'settingsPanelBgColor' && settingValue !== null) {
+                targetChart.chartSettings.settingsPanelSidebarBgColor = settingValue;
+            }
+
+            const unifiedUiBg = targetChart.chartSettings.settingsPanelBgColor
+                || targetChart.chartSettings.settingsPanelSidebarBgColor
+                || '#050028';
+
+            targetChart.chartSettings.settingsPanelBgColor = unifiedUiBg;
+            targetChart.chartSettings.settingsPanelSidebarBgColor = unifiedUiBg;
+
+            if (this.chartSettings && this.chartSettings !== targetChart.chartSettings) {
+                this.chartSettings.settingsPanelBgColor = unifiedUiBg;
+                this.chartSettings.settingsPanelSidebarBgColor = unifiedUiBg;
+            }
+        }
+
         // Apply settings panel theme CSS variables (shared UI)
         const root = document.documentElement;
         if (root && targetChart.chartSettings) {
             const accentColor = targetChart.chartSettings.settingsPanelAccentColor || '#2962ff';
             const panelBg = targetChart.chartSettings.settingsPanelBgColor || '#050028';
-            const sidebarBg = targetChart.chartSettings.settingsPanelSidebarBgColor || '#04001f';
+            const sidebarBg = panelBg;
             const panelRgb = toRgbArray(panelBg, [5, 0, 40]);
             const sidebarRgb = toRgbArray(sidebarBg, [4, 0, 31]);
             const deepUiBase = [8, 12, 28];
