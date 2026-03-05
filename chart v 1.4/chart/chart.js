@@ -3393,27 +3393,13 @@ class Chart {
         linesRow.append('span')
             .style('font-size', '15px')
             .style('color', '#d1d4dc')
-            .style('min-width', '100px')
+            .style('min-width', '150px')
             .text('Lines');
-
-        const linesControls = linesRow.append('div')
-            .style('display', 'flex')
-            .style('align-items', 'center')
-            .style('gap', '8px')
-            .style('margin-left', 'auto')
-            .style('flex-shrink', '0');
-
-        const axisLineColorControl = this.addColorStylePicker(linesControls, this.chartSettings.scaleLinesColor, 'scaleLinesColor');
-        axisLineColorControl
-            .style('padding', '6px 8px')
-            .style('gap', '6px');
-
-        this.addLineWidthPicker(
-            linesControls,
-            'scaleLineWidth',
-            this.chartSettings.scaleLineWidth || 2,
-            (width) => this.applyChartSettings('scaleLineWidth', width)
-        );
+        this.addColorStylePicker(linesRow, this.chartSettings.scaleLinesColor, 'scaleLinesColor', {
+            widthSetting: 'scaleLineWidth',
+            widthOptions: [1, 2, 3, 4],
+            onWidthChange: (width) => this.applyChartSettings('scaleLineWidth', width)
+        });
         
         // CURSOR LABELS section (crosshair price/time labels)
         section.append('h3')
@@ -3868,7 +3854,18 @@ class Chart {
         return slider;
     }
     
-    addColorStylePicker(container, color, setting) {
+    addColorStylePicker(container, color, setting, options = {}) {
+        const widthSetting = options && options.widthSetting ? options.widthSetting : null;
+        const widthOptions = Array.isArray(options?.widthOptions) && options.widthOptions.length
+            ? options.widthOptions
+            : [1, 2, 3, 4];
+        let currentWidth = widthSetting
+            ? Math.max(1, parseInt(this.chartSettings[widthSetting], 10) || 2)
+            : null;
+        if (widthSetting && !widthOptions.includes(currentWidth)) {
+            currentWidth = widthOptions[0];
+        }
+
         const wrapper = container.append('div')
             .style('display', 'flex')
             .style('align-items', 'center')
@@ -3891,19 +3888,61 @@ class Chart {
             .style('height', '32px')
             .style('background', color)
             .style('border-radius', '4px');
-        
-        const lineStyle = wrapper.append('span')
-            .style('color', '#888')
-            .style('font-size', '18px')
-            .text('----');
+
+        if (widthSetting) {
+            const lineStyle = wrapper.append('div')
+                .style('width', '34px')
+                .style('background', '#888')
+                .style('border-radius', '2px')
+                .style('cursor', 'default');
+
+            const widthBadge = wrapper.append('span')
+                .style('color', '#667085')
+                .style('font-size', '12px')
+                .style('font-weight', '600')
+                .style('min-width', '30px')
+                .style('text-align', 'right')
+                .style('cursor', 'default');
+
+            const renderWidth = () => {
+                lineStyle.style('height', `${currentWidth}px`);
+                widthBadge.text(`${currentWidth}px`);
+            };
+            renderWidth();
+
+            const cycleWidth = (event) => {
+                event.stopPropagation();
+                const idx = widthOptions.indexOf(currentWidth);
+                const nextIdx = (idx + 1) % widthOptions.length;
+                currentWidth = widthOptions[nextIdx];
+                this.chartSettings[widthSetting] = currentWidth;
+                renderWidth();
+
+                if (typeof options.onWidthChange === 'function') {
+                    options.onWidthChange(currentWidth);
+                } else {
+                    this.scheduleRender();
+                }
+            };
+
+            lineStyle.on('click', cycleWidth);
+            widthBadge.on('click', cycleWidth);
+        } else {
+            wrapper.append('span')
+                .style('color', '#888')
+                .style('font-size', '18px')
+                .text('----');
+        }
         
         // Add click handler to open color palette
         if (setting) {
-            wrapper.on('click', () => {
-                this.showColorPalettePopup(wrapper, color, (newColor) => {
+            wrapper.on('click', (event) => {
+                event.stopPropagation();
+                const currentColor = this.chartSettings[setting] || color;
+                this.showColorPalettePopup(wrapper, currentColor, (newColor) => {
                     colorPreview.style('background', newColor);
                     this.chartSettings[setting] = newColor;
-                    this.scheduleRender();
+                    this.applyChartSettings(setting, newColor);
                 });
             });
         }
