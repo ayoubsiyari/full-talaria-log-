@@ -751,9 +751,9 @@ class HeadShouldersTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Draw neckline using the two anchors around the head (fallback to first/last while drawing)
+        // Draw neckline using neck pivots, extended to shoulder-side legs when available.
         if (pointsPx.length >= 2) {
-            const neckline = this._getNecklinePoints(pointsPx);
+            const neckline = this._getRenderedNecklinePoints(pointsPx);
             if (neckline) {
                 this.group.append('line')
                     .attr('x1', neckline.start.x)
@@ -823,6 +823,65 @@ class HeadShouldersTool extends BaseDrawing {
         return first.x <= last.x
             ? { start: first, end: last }
             : { start: last, end: first };
+    }
+
+    _getRenderedNecklinePoints(pointsPx) {
+        const baseNeckline = this._getNecklinePoints(pointsPx);
+        if (!baseNeckline) return null;
+
+        // Full Head & Shoulders: extend neckline until it touches outer shoulder legs.
+        if (pointsPx.length >= 7) {
+            const leftOuterIntersection = this._getInfiniteLineSegmentIntersection(
+                baseNeckline.start,
+                baseNeckline.end,
+                pointsPx[0],
+                pointsPx[1]
+            );
+
+            const rightOuterIntersection = this._getInfiniteLineSegmentIntersection(
+                baseNeckline.start,
+                baseNeckline.end,
+                pointsPx[5],
+                pointsPx[6]
+            );
+
+            const leftPoint = leftOuterIntersection || (pointsPx[1]
+                ? { x: pointsPx[1].x, y: this._getNecklineYAtX(pointsPx, pointsPx[1].x) }
+                : baseNeckline.start);
+
+            const rightPoint = rightOuterIntersection || (pointsPx[5]
+                ? { x: pointsPx[5].x, y: this._getNecklineYAtX(pointsPx, pointsPx[5].x) }
+                : baseNeckline.end);
+
+            if (leftPoint && rightPoint) {
+                return leftPoint.x <= rightPoint.x
+                    ? { start: leftPoint, end: rightPoint }
+                    : { start: rightPoint, end: leftPoint };
+            }
+        }
+
+        return baseNeckline;
+    }
+
+    _getInfiniteLineSegmentIntersection(lineA, lineB, segA, segB) {
+        if (!lineA || !lineB || !segA || !segB) return null;
+
+        const r = { x: lineB.x - lineA.x, y: lineB.y - lineA.y };
+        const s = { x: segB.x - segA.x, y: segB.y - segA.y };
+        const denominator = (r.x * s.y) - (r.y * s.x);
+
+        if (Math.abs(denominator) < 0.0001) return null;
+
+        const delta = { x: segA.x - lineA.x, y: segA.y - lineA.y };
+        const t = ((delta.x * s.y) - (delta.y * s.x)) / denominator;
+        const u = ((delta.x * r.y) - (delta.y * r.x)) / denominator;
+
+        if (u < -0.0001 || u > 1.0001) return null;
+
+        return {
+            x: lineA.x + (t * r.x),
+            y: lineA.y + (t * r.y)
+        };
     }
 
     _getNecklineYAtX(pointsPx, x) {
