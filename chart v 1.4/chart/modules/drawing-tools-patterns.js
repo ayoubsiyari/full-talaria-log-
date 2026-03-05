@@ -711,7 +711,40 @@ class HeadShouldersTool extends BaseDrawing {
             .join(' ');
 
         if (pointsPx.length >= 3) {
-            const fillPath = `${outlinePath} L ${pointsPx[0].x} ${pointsPx[0].y} Z`;
+            const referenceIndex = Math.min(3, pointsPx.length - 1);
+            const referencePoint = pointsPx[referenceIndex];
+            const referenceNecklineY = this._getNecklineYAtX(pointsPx, referencePoint.x);
+            const fillAboveNeckline = referencePoint.y <= referenceNecklineY;
+
+            // Build fill between the zig-zag and the neckline so the shaded area
+            // remains correct even if some anchors are not exactly on the trendline.
+            const upperBoundary = pointsPx.map((p, index) => {
+                const necklineY = this._getNecklineYAtX(pointsPx, p.x);
+                const isNecklineAnchor = index % 2 === 0;
+
+                if (isNecklineAnchor) {
+                    return { x: p.x, y: necklineY };
+                }
+
+                return {
+                    x: p.x,
+                    y: fillAboveNeckline ? Math.min(p.y, necklineY) : Math.max(p.y, necklineY)
+                };
+            });
+
+            const necklineBoundary = pointsPx
+                .slice()
+                .reverse()
+                .map((p) => ({
+                    x: p.x,
+                    y: this._getNecklineYAtX(pointsPx, p.x)
+                }));
+
+            const fillPathPoints = [...upperBoundary, ...necklineBoundary];
+            const fillPath = `${fillPathPoints
+                .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
+                .join(' ')} Z`;
+
             this.group.append('path')
                 .attr('d', fillPath)
                 .attr('fill', this.style.fill)
@@ -780,7 +813,7 @@ class HeadShouldersTool extends BaseDrawing {
     }
 
     _getNecklineYAtX(pointsPx, x) {
-        if (!Array.isArray(pointsPx) || pointsPx.length < 2) return x;
+        if (!Array.isArray(pointsPx) || pointsPx.length < 2) return 0;
 
         const first = pointsPx[0];
         const last = pointsPx[pointsPx.length - 1];
