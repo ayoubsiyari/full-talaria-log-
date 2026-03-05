@@ -162,7 +162,7 @@
         }
         
         .toolbar-drawing-icons .dropdown-arrow:hover {
-            background: #050028;
+            background: var(--sp-bg);
             color: #ffffff;
         }
         
@@ -348,7 +348,7 @@
         .tf-flyout-categories {
             display: flex;
             flex-direction: column;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
             padding: 4px;
@@ -397,7 +397,7 @@
         .tf-flyout-values {
             display: none;
             flex-direction: column;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
             padding: 4px;
@@ -1560,7 +1560,7 @@
         }
         
         .help-modal {
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid #363a45;
             border-radius: 12px;
             width: 90%;
@@ -1815,7 +1815,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 2px 8px;
-            background: #050028;
+            background: var(--sp-bg);
             border-bottom: 1px solid rgba(50, 50, 60, 0.9);
             color: #d1d5db;
             height: 48px;
@@ -2024,7 +2024,7 @@
             left: 0;
             top: 100%;
             margin-top: 8px;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid rgba(50, 50, 60, 0.9);
             border-radius: 8px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -2077,7 +2077,7 @@
             top: calc(100% + 8px);
             right: 0;
             min-width: 220px;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid #363a45;
             border-radius: 8px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -2161,7 +2161,7 @@
             align-items: center;
             gap: 8px;
             padding: 8px 14px;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid #363a45;
             border-radius: 6px;
             color: #ffffff;
@@ -2196,7 +2196,7 @@
             align-items: center;
             gap: 6px;
             padding: 4px;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid #363a45;
             border-radius: 6px;
         }
@@ -3535,7 +3535,7 @@
         .symbol-switcher-dropdown {
             display: none;
             position: fixed;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid rgba(59, 130, 246, 0.3);
             border-radius: 8px;
             min-width: 420px;
@@ -3590,7 +3590,7 @@
         .symbol-switcher-item .symbol-icon {
             width: 28px;
             height: 28px;
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border-radius: 6px;
             display: flex;
             align-items: center;
@@ -4788,7 +4788,7 @@
         }
 
         .compare-modal {
-            background: #050028;
+            background: var(--tv-panel-bg, var(--sp-bg));
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 16px;
             width: 520px;
@@ -15778,16 +15778,19 @@
         }
 
         body:not(.light-mode) {
-            --tv-settings-gradient-bg: #050028;
-            --tv-settings-gradient-bg-overlay: #050028;
-            --tv-panel-bg: #050028;
+            --tv-settings-gradient-bg: var(--sp-bg);
+            --tv-settings-gradient-bg-overlay: var(--sp-bg);
+            --tv-panel-bg: var(--sp-bg);
         }
 
         body:not(.light-mode) .toolbar,
-        body:not(.light-mode) .left-sidebar,
-        body:not(.light-mode) .right-sidebar-icons,
         body:not(.light-mode) .right-sidebar-panel {
-            background: #050028 !important;
+            background: var(--sp-bg) !important;
+        }
+
+        body:not(.light-mode) .left-sidebar,
+        body:not(.light-mode) .right-sidebar-icons {
+            background: var(--sp-sidebar-bg) !important;
         }
 
         body:not(.light-mode) .replay-toolbar::before {
@@ -15795,7 +15798,7 @@
         }
         
         body:not(.light-mode) .right-sidebar-panel {
-            background: none !important;
+            background: var(--sp-bg) !important;
         }
 
         body:not(.light-mode) .unified-right-panel {
@@ -15807,7 +15810,7 @@
         }
 
         body:not(.light-mode) .replay-toolbar {
-            background: #050028 !important;
+            background: var(--sp-bg) !important;
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
             border-top: 1px solid rgba(63, 84, 124, 0.35) !important;
@@ -15823,6 +15826,14 @@
         body:not(.light-mode) #timeframeDropdownMenu,
         body:not(.light-mode) .layout-dropdown,
         body:not(.light-mode) .go-to-menu,
+        body:not(.light-mode) .screenshot-dropdown-menu,
+        body:not(.light-mode) .symbol-switcher-dropdown,
+        body:not(.light-mode) .help-modal,
+        body:not(.light-mode) .compare-modal,
+        body:not(.light-mode) .layout-selector-btn,
+        body:not(.light-mode) .toolbar-icon-group,
+        body:not(.light-mode) .tf-flyout-categories,
+        body:not(.light-mode) .tf-flyout-values,
         body:not(.light-mode) .chart-context-menu,
         body:not(.light-mode) .drawing-style-editor,
         body:not(.light-mode) .tv-color-picker {
@@ -19438,7 +19449,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260305_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260305_TF_PIN_V58"></script>
+         <script src="chart.js?v=20260305_TF_PIN_V59"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260305_TF_PIN_V58"></script>

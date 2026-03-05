@@ -4191,6 +4191,14 @@ class Chart {
             root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
             root.style.setProperty('--sp-bg', panelBg);
             root.style.setProperty('--sp-sidebar-bg', sidebarBg);
+            root.style.setProperty('--tv-panel-bg', panelBg);
+            root.style.setProperty('--tv-settings-gradient-bg', panelBg);
+            root.style.setProperty('--tv-settings-gradient-bg-overlay', panelBg);
+            if (document.body) {
+                document.body.style.setProperty('--tv-panel-bg', panelBg);
+                document.body.style.setProperty('--tv-settings-gradient-bg', panelBg);
+                document.body.style.setProperty('--tv-settings-gradient-bg-overlay', panelBg);
+            }
         }
         
         // Apply background color to target chart
