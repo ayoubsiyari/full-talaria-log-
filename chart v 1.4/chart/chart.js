@@ -964,6 +964,11 @@ class Chart {
         console.log('🎨 Chart rendered');
         
         // Auto-enter replay mode with first candle
+        if (!this.replaySystem) {
+            console.warn('⚠️ Replay system missing at session start, trying lazy init...');
+            this.initReplaySystem();
+        }
+
         if (this.replaySystem) {
             console.log('⏳ Entering replay mode in 1 second...');
             setTimeout(() => {
@@ -1219,8 +1224,11 @@ class Chart {
      */
     initReplaySystem() {
         try {
-            if (typeof ReplaySystem !== 'undefined') {
-                this.replaySystem = new ReplaySystem(this);
+            const replaySystemCtor = (typeof ReplaySystem !== 'undefined' && ReplaySystem)
+                || (typeof window !== 'undefined' && typeof window.ReplaySystem === 'function' ? window.ReplaySystem : null);
+
+            if (typeof replaySystemCtor === 'function') {
+                this.replaySystem = new replaySystemCtor(this);
                 console.log('✅ Replay System initialized successfully');
                 
                 // Initialize Order Manager for backtesting
@@ -1238,6 +1246,8 @@ class Chart {
                         } catch (e) {}
                     });
                 }
+            } else {
+                console.error('❌ ReplaySystem constructor not found (global scope)');
             }
         } catch (error) {
             console.error('❌ Failed to initialize Replay System:', error);

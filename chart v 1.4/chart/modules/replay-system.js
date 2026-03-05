@@ -3999,6 +3999,10 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = ReplaySystem;
 }
 
+if (typeof window !== 'undefined') {
+    window.ReplaySystem = ReplaySystem;
+}
+
 // Debug function for console
 window.debugReplay = function() {
     console.log('=== REPLAY SYSTEM DEBUG ===');
