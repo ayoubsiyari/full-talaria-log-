@@ -848,79 +848,53 @@ class HeadShouldersTool extends BaseDrawing {
             return null;
         }
 
-        let renderedNeckline = baseNeckline;
+        // Keep the original extended look by default.
+        let renderedStartX = baseNeckline.start.x;
+        let renderedEndX = baseNeckline.end.x;
 
-        // Full Head & Shoulders: extend neckline until it touches outer shoulder legs.
-        if (pointsPx.length >= 7) {
-            const leftShoulder = pointsPx[1];
-            const leftOuter = pointsPx[0];
-            const rightShoulder = pointsPx[5];
-            const rightOuter = pointsPx[6];
-
-            const rawLeftIntersection = this._getInfiniteLineIntersection(
-                baseNeckline.start,
-                baseNeckline.end,
-                leftOuter,
-                leftShoulder
-            );
-
-            const rawRightIntersection = this._getInfiniteLineIntersection(
-                baseNeckline.start,
-                baseNeckline.end,
-                rightShoulder,
-                rightOuter
-            );
-
-            const leftOuterIntersection = this._isPointOnShoulderRay(rawLeftIntersection, leftShoulder, leftOuter)
-                ? rawLeftIntersection
-                : null;
-
-            const rightOuterIntersection = this._isPointOnShoulderRay(rawRightIntersection, rightShoulder, rightOuter)
-                ? rawRightIntersection
-                : null;
-
-            const leftPoint = leftOuterIntersection || (leftShoulder
-                ? { x: leftShoulder.x, y: this._getNecklineYAtX(pointsPx, leftShoulder.x) }
-                : baseNeckline.start);
-
-            const rightPoint = rightOuterIntersection || (rightShoulder
-                ? { x: rightShoulder.x, y: this._getNecklineYAtX(pointsPx, rightShoulder.x) }
-                : baseNeckline.end);
-
-            if (leftPoint && rightPoint) {
-                renderedNeckline = leftPoint.x <= rightPoint.x
-                    ? { start: leftPoint, end: rightPoint }
-                    : { start: rightPoint, end: leftPoint };
-            }
-        }
-
-        // Hide neckline outside visible chart area without extending beyond touch/cross endpoints.
         const viewportRange = this._getViewportXRange(scales, pointsPx);
-        if (viewportRange && renderedNeckline) {
+        if (viewportRange) {
             const [minX, maxX] = viewportRange;
             if (Number.isFinite(minX) && Number.isFinite(maxX) && Math.abs(maxX - minX) > 0.01) {
-                const ordered = renderedNeckline.start.x <= renderedNeckline.end.x
-                    ? renderedNeckline
-                    : { start: renderedNeckline.end, end: renderedNeckline.start };
-
-                if (ordered.end.x < minX || ordered.start.x > maxX) {
-                    return null;
-                }
-
-                const clippedStartX = Math.max(minX, ordered.start.x);
-                const clippedEndX = Math.min(maxX, ordered.end.x);
-                if ((clippedEndX - clippedStartX) <= 0.01) {
-                    return null;
-                }
-
-                return {
-                    start: { x: clippedStartX, y: this._getNecklineYAtX(pointsPx, clippedStartX) },
-                    end: { x: clippedEndX, y: this._getNecklineYAtX(pointsPx, clippedEndX) }
-                };
+                renderedStartX = minX;
+                renderedEndX = maxX;
             }
         }
 
-        return renderedNeckline;
+        // Hide only the rest of neckline after an outer shoulder leg touches/crosses it.
+        if (pointsPx.length >= 7) {
+            const leftHit = this._getShoulderLegNecklineHit(pointsPx, pointsPx[0], pointsPx[1]);
+            const rightHit = this._getShoulderLegNecklineHit(pointsPx, pointsPx[5], pointsPx[6]);
+
+            if (leftHit && Number.isFinite(leftHit.x)) {
+                renderedStartX = Math.max(renderedStartX, leftHit.x);
+            }
+
+            if (rightHit && Number.isFinite(rightHit.x)) {
+                renderedEndX = Math.min(renderedEndX, rightHit.x);
+            }
+        }
+
+        if (!Number.isFinite(renderedStartX) || !Number.isFinite(renderedEndX)) {
+            return null;
+        }
+
+        let startX = renderedStartX;
+        let endX = renderedEndX;
+        if (startX > endX) {
+            const temp = startX;
+            startX = endX;
+            endX = temp;
+        }
+
+        if ((endX - startX) <= 0.01) {
+            return null;
+        }
+
+        return {
+            start: { x: startX, y: this._getNecklineYAtX(pointsPx, startX) },
+            end: { x: endX, y: this._getNecklineYAtX(pointsPx, endX) }
+        };
     }
 
     _getViewportXRange(scales, pointsPx) {
@@ -1037,6 +1011,27 @@ class HeadShouldersTool extends BaseDrawing {
         }
 
         return (dA < 0 && dB > 0) || (dA > 0 && dB < 0);
+    }
+
+    _getShoulderLegNecklineHit(pointsPx, a, b, tolerancePx = 0.2) {
+        if (!a || !b || !Array.isArray(pointsPx) || pointsPx.length < 2) return null;
+
+        const dA = a.y - this._getNecklineYAtX(pointsPx, a.x);
+        const dB = b.y - this._getNecklineYAtX(pointsPx, b.x);
+        if (!Number.isFinite(dA) || !Number.isFinite(dB)) return null;
+
+        if (Math.abs(dA) <= tolerancePx) {
+            return { x: a.x, y: this._getNecklineYAtX(pointsPx, a.x) };
+        }
+
+        if (Math.abs(dB) <= tolerancePx) {
+            return { x: b.x, y: this._getNecklineYAtX(pointsPx, b.x) };
+        }
+
+        const crosses = (dA < 0 && dB > 0) || (dA > 0 && dB < 0);
+        if (!crosses) return null;
+
+        return this._getNecklineSegmentIntersection(pointsPx, a, b, dA, dB);
     }
 
     _isPointTouchingNeckline(pointsPx, point, tolerancePx = 0.2) {
