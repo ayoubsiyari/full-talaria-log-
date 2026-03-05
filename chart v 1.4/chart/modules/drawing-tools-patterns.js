@@ -751,8 +751,8 @@ class HeadShouldersTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Show neckline only once head point exists, then keep it extended style.
-        if (pointsPx.length >= 4) {
+        // Show neckline only after point 4 exists (right neckline pivot).
+        if (pointsPx.length >= 5) {
             const neckline = this._getRenderedNecklinePoints(pointsPx, scales);
             if (neckline) {
                 this.group.append('line')
@@ -829,8 +829,8 @@ class HeadShouldersTool extends BaseDrawing {
         const baseNeckline = this._getNecklinePoints(pointsPx);
         if (!baseNeckline) return null;
 
-        // Avoid showing neckline too early while only shoulder setup points are being placed.
-        if (!Array.isArray(pointsPx) || pointsPx.length < 4) {
+        // Avoid showing neckline too early; wait until point 4 is placed.
+        if (!Array.isArray(pointsPx) || pointsPx.length < 5) {
             return null;
         }
 
