@@ -643,17 +643,15 @@ class CypherPatternTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            if (this.labels[i]) {
-                this.group.append('text')
-                    .attr('x', getX(p))
-                    .attr('y', getY(p) - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', '12px')
-                    .attr('font-weight', 'bold')
-                    .style('pointer-events', 'none')
-                    .text(this.labels[i]);
-            }
+            this.group.append('text')
+                .attr('x', getX(p))
+                .attr('y', getY(p) - 12)
+                .attr('text-anchor', 'middle')
+                .attr('fill', this.style.stroke)
+                .attr('font-size', '12px')
+                .attr('font-weight', 'bold')
+                .style('pointer-events', 'none')
+                .text(this.labels[i]);
         });
 
         this.createHandles(this.group, scales);
@@ -798,17 +796,15 @@ class ABCDPatternTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            if (this.labels[i]) {
-                this.group.append('text')
-                    .attr('x', getX(p))
-                    .attr('y', getY(p) - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', '12px')
-                    .attr('font-weight', 'bold')
-                    .style('pointer-events', 'none')
-                    .text(this.labels[i]);
-            }
+            this.group.append('text')
+                .attr('x', getX(p))
+                .attr('y', getY(p) - 12)
+                .attr('text-anchor', 'middle')
+                .attr('fill', this.style.stroke)
+                .attr('font-size', '12px')
+                .attr('font-weight', 'bold')
+                .style('pointer-events', 'none')
+                .text(this.labels[i]);
         });
 
         this.createHandles(this.group, scales);
@@ -988,6 +984,92 @@ class ThreeDrivesTool extends BaseDrawing {
     }
 }
 
+function getWaveLabelOffset(points, index, getX, getY, distance = 16) {
+    const currentPoint = points[index];
+    if (!currentPoint) {
+        return { dx: 0, dy: -distance };
+    }
+
+    const current = { x: getX(currentPoint), y: getY(currentPoint) };
+    const prevPoint = index > 0 ? points[index - 1] : null;
+    const nextPoint = index < points.length - 1 ? points[index + 1] : null;
+
+    const toScreen = (point) => ({ x: getX(point), y: getY(point) });
+    const prev = prevPoint ? toScreen(prevPoint) : null;
+    const next = nextPoint ? toScreen(nextPoint) : null;
+
+    let vx = 0;
+    let vy = -1;
+
+    if (prev && next) {
+        const midX = (prev.x + next.x) / 2;
+        const midY = (prev.y + next.y) / 2;
+        vx = current.x - midX;
+        vy = current.y - midY;
+
+        if (Math.abs(vx) < 0.01 && Math.abs(vy) < 0.01) {
+            const tx = next.x - prev.x;
+            const ty = next.y - prev.y;
+            vx = -ty;
+            vy = tx;
+        }
+    } else if (next) {
+        const sx = next.x - current.x;
+        const sy = next.y - current.y;
+        vx = -sy;
+        vy = sx;
+    } else if (prev) {
+        const sx = current.x - prev.x;
+        const sy = current.y - prev.y;
+        vx = -sy;
+        vy = sx;
+    }
+
+    const length = Math.hypot(vx, vy);
+    if (!length || !Number.isFinite(length)) {
+        return { dx: 0, dy: -distance };
+    }
+
+    vx /= length;
+    vy /= length;
+
+    // Keep some vertical clearance so labels don't sit on sloped line segments.
+    if (Math.abs(vy) < 0.35) {
+        vy = vy < 0 ? -0.35 : 0.35;
+        const xSign = vx < 0 ? -1 : 1;
+        vx = xSign * Math.sqrt(1 - (vy * vy));
+    }
+
+    return {
+        dx: vx * distance,
+        dy: vy * distance
+    };
+}
+
+function appendWaveLabel(group, points, index, label, getX, getY, style, fontSize = '12px') {
+    if (!label) return;
+
+    const point = points[index];
+    if (!point) return;
+
+    const baseX = getX(point);
+    const baseY = getY(point);
+    if (!Number.isFinite(baseX) || !Number.isFinite(baseY)) return;
+
+    const offset = getWaveLabelOffset(points, index, getX, getY, 16);
+
+    group.append('text')
+        .attr('x', baseX + offset.dx)
+        .attr('y', baseY + offset.dy)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('fill', style.stroke)
+        .attr('font-size', fontSize)
+        .attr('font-weight', 'bold')
+        .style('pointer-events', 'none')
+        .text(label);
+}
+
 // ============================================================================
 // Elliott Impulse Wave Tool (12345)
 // ============================================================================
@@ -1027,15 +1109,7 @@ class ElliottImpulseTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            this.group.append('text')
-                .attr('x', getX(p))
-                .attr('y', getY(p) - 12)
-                .attr('text-anchor', 'middle')
-                .attr('fill', this.style.stroke)
-                .attr('font-size', '12px')
-                .attr('font-weight', 'bold')
-                .style('pointer-events', 'none')
-                .text(this.labels[i] || '');
+            appendWaveLabel(this.group, this.points, i, this.labels[i] || '', getX, getY, this.style, '12px');
         });
 
         this.createHandles(this.group, scales);
@@ -1097,17 +1171,7 @@ class ElliottCorrectionTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            if (this.labels[i]) {
-                this.group.append('text')
-                    .attr('x', getX(p))
-                    .attr('y', getY(p) - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', '12px')
-                    .attr('font-weight', 'bold')
-                    .style('pointer-events', 'none')
-                    .text(this.labels[i]);
-            }
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
         });
 
         this.createHandles(this.group, scales);
@@ -1169,17 +1233,7 @@ class ElliottTriangleTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            if (this.labels[i]) {
-                this.group.append('text')
-                    .attr('x', getX(p))
-                    .attr('y', getY(p) - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', '12px')
-                    .attr('font-weight', 'bold')
-                    .style('pointer-events', 'none')
-                    .text(this.labels[i]);
-            }
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
         });
 
         this.createHandles(this.group, scales);
@@ -1241,17 +1295,7 @@ class ElliottDoubleComboTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            if (this.labels[i]) {
-                this.group.append('text')
-                    .attr('x', getX(p))
-                    .attr('y', getY(p) - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', '12px')
-                    .attr('font-weight', 'bold')
-                    .style('pointer-events', 'none')
-                    .text(this.labels[i]);
-            }
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
         });
 
         this.createHandles(this.group, scales);
@@ -1313,17 +1357,7 @@ class ElliottTripleComboTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            if (this.labels[i]) {
-                this.group.append('text')
-                    .attr('x', getX(p))
-                    .attr('y', getY(p) - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', '12px')
-                    .attr('font-weight', 'bold')
-                    .style('pointer-events', 'none')
-                    .text(this.labels[i]);
-            }
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
         });
 
         this.createHandles(this.group, scales);
