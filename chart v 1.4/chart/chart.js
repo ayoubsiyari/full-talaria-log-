@@ -416,10 +416,17 @@ class Chart {
             borderDownColor: '#f23645',    // Border for down candles
             wickUpColor: '#089981',        // Wick for up candles
             wickDownColor: '#f23645',      // Wick for down candles
+            unifiedBarColorEnabled: false,
+            unifiedBarColor: '#089981',
             showCandleBody: true,
             showCandleBorders: true,
             showCandleWick: true,
             colorBasedOnPreviousClose: false,
+
+            // Settings panel theme
+            settingsPanelAccentColor: '#2962ff',
+            settingsPanelBgColor: '#050028',
+            settingsPanelSidebarBgColor: '#04001f',
             
             // Volume
             volumeUpColor: 'rgba(8, 153, 129, 0.5)',
@@ -2861,6 +2868,11 @@ class Chart {
         if (typeof this.chartSettings.showCandleBody === 'undefined') this.chartSettings.showCandleBody = true;
         if (typeof this.chartSettings.showCandleBorders === 'undefined') this.chartSettings.showCandleBorders = true;
         if (typeof this.chartSettings.showCandleWick === 'undefined') this.chartSettings.showCandleWick = true;
+        if (typeof this.chartSettings.unifiedBarColorEnabled === 'undefined') this.chartSettings.unifiedBarColorEnabled = false;
+        if (typeof this.chartSettings.unifiedBarColor === 'undefined') this.chartSettings.unifiedBarColor = this.chartSettings.bodyUpColor || '#089981';
+        if (typeof this.chartSettings.settingsPanelAccentColor === 'undefined') this.chartSettings.settingsPanelAccentColor = '#2962ff';
+        if (typeof this.chartSettings.settingsPanelBgColor === 'undefined') this.chartSettings.settingsPanelBgColor = '#050028';
+        if (typeof this.chartSettings.settingsPanelSidebarBgColor === 'undefined') this.chartSettings.settingsPanelSidebarBgColor = '#04001f';
         if (typeof this.chartSettings.sessionType === 'undefined') this.chartSettings.sessionType = 'Extended trading hours';
         if (typeof this.chartSettings.precision === 'undefined') this.chartSettings.precision = 'Default';
         if (typeof this.chartSettings.timezone === 'undefined') this.chartSettings.timezone = '(UTC-5) Toronto';
@@ -2944,8 +2956,17 @@ class Chart {
             candles.forEach((c, i) => {
                 const x = 18 + i * 21;
                 const bullish = c.c < c.o;
-                const bodyColor = bullish ? (colors.bodyUpColor || '#26a69a') : (colors.bodyDownColor || '#ef5350');
-                const wickColor = bullish ? (colors.wickUpColor || '#26a69a') : (colors.wickDownColor || '#ef5350');
+                const useUnifiedBarColor = !!colors.unifiedBarColorEnabled;
+                const unifiedBarColor = colors.unifiedBarColor || colors.bodyUpColor || '#26a69a';
+                const bodyColor = useUnifiedBarColor
+                    ? unifiedBarColor
+                    : (bullish ? (colors.bodyUpColor || '#26a69a') : (colors.bodyDownColor || '#ef5350'));
+                const wickColor = useUnifiedBarColor
+                    ? unifiedBarColor
+                    : (bullish ? (colors.wickUpColor || '#26a69a') : (colors.wickDownColor || '#ef5350'));
+                const borderColor = useUnifiedBarColor
+                    ? unifiedBarColor
+                    : (bullish ? (colors.borderUpColor || bodyColor) : (colors.borderDownColor || bodyColor));
                 
                 // Wick
                 previewCtx.strokeStyle = wickColor;
@@ -2962,7 +2983,7 @@ class Chart {
                 previewCtx.fillRect(x - 6, bodyTop, 12, bodyHeight);
                 
                 // Border
-                previewCtx.strokeStyle = bullish ? (colors.borderUpColor || bodyColor) : (colors.borderDownColor || bodyColor);
+                previewCtx.strokeStyle = borderColor;
                 previewCtx.strokeRect(x - 6, bodyTop, 12, bodyHeight);
             });
             
@@ -3045,6 +3066,50 @@ class Chart {
         const wickColors = wickRow.append('div').style('display', 'flex').style('gap', '8px');
         this.addColorPreview(wickColors, this.chartSettings.wickUpColor, 'wickUpColor');
         this.addColorPreview(wickColors, this.chartSettings.wickDownColor, 'wickDownColor');
+
+        // Unified Bar Color
+        const unifiedColorRow = this.addSettingRow(section);
+        const { input: unifiedColorInput } = this.addCheckbox(unifiedColorRow, 'Unified bar color', this.chartSettings.unifiedBarColorEnabled);
+        unifiedColorInput.on('change', () => {
+            this.chartSettings.unifiedBarColorEnabled = unifiedColorInput.property('checked');
+            this.applyChartSettings('unifiedBarColorEnabled', this.chartSettings.unifiedBarColorEnabled);
+            if (typeof this._updateThemePreview === 'function') this._updateThemePreview(this.chartSettings);
+        });
+        this.addColorPreview(unifiedColorRow, this.chartSettings.unifiedBarColor, 'unifiedBarColor');
+
+        // SETTINGS PANEL THEME section
+        section.append('h3')
+            .style('margin', '32px 0 20px 0')
+            .style('font-size', '11px')
+            .style('font-weight', '600')
+            .style('color', '#888')
+            .style('text-transform', 'uppercase')
+            .style('letter-spacing', '0.5px')
+            .text('SETTINGS PANEL THEME');
+
+        const panelAccentRow = this.addSettingRow(section);
+        panelAccentRow.append('span')
+            .style('font-size', '15px')
+            .style('color', '#131722')
+            .style('min-width', '150px')
+            .text('Accent');
+        this.addColorPreview(panelAccentRow, this.chartSettings.settingsPanelAccentColor, 'settingsPanelAccentColor');
+
+        const panelBgRow = this.addSettingRow(section);
+        panelBgRow.append('span')
+            .style('font-size', '15px')
+            .style('color', '#131722')
+            .style('min-width', '150px')
+            .text('Panel background');
+        this.addColorPreview(panelBgRow, this.chartSettings.settingsPanelBgColor, 'settingsPanelBgColor');
+
+        const panelSidebarBgRow = this.addSettingRow(section);
+        panelSidebarBgRow.append('span')
+            .style('font-size', '15px')
+            .style('color', '#131722')
+            .style('min-width', '150px')
+            .text('Sidebar background');
+        this.addColorPreview(panelSidebarBgRow, this.chartSettings.settingsPanelSidebarBgColor, 'settingsPanelSidebarBgColor');
         
         // DATA MODIFICATION section
         section.append('h3')
@@ -3495,6 +3560,9 @@ class Chart {
                     self.chartSettings[setting] = newColor;
                     // Apply to target chart (panel that opened settings)
                     self.applyChartSettings(setting, newColor);
+                    if (typeof self._updateThemePreview === 'function' && self._themePreviewChartSettings) {
+                        self._updateThemePreview(self._themePreviewChartSettings);
+                    }
                 });
             });
     }
@@ -4081,10 +4149,48 @@ class Chart {
     applyChartSettings(settingKey = null, settingValue = null) {
         // Determine which chart to apply settings to
         const targetChart = this._settingsSourceChart || this;
+
+        const toRgbChannels = (color, fallback = '41, 98, 255') => {
+            if (!color) return fallback;
+            const value = String(color).trim();
+
+            const rgbMatch = value.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+            if (rgbMatch) {
+                return `${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}`;
+            }
+
+            const hex = value.startsWith('#') ? value.slice(1) : value;
+            if (/^[0-9a-f]{3}$/i.test(hex)) {
+                const r = parseInt(hex[0] + hex[0], 16);
+                const g = parseInt(hex[1] + hex[1], 16);
+                const b = parseInt(hex[2] + hex[2], 16);
+                return `${r}, ${g}, ${b}`;
+            }
+            if (/^[0-9a-f]{6}$/i.test(hex)) {
+                const r = parseInt(hex.slice(0, 2), 16);
+                const g = parseInt(hex.slice(2, 4), 16);
+                const b = parseInt(hex.slice(4, 6), 16);
+                return `${r}, ${g}, ${b}`;
+            }
+
+            return fallback;
+        };
         
         // If a specific setting was changed, only apply that to the target chart
         if (settingKey && settingValue !== null && targetChart !== this) {
             targetChart.chartSettings[settingKey] = settingValue;
+        }
+
+        // Apply settings panel theme CSS variables (shared UI)
+        const root = document.documentElement;
+        if (root && targetChart.chartSettings) {
+            const accentColor = targetChart.chartSettings.settingsPanelAccentColor || '#2962ff';
+            const panelBg = targetChart.chartSettings.settingsPanelBgColor || '#050028';
+            const sidebarBg = targetChart.chartSettings.settingsPanelSidebarBgColor || '#04001f';
+            root.style.setProperty('--sp-accent', accentColor);
+            root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
+            root.style.setProperty('--sp-bg', panelBg);
+            root.style.setProperty('--sp-sidebar-bg', sidebarBg);
         }
         
         // Apply background color to target chart
@@ -4265,6 +4371,11 @@ class Chart {
             'borderDownColor',
             'wickUpColor',
             'wickDownColor',
+            'unifiedBarColorEnabled',
+            'unifiedBarColor',
+            'settingsPanelAccentColor',
+            'settingsPanelBgColor',
+            'settingsPanelSidebarBgColor',
             'volumeUpColor',
             'volumeDownColor'
         ];
@@ -10353,6 +10464,8 @@ class Chart {
     drawBarsChart(visible) {
         const m = this.margin;
         const tickWidth = Math.max(3, this.candleWidth / 3);
+        const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
+        const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
         
         visible.forEach((d, i) => {
             const idx = this.visibleStartIndex + i;
@@ -10362,7 +10475,9 @@ class Chart {
             
             const [yo, yc, yh, yl] = [this.yScale(d.o), this.yScale(d.c), this.yScale(d.h), this.yScale(d.l)];
             const isUp = d.c >= d.o;
-            const color = isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor;
+            const color = useUnifiedBarColor
+                ? unifiedBarColor
+                : (isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor);
             
             this.ctx.strokeStyle = color;
             this.ctx.lineWidth = Math.max(1, this.candleWidth / 8);
@@ -10394,6 +10509,8 @@ class Chart {
         const m = this.margin;
         let drawn = 0;
         let skipped = 0;
+        const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
+        const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
         
         // Use getCandleSpacing for consistency
         const candleSpacing = this.getCandleSpacing();
@@ -10418,9 +10535,15 @@ class Chart {
             const isUp = d.c >= d.o;
             
             // Get separate colors for wick, body, and border
-            const wickColor = isUp ? this.chartSettings.wickUpColor : this.chartSettings.wickDownColor;
-            const bodyColor = isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor;
-            const borderColor = isUp ? this.chartSettings.borderUpColor : this.chartSettings.borderDownColor;
+            const wickColor = useUnifiedBarColor
+                ? unifiedBarColor
+                : (isUp ? this.chartSettings.wickUpColor : this.chartSettings.wickDownColor);
+            const bodyColor = useUnifiedBarColor
+                ? unifiedBarColor
+                : (isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor);
+            const borderColor = useUnifiedBarColor
+                ? unifiedBarColor
+                : (isUp ? this.chartSettings.borderUpColor : this.chartSettings.borderDownColor);
 
             // Calculate wick width - always crisp
             const wickWidth = Math.max(1, Math.min(2, Math.ceil(this.candleWidth / 8)));
