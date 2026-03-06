@@ -5125,10 +5125,21 @@ class DrawingToolsManager {
                     const yScale = this.chart && this.chart.yScale ? this.chart.yScale : null;
 
                     if (anchor && xScale && yScale) {
+                        const anchorIndex = Math.round(anchor.x);
                         const anchorX = (this.chart && typeof this.chart.dataIndexToPixel === 'function')
-                            ? this.chart.dataIndexToPixel(anchor.x)
-                            : xScale(anchor.x);
-                        const anchorY = yScale(anchor.y);
+                            ? this.chart.dataIndexToPixel(anchorIndex)
+                            : xScale(anchorIndex);
+
+                        let anchorYValue = anchor.y;
+                        const cachedVwapPoints = drawing._cache && Array.isArray(drawing._cache.vwapPoints)
+                            ? drawing._cache.vwapPoints
+                            : null;
+                        const hasMatchingCache = drawing._cache && drawing._cache.anchorIndex === anchorIndex;
+                        if (hasMatchingCache && cachedVwapPoints && cachedVwapPoints.length > 0 && Number.isFinite(cachedVwapPoints[0].vwap)) {
+                            anchorYValue = cachedVwapPoints[0].vwap;
+                        }
+
+                        const anchorY = yScale(anchorYValue);
 
                         if (Number.isFinite(anchorX) && Number.isFinite(anchorY)) {
                             const dx = mouseX - anchorX;

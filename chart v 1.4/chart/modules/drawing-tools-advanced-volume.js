@@ -343,9 +343,11 @@ class AnchoredVWAPTool extends BaseDrawing {
             .attr('class', 'drawing drawing-anchored-vwap')
             .attr('data-id', this.id);
 
+        const anchorIndex = Math.round(this.points[0].x);
         const anchorX = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(this.points[0].x) : scales.xScale(this.points[0].x);
-        const anchorY = scales.yScale(this.points[0].y);
+            scales.chart.dataIndexToPixel(anchorIndex) : scales.xScale(anchorIndex);
+        const fallbackAnchorY = scales.yScale(this.points[0].y);
+        let anchorY = fallbackAnchorY;
 
         // Determine data source
         let chartData = [];
@@ -358,7 +360,6 @@ class AnchoredVWAPTool extends BaseDrawing {
             dataVersion = window.chart.dataVersion || window.chart.data?.length;
         }
         
-        const anchorIndex = Math.round(this.points[0].x);
         const chartWidth = scales.chart ? scales.chart.width : 1000;
 
         // If no data, draw a simple horizontal line from anchor point
@@ -451,6 +452,39 @@ class AnchoredVWAPTool extends BaseDrawing {
             this._cache.bands = { stdDev };
         }
 
+        // Keep the control point centered on the VWAP start point (TradingView-like anchor behavior).
+        if (vwapPoints.length > 0 && Number.isFinite(vwapPoints[0].vwap)) {
+            const vwapAnchorY = scales.yScale(vwapPoints[0].vwap);
+            if (Number.isFinite(vwapAnchorY)) {
+                anchorY = vwapAnchorY;
+            }
+        }
+
+        // Show anchor-time guide while selected/moving.
+        if (this.selected && scales.yScale && typeof scales.yScale.domain === 'function') {
+            const yDomain = scales.yScale.domain();
+            if (Array.isArray(yDomain) && yDomain.length >= 2) {
+                const yLow = Math.min(yDomain[0], yDomain[yDomain.length - 1]);
+                const yHigh = Math.max(yDomain[0], yDomain[yDomain.length - 1]);
+                const topY = scales.yScale(yHigh);
+                const bottomY = scales.yScale(yLow);
+
+                if (Number.isFinite(topY) && Number.isFinite(bottomY)) {
+                    this.group.append('line')
+                        .attr('class', 'anchored-vwap-anchor-guide')
+                        .attr('x1', anchorX)
+                        .attr('y1', topY)
+                        .attr('x2', anchorX)
+                        .attr('y2', bottomY)
+                        .attr('stroke', this.style.stroke)
+                        .attr('stroke-width', 1)
+                        .attr('stroke-dasharray', '3,3')
+                        .attr('opacity', 0.5)
+                        .style('pointer-events', 'none');
+                }
+            }
+        }
+
         // Anchor point (TradingView-like: this is the only control target)
         this.group.append('circle')
             .attr('class', 'anchored-vwap-anchor-hit shape-border-hit')
@@ -474,6 +508,16 @@ class AnchoredVWAPTool extends BaseDrawing {
             .attr('opacity', this.style.opacity)
             .style('pointer-events', 'all')
             .style('cursor', 'move');
+
+        this.group.append('circle')
+            .attr('class', 'anchored-vwap-anchor-center')
+            .attr('cx', anchorX)
+            .attr('cy', anchorY)
+            .attr('r', 2.5)
+            .attr('fill', '#2962FF')
+            .attr('stroke', '#ffffff')
+            .attr('stroke-width', 1)
+            .style('pointer-events', 'none');
 
         const buildPoints = (transformFn = (value) => value) => {
             return vwapPoints.map(p => {
@@ -528,6 +572,9 @@ class AnchoredVWAPTool extends BaseDrawing {
                     .style('pointer-events', 'none');
             }
         }
+
+        this.group.selectAll('.anchored-vwap-anchor-hit, .anchored-vwap-anchor').raise();
+        this.group.selectAll('.anchored-vwap-anchor-center').raise();
 
         // Label
         this.group.append('text')
