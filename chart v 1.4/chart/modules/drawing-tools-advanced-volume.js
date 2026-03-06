@@ -1267,25 +1267,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         }
 
         const latestDataIndex = chartData.length - 1;
-        const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function'
-            ? scales.xScale.range()
-            : [];
-        const screenRightX = Array.isArray(xScaleRange) && xScaleRange.length > 0
-            ? Math.max(...xScaleRange)
-            : NaN;
-
-        const visibleEndFromMethod = scales.chart && typeof scales.chart.getVisibleEndIndex === 'function'
-            ? Number(scales.chart.getVisibleEndIndex())
-            : NaN;
-        const visibleEndFromPixel = scales.chart && typeof scales.chart.pixelToDataIndex === 'function' && Number.isFinite(screenRightX)
-            ? Number(scales.chart.pixelToDataIndex(screenRightX))
-            : NaN;
-        const preferredEndIndex = Number.isFinite(visibleEndFromMethod)
-            ? visibleEndFromMethod
-            : visibleEndFromPixel;
-        const endIndex = Number.isFinite(preferredEndIndex)
-            ? Math.max(0, Math.min(latestDataIndex, Math.round(preferredEndIndex)))
-            : latestDataIndex;
+        const endIndex = latestDataIndex;
         const anchorIndex = Math.max(0, Math.min(latestDataIndex, Math.round(this.points[0].x)));
         this.points[0].x = anchorIndex;
 
@@ -1304,7 +1286,6 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         proxy.locked = this.locked;
         proxy.meta = this.meta;
         proxy.fixedProfileSide = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
-        proxy.fixedScreenRightX = Number.isFinite(screenRightX) ? screenRightX : undefined;
         proxy.render(container, scales);
 
         this.group = proxy.group;
