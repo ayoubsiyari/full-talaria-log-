@@ -10776,6 +10776,11 @@
             border-radius: 6px !important;
         }
 
+        #patterns-dropdown.tool-dropdown-grid {
+            min-width: 360px !important;
+            max-width: 440px !important;
+        }
+
         .tool-dropdown-section {
             margin-bottom: 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -10930,6 +10935,12 @@
             order: 2 !important;
             letter-spacing: 0.2px;
             text-align: left !important;
+        }
+
+        #patterns-dropdown.tool-dropdown-grid .tool-btn::after {
+            max-width: none;
+            overflow: visible;
+            text-overflow: clip;
         }
 
         .tool-dropdown-grid .tool-btn:hover::after {
