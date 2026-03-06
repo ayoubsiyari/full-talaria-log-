@@ -642,6 +642,7 @@ class DrawingToolsManager {
             const drawing = drawingsAtPoint[0];
             if (!drawing || drawing.locked) return false;
 
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
             if (typeof event.stopPropagation === 'function') event.stopPropagation();
             if (typeof event.preventDefault === 'function') event.preventDefault();
 
@@ -676,16 +677,21 @@ class DrawingToolsManager {
 
             const existing = canvas.__drawingToolsCanvasHandlers;
             if (existing) {
-                canvas.removeEventListener('mousedown', existing.mousedown);
+                canvas.removeEventListener('mousedown', existing.mousedown, true);
                 canvas.removeEventListener('click', existing.click);
                 canvas.removeEventListener('mousemove', existing.mousemove);
-                canvas.removeEventListener('dblclick', existing.dblclick);
+                canvas.removeEventListener('dblclick', existing.dblclick, true);
             }
 
             // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
                 // Check for Ctrl+drag to start rectangular selection
                 if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
                     // [debug removed]
                     this.startRectangularSelection(event);
                     return;
@@ -706,10 +712,28 @@ class DrawingToolsManager {
                 const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
 
+                const isSecondClick = event.detail >= 2;
+                if (isSecondClick) {
+                    const best = drawingsAtPoint[0];
+                    if (best && !best.locked) {
+                        this.selectDrawing(best, false);
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
                 const selectedAtPoint = (this.selectedDrawings || []).filter(d => drawingsAtPoint.includes(d) && !d.locked);
 
                 event.preventDefault();
                 event.stopPropagation();
+                if (typeof event.stopImmediatePropagation === 'function') {
+                    event.stopImmediatePropagation();
+                }
 
                 if (selectedAtPoint.length > 0) {
                     this._startDirectMoveDrag(selectedAtPoint, event);
@@ -723,7 +747,7 @@ class DrawingToolsManager {
 
                 suppressNextCanvasClick = true;
             };
-            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousedown', onMouseDown, true);
             
             // Click on canvas to deselect all drawings
             const onClick = (event) => {
@@ -751,7 +775,7 @@ class DrawingToolsManager {
                 if (event.button !== 0) return;
                 openDrawingSettingsFromDoubleClick(event);
             };
-            canvas.addEventListener('dblclick', onDblClick);
+            canvas.addEventListener('dblclick', onDblClick, true);
             
             // Mousemove on canvas for proximity cursor change
             const onMouseMove = (event) => {
