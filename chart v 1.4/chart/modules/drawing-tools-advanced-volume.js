@@ -724,6 +724,24 @@ class VolumeProfileTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
+        const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
+        [
+            { x: x1, pointIndex: 0 },
+            { x: x2, pointIndex: 1 }
+        ].forEach(({ x, pointIndex }) => {
+            this.group.append('line')
+                .attr('class', 'volume-profile-boundary-hit shape-border-hit resize-handle-hit')
+                .attr('x1', x)
+                .attr('y1', paneTop)
+                .attr('x2', x)
+                .attr('y2', paneBottom)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', boundaryHitWidth)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'ew-resize')
+                .attr('data-point-index', pointIndex);
+        });
+
         this.group.append('line')
             .attr('class', 'volume-profile-boundary')
             .attr('x1', left)
@@ -1076,7 +1094,7 @@ class VolumeProfileTool extends BaseDrawing {
 
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
-        group.selectAll('.resize-handle-hit').remove();
+        group.selectAll('.resize-handle-hit:not(.volume-profile-boundary-hit)').remove();
         group.selectAll('.vertical-guide').remove();
 
         if (!this.selected || this.points.length < 2) return;
@@ -1093,8 +1111,8 @@ class VolumeProfileTool extends BaseDrawing {
         const bottomY = Math.max(scales.yScale(domainLow), scales.yScale(domainHigh));
         const handleY = topY + ((bottomY - topY) / 2);
 
-        const handleRadius = 3;
-        const hitRadius = 12;
+        const handleRadius = 4;
+        const hitRadius = 14;
 
         this.points.forEach((point, index) => {
             let xIndex = Number.isFinite(point.x) ? Math.round(point.x) : 0;
