@@ -1678,9 +1678,12 @@ class ThreeDrivesTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('three-drives', points, style);
         this.requiredPoints = 7;
-        this.style.stroke = style.stroke || '#e91e63';
+        this.style.stroke = style.stroke || '#6f35d7';
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.labels = ['1', '', '2', '', '3', '', ''];
+        this.style.guideDasharray = style.guideDasharray || '2,6';
+        this.style.guideWidth = style.guideWidth || 2;
+        this.style.ratioFill = style.ratioFill || this.style.stroke;
+        this.style.ratioTextColor = style.ratioTextColor || '#ffffff';
     }
 
     render(container, scales) {
@@ -1692,39 +1695,139 @@ class ThreeDrivesTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
-        const getX = (p) => scales.chart?.dataIndexToPixel ? 
+        const getX = (p) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const getY = (p) => scales.yScale(p.y);
+        const pointsPx = this.points.map((p) => ({ x: getX(p), y: getY(p) }));
+        const lineOpacity = this.style.opacity ?? 1;
 
-        for (let i = 0; i < this.points.length - 1; i++) {
+        // Main zig-zag structure.
+        for (let i = 0; i < pointsPx.length - 1; i++) {
+            const start = pointsPx[i];
+            const end = pointsPx[i + 1];
+
             this.group.append('line')
-                .attr('x1', getX(this.points[i]))
-                .attr('y1', getY(this.points[i]))
-                .attr('x2', getX(this.points[i + 1]))
-                .attr('y2', getY(this.points[i + 1]))
+                .attr('x1', start.x)
+                .attr('y1', start.y)
+                .attr('x2', end.x)
+                .attr('y2', end.y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', this.style.strokeWidth)
-                .attr('opacity', this.style.opacity)
+                .attr('stroke-linejoin', 'round')
+                .attr('stroke-linecap', 'round')
+                .attr('opacity', lineOpacity)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
         }
 
-        this.points.forEach((p, i) => {
-            if (this.labels[i]) {
-                this.group.append('text')
-                    .attr('x', getX(p))
-                    .attr('y', getY(p) - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', '11px')
-                    .attr('font-weight', 'bold')
-                    .style('pointer-events', 'none')
-                    .text(this.labels[i]);
+        // Dotted trend guide through drive peaks (points 1 -> 3 -> 5).
+        if (pointsPx.length >= 6) {
+            const peakA = pointsPx[1];
+            const peakB = pointsPx[3];
+            const peakC = pointsPx[5];
+
+            [[peakA, peakB], [peakB, peakC]].forEach(([start, end]) => {
+                if (!start || !end) return;
+                this.group.append('line')
+                    .attr('x1', start.x)
+                    .attr('y1', start.y)
+                    .attr('x2', end.x)
+                    .attr('y2', end.y)
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', this.style.guideWidth)
+                    .attr('stroke-dasharray', this.style.guideDasharray)
+                    .attr('stroke-linecap', 'round')
+                    .attr('opacity', 0.95)
+                    .style('pointer-events', 'none');
+            });
+
+            const drive1 = this._getDriveMagnitude(this.points[0], this.points[1]);
+            const drive2 = this._getDriveMagnitude(this.points[2], this.points[3]);
+            const drive3 = this._getDriveMagnitude(this.points[4], this.points[5]);
+
+            const ratio12 = this._formatDriveRatio(drive2, drive1);
+            const ratio23 = this._formatDriveRatio(drive3, drive2);
+
+            if (ratio12 && peakA && peakB) {
+                const pos = this._pointOnSegment(peakA, peakB, 0.5);
+                const offset = this._getPerpendicularOffset(peakA, peakB, -18);
+                this._drawRatioTag(pos.x + offset.x, pos.y + offset.y, ratio12);
             }
-        });
+
+            if (ratio23 && peakB && peakC) {
+                const pos = this._pointOnSegment(peakB, peakC, 0.5);
+                const offset = this._getPerpendicularOffset(peakB, peakC, -18);
+                this._drawRatioTag(pos.x + offset.x, pos.y + offset.y, ratio23);
+            }
+        }
 
         this.createHandles(this.group, scales);
         return this.group;
+    }
+
+    _getDriveMagnitude(start, end) {
+        if (!start || !end) return 0;
+        return Math.abs((end.y ?? 0) - (start.y ?? 0));
+    }
+
+    _formatDriveRatio(numerator, denominator) {
+        if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || Math.abs(denominator) < 0.000001) {
+            return null;
+        }
+
+        const ratio = numerator / denominator;
+        return ratio.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    }
+
+    _pointOnSegment(start, end, t = 0.5) {
+        return {
+            x: start.x + ((end.x - start.x) * t),
+            y: start.y + ((end.y - start.y) * t)
+        };
+    }
+
+    _getPerpendicularOffset(start, end, distance = -18) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const length = Math.sqrt((dx * dx) + (dy * dy));
+        if (length < 0.0001) return { x: 0, y: distance };
+
+        return {
+            x: (-dy / length) * distance,
+            y: (dx / length) * distance
+        };
+    }
+
+    _drawRatioTag(x, y, text) {
+        const value = String(text || '');
+        if (!value) return;
+
+        const fontSize = 12;
+        const paddingX = 9;
+        const paddingY = 4;
+        const width = Math.max(34, (value.length * (fontSize * 0.62)) + (paddingX * 2));
+        const height = fontSize + (paddingY * 2);
+
+        this.group.append('rect')
+            .attr('x', x - (width / 2))
+            .attr('y', y - (height / 2))
+            .attr('width', width)
+            .attr('height', height)
+            .attr('rx', 6)
+            .attr('fill', this.style.ratioFill)
+            .attr('opacity', 0.96)
+            .style('pointer-events', 'none');
+
+        this.group.append('text')
+            .attr('x', x)
+            .attr('y', y)
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'middle')
+            .attr('fill', this.style.ratioTextColor)
+            .attr('font-size', `${fontSize}px`)
+            .attr('font-weight', '600')
+            .style('pointer-events', 'none')
+            .text(value);
     }
 
     static fromJSON(data, chart = null) {
