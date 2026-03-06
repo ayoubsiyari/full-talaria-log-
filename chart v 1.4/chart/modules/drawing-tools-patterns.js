@@ -367,6 +367,26 @@ class XABCDPatternTool extends BaseDrawing {
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const getY = (p) => scales.yScale(p.y);
+        const pointsPx = this.points.map((p) => ({ x: getX(p), y: getY(p) }));
+        const lineSegments = [];
+
+        for (let i = 0; i < pointsPx.length - 1; i++) {
+            lineSegments.push({
+                x1: pointsPx[i].x,
+                y1: pointsPx[i].y,
+                x2: pointsPx[i + 1].x,
+                y2: pointsPx[i + 1].y
+            });
+        }
+        if (pointsPx.length >= 3) {
+            lineSegments.push({ x1: pointsPx[0].x, y1: pointsPx[0].y, x2: pointsPx[2].x, y2: pointsPx[2].y });
+        }
+        if (pointsPx.length >= 4) {
+            lineSegments.push({ x1: pointsPx[1].x, y1: pointsPx[1].y, x2: pointsPx[3].x, y2: pointsPx[3].y });
+        }
+        if (pointsPx.length >= 5) {
+            lineSegments.push({ x1: pointsPx[2].x, y1: pointsPx[2].y, x2: pointsPx[4].x, y2: pointsPx[4].y });
+        }
 
         // Helper to calculate Fibonacci ratio
         const calcRatio = (leg1Start, leg1End, leg2Start, leg2End) => {
@@ -468,62 +488,168 @@ class XABCDPatternTool extends BaseDrawing {
             return { x: -dy / len * distance, y: dx / len * distance };
         };
 
+        const orientation = (ax, ay, bx, by, cx, cy) => {
+            const value = (by - ay) * (cx - bx) - (bx - ax) * (cy - by);
+            if (Math.abs(value) < 1e-6) return 0;
+            return value > 0 ? 1 : 2;
+        };
+
+        const onSegment = (ax, ay, bx, by, cx, cy) => (
+            bx <= Math.max(ax, cx) + 1e-6 &&
+            bx >= Math.min(ax, cx) - 1e-6 &&
+            by <= Math.max(ay, cy) + 1e-6 &&
+            by >= Math.min(ay, cy) - 1e-6
+        );
+
+        const segmentsIntersect = (a1x, a1y, a2x, a2y, b1x, b1y, b2x, b2y) => {
+            const o1 = orientation(a1x, a1y, a2x, a2y, b1x, b1y);
+            const o2 = orientation(a1x, a1y, a2x, a2y, b2x, b2y);
+            const o3 = orientation(b1x, b1y, b2x, b2y, a1x, a1y);
+            const o4 = orientation(b1x, b1y, b2x, b2y, a2x, a2y);
+
+            if (o1 !== o2 && o3 !== o4) return true;
+            if (o1 === 0 && onSegment(a1x, a1y, b1x, b1y, a2x, a2y)) return true;
+            if (o2 === 0 && onSegment(a1x, a1y, b2x, b2y, a2x, a2y)) return true;
+            if (o3 === 0 && onSegment(b1x, b1y, a1x, a1y, b2x, b2y)) return true;
+            if (o4 === 0 && onSegment(b1x, b1y, a2x, a2y, b2x, b2y)) return true;
+
+            return false;
+        };
+
+        const segmentIntersectsRect = (segment, left, top, right, bottom, padding = 2) => {
+            const rectLeft = left - padding;
+            const rectTop = top - padding;
+            const rectRight = right + padding;
+            const rectBottom = bottom + padding;
+
+            const endpointInside = (segment.x1 >= rectLeft && segment.x1 <= rectRight && segment.y1 >= rectTop && segment.y1 <= rectBottom)
+                || (segment.x2 >= rectLeft && segment.x2 <= rectRight && segment.y2 >= rectTop && segment.y2 <= rectBottom);
+            if (endpointInside) return true;
+
+            const edges = [
+                { x1: rectLeft, y1: rectTop, x2: rectRight, y2: rectTop },
+                { x1: rectRight, y1: rectTop, x2: rectRight, y2: rectBottom },
+                { x1: rectRight, y1: rectBottom, x2: rectLeft, y2: rectBottom },
+                { x1: rectLeft, y1: rectBottom, x2: rectLeft, y2: rectTop }
+            ];
+
+            return edges.some((edge) => (
+                segmentsIntersect(segment.x1, segment.y1, segment.x2, segment.y2, edge.x1, edge.y1, edge.x2, edge.y2)
+            ));
+        };
+
+        const countLineOverlapsForLabel = (centerX, baselineY, boxWidth, boxHeight, topOffset) => {
+            const left = centerX - (boxWidth / 2);
+            const top = baselineY + topOffset;
+            const right = left + boxWidth;
+            const bottom = top + boxHeight;
+
+            let overlaps = 0;
+            lineSegments.forEach((segment) => {
+                if (segmentIntersectsRect(segment, left, top, right, bottom)) {
+                    overlaps += 1;
+                }
+            });
+            return overlaps;
+        };
+
+        const pickLeastOverlappingLabelPosition = (candidates, boxWidth, boxHeight, topOffset) => {
+            if (!Array.isArray(candidates) || candidates.length === 0) return null;
+
+            let best = candidates[0];
+            let bestScore = Number.POSITIVE_INFINITY;
+
+            candidates.forEach((candidate, index) => {
+                const overlapCount = countLineOverlapsForLabel(candidate.x, candidate.y, boxWidth, boxHeight, topOffset);
+                const score = (overlapCount * 1000) + index;
+                if (score < bestScore) {
+                    best = candidate;
+                    bestScore = score;
+                }
+            });
+
+            return best;
+        };
+
+        const placeRatioLabel = (ratio, anchorX, anchorY, x1, y1, x2, y2, preferredDistance = 20) => {
+            const boxWidth = ratio.length * 7 + 8;
+            const boxHeight = 14;
+            const primaryOffset = getPerpendicularOffset(x1, y1, x2, y2, preferredDistance);
+            const secondaryOffset = getPerpendicularOffset(x1, y1, x2, y2, -preferredDistance);
+
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const alongX = len > 0 ? (dx / len) * 12 : 0;
+            const alongY = len > 0 ? (dy / len) * 12 : 0;
+
+            const candidates = [
+                { x: anchorX + primaryOffset.x, y: anchorY + primaryOffset.y },
+                { x: anchorX + secondaryOffset.x, y: anchorY + secondaryOffset.y },
+                { x: anchorX + primaryOffset.x + alongX, y: anchorY + primaryOffset.y + alongY },
+                { x: anchorX + primaryOffset.x - alongX, y: anchorY + primaryOffset.y - alongY },
+                { x: anchorX + secondaryOffset.x + alongX, y: anchorY + secondaryOffset.y + alongY },
+                { x: anchorX + secondaryOffset.x - alongX, y: anchorY + secondaryOffset.y - alongY },
+                { x: anchorX + (primaryOffset.x * 1.4), y: anchorY + (primaryOffset.y * 1.4) },
+                { x: anchorX + (secondaryOffset.x * 1.4), y: anchorY + (secondaryOffset.y * 1.4) }
+            ];
+
+            const best = pickLeastOverlappingLabelPosition(candidates, boxWidth, boxHeight, -10) || candidates[0];
+            this.drawRatioLabel(best.x, best.y, ratio);
+        };
+
         if (this.points.length >= 3) {
             // AB/XA ratio - positioned on AB leg midpoint, offset to the side
             const abRatio = calcRatio(this.points[0], this.points[1], this.points[1], this.points[2]);
-            const ax = getX(this.points[1]);
-            const ay = getY(this.points[1]);
-            const bx = getX(this.points[2]);
-            const by = getY(this.points[2]);
+            const ax = pointsPx[1].x;
+            const ay = pointsPx[1].y;
+            const bx = pointsPx[2].x;
+            const by = pointsPx[2].y;
             const abMidX = (ax + bx) / 2;
             const abMidY = (ay + by) / 2;
-            const abOffset = getPerpendicularOffset(ax, ay, bx, by, 20);
-            this.drawRatioLabel(abMidX + abOffset.x, abMidY + abOffset.y, abRatio);
+            placeRatioLabel(abRatio, abMidX, abMidY, ax, ay, bx, by, 20);
         }
 
         if (this.points.length >= 4) {
             // BC/XA ratio (C projection) - positioned ON the A-C dashed line (between A and C)
             const bcRatio = calcRatio(this.points[0], this.points[1], this.points[2], this.points[3]);
-            const ax = getX(this.points[1]);
-            const ay = getY(this.points[1]);
-            const cx = getX(this.points[3]);
-            const cy = getY(this.points[3]);
+            const ax = pointsPx[1].x;
+            const ay = pointsPx[1].y;
+            const cx = pointsPx[3].x;
+            const cy = pointsPx[3].y;
             // Position at 65% of the way from A to C (on the dashed line)
             const labelX = ax + (cx - ax) * 0.65;
             const labelY = ay + (cy - ay) * 0.65;
-            const bcOffset = getPerpendicularOffset(ax, ay, cx, cy, -18);
-            this.drawRatioLabel(labelX + bcOffset.x, labelY + bcOffset.y, bcRatio);
+            placeRatioLabel(bcRatio, labelX, labelY, ax, ay, cx, cy, -18);
         }
 
         if (this.points.length >= 5) {
             // XB/XA ratio - positioned on X-B dashed line midpoint
             const xbRatio = calcRatio(this.points[0], this.points[1], this.points[0], this.points[2]);
-            const xx = getX(this.points[0]);
-            const xy = getY(this.points[0]);
-            const bx = getX(this.points[2]);
-            const by = getY(this.points[2]);
+            const xx = pointsPx[0].x;
+            const xy = pointsPx[0].y;
+            const bx = pointsPx[2].x;
+            const by = pointsPx[2].y;
             const xbMidX = (xx + bx) / 2;
             const xbMidY = (xy + by) / 2;
-            const xbOffset = getPerpendicularOffset(xx, xy, bx, by, 20);
-            this.drawRatioLabel(xbMidX + xbOffset.x, xbMidY + xbOffset.y, xbRatio);
+            placeRatioLabel(xbRatio, xbMidX, xbMidY, xx, xy, bx, by, 20);
 
             // CD/BC ratio - positioned on CD leg midpoint
             const cdRatio = calcRatio(this.points[2], this.points[3], this.points[3], this.points[4]);
-            const cx = getX(this.points[3]);
-            const cy = getY(this.points[3]);
-            const dx = getX(this.points[4]);
-            const dy = getY(this.points[4]);
+            const cx = pointsPx[3].x;
+            const cy = pointsPx[3].y;
+            const dx = pointsPx[4].x;
+            const dy = pointsPx[4].y;
             const cdMidX = (cx + dx) / 2;
             const cdMidY = (cy + dy) / 2;
-            const cdOffset = getPerpendicularOffset(cx, cy, dx, dy, 20);
-            this.drawRatioLabel(cdMidX + cdOffset.x, cdMidY + cdOffset.y, cdRatio);
+            placeRatioLabel(cdRatio, cdMidX, cdMidY, cx, cy, dx, dy, 20);
         }
 
         // Draw point labels with background boxes
         this.points.forEach((p, i) => {
             if (this.labels[i]) {
-                const px = getX(p);
-                const py = getY(p);
+                const px = pointsPx[i].x;
+                const py = pointsPx[i].y;
                 // Determine if point is a local high or low by comparing to neighbors
                 let isTop = false;
                 if (i === 0) {
@@ -533,11 +659,25 @@ class XABCDPatternTool extends BaseDrawing {
                 } else {
                     isTop = p.y < this.points[i - 1].y && p.y < this.points[i + 1].y;
                 }
-                const labelY = isTop ? py - 18 : py + 22;
+                const preferredLabelY = isTop ? py - 18 : py + 22;
+                const alternateLabelY = isTop ? py + 22 : py - 18;
+                const candidates = [
+                    { x: px, y: preferredLabelY },
+                    { x: px - 16, y: preferredLabelY },
+                    { x: px + 16, y: preferredLabelY },
+                    { x: px, y: alternateLabelY },
+                    { x: px - 16, y: alternateLabelY },
+                    { x: px + 16, y: alternateLabelY },
+                    { x: px - 24, y: preferredLabelY + 4 },
+                    { x: px + 24, y: preferredLabelY + 4 }
+                ];
+                const bestLabelPosition = pickLeastOverlappingLabelPosition(candidates, 20, 16, -12) || candidates[0];
+                const labelX = bestLabelPosition.x;
+                const labelY = bestLabelPosition.y;
                 
                 // Background box
                 this.group.append('rect')
-                    .attr('x', px - 10)
+                    .attr('x', labelX - 10)
                     .attr('y', labelY - 12)
                     .attr('width', 20)
                     .attr('height', 16)
@@ -547,7 +687,7 @@ class XABCDPatternTool extends BaseDrawing {
                 
                 // Label text
                 this.group.append('text')
-                    .attr('x', px)
+                    .attr('x', labelX)
                     .attr('y', labelY)
                     .attr('text-anchor', 'middle')
                     .attr('fill', '#ffffff')
