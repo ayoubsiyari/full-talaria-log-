@@ -7307,6 +7307,7 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            overflow: visible;
         }
 
         .replay-mode-gear-btn {
@@ -7347,6 +7348,7 @@
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
+            overflow: visible;
             transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
             z-index: 10000;
         }
@@ -7444,9 +7446,11 @@
 
         .replay-mode-note-panel {
             position: absolute;
-            top: calc(100% + 6px);
-            right: 0;
+            top: auto;
+            bottom: calc(100% + 6px);
+            right: -4px;
             width: 220px;
+            max-width: min(220px, calc(100vw - 24px));
             padding: 8px 10px;
             border-radius: 6px;
             border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
