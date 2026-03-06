@@ -1892,11 +1892,11 @@ class DrawingToolsManager {
             screenY = Math.max(0, Math.min(maxY, screenY));
         }
         
-        // Check if current tool is a freehand/continuous drawing tool
+        // Preserve legacy behavior: continuous coordinates are only for actively drawn freehand tools
         const activeToolType = toolTypeOverride || this.currentTool;
-        const isContinuousTool = activeToolType === 'path' || 
-                                  activeToolType === 'brush' || 
-                                  activeToolType === 'highlighter';
+        const isContinuousTool = this.currentTool === 'path' || 
+                                  this.currentTool === 'brush' || 
+                                  this.currentTool === 'highlighter';
         
         // Pass chart instance for accurate index calculation
         // Use continuous mode for freehand tools to get smooth curves
@@ -2740,7 +2740,14 @@ class DrawingToolsManager {
 
         const getDragDataPoint = (dragEvent) => {
             const src = (dragEvent && dragEvent.sourceEvent) ? dragEvent.sourceEvent : dragEvent;
-            return self.getDataPoint(src, drawing.type);
+            const ptr = d3.pointer(src, self.svg.node());
+            const screenX = ptr[0];
+            const screenY = ptr[1];
+            const point = CoordinateUtils.screenToData(screenX, screenY, {
+                xScale: self.chart.xScale,
+                yScale: self.chart.yScale
+            }, self.chart, false);
+            return self.clampPointToCandleRange(point, drawing.type);
         };
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
