@@ -1198,6 +1198,33 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('anchored-volume-profile', points, style);
         this.requiredPoints = 1;
+
+        const hasOwn = (prop) => Object.prototype.hasOwnProperty.call(style, prop);
+
+        if (!hasOwn('stroke')) this.style.stroke = 'rgba(130, 164, 176, 0.45)';
+        if (!hasOwn('strokeWidth')) this.style.strokeWidth = 1;
+        if ((!hasOwn('fill') || style.fill === 'none' || style.fill === 'transparent') && style.showBackground !== false) {
+            this.style.fill = 'rgba(14, 59, 70, 0.22)';
+        }
+        if (!hasOwn('buyColor')) this.style.buyColor = 'rgba(53, 186, 209, 0.82)';
+        if (!hasOwn('sellColor')) this.style.sellColor = 'rgba(199, 71, 130, 0.82)';
+        if (!hasOwn('valueAreaBuyColor')) this.style.valueAreaBuyColor = 'rgba(53, 186, 209, 1)';
+        if (!hasOwn('valueAreaSellColor')) this.style.valueAreaSellColor = 'rgba(199, 71, 130, 1)';
+        if (!hasOwn('pocColor')) this.style.pocColor = '#e6edf3';
+        if (!Number.isFinite(Number(this.style.profileWidthRatio))) this.style.profileWidthRatio = 0.3;
+        if (!hasOwn('profilePlacement')) this.style.profilePlacement = 'left';
+        if (!hasOwn('rowsLayout')) this.style.rowsLayout = 'numberOfRows';
+        if (!Number.isFinite(Number(this.style.rowSize))) this.style.rowSize = 24;
+        if (!hasOwn('volumeDisplay')) this.style.volumeDisplay = 'upDown';
+        if (!Number.isFinite(Number(this.style.valueAreaVolume))) this.style.valueAreaVolume = 70;
+        if (this.style.extendRight === undefined) this.style.extendRight = false;
+        if (this.style.showPOC === undefined) this.style.showPOC = true;
+        if (this.style.showVAH === undefined) this.style.showVAH = true;
+        if (this.style.showVAL === undefined) this.style.showVAL = true;
+        if (this.style.showValues === undefined) this.style.showValues = true;
+        if (!hasOwn('VAHColor')) this.style.VAHColor = '#089981';
+        if (!hasOwn('VALColor')) this.style.VALColor = '#f23645';
+        if (!hasOwn('valuesColor')) this.style.valuesColor = '#d1d4dc';
     }
 
     render(container, scales) {
@@ -1207,175 +1234,90 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
 
         if (this.points.length < 1) return;
 
+        const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
+
         this.group = container.append('g')
-            .attr('class', 'drawing-anchored-volume-profile')
+            .attr('class', 'drawing drawing-anchored-volume-profile')
             .attr('data-id', this.id);
 
-        const chartData = scales.chart && scales.chart.data ? scales.chart.data : [];
-        if (chartData.length === 0) return;
-
-        // Anchor point (start)
-        const anchorIndex = Math.max(0, Math.round(this.points[0].x));
-        const endIndex = chartData.length - 1;
-        
-        if (anchorIndex >= chartData.length) return;
-
-        // Calculate price range from anchor to end
-        let priceHigh = -Infinity;
-        let priceLow = Infinity;
-        
-        for (let i = anchorIndex; i <= endIndex; i++) {
-            const candle = chartData[i];
-            if (!candle) continue;
-            const high = candle.h ?? candle.high;
-            const low = candle.l ?? candle.low;
-            if (Number.isFinite(high)) priceHigh = Math.max(priceHigh, high);
-            if (Number.isFinite(low)) priceLow = Math.min(priceLow, low);
-        }
-
-        if (!Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow) {
+        if (chartData.length === 0) {
             this.createHandles(this.group, scales);
             return;
         }
 
-        // Calculate pixel positions
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(anchorIndex) : scales.xScale(anchorIndex);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(endIndex) : scales.xScale(endIndex);
-        const y1 = scales.yScale(priceHigh);
-        const y2 = scales.yScale(priceLow);
+        const endIndex = chartData.length - 1;
+        const anchorIndex = Math.max(0, Math.min(endIndex, Math.round(this.points[0].x)));
+        this.points[0].x = anchorIndex;
 
-        const left = Math.min(x1, x2);
-        const right = Math.max(x1, x2);
-        const top = Math.min(y1, y2);
-        const bottom = Math.max(y1, y2);
-        const height = bottom - top;
-        const width = right - left;
+        this.group.remove();
 
-        // Anchor line (vertical dashed line at anchor point)
-        this.group.append('line')
-            .attr('x1', x1)
-            .attr('y1', top - 10)
-            .attr('x2', x1)
-            .attr('y2', bottom + 10)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '4,4')
-            .attr('opacity', 0.7);
+        const proxy = new VolumeProfileTool(
+            [
+                { x: anchorIndex, y: this.points[0].y },
+                { x: endIndex, y: this.points[0].y }
+            ],
+            { ...this.style }
+        );
+        proxy.id = this.id;
+        proxy.selected = this.selected;
+        proxy.visible = this.visible;
+        proxy.locked = this.locked;
+        proxy.meta = this.meta;
+        proxy.render(container, scales);
 
-        // Create price bins
-        const pixelHeight = Math.max(height, 1);
-        const desiredBinSizePx = 12;
-        let numBins = Math.round(pixelHeight / desiredBinSizePx);
-        if (!Number.isFinite(numBins) || numBins < 6) numBins = 6;
-        if (numBins > 80) numBins = 80;
+        this.group = proxy.group;
+        this.group
+            .attr('class', 'drawing drawing-anchored-volume-profile')
+            .attr('data-id', this.id);
 
-        const priceRange = priceHigh - priceLow;
-        const priceStep = priceRange / numBins;
-        const volumeBins = new Array(numBins).fill(0);
-        
-        // Aggregate volume by price level
-        for (let i = anchorIndex; i <= endIndex; i++) {
-            const candle = chartData[i];
-            if (!candle) continue;
-            
-            const volume = (candle.v ?? candle.volume ?? 0);
-            if (!Number.isFinite(volume) || volume <= 0) continue;
-            
-            const open = candle.o ?? candle.open;
-            const close = candle.c ?? candle.close;
-            const low = candle.l ?? candle.low;
-            const high = candle.h ?? candle.high;
+        Object.assign(this.style, proxy.style || {});
 
-            if (![open, close, low, high].every(Number.isFinite)) continue;
+        // Right side is fixed to latest candle for anchored profile.
+        this.group.selectAll('.volume-profile-boundary-hit[data-point-index="1"]').remove();
+        this.group.selectAll('.resize-handle-group[data-point-index="1"]').remove();
+        this.group.selectAll('.resize-handle[data-point-index="1"], .resize-handle-hit[data-point-index="1"]').remove();
 
-            const candleLow = Math.min(open, close, low);
-            const candleHigh = Math.max(open, close, high);
-            
-            // Skip candles completely outside the price range
-            if (candleHigh < priceLow || candleLow > priceHigh) continue;
-            
-            // Clamp to selection range
-            const effectiveLow = Math.max(candleLow, priceLow);
-            const effectiveHigh = Math.min(candleHigh, priceHigh);
-            
-            const candleRange = candleHigh - candleLow;
-            const overlapRange = effectiveHigh - effectiveLow;
-            const overlapRatio = candleRange > 0 ? overlapRange / candleRange : 1;
-            const effectiveVolume = volume * overlapRatio;
-            
-            const lowBin = Math.floor((effectiveLow - priceLow) / priceStep);
-            const highBin = Math.min(numBins - 1, Math.floor((effectiveHigh - priceLow) / priceStep));
-            
-            const binsSpanned = Math.max(1, highBin - lowBin + 1);
-            const volumePerBin = effectiveVolume / binsSpanned;
-            
-            for (let b = Math.max(0, lowBin); b <= highBin; b++) {
-                volumeBins[b] += volumePerBin;
-            }
+        const rightX = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(endIndex)
+            : scales.xScale(endIndex);
+        if (Number.isFinite(rightX)) {
+            this.group.selectAll('.vertical-guide.volume-profile-guide').filter(function() {
+                const line = d3.select(this);
+                const x1 = Number(line.attr('x1'));
+                const x2 = Number(line.attr('x2'));
+                return Number.isFinite(x1) && Number.isFinite(x2) && Math.abs(x1 - rightX) < 0.6 && Math.abs(x2 - rightX) < 0.6;
+            }).remove();
         }
-        
-        // Find max volume for scaling
-        const maxVolume = Math.max(...volumeBins, 1);
-        const barHeight = height / numBins;
 
-        // Find POC
-        let pocIndex = 0;
-        let maxVol = 0;
-        volumeBins.forEach((vol, idx) => {
-            if (vol > maxVol) {
-                maxVol = vol;
-                pocIndex = idx;
-            }
-        });
-        
-        // Draw volume bars (from anchor point extending right)
-        volumeBins.forEach((volume, i) => {
-            if (volume === 0) return;
+        this.handles = Array.isArray(proxy.handles)
+            ? proxy.handles.filter(h => h && h.index === 0)
+            : [];
+    }
 
-            const barWidth = (width * 0.4) * (volume / maxVolume);
-            const barY = bottom - ((i + 1) * barHeight);
+    onPointHandleDrag(index, context = {}) {
+        if (!Array.isArray(this.points) || index !== 0 || !this.points[0] || !context.point) {
+            return false;
+        }
 
-            this.group.append('rect')
-                .attr('x', x1)
-                .attr('y', barY)
-                .attr('width', barWidth)
-                .attr('height', Math.max(1, barHeight - 1))
-                .attr('fill', this.style.stroke)
-                .attr('opacity', this.style.opacity * 0.5)
-                .attr('rx', 1);
-        });
+        let nextX = Number(context.point.x);
+        const chartData = context.scales && context.scales.chart && Array.isArray(context.scales.chart.data)
+            ? context.scales.chart.data
+            : [];
 
-        // POC line
-        const pocY = bottom - ((pocIndex + 0.5) * barHeight);
-        this.group.append('line')
-            .attr('x1', x1)
-            .attr('y1', pocY)
-            .attr('x2', right)
-            .attr('y2', pocY)
-            .attr('stroke', '#ff9800')
-            .attr('stroke-width', 2)
-            .attr('opacity', 0.8);
+        if (Number.isFinite(nextX) && chartData.length > 0) {
+            nextX = Math.max(0, Math.min(chartData.length - 1, nextX));
+        }
 
-        // Label
-        this.group.append('text')
-            .attr('x', x1 + 5)
-            .attr('y', top + 15)
-            .attr('fill', this.style.stroke)
-            .attr('font-size', '10px')
-            .attr('opacity', this.style.opacity)
-            .text('Anchored VP');
+        if (!Number.isFinite(nextX)) {
+            return false;
+        }
 
-        // Anchor circle
-        this.group.append('circle')
-            .attr('cx', x1)
-            .attr('cy', scales.yScale(this.points[0].y))
-            .attr('r', 4)
-            .attr('fill', this.style.stroke)
-            .attr('opacity', this.style.opacity);
-
-        this.createHandles(this.group, scales);
+        this.points[0] = {
+            ...this.points[0],
+            x: nextX
+        };
+        this.meta.updatedAt = Date.now();
+        return true;
     }
 
     static fromJSON(data) {

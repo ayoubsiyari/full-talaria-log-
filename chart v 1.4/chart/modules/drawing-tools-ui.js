@@ -2273,7 +2273,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Check if this drawing type should have a Text tab
         // Text-type drawings use STYLE tab for text controls, so they don't need a separate TEXT tab
         // Arrow-marker tools also show text in STYLE tab
-        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'price-range', 'date-range', 'long-position', 'short-position', 'elliott-impulse', 'elliott-correction', 'elliott-triangle', 'elliott-double-combo', 'elliott-triple-combo', 'bars-pattern', 'xabcd-pattern', 'cypher-pattern', 'head-shoulders', 'abcd-pattern', 'triangle-pattern', 'three-drives'];
+        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'price-range', 'date-range', 'long-position', 'short-position', 'elliott-impulse', 'elliott-correction', 'elliott-triangle', 'elliott-double-combo', 'elliott-triple-combo', 'bars-pattern', 'xabcd-pattern', 'cypher-pattern', 'head-shoulders', 'abcd-pattern', 'triangle-pattern', 'three-drives', 'volume-profile', 'fixed-range-volume-profile', 'anchored-volume-profile'];
         const hasTextTab = !noTextTabTypes.includes(drawing.type);
         
         const body = document.createElement('div');
@@ -2294,7 +2294,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const isFibonacciInputTabTool = this.isFibonacciInputTabTool(drawing.type);
         const isGannInputTabTool = this.isGannInputTabTool(drawing.type);
         const isPositionInputsTool = drawing.type === 'long-position' || drawing.type === 'short-position';
-        const isVolumeProfileInputsTool = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile';
+        const isVolumeProfileInputsTool = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
         const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool || isVolumeProfileInputsTool;
         const inputTabLabel = (isFibonacciInputTabTool || isGannInputTabTool) ? 'Input' : 'Inputs';
         
@@ -2460,7 +2460,7 @@ body.light-mode .template-save-dialog .dialog-title {
             return;
         }
 
-        if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
+        if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile') {
             this.buildVolumeProfileStyleTab(container, drawing);
             return;
         }
@@ -10952,7 +10952,7 @@ applyTemplate(drawing, templateId, modal) {
             // Position tools
             'long-position', 'short-position',
             // Volume tools
-            'volume-profile', 'fixed-range-volume-profile', 'vwap',
+            'volume-profile', 'fixed-range-volume-profile', 'anchored-volume-profile', 'vwap',
             // Text and annotations
             'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'pin', 'callout', 'comment', 'emoji',
             // Channel tools
