@@ -653,10 +653,16 @@ class VolumeProfileTool extends BaseDrawing {
         this.points[0].x = clampedIndex1;
         this.points[1].x = clampedIndex2;
 
+        const fixedScreenRightX = Number(this.fixedScreenRightX);
+        const hasFixedScreenRightX = Number.isFinite(fixedScreenRightX);
+
         const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(clampedIndex1) : scales.xScale(clampedIndex1);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(clampedIndex2) : scales.xScale(clampedIndex2);
+        const x2 = hasFixedScreenRightX
+            ? fixedScreenRightX
+            : (scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(clampedIndex2)
+                : scales.xScale(clampedIndex2));
 
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
@@ -1246,14 +1252,25 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         }
 
         const latestDataIndex = chartData.length - 1;
+        const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function'
+            ? scales.xScale.range()
+            : [];
+        const screenRightX = Array.isArray(xScaleRange) && xScaleRange.length > 0
+            ? Math.max(...xScaleRange)
+            : NaN;
+
         const visibleEndFromMethod = scales.chart && typeof scales.chart.getVisibleEndIndex === 'function'
             ? Number(scales.chart.getVisibleEndIndex())
             : NaN;
-        const visibleEndFromState = Number(scales.chart ? scales.chart.visibleEndIndex : NaN);
+        const visibleEndFromPixel = scales.chart && typeof scales.chart.pixelToDataIndex === 'function' && Number.isFinite(screenRightX)
+            ? Number(scales.chart.pixelToDataIndex(screenRightX))
+            : NaN;
         const preferredEndIndex = Number.isFinite(visibleEndFromMethod)
             ? visibleEndFromMethod
-            : (Number.isFinite(visibleEndFromState) ? visibleEndFromState - 1 : latestDataIndex);
-        const endIndex = Math.max(0, Math.min(latestDataIndex, Math.round(preferredEndIndex)));
+            : visibleEndFromPixel;
+        const endIndex = Number.isFinite(preferredEndIndex)
+            ? Math.max(0, Math.min(latestDataIndex, Math.round(preferredEndIndex)))
+            : latestDataIndex;
         const anchorIndex = Math.max(0, Math.min(latestDataIndex, Math.round(this.points[0].x)));
         this.points[0].x = anchorIndex;
 
@@ -1271,6 +1288,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         proxy.visible = this.visible;
         proxy.locked = this.locked;
         proxy.meta = this.meta;
+        proxy.fixedScreenRightX = Number.isFinite(screenRightX) ? screenRightX : undefined;
         proxy.render(container, scales);
 
         this.group = proxy.group;
@@ -1285,16 +1303,22 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         this.group.selectAll('.resize-handle-group[data-point-index="1"]').remove();
         this.group.selectAll('.resize-handle[data-point-index="1"], .resize-handle-hit[data-point-index="1"]').remove();
 
-        const rightX = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(endIndex)
-            : scales.xScale(endIndex);
-        if (Number.isFinite(rightX)) {
-            this.group.selectAll('.vertical-guide.volume-profile-guide').filter(function() {
-                const line = d3.select(this);
-                const x1 = Number(line.attr('x1'));
-                const x2 = Number(line.attr('x2'));
-                return Number.isFinite(x1) && Number.isFinite(x2) && Math.abs(x1 - rightX) < 0.6 && Math.abs(x2 - rightX) < 0.6;
-            }).remove();
+        const guideNodes = this.group.selectAll('.vertical-guide.volume-profile-guide').nodes();
+        if (guideNodes.length > 1) {
+            let rightMostNode = null;
+            let rightMostX = -Infinity;
+            guideNodes.forEach((node) => {
+                const line = d3.select(node);
+                const lineX = Number(line.attr('x1'));
+                if (Number.isFinite(lineX) && lineX > rightMostX) {
+                    rightMostX = lineX;
+                    rightMostNode = node;
+                }
+            });
+
+            if (rightMostNode) {
+                d3.select(rightMostNode).remove();
+            }
         }
 
         this.handles = Array.isArray(proxy.handles)
