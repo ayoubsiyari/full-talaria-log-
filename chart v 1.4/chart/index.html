@@ -7404,6 +7404,65 @@
             color: #ffffff;
         }
 
+        .replay-mode-note {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            margin: 0;
+            z-index: 2;
+        }
+
+        .replay-mode-note > summary {
+            list-style: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: #d1d4dc;
+            background: rgba(78, 91, 126, 0.65);
+            border: 1px solid rgba(120, 123, 134, 0.6);
+            cursor: pointer;
+            user-select: none;
+            line-height: 1;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .replay-mode-note > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .replay-mode-note > summary:hover,
+        .replay-mode-note[open] > summary {
+            background: var(--sp-accent, #2962ff);
+            color: #ffffff;
+            border-color: transparent;
+        }
+
+        .replay-mode-note-panel {
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            width: 220px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
+            background: var(--sp-ui-chrome-bg, #131722);
+            color: #d1d4dc;
+            font-size: 11px;
+            line-height: 1.45;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+            white-space: normal;
+        }
+
+        .replay-mode-note-panel strong {
+            color: #ffffff;
+            font-weight: 700;
+        }
+
         body.light-mode .replay-mode-popover {
             background: transparent;
             border-color: transparent;
@@ -7431,6 +7490,30 @@
         body.light-mode .replay-toolbar .replay-mode-toggle .replay-mode-option.active {
             background: var(--sp-accent, #2962ff);
             color: #ffffff;
+        }
+
+        body.light-mode .replay-mode-note > summary {
+            color: #334155;
+            background: rgba(148, 163, 184, 0.24);
+            border-color: rgba(148, 163, 184, 0.45);
+        }
+
+        body.light-mode .replay-mode-note > summary:hover,
+        body.light-mode .replay-mode-note[open] > summary {
+            color: #ffffff;
+            background: var(--sp-accent, #2962ff);
+            border-color: transparent;
+        }
+
+        body.light-mode .replay-mode-note-panel {
+            background: #ffffff;
+            color: #334155;
+            border-color: rgba(148, 163, 184, 0.45);
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+        }
+
+        body.light-mode .replay-mode-note-panel strong {
+            color: #0f172a;
         }
 
         /* ── Replay Interval Slider ── */
@@ -18173,6 +18256,12 @@
                                 <button type="button" class="replay-mode-option active" data-mode="tick" aria-pressed="true">Tick</button>
                                 <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
                             </div>
+                            <details class="replay-mode-note">
+                                <summary aria-label="What does Candle mode do?">i</summary>
+                                <div class="replay-mode-note-panel">
+                                    <strong>Candle mode:</strong> replay advances one full candle at a time (no tick-by-tick movement). Use it when you want faster, bar-by-bar testing.
+                                </div>
+                            </details>
                         </div>
                         <select id="replayPlaybackMode" title="Replay Playback Mode" style="display:none;">
                             <option value="tick" selected>Tick</option>
