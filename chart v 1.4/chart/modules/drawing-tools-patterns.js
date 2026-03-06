@@ -925,9 +925,9 @@ class HeadShouldersTool extends BaseDrawing {
 
         // Shoulder/head labels
         const labels = [
-            { index: 1, text: 'Left Shoulder' },
-            { index: 3, text: 'Head' },
-            { index: 5, text: 'Right Shoulder' }
+            { index: 1, text: 'LS' },
+            { index: 3, text: 'H' },
+            { index: 5, text: 'RS' }
         ];
 
         labels.forEach((label) => {
@@ -1307,34 +1307,31 @@ class HeadShouldersTool extends BaseDrawing {
     }
 
     drawShoulderLabel(x, y, text, placeAbove = true) {
-        const fontSize = 13;
-        const paddingX = 9;
-        const paddingY = 4;
-        const textWidth = Math.max(42, text.length * 7.1);
-        const labelWidth = textWidth + (paddingX * 2);
-        const labelHeight = fontSize + (paddingY * 2);
-        const labelY = placeAbove ? (y - labelHeight - 14) : (y + 14);
+        const tagText = String(text || '');
+        if (!tagText) return;
+
+        const textWidth = Math.max(20, (tagText.length * 7) + 8);
+        const labelHeight = 16;
+        const labelY = placeAbove ? (y - 18) : (y + 22);
 
         this.group.append('rect')
-            .attr('x', x - (labelWidth / 2))
-            .attr('y', labelY)
-            .attr('width', labelWidth)
+            .attr('x', x - (textWidth / 2))
+            .attr('y', labelY - 12)
+            .attr('width', textWidth)
             .attr('height', labelHeight)
-            .attr('rx', 4)
-            .attr('fill', this.style.labelFill)
-            .attr('opacity', 0.95)
+            .attr('rx', 2)
+            .attr('fill', this.style.labelFill || this.style.stroke)
             .style('pointer-events', 'none');
 
         this.group.append('text')
             .attr('x', x)
-            .attr('y', labelY + (labelHeight / 2))
+            .attr('y', labelY)
             .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
-            .attr('fill', this.style.labelTextColor)
-            .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', '600')
+            .attr('fill', this.style.labelTextColor || '#ffffff')
+            .attr('font-size', '11px')
+            .attr('font-weight', 'bold')
             .style('pointer-events', 'none')
-            .text(text);
+            .text(tagText);
     }
 
     static fromJSON(data, chart = null) {
