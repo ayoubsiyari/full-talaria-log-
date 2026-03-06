@@ -1245,8 +1245,16 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
             return;
         }
 
-        const endIndex = chartData.length - 1;
-        const anchorIndex = Math.max(0, Math.min(endIndex, Math.round(this.points[0].x)));
+        const latestDataIndex = chartData.length - 1;
+        const visibleEndFromMethod = scales.chart && typeof scales.chart.getVisibleEndIndex === 'function'
+            ? Number(scales.chart.getVisibleEndIndex())
+            : NaN;
+        const visibleEndFromState = Number(scales.chart ? scales.chart.visibleEndIndex : NaN);
+        const preferredEndIndex = Number.isFinite(visibleEndFromMethod)
+            ? visibleEndFromMethod
+            : (Number.isFinite(visibleEndFromState) ? visibleEndFromState - 1 : latestDataIndex);
+        const endIndex = Math.max(0, Math.min(latestDataIndex, Math.round(preferredEndIndex)));
+        const anchorIndex = Math.max(0, Math.min(latestDataIndex, Math.round(this.points[0].x)));
         this.points[0].x = anchorIndex;
 
         this.group.remove();
