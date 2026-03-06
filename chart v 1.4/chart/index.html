@@ -11425,33 +11425,27 @@
             position: absolute;
             left: 0px;
             bottom: 15px;
-            display: block;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
             pointer-events: none;
             z-index: 5;
         }
 
         .chart-brand img {
-            height: 100px;
             width: auto;
             display: block;
             opacity: 1;
             filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
         }
-        
-        /* Dark theme: show white logo (logo-05), hide black logo */
-        .chart-brand .logo-dark {
-            display: block;
+
+        .chart-brand .logo-top {
+            height: 56px;
         }
-        .chart-brand .logo-light {
-            display: none;
-        }
-        
-        /* Light theme: show black logo (logo-06), hide white logo */
-        body.light-theme .chart-brand .logo-dark {
-            display: none;
-        }
-        body.light-theme .chart-brand .logo-light {
-            display: block;
+
+        .chart-brand .logo-bottom {
+            height: 32px;
         }
 
         /* Layout Dropdown - Compact TradingView Style */
@@ -19007,8 +19001,8 @@
                 </svg>
             </button>
             <div class="chart-brand">
-                <img src="modules/logo-05.png" alt="Talaria Pro logo" class="logo-dark">
-                <img src="modules/logo-06.png" alt="Talaria Pro logo" class="logo-light">
+                <img src="modules/logo-09.png" alt="Talaria logo" class="logo-top">
+                <img src="modules/logo-14.png" alt="Talaria logo" class="logo-bottom">
             </div>
             
             <!-- Crosshair elements -->
