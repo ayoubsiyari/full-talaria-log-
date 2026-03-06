@@ -11584,7 +11584,16 @@ class Chart {
         // This prevents stuck drag state when mouse is released outside the chart area
         document.addEventListener('mouseup', handleMouseUp);
         
-        this.canvas.addEventListener('mouseleave', () => {
+        this.canvas.addEventListener('mouseleave', (e) => {
+            const hasPressedButton = !!(e && typeof e.buttons === 'number' && e.buttons !== 0);
+
+            // TradingView-like behavior: if user is still holding mouse button while
+            // leaving the chart, keep drag state alive so re-entering continues the drag.
+            if (this.drag.active && hasPressedButton) {
+                this.hideTooltip();
+                return;
+            }
+
             this.drag.active = false;
             this.drag.type = null;
             this.boxZoom.active = false;
@@ -13461,6 +13470,8 @@ class Chart {
                 
                 timeLabel.textContent = timeStr;
                 timeLabel.style.left = snappedX + 'px';
+                timeLabel.style.top = 'auto';
+                timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
                 timeLabel.style.transform = 'translateX(-50%)';
                 timeLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
                 // Enforce label colors from settings
@@ -15553,6 +15564,7 @@ class Chart {
         // Time label with proper styling
         if (timeLabel && isXVisible) {
             const date = new Date(candle.t);
+            const timeLabelBottom = Math.max(2, Math.floor(m.b * 0.2));
             const timeStr = date.toLocaleString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -15564,7 +15576,7 @@ class Chart {
             timeLabel.style.cssText = `
                 position: absolute;
                 left: ${x - 50}px;
-                bottom: 38px;
+                bottom: ${timeLabelBottom}px;
                 background: #363a45;
                 color: #d1d4dc;
                 padding: 2px 6px;

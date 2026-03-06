@@ -1479,10 +1479,14 @@ class ABCDPatternTool extends BaseDrawing {
 
             const offsetY = isTop ? -26 : 26;
             this._drawTag(pointPx.x, pointPx.y + offsetY, label, {
-                minWidth: 28,
+                minWidth: 20,
                 fill: this.style.labelFill,
                 textColor: this.style.labelTextColor,
-                fontSize: 15
+                fontSize: 11,
+                paddingX: 6,
+                paddingY: 2.5,
+                cornerRadius: 2,
+                fontWeight: 'bold'
             });
         });
 
@@ -1528,6 +1532,7 @@ class ABCDPatternTool extends BaseDrawing {
         const paddingX = Number(options.paddingX) || 10;
         const paddingY = Number(options.paddingY) || 5;
         const minWidth = Number(options.minWidth) || 24;
+        const cornerRadius = Number(options.cornerRadius);
         const estimatedTextWidth = Math.max(minWidth, (tagText.length * (fontSize * 0.62)) + (paddingX * 2));
         const tagHeight = fontSize + (paddingY * 2);
 
@@ -1536,7 +1541,7 @@ class ABCDPatternTool extends BaseDrawing {
             .attr('y', y - (tagHeight / 2))
             .attr('width', estimatedTextWidth)
             .attr('height', tagHeight)
-            .attr('rx', 8)
+            .attr('rx', Number.isFinite(cornerRadius) ? cornerRadius : 8)
             .attr('fill', options.fill || this.style.labelFill)
             .attr('opacity', options.opacity ?? 0.97)
             .style('pointer-events', 'none');
@@ -1548,7 +1553,7 @@ class ABCDPatternTool extends BaseDrawing {
             .attr('dominant-baseline', 'middle')
             .attr('fill', options.textColor || this.style.labelTextColor)
             .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', '600')
+            .attr('font-weight', options.fontWeight || '600')
             .style('pointer-events', 'none')
             .text(tagText);
     }
