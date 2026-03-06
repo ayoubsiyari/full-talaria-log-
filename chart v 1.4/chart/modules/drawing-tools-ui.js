@@ -5748,12 +5748,22 @@ body.light-mode .template-save-dialog .dialog-title {
     buildVolumeProfileStyleTab(container, drawing) {
         if (!drawing.style) drawing.style = {};
 
+        const hasOwn = (prop) => Object.prototype.hasOwnProperty.call(drawing.style, prop);
+
         if (!Number.isFinite(Number(drawing.style.profileWidthRatio))) drawing.style.profileWidthRatio = 0.3;
+        if (!hasOwn('profilePlacement')) drawing.style.profilePlacement = 'left';
+        if (!drawing.style.buyColor) drawing.style.buyColor = 'rgba(53, 186, 209, 0.82)';
+        if (!drawing.style.sellColor) drawing.style.sellColor = 'rgba(199, 71, 130, 0.82)';
+        if (!drawing.style.valueAreaBuyColor) drawing.style.valueAreaBuyColor = 'rgba(53, 186, 209, 1)';
+        if (!drawing.style.valueAreaSellColor) drawing.style.valueAreaSellColor = 'rgba(199, 71, 130, 1)';
+        if (!drawing.style.pocColor) drawing.style.pocColor = '#e6edf3';
         if (drawing.style.showPOC === undefined) drawing.style.showPOC = true;
         if (drawing.style.showVAH === undefined) drawing.style.showVAH = true;
         if (drawing.style.showVAL === undefined) drawing.style.showVAL = true;
+        if (drawing.style.showValues === undefined) drawing.style.showValues = true;
         if (!drawing.style.VAHColor) drawing.style.VAHColor = '#089981';
         if (!drawing.style.VALColor) drawing.style.VALColor = '#f23645';
+        if (!drawing.style.valuesColor) drawing.style.valuesColor = '#d1d4dc';
 
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
@@ -5782,19 +5792,64 @@ body.light-mode .template-save-dialog .dialog-title {
         };
 
         const profileWidthPercent = Math.max(15, Math.min(65, Math.round(Number(drawing.style.profileWidthRatio || 0.3) * 100)));
-        const widthRow = createStyleRow('Profile Width');
+
+        const valuesEnabled = drawing.style.showValues !== false;
+        const valuesRow = createStyleRow('');
+        valuesRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        valuesRow.label.innerHTML = `
+            <div class="tv-checkbox ${valuesEnabled ? 'checked' : ''}" data-prop="showValues">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Values</span>
+        `;
+        valuesRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="valuesColor" style="background: ${drawing.style.valuesColor || '#d1d4dc'};"></button>
+        `;
+
+        const widthRow = createStyleRow('Width (% of box)');
         widthRow.controls.innerHTML = `
             <input
-                type="range"
-                class="tv-slider"
+                type="number"
+                class="tv-input"
                 data-prop="profileWidthRatio"
                 value="${profileWidthPercent}"
                 min="15"
                 max="65"
                 step="1"
-                style="width: 120px; accent-color: #2962ff;"
+                style="width: 78px;"
             >
-            <span class="tv-profile-width-value" style="color: #d1d4dc; font-size: 12px; min-width: 40px;">${profileWidthPercent}%</span>
+            <span class="tv-profile-width-value" style="color: #d1d4dc; font-size: 12px; min-width: 16px;">%</span>
+        `;
+
+        const placement = String(drawing.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
+        const placementRow = createStyleRow('Placement');
+        placementRow.controls.innerHTML = `
+            <select class="tv-select" data-prop="profilePlacement" style="width: 130px;">
+                <option value="left" ${placement === 'left' ? 'selected' : ''}>Left</option>
+                <option value="right" ${placement === 'right' ? 'selected' : ''}>Right</option>
+            </select>
+        `;
+
+        const upVolumeRow = createStyleRow('Up Volume');
+        upVolumeRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="buyColor" style="background: ${drawing.style.buyColor || 'rgba(53, 186, 209, 0.82)'};"></button>
+        `;
+
+        const downVolumeRow = createStyleRow('Down Volume');
+        downVolumeRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="sellColor" style="background: ${drawing.style.sellColor || 'rgba(199, 71, 130, 0.82)'};"></button>
+        `;
+
+        const valueAreaUpRow = createStyleRow('Value Area Up');
+        valueAreaUpRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="valueAreaBuyColor" style="background: ${drawing.style.valueAreaBuyColor || 'rgba(53, 186, 209, 1)'};"></button>
+        `;
+
+        const valueAreaDownRow = createStyleRow('Value Area Down');
+        valueAreaDownRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="valueAreaSellColor" style="background: ${drawing.style.valueAreaSellColor || 'rgba(199, 71, 130, 1)'};"></button>
         `;
 
         const pocEnabled = drawing.style.showPOC !== false;
@@ -5806,7 +5861,10 @@ body.light-mode .template-save-dialog .dialog-title {
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
             </div>
-            <span class="tv-checkbox-label" style="white-space: nowrap;">Show POC</span>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">POC</span>
+        `;
+        pocRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="pocColor" style="background: ${drawing.style.pocColor || '#e6edf3'};"></button>
         `;
 
         const vahEnabled = drawing.style.showVAH !== false;
@@ -5818,7 +5876,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
             </div>
-            <span class="tv-checkbox-label" style="white-space: nowrap;">Show VAH</span>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">VAH</span>
         `;
         vahRow.controls.innerHTML = `
             <button class="tv-color-btn" data-prop="VAHColor" style="background: ${drawing.style.VAHColor || '#089981'};"></button>
@@ -5833,7 +5891,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
             </div>
-            <span class="tv-checkbox-label" style="white-space: nowrap;">Show VAL</span>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">VAL</span>
         `;
         valRow.controls.innerHTML = `
             <button class="tv-color-btn" data-prop="VALColor" style="background: ${drawing.style.VALColor || '#f23645'};"></button>
@@ -8399,6 +8457,11 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style[prop] = isChecked;
                     self.renderPreview(drawing);
                 }
+
+                if (prop === 'showValues') {
+                    drawing.style.showValues = isChecked;
+                    self.renderPreview(drawing);
+                }
                 });
             });
         }, 0);
@@ -8620,6 +8683,11 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style.borderWidth = parseInt(value);
                     this.pendingChanges.borderWidth = value;
                     this.applyChangesImmediately(drawing);
+                } else if (prop === 'profilePlacement') {
+                    const placementValue = value === 'right' ? 'right' : 'left';
+                    drawing.style.profilePlacement = placementValue;
+                    this.pendingChanges.profilePlacement = placementValue;
+                    self.renderPreview(drawing);
                 }
             });
         });
@@ -8828,25 +8896,29 @@ body.light-mode .template-save-dialog .dialog-title {
             });
         });
 
-        queryAll('.tv-slider[data-prop="profileWidthRatio"]').forEach(slider => {
+        queryAll('.tv-slider[data-prop="profileWidthRatio"], .tv-input[data-prop="profileWidthRatio"]').forEach(control => {
             const applyProfileWidthRatio = () => {
-                const rawPercent = parseInt(slider.value, 10);
+                const rawPercent = parseInt(control.value, 10);
                 const percent = Number.isFinite(rawPercent) ? rawPercent : 30;
                 const ratio = Math.max(0.15, Math.min(0.65, percent / 100));
 
                 this.pendingChanges.profileWidthRatio = ratio;
                 drawing.style.profileWidthRatio = ratio;
 
-                const valueDisplay = slider.parentElement.querySelector('.tv-profile-width-value');
+                const valueDisplay = control.parentElement.querySelector('.tv-profile-width-value');
                 if (valueDisplay) {
-                    valueDisplay.textContent = `${Math.round(ratio * 100)}%`;
+                    valueDisplay.textContent = '%';
+                }
+
+                if (control.type === 'number') {
+                    control.value = String(Math.round(ratio * 100));
                 }
 
                 self.renderPreview(drawing);
             };
 
-            slider.addEventListener('input', applyProfileWidthRatio);
-            slider.addEventListener('change', applyProfileWidthRatio);
+            control.addEventListener('input', applyProfileWidthRatio);
+            control.addEventListener('change', applyProfileWidthRatio);
         });
         
         // Text content input (for text tools) - use queryAll to find in external dropdowns
@@ -9348,7 +9420,16 @@ body.light-mode .template-save-dialog .dialog-title {
                     // Also update Pearson's R text color
                     actualDrawing.group.selectAll('.pearson-r-text').style('fill', finalColor);
                 }
-            } else if (prop === 'pocColor' || prop === 'VAHColor' || prop === 'VALColor') {
+            } else if (
+                prop === 'pocColor' ||
+                prop === 'VAHColor' ||
+                prop === 'VALColor' ||
+                prop === 'buyColor' ||
+                prop === 'sellColor' ||
+                prop === 'valueAreaBuyColor' ||
+                prop === 'valueAreaSellColor' ||
+                prop === 'valuesColor'
+            ) {
                 actualDrawing.style[prop] = finalColor;
                 drawing.style[prop] = finalColor;
                 if (drawingManager) {
@@ -9458,6 +9539,16 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.showPOC !== undefined) drawing.style.showPOC = this.pendingChanges.showPOC;
         if (this.pendingChanges.showVAH !== undefined) drawing.style.showVAH = this.pendingChanges.showVAH;
         if (this.pendingChanges.showVAL !== undefined) drawing.style.showVAL = this.pendingChanges.showVAL;
+        if (this.pendingChanges.showValues !== undefined) drawing.style.showValues = this.pendingChanges.showValues;
+        if (this.pendingChanges.profilePlacement !== undefined) {
+            drawing.style.profilePlacement = this.pendingChanges.profilePlacement === 'right' ? 'right' : 'left';
+        }
+        if (this.pendingChanges.pocColor !== undefined) drawing.style.pocColor = this.pendingChanges.pocColor;
+        if (this.pendingChanges.buyColor !== undefined) drawing.style.buyColor = this.pendingChanges.buyColor;
+        if (this.pendingChanges.sellColor !== undefined) drawing.style.sellColor = this.pendingChanges.sellColor;
+        if (this.pendingChanges.valueAreaBuyColor !== undefined) drawing.style.valueAreaBuyColor = this.pendingChanges.valueAreaBuyColor;
+        if (this.pendingChanges.valueAreaSellColor !== undefined) drawing.style.valueAreaSellColor = this.pendingChanges.valueAreaSellColor;
+        if (this.pendingChanges.valuesColor !== undefined) drawing.style.valuesColor = this.pendingChanges.valuesColor;
         if (this.pendingChanges.VAHColor !== undefined) drawing.style.VAHColor = this.pendingChanges.VAHColor;
         if (this.pendingChanges.VALColor !== undefined) drawing.style.VALColor = this.pendingChanges.VALColor;
         
