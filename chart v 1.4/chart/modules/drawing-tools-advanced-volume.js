@@ -616,6 +616,10 @@ class VolumeProfileTool extends BaseDrawing {
         if (!hasOwn('pocColor')) this.style.pocColor = '#e6edf3';
         if (!Number.isFinite(Number(this.style.profileWidthRatio))) this.style.profileWidthRatio = 0.3;
         if (this.style.showPOC === undefined) this.style.showPOC = true;
+        if (this.style.showVAH === undefined) this.style.showVAH = true;
+        if (this.style.showVAL === undefined) this.style.showVAL = true;
+        if (!hasOwn('VAHColor')) this.style.VAHColor = '#089981';
+        if (!hasOwn('VALColor')) this.style.VALColor = '#f23645';
     }
 
     render(container, scales) {
@@ -922,6 +926,38 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('stroke-width', 1.35)
                 .attr('opacity', Math.min(1, globalOpacity * 0.95))
                 .style('pointer-events', 'none');
+        }
+
+        if (this.style.showVAH !== false) {
+            const vahY = bottom - ((valueAreaHigh + 0.5) * barHeight);
+            if (Number.isFinite(vahY)) {
+                this.group.append('line')
+                    .attr('class', 'volume-profile-vah-line')
+                    .attr('x1', left)
+                    .attr('y1', vahY)
+                    .attr('x2', right)
+                    .attr('y2', vahY)
+                    .attr('stroke', this.style.VAHColor || '#089981')
+                    .attr('stroke-width', 1.2)
+                    .attr('opacity', Math.min(1, globalOpacity * 0.9))
+                    .style('pointer-events', 'none');
+            }
+        }
+
+        if (this.style.showVAL !== false) {
+            const valY = bottom - ((valueAreaLow + 0.5) * barHeight);
+            if (Number.isFinite(valY)) {
+                this.group.append('line')
+                    .attr('class', 'volume-profile-val-line')
+                    .attr('x1', left)
+                    .attr('y1', valY)
+                    .attr('x2', right)
+                    .attr('y2', valY)
+                    .attr('stroke', this.style.VALColor || '#f23645')
+                    .attr('stroke-width', 1.2)
+                    .attr('opacity', Math.min(1, globalOpacity * 0.9))
+                    .style('pointer-events', 'none');
+            }
         }
 
         this.createHandles(this.group, scales);

@@ -2456,6 +2456,11 @@ body.light-mode .template-save-dialog .dialog-title {
             this.buildRangeToolsStyleTab(container, drawing);
             return;
         }
+
+        if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
+            this.buildVolumeProfileStyleTab(container, drawing);
+            return;
+        }
         
         // Special handling for emoji
         if (drawing.type === 'emoji') {
@@ -5740,6 +5745,103 @@ body.light-mode .template-save-dialog .dialog-title {
         container.appendChild(section);
     }
 
+    buildVolumeProfileStyleTab(container, drawing) {
+        if (!drawing.style) drawing.style = {};
+
+        if (!Number.isFinite(Number(drawing.style.profileWidthRatio))) drawing.style.profileWidthRatio = 0.3;
+        if (drawing.style.showPOC === undefined) drawing.style.showPOC = true;
+        if (drawing.style.showVAH === undefined) drawing.style.showVAH = true;
+        if (drawing.style.showVAL === undefined) drawing.style.showVAL = true;
+        if (!drawing.style.VAHColor) drawing.style.VAHColor = '#089981';
+        if (!drawing.style.VALColor) drawing.style.VALColor = '#f23645';
+
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
+
+        const labelColumnWidth = 170;
+        const controlsColumnWidth = 180;
+
+        const createStyleRow = (labelText) => {
+            const row = document.createElement('div');
+            row.className = 'tv-prop-row';
+            row.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
+
+            const label = document.createElement('span');
+            label.className = 'tv-prop-label';
+            label.style.cssText = `min-width: 0; width: ${labelColumnWidth}px; flex: 0 0 ${labelColumnWidth}px;`;
+            label.textContent = labelText;
+            row.appendChild(label);
+
+            const controls = document.createElement('div');
+            controls.className = 'tv-prop-controls';
+            controls.style.cssText = `width: ${controlsColumnWidth}px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;`;
+            row.appendChild(controls);
+
+            section.appendChild(row);
+            return { row, label, controls };
+        };
+
+        const profileWidthPercent = Math.max(15, Math.min(65, Math.round(Number(drawing.style.profileWidthRatio || 0.3) * 100)));
+        const widthRow = createStyleRow('Profile Width');
+        widthRow.controls.innerHTML = `
+            <input
+                type="range"
+                class="tv-slider"
+                data-prop="profileWidthRatio"
+                value="${profileWidthPercent}"
+                min="15"
+                max="65"
+                step="1"
+                style="width: 120px; accent-color: #2962ff;"
+            >
+            <span class="tv-profile-width-value" style="color: #d1d4dc; font-size: 12px; min-width: 40px;">${profileWidthPercent}%</span>
+        `;
+
+        const pocEnabled = drawing.style.showPOC !== false;
+        const pocRow = createStyleRow('');
+        pocRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        pocRow.label.innerHTML = `
+            <div class="tv-checkbox ${pocEnabled ? 'checked' : ''}" data-prop="showPOC">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Show POC</span>
+        `;
+
+        const vahEnabled = drawing.style.showVAH !== false;
+        const vahRow = createStyleRow('');
+        vahRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        vahRow.label.innerHTML = `
+            <div class="tv-checkbox ${vahEnabled ? 'checked' : ''}" data-prop="showVAH">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Show VAH</span>
+        `;
+        vahRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="VAHColor" style="background: ${drawing.style.VAHColor || '#089981'};"></button>
+        `;
+
+        const valEnabled = drawing.style.showVAL !== false;
+        const valRow = createStyleRow('');
+        valRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        valRow.label.innerHTML = `
+            <div class="tv-checkbox ${valEnabled ? 'checked' : ''}" data-prop="showVAL">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Show VAL</span>
+        `;
+        valRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="VALColor" style="background: ${drawing.style.VALColor || '#f23645'};"></button>
+        `;
+
+        container.appendChild(section);
+    }
+
     /**
      * Build Image V2 specific Style Tab - upload UI
      */
@@ -8292,6 +8394,11 @@ body.light-mode .template-save-dialog .dialog-title {
                     this.pendingChanges.showPearsonsR = isChecked;
                     self.renderPreview(drawing);
                 }
+
+                if (prop === 'showPOC' || prop === 'showVAH' || prop === 'showVAL') {
+                    drawing.style[prop] = isChecked;
+                    self.renderPreview(drawing);
+                }
                 });
             });
         }, 0);
@@ -8719,6 +8826,27 @@ body.light-mode .template-save-dialog .dialog-title {
                 
                 self.renderPreview(drawing);
             });
+        });
+
+        queryAll('.tv-slider[data-prop="profileWidthRatio"]').forEach(slider => {
+            const applyProfileWidthRatio = () => {
+                const rawPercent = parseInt(slider.value, 10);
+                const percent = Number.isFinite(rawPercent) ? rawPercent : 30;
+                const ratio = Math.max(0.15, Math.min(0.65, percent / 100));
+
+                this.pendingChanges.profileWidthRatio = ratio;
+                drawing.style.profileWidthRatio = ratio;
+
+                const valueDisplay = slider.parentElement.querySelector('.tv-profile-width-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = `${Math.round(ratio * 100)}%`;
+                }
+
+                self.renderPreview(drawing);
+            };
+
+            slider.addEventListener('input', applyProfileWidthRatio);
+            slider.addEventListener('change', applyProfileWidthRatio);
         });
         
         // Text content input (for text tools) - use queryAll to find in external dropdowns
@@ -9220,6 +9348,14 @@ body.light-mode .template-save-dialog .dialog-title {
                     // Also update Pearson's R text color
                     actualDrawing.group.selectAll('.pearson-r-text').style('fill', finalColor);
                 }
+            } else if (prop === 'pocColor' || prop === 'VAHColor' || prop === 'VALColor') {
+                actualDrawing.style[prop] = finalColor;
+                drawing.style[prop] = finalColor;
+                if (drawingManager) {
+                    drawingManager.renderDrawing(actualDrawing);
+                    drawingManager.saveDrawings();
+                }
+                return;
             } else if (prop === 'textColor') {
                 actualDrawing.style.textColor = finalColor;
                 drawing.style.textColor = finalColor;
@@ -9312,6 +9448,18 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.middleLineType !== undefined) drawing.style.middleLineDash = this.pendingChanges.middleLineType;
         if (this.pendingChanges.middleLineWidth) drawing.style.middleLineWidth = parseInt(this.pendingChanges.middleLineWidth);
         if (this.pendingChanges.middleLineEnabled !== undefined) drawing.style.showMiddleLine = this.pendingChanges.middleLineEnabled;
+
+        if (this.pendingChanges.profileWidthRatio !== undefined) {
+            const parsedProfileWidthRatio = Number(this.pendingChanges.profileWidthRatio);
+            if (Number.isFinite(parsedProfileWidthRatio)) {
+                drawing.style.profileWidthRatio = Math.max(0.15, Math.min(0.65, parsedProfileWidthRatio));
+            }
+        }
+        if (this.pendingChanges.showPOC !== undefined) drawing.style.showPOC = this.pendingChanges.showPOC;
+        if (this.pendingChanges.showVAH !== undefined) drawing.style.showVAH = this.pendingChanges.showVAH;
+        if (this.pendingChanges.showVAL !== undefined) drawing.style.showVAL = this.pendingChanges.showVAL;
+        if (this.pendingChanges.VAHColor !== undefined) drawing.style.VAHColor = this.pendingChanges.VAHColor;
+        if (this.pendingChanges.VALColor !== undefined) drawing.style.VALColor = this.pendingChanges.VALColor;
         
         // Extend left/right properties
         if (this.pendingChanges.extendLeft !== undefined) drawing.style.extendLeft = this.pendingChanges.extendLeft;
