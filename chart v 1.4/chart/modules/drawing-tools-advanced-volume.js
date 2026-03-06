@@ -384,8 +384,6 @@ class AnchoredVWAPTool extends BaseDrawing {
                 .attr('font-size', '11px')
                 .style('pointer-events', 'none')
                 .text('VWAP (No Data)');
-
-            this.createHandles(this.group, scales);
             return;
         }
         
@@ -586,8 +584,6 @@ class AnchoredVWAPTool extends BaseDrawing {
             .attr('opacity', this.style.opacity)
             .style('pointer-events', 'none')
             .text('VWAP');
-
-        this.createHandles(this.group, scales);
     }
 
     static fromJSON(data) {
