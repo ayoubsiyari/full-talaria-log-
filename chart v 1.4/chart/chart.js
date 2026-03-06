@@ -11310,6 +11310,10 @@ class Chart {
                 if (this.svg && this.svg.node()) {
                     this.svg.node().style.cursor = panCursor;
                 }
+                const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
+                if (chartWrapper) {
+                    chartWrapper.style.cursor = panCursor;
+                }
                 
                 if (this.replaySystem?.isActive && this.replaySystem.autoScrollEnabled) {
                     this.replaySystem.onUserPan();
@@ -11350,10 +11354,23 @@ class Chart {
                 this.movement.lastTime = now;
                 
                 // Keep cursor style consistent with drag type (sticky behavior)
+                let dragCursor = null;
                 if (this.drag.type === 'priceAxis') {
-                    this.canvas.style.cursor = 'ns-resize';
+                    dragCursor = 'ns-resize';
                 } else if (this.drag.type === 'timeAxis') {
-                    this.canvas.style.cursor = 'ew-resize';
+                    dragCursor = 'ew-resize';
+                } else if (this.drag.type === 'pan') {
+                    dragCursor = this.cursorType === 'dot' ? 'none' : 'move';
+                }
+                if (dragCursor !== null) {
+                    this.canvas.style.cursor = dragCursor;
+                    if (this.svg && this.svg.node()) {
+                        this.svg.node().style.cursor = dragCursor;
+                    }
+                    const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
+                    if (chartWrapper) {
+                        chartWrapper.style.cursor = dragCursor;
+                    }
                 }
                 
                 // ─── Chart Pan ───
