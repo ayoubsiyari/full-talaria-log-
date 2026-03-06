@@ -603,6 +603,19 @@ class VolumeProfileTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('volume-profile', points, style);
         this.requiredPoints = 2;
+
+        const hasOwn = (prop) => Object.prototype.hasOwnProperty.call(style, prop);
+
+        if (!hasOwn('stroke')) this.style.stroke = 'rgba(130, 164, 176, 0.45)';
+        if (!hasOwn('strokeWidth')) this.style.strokeWidth = 1;
+        if ((!hasOwn('fill') || style.fill === 'none' || style.fill === 'transparent') && style.showBackground !== false) {
+            this.style.fill = 'rgba(14, 59, 70, 0.22)';
+        }
+        if (!hasOwn('buyColor')) this.style.buyColor = 'rgba(53, 186, 209, 0.82)';
+        if (!hasOwn('sellColor')) this.style.sellColor = 'rgba(199, 71, 130, 0.82)';
+        if (!hasOwn('pocColor')) this.style.pocColor = '#e6edf3';
+        if (!Number.isFinite(Number(this.style.profileWidthRatio))) this.style.profileWidthRatio = 0.3;
+        if (this.style.showPOC === undefined) this.style.showPOC = true;
     }
 
     render(container, scales) {
@@ -613,7 +626,7 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.points.length < 2) return;
 
         this.group = container.append('g')
-            .attr('class', 'drawing-volume-profile')
+            .attr('class', 'drawing drawing-volume-profile')
             .attr('data-id', this.id);
 
         const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -630,25 +643,34 @@ class VolumeProfileTool extends BaseDrawing {
         const height = bottom - top;
         const width = right - left;
 
-        // Border box
+        const opacityRaw = Number(this.style.opacity);
+        const globalOpacity = Number.isFinite(opacityRaw)
+            ? Math.max(0, Math.min(1, opacityRaw))
+            : 1;
+        const showBackground = this.style.showBackground !== false && this.style.fill && this.style.fill !== 'none' && this.style.fill !== 'transparent';
+
+        // TradingView-like selected range backdrop + drag hit area
         this.group.append('rect')
+            .attr('class', 'range-fill-hit volume-profile-range')
             .attr('x', left)
             .attr('y', top)
             .attr('width', width)
             .attr('height', height)
-            .attr('fill', 'none')
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('opacity', this.style.opacity);
+            .attr('fill', showBackground ? this.style.fill : 'transparent')
+            .attr('stroke', this.style.stroke || 'rgba(130, 164, 176, 0.45)')
+            .attr('stroke-width', Math.max(0.5, Number(this.style.strokeWidth) || 1))
+            .attr('opacity', globalOpacity)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
 
         // Get chart data for volume profile calculation
-        const chartData = scales.chart && scales.chart.data ? scales.chart.data : [];
+        const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
         const startIndex = Math.max(0, Math.round(Math.min(this.points[0].x, this.points[1].x)));
         const endIndex = Math.min(chartData.length - 1, Math.round(Math.max(this.points[0].x, this.points[1].x)));
         const priceHigh = Math.max(this.points[0].y, this.points[1].y);
         const priceLow = Math.min(this.points[0].y, this.points[1].y);
 
-        if (!Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow) {
+        if (chartData.length === 0 || startIndex > endIndex || !Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow || width <= 0 || height <= 0) {
             this.createHandles(this.group, scales);
             return;
         }
@@ -662,7 +684,13 @@ class VolumeProfileTool extends BaseDrawing {
 
         const priceRange = priceHigh - priceLow;
         const priceStep = priceRange / numBins;
-        const volumeBins = new Array(numBins).fill(0);
+        if (!Number.isFinite(priceStep) || priceStep <= 0) {
+            this.createHandles(this.group, scales);
+            return;
+        }
+
+        const buyVolumeBins = new Array(numBins).fill(0);
+        const sellVolumeBins = new Array(numBins).fill(0);
         
         // Aggregate volume by price level
         for (let i = startIndex; i <= endIndex; i++) {
@@ -695,71 +723,145 @@ class VolumeProfileTool extends BaseDrawing {
             const overlapRange = effectiveHigh - effectiveLow;
             const overlapRatio = candleRange > 0 ? overlapRange / candleRange : 1;
             const effectiveVolume = volume * overlapRatio;
+
+            // Approximate aggressor split using close location inside candle range.
+            let buyWeight = 0.5;
+            const highLowRange = high - low;
+            if (Number.isFinite(highLowRange) && highLowRange > 0) {
+                buyWeight = (close - low) / highLowRange;
+            } else if (close > open) {
+                buyWeight = 0.65;
+            } else if (close < open) {
+                buyWeight = 0.35;
+            }
+            buyWeight = Math.max(0.1, Math.min(0.9, buyWeight));
+            const sellWeight = 1 - buyWeight;
             
             // Find which bins this candle's overlap touches
             const lowBin = Math.floor((effectiveLow - priceLow) / priceStep);
-            const highBin = Math.min(numBins - 1, Math.floor((effectiveHigh - priceLow) / priceStep));
+            const highBin = Math.floor((effectiveHigh - priceLow) / priceStep);
+            const clampedLowBin = Math.max(0, lowBin);
+            const clampedHighBin = Math.min(numBins - 1, highBin);
+            if (clampedLowBin > clampedHighBin) continue;
             
             // Distribute volume evenly across touched bins
-            const binsSpanned = Math.max(1, highBin - lowBin + 1);
-            const volumePerBin = effectiveVolume / binsSpanned;
+            const binsSpanned = Math.max(1, clampedHighBin - clampedLowBin + 1);
+            const buyPerBin = (effectiveVolume * buyWeight) / binsSpanned;
+            const sellPerBin = (effectiveVolume * sellWeight) / binsSpanned;
             
-            for (let b = Math.max(0, lowBin); b <= highBin; b++) {
-                volumeBins[b] += volumePerBin;
+            for (let b = clampedLowBin; b <= clampedHighBin; b++) {
+                buyVolumeBins[b] += buyPerBin;
+                sellVolumeBins[b] += sellPerBin;
             }
         }
         
+        const totalVolumeBins = buyVolumeBins.map((buyVol, idx) => buyVol + sellVolumeBins[idx]);
+
         // Find max volume for scaling
-        const maxVolume = Math.max(...volumeBins, 1);
+        const maxVolume = Math.max(...totalVolumeBins, 0);
         const barHeight = height / numBins;
+        if (!Number.isFinite(maxVolume) || maxVolume <= 0) {
+            this.createHandles(this.group, scales);
+            return;
+        }
 
         // Find POC (Point of Control - highest volume level)
         let pocIndex = 0;
         let maxVol = 0;
-        volumeBins.forEach((vol, idx) => {
+        totalVolumeBins.forEach((vol, idx) => {
             if (vol > maxVol) {
                 maxVol = vol;
                 pocIndex = idx;
             }
         });
-        
-        // Draw volume bars (horizontal, from left to right)
-        volumeBins.forEach((volume, i) => {
-            if (volume === 0) return;
 
-            const barWidth = (width * 0.6) * (volume / maxVolume);
+        // Approximate TradingView value area (70%) centered around POC.
+        let valueAreaLow = pocIndex;
+        let valueAreaHigh = pocIndex;
+        const totalProfileVolume = totalVolumeBins.reduce((sum, vol) => sum + vol, 0);
+        if (totalProfileVolume > 0) {
+            const targetValueAreaVolume = totalProfileVolume * 0.7;
+            let accumulatedVolume = totalVolumeBins[pocIndex] || 0;
+
+            while (accumulatedVolume < targetValueAreaVolume && (valueAreaLow > 0 || valueAreaHigh < numBins - 1)) {
+                const nextLowVolume = valueAreaLow > 0 ? totalVolumeBins[valueAreaLow - 1] : -1;
+                const nextHighVolume = valueAreaHigh < numBins - 1 ? totalVolumeBins[valueAreaHigh + 1] : -1;
+
+                if (nextHighVolume > nextLowVolume && valueAreaHigh < numBins - 1) {
+                    valueAreaHigh += 1;
+                    accumulatedVolume += Math.max(0, nextHighVolume);
+                } else if (valueAreaLow > 0) {
+                    valueAreaLow -= 1;
+                    accumulatedVolume += Math.max(0, nextLowVolume);
+                } else if (valueAreaHigh < numBins - 1) {
+                    valueAreaHigh += 1;
+                    accumulatedVolume += Math.max(0, nextHighVolume);
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        const profileWidthRatio = Math.max(0.15, Math.min(0.65, Number(this.style.profileWidthRatio) || 0.3));
+        const maxProfileWidth = Math.max(12, width * profileWidthRatio);
+        const buyColor = this.style.buyColor || 'rgba(53, 186, 209, 0.82)';
+        const sellColor = this.style.sellColor || 'rgba(199, 71, 130, 0.82)';
+
+        // Draw stacked buy/sell bars from the left side (TradingView-like fixed-range profile look).
+        totalVolumeBins.forEach((totalVolume, i) => {
+            if (!Number.isFinite(totalVolume) || totalVolume <= 0) return;
+
+            const buyVolume = buyVolumeBins[i] || 0;
+            const sellVolume = sellVolumeBins[i] || 0;
+            const totalWidth = maxProfileWidth * (totalVolume / maxVolume);
+            if (!Number.isFinite(totalWidth) || totalWidth <= 0) return;
+
+            const buyRatio = totalVolume > 0 ? buyVolume / totalVolume : 0.5;
+            const buyWidth = totalWidth * Math.max(0, Math.min(1, buyRatio));
+            const sellWidth = Math.max(0, totalWidth - buyWidth);
+
             // Bars go from bottom to top (reverse index)
             const barY = bottom - ((i + 1) * barHeight);
+            const barHeightPx = Math.max(1, barHeight - 1);
+            const isInsideValueArea = i >= valueAreaLow && i <= valueAreaHigh;
+            const barOpacity = globalOpacity * (isInsideValueArea ? 1 : 0.66);
 
-            this.group.append('rect')
-                .attr('x', right - barWidth)
-                .attr('y', barY)
-                .attr('width', barWidth)
-                .attr('height', Math.max(1, barHeight - 1))
-                .attr('fill', this.style.stroke)
-                .attr('opacity', this.style.opacity * 0.6)
-                .attr('rx', 1);
+            if (buyWidth > 0.25) {
+                this.group.append('rect')
+                    .attr('x', left)
+                    .attr('y', barY)
+                    .attr('width', buyWidth)
+                    .attr('height', barHeightPx)
+                    .attr('fill', buyColor)
+                    .attr('opacity', barOpacity)
+                    .style('pointer-events', 'none');
+            }
+
+            if (sellWidth > 0.25) {
+                this.group.append('rect')
+                    .attr('x', left + buyWidth)
+                    .attr('y', barY)
+                    .attr('width', sellWidth)
+                    .attr('height', barHeightPx)
+                    .attr('fill', sellColor)
+                    .attr('opacity', barOpacity)
+                    .style('pointer-events', 'none');
+            }
         });
 
-        // POC line (Point of Control - highest volume)
-        const pocY = bottom - ((pocIndex + 0.5) * barHeight);
-        this.group.append('line')
-            .attr('x1', left)
-            .attr('y1', pocY)
-            .attr('x2', right)
-            .attr('y2', pocY)
-            .attr('stroke', '#ff9800')
-            .attr('stroke-width', 2)
-            .attr('opacity', 0.8);
-
-        // Label
-        this.group.append('text')
-            .attr('x', left + 5)
-            .attr('y', top + 15)
-            .attr('fill', this.style.stroke)
-            .attr('font-size', '10px')
-            .attr('opacity', this.style.opacity)
-            .text('Volume Profile');
+        if (this.style.showPOC !== false) {
+            const pocY = bottom - ((pocIndex + 0.5) * barHeight);
+            this.group.append('line')
+                .attr('class', 'volume-profile-poc-line')
+                .attr('x1', left)
+                .attr('y1', pocY)
+                .attr('x2', right)
+                .attr('y2', pocY)
+                .attr('stroke', this.style.pocColor || '#e6edf3')
+                .attr('stroke-width', 1.35)
+                .attr('opacity', Math.min(1, globalOpacity * 0.95))
+                .style('pointer-events', 'none');
+        }
 
         this.createHandles(this.group, scales);
     }

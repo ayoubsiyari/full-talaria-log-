@@ -2720,7 +2720,7 @@ body.light-mode .template-save-dialog .dialog-title {
             container.appendChild(bgRow);
         }
         // For other tools: show background with checkbox
-        else if (!isBrushType && !isLineTool && !isElliottWaveType && allowPatternBackgroundControls && drawing.type !== 'fibonacci-retracement' && drawing.type !== 'fibonacci-extension' && drawing.type !== 'trend-fib-extension' && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'fib-spiral' && drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
+        else if (!isBrushType && !isLineTool && !isElliottWaveType && allowPatternBackgroundControls && drawing.type !== 'anchored-vwap' && drawing.type !== 'vwap' && drawing.type !== 'fibonacci-retracement' && drawing.type !== 'fibonacci-extension' && drawing.type !== 'trend-fib-extension' && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'fib-spiral' && drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
             const bgRow = document.createElement('div');
             bgRow.className = 'tv-prop-row';
             const hasFill = drawing.style.fill && drawing.style.fill !== 'none';
