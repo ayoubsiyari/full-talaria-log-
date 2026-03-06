@@ -716,6 +716,10 @@ class VolumeProfileTool extends BaseDrawing {
             : 1;
         const boundaryStroke = this.style.stroke || 'rgba(130, 164, 176, 0.45)';
         const boundaryWidth = Math.max(0.5, Number(this.style.strokeWidth) || 1);
+        const showBackground = this.style.showBackground !== false;
+        const backgroundFill = showBackground
+            ? (this.style.fill || 'rgba(14, 59, 70, 0.22)')
+            : 'transparent';
 
         // Keep only line/handle-based interactions (TradingView-like):
         // background area should not start drag/move.
@@ -725,7 +729,8 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('y', paneTop)
             .attr('width', width)
             .attr('height', paneHeight)
-            .attr('fill', 'transparent')
+            .attr('fill', backgroundFill)
+            .attr('opacity', Math.min(1, globalOpacity * 0.85))
             .attr('stroke', 'none')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -962,6 +967,9 @@ class VolumeProfileTool extends BaseDrawing {
         const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
         const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : right;
         const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
+        const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
+        const levelLineStartX = hasFixedProfileSide ? chartLeftEdge : left;
+        const levelLineEndX = hasFixedProfileSide ? chartRightEdge : profileLineEndX;
 
         const formatVolumeValue = (value) => {
             const num = Number(value);
@@ -1065,9 +1073,9 @@ class VolumeProfileTool extends BaseDrawing {
             const pocY = bottom - ((pocIndex + 0.5) * barHeight);
             this.group.append('line')
                 .attr('class', 'volume-profile-poc-line')
-                .attr('x1', left)
+                .attr('x1', levelLineStartX)
                 .attr('y1', pocY)
-                .attr('x2', profileLineEndX)
+                .attr('x2', levelLineEndX)
                 .attr('y2', pocY)
                 .attr('stroke', this.style.pocColor || '#e6edf3')
                 .attr('stroke-width', 1.35)
@@ -1080,9 +1088,9 @@ class VolumeProfileTool extends BaseDrawing {
             if (Number.isFinite(vahY)) {
                 this.group.append('line')
                     .attr('class', 'volume-profile-vah-line')
-                    .attr('x1', left)
+                    .attr('x1', levelLineStartX)
                     .attr('y1', vahY)
-                    .attr('x2', profileLineEndX)
+                    .attr('x2', levelLineEndX)
                     .attr('y2', vahY)
                     .attr('stroke', this.style.VAHColor || '#089981')
                     .attr('stroke-width', 1.2)
@@ -1096,9 +1104,9 @@ class VolumeProfileTool extends BaseDrawing {
             if (Number.isFinite(valY)) {
                 this.group.append('line')
                     .attr('class', 'volume-profile-val-line')
-                    .attr('x1', left)
+                    .attr('x1', levelLineStartX)
                     .attr('y1', valY)
-                    .attr('x2', profileLineEndX)
+                    .attr('x2', levelLineEndX)
                     .attr('y2', valY)
                     .attr('stroke', this.style.VALColor || '#f23645')
                     .attr('stroke-width', 1.2)
