@@ -1439,8 +1439,14 @@ class TrianglePatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('triangle-pattern', points, style);
         this.requiredPoints = 4;
-        this.style.stroke = style.stroke || '#4caf50';
+        this.style.stroke = style.stroke || '#7a3ff2';
         this.style.strokeWidth = style.strokeWidth || 2;
+        this.style.fill = style.fill || 'rgba(122, 63, 242, 0.16)';
+        this.style.boundaryDasharray = style.boundaryDasharray || '1,4';
+        this.style.boundaryWidth = style.boundaryWidth || 1.5;
+        this.style.labelFill = style.labelFill || this.style.stroke;
+        this.style.labelTextColor = style.labelTextColor || '#ffffff';
+        this.labels = ['A', 'B', 'C', 'D'];
     }
 
     render(container, scales) {
@@ -1452,53 +1458,201 @@ class TrianglePatternTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
-        const getX = (p) => scales.chart?.dataIndexToPixel ? 
+        const getX = (p) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const getY = (p) => scales.yScale(p.y);
+        const pointsPx = this.points.map((p) => ({ x: getX(p), y: getY(p) }));
+        const lineOpacity = this.style.opacity ?? 1;
 
-        // Draw two converging trendlines
-        if (this.points.length >= 4) {
-            // Upper trendline (points 0 and 2)
-            this.group.append('line')
-                .attr('x1', getX(this.points[0]))
-                .attr('y1', getY(this.points[0]))
-                .attr('x2', getX(this.points[2]))
-                .attr('y2', getY(this.points[2]))
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.strokeWidth)
-                .attr('opacity', this.style.opacity)
-                .style('pointer-events', 'stroke')
+        if (pointsPx.length >= 4) {
+            const a = pointsPx[0];
+            const b = pointsPx[1];
+            const c = pointsPx[2];
+            const d = pointsPx[3];
+
+            const viewport = this._getViewportXRange(scales, pointsPx);
+            const leftX = viewport ? viewport[0] : Math.min(a.x, b.x, c.x, d.x);
+
+            const leftBottom = this._pointOnLineAtX(a, c, leftX) || { x: a.x, y: a.y };
+            const leftTop = this._pointOnLineAtX(b, d, leftX) || { x: b.x, y: b.y };
+
+            const fillPath = `M ${leftTop.x} ${leftTop.y} L ${d.x} ${d.y} L ${c.x} ${c.y} L ${leftBottom.x} ${leftBottom.y} Z`;
+            this.group.append('path')
+                .attr('d', fillPath)
+                .attr('fill', this.style.fill)
+                .attr('stroke', 'none')
+                .style('pointer-events', 'all')
                 .style('cursor', 'move');
 
-            // Lower trendline (points 1 and 3)
+            // Dotted envelope boundaries (TradingView-like)
             this.group.append('line')
-                .attr('x1', getX(this.points[1]))
-                .attr('y1', getY(this.points[1]))
-                .attr('x2', getX(this.points[3]))
-                .attr('y2', getY(this.points[3]))
+                .attr('x1', leftTop.x)
+                .attr('y1', leftTop.y)
+                .attr('x2', d.x)
+                .attr('y2', d.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.strokeWidth)
-                .attr('opacity', this.style.opacity)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-        } else {
-            // Preview mode
-            for (let i = 0; i < this.points.length - 1; i++) {
+                .attr('stroke-width', this.style.boundaryWidth)
+                .attr('stroke-dasharray', this.style.boundaryDasharray)
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
+
+            this.group.append('line')
+                .attr('x1', leftBottom.x)
+                .attr('y1', leftBottom.y)
+                .attr('x2', c.x)
+                .attr('y2', c.y)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.boundaryWidth)
+                .attr('stroke-dasharray', this.style.boundaryDasharray)
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
+
+            this.group.append('line')
+                .attr('x1', c.x)
+                .attr('y1', c.y)
+                .attr('x2', d.x)
+                .attr('y2', d.y)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.boundaryWidth)
+                .attr('stroke-dasharray', this.style.boundaryDasharray)
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
+
+            // Inner zig-zag structure A -> B -> C -> D
+            [[a, b], [b, c], [c, d]].forEach(([start, end]) => {
                 this.group.append('line')
-                    .attr('x1', getX(this.points[i]))
-                    .attr('y1', getY(this.points[i]))
-                    .attr('x2', getX(this.points[i + 1]))
-                    .attr('y2', getY(this.points[i + 1]))
+                    .attr('x1', start.x)
+                    .attr('y1', start.y)
+                    .attr('x2', end.x)
+                    .attr('y2', end.y)
                     .attr('stroke', this.style.stroke)
                     .attr('stroke-width', this.style.strokeWidth)
-                    .attr('opacity', this.style.opacity)
+                    .attr('stroke-linejoin', 'round')
+                    .attr('stroke-linecap', 'round')
+                    .attr('opacity', lineOpacity)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            });
+        } else {
+            // Preview mode while placing points.
+            for (let i = 0; i < pointsPx.length - 1; i++) {
+                const start = pointsPx[i];
+                const end = pointsPx[i + 1];
+                this.group.append('line')
+                    .attr('x1', start.x)
+                    .attr('y1', start.y)
+                    .attr('x2', end.x)
+                    .attr('y2', end.y)
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', this.style.strokeWidth)
+                    .attr('stroke-linejoin', 'round')
+                    .attr('stroke-linecap', 'round')
+                    .attr('opacity', lineOpacity)
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
             }
         }
 
+        pointsPx.forEach((point, index) => {
+            const label = this.labels[index];
+            if (!label) return;
+
+            const prev = pointsPx[index - 1] || null;
+            const next = pointsPx[index + 1] || null;
+            let placeAbove = false;
+
+            if (prev && next) {
+                placeAbove = point.y <= ((prev.y + next.y) / 2);
+            } else if (next) {
+                placeAbove = point.y <= next.y;
+            } else if (prev) {
+                placeAbove = point.y <= prev.y;
+            }
+
+            this._drawPointTag(point.x, point.y + (placeAbove ? -14 : 14), label);
+        });
+
         this.createHandles(this.group, scales);
         return this.group;
+    }
+
+    _getViewportXRange(scales, pointsPx) {
+        const xScale = scales && scales.xScale;
+        if (xScale && typeof xScale.range === 'function') {
+            const range = xScale.range();
+            if (Array.isArray(range) && range.length >= 2) {
+                const first = Number(range[0]);
+                const last = Number(range[range.length - 1]);
+                if (Number.isFinite(first) && Number.isFinite(last)) {
+                    return first <= last ? [first, last] : [last, first];
+                }
+            }
+        }
+
+        const chart = (scales && scales.chart) || this.chart || window.chart;
+        const chartWidth = Number(chart && (chart.width || (chart.canvas && chart.canvas.width)));
+        if (Number.isFinite(chartWidth) && chartWidth > 0) {
+            return [0, chartWidth];
+        }
+
+        if (Array.isArray(pointsPx) && pointsPx.length >= 2) {
+            const xs = pointsPx
+                .map(point => Number(point && point.x))
+                .filter(x => Number.isFinite(x));
+
+            if (xs.length >= 2) {
+                const minX = Math.min(...xs);
+                const maxX = Math.max(...xs);
+                const pad = Math.max(100, (maxX - minX) * 0.6);
+                return [minX - pad, maxX + pad];
+            }
+        }
+
+        return null;
+    }
+
+    _pointOnLineAtX(start, end, x) {
+        if (!start || !end || !Number.isFinite(x)) return null;
+
+        const dx = end.x - start.x;
+        if (Math.abs(dx) < 0.0001) return null;
+
+        const t = (x - start.x) / dx;
+        return {
+            x,
+            y: start.y + ((end.y - start.y) * t)
+        };
+    }
+
+    _drawPointTag(x, y, text) {
+        if (!text) return;
+
+        const fontSize = 11;
+        const paddingX = 7;
+        const paddingY = 4;
+        const width = Math.max(16, (String(text).length * 7) + (paddingX * 2));
+        const height = fontSize + (paddingY * 2);
+
+        this.group.append('rect')
+            .attr('x', x - (width / 2))
+            .attr('y', y - (height / 2))
+            .attr('width', width)
+            .attr('height', height)
+            .attr('rx', 4)
+            .attr('fill', this.style.labelFill)
+            .attr('opacity', 0.95)
+            .style('pointer-events', 'none');
+
+        this.group.append('text')
+            .attr('x', x)
+            .attr('y', y)
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'middle')
+            .attr('fill', this.style.labelTextColor)
+            .attr('font-size', `${fontSize}px`)
+            .attr('font-weight', '600')
+            .style('pointer-events', 'none')
+            .text(text);
     }
 
     static fromJSON(data, chart = null) {
