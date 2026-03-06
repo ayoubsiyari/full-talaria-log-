@@ -2433,7 +2433,7 @@ class DrawingToolsManager {
         
         // Enable pointer events on STROKE elements only (not fills)
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
-        drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
+        drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .volume-profile-select-hit, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
         
         // Shape borders use 'stroke' - ONLY responds to clicks on the actual stroke path
@@ -2491,7 +2491,7 @@ class DrawingToolsManager {
         // Exclude .inline-editable-text elements - they handle their own click/dblclick events
         const selector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
-            : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
+            : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .volume-profile-select-hit, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
         const isEmptyImageUploadTarget = (eventTarget) => {
@@ -2772,9 +2772,15 @@ class DrawingToolsManager {
                     const isPositionZone = targetSelection.classed('position-zone');
                     const isRangeFillHit = targetSelection.classed('range-fill-hit');
                     const isRangeInfoBox = targetSelection.classed('range-info-box');
+                    const isVolumeProfileSelectHit = targetSelection.classed('volume-profile-select-hit');
                     
                     // Block dragging from shape-fill elements completely
                     if (isShapeFill || isUpperFill || isLowerFill) {
+                        return false;
+                    }
+
+                    // Selection-only helper zone for docked volume profile.
+                    if (isVolumeProfileSelectHit) {
                         return false;
                     }
                     

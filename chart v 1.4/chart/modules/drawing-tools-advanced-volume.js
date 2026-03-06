@@ -981,6 +981,26 @@ class VolumeProfileTool extends BaseDrawing {
             return `${Math.round(num)}`;
         };
 
+        // In anchored screen-docked mode, provide a larger transparent hit strip
+        // so selection/hover remains easy even when the anchor line is off-screen.
+        if (hasFixedProfileSide) {
+            const selectHitWidth = Math.max(24, maxProfileWidth + 12);
+            const selectHitX = fixedProfileSide === 'left'
+                ? chartLeftEdge
+                : chartRightEdge - selectHitWidth;
+
+            this.group.append('rect')
+                .attr('class', 'volume-profile-select-hit')
+                .attr('x', selectHitX)
+                .attr('y', top)
+                .attr('width', selectHitWidth)
+                .attr('height', Math.max(1, height))
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
+        }
+
         // Draw stacked buy/sell bars from the left side (TradingView-like fixed-range profile look).
         totalVolumeBins.forEach((totalVolume, i) => {
             if (!Number.isFinite(totalVolume) || totalVolume <= 0) return;
