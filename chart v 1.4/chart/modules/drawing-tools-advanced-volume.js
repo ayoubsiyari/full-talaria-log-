@@ -711,17 +711,18 @@ class VolumeProfileTool extends BaseDrawing {
         const boundaryStroke = this.style.stroke || 'rgba(130, 164, 176, 0.45)';
         const boundaryWidth = Math.max(0.5, Number(this.style.strokeWidth) || 1);
 
-        // Drag hit area across full pane for vertical-line-to-vertical-line interaction.
+        // Keep only line/handle-based interactions (TradingView-like):
+        // background area should not start drag/move.
         this.group.append('rect')
-            .attr('class', 'range-fill-hit volume-profile-range')
+            .attr('class', 'volume-profile-range')
             .attr('x', left)
             .attr('y', paneTop)
             .attr('width', width)
             .attr('height', paneHeight)
             .attr('fill', 'transparent')
             .attr('stroke', 'none')
-            .style('pointer-events', 'all')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         this.group.append('line')
             .attr('class', 'volume-profile-boundary')
