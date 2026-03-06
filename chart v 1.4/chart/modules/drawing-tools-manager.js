@@ -611,6 +611,44 @@ class DrawingToolsManager {
      */
     setupEventHandlers() {
         const svg = this.svg;
+
+        const openDrawingSettingsFromDoubleClick = (event) => {
+            if (this.currentTool) return false;
+            if (this.eraserMode) return false;
+
+            const rawTargetNode = event?.target || null;
+            const targetSel = rawTargetNode ? d3.select(rawTargetNode) : null;
+            if (targetSel && targetSel.classed('inline-editable-text')) {
+                return false;
+            }
+
+            const handleNode = rawTargetNode && rawTargetNode.closest
+                ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
+                : null;
+            if (handleNode) {
+                return false;
+            }
+
+            const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
+            if (!svgNode) return false;
+
+            const svgRect = svgNode.getBoundingClientRect();
+            const mouseX = event.clientX - svgRect.left;
+            const mouseY = event.clientY - svgRect.top;
+            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+
+            if (!drawingsAtPoint || drawingsAtPoint.length === 0) return false;
+
+            const drawing = drawingsAtPoint[0];
+            if (!drawing || drawing.locked) return false;
+
+            if (typeof event.stopPropagation === 'function') event.stopPropagation();
+            if (typeof event.preventDefault === 'function') event.preventDefault();
+
+            this.selectDrawing(drawing);
+            this.editDrawing(drawing, event.pageX, event.pageY);
+            return true;
+        };
         
         // Mouse events for drawing
         svg.on('mousedown.drawing', (event) => this.handleMouseDown(event));
@@ -619,37 +657,7 @@ class DrawingToolsManager {
 
         // Double-click anywhere on a drawing (use same geometric hit-test as selection)
         svg.on('dblclick.drawing', (event) => {
-            if (this.currentTool) return;
-            if (this.eraserMode) return;
-
-            const rawTargetNode = event.target;
-            const targetSel = rawTargetNode ? d3.select(rawTargetNode) : null;
-            if (targetSel && targetSel.classed('inline-editable-text')) {
-                return;
-            }
-
-            const handleNode = rawTargetNode && rawTargetNode.closest
-                ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
-                : null;
-            if (handleNode) {
-                return;
-            }
-
-            const svgRect = this.svg.node().getBoundingClientRect();
-            const mouseX = event.clientX - svgRect.left;
-            const mouseY = event.clientY - svgRect.top;
-            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
-
-            if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
-
-            const drawing = drawingsAtPoint[0];
-            if (!drawing || drawing.locked) return;
-
-            event.stopPropagation();
-            event.preventDefault();
-
-            this.selectDrawing(drawing);
-            this.editDrawing(drawing, event.pageX, event.pageY);
+            openDrawingSettingsFromDoubleClick(event);
         });
         
         // Right-click context menu
@@ -671,6 +679,7 @@ class DrawingToolsManager {
                 canvas.removeEventListener('mousedown', existing.mousedown);
                 canvas.removeEventListener('click', existing.click);
                 canvas.removeEventListener('mousemove', existing.mousemove);
+                canvas.removeEventListener('dblclick', existing.dblclick);
             }
 
             // Mousedown on canvas for rectangular selection
@@ -737,6 +746,12 @@ class DrawingToolsManager {
                 }
             };
             canvas.addEventListener('click', onClick);
+
+            const onDblClick = (event) => {
+                if (event.button !== 0) return;
+                openDrawingSettingsFromDoubleClick(event);
+            };
+            canvas.addEventListener('dblclick', onDblClick);
             
             // Mousemove on canvas for proximity cursor change
             const onMouseMove = (event) => {
@@ -749,7 +764,8 @@ class DrawingToolsManager {
             canvas.__drawingToolsCanvasHandlers = {
                 mousedown: onMouseDown,
                 click: onClick,
-                mousemove: onMouseMove
+                mousemove: onMouseMove,
+                dblclick: onDblClick
             };
         }
     }
