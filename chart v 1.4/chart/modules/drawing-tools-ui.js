@@ -2294,7 +2294,8 @@ body.light-mode .template-save-dialog .dialog-title {
         const isFibonacciInputTabTool = this.isFibonacciInputTabTool(drawing.type);
         const isGannInputTabTool = this.isGannInputTabTool(drawing.type);
         const isPositionInputsTool = drawing.type === 'long-position' || drawing.type === 'short-position';
-        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool;
+        const isVolumeProfileInputsTool = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile';
+        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool || isVolumeProfileInputsTool;
         const inputTabLabel = (isFibonacciInputTabTool || isGannInputTabTool) ? 'Input' : 'Inputs';
         
         let tabsHTML = '';
@@ -2377,6 +2378,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 this.buildGannInputsTab(inputsPane, drawing);
             } else if (isPositionInputsTool) {
                 this.buildPositionInputsTab(inputsPane, drawing);
+            } else if (isVolumeProfileInputsTool) {
+                this.buildVolumeProfileInputsTab(inputsPane, drawing);
             }
         }
 
@@ -7306,6 +7309,114 @@ body.light-mode .template-save-dialog .dialog-title {
         container.appendChild(sourceRow);
     }
 
+    /**
+     * Build Volume Profile Inputs Tab Content
+     */
+    buildVolumeProfileInputsTab(container, drawing) {
+        if (!drawing.style) drawing.style = {};
+
+        const rowsLayoutRaw = String(drawing.style.rowsLayout || '').toLowerCase();
+        drawing.style.rowsLayout = rowsLayoutRaw === 'ticksperrow' ? 'ticksPerRow' : 'numberOfRows';
+
+        const rowSizeRaw = Number(drawing.style.rowSize);
+        drawing.style.rowSize = Number.isFinite(rowSizeRaw)
+            ? Math.max(1, Math.min(500, Math.round(rowSizeRaw)))
+            : 24;
+
+        const volumeDisplayRaw = String(drawing.style.volumeDisplay || '').toLowerCase();
+        drawing.style.volumeDisplay = volumeDisplayRaw === 'total' ? 'total' : 'upDown';
+
+        const valueAreaVolumeRaw = Number(drawing.style.valueAreaVolume);
+        drawing.style.valueAreaVolume = Number.isFinite(valueAreaVolumeRaw)
+            ? Math.max(1, Math.min(100, Math.round(valueAreaVolumeRaw)))
+            : 70;
+
+        if (drawing.style.extendRight === undefined) drawing.style.extendRight = false;
+
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
+
+        const labelColumnWidth = 170;
+        const controlsColumnWidth = 180;
+
+        const createInputRow = (labelText) => {
+            const row = document.createElement('div');
+            row.className = 'tv-prop-row';
+            row.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
+
+            const label = document.createElement('span');
+            label.className = 'tv-prop-label';
+            label.style.cssText = `min-width: 0; width: ${labelColumnWidth}px; flex: 0 0 ${labelColumnWidth}px;`;
+            label.textContent = labelText;
+            row.appendChild(label);
+
+            const controls = document.createElement('div');
+            controls.className = 'tv-prop-controls';
+            controls.style.cssText = `width: ${controlsColumnWidth}px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;`;
+            row.appendChild(controls);
+
+            section.appendChild(row);
+            return { row, label, controls };
+        };
+
+        const rowsLayoutRow = createInputRow('Rows Layout');
+        rowsLayoutRow.controls.innerHTML = `
+            <select class="tv-select" data-prop="rowsLayout" style="width: 130px;">
+                <option value="numberOfRows" ${drawing.style.rowsLayout === 'numberOfRows' ? 'selected' : ''}>Number of Rows</option>
+                <option value="ticksPerRow" ${drawing.style.rowsLayout === 'ticksPerRow' ? 'selected' : ''}>Ticks Per Row</option>
+            </select>
+        `;
+
+        const rowSizeRow = createInputRow('Row Size');
+        rowSizeRow.controls.innerHTML = `
+            <input
+                type="number"
+                class="tv-input"
+                data-prop="rowSize"
+                value="${drawing.style.rowSize}"
+                min="1"
+                max="500"
+                step="1"
+                style="width: 130px;"
+            >
+        `;
+
+        const volumeRow = createInputRow('Volume');
+        volumeRow.controls.innerHTML = `
+            <select class="tv-select" data-prop="volumeDisplay" style="width: 130px;">
+                <option value="upDown" ${drawing.style.volumeDisplay === 'upDown' ? 'selected' : ''}>Up/Down</option>
+                <option value="total" ${drawing.style.volumeDisplay === 'total' ? 'selected' : ''}>Total</option>
+            </select>
+        `;
+
+        const valueAreaVolumeRow = createInputRow('Value Area Volume');
+        valueAreaVolumeRow.controls.innerHTML = `
+            <input
+                type="number"
+                class="tv-input"
+                data-prop="valueAreaVolume"
+                value="${drawing.style.valueAreaVolume}"
+                min="1"
+                max="100"
+                step="1"
+                style="width: 130px;"
+            >
+        `;
+
+        const extendRightRow = createInputRow('');
+        extendRightRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        extendRightRow.label.innerHTML = `
+            <div class="tv-checkbox ${drawing.style.extendRight ? 'checked' : ''}" data-prop="extendRight">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Extend Right</span>
+        `;
+
+        container.appendChild(section);
+    }
+
     buildCoordinatesTab(container, drawing) {
         container.innerHTML = '';
 
@@ -8688,6 +8799,16 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style.profilePlacement = placementValue;
                     this.pendingChanges.profilePlacement = placementValue;
                     self.renderPreview(drawing);
+                } else if (prop === 'rowsLayout') {
+                    const rowsLayoutValue = value === 'ticksPerRow' ? 'ticksPerRow' : 'numberOfRows';
+                    drawing.style.rowsLayout = rowsLayoutValue;
+                    this.pendingChanges.rowsLayout = rowsLayoutValue;
+                    self.renderPreview(drawing);
+                } else if (prop === 'volumeDisplay') {
+                    const volumeDisplayValue = value === 'total' ? 'total' : 'upDown';
+                    drawing.style.volumeDisplay = volumeDisplayValue;
+                    this.pendingChanges.volumeDisplay = volumeDisplayValue;
+                    self.renderPreview(drawing);
                 }
             });
         });
@@ -8919,6 +9040,48 @@ body.light-mode .template-save-dialog .dialog-title {
 
             control.addEventListener('input', applyProfileWidthRatio);
             control.addEventListener('change', applyProfileWidthRatio);
+        });
+
+        queryAll('.tv-input[data-prop="rowSize"], .tv-input[data-prop="valueAreaVolume"]').forEach(input => {
+            const prop = input.dataset.prop;
+
+            const applyVolumeProfileInput = (commit = false) => {
+                if (prop === 'rowSize') {
+                    const parsed = parseInt(String(input.value || '').trim(), 10);
+                    if (!Number.isFinite(parsed)) {
+                        if (commit) {
+                            const fallback = Math.max(1, Math.min(500, Math.round(Number(drawing.style.rowSize) || 24)));
+                            input.value = String(fallback);
+                        }
+                        return;
+                    }
+
+                    const clamped = Math.max(1, Math.min(500, parsed));
+                    this.pendingChanges.rowSize = clamped;
+                    drawing.style.rowSize = clamped;
+                    if (commit) input.value = String(clamped);
+                    self.renderPreview(drawing);
+                    return;
+                }
+
+                const parsed = parseFloat(String(input.value || '').trim().replace(',', '.'));
+                if (!Number.isFinite(parsed)) {
+                    if (commit) {
+                        const fallback = Math.max(1, Math.min(100, Math.round(Number(drawing.style.valueAreaVolume) || 70)));
+                        input.value = String(fallback);
+                    }
+                    return;
+                }
+
+                const clamped = Math.max(1, Math.min(100, Math.round(parsed)));
+                this.pendingChanges.valueAreaVolume = clamped;
+                drawing.style.valueAreaVolume = clamped;
+                if (commit) input.value = String(clamped);
+                self.renderPreview(drawing);
+            };
+
+            input.addEventListener('input', () => applyVolumeProfileInput(false));
+            input.addEventListener('change', () => applyVolumeProfileInput(true));
         });
         
         // Text content input (for text tools) - use queryAll to find in external dropdowns
@@ -9529,6 +9692,25 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.middleLineType !== undefined) drawing.style.middleLineDash = this.pendingChanges.middleLineType;
         if (this.pendingChanges.middleLineWidth) drawing.style.middleLineWidth = parseInt(this.pendingChanges.middleLineWidth);
         if (this.pendingChanges.middleLineEnabled !== undefined) drawing.style.showMiddleLine = this.pendingChanges.middleLineEnabled;
+
+        if (this.pendingChanges.rowsLayout !== undefined) {
+            drawing.style.rowsLayout = this.pendingChanges.rowsLayout === 'ticksPerRow' ? 'ticksPerRow' : 'numberOfRows';
+        }
+        if (this.pendingChanges.rowSize !== undefined) {
+            const parsedRowSize = Number(this.pendingChanges.rowSize);
+            if (Number.isFinite(parsedRowSize)) {
+                drawing.style.rowSize = Math.max(1, Math.min(500, Math.round(parsedRowSize)));
+            }
+        }
+        if (this.pendingChanges.volumeDisplay !== undefined) {
+            drawing.style.volumeDisplay = this.pendingChanges.volumeDisplay === 'total' ? 'total' : 'upDown';
+        }
+        if (this.pendingChanges.valueAreaVolume !== undefined) {
+            const parsedValueAreaVolume = Number(this.pendingChanges.valueAreaVolume);
+            if (Number.isFinite(parsedValueAreaVolume)) {
+                drawing.style.valueAreaVolume = Math.max(1, Math.min(100, Math.round(parsedValueAreaVolume)));
+            }
+        }
 
         if (this.pendingChanges.profileWidthRatio !== undefined) {
             const parsedProfileWidthRatio = Number(this.pendingChanges.profileWidthRatio);

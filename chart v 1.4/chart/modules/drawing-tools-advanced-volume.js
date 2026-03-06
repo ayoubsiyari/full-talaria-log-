@@ -618,6 +618,11 @@ class VolumeProfileTool extends BaseDrawing {
         if (!hasOwn('pocColor')) this.style.pocColor = '#e6edf3';
         if (!Number.isFinite(Number(this.style.profileWidthRatio))) this.style.profileWidthRatio = 0.3;
         if (!hasOwn('profilePlacement')) this.style.profilePlacement = 'left';
+        if (!hasOwn('rowsLayout')) this.style.rowsLayout = 'numberOfRows';
+        if (!Number.isFinite(Number(this.style.rowSize))) this.style.rowSize = 24;
+        if (!hasOwn('volumeDisplay')) this.style.volumeDisplay = 'upDown';
+        if (!Number.isFinite(Number(this.style.valueAreaVolume))) this.style.valueAreaVolume = 70;
+        if (this.style.extendRight === undefined) this.style.extendRight = false;
         if (this.style.showPOC === undefined) this.style.showPOC = true;
         if (this.style.showVAH === undefined) this.style.showVAH = true;
         if (this.style.showVAL === undefined) this.style.showVAL = true;
@@ -745,14 +750,53 @@ class VolumeProfileTool extends BaseDrawing {
             return;
         }
         
-        // Create price bins (from bottom to top)
-        const pixelHeight = Math.max(height, 1);
-        const desiredBinSizePx = 12;
-        let numBins = Math.round(pixelHeight / desiredBinSizePx);
-        if (!Number.isFinite(numBins) || numBins < 6) numBins = 6;
-        if (numBins > 80) numBins = 80;
-
         const priceRange = priceHigh - priceLow;
+        if (!Number.isFinite(priceRange) || priceRange <= 0) {
+            this.createHandles(this.group, scales);
+            return;
+        }
+
+        // Create price bins (from bottom to top)
+        const rowsLayout = String(this.style.rowsLayout || 'numberOfRows').toLowerCase() === 'ticksperrow'
+            ? 'ticksPerRow'
+            : 'numberOfRows';
+        const rowSizeRaw = Number(this.style.rowSize);
+        const rowSize = Number.isFinite(rowSizeRaw) ? rowSizeRaw : 24;
+
+        const resolveTickSize = () => {
+            const chart = scales && scales.chart ? scales.chart : null;
+            const marketPipSize = Number(chart && chart.orderManager ? chart.orderManager.pipSize : NaN);
+            if (Number.isFinite(marketPipSize) && marketPipSize > 0) return marketPipSize;
+
+            const savedPipSize = Number(chart ? chart.pipSize : NaN);
+            if (Number.isFinite(savedPipSize) && savedPipSize > 0) return savedPipSize;
+
+            const chartTickSize = Number(chart && chart.priceScale ? chart.priceScale.tickSize : NaN);
+            if (Number.isFinite(chartTickSize) && chartTickSize > 0) return chartTickSize;
+
+            const decimals = Number(chart ? chart.priceDecimals : NaN);
+            if (Number.isFinite(decimals) && decimals >= 0) {
+                return Math.pow(10, -Math.min(10, decimals));
+            }
+
+            return priceRange / 24;
+        };
+
+        let numBins;
+        if (rowsLayout === 'ticksPerRow') {
+            const tickSize = resolveTickSize();
+            const ticksPerRow = Math.max(1, Math.min(10000, Math.round(rowSize)));
+            const rowPriceSize = tickSize * ticksPerRow;
+            numBins = Number.isFinite(rowPriceSize) && rowPriceSize > 0
+                ? Math.round(priceRange / rowPriceSize)
+                : 24;
+        } else {
+            numBins = Math.round(rowSize);
+        }
+
+        if (!Number.isFinite(numBins) || numBins < 6) numBins = 6;
+        if (numBins > 400) numBins = 400;
+
         const priceStep = priceRange / numBins;
         if (!Number.isFinite(priceStep) || priceStep <= 0) {
             this.createHandles(this.group, scales);
@@ -845,12 +889,17 @@ class VolumeProfileTool extends BaseDrawing {
             }
         });
 
-        // Approximate TradingView value area (70%) centered around POC.
+        const valueAreaPercentRaw = Number(this.style.valueAreaVolume);
+        const valueAreaPercent = Number.isFinite(valueAreaPercentRaw)
+            ? Math.max(1, Math.min(100, valueAreaPercentRaw))
+            : 70;
+
+        // Approximate TradingView value area centered around POC.
         let valueAreaLow = pocIndex;
         let valueAreaHigh = pocIndex;
         const totalProfileVolume = totalVolumeBins.reduce((sum, vol) => sum + vol, 0);
         if (totalProfileVolume > 0) {
-            const targetValueAreaVolume = totalProfileVolume * 0.7;
+            const targetValueAreaVolume = totalProfileVolume * (valueAreaPercent / 100);
             let accumulatedVolume = totalVolumeBins[pocIndex] || 0;
 
             while (accumulatedVolume < targetValueAreaVolume && (valueAreaLow > 0 || valueAreaHigh < numBins - 1)) {
@@ -881,6 +930,11 @@ class VolumeProfileTool extends BaseDrawing {
         const valueAreaSellColor = this.style.valueAreaSellColor || 'rgba(199, 71, 130, 1)';
         const valuesColor = this.style.valuesColor || '#d1d4dc';
         const showValues = this.style.showValues !== false;
+        const volumeDisplay = String(this.style.volumeDisplay || 'upDown').toLowerCase() === 'total' ? 'total' : 'upDown';
+        const extendRightLevels = this.style.extendRight === true;
+        const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
+        const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
+        const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : right;
 
         const formatVolumeValue = (value) => {
             const num = Number(value);
@@ -914,30 +968,45 @@ class VolumeProfileTool extends BaseDrawing {
             const currentSellColor = isInsideValueArea ? valueAreaSellColor : sellColor;
             const rowLeft = profilePlacement === 'right' ? right - totalWidth : left;
 
-            if (buyWidth > 0.25) {
-                this.group.append('rect')
-                    .attr('x', rowLeft)
-                    .attr('y', barY)
-                    .attr('width', buyWidth)
-                    .attr('height', barHeightPx)
-                    .attr('fill', currentBuyColor)
-                    .attr('opacity', barOpacity)
-                    .style('pointer-events', 'none');
-            }
+            if (volumeDisplay === 'total') {
+                if (totalWidth > 0.25) {
+                    this.group.append('rect')
+                        .attr('x', rowLeft)
+                        .attr('y', barY)
+                        .attr('width', totalWidth)
+                        .attr('height', barHeightPx)
+                        .attr('fill', currentBuyColor)
+                        .attr('opacity', barOpacity)
+                        .style('pointer-events', 'none');
+                }
+            } else {
+                if (buyWidth > 0.25) {
+                    this.group.append('rect')
+                        .attr('x', rowLeft)
+                        .attr('y', barY)
+                        .attr('width', buyWidth)
+                        .attr('height', barHeightPx)
+                        .attr('fill', currentBuyColor)
+                        .attr('opacity', barOpacity)
+                        .style('pointer-events', 'none');
+                }
 
-            if (sellWidth > 0.25) {
-                this.group.append('rect')
-                    .attr('x', rowLeft + buyWidth)
-                    .attr('y', barY)
-                    .attr('width', sellWidth)
-                    .attr('height', barHeightPx)
-                    .attr('fill', currentSellColor)
-                    .attr('opacity', barOpacity)
-                    .style('pointer-events', 'none');
+                if (sellWidth > 0.25) {
+                    this.group.append('rect')
+                        .attr('x', rowLeft + buyWidth)
+                        .attr('y', barY)
+                        .attr('width', sellWidth)
+                        .attr('height', barHeightPx)
+                        .attr('fill', currentSellColor)
+                        .attr('opacity', barOpacity)
+                        .style('pointer-events', 'none');
+                }
             }
 
             if (showValues && barHeightPx >= 9) {
-                const labelText = `${formatVolumeValue(buyVolume)}x${formatVolumeValue(sellVolume)}`;
+                const labelText = volumeDisplay === 'total'
+                    ? `${formatVolumeValue(totalVolume)}`
+                    : `${formatVolumeValue(buyVolume)}x${formatVolumeValue(sellVolume)}`;
                 this.group.append('text')
                     .attr('class', 'volume-profile-values-label')
                     .attr('x', profilePlacement === 'right' ? right - 3 : left + 3)
@@ -958,7 +1027,7 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('class', 'volume-profile-poc-line')
                 .attr('x1', left)
                 .attr('y1', pocY)
-                .attr('x2', right)
+                .attr('x2', profileLineEndX)
                 .attr('y2', pocY)
                 .attr('stroke', this.style.pocColor || '#e6edf3')
                 .attr('stroke-width', 1.35)
@@ -973,7 +1042,7 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('class', 'volume-profile-vah-line')
                     .attr('x1', left)
                     .attr('y1', vahY)
-                    .attr('x2', right)
+                    .attr('x2', profileLineEndX)
                     .attr('y2', vahY)
                     .attr('stroke', this.style.VAHColor || '#089981')
                     .attr('stroke-width', 1.2)
@@ -989,7 +1058,7 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('class', 'volume-profile-val-line')
                     .attr('x1', left)
                     .attr('y1', valY)
-                    .attr('x2', right)
+                    .attr('x2', profileLineEndX)
                     .attr('y2', valY)
                     .attr('stroke', this.style.VALColor || '#f23645')
                     .attr('stroke-width', 1.2)
