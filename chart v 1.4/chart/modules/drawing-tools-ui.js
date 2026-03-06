@@ -8039,8 +8039,16 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Click outside to close - use capture phase to ensure it fires before other handlers
         this.clickOutsideHandler = (event) => {
+            const modalRect = modal.getBoundingClientRect();
+            const clientX = typeof event.clientX === 'number' ? event.clientX : null;
+            const clientY = typeof event.clientY === 'number' ? event.clientY : null;
+            const insideModalBounds = clientX !== null && clientY !== null
+                ? clientX >= modalRect.left && clientX <= modalRect.right && clientY >= modalRect.top && clientY <= modalRect.bottom
+                : false;
+            const clickedInsideModal = modal.contains(event.target) || insideModalBounds;
+
             // Check if click is outside the modal
-            if (!modal.contains(event.target)) {
+            if (!clickedInsideModal) {
                 // Also check for color picker, template dropdown, info dropdown, and external dropdowns
                 const colorPicker = document.querySelector('.tv-color-picker');
                 const templateDropdown = document.querySelector('.settings-template-dropdown');
