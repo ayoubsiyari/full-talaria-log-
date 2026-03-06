@@ -641,45 +641,97 @@ class VolumeProfileTool extends BaseDrawing {
 
         const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(clampedIndex1) : scales.xScale(clampedIndex1);
-        const y1 = scales.yScale(this.points[0].y);
         const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(clampedIndex2) : scales.xScale(clampedIndex2);
-        const y2 = scales.yScale(this.points[1].y);
 
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
-        const top = Math.min(y1, y2);
-        const bottom = Math.max(y1, y2);
-        const height = bottom - top;
         const width = right - left;
+
+        const yDomain = scales.yScale.domain();
+        const domainFirst = Array.isArray(yDomain) && yDomain.length > 0 ? yDomain[0] : this.points[0].y;
+        const domainLast = Array.isArray(yDomain) && yDomain.length > 1 ? yDomain[yDomain.length - 1] : this.points[1].y;
+        const domainLow = Math.min(domainFirst, domainLast);
+        const domainHigh = Math.max(domainFirst, domainLast);
+        const paneTop = Math.min(scales.yScale(domainLow), scales.yScale(domainHigh));
+        const paneBottom = Math.max(scales.yScale(domainLow), scales.yScale(domainHigh));
+        const paneHeight = Math.max(1, paneBottom - paneTop);
+
+        // Get chart data for volume profile calculation
+        const startIndex = Math.max(0, Math.min(clampedIndex1, clampedIndex2));
+        const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, clampedIndex2)) : Math.max(clampedIndex1, clampedIndex2);
+        if (chartData.length === 0 || startIndex > endIndex || width <= 0) {
+            this.createHandles(this.group, scales);
+            return;
+        }
+
+        let priceHigh = -Infinity;
+        let priceLow = Infinity;
+        for (let i = startIndex; i <= endIndex; i++) {
+            const candle = chartData[i];
+            if (!candle) continue;
+
+            const high = candle.h ?? candle.high;
+            const low = candle.l ?? candle.low;
+            if (Number.isFinite(high)) priceHigh = Math.max(priceHigh, high);
+            if (Number.isFinite(low)) priceLow = Math.min(priceLow, low);
+        }
+
+        if (!Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh <= priceLow) {
+            priceHigh = domainHigh;
+            priceLow = domainLow;
+        }
+
+        const top = Math.max(paneTop, Math.min(scales.yScale(priceHigh), scales.yScale(priceLow)));
+        const bottom = Math.min(paneBottom, Math.max(scales.yScale(priceHigh), scales.yScale(priceLow)));
+        const height = bottom - top;
+        if (!Number.isFinite(top) || !Number.isFinite(bottom) || height <= 0) {
+            this.createHandles(this.group, scales);
+            return;
+        }
 
         const opacityRaw = Number(this.style.opacity);
         const globalOpacity = Number.isFinite(opacityRaw)
             ? Math.max(0, Math.min(1, opacityRaw))
             : 1;
-        const showBackground = this.style.showBackground !== false && this.style.fill && this.style.fill !== 'none' && this.style.fill !== 'transparent';
+        const boundaryStroke = this.style.stroke || 'rgba(130, 164, 176, 0.45)';
+        const boundaryWidth = Math.max(0.5, Number(this.style.strokeWidth) || 1);
 
-        // TradingView-like selected range backdrop + drag hit area
+        // Drag hit area across full pane for vertical-line-to-vertical-line interaction.
         this.group.append('rect')
             .attr('class', 'range-fill-hit volume-profile-range')
             .attr('x', left)
-            .attr('y', top)
+            .attr('y', paneTop)
             .attr('width', width)
-            .attr('height', height)
-            .attr('fill', showBackground ? this.style.fill : 'transparent')
-            .attr('stroke', this.style.stroke || 'rgba(130, 164, 176, 0.45)')
-            .attr('stroke-width', Math.max(0.5, Number(this.style.strokeWidth) || 1))
-            .attr('opacity', globalOpacity)
+            .attr('height', paneHeight)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        // Get chart data for volume profile calculation
-        const startIndex = Math.max(0, Math.min(clampedIndex1, clampedIndex2));
-        const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, clampedIndex2)) : Math.max(clampedIndex1, clampedIndex2);
-        const priceHigh = Math.max(this.points[0].y, this.points[1].y);
-        const priceLow = Math.min(this.points[0].y, this.points[1].y);
+        this.group.append('line')
+            .attr('class', 'volume-profile-boundary')
+            .attr('x1', left)
+            .attr('y1', paneTop)
+            .attr('x2', left)
+            .attr('y2', paneBottom)
+            .attr('stroke', boundaryStroke)
+            .attr('stroke-width', boundaryWidth)
+            .attr('opacity', Math.min(1, globalOpacity * 0.95))
+            .style('pointer-events', 'none');
 
-        if (chartData.length === 0 || startIndex > endIndex || !Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow || width <= 0 || height <= 0) {
+        this.group.append('line')
+            .attr('class', 'volume-profile-boundary')
+            .attr('x1', right)
+            .attr('y1', paneTop)
+            .attr('x2', right)
+            .attr('y2', paneBottom)
+            .attr('stroke', boundaryStroke)
+            .attr('stroke-width', boundaryWidth)
+            .attr('opacity', Math.min(1, globalOpacity * 0.95))
+            .style('pointer-events', 'none');
+
+        if (!Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow || height <= 0) {
             this.createHandles(this.group, scales);
             return;
         }
@@ -873,6 +925,97 @@ class VolumeProfileTool extends BaseDrawing {
         }
 
         this.createHandles(this.group, scales);
+    }
+
+    createHandles(group, scales) {
+        this.handles = [];
+
+        group.selectAll('.resize-handle').remove();
+        group.selectAll('.resize-handle-group').remove();
+        group.selectAll('.resize-handle-hit').remove();
+        group.selectAll('.vertical-guide').remove();
+
+        if (!this.selected || this.points.length < 2) return;
+
+        const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
+        const maxIndex = chartData.length > 0 ? chartData.length - 1 : null;
+
+        const yDomain = scales.yScale.domain();
+        const domainFirst = Array.isArray(yDomain) && yDomain.length > 0 ? yDomain[0] : 0;
+        const domainLast = Array.isArray(yDomain) && yDomain.length > 1 ? yDomain[yDomain.length - 1] : 0;
+        const domainLow = Math.min(domainFirst, domainLast);
+        const domainHigh = Math.max(domainFirst, domainLast);
+        const topY = Math.min(scales.yScale(domainLow), scales.yScale(domainHigh));
+        const bottomY = Math.max(scales.yScale(domainLow), scales.yScale(domainHigh));
+        const handleY = topY + ((bottomY - topY) / 2);
+
+        const handleRadius = 3;
+        const hitRadius = 12;
+
+        this.points.forEach((point, index) => {
+            let xIndex = Number.isFinite(point.x) ? Math.round(point.x) : 0;
+            if (maxIndex !== null) {
+                xIndex = Math.max(0, Math.min(maxIndex, xIndex));
+            }
+
+            const cx = scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(xIndex)
+                : scales.xScale(xIndex);
+
+            group.append('line')
+                .attr('class', 'vertical-guide volume-profile-guide')
+                .attr('x1', cx)
+                .attr('y1', topY)
+                .attr('x2', cx)
+                .attr('y2', bottomY)
+                .attr('stroke', this.style.stroke || '#2962FF')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', '3,3')
+                .attr('opacity', 0.45)
+                .style('pointer-events', 'none');
+
+            const handleGroup = group.append('g')
+                .attr('class', 'resize-handle-group')
+                .attr('data-point-index', index);
+
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle-hit')
+                .attr('cx', cx)
+                .attr('cy', handleY)
+                .attr('r', hitRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', 'ew-resize')
+                .style('pointer-events', 'all')
+                .attr('data-point-index', index);
+
+            const handle = handleGroup.append('circle')
+                .attr('class', 'resize-handle')
+                .attr('cx', cx)
+                .attr('cy', handleY)
+                .attr('r', handleRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', '#2962FF')
+                .attr('stroke-width', 2)
+                .style('cursor', 'ew-resize')
+                .style('pointer-events', 'all')
+                .attr('data-point-index', index);
+
+            this.handles.push({ element: handle, point, index });
+        });
+    }
+
+    onPointHandleDrag(index, context = {}) {
+        if (!Array.isArray(this.points) || !this.points[index] || !context.point) {
+            return false;
+        }
+
+        this.points[index] = {
+            ...this.points[index],
+            x: context.point.x
+        };
+        this.meta.updatedAt = Date.now();
+        return true;
     }
 
     static fromJSON(data) {
