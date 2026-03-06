@@ -958,8 +958,10 @@ class VolumeProfileTool extends BaseDrawing {
         const volumeDisplay = String(this.style.volumeDisplay || 'upDown').toLowerCase() === 'total' ? 'total' : 'upDown';
         const extendRightLevels = this.style.extendRight === true;
         const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
+        const chartLeftEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.min(...xScaleRange) : left;
         const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
         const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : right;
+        const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
 
         const formatVolumeValue = (value) => {
             const num = Number(value);
@@ -991,7 +993,14 @@ class VolumeProfileTool extends BaseDrawing {
             const barOpacity = globalOpacity * (isInsideValueArea ? 1 : 0.66);
             const currentBuyColor = isInsideValueArea ? valueAreaBuyColor : buyColor;
             const currentSellColor = isInsideValueArea ? valueAreaSellColor : sellColor;
-            const rowLeft = profilePlacement === 'right' ? right - totalWidth : left;
+            let rowLeft;
+            if (fixedProfileSide === 'left') {
+                rowLeft = chartLeftEdge;
+            } else if (fixedProfileSide === 'right') {
+                rowLeft = chartRightEdge - totalWidth;
+            } else {
+                rowLeft = profilePlacement === 'right' ? right - totalWidth : left;
+            }
 
             if (volumeDisplay === 'total') {
                 if (totalWidth > 0.25) {
@@ -1032,12 +1041,18 @@ class VolumeProfileTool extends BaseDrawing {
                 const labelText = volumeDisplay === 'total'
                     ? `${formatVolumeValue(totalVolume)}`
                     : `${formatVolumeValue(buyVolume)}x${formatVolumeValue(sellVolume)}`;
+                const labelX = fixedProfileSide === 'left'
+                    ? chartLeftEdge + 3
+                    : (fixedProfileSide === 'right' ? chartRightEdge - 3 : (profilePlacement === 'right' ? right - 3 : left + 3));
+                const labelAnchor = fixedProfileSide === 'right'
+                    ? 'end'
+                    : (profilePlacement === 'right' ? 'end' : 'start');
                 this.group.append('text')
                     .attr('class', 'volume-profile-values-label')
-                    .attr('x', profilePlacement === 'right' ? right - 3 : left + 3)
+                    .attr('x', labelX)
                     .attr('y', barY + (barHeightPx / 2))
                     .attr('dy', '0.32em')
-                    .attr('text-anchor', profilePlacement === 'right' ? 'end' : 'start')
+                    .attr('text-anchor', labelAnchor)
                     .attr('fill', valuesColor)
                     .attr('font-size', Math.max(9, Math.min(12, barHeightPx - 2)))
                     .attr('opacity', Math.min(1, globalOpacity * 0.95))
@@ -1288,6 +1303,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         proxy.visible = this.visible;
         proxy.locked = this.locked;
         proxy.meta = this.meta;
+        proxy.fixedProfileSide = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         proxy.fixedScreenRightX = Number.isFinite(screenRightX) ? screenRightX : undefined;
         proxy.render(container, scales);
 
