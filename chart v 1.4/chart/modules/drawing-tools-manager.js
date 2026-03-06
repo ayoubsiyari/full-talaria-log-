@@ -141,7 +141,7 @@ class DrawingToolsManager {
             'date-range': { class: DateRangeTool, points: 2 },
             'gann-box': { class: GannBoxTool, points: 2 },
             'anchored-vwap': { class: AnchoredVWAPTool, points: 1 },
-            'volume-profile': { class: VolumeProfileTool, points: 2 },
+            'volume-profile': { class: VolumeProfileTool, points: 2, dragFirstTwo: true },
             'anchored-volume-profile': { class: AnchoredVolumeProfileTool, points: 1 },
             
             // Positions
@@ -1554,7 +1554,7 @@ class DrawingToolsManager {
                 this.resizingPointIndex = null;
                 return;
             }
-            const currentPoint = this.getDataPoint(event);
+            const currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
             this.resizingDrawing.points[this.resizingPointIndex] = currentPoint;
             this.resizingDrawing.meta.updatedAt = Date.now();
             this.scheduleRenderDrawing(this.resizingDrawing);
@@ -1880,7 +1880,7 @@ class DrawingToolsManager {
      * Returns {x: candleIndex, y: price}
      * For freehand tools (path, brush, highlighter), uses continuous coordinates for smooth curves
      */
-    getDataPoint(event) {
+    getDataPoint(event, toolTypeOverride = this.currentTool) {
         let [screenX, screenY] = d3.pointer(event, this.svg.node());
 
         // Clamp to chart inner area so no drawing point can go outside the chart
@@ -1893,9 +1893,10 @@ class DrawingToolsManager {
         }
         
         // Check if current tool is a freehand/continuous drawing tool
-        const isContinuousTool = this.currentTool === 'path' || 
-                                  this.currentTool === 'brush' || 
-                                  this.currentTool === 'highlighter';
+        const activeToolType = toolTypeOverride || this.currentTool;
+        const isContinuousTool = activeToolType === 'path' || 
+                                  activeToolType === 'brush' || 
+                                  activeToolType === 'highlighter';
         
         // Pass chart instance for accurate index calculation
         // Use continuous mode for freehand tools to get smooth curves
@@ -1917,8 +1918,41 @@ class DrawingToolsManager {
                 effectiveMagnetMode
             );
         }
+
+        point = this.clampPointToCandleRange(point, activeToolType);
         
         return point;
+    }
+
+    isCandleBoundTool(toolType) {
+        return toolType === 'volume-profile';
+    }
+
+    clampPointToCandleRange(point, toolType = this.currentTool) {
+        if (!point || !this.isCandleBoundTool(toolType) || !Number.isFinite(point.x)) {
+            return point;
+        }
+
+        const data = this.chart && Array.isArray(this.chart.data) ? this.chart.data : [];
+        if (data.length === 0) {
+            return {
+                ...point,
+                x: Math.round(point.x)
+            };
+        }
+
+        return {
+            ...point,
+            x: Math.max(0, Math.min(data.length - 1, Math.round(point.x)))
+        };
+    }
+
+    clampDrawingPointsToCandleRange(drawing) {
+        if (!drawing || !Array.isArray(drawing.points) || !this.isCandleBoundTool(drawing.type)) {
+            return;
+        }
+
+        drawing.points = drawing.points.map(point => this.clampPointToCandleRange(point, drawing.type));
     }
 
     /**
@@ -2706,13 +2740,7 @@ class DrawingToolsManager {
 
         const getDragDataPoint = (dragEvent) => {
             const src = (dragEvent && dragEvent.sourceEvent) ? dragEvent.sourceEvent : dragEvent;
-            const ptr = d3.pointer(src, self.svg.node());
-            const screenX = ptr[0];
-            const screenY = ptr[1];
-            return CoordinateUtils.screenToData(screenX, screenY, {
-                xScale: self.chart.xScale,
-                yScale: self.chart.yScale
-            }, self.chart, false);
+            return self.getDataPoint(src, drawing.type);
         };
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
@@ -2871,6 +2899,7 @@ class DrawingToolsManager {
                                 x: p.x + dx,
                                 y: p.y + dy
                             }));
+                            self.clampDrawingPointsToCandleRange(item.drawing);
                             self.renderDrawing(item.drawing);
                             
                             // Update axis highlights if drawing is selected
@@ -2884,6 +2913,7 @@ class DrawingToolsManager {
                             x: p.x + dx,
                             y: p.y + dy
                         }));
+                        self.clampDrawingPointsToCandleRange(drawing);
                         
                         // Re-render
                         self.renderDrawing(drawing);
@@ -2964,7 +2994,8 @@ class DrawingToolsManager {
         const drawings = Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings];
         if (!drawings || drawings.length === 0) return;
 
-        const startPoint = this.getDataPoint(event);
+        const singleDragType = drawings.length === 1 ? drawings[0].type : null;
+        const startPoint = this.getDataPoint(event, singleDragType);
         const startStates = drawings.map(d => ({
             drawing: d,
             points: d.points.map(p => ({ ...p })),
@@ -2980,7 +3011,7 @@ class DrawingToolsManager {
                 this.chart.updateCrosshair(e);
             }
 
-            const p = this.getDataPoint(e);
+            const p = this.getDataPoint(e, singleDragType);
             const dx = p.x - startPoint.x;
             const dy = p.y - startPoint.y;
 
@@ -2991,6 +3022,7 @@ class DrawingToolsManager {
                     x: pt.x + dx,
                     y: pt.y + dy
                 }));
+                this.clampDrawingPointsToCandleRange(item.drawing);
 
                 this.renderDrawing(item.drawing);
 
@@ -3090,7 +3122,7 @@ class DrawingToolsManager {
                         return;
                     }
                     
-                    let point = self.getDataPoint(event.sourceEvent);
+                    let point = self.getDataPoint(event.sourceEvent, drawing.type);
                     const index = self.resizingPointIndex;
                     
                     // Apply Shift key angle constraint for supported line tools
@@ -3158,8 +3190,8 @@ class DrawingToolsManager {
         if (!this.isResizing || !this.resizingDrawing) return;
         
         // Use sourceEvent for accurate mouse position
-        let point = this.getDataPoint(event.sourceEvent);
         const drawing = this.resizingDrawing;
+        let point = this.getDataPoint(event.sourceEvent, drawing.type);
         const index = this.resizingPointIndex;
         
         // Validate index

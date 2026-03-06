@@ -629,11 +629,21 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('class', 'drawing drawing-volume-profile')
             .attr('data-id', this.id);
 
+        const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
+        const hasChartData = chartData.length > 0;
+        const rawIndex1 = Math.round(this.points[0].x);
+        const rawIndex2 = Math.round(this.points[1].x);
+        const clampedIndex1 = hasChartData ? Math.max(0, Math.min(chartData.length - 1, rawIndex1)) : rawIndex1;
+        const clampedIndex2 = hasChartData ? Math.max(0, Math.min(chartData.length - 1, rawIndex2)) : rawIndex2;
+
+        this.points[0].x = clampedIndex1;
+        this.points[1].x = clampedIndex2;
+
         const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(this.points[0].x) : scales.xScale(this.points[0].x);
+            scales.chart.dataIndexToPixel(clampedIndex1) : scales.xScale(clampedIndex1);
         const y1 = scales.yScale(this.points[0].y);
         const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(this.points[1].x) : scales.xScale(this.points[1].x);
+            scales.chart.dataIndexToPixel(clampedIndex2) : scales.xScale(clampedIndex2);
         const y2 = scales.yScale(this.points[1].y);
 
         const left = Math.min(x1, x2);
@@ -664,9 +674,8 @@ class VolumeProfileTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Get chart data for volume profile calculation
-        const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
-        const startIndex = Math.max(0, Math.round(Math.min(this.points[0].x, this.points[1].x)));
-        const endIndex = Math.min(chartData.length - 1, Math.round(Math.max(this.points[0].x, this.points[1].x)));
+        const startIndex = Math.max(0, Math.min(clampedIndex1, clampedIndex2));
+        const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, clampedIndex2)) : Math.max(clampedIndex1, clampedIndex2);
         const priceHigh = Math.max(this.points[0].y, this.points[1].y);
         const priceLow = Math.min(this.points[0].y, this.points[1].y);
 
