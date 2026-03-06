@@ -5134,7 +5134,8 @@ class DrawingToolsManager {
                         const cachedVwapPoints = drawing._cache && Array.isArray(drawing._cache.vwapPoints)
                             ? drawing._cache.vwapPoints
                             : null;
-                        const hasMatchingCache = drawing._cache && drawing._cache.anchorIndex === anchorIndex;
+                        const hasChartData = Array.isArray(this.chart && this.chart.data) && this.chart.data.length > 0;
+                        const hasMatchingCache = hasChartData && drawing._cache && drawing._cache.anchorIndex === anchorIndex;
                         if (hasMatchingCache && cachedVwapPoints && cachedVwapPoints.length > 0 && Number.isFinite(cachedVwapPoints[0].vwap)) {
                             anchorYValue = cachedVwapPoints[0].vwap;
                         }
