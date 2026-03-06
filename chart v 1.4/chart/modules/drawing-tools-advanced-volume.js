@@ -340,7 +340,7 @@ class AnchoredVWAPTool extends BaseDrawing {
         if (this.points.length < 1) return;
 
         this.group = container.append('g')
-            .attr('class', 'drawing-anchored-vwap')
+            .attr('class', 'drawing drawing-anchored-vwap')
             .attr('data-id', this.id);
 
         const anchorX = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -364,6 +364,7 @@ class AnchoredVWAPTool extends BaseDrawing {
         // If no data, draw a simple horizontal line from anchor point
         if (chartData.length === 0) {
             this.group.append('line')
+                .attr('class', 'anchored-vwap-curve')
                 .attr('x1', anchorX)
                 .attr('y1', anchorY)
                 .attr('x2', chartWidth)
@@ -371,13 +372,16 @@ class AnchoredVWAPTool extends BaseDrawing {
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', 2.5)
                 .attr('opacity', 0.9)
-                .attr('stroke-dasharray', '5,5');
+                .attr('stroke-dasharray', '5,5')
+                .style('pointer-events', 'none');
             
             this.group.append('text')
+                .attr('class', 'anchored-vwap-label')
                 .attr('x', anchorX + 10)
                 .attr('y', anchorY - 10)
                 .attr('fill', this.style.stroke)
                 .attr('font-size', '11px')
+                .style('pointer-events', 'none')
                 .text('VWAP (No Data)');
 
             this.createHandles(this.group, scales);
@@ -447,15 +451,29 @@ class AnchoredVWAPTool extends BaseDrawing {
             this._cache.bands = { stdDev };
         }
 
-        // Anchor point
+        // Anchor point (TradingView-like: this is the only control target)
         this.group.append('circle')
+            .attr('class', 'anchored-vwap-anchor-hit shape-border-hit')
+            .attr('cx', anchorX)
+            .attr('cy', anchorY)
+            .attr('r', 11)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 1)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+
+        this.group.append('circle')
+            .attr('class', 'anchored-vwap-anchor')
             .attr('cx', anchorX)
             .attr('cy', anchorY)
             .attr('r', 8)
             .attr('fill', this.style.stroke)
             .attr('stroke', '#ffffff')
             .attr('stroke-width', 2)
-            .attr('opacity', this.style.opacity);
+            .attr('opacity', this.style.opacity)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
 
         const buildPoints = (transformFn = (value) => value) => {
             return vwapPoints.map(p => {
@@ -476,42 +494,50 @@ class AnchoredVWAPTool extends BaseDrawing {
 
             const mainPoints = buildPoints();
             this.group.append('path')
+                .attr('class', 'anchored-vwap-curve')
                 .attr('d', line(mainPoints))
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', 2.5)
                 .attr('fill', 'none')
-                .attr('opacity', 0.9);
+                .attr('opacity', 0.9)
+                .style('pointer-events', 'none');
             
             // Upper band
             if (stdDev > 0) {
                 const upperBand = buildPoints(value => value + stdDev);
                 this.group.append('path')
+                    .attr('class', 'anchored-vwap-curve')
                     .attr('d', line(upperBand))
                     .attr('stroke', this.style.stroke)
                     .attr('stroke-width', this.style.strokeWidth * 0.5)
                     .attr('fill', 'none')
                     .attr('opacity', this.style.opacity * 0.4)
-                    .attr('stroke-dasharray', '2,2');
+                    .attr('stroke-dasharray', '2,2')
+                    .style('pointer-events', 'none');
 
                 // Lower band
                 const lowerBand = buildPoints(value => value - stdDev);
                 this.group.append('path')
+                    .attr('class', 'anchored-vwap-curve')
                     .attr('d', line(lowerBand))
                     .attr('stroke', this.style.stroke)
                     .attr('stroke-width', this.style.strokeWidth * 0.5)
                     .attr('fill', 'none')
                     .attr('opacity', this.style.opacity * 0.4)
-                    .attr('stroke-dasharray', '2,2');
+                    .attr('stroke-dasharray', '2,2')
+                    .style('pointer-events', 'none');
             }
         }
 
         // Label
         this.group.append('text')
+            .attr('class', 'anchored-vwap-label')
             .attr('x', anchorX + 10)
             .attr('y', anchorY - 10)
             .attr('fill', this.style.stroke)
             .attr('font-size', '11px')
             .attr('opacity', this.style.opacity)
+            .style('pointer-events', 'none')
             .text('VWAP');
 
         this.createHandles(this.group, scales);

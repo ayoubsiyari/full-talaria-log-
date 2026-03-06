@@ -2421,6 +2421,15 @@ class DrawingToolsManager {
         // Paths that are NOT fills should be clickable on stroke
         drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit):not(.pin-body-hit), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
             .style('pointer-events', 'stroke');
+
+        // Anchored VWAP: mimic TradingView control model (interaction from anchor only).
+        if (drawing.type === 'anchored-vwap') {
+            drawing.group.selectAll('.anchored-vwap-curve, .anchored-vwap-label')
+                .style('pointer-events', 'none');
+            drawing.group.selectAll('.anchored-vwap-anchor, .anchored-vwap-anchor-hit')
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
+        }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
         drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill')
@@ -2446,7 +2455,9 @@ class DrawingToolsManager {
         // Select interactive elements (borders, lines, handles) - NOT fills or hit areas
         // STROKE-ONLY: Only lines/borders are clickable, NOT filled areas
         // Exclude .inline-editable-text elements - they handle their own click/dblclick events
-        const selector = '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
+        const selector = drawing.type === 'anchored-vwap'
+            ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
+            : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
         const isEmptyImageUploadTarget = (eventTarget) => {
@@ -2705,7 +2716,10 @@ class DrawingToolsManager {
         };
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
-        const dragElements = drawing.group.selectAll('.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)');
+        const dragSelector = drawing.type === 'anchored-vwap'
+            ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
+            : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+        const dragElements = drawing.group.selectAll(dragSelector);
         
         dragElements.call(
             d3.drag()
@@ -5102,6 +5116,37 @@ class DrawingToolsManager {
         for (const drawing of this.drawings) {
             z++;
             if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
+
+            // Anchored VWAP should be selectable/movable from anchor point only.
+            if (drawing.type === 'anchored-vwap' && !hitsById.has(drawing.id)) {
+                try {
+                    const anchor = Array.isArray(drawing.points) ? drawing.points[0] : null;
+                    const xScale = this.chart && this.chart.xScale ? this.chart.xScale : null;
+                    const yScale = this.chart && this.chart.yScale ? this.chart.yScale : null;
+
+                    if (anchor && xScale && yScale) {
+                        const anchorX = (this.chart && typeof this.chart.dataIndexToPixel === 'function')
+                            ? this.chart.dataIndexToPixel(anchor.x)
+                            : xScale(anchor.x);
+                        const anchorY = yScale(anchor.y);
+
+                        if (Number.isFinite(anchorX) && Number.isFinite(anchorY)) {
+                            const dx = mouseX - anchorX;
+                            const dy = mouseY - anchorY;
+                            const distance = Math.sqrt((dx * dx) + (dy * dy));
+                            const anchorHitTolerance = 14;
+
+                            if (distance <= anchorHitTolerance) {
+                                hitsById.set(drawing.id, { drawing, distance, z });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Error in anchored VWAP anchor hit test for drawing:', drawing.id, error);
+                }
+
+                continue;
+            }
 
             // Arrow tools: allow fill-based hit testing
             if (!hitsById.has(drawing.id) && (drawing.type === 'arrow' || drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down')) {
