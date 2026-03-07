@@ -389,10 +389,12 @@ class XABCDPatternTool extends BaseDrawing {
         }
 
         // Helper to calculate Fibonacci ratio
-        const calcRatio = (leg1Start, leg1End, leg2Start, leg2End) => {
-            const leg1 = Math.abs(leg1End.y - leg1Start.y);
-            const leg2 = Math.abs(leg2End.y - leg2Start.y);
-            return leg1 > 0 ? (leg2 / leg1).toFixed(3) : '0';
+        const calcRatio = (denStart, denEnd, numStart, numEnd) => {
+            const denominator = Math.abs((denEnd?.y ?? 0) - (denStart?.y ?? 0));
+            const numerator = Math.abs((numEnd?.y ?? 0) - (numStart?.y ?? 0));
+            if (denominator < 0.000001) return null;
+            const ratio = numerator / denominator;
+            return ratio.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
         };
 
         // Draw filled triangular zones (XAB and BCD)
@@ -572,6 +574,7 @@ class XABCDPatternTool extends BaseDrawing {
         };
 
         const placeRatioLabel = (ratio, anchorX, anchorY, x1, y1, x2, y2, preferredDistance = 20) => {
+            if (!ratio) return;
             const boxWidth = ratio.length * 7 + 8;
             const boxHeight = 14;
             const primaryOffset = getPerpendicularOffset(x1, y1, x2, y2, preferredDistance);
@@ -611,8 +614,8 @@ class XABCDPatternTool extends BaseDrawing {
         }
 
         if (this.points.length >= 4) {
-            // BC/XA ratio (C projection) - positioned ON the A-C dashed line (between A and C)
-            const bcRatio = calcRatio(this.points[0], this.points[1], this.points[2], this.points[3]);
+            // BC/AB ratio (C projection) - positioned ON the A-C dashed line (between A and C)
+            const bcRatio = calcRatio(this.points[1], this.points[2], this.points[2], this.points[3]);
             const ax = pointsPx[1].x;
             const ay = pointsPx[1].y;
             const cx = pointsPx[3].x;
@@ -624,25 +627,15 @@ class XABCDPatternTool extends BaseDrawing {
         }
 
         if (this.points.length >= 5) {
-            // XB/XA ratio - positioned on X-B dashed line midpoint
-            const xbRatio = calcRatio(this.points[0], this.points[1], this.points[0], this.points[2]);
-            const xx = pointsPx[0].x;
-            const xy = pointsPx[0].y;
+            // CD/BC ratio - positioned ON the B-D dashed guide
+            const cdRatio = calcRatio(this.points[2], this.points[3], this.points[3], this.points[4]);
             const bx = pointsPx[2].x;
             const by = pointsPx[2].y;
-            const xbMidX = (xx + bx) / 2;
-            const xbMidY = (xy + by) / 2;
-            placeRatioLabel(xbRatio, xbMidX, xbMidY, xx, xy, bx, by, 20);
-
-            // CD/BC ratio - positioned on CD leg midpoint
-            const cdRatio = calcRatio(this.points[2], this.points[3], this.points[3], this.points[4]);
-            const cx = pointsPx[3].x;
-            const cy = pointsPx[3].y;
             const dx = pointsPx[4].x;
             const dy = pointsPx[4].y;
-            const cdMidX = (cx + dx) / 2;
-            const cdMidY = (cy + dy) / 2;
-            placeRatioLabel(cdRatio, cdMidX, cdMidY, cx, cy, dx, dy, 20);
+            const bdMidX = (bx + dx) / 2;
+            const bdMidY = (by + dy) / 2;
+            placeRatioLabel(cdRatio, bdMidX, bdMidY, bx, by, dx, dy, 20);
         }
 
         // Draw point labels with background boxes
