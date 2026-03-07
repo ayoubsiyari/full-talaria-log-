@@ -1297,7 +1297,7 @@ class DrawingToolsManager {
             // Enable continuous drawing mode for freehand tools
             if (this.currentTool === 'brush' || this.currentTool === 'highlighter') {
                 this.isDrawingPath = true;
-                this.showPathTooltip();
+                this.hidePathTooltip();
             }
             
             // Show tooltip for polyline and path (point-by-point mode)
