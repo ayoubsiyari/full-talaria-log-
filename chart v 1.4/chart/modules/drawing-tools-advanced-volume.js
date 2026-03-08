@@ -488,7 +488,7 @@ class AnchoredVWAPTool extends BaseDrawing {
             .attr('class', 'anchored-vwap-anchor-hit shape-border-hit')
             .attr('cx', anchorX)
             .attr('cy', anchorY)
-            .attr('r', 11)
+            .attr('r', 16)
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
             .attr('stroke-width', 1)
