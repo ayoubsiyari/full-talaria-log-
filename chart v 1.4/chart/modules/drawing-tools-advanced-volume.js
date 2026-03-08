@@ -421,7 +421,7 @@ class AnchoredVWAPTool extends BaseDrawing {
         const endIndex = Math.min(chartData.length, (scales.chart && Number.isFinite(scales.chart.visibleEndIndex)) ? scales.chart.visibleEndIndex + 200 : chartData.length);
 
         let vwapPoints = null;
-        let stdDev = 0;
+        let hasStdDev = false;
 
         let cacheValid = this._cache.anchorIndex === anchorIndex &&
             this._cache.dataVersion === dataVersion &&
@@ -429,17 +429,25 @@ class AnchoredVWAPTool extends BaseDrawing {
             this._cache.source === sourceMode &&
             Array.isArray(this._cache.vwapPoints);
 
-        if (cacheValid && this._cache.vwapPoints.length > 0 && typeof this._cache.vwapPoints[0].index !== 'number') {
+        if (cacheValid && this._cache.vwapPoints.length > 0) {
+            const firstCachedPoint = this._cache.vwapPoints[0];
+            if (typeof firstCachedPoint.index !== 'number' || typeof firstCachedPoint.vwap !== 'number' || typeof firstCachedPoint.stdDev !== 'number') {
+                cacheValid = false;
+            }
+        }
+
+        if (cacheValid && this._cache.vwapPoints.length === 0) {
             cacheValid = false;
         }
 
         if (cacheValid) {
             vwapPoints = this._cache.vwapPoints;
-            stdDev = this._cache.bands?.stdDev || 0;
+            hasStdDev = !!this._cache.bands?.hasStdDev;
         } else {
             // Calculate cumulative VWAP from anchor point onwards:
             // VWAP_i = Σ(TP_j * V_j) / Σ(V_j), j = anchor..i
             let cumulativePV = 0;
+            let cumulativeP2V = 0;
             let cumulativeVolume = 0;
             vwapPoints = [];
 
@@ -449,6 +457,7 @@ class AnchoredVWAPTool extends BaseDrawing {
             };
 
             let lastVwap = null;
+            let lastStdDev = 0;
 
             for (let i = startIndex; i < endIndex; i++) {
                 const candle = chartData[i];
@@ -485,25 +494,23 @@ class AnchoredVWAPTool extends BaseDrawing {
 
                 if (volume > 0) {
                     cumulativePV += sourceValue * volume;
+                    cumulativeP2V += sourceValue * sourceValue * volume;
                     cumulativeVolume += volume;
                 }
 
                 if (cumulativeVolume > 0) {
                     lastVwap = cumulativePV / cumulativeVolume;
+                    const meanSquare = cumulativeP2V / cumulativeVolume;
+                    const variance = Math.max(meanSquare - (lastVwap * lastVwap), 0);
+                    lastStdDev = Math.sqrt(variance);
                 } else if (!Number.isFinite(lastVwap)) {
                     lastVwap = sourceValue;
                 }
 
-                vwapPoints.push({ index: i, vwap: lastVwap });
+                vwapPoints.push({ index: i, vwap: lastVwap, stdDev: lastStdDev });
             }
 
-            // Calculate standard deviation for bands
-            if (vwapPoints.length > 1) {
-                const vwapValues = vwapPoints.map(p => p.vwap);
-                const mean = vwapValues[vwapValues.length - 1];
-                const variance = vwapValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / (vwapValues.length - 1);
-                stdDev = Math.sqrt(Math.max(variance, 0));
-            }
+            hasStdDev = vwapPoints.some(p => Number.isFinite(p.stdDev) && p.stdDev > 0);
 
             // Cache results
             this._cache.anchorIndex = anchorIndex;
@@ -511,7 +518,7 @@ class AnchoredVWAPTool extends BaseDrawing {
             this._cache.lastEndIndex = endIndex;
             this._cache.source = sourceMode;
             this._cache.vwapPoints = vwapPoints;
-            this._cache.bands = { stdDev };
+            this._cache.bands = { hasStdDev };
         }
 
         // Keep the control point centered on the VWAP start point (TradingView-like anchor behavior).
@@ -581,13 +588,13 @@ class AnchoredVWAPTool extends BaseDrawing {
             .attr('stroke-width', 1)
             .style('pointer-events', 'none');
 
-        const buildPoints = (transformFn = (value) => value) => {
+        const buildPoints = (transformFn = (point) => point.vwap) => {
             return vwapPoints.map(p => {
                 const x = scales.chart && scales.chart.dataIndexToPixel ?
                     scales.chart.dataIndexToPixel(p.index) : scales.xScale(p.index);
                 return {
                     x,
-                    y: scales.yScale(transformFn(p.vwap))
+                    y: scales.yScale(transformFn(p))
                 };
             });
         };
@@ -598,7 +605,7 @@ class AnchoredVWAPTool extends BaseDrawing {
                 .x(d => d.x)
                 .y(d => d.y);
 
-            const mainPoints = buildPoints();
+            const mainPoints = buildPoints(point => point.vwap);
             this.group.append('path')
                 .attr('class', 'anchored-vwap-curve')
                 .attr('d', line(mainPoints))
@@ -665,11 +672,12 @@ class AnchoredVWAPTool extends BaseDrawing {
                 }
             ];
 
-            const getBandDistance = (vwapValue, multiplier) => {
+            const getBandDistance = (point, multiplier) => {
                 if (bandsCalculationMode === 'percentage') {
-                    return Math.abs(vwapValue) * (multiplier / 100);
+                    return Math.abs(point.vwap) * (multiplier / 100);
                 }
-                return stdDev * multiplier;
+                const stdDevAtPoint = Number(point.stdDev);
+                return (Number.isFinite(stdDevAtPoint) ? stdDevAtPoint : 0) * multiplier;
             };
 
             const baseOpacityRaw = Number(this.style.opacity);
@@ -689,10 +697,10 @@ class AnchoredVWAPTool extends BaseDrawing {
                     : bandConfig.fallback;
                 if (!(multiplier > 0)) return;
 
-                if (bandsCalculationMode === 'standard_deviation' && !(stdDev > 0)) return;
+                if (bandsCalculationMode === 'standard_deviation' && !hasStdDev) return;
 
-                const upperBand = buildPoints(value => value + getBandDistance(value, multiplier));
-                const lowerBand = buildPoints(value => value - getBandDistance(value, multiplier));
+                const upperBand = buildPoints(point => point.vwap + getBandDistance(point, multiplier));
+                const lowerBand = buildPoints(point => point.vwap - getBandDistance(point, multiplier));
                 const bandOpacity = Math.max(0.1, Math.min(1, baseOpacity * (0.42 - (index * 0.08))));
 
                 this.group.append('path')
