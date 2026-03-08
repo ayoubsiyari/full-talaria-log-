@@ -5242,7 +5242,7 @@ class DrawingToolsManager {
                             const dx = mouseX - anchorX;
                             const dy = mouseY - anchorY;
                             const distance = Math.sqrt((dx * dx) + (dy * dy));
-                            const anchorHitTolerance = 14;
+                            const anchorHitTolerance = 20;
 
                             if (distance <= anchorHitTolerance) {
                                 bestDistance = Math.min(bestDistance, distance);
