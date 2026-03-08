@@ -3053,7 +3053,8 @@ class DrawingToolsManager {
 
         stopDirectMoveListeners();
 
-        const drawings = Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings];
+        const drawings = (Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings])
+            .filter(d => d && d.type !== 'anchored-vwap');
         if (!drawings || drawings.length === 0) return;
 
         const singleDragType = drawings.length === 1 ? drawings[0].type : null;
