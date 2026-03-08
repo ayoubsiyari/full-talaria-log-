@@ -2295,7 +2295,8 @@ body.light-mode .template-save-dialog .dialog-title {
         const isGannInputTabTool = this.isGannInputTabTool(drawing.type);
         const isPositionInputsTool = drawing.type === 'long-position' || drawing.type === 'short-position';
         const isVolumeProfileInputsTool = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
-        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool || isVolumeProfileInputsTool;
+        const isAnchoredVWAPInputsTool = drawing.type === 'anchored-vwap';
+        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool || isVolumeProfileInputsTool || isAnchoredVWAPInputsTool;
         const inputTabLabel = (isFibonacciInputTabTool || isGannInputTabTool) ? 'Input' : 'Inputs';
         
         let tabsHTML = '';
@@ -2380,6 +2381,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 this.buildPositionInputsTab(inputsPane, drawing);
             } else if (isVolumeProfileInputsTool) {
                 this.buildVolumeProfileInputsTab(inputsPane, drawing);
+            } else if (isAnchoredVWAPInputsTool) {
+                this.buildAnchoredVWAPInputsTab(inputsPane, drawing);
             }
         }
 
@@ -7310,6 +7313,124 @@ body.light-mode .template-save-dialog .dialog-title {
     }
 
     /**
+     * Build Anchored VWAP Inputs Tab Content
+     */
+    buildAnchoredVWAPInputsTab(container, drawing) {
+        if (!drawing.style) drawing.style = {};
+
+        const normalizeSource = (value) => {
+            const source = String(value || 'hlc3').toLowerCase();
+            return ['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'].includes(source)
+                ? source
+                : 'hlc3';
+        };
+        const normalizeBandsMode = (value) => {
+            const mode = String(value || 'standard_deviation').toLowerCase();
+            return mode === 'percentage' ? 'percentage' : 'standard_deviation';
+        };
+        const normalizeMultiplier = (value, fallback) => {
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+            return Math.max(0.001, Math.min(1000, parsed));
+        };
+
+        drawing.style.source = normalizeSource(drawing.style.source);
+        drawing.style.vwapBandsCalculationMode = normalizeBandsMode(drawing.style.vwapBandsCalculationMode);
+        if (drawing.style.vwapBand1Enabled === undefined) drawing.style.vwapBand1Enabled = true;
+        if (drawing.style.vwapBand2Enabled === undefined) drawing.style.vwapBand2Enabled = false;
+        if (drawing.style.vwapBand3Enabled === undefined) drawing.style.vwapBand3Enabled = false;
+        drawing.style.vwapBand1Multiplier = normalizeMultiplier(drawing.style.vwapBand1Multiplier, 1);
+        drawing.style.vwapBand2Multiplier = normalizeMultiplier(drawing.style.vwapBand2Multiplier, 2);
+        drawing.style.vwapBand3Multiplier = normalizeMultiplier(drawing.style.vwapBand3Multiplier, 3);
+
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
+
+        const labelColumnWidth = 190;
+        const controlsColumnWidth = 180;
+
+        const createInputRow = (labelText) => {
+            const row = document.createElement('div');
+            row.className = 'tv-prop-row';
+            row.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
+
+            const label = document.createElement('span');
+            label.className = 'tv-prop-label';
+            label.style.cssText = `min-width: 0; width: ${labelColumnWidth}px; flex: 0 0 ${labelColumnWidth}px;`;
+            label.textContent = labelText;
+            row.appendChild(label);
+
+            const controls = document.createElement('div');
+            controls.className = 'tv-prop-controls';
+            controls.style.cssText = `width: ${controlsColumnWidth}px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;`;
+            row.appendChild(controls);
+
+            section.appendChild(row);
+            return { row, label, controls };
+        };
+
+        const bandsModeRow = createInputRow('Bands Calculation Mode');
+        bandsModeRow.controls.innerHTML = `
+            <select class="tv-select" data-prop="vwapBandsCalculationMode" style="width: 170px;">
+                <option value="standard_deviation" ${drawing.style.vwapBandsCalculationMode === 'standard_deviation' ? 'selected' : ''}>Standard Deviation</option>
+                <option value="percentage" ${drawing.style.vwapBandsCalculationMode === 'percentage' ? 'selected' : ''}>Percentage</option>
+            </select>
+        `;
+
+        const createBandRow = (index) => {
+            const enabledProp = `vwapBand${index}Enabled`;
+            const multiplierProp = `vwapBand${index}Multiplier`;
+            const row = createInputRow(`Bands Multiplier #${index}`);
+
+            row.label.style.cssText += ' display: inline-flex; align-items: center; gap: 8px;';
+            row.label.innerHTML = `
+                <div class="tv-checkbox ${drawing.style[enabledProp] ? 'checked' : ''}" data-prop="${enabledProp}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+                <span class="tv-checkbox-label" style="white-space: nowrap;">Bands Multiplier #${index}</span>
+            `;
+
+            row.controls.innerHTML = `
+                <input
+                    type="number"
+                    class="tv-input"
+                    data-prop="${multiplierProp}"
+                    value="${drawing.style[multiplierProp]}"
+                    min="0.001"
+                    max="1000"
+                    step="0.1"
+                    style="width: 130px;"
+                >
+            `;
+        };
+
+        createBandRow(1);
+        createBandRow(2);
+        createBandRow(3);
+
+        const spacer = document.createElement('div');
+        spacer.style.cssText = 'height: 12px;';
+        section.appendChild(spacer);
+
+        const sourceRow = createInputRow('Source');
+        sourceRow.controls.innerHTML = `
+            <select class="tv-select" data-prop="source" style="width: 170px;">
+                <option value="hlc3" ${drawing.style.source === 'hlc3' ? 'selected' : ''}>(H + L + C) / 3</option>
+                <option value="hl2" ${drawing.style.source === 'hl2' ? 'selected' : ''}>(H + L) / 2</option>
+                <option value="ohlc4" ${drawing.style.source === 'ohlc4' ? 'selected' : ''}>(O + H + L + C) / 4</option>
+                <option value="close" ${drawing.style.source === 'close' ? 'selected' : ''}>Close</option>
+                <option value="open" ${drawing.style.source === 'open' ? 'selected' : ''}>Open</option>
+                <option value="high" ${drawing.style.source === 'high' ? 'selected' : ''}>High</option>
+                <option value="low" ${drawing.style.source === 'low' ? 'selected' : ''}>Low</option>
+            </select>
+        `;
+
+        container.appendChild(section);
+    }
+
+    /**
      * Build Volume Profile Inputs Tab Content
      */
     buildVolumeProfileInputsTab(container, drawing) {
@@ -8581,6 +8702,11 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style.showValues = isChecked;
                     self.renderPreview(drawing);
                 }
+
+                if (prop === 'vwapBand1Enabled' || prop === 'vwapBand2Enabled' || prop === 'vwapBand3Enabled') {
+                    drawing.style[prop] = isChecked;
+                    self.renderPreview(drawing);
+                }
                 });
             });
         }, 0);
@@ -8676,8 +8802,17 @@ body.light-mode .template-save-dialog .dialog-title {
                 this.pendingChanges[prop] = value;
                 
                 // Apply live preview
-                if (prop === 'source') {
-                    drawing.style.source = value;
+                if (prop === 'vwapBandsCalculationMode') {
+                    const modeValue = value === 'percentage' ? 'percentage' : 'standard_deviation';
+                    this.pendingChanges.vwapBandsCalculationMode = modeValue;
+                    drawing.style.vwapBandsCalculationMode = modeValue;
+                    self.renderPreview(drawing);
+                } else if (prop === 'source') {
+                    const sourceValue = ['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'].includes(value)
+                        ? value
+                        : 'hlc3';
+                    this.pendingChanges.source = sourceValue;
+                    drawing.style.source = sourceValue;
                     self.renderPreview(drawing);
                 } else if (prop === 'lineType') {
                     drawing.style.strokeDasharray = value;
@@ -9090,6 +9225,36 @@ body.light-mode .template-save-dialog .dialog-title {
 
             input.addEventListener('input', () => applyVolumeProfileInput(false));
             input.addEventListener('change', () => applyVolumeProfileInput(true));
+        });
+
+        queryAll('.tv-input[data-prop="vwapBand1Multiplier"], .tv-input[data-prop="vwapBand2Multiplier"], .tv-input[data-prop="vwapBand3Multiplier"]').forEach(input => {
+            const prop = input.dataset.prop;
+            const defaultMultiplier = prop === 'vwapBand2Multiplier'
+                ? 2
+                : (prop === 'vwapBand3Multiplier' ? 3 : 1);
+
+            const applyAnchoredVwapBandInput = (commit = false) => {
+                const parsed = parseFloat(String(input.value || '').trim().replace(',', '.'));
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                    if (commit) {
+                        const fallbackRaw = Number(drawing.style[prop]);
+                        const fallback = Number.isFinite(fallbackRaw) && fallbackRaw > 0
+                            ? fallbackRaw
+                            : defaultMultiplier;
+                        input.value = String(fallback);
+                    }
+                    return;
+                }
+
+                const clamped = Math.max(0.001, Math.min(1000, parsed));
+                this.pendingChanges[prop] = clamped;
+                drawing.style[prop] = clamped;
+                if (commit) input.value = String(clamped);
+                self.renderPreview(drawing);
+            };
+
+            input.addEventListener('input', () => applyAnchoredVwapBandInput(false));
+            input.addEventListener('change', () => applyAnchoredVwapBandInput(true));
         });
         
         // Text content input (for text tools) - use queryAll to find in external dropdowns
@@ -9700,6 +9865,33 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.middleLineType !== undefined) drawing.style.middleLineDash = this.pendingChanges.middleLineType;
         if (this.pendingChanges.middleLineWidth) drawing.style.middleLineWidth = parseInt(this.pendingChanges.middleLineWidth);
         if (this.pendingChanges.middleLineEnabled !== undefined) drawing.style.showMiddleLine = this.pendingChanges.middleLineEnabled;
+
+        if (this.pendingChanges.source !== undefined) {
+            const source = String(this.pendingChanges.source).toLowerCase();
+            drawing.style.source = ['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'].includes(source)
+                ? source
+                : 'hlc3';
+        }
+        if (this.pendingChanges.vwapBandsCalculationMode !== undefined) {
+            drawing.style.vwapBandsCalculationMode = this.pendingChanges.vwapBandsCalculationMode === 'percentage'
+                ? 'percentage'
+                : 'standard_deviation';
+        }
+        if (this.pendingChanges.vwapBand1Enabled !== undefined) drawing.style.vwapBand1Enabled = this.pendingChanges.vwapBand1Enabled;
+        if (this.pendingChanges.vwapBand2Enabled !== undefined) drawing.style.vwapBand2Enabled = this.pendingChanges.vwapBand2Enabled;
+        if (this.pendingChanges.vwapBand3Enabled !== undefined) drawing.style.vwapBand3Enabled = this.pendingChanges.vwapBand3Enabled;
+        if (this.pendingChanges.vwapBand1Multiplier !== undefined) {
+            const parsed = Number(this.pendingChanges.vwapBand1Multiplier);
+            if (Number.isFinite(parsed) && parsed > 0) drawing.style.vwapBand1Multiplier = Math.max(0.001, Math.min(1000, parsed));
+        }
+        if (this.pendingChanges.vwapBand2Multiplier !== undefined) {
+            const parsed = Number(this.pendingChanges.vwapBand2Multiplier);
+            if (Number.isFinite(parsed) && parsed > 0) drawing.style.vwapBand2Multiplier = Math.max(0.001, Math.min(1000, parsed));
+        }
+        if (this.pendingChanges.vwapBand3Multiplier !== undefined) {
+            const parsed = Number(this.pendingChanges.vwapBand3Multiplier);
+            if (Number.isFinite(parsed) && parsed > 0) drawing.style.vwapBand3Multiplier = Math.max(0.001, Math.min(1000, parsed));
+        }
 
         if (this.pendingChanges.rowsLayout !== undefined) {
             drawing.style.rowsLayout = this.pendingChanges.rowsLayout === 'ticksPerRow' ? 'ticksPerRow' : 'numberOfRows';

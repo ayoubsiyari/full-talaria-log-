@@ -327,9 +327,20 @@ class AnchoredVWAPTool extends BaseDrawing {
             anchorIndex: null,
             dataVersion: null,
             lastEndIndex: null,
+            source: null,
             vwapPoints: null,
             bands: null
         };
+
+        const hasOwn = (prop) => Object.prototype.hasOwnProperty.call(style, prop);
+        if (!hasOwn('source')) this.style.source = 'hlc3';
+        if (!hasOwn('vwapBandsCalculationMode')) this.style.vwapBandsCalculationMode = 'standard_deviation';
+        if (!hasOwn('vwapBand1Enabled')) this.style.vwapBand1Enabled = true;
+        if (!hasOwn('vwapBand2Enabled')) this.style.vwapBand2Enabled = false;
+        if (!hasOwn('vwapBand3Enabled')) this.style.vwapBand3Enabled = false;
+        if (!Number.isFinite(Number(this.style.vwapBand1Multiplier))) this.style.vwapBand1Multiplier = 1;
+        if (!Number.isFinite(Number(this.style.vwapBand2Multiplier))) this.style.vwapBand2Multiplier = 2;
+        if (!Number.isFinite(Number(this.style.vwapBand3Multiplier))) this.style.vwapBand3Multiplier = 3;
     }
 
     render(container, scales) {
@@ -361,6 +372,24 @@ class AnchoredVWAPTool extends BaseDrawing {
         }
         
         const chartWidth = scales.chart ? scales.chart.width : 1000;
+        const normalizeSourceMode = (value) => {
+            const mode = String(value || 'hlc3').toLowerCase();
+            if (mode === 'close' || mode === 'open' || mode === 'high' || mode === 'low' || mode === 'hl2' || mode === 'ohlc4') {
+                return mode;
+            }
+            return 'hlc3';
+        };
+        const sourceMode = normalizeSourceMode(this.style.source);
+
+        const normalizeBandsCalcMode = (value) => {
+            const mode = String(value || 'standard_deviation').toLowerCase();
+            return mode === 'percentage' ? 'percentage' : 'standard_deviation';
+        };
+        const bandsCalculationMode = normalizeBandsCalcMode(this.style.vwapBandsCalculationMode);
+
+        // Keep style values normalized so UI/state persistence stay consistent.
+        this.style.source = sourceMode;
+        this.style.vwapBandsCalculationMode = bandsCalculationMode;
 
         // If no data, draw a simple horizontal line from anchor point
         if (chartData.length === 0) {
@@ -397,6 +426,7 @@ class AnchoredVWAPTool extends BaseDrawing {
         let cacheValid = this._cache.anchorIndex === anchorIndex &&
             this._cache.dataVersion === dataVersion &&
             this._cache.lastEndIndex === endIndex &&
+            this._cache.source === sourceMode &&
             Array.isArray(this._cache.vwapPoints);
 
         if (cacheValid && this._cache.vwapPoints.length > 0 && typeof this._cache.vwapPoints[0].index !== 'number') {
@@ -424,28 +454,44 @@ class AnchoredVWAPTool extends BaseDrawing {
                 const candle = chartData[i];
                 if (!candle) continue;
 
+                const open = toFiniteNumber(candle.o ?? candle.open);
                 const high = toFiniteNumber(candle.h ?? candle.high);
                 const low = toFiniteNumber(candle.l ?? candle.low);
                 const close = toFiniteNumber(candle.c ?? candle.close);
                 const volumeRaw = toFiniteNumber(candle.v ?? candle.volume);
 
-                if (![high, low, close].every(Number.isFinite)) continue;
+                let sourceValue = NaN;
+                if (sourceMode === 'close') {
+                    sourceValue = close;
+                } else if (sourceMode === 'open') {
+                    sourceValue = open;
+                } else if (sourceMode === 'high') {
+                    sourceValue = high;
+                } else if (sourceMode === 'low') {
+                    sourceValue = low;
+                } else if (sourceMode === 'hl2') {
+                    sourceValue = (high + low) / 2;
+                } else if (sourceMode === 'ohlc4') {
+                    sourceValue = (open + high + low + close) / 4;
+                } else {
+                    sourceValue = (high + low + close) / 3;
+                }
 
-                const typicalPrice = (high + low + close) / 3;
+                if (!Number.isFinite(sourceValue)) continue;
 
                 // Keep cumulative behavior mathematically correct even for missing/zero volume bars.
                 // Those bars keep the previous cumulative VWAP value instead of creating gaps.
                 const volume = Number.isFinite(volumeRaw) ? Math.max(volumeRaw, 0) : 0;
 
                 if (volume > 0) {
-                    cumulativePV += typicalPrice * volume;
+                    cumulativePV += sourceValue * volume;
                     cumulativeVolume += volume;
                 }
 
                 if (cumulativeVolume > 0) {
                     lastVwap = cumulativePV / cumulativeVolume;
                 } else if (!Number.isFinite(lastVwap)) {
-                    lastVwap = typicalPrice;
+                    lastVwap = sourceValue;
                 }
 
                 vwapPoints.push({ index: i, vwap: lastVwap });
@@ -463,6 +509,7 @@ class AnchoredVWAPTool extends BaseDrawing {
             this._cache.anchorIndex = anchorIndex;
             this._cache.dataVersion = dataVersion;
             this._cache.lastEndIndex = endIndex;
+            this._cache.source = sourceMode;
             this._cache.vwapPoints = vwapPoints;
             this._cache.bands = { stdDev };
         }
@@ -600,31 +647,74 @@ class AnchoredVWAPTool extends BaseDrawing {
                     .style('pointer-events', 'none');
             }
             
-            // Upper band
-            if (stdDev > 0) {
-                const upperBand = buildPoints(value => value + stdDev);
+            const bandConfigs = [
+                {
+                    enabled: this.style.vwapBand1Enabled !== false,
+                    multiplier: Number(this.style.vwapBand1Multiplier),
+                    fallback: 1
+                },
+                {
+                    enabled: !!this.style.vwapBand2Enabled,
+                    multiplier: Number(this.style.vwapBand2Multiplier),
+                    fallback: 2
+                },
+                {
+                    enabled: !!this.style.vwapBand3Enabled,
+                    multiplier: Number(this.style.vwapBand3Multiplier),
+                    fallback: 3
+                }
+            ];
+
+            const getBandDistance = (vwapValue, multiplier) => {
+                if (bandsCalculationMode === 'percentage') {
+                    return Math.abs(vwapValue) * (multiplier / 100);
+                }
+                return stdDev * multiplier;
+            };
+
+            const baseOpacityRaw = Number(this.style.opacity);
+            const baseOpacity = Number.isFinite(baseOpacityRaw)
+                ? Math.max(0, Math.min(1, baseOpacityRaw))
+                : 1;
+            const baseStrokeWidthRaw = Number(this.style.strokeWidth);
+            const bandStrokeWidth = Number.isFinite(baseStrokeWidthRaw)
+                ? Math.max(0.7, baseStrokeWidthRaw * 0.5)
+                : 0.7;
+
+            bandConfigs.forEach((bandConfig, index) => {
+                if (!bandConfig.enabled) return;
+
+                const multiplier = Number.isFinite(bandConfig.multiplier)
+                    ? bandConfig.multiplier
+                    : bandConfig.fallback;
+                if (!(multiplier > 0)) return;
+
+                if (bandsCalculationMode === 'standard_deviation' && !(stdDev > 0)) return;
+
+                const upperBand = buildPoints(value => value + getBandDistance(value, multiplier));
+                const lowerBand = buildPoints(value => value - getBandDistance(value, multiplier));
+                const bandOpacity = Math.max(0.1, Math.min(1, baseOpacity * (0.42 - (index * 0.08))));
+
                 this.group.append('path')
-                    .attr('class', 'anchored-vwap-curve')
+                    .attr('class', 'anchored-vwap-curve anchored-vwap-band')
                     .attr('d', line(upperBand))
                     .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', this.style.strokeWidth * 0.5)
+                    .attr('stroke-width', bandStrokeWidth)
                     .attr('fill', 'none')
-                    .attr('opacity', this.style.opacity * 0.4)
+                    .attr('opacity', bandOpacity)
                     .attr('stroke-dasharray', '2,2')
                     .style('pointer-events', 'none');
 
-                // Lower band
-                const lowerBand = buildPoints(value => value - stdDev);
                 this.group.append('path')
-                    .attr('class', 'anchored-vwap-curve')
+                    .attr('class', 'anchored-vwap-curve anchored-vwap-band')
                     .attr('d', line(lowerBand))
                     .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', this.style.strokeWidth * 0.5)
+                    .attr('stroke-width', bandStrokeWidth)
                     .attr('fill', 'none')
-                    .attr('opacity', this.style.opacity * 0.4)
+                    .attr('opacity', bandOpacity)
                     .attr('stroke-dasharray', '2,2')
                     .style('pointer-events', 'none');
-            }
+            });
         }
 
         this.group.selectAll('.anchored-vwap-anchor-hit, .anchored-vwap-anchor').raise();
