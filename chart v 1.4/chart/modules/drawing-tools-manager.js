@@ -2496,9 +2496,12 @@ class DrawingToolsManager {
         drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit):not(.pin-body-hit), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
             .style('pointer-events', 'stroke');
 
-        // Anchored VWAP: mimic TradingView control model (interaction from anchor only).
+        // Anchored VWAP: allow selection from curve, but keep drag interaction on anchor handles.
         if (drawing.type === 'anchored-vwap') {
-            drawing.group.selectAll('.anchored-vwap-curve, .anchored-vwap-label')
+            drawing.group.selectAll('.anchored-vwap-curve')
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+            drawing.group.selectAll('.anchored-vwap-label')
                 .style('pointer-events', 'none');
             drawing.group.selectAll('.anchored-vwap-anchor, .anchored-vwap-anchor-hit')
                 .style('pointer-events', 'all')
@@ -2530,7 +2533,7 @@ class DrawingToolsManager {
         // STROKE-ONLY: Only lines/borders are clickable, NOT filled areas
         // Exclude .inline-editable-text elements - they handle their own click/dblclick events
         const selector = drawing.type === 'anchored-vwap'
-            ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
+            ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
             : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .volume-profile-select-hit, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 

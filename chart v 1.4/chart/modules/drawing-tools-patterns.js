@@ -1351,9 +1351,9 @@ class ABCDPatternTool extends BaseDrawing {
         super('abcd-pattern', points, style);
         this.requiredPoints = 4;
         this.style.stroke = style.stroke || '#00bfa5';
-        this.style.strokeWidth = style.strokeWidth || 3;
+        this.style.strokeWidth = style.strokeWidth || 2;
         this.style.guideDasharray = style.guideDasharray || '2,8';
-        this.style.guideWidth = style.guideWidth || 3;
+        this.style.guideWidth = style.guideWidth || 1;
         this.style.labelFill = style.labelFill || this.style.stroke;
         this.style.labelTextColor = style.labelTextColor || '#ffffff';
         this.style.ratioFill = style.ratioFill || this.style.stroke;
