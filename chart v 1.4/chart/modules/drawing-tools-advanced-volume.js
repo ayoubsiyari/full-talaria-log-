@@ -544,8 +544,9 @@ class AnchoredVWAPTool extends BaseDrawing {
                 .attr('opacity', 0.9)
                 .style('pointer-events', 'none');
 
-            // TradingView-like guide points along the VWAP line while selected.
-            if (this.selected && mainPoints.length > 1) {
+            // TradingView-like guide points along the VWAP line.
+            // Visible when selected, and revealed on hover via manager hover handlers.
+            if (mainPoints.length > 1) {
                 const markerSpacingPx = 95;
                 const markerRadius = 3;
                 const markerPoints = [];
@@ -566,6 +567,7 @@ class AnchoredVWAPTool extends BaseDrawing {
 
                 this.group.append('g')
                     .attr('class', 'anchored-vwap-line-markers')
+                    .attr('opacity', this.selected ? 1 : 0)
                     .selectAll('circle')
                     .data(markerPoints)
                     .enter()

@@ -2732,6 +2732,9 @@ class DrawingToolsManager {
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
                 }
                 SVGHelpers.applyHoverEffect(drawing.group, true);
+                if (drawing.type === 'anchored-vwap' && drawing.group) {
+                    drawing.group.selectAll('.anchored-vwap-line-markers').style('opacity', 1);
+                }
             } else {
                 drawing.group.style('cursor', 'not-allowed');
                 if (self.chart?.canvas) self.chart.canvas.style.cursor = 'not-allowed';
@@ -2748,6 +2751,9 @@ class DrawingToolsManager {
                 if (self.chart.svg?.node()) self.chart.svg.node().style.cursor = cursorStyle;
             }
             SVGHelpers.applyHoverEffect(drawing.group, false);
+            if (drawing.type === 'anchored-vwap' && drawing.group) {
+                drawing.group.selectAll('.anchored-vwap-line-markers').style('opacity', drawing.selected ? 1 : 0);
+            }
         };
         
         // Apply handlers to interactive elements
