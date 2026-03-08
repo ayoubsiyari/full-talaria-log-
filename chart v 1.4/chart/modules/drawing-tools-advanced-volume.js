@@ -777,8 +777,7 @@ class VolumeProfileTool extends BaseDrawing {
             ? (this.style.fill || 'rgba(14, 59, 70, 0.22)')
             : 'transparent';
 
-        // Keep only line/handle-based interactions (TradingView-like):
-        // background area should not start drag/move.
+        // Visual profile background.
         this.group.append('rect')
             .attr('class', 'volume-profile-range')
             .attr('x', left)
@@ -790,6 +789,19 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('stroke', 'none')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
+
+        // Selection zone: allow selecting the profile from anywhere inside the range area.
+        // Drag from this zone is still blocked in manager drag filter (selection-only).
+        this.group.append('rect')
+            .attr('class', 'volume-profile-select-hit')
+            .attr('x', left)
+            .attr('y', top)
+            .attr('width', Math.max(1, width))
+            .attr('height', Math.max(1, height))
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
 
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
         [
@@ -1037,8 +1049,8 @@ class VolumeProfileTool extends BaseDrawing {
             return `${Math.round(num)}`;
         };
 
-        // In anchored screen-docked mode, provide a larger transparent hit strip
-        // so selection/hover remains easy even when the anchor line is off-screen.
+        // In anchored screen-docked mode, add an extra edge hit strip so
+        // selection/hover remains easy even when the anchor line is off-screen.
         if (hasFixedProfileSide) {
             const selectHitWidth = Math.max(24, maxProfileWidth + 12);
             const selectHitX = fixedProfileSide === 'left'

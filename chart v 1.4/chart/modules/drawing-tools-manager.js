@@ -5466,6 +5466,34 @@ class DrawingToolsManager {
                     console.warn('Error in range fill hit test for drawing:', drawing.id, error);
                 }
             }
+
+            // Volume Profile tools: allow selecting by interior profile area (not only boundaries).
+            if (!hitsById.has(drawing.id) && (drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile')) {
+                try {
+                    const fillHits = drawing.group.selectAll('.volume-profile-select-hit').nodes();
+                    for (const el of fillHits) {
+                        if (!el) continue;
+
+                        if (typeof el.isPointInFill === 'function') {
+                            if (el.isPointInFill(point)) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        } else if (typeof el.getBBox === 'function') {
+                            const bb = el.getBBox();
+                            const inside = mouseX >= bb.x && mouseX <= (bb.x + bb.width)
+                                && mouseY >= bb.y && mouseY <= (bb.y + bb.height);
+                            if (inside) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        }
+                    }
+                    if (hitsById.has(drawing.id)) continue;
+                } catch (error) {
+                    console.warn('Error in volume profile interior hit test for drawing:', drawing.id, error);
+                }
+            }
             
             // Special handling for tools that use isPointInside() (images, emojis, etc.)
             if (drawing.type === 'emoji' || drawing.type === 'image') {
