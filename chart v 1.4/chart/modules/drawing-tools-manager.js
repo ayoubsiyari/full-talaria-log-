@@ -706,6 +706,12 @@ class DrawingToolsManager {
                 const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
                 if (!svgNode) return;
 
+                // Let Anchored VWAP anchor points use their own element drag behavior.
+                // Avoid canvas-capture direct-drag hijacking (which can no-op for anchored-vwap).
+                const rawTarget = event.target;
+                const isAnchoredVwapAnchorTarget = !!(rawTarget && rawTarget.closest && rawTarget.closest('.anchored-vwap-anchor, .anchored-vwap-anchor-hit'));
+                if (isAnchoredVwapAnchorTarget) return;
+
                 const svgRect = svgNode.getBoundingClientRect();
                 const mouseX = event.clientX - svgRect.left;
                 const mouseY = event.clientY - svgRect.top;
@@ -2804,16 +2810,23 @@ class DrawingToolsManager {
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
+        const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
         dragElements.call(
             d3.drag()
-                .clickDistance(4) // Allow clicks/dblclicks if mouse moves less than 4px
+                .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
                     // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
                     const isResizeHandle = targetSelection.classed('resize-handle') || targetSelection.classed('resize-handle-hit');
                     const isCustomHandle = targetSelection.classed('custom-handle');
                     const targetEl = event.target;
+                    const isAnchoredVwapAnchorTarget = drawing.type === 'anchored-vwap' && !!(targetEl && targetEl.closest && targetEl.closest('.anchored-vwap-anchor, .anchored-vwap-anchor-hit'));
+
+                    if (isAnchoredVwapAnchorTarget) {
+                        return !self.currentTool;
+                    }
+
                     const isAnyHandle = !!(targetEl && targetEl.closest && targetEl.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
                     const isShapeFill = targetSelection.classed('shape-fill');
                     const isUpperFill = targetSelection.classed('upper-fill');
