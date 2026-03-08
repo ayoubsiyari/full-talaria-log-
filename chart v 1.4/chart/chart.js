@@ -7181,29 +7181,17 @@ class Chart {
                     timeStr = timeInput.value;
                 }
                 
-                // Parse date/time as if it's in the selected timezone
                 const [year, month, day] = dateStr.split('-').map(Number);
                 const [hour, minute] = timeStr.split(':').map(Number);
-                
-                // Create a date in local time first
-                const localDate = new Date(year, month - 1, day, hour, minute, 0);
-                
-                // Convert from selected timezone to UTC
-                // The user entered a time in the chart's timezone, but Date() interprets it as local browser time
-                // We need to adjust for the difference between browser timezone and chart timezone
+                if (![year, month, day, hour, minute].every(Number.isFinite)) return;
+
                 const tm = window.timezoneManager;
-                let targetTimestamp = localDate.getTime();
+                const utcTimestamp = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+                const targetTimestamp = tm
+                    ? (utcTimestamp - tm.getOffsetMs())
+                    : new Date(year, month - 1, day, hour, minute, 0).getTime();
                 
-                if (tm) {
-                    // Get browser's local timezone offset in ms
-                    const browserOffset = -localDate.getTimezoneOffset() * 60 * 1000;
-                    // Get chart's timezone offset in ms
-                    const chartOffset = tm.getOffsetMs();
-                    // Adjust: remove browser offset, add chart offset to get the correct UTC time
-                    targetTimestamp = targetTimestamp + browserOffset - chartOffset;
-                }
-                
-                if (!isNaN(targetTimestamp)) {
+                if (!Number.isNaN(targetTimestamp)) {
                     chart.jumpToTimestamp(targetTimestamp);
                     menu.classList.remove('open');
                 }
@@ -8027,6 +8015,79 @@ class Chart {
     }
 
     /**
+     * Resolve a Go To timestamp to a bar index.
+     * Prefers the first bar on/after the target timestamp so replay does not jump backwards.
+     */
+    findGoToTargetIndex(sourceData, targetTimestamp) {
+        if (!Array.isArray(sourceData) || sourceData.length === 0 || !Number.isFinite(targetTimestamp)) {
+            return -1;
+        }
+
+        const getBarTimestamp = (bar) => {
+            const raw = bar?.t;
+            if (typeof raw === 'number') {
+                return Number.isFinite(raw) ? raw : NaN;
+            }
+            if (typeof raw === 'string') {
+                const parsed = Date.parse(raw);
+                return Number.isFinite(parsed) ? parsed : NaN;
+            }
+            return NaN;
+        };
+
+        let left = 0;
+        let right = sourceData.length - 1;
+        let firstOnOrAfter = -1;
+        let fallbackToLinearScan = false;
+
+        while (left <= right) {
+            const mid = (left + right) >> 1;
+            const ts = getBarTimestamp(sourceData[mid]);
+
+            if (!Number.isFinite(ts)) {
+                fallbackToLinearScan = true;
+                break;
+            }
+
+            if (ts >= targetTimestamp) {
+                firstOnOrAfter = mid;
+                right = mid - 1;
+            } else {
+                left = mid + 1;
+            }
+        }
+
+        if (!fallbackToLinearScan) {
+            return firstOnOrAfter !== -1 ? firstOnOrAfter : sourceData.length - 1;
+        }
+
+        let firstOnOrAfterLinear = -1;
+        let nearestIndex = -1;
+        let minDiff = Infinity;
+
+        for (let i = 0; i < sourceData.length; i++) {
+            const ts = getBarTimestamp(sourceData[i]);
+            if (!Number.isFinite(ts)) continue;
+
+            if (firstOnOrAfterLinear === -1 && ts >= targetTimestamp) {
+                firstOnOrAfterLinear = i;
+            }
+
+            const diff = Math.abs(ts - targetTimestamp);
+            if (diff < minDiff) {
+                minDiff = diff;
+                nearestIndex = i;
+            }
+        }
+
+        if (firstOnOrAfterLinear !== -1) {
+            return firstOnOrAfterLinear;
+        }
+
+        return nearestIndex;
+    }
+
+    /**
      * Jump to a specific date/time on the chart
      * @param {string} dateString - Date string in YYYY-MM-DD format
      */
@@ -8070,17 +8131,8 @@ class Chart {
                 return;
             }
 
-            // Find the closest candle to the target timestamp
-            let closestIndex = -1;
-            let minDiff = Infinity;
-
-            for (let i = 0; i < sourceData.length; i++) {
-                const diff = Math.abs(sourceData[i].t - targetTimestamp);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    closestIndex = i;
-                }
-            }
+            // Prefer first candle on/after target timestamp.
+            const closestIndex = this.findGoToTargetIndex(sourceData, targetTimestamp);
 
             if (closestIndex === -1) {
                 alert('Could not find data for the specified date/time');
@@ -8179,17 +8231,8 @@ class Chart {
                 return;
             }
 
-            // Find the closest candle to the target timestamp
-            let closestIndex = -1;
-            let minDiff = Infinity;
-
-            for (let i = 0; i < sourceData.length; i++) {
-                const diff = Math.abs(sourceData[i].t - targetTimestamp);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    closestIndex = i;
-                }
-            }
+            // Prefer first candle on/after target timestamp.
+            const closestIndex = this.findGoToTargetIndex(sourceData, targetTimestamp);
 
             if (closestIndex === -1) {
                 alert('Could not find data for the specified date/time');
