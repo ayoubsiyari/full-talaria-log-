@@ -2479,7 +2479,7 @@ class DrawingToolsManager {
         
         // Enable pointer events on STROKE elements only (not fills)
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
-        drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .volume-profile-select-hit, .image-content, .image-placeholder')
+        drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
         
         // Shape borders use 'stroke' - ONLY responds to clicks on the actual stroke path
@@ -2513,6 +2513,24 @@ class DrawingToolsManager {
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
         }
+
+        // Volume Profile tools: only boundary interactions should be selectable.
+        if (drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile') {
+            drawing.group.selectAll('line')
+                .style('pointer-events', 'none')
+                .style('cursor', 'default');
+
+            drawing.group.selectAll('.volume-profile-boundary-hit')
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'ew-resize');
+
+            drawing.group.selectAll('.volume-profile-boundary')
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+
+            drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
+                .style('pointer-events', 'all');
+        }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
         drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill')
@@ -2538,9 +2556,12 @@ class DrawingToolsManager {
         // Select interactive elements (borders, lines, handles) - NOT fills or hit areas
         // STROKE-ONLY: Only lines/borders are clickable, NOT filled areas
         // Exclude .inline-editable-text elements - they handle their own click/dblclick events
+        const isVolumeProfileType = drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile';
         const selector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
-            : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .volume-profile-select-hit, .image-content, .image-placeholder, .note-line, .note-line-hit';
+            : isVolumeProfileType
+                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
+                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
         const isEmptyImageUploadTarget = (eventTarget) => {
@@ -2806,9 +2827,12 @@ class DrawingToolsManager {
         };
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
+        const isVolumeProfileType = drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile';
         const dragSelector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
-            : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+            : isVolumeProfileType
+                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
+                : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
@@ -5467,32 +5491,42 @@ class DrawingToolsManager {
                 }
             }
 
-            // Volume Profile tools: allow selecting by interior profile area (not only boundaries).
+            // Volume Profile tools: select from left/right boundaries only.
             if (!hitsById.has(drawing.id) && (drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile')) {
                 try {
-                    const fillHits = drawing.group.selectAll('.volume-profile-select-hit').nodes();
-                    for (const el of fillHits) {
+                    let bestBoundaryDistance = Infinity;
+                    const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary').nodes();
+
+                    for (const el of boundaryElements) {
                         if (!el) continue;
 
-                        if (typeof el.isPointInFill === 'function') {
-                            if (el.isPointInFill(point)) {
-                                hitsById.set(drawing.id, { drawing, distance: 0, z });
-                                break;
-                            }
-                        } else if (typeof el.getBBox === 'function') {
-                            const bb = el.getBBox();
-                            const inside = mouseX >= bb.x && mouseX <= (bb.x + bb.width)
-                                && mouseY >= bb.y && mouseY <= (bb.y + bb.height);
-                            if (inside) {
-                                hitsById.set(drawing.id, { drawing, distance: 0, z });
-                                break;
-                            }
+                        const x1 = parseFloat(el.getAttribute('x1'));
+                        const y1 = parseFloat(el.getAttribute('y1'));
+                        const x2 = parseFloat(el.getAttribute('x2'));
+                        const y2 = parseFloat(el.getAttribute('y2'));
+                        if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+
+                        const elSel = d3.select(el);
+                        const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                        const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
+                        const isBoundaryHit = elSel.classed('volume-profile-boundary-hit');
+                        const tolerance = isBoundaryHit
+                            ? Math.max(14, (strokeWidth / 2) + 0.5)
+                            : Math.max(baseHitTolerance, (strokeWidth / 2) + 0.5);
+
+                        if (distance <= tolerance) {
+                            bestBoundaryDistance = Math.min(bestBoundaryDistance, distance);
                         }
                     }
-                    if (hitsById.has(drawing.id)) continue;
+
+                    if (bestBoundaryDistance !== Infinity) {
+                        hitsById.set(drawing.id, { drawing, distance: bestBoundaryDistance, z });
+                    }
                 } catch (error) {
-                    console.warn('Error in volume profile interior hit test for drawing:', drawing.id, error);
+                    console.warn('Error in volume profile boundary hit test for drawing:', drawing.id, error);
                 }
+
+                continue;
             }
             
             // Special handling for tools that use isPointInside() (images, emojis, etc.)

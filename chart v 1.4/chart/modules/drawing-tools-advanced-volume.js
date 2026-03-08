@@ -790,19 +790,6 @@ class VolumeProfileTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
-        // Selection zone: allow selecting the profile from anywhere inside the range area.
-        // Drag from this zone is still blocked in manager drag filter (selection-only).
-        this.group.append('rect')
-            .attr('class', 'volume-profile-select-hit')
-            .attr('x', left)
-            .attr('y', top)
-            .attr('width', Math.max(1, width))
-            .attr('height', Math.max(1, height))
-            .attr('fill', 'transparent')
-            .attr('stroke', 'none')
-            .style('pointer-events', 'all')
-            .style('cursor', 'move');
-
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
         [
             { x: x1, pointIndex: 0 },
@@ -1048,26 +1035,6 @@ class VolumeProfileTool extends BaseDrawing {
             if (abs >= 1e3) return `${(num / 1e3).toFixed(2).replace(/\.?0+$/, '')}K`;
             return `${Math.round(num)}`;
         };
-
-        // In anchored screen-docked mode, add an extra edge hit strip so
-        // selection/hover remains easy even when the anchor line is off-screen.
-        if (hasFixedProfileSide) {
-            const selectHitWidth = Math.max(24, maxProfileWidth + 12);
-            const selectHitX = fixedProfileSide === 'left'
-                ? chartLeftEdge
-                : chartRightEdge - selectHitWidth;
-
-            this.group.append('rect')
-                .attr('class', 'volume-profile-select-hit')
-                .attr('x', selectHitX)
-                .attr('y', top)
-                .attr('width', selectHitWidth)
-                .attr('height', Math.max(1, height))
-                .attr('fill', 'transparent')
-                .attr('stroke', 'none')
-                .style('pointer-events', 'all')
-                .style('cursor', 'move');
-        }
 
         // Draw stacked buy/sell bars from the left side (TradingView-like fixed-range profile look).
         totalVolumeBins.forEach((totalVolume, i) => {
