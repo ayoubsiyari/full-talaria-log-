@@ -931,7 +931,8 @@ class DrawingToolsManager {
         const handleNode = rawTargetNode && rawTargetNode.closest
             ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
             : null;
-        if (handleNode) {
+        const isVolumeProfileBoundaryHandle = !!(handleNode && handleNode.classList && handleNode.classList.contains('volume-profile-boundary-hit'));
+        if (handleNode && !isVolumeProfileBoundaryHandle) {
             return;
         }
         
@@ -1134,6 +1135,21 @@ class DrawingToolsManager {
             const customHandleNode = rawTargetNode && rawTargetNode.closest
                 ? rawTargetNode.closest('.custom-handle')
                 : null;
+
+            // Fallback for volume-profile labels/boundaries when geometric hit-testing misses
+            // (notably anchored profiles where only edge/label clicks should select).
+            if (!drawing && rawTargetNode && rawTargetNode.closest) {
+                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit');
+                const domDrawingGroup = rawTargetNode.closest('.drawing');
+                if (volumeProfileHitNode && domDrawingGroup) {
+                    const domDrawingId = d3.select(domDrawingGroup).attr('data-id');
+                    const domDrawing = this.drawings.find(d => d && d.id === domDrawingId);
+                    if (domDrawing && (domDrawing.type === 'volume-profile' || domDrawing.type === 'anchored-volume-profile')) {
+                        drawing = domDrawing;
+                        drawingGroup = domDrawingGroup;
+                    }
+                }
+            }
 
             // If a handle was clicked directly, resolve the drawing from the DOM group.
             // This avoids missing the drawing when geometric stroke-only hit testing fails
