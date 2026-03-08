@@ -2467,6 +2467,11 @@ body.light-mode .template-save-dialog .dialog-title {
             this.buildVolumeProfileStyleTab(container, drawing);
             return;
         }
+
+        if (drawing.type === 'anchored-vwap') {
+            this.buildAnchoredVWAPStyleTab(container, drawing);
+            return;
+        }
         
         // Special handling for emoji
         if (drawing.type === 'emoji') {
@@ -3042,6 +3047,160 @@ body.light-mode .template-save-dialog .dialog-title {
 
             container.appendChild(regressionSection);
         }
+    }
+
+    buildAnchoredVWAPStyleTab(container, drawing) {
+        if (!drawing.style) drawing.style = {};
+
+        const normalizeLineType = (value, fallback = '') => {
+            const raw = String(value == null ? fallback : value);
+            const normalized = raw === '5,5' ? '10,6' : raw;
+            return ['', '10,6', '2,2', '8,4,2,4'].includes(normalized)
+                ? normalized
+                : fallback;
+        };
+        const normalizeLineWidth = (value, fallback = 1) => {
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed)) return fallback;
+            return Math.max(1, Math.min(4, Math.round(parsed)));
+        };
+
+        drawing.style.stroke = drawing.style.stroke || '#2962FF';
+        drawing.style.strokeDasharray = normalizeLineType(drawing.style.strokeDasharray, '');
+        drawing.style.strokeWidth = normalizeLineWidth(drawing.style.strokeWidth, 2);
+
+        const bandDefaults = [
+            { color: '#4caf50', background: 'rgba(76, 175, 80, 0.10)' },
+            { color: '#a59f00', background: 'rgba(165, 159, 0, 0.08)' },
+            { color: '#00bfa5', background: 'rgba(0, 191, 165, 0.08)' }
+        ];
+
+        bandDefaults.forEach((bandDefault, index) => {
+            const bandNumber = index + 1;
+            const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
+            const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
+            const upperColorProp = `vwapUpperBand${bandNumber}Color`;
+            const lowerColorProp = `vwapLowerBand${bandNumber}Color`;
+            const upperTypeProp = `vwapUpperBand${bandNumber}Type`;
+            const lowerTypeProp = `vwapLowerBand${bandNumber}Type`;
+            const upperWidthProp = `vwapUpperBand${bandNumber}Width`;
+            const lowerWidthProp = `vwapLowerBand${bandNumber}Width`;
+            const legacyUpperTypeProp = `vwapUpperBand${bandNumber}LineType`;
+            const legacyLowerTypeProp = `vwapLowerBand${bandNumber}LineType`;
+            const legacyUpperWidthProp = `vwapUpperBand${bandNumber}LineWidth`;
+            const legacyLowerWidthProp = `vwapLowerBand${bandNumber}LineWidth`;
+            const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
+            const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
+
+            if (drawing.style[upperEnabledProp] === undefined) drawing.style[upperEnabledProp] = true;
+            if (drawing.style[lowerEnabledProp] === undefined) drawing.style[lowerEnabledProp] = true;
+            if (!drawing.style[upperColorProp]) drawing.style[upperColorProp] = bandDefault.color;
+            if (!drawing.style[lowerColorProp]) drawing.style[lowerColorProp] = bandDefault.color;
+
+            const upperTypeRaw = drawing.style[upperTypeProp] ?? drawing.style[legacyUpperTypeProp];
+            const lowerTypeRaw = drawing.style[lowerTypeProp] ?? drawing.style[legacyLowerTypeProp];
+            const upperWidthRaw = drawing.style[upperWidthProp] ?? drawing.style[legacyUpperWidthProp];
+            const lowerWidthRaw = drawing.style[lowerWidthProp] ?? drawing.style[legacyLowerWidthProp];
+            drawing.style[upperTypeProp] = normalizeLineType(upperTypeRaw, '2,2');
+            drawing.style[lowerTypeProp] = normalizeLineType(lowerTypeRaw, '2,2');
+            drawing.style[upperWidthProp] = normalizeLineWidth(upperWidthRaw, 1);
+            drawing.style[lowerWidthProp] = normalizeLineWidth(lowerWidthRaw, 1);
+
+            if (drawing.style[backgroundEnabledProp] === undefined) drawing.style[backgroundEnabledProp] = false;
+            if (!drawing.style[backgroundColorProp]) drawing.style[backgroundColorProp] = bandDefault.background;
+        });
+
+        const headerRow = document.createElement('div');
+        headerRow.className = 'tv-controls-header';
+        headerRow.innerHTML = `
+            <span></span>
+            <div class="tv-controls-header-labels">
+                <span>Color</span>
+                <span>Type</span>
+                <span>Width</span>
+            </div>
+        `;
+        container.appendChild(headerRow);
+
+        const vwapRow = this.createBrushPropertyRow('VWAP', {
+            color: drawing.style.stroke,
+            lineType: drawing.style.strokeDasharray,
+            lineWidth: drawing.style.strokeWidth
+        }, 'line', drawing);
+        vwapRow.style.borderBottom = 'none';
+        vwapRow.style.paddingBottom = '12px';
+        vwapRow.style.marginBottom = '12px';
+        container.appendChild(vwapRow);
+
+        for (let bandNumber = 1; bandNumber <= 3; bandNumber++) {
+            const lowerPropKey = `vwapLowerBand${bandNumber}`;
+            const upperPropKey = `vwapUpperBand${bandNumber}`;
+
+            const lowerRow = this.createPropertyRow(
+                `Lower band #${bandNumber}`,
+                drawing.style[`${lowerPropKey}Enabled`] !== false,
+                {
+                    color: drawing.style[`${lowerPropKey}Color`],
+                    lineType: drawing.style[`${lowerPropKey}Type`],
+                    lineWidth: drawing.style[`${lowerPropKey}Width`]
+                },
+                drawing,
+                lowerPropKey
+            );
+            container.appendChild(lowerRow);
+
+            const upperRow = this.createPropertyRow(
+                `Upper band #${bandNumber}`,
+                drawing.style[`${upperPropKey}Enabled`] !== false,
+                {
+                    color: drawing.style[`${upperPropKey}Color`],
+                    lineType: drawing.style[`${upperPropKey}Type`],
+                    lineWidth: drawing.style[`${upperPropKey}Width`]
+                },
+                drawing,
+                upperPropKey
+            );
+            container.appendChild(upperRow);
+
+            if (bandNumber === 1) {
+                const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
+                const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
+                const backgroundRow = document.createElement('div');
+                backgroundRow.className = 'tv-prop-row';
+                backgroundRow.innerHTML = `
+                    <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
+                        <div class="tv-checkbox ${drawing.style[backgroundEnabledProp] ? 'checked' : ''}" data-prop="${backgroundEnabledProp}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        Background #1
+                    </span>
+                    <div class="tv-prop-controls">
+                        <button class="tv-color-btn" data-prop="${backgroundColorProp}" style="background: ${drawing.style[backgroundColorProp]};"></button>
+                    </div>
+                `;
+                container.appendChild(backgroundRow);
+            }
+        }
+
+        const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
+            ? drawing.isAxisLabelEnabled('price')
+            : drawing.style.showPriceLabel !== false;
+
+        const labelsSection = document.createElement('div');
+        labelsSection.style.cssText = 'margin-top: 12px; display: flex; flex-direction: column; gap: 6px;';
+        labelsSection.innerHTML = `
+            <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
+                <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-prop="showPriceLabel">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+                <span class="tv-checkbox-label" style="white-space:nowrap;">Price label</span>
+            </div>
+        `;
+        container.appendChild(labelsSection);
     }
 
     buildGannSquareFixedLevelsSection(container, drawing) {
@@ -8707,6 +8866,11 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style[prop] = isChecked;
                     self.renderPreview(drawing);
                 }
+
+                if (/^vwap(?:Lower|Upper)Band[1-3]Enabled$/.test(prop) || /^vwapBand[1-3]BackgroundEnabled$/.test(prop)) {
+                    drawing.style[prop] = isChecked;
+                    self.renderPreview(drawing);
+                }
                 });
             });
         }, 0);
@@ -8916,6 +9080,22 @@ body.light-mode .template-save-dialog .dialog-title {
                         lowerLines.attr('stroke-width', parseInt(value));
                     }
                     this.applyChangesImmediately(drawing);
+                } else if (/^vwap(?:Lower|Upper)Band[1-3]Type$/.test(prop)) {
+                    const normalizedTypeRaw = value === '5,5' ? '10,6' : value;
+                    const normalizedType = ['', '10,6', '2,2', '8,4,2,4'].includes(normalizedTypeRaw)
+                        ? normalizedTypeRaw
+                        : '2,2';
+                    drawing.style[prop] = normalizedType;
+                    this.pendingChanges[prop] = normalizedType;
+                    self.renderPreview(drawing);
+                } else if (/^vwap(?:Lower|Upper)Band[1-3]Width$/.test(prop)) {
+                    const parsedWidth = parseInt(value, 10);
+                    const normalizedWidth = Number.isFinite(parsedWidth)
+                        ? Math.max(1, Math.min(4, parsedWidth))
+                        : 1;
+                    drawing.style[prop] = normalizedWidth;
+                    this.pendingChanges[prop] = normalizedWidth;
+                    self.renderPreview(drawing);
                 } else if (prop === 'fontSize') {
                     drawing.style.fontSize = parseInt(value);
                     // Force immediate update of text elements
@@ -9757,6 +9937,18 @@ body.light-mode .template-save-dialog .dialog-title {
                     actualDrawing.group.selectAll('.pearson-r-text').style('fill', finalColor);
                 }
             } else if (
+                /^vwap(?:Lower|Upper)Band[1-3]Color$/.test(prop) ||
+                /^vwapBand[1-3]BackgroundColor$/.test(prop)
+            ) {
+                if (!actualDrawing.style) actualDrawing.style = {};
+                actualDrawing.style[prop] = finalColor;
+                drawing.style[prop] = finalColor;
+                if (drawingManager) {
+                    drawingManager.renderDrawing(actualDrawing);
+                    drawingManager.saveDrawings();
+                }
+                return;
+            } else if (
                 prop === 'pocColor' ||
                 prop === 'VAHColor' ||
                 prop === 'VALColor' ||
@@ -9892,6 +10084,61 @@ body.light-mode .template-save-dialog .dialog-title {
             const parsed = Number(this.pendingChanges.vwapBand3Multiplier);
             if (Number.isFinite(parsed) && parsed > 0) drawing.style.vwapBand3Multiplier = Math.max(0.001, Math.min(1000, parsed));
         }
+
+        const normalizeVwapBandLineType = (value) => {
+            const raw = String(value == null ? '2,2' : value);
+            const normalized = raw === '5,5' ? '10,6' : raw;
+            return ['', '10,6', '2,2', '8,4,2,4'].includes(normalized)
+                ? normalized
+                : '2,2';
+        };
+        [1, 2, 3].forEach((bandNumber) => {
+            const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
+            const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
+            const upperColorProp = `vwapUpperBand${bandNumber}Color`;
+            const lowerColorProp = `vwapLowerBand${bandNumber}Color`;
+            const upperTypeProp = `vwapUpperBand${bandNumber}Type`;
+            const lowerTypeProp = `vwapLowerBand${bandNumber}Type`;
+            const upperWidthProp = `vwapUpperBand${bandNumber}Width`;
+            const lowerWidthProp = `vwapLowerBand${bandNumber}Width`;
+            const legacyUpperTypeProp = `vwapUpperBand${bandNumber}LineType`;
+            const legacyLowerTypeProp = `vwapLowerBand${bandNumber}LineType`;
+            const legacyUpperWidthProp = `vwapUpperBand${bandNumber}LineWidth`;
+            const legacyLowerWidthProp = `vwapLowerBand${bandNumber}LineWidth`;
+            const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
+            const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
+
+            if (this.pendingChanges[upperEnabledProp] !== undefined) drawing.style[upperEnabledProp] = this.pendingChanges[upperEnabledProp];
+            if (this.pendingChanges[lowerEnabledProp] !== undefined) drawing.style[lowerEnabledProp] = this.pendingChanges[lowerEnabledProp];
+            if (this.pendingChanges[upperColorProp] !== undefined) drawing.style[upperColorProp] = this.pendingChanges[upperColorProp];
+            if (this.pendingChanges[lowerColorProp] !== undefined) drawing.style[lowerColorProp] = this.pendingChanges[lowerColorProp];
+            if (this.pendingChanges[backgroundEnabledProp] !== undefined) drawing.style[backgroundEnabledProp] = this.pendingChanges[backgroundEnabledProp];
+            if (this.pendingChanges[backgroundColorProp] !== undefined) drawing.style[backgroundColorProp] = this.pendingChanges[backgroundColorProp];
+
+            const upperTypePending = this.pendingChanges[upperTypeProp] !== undefined
+                ? this.pendingChanges[upperTypeProp]
+                : this.pendingChanges[legacyUpperTypeProp];
+            const lowerTypePending = this.pendingChanges[lowerTypeProp] !== undefined
+                ? this.pendingChanges[lowerTypeProp]
+                : this.pendingChanges[legacyLowerTypeProp];
+            if (upperTypePending !== undefined) drawing.style[upperTypeProp] = normalizeVwapBandLineType(upperTypePending);
+            if (lowerTypePending !== undefined) drawing.style[lowerTypeProp] = normalizeVwapBandLineType(lowerTypePending);
+
+            const upperWidthPending = this.pendingChanges[upperWidthProp] !== undefined
+                ? this.pendingChanges[upperWidthProp]
+                : this.pendingChanges[legacyUpperWidthProp];
+            const lowerWidthPending = this.pendingChanges[lowerWidthProp] !== undefined
+                ? this.pendingChanges[lowerWidthProp]
+                : this.pendingChanges[legacyLowerWidthProp];
+            if (upperWidthPending !== undefined) {
+                const parsed = Number(upperWidthPending);
+                if (Number.isFinite(parsed)) drawing.style[upperWidthProp] = Math.max(1, Math.min(4, Math.round(parsed)));
+            }
+            if (lowerWidthPending !== undefined) {
+                const parsed = Number(lowerWidthPending);
+                if (Number.isFinite(parsed)) drawing.style[lowerWidthProp] = Math.max(1, Math.min(4, Math.round(parsed)));
+            }
+        });
 
         if (this.pendingChanges.rowsLayout !== undefined) {
             drawing.style.rowsLayout = this.pendingChanges.rowsLayout === 'ticksPerRow' ? 'ticksPerRow' : 'numberOfRows';

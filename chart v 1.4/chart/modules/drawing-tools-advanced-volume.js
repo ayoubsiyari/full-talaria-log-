@@ -341,6 +341,47 @@ class AnchoredVWAPTool extends BaseDrawing {
         if (!Number.isFinite(Number(this.style.vwapBand1Multiplier))) this.style.vwapBand1Multiplier = 1;
         if (!Number.isFinite(Number(this.style.vwapBand2Multiplier))) this.style.vwapBand2Multiplier = 2;
         if (!Number.isFinite(Number(this.style.vwapBand3Multiplier))) this.style.vwapBand3Multiplier = 3;
+
+        const bandStyleDefaults = [
+            { color: '#4caf50', background: 'rgba(76, 175, 80, 0.10)' },
+            { color: '#a59f00', background: 'rgba(165, 159, 0, 0.08)' },
+            { color: '#00bfa5', background: 'rgba(0, 191, 165, 0.08)' }
+        ];
+
+        bandStyleDefaults.forEach((bandDefault, index) => {
+            const bandNumber = index + 1;
+            const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
+            const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
+            const upperColorProp = `vwapUpperBand${bandNumber}Color`;
+            const lowerColorProp = `vwapLowerBand${bandNumber}Color`;
+            const upperTypeProp = `vwapUpperBand${bandNumber}Type`;
+            const lowerTypeProp = `vwapLowerBand${bandNumber}Type`;
+            const upperWidthProp = `vwapUpperBand${bandNumber}Width`;
+            const lowerWidthProp = `vwapLowerBand${bandNumber}Width`;
+            const legacyUpperTypeProp = `vwapUpperBand${bandNumber}LineType`;
+            const legacyLowerTypeProp = `vwapLowerBand${bandNumber}LineType`;
+            const legacyUpperWidthProp = `vwapUpperBand${bandNumber}LineWidth`;
+            const legacyLowerWidthProp = `vwapLowerBand${bandNumber}LineWidth`;
+            const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
+            const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
+
+            if (!hasOwn(upperEnabledProp)) this.style[upperEnabledProp] = true;
+            if (!hasOwn(lowerEnabledProp)) this.style[lowerEnabledProp] = true;
+            if (!hasOwn(upperColorProp)) this.style[upperColorProp] = bandDefault.color;
+            if (!hasOwn(lowerColorProp)) this.style[lowerColorProp] = bandDefault.color;
+
+            if (!hasOwn(upperTypeProp) && hasOwn(legacyUpperTypeProp)) this.style[upperTypeProp] = this.style[legacyUpperTypeProp];
+            if (!hasOwn(lowerTypeProp) && hasOwn(legacyLowerTypeProp)) this.style[lowerTypeProp] = this.style[legacyLowerTypeProp];
+            if (!hasOwn(upperWidthProp) && hasOwn(legacyUpperWidthProp)) this.style[upperWidthProp] = this.style[legacyUpperWidthProp];
+            if (!hasOwn(lowerWidthProp) && hasOwn(legacyLowerWidthProp)) this.style[lowerWidthProp] = this.style[legacyLowerWidthProp];
+
+            if (!hasOwn(upperTypeProp)) this.style[upperTypeProp] = '2,2';
+            if (!hasOwn(lowerTypeProp)) this.style[lowerTypeProp] = '2,2';
+            if (!Number.isFinite(Number(this.style[upperWidthProp]))) this.style[upperWidthProp] = 1;
+            if (!Number.isFinite(Number(this.style[lowerWidthProp]))) this.style[lowerWidthProp] = 1;
+            if (!hasOwn(backgroundEnabledProp)) this.style[backgroundEnabledProp] = false;
+            if (!hasOwn(backgroundColorProp)) this.style[backgroundColorProp] = bandDefault.background;
+        });
     }
 
     render(container, scales) {
@@ -386,6 +427,54 @@ class AnchoredVWAPTool extends BaseDrawing {
             return mode === 'percentage' ? 'percentage' : 'standard_deviation';
         };
         const bandsCalculationMode = normalizeBandsCalcMode(this.style.vwapBandsCalculationMode);
+
+        const normalizeBandLineType = (value) => {
+            const raw = String(value == null ? '2,2' : value);
+            const normalized = raw === '5,5' ? '10,6' : raw;
+            return ['', '10,6', '2,2', '8,4,2,4'].includes(normalized)
+                ? normalized
+                : '2,2';
+        };
+        const normalizeBandLineWidth = (value) => {
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed)) return 1;
+            return Math.max(1, Math.min(4, Math.round(parsed)));
+        };
+
+        [1, 2, 3].forEach((bandNumber) => {
+            const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
+            const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
+            const upperColorProp = `vwapUpperBand${bandNumber}Color`;
+            const lowerColorProp = `vwapLowerBand${bandNumber}Color`;
+            const upperTypeProp = `vwapUpperBand${bandNumber}Type`;
+            const lowerTypeProp = `vwapLowerBand${bandNumber}Type`;
+            const upperWidthProp = `vwapUpperBand${bandNumber}Width`;
+            const lowerWidthProp = `vwapLowerBand${bandNumber}Width`;
+            const legacyUpperTypeProp = `vwapUpperBand${bandNumber}LineType`;
+            const legacyLowerTypeProp = `vwapLowerBand${bandNumber}LineType`;
+            const legacyUpperWidthProp = `vwapUpperBand${bandNumber}LineWidth`;
+            const legacyLowerWidthProp = `vwapLowerBand${bandNumber}LineWidth`;
+            const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
+            const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
+
+            const upperTypeValue = this.style[upperTypeProp] ?? this.style[legacyUpperTypeProp];
+            const lowerTypeValue = this.style[lowerTypeProp] ?? this.style[legacyLowerTypeProp];
+            const upperWidthValue = this.style[upperWidthProp] ?? this.style[legacyUpperWidthProp];
+            const lowerWidthValue = this.style[lowerWidthProp] ?? this.style[legacyLowerWidthProp];
+
+            this.style[upperEnabledProp] = this.style[upperEnabledProp] !== false;
+            this.style[lowerEnabledProp] = this.style[lowerEnabledProp] !== false;
+            this.style[upperColorProp] = this.style[upperColorProp] || this.style.stroke;
+            this.style[lowerColorProp] = this.style[lowerColorProp] || this.style.stroke;
+            this.style[upperTypeProp] = normalizeBandLineType(upperTypeValue);
+            this.style[lowerTypeProp] = normalizeBandLineType(lowerTypeValue);
+            this.style[upperWidthProp] = normalizeBandLineWidth(upperWidthValue);
+            this.style[lowerWidthProp] = normalizeBandLineWidth(lowerWidthValue);
+            this.style[backgroundEnabledProp] = !!this.style[backgroundEnabledProp];
+            if (!this.style[backgroundColorProp]) {
+                this.style[backgroundColorProp] = 'rgba(76, 175, 80, 0.10)';
+            }
+        });
 
         // Keep style values normalized so UI/state persistence stay consistent.
         this.style.source = sourceMode;
@@ -656,19 +745,52 @@ class AnchoredVWAPTool extends BaseDrawing {
             
             const bandConfigs = [
                 {
+                    bandNumber: 1,
                     enabled: this.style.vwapBand1Enabled !== false,
                     multiplier: Number(this.style.vwapBand1Multiplier),
-                    fallback: 1
+                    fallback: 1,
+                    upperEnabled: this.style.vwapUpperBand1Enabled !== false,
+                    lowerEnabled: this.style.vwapLowerBand1Enabled !== false,
+                    upperColor: this.style.vwapUpperBand1Color,
+                    lowerColor: this.style.vwapLowerBand1Color,
+                    upperLineType: this.style.vwapUpperBand1Type,
+                    lowerLineType: this.style.vwapLowerBand1Type,
+                    upperLineWidth: this.style.vwapUpperBand1Width,
+                    lowerLineWidth: this.style.vwapLowerBand1Width,
+                    backgroundEnabled: !!this.style.vwapBand1BackgroundEnabled,
+                    backgroundColor: this.style.vwapBand1BackgroundColor
                 },
                 {
+                    bandNumber: 2,
                     enabled: !!this.style.vwapBand2Enabled,
                     multiplier: Number(this.style.vwapBand2Multiplier),
-                    fallback: 2
+                    fallback: 2,
+                    upperEnabled: this.style.vwapUpperBand2Enabled !== false,
+                    lowerEnabled: this.style.vwapLowerBand2Enabled !== false,
+                    upperColor: this.style.vwapUpperBand2Color,
+                    lowerColor: this.style.vwapLowerBand2Color,
+                    upperLineType: this.style.vwapUpperBand2Type,
+                    lowerLineType: this.style.vwapLowerBand2Type,
+                    upperLineWidth: this.style.vwapUpperBand2Width,
+                    lowerLineWidth: this.style.vwapLowerBand2Width,
+                    backgroundEnabled: !!this.style.vwapBand2BackgroundEnabled,
+                    backgroundColor: this.style.vwapBand2BackgroundColor
                 },
                 {
+                    bandNumber: 3,
                     enabled: !!this.style.vwapBand3Enabled,
                     multiplier: Number(this.style.vwapBand3Multiplier),
-                    fallback: 3
+                    fallback: 3,
+                    upperEnabled: this.style.vwapUpperBand3Enabled !== false,
+                    lowerEnabled: this.style.vwapLowerBand3Enabled !== false,
+                    upperColor: this.style.vwapUpperBand3Color,
+                    lowerColor: this.style.vwapLowerBand3Color,
+                    upperLineType: this.style.vwapUpperBand3Type,
+                    lowerLineType: this.style.vwapLowerBand3Type,
+                    upperLineWidth: this.style.vwapUpperBand3Width,
+                    lowerLineWidth: this.style.vwapLowerBand3Width,
+                    backgroundEnabled: !!this.style.vwapBand3BackgroundEnabled,
+                    backgroundColor: this.style.vwapBand3BackgroundColor
                 }
             ];
 
@@ -684,11 +806,6 @@ class AnchoredVWAPTool extends BaseDrawing {
             const baseOpacity = Number.isFinite(baseOpacityRaw)
                 ? Math.max(0, Math.min(1, baseOpacityRaw))
                 : 1;
-            const baseStrokeWidthRaw = Number(this.style.strokeWidth);
-            const bandStrokeWidth = Number.isFinite(baseStrokeWidthRaw)
-                ? Math.max(0.7, baseStrokeWidthRaw * 0.5)
-                : 0.7;
-
             bandConfigs.forEach((bandConfig, index) => {
                 if (!bandConfig.enabled) return;
 
@@ -703,25 +820,52 @@ class AnchoredVWAPTool extends BaseDrawing {
                 const lowerBand = buildPoints(point => point.vwap - getBandDistance(point, multiplier));
                 const bandOpacity = Math.max(0.1, Math.min(1, baseOpacity * (0.42 - (index * 0.08))));
 
-                this.group.append('path')
-                    .attr('class', 'anchored-vwap-curve anchored-vwap-band')
-                    .attr('d', line(upperBand))
-                    .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', bandStrokeWidth)
-                    .attr('fill', 'none')
-                    .attr('opacity', bandOpacity)
-                    .attr('stroke-dasharray', '2,2')
-                    .style('pointer-events', 'none');
+                if (bandConfig.backgroundEnabled && upperBand.length > 1 && lowerBand.length > 1 && upperBand.length === lowerBand.length) {
+                    const areaData = upperBand.map((upperPoint, pointIndex) => {
+                        const lowerPoint = lowerBand[pointIndex];
+                        return {
+                            x: upperPoint.x,
+                            yUpper: upperPoint.y,
+                            yLower: lowerPoint ? lowerPoint.y : upperPoint.y
+                        };
+                    });
 
-                this.group.append('path')
-                    .attr('class', 'anchored-vwap-curve anchored-vwap-band')
-                    .attr('d', line(lowerBand))
-                    .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', bandStrokeWidth)
-                    .attr('fill', 'none')
-                    .attr('opacity', bandOpacity)
-                    .attr('stroke-dasharray', '2,2')
-                    .style('pointer-events', 'none');
+                    const area = d3.area()
+                        .x(d => d.x)
+                        .y0(d => d.yUpper)
+                        .y1(d => d.yLower);
+
+                    this.group.append('path')
+                        .attr('class', `anchored-vwap-band-fill anchored-vwap-band-fill-${bandConfig.bandNumber}`)
+                        .attr('d', area(areaData))
+                        .attr('fill', bandConfig.backgroundColor)
+                        .attr('opacity', Math.max(0.08, Math.min(0.55, bandOpacity * 0.55)))
+                        .style('pointer-events', 'none');
+                }
+
+                if (bandConfig.upperEnabled) {
+                    this.group.append('path')
+                        .attr('class', `anchored-vwap-curve anchored-vwap-band anchored-vwap-band-upper-${bandConfig.bandNumber}`)
+                        .attr('d', line(upperBand))
+                        .attr('stroke', bandConfig.upperColor)
+                        .attr('stroke-width', bandConfig.upperLineWidth)
+                        .attr('fill', 'none')
+                        .attr('opacity', bandOpacity)
+                        .attr('stroke-dasharray', bandConfig.upperLineType)
+                        .style('pointer-events', 'none');
+                }
+
+                if (bandConfig.lowerEnabled) {
+                    this.group.append('path')
+                        .attr('class', `anchored-vwap-curve anchored-vwap-band anchored-vwap-band-lower-${bandConfig.bandNumber}`)
+                        .attr('d', line(lowerBand))
+                        .attr('stroke', bandConfig.lowerColor)
+                        .attr('stroke-width', bandConfig.lowerLineWidth)
+                        .attr('fill', 'none')
+                        .attr('opacity', bandOpacity)
+                        .attr('stroke-dasharray', bandConfig.lowerLineType)
+                        .style('pointer-events', 'none');
+                }
             });
         }
 
