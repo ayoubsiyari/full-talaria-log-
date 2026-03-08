@@ -2530,6 +2530,10 @@ class DrawingToolsManager {
 
             drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
                 .style('pointer-events', 'all');
+
+            drawing.group.selectAll('.volume-profile-values-label')
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
         }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
@@ -2560,7 +2564,7 @@ class DrawingToolsManager {
         const selector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
             : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
+                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
                 : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
@@ -5521,6 +5525,26 @@ class DrawingToolsManager {
 
                     if (bestBoundaryDistance !== Infinity) {
                         hitsById.set(drawing.id, { drawing, distance: bestBoundaryDistance, z });
+                    }
+
+                    // Also allow selecting from displayed candle value labels.
+                    if (!hitsById.has(drawing.id)) {
+                        const valueLabelNodes = drawing.group.selectAll('.volume-profile-values-label').nodes();
+                        const labelPadX = 6;
+                        const labelPadY = 4;
+
+                        for (const label of valueLabelNodes) {
+                            if (!label || typeof label.getBBox !== 'function') continue;
+
+                            const bb = label.getBBox();
+                            const inside = mouseX >= (bb.x - labelPadX) && mouseX <= (bb.x + bb.width + labelPadX)
+                                && mouseY >= (bb.y - labelPadY) && mouseY <= (bb.y + bb.height + labelPadY);
+
+                            if (inside) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        }
                     }
                 } catch (error) {
                     console.warn('Error in volume profile boundary hit test for drawing:', drawing.id, error);
