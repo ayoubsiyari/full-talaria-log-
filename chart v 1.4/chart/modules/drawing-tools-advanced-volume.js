@@ -543,6 +543,43 @@ class AnchoredVWAPTool extends BaseDrawing {
                 .attr('fill', 'none')
                 .attr('opacity', 0.9)
                 .style('pointer-events', 'none');
+
+            // TradingView-like guide points along the VWAP line while selected.
+            if (this.selected && mainPoints.length > 1) {
+                const markerSpacingPx = 95;
+                const markerRadius = 3;
+                const markerPoints = [];
+                let lastMarkerX = Number.isFinite(anchorX)
+                    ? anchorX
+                    : (Number.isFinite(mainPoints[0]?.x) ? mainPoints[0].x : Number.NEGATIVE_INFINITY);
+
+                for (let i = 1; i < mainPoints.length; i++) {
+                    const point = mainPoints[i];
+                    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+
+                    const isLastPoint = i === mainPoints.length - 1;
+                    if ((point.x - lastMarkerX) >= markerSpacingPx || isLastPoint) {
+                        markerPoints.push(point);
+                        lastMarkerX = point.x;
+                    }
+                }
+
+                this.group.append('g')
+                    .attr('class', 'anchored-vwap-line-markers')
+                    .selectAll('circle')
+                    .data(markerPoints)
+                    .enter()
+                    .append('circle')
+                    .attr('class', 'anchored-vwap-line-point')
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y)
+                    .attr('r', markerRadius)
+                    .attr('fill', 'none')
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', 1.1)
+                    .attr('opacity', 0.95)
+                    .style('pointer-events', 'none');
+            }
             
             // Upper band
             if (stdDev > 0) {
