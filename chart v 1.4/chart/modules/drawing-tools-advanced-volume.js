@@ -407,31 +407,48 @@ class AnchoredVWAPTool extends BaseDrawing {
             vwapPoints = this._cache.vwapPoints;
             stdDev = this._cache.bands?.stdDev || 0;
         } else {
-            // Calculate VWAP from anchor point onwards
+            // Calculate cumulative VWAP from anchor point onwards:
+            // VWAP_i = Σ(TP_j * V_j) / Σ(V_j), j = anchor..i
             let cumulativePV = 0;
             let cumulativeVolume = 0;
             vwapPoints = [];
+
+            const toFiniteNumber = (value) => {
+                const n = Number(value);
+                return Number.isFinite(n) ? n : NaN;
+            };
+
+            let lastVwap = null;
 
             for (let i = startIndex; i < endIndex; i++) {
                 const candle = chartData[i];
                 if (!candle) continue;
 
-                const open = candle.o ?? candle.open;
-                const high = candle.h ?? candle.high;
-                const low = candle.l ?? candle.low;
-                const close = candle.c ?? candle.close;
-                const volume = candle.v ?? candle.volume ?? 0;
+                const high = toFiniteNumber(candle.h ?? candle.high);
+                const low = toFiniteNumber(candle.l ?? candle.low);
+                const close = toFiniteNumber(candle.c ?? candle.close);
+                const volumeRaw = toFiniteNumber(candle.v ?? candle.volume);
 
-                if (![open, high, low, close].every(Number.isFinite)) continue;
-                if (!Number.isFinite(volume) || volume <= 0) continue;
+                if (![high, low, close].every(Number.isFinite)) continue;
 
                 const typicalPrice = (high + low + close) / 3;
 
-                cumulativePV += typicalPrice * volume;
-                cumulativeVolume += volume;
+                // Keep cumulative behavior mathematically correct even for missing/zero volume bars.
+                // Those bars keep the previous cumulative VWAP value instead of creating gaps.
+                const volume = Number.isFinite(volumeRaw) ? Math.max(volumeRaw, 0) : 0;
 
-                const vwap = cumulativeVolume > 0 ? cumulativePV / cumulativeVolume : typicalPrice;
-                vwapPoints.push({ index: i, vwap });
+                if (volume > 0) {
+                    cumulativePV += typicalPrice * volume;
+                    cumulativeVolume += volume;
+                }
+
+                if (cumulativeVolume > 0) {
+                    lastVwap = cumulativePV / cumulativeVolume;
+                } else if (!Number.isFinite(lastVwap)) {
+                    lastVwap = typicalPrice;
+                }
+
+                vwapPoints.push({ index: i, vwap: lastVwap });
             }
 
             // Calculate standard deviation for bands
