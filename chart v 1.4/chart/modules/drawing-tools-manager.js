@@ -5211,9 +5211,10 @@ class DrawingToolsManager {
             z++;
             if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
 
-            // Anchored VWAP should be selectable/movable from anchor point only.
+            // Anchored VWAP: allow hit-testing from anchor and curve (for click/dblclick selection).
             if (drawing.type === 'anchored-vwap' && !hitsById.has(drawing.id)) {
                 try {
+                    let bestDistance = Infinity;
                     const anchor = Array.isArray(drawing.points) ? drawing.points[0] : null;
                     const xScale = this.chart && this.chart.xScale ? this.chart.xScale : null;
                     const yScale = this.chart && this.chart.yScale ? this.chart.yScale : null;
@@ -5243,9 +5244,57 @@ class DrawingToolsManager {
                             const anchorHitTolerance = 14;
 
                             if (distance <= anchorHitTolerance) {
-                                hitsById.set(drawing.id, { drawing, distance, z });
+                                bestDistance = Math.min(bestDistance, distance);
                             }
                         }
+                    }
+
+                    const curveHitTolerance = 10;
+                    const curveElements = drawing.group.selectAll('.anchored-vwap-curve').nodes();
+
+                    for (const curve of curveElements) {
+                        if (!curve) continue;
+
+                        const curveSel = d3.select(curve);
+                        const stroke = curveSel.attr('stroke') || curveSel.style('stroke');
+                        const opacity = curveSel.style('opacity');
+                        if (!stroke || stroke === 'none' || stroke === 'transparent' || opacity === '0') continue;
+
+                        if (typeof curve.isPointInStroke === 'function' && curve.isPointInStroke(point)) {
+                            bestDistance = Math.min(bestDistance, 0);
+                            break;
+                        }
+
+                        if (typeof curve.getTotalLength === 'function' && typeof curve.getPointAtLength === 'function') {
+                            const totalLength = curve.getTotalLength();
+                            if (!Number.isFinite(totalLength) || totalLength <= 0) continue;
+
+                            const sampleCount = Math.max(12, Math.min(220, Math.ceil(totalLength / 12)));
+                            const step = totalLength / sampleCount;
+                            let curveBestDistance = Number.POSITIVE_INFINITY;
+
+                            for (let i = 0; i <= sampleCount; i++) {
+                                const sample = curve.getPointAtLength(Math.min(totalLength, i * step));
+                                const sx = sample?.x;
+                                const sy = sample?.y;
+                                if (!Number.isFinite(sx) || !Number.isFinite(sy)) continue;
+
+                                const dx = mouseX - sx;
+                                const dy = mouseY - sy;
+                                const distance = Math.sqrt((dx * dx) + (dy * dy));
+                                if (distance < curveBestDistance) curveBestDistance = distance;
+                                if (curveBestDistance <= curveHitTolerance) break;
+                            }
+
+                            if (curveBestDistance <= curveHitTolerance) {
+                                bestDistance = Math.min(bestDistance, curveBestDistance);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (bestDistance !== Infinity) {
+                        hitsById.set(drawing.id, { drawing, distance: bestDistance, z });
                     }
                 } catch (error) {
                     console.warn('Error in anchored VWAP anchor hit test for drawing:', drawing.id, error);
