@@ -3127,6 +3127,11 @@ body.light-mode .template-save-dialog .dialog-title {
             lineType: drawing.style.strokeDasharray,
             lineWidth: drawing.style.strokeWidth
         }, 'line', drawing);
+        // Keep VWAP controls visually aligned with the band rows.
+        vwapRow.querySelectorAll('.tv-select').forEach(select => {
+            select.style.width = '60px';
+            select.style.minWidth = '60px';
+        });
         vwapRow.style.borderBottom = 'none';
         vwapRow.style.paddingBottom = '12px';
         vwapRow.style.marginBottom = '12px';
