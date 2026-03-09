@@ -142,6 +142,7 @@ class DrawingToolsManager {
             'gann-box': { class: GannBoxTool, points: 2 },
             'anchored-vwap': { class: AnchoredVWAPTool, points: 1 },
             'volume-profile': { class: VolumeProfileTool, points: 2, dragFirstTwo: true },
+            'fixed-range-volume-profile': { class: VolumeProfileTool, points: 2, dragFirstTwo: true },
             'anchored-volume-profile': { class: AnchoredVolumeProfileTool, points: 1 },
             
             // Positions
@@ -1136,15 +1137,15 @@ class DrawingToolsManager {
                 ? rawTargetNode.closest('.custom-handle')
                 : null;
 
-            // Fallback for volume-profile labels/boundaries when geometric hit-testing misses
+            // Fallback for volume-profile labels/boundaries/levels when geometric hit-testing misses
             // (notably anchored profiles where only edge/label clicks should select).
             if (!drawing && rawTargetNode && rawTargetNode.closest) {
-                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit');
+                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line');
                 const domDrawingGroup = rawTargetNode.closest('.drawing');
                 if (volumeProfileHitNode && domDrawingGroup) {
                     const domDrawingId = d3.select(domDrawingGroup).attr('data-id');
                     const domDrawing = this.drawings.find(d => d && d.id === domDrawingId);
-                    if (domDrawing && (domDrawing.type === 'volume-profile' || domDrawing.type === 'anchored-volume-profile')) {
+                    if (domDrawing && this.isVolumeProfileToolType(domDrawing.type)) {
                         drawing = domDrawing;
                         drawingGroup = domDrawingGroup;
                     }
@@ -1986,8 +1987,14 @@ class DrawingToolsManager {
         return point;
     }
 
+    isVolumeProfileToolType(toolType) {
+        return toolType === 'volume-profile'
+            || toolType === 'fixed-range-volume-profile'
+            || toolType === 'anchored-volume-profile';
+    }
+
     isCandleBoundTool(toolType) {
-        return toolType === 'volume-profile';
+        return toolType === 'volume-profile' || toolType === 'fixed-range-volume-profile';
     }
 
     clampPointToCandleRange(point, toolType = this.currentTool) {
@@ -2531,7 +2538,7 @@ class DrawingToolsManager {
         }
 
         // Volume Profile tools: only boundary interactions should be selectable.
-        if (drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile') {
+        if (this.isVolumeProfileToolType(drawing.type)) {
             drawing.group.selectAll('line')
                 .style('pointer-events', 'none')
                 .style('cursor', 'default');
@@ -2541,6 +2548,10 @@ class DrawingToolsManager {
                 .style('cursor', 'ew-resize');
 
             drawing.group.selectAll('.volume-profile-boundary')
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+
+            drawing.group.selectAll('.volume-profile-level-line')
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
@@ -2576,11 +2587,11 @@ class DrawingToolsManager {
         // Select interactive elements (borders, lines, handles) - NOT fills or hit areas
         // STROKE-ONLY: Only lines/borders are clickable, NOT filled areas
         // Exclude .inline-editable-text elements - they handle their own click/dblclick events
-        const isVolumeProfileType = drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile';
+        const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
         const selector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
             : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
+                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
                 : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
@@ -2847,11 +2858,11 @@ class DrawingToolsManager {
         };
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
-        const isVolumeProfileType = drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile';
+        const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
         const dragSelector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
+                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'
                 : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
@@ -5511,11 +5522,11 @@ class DrawingToolsManager {
                 }
             }
 
-            // Volume Profile tools: select from left/right boundaries only.
-            if (!hitsById.has(drawing.id) && (drawing.type === 'volume-profile' || drawing.type === 'anchored-volume-profile')) {
+            // Volume Profile tools: select from boundaries/levels/labels.
+            if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
                     let bestBoundaryDistance = Infinity;
-                    const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary').nodes();
+                    const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
 
                     for (const el of boundaryElements) {
                         if (!el) continue;

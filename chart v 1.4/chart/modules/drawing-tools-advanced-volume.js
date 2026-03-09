@@ -1369,7 +1369,7 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.style.showPOC !== false) {
             const pocY = bottom - ((pocIndex + 0.5) * barHeight);
             this.group.append('line')
-                .attr('class', 'volume-profile-poc-line')
+                .attr('class', 'volume-profile-level-line volume-profile-poc-line')
                 .attr('x1', levelLineStartX)
                 .attr('y1', pocY)
                 .attr('x2', levelLineEndX)
@@ -1377,14 +1377,15 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('stroke', this.style.pocColor || '#e6edf3')
                 .attr('stroke-width', 1.35)
                 .attr('opacity', Math.min(1, globalOpacity * 0.95))
-                .style('pointer-events', 'none');
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
         }
 
         if (this.style.showVAH !== false) {
             const vahY = bottom - ((valueAreaHigh + 0.5) * barHeight);
             if (Number.isFinite(vahY)) {
                 this.group.append('line')
-                    .attr('class', 'volume-profile-vah-line')
+                    .attr('class', 'volume-profile-level-line volume-profile-vah-line')
                     .attr('x1', levelLineStartX)
                     .attr('y1', vahY)
                     .attr('x2', levelLineEndX)
@@ -1392,7 +1393,8 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('stroke', this.style.VAHColor || '#089981')
                     .attr('stroke-width', 1.2)
                     .attr('opacity', Math.min(1, globalOpacity * 0.9))
-                    .style('pointer-events', 'none');
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
             }
         }
 
@@ -1400,7 +1402,7 @@ class VolumeProfileTool extends BaseDrawing {
             const valY = bottom - ((valueAreaLow + 0.5) * barHeight);
             if (Number.isFinite(valY)) {
                 this.group.append('line')
-                    .attr('class', 'volume-profile-val-line')
+                    .attr('class', 'volume-profile-level-line volume-profile-val-line')
                     .attr('x1', levelLineStartX)
                     .attr('y1', valY)
                     .attr('x2', levelLineEndX)
@@ -1408,7 +1410,8 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('stroke', this.style.VALColor || '#f23645')
                     .attr('stroke-width', 1.2)
                     .attr('opacity', Math.min(1, globalOpacity * 0.9))
-                    .style('pointer-events', 'none');
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
             }
         }
 
