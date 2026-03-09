@@ -1754,7 +1754,16 @@ class DrawingToolsManager {
             if (this.drawingState.tempPoints.length > 1) {
                 this.finalizeDrawing();
             } else {
-                this.cancelDrawing();
+                const isPersistentFreehandTool = this.currentTool === 'brush' || this.currentTool === 'highlighter';
+                if (isPersistentFreehandTool) {
+                    // Keep brush/highlighter active after a tap (single point).
+                    // We only clear temporary stroke state, not the active tool.
+                    this.tempGroup.selectAll('*').remove();
+                    this.drawingState.reset();
+                    this.riskRewardPreview = null;
+                } else {
+                    this.cancelDrawing();
+                }
             }
             return;
         }
