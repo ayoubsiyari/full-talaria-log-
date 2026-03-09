@@ -739,6 +739,11 @@ class DrawingToolsManager {
                     this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
                 );
                 const isVolumeProfileHit = drawingsAtPoint.some((d) => d && this.isVolumeProfileToolType(d.type));
+                const isVolumeProfileValuesLabelTarget = !!(
+                    rawTarget
+                    && rawTarget.closest
+                    && rawTarget.closest('.volume-profile-values-label')
+                );
                 const isVolumeProfileExplicitTarget = !!(
                     rawTarget
                     && rawTarget.closest
@@ -763,6 +768,21 @@ class DrawingToolsManager {
                         if (typeof event.stopImmediatePropagation === 'function') {
                             event.stopImmediatePropagation();
                         }
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
+                if (isVolumeProfileValuesLabelTarget && isVolumeProfileHit) {
+                    const best = drawingsAtPoint[0];
+                    if (best && !best.locked) {
+                        this.selectDrawing(best, false);
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
                     }
                     suppressNextCanvasClick = true;
                     return;
@@ -1024,13 +1044,25 @@ class DrawingToolsManager {
         const levelLineNode = rawTargetNode && rawTargetNode.closest
             ? rawTargetNode.closest('.volume-profile-level-line')
             : null;
+        const valueLabelNode = rawTargetNode && rawTargetNode.closest
+            ? rawTargetNode.closest('.volume-profile-values-label')
+            : null;
         let isVolumeProfileLevelLineTarget = false;
+        let isVolumeProfileValuesLabelTarget = false;
         if (levelLineNode) {
             const levelLineDrawingGroup = levelLineNode.closest('.drawing');
             if (levelLineDrawingGroup) {
                 const levelLineDrawingId = d3.select(levelLineDrawingGroup).attr('data-id');
                 const levelLineDrawing = this.drawings.find(d => d && d.id === levelLineDrawingId);
                 isVolumeProfileLevelLineTarget = !!(levelLineDrawing && this.isVolumeProfileToolType(levelLineDrawing.type));
+            }
+        }
+        if (valueLabelNode) {
+            const valueLabelDrawingGroup = valueLabelNode.closest('.drawing');
+            if (valueLabelDrawingGroup) {
+                const valueLabelDrawingId = d3.select(valueLabelDrawingGroup).attr('data-id');
+                const valueLabelDrawing = this.drawings.find(d => d && d.id === valueLabelDrawingId);
+                isVolumeProfileValuesLabelTarget = !!(valueLabelDrawing && this.isVolumeProfileToolType(valueLabelDrawing.type));
             }
         }
         const isVolumeProfileBoundaryHandle = !!(handleNode && handleNode.classList && handleNode.classList.contains('volume-profile-boundary-hit'));
@@ -1161,10 +1193,10 @@ class DrawingToolsManager {
             // allowing lines behind shapes to be dragged on the first attempt.
             if (drawingsAtPoint.length > 1 && !event.shiftKey && !event.altKey) {
                 const best = drawingsAtPoint[0];
-                const shouldBlockVolumeProfileLevelLineDirectMove = isVolumeProfileLevelLineTarget
+                const shouldBlockVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && best
                     && this.isVolumeProfileToolType(best.type);
-                if (best && !best.locked && !shouldBlockVolumeProfileLevelLineDirectMove) {
+                if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this.selectDrawing(best, false);
@@ -1179,9 +1211,9 @@ class DrawingToolsManager {
             if (this.selectedDrawings && this.selectedDrawings.length > 0 && drawingsAtPoint.length > 0) {
                 const selectedAtPoint = this.selectedDrawings.filter(d => drawingsAtPoint.includes(d) && !d.locked);
                 const hasSelectedVolumeProfileAtPoint = selectedAtPoint.some(d => this.isVolumeProfileToolType(d.type));
-                const shouldBlockSelectedVolumeProfileLevelLineDirectMove = isVolumeProfileLevelLineTarget
+                const shouldBlockSelectedVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && hasSelectedVolumeProfileAtPoint;
-                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileLevelLineDirectMove) {
+                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(selectedAtPoint, event);
@@ -2755,7 +2787,7 @@ class DrawingToolsManager {
 
             drawing.group.selectAll('.volume-profile-values-label')
                 .style('pointer-events', 'all')
-                .style('cursor', 'move');
+                .style('cursor', 'default');
         }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
