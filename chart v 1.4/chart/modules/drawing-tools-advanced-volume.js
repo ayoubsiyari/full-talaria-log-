@@ -941,16 +941,36 @@ class VolumeProfileTool extends BaseDrawing {
         if (!hasOwn('valuesColor')) this.style.valuesColor = '#d1d4dc';
     }
 
-    render(container, scales) {
+    render(container, scales, isPreview = false) {
         if (this.group) {
             this.group.remove();
         }
 
-        if (this.points.length < 2) return;
+        if (this.points.length < 1) return;
 
         this.group = container.append('g')
             .attr('class', 'drawing drawing-volume-profile')
             .attr('data-id', this.id);
+
+        if (this.points.length < 2) {
+            if (isPreview) {
+                const point = this.points[0] || {};
+                const anchorIndex = Number.isFinite(point.x) ? Math.round(point.x) : 0;
+                const anchorX = scales.chart && scales.chart.dataIndexToPixel
+                    ? scales.chart.dataIndexToPixel(anchorIndex)
+                    : scales.xScale(anchorIndex);
+
+                const yDomain = scales.yScale && typeof scales.yScale.domain === 'function'
+                    ? scales.yScale.domain()
+                    : [0];
+                const fallbackY = Array.isArray(yDomain) && yDomain.length > 0 ? yDomain[0] : 0;
+                const anchorYValue = Number.isFinite(point.y) ? point.y : fallbackY;
+                const anchorY = scales.yScale(anchorYValue);
+
+                this.renderCornerPoint(this.group, anchorX, anchorY, 0.95);
+            }
+            return;
+        }
 
         const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
         const hasChartData = chartData.length > 0;
@@ -1100,6 +1120,11 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('stroke-width', boundaryWidth)
             .attr('opacity', Math.min(1, globalOpacity * 0.95))
             .style('pointer-events', 'none');
+
+        if (isPreview || this.selected) {
+            this.renderCornerPoint(this.group, left, top, Math.min(1, globalOpacity * 0.95));
+            this.renderCornerPoint(this.group, right, bottom, Math.min(1, globalOpacity * 0.95));
+        }
 
         if (!Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow || height <= 0) {
             this.createHandles(this.group, scales);
@@ -1447,6 +1472,23 @@ class VolumeProfileTool extends BaseDrawing {
         }
 
         this.createHandles(this.group, scales);
+    }
+
+    renderCornerPoint(group, x, y, opacity = 1) {
+        if (!group || !Number.isFinite(x) || !Number.isFinite(y)) return;
+
+        const markerOpacity = Math.max(0, Math.min(1, opacity));
+
+        group.append('circle')
+            .attr('class', 'volume-profile-corner-point')
+            .attr('cx', x)
+            .attr('cy', y)
+            .attr('r', 4)
+            .attr('fill', 'transparent')
+            .attr('stroke', '#2962FF')
+            .attr('stroke-width', 2)
+            .attr('opacity', markerOpacity)
+            .style('pointer-events', 'none');
     }
 
     createHandles(group, scales) {
