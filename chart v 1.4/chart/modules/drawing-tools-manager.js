@@ -721,8 +721,8 @@ class DrawingToolsManager {
                 const mouseY = event.clientY - svgRect.top;
                 const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
-                const isAnchoredVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
-                    this.isAnchoredVolumeProfileLevelLineHit(d, mouseX, mouseY)
+                const isVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
+                    this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
                 );
 
                 const isSecondClick = event.detail >= 2;
@@ -740,7 +740,7 @@ class DrawingToolsManager {
                     return;
                 }
 
-                if (isAnchoredVolumeProfileLevelLineHit) {
+                if (isVolumeProfileLevelLineHit) {
                     const best = drawingsAtPoint[0];
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
@@ -970,13 +970,13 @@ class DrawingToolsManager {
         const levelLineNode = rawTargetNode && rawTargetNode.closest
             ? rawTargetNode.closest('.volume-profile-level-line')
             : null;
-        let isAnchoredVolumeProfileLevelLineTarget = false;
+        let isVolumeProfileLevelLineTarget = false;
         if (levelLineNode) {
             const levelLineDrawingGroup = levelLineNode.closest('.drawing');
             if (levelLineDrawingGroup) {
                 const levelLineDrawingId = d3.select(levelLineDrawingGroup).attr('data-id');
                 const levelLineDrawing = this.drawings.find(d => d && d.id === levelLineDrawingId);
-                isAnchoredVolumeProfileLevelLineTarget = !!(levelLineDrawing && levelLineDrawing.type === 'anchored-volume-profile');
+                isVolumeProfileLevelLineTarget = !!(levelLineDrawing && this.isVolumeProfileToolType(levelLineDrawing.type));
             }
         }
         const isVolumeProfileBoundaryHandle = !!(handleNode && handleNode.classList && handleNode.classList.contains('volume-profile-boundary-hit'));
@@ -1004,9 +1004,9 @@ class DrawingToolsManager {
             // Find all drawings at this point using geometric hit test
             const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
 
-            if (!isAnchoredVolumeProfileLevelLineTarget && drawingsAtPoint.length > 0) {
-                isAnchoredVolumeProfileLevelLineTarget = drawingsAtPoint.some((d) =>
-                    this.isAnchoredVolumeProfileLevelLineHit(d, mouseX, mouseY)
+            if (!isVolumeProfileLevelLineTarget && drawingsAtPoint.length > 0) {
+                isVolumeProfileLevelLineTarget = drawingsAtPoint.some((d) =>
+                    this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
                 );
             }
 
@@ -1107,10 +1107,10 @@ class DrawingToolsManager {
             // allowing lines behind shapes to be dragged on the first attempt.
             if (drawingsAtPoint.length > 1 && !event.shiftKey && !event.altKey) {
                 const best = drawingsAtPoint[0];
-                const shouldBlockAnchoredLevelLineDirectMove = isAnchoredVolumeProfileLevelLineTarget
+                const shouldBlockVolumeProfileLevelLineDirectMove = isVolumeProfileLevelLineTarget
                     && best
-                    && best.type === 'anchored-volume-profile';
-                if (best && !best.locked && !shouldBlockAnchoredLevelLineDirectMove) {
+                    && this.isVolumeProfileToolType(best.type);
+                if (best && !best.locked && !shouldBlockVolumeProfileLevelLineDirectMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this.selectDrawing(best, false);
@@ -1124,10 +1124,10 @@ class DrawingToolsManager {
             // This avoids relying on DOM event targeting (which always hits the topmost SVG element).
             if (this.selectedDrawings && this.selectedDrawings.length > 0 && drawingsAtPoint.length > 0) {
                 const selectedAtPoint = this.selectedDrawings.filter(d => drawingsAtPoint.includes(d) && !d.locked);
-                const hasSelectedAnchoredVolumeProfileAtPoint = selectedAtPoint.some(d => d.type === 'anchored-volume-profile');
-                const shouldBlockSelectedAnchoredLevelLineDirectMove = isAnchoredVolumeProfileLevelLineTarget
-                    && hasSelectedAnchoredVolumeProfileAtPoint;
-                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedAnchoredLevelLineDirectMove) {
+                const hasSelectedVolumeProfileAtPoint = selectedAtPoint.some(d => this.isVolumeProfileToolType(d.type));
+                const shouldBlockSelectedVolumeProfileLevelLineDirectMove = isVolumeProfileLevelLineTarget
+                    && hasSelectedVolumeProfileAtPoint;
+                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileLevelLineDirectMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(selectedAtPoint, event);
@@ -2660,10 +2660,9 @@ class DrawingToolsManager {
                 .style('cursor', 'move');
         }
 
-        // Volume Profile tools: only boundary interactions should be selectable.
+        // Volume Profile tools: boundaries and level lines remain selectable,
+        // but level lines should not start dragging.
         if (this.isVolumeProfileToolType(drawing.type)) {
-            const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
-
             drawing.group.selectAll('line')
                 .style('pointer-events', 'none')
                 .style('cursor', 'default');
@@ -2678,7 +2677,7 @@ class DrawingToolsManager {
 
             drawing.group.selectAll('.volume-profile-level-line')
                 .style('pointer-events', 'stroke')
-                .style('cursor', isAnchoredVolumeProfile ? 'default' : 'move');
+                .style('cursor', 'default');
 
             drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
                 .style('pointer-events', 'all');
@@ -2904,12 +2903,12 @@ class DrawingToolsManager {
             // Check if hovering on inline-editable text - use move cursor
             const target = event?.target ? d3.select(event.target) : null;
             const isInlineEditable = target && target.classed('inline-editable-text');
-            const isAnchoredVolumeProfileLevelLineTarget = drawing.type === 'anchored-volume-profile'
+            const isVolumeProfileLevelLineTarget = self.isVolumeProfileToolType(drawing.type)
                 && target
                 && target.classed('volume-profile-level-line');
             
             if (!drawing.locked) {
-                if (isAnchoredVolumeProfileLevelLineTarget) {
+                if (isVolumeProfileLevelLineTarget) {
                     drawing.group.style('cursor', 'default');
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'default';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'default';
@@ -2991,13 +2990,10 @@ class DrawingToolsManager {
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
         const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
-        const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
         const dragSelector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
-                ? (isAnchoredVolumeProfile
-                    ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                    : '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group')
+                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
                 : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
@@ -3265,10 +3261,10 @@ class DrawingToolsManager {
             const svgRect = svgNode.getBoundingClientRect();
             const startMouseX = event.clientX - svgRect.left;
             const startMouseY = event.clientY - svgRect.top;
-            const shouldBlockAnchoredLevelLineDirectMove = drawings.some((d) =>
-                this.isAnchoredVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
+            const shouldBlockVolumeProfileLevelLineDirectMove = drawings.some((d) =>
+                this.isVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
             );
-            if (shouldBlockAnchoredLevelLineDirectMove) {
+            if (shouldBlockVolumeProfileLevelLineDirectMove) {
                 return;
             }
         }
@@ -6388,10 +6384,11 @@ class DrawingToolsManager {
     }
 
     /**
-     * Returns true when the given screen-space point is on an anchored volume profile level line.
+     * Returns true when the given screen-space point is on a volume profile level line,
+     * and not closer to a draggable boundary handle/line.
      */
-    isAnchoredVolumeProfileLevelLineHit(drawing, mouseX, mouseY) {
-        if (!drawing || drawing.type !== 'anchored-volume-profile' || !drawing.group) {
+    isVolumeProfileLevelLineHit(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
             return false;
         }
 
@@ -6399,6 +6396,8 @@ class DrawingToolsManager {
         if (!Array.isArray(levelLines) || levelLines.length === 0) {
             return false;
         }
+
+        let bestLevelDistance = Infinity;
 
         for (const line of levelLines) {
             if (!line) continue;
@@ -6414,11 +6413,43 @@ class DrawingToolsManager {
             const tolerance = Math.max(8, (strokeWidth / 2) + 0.75);
             const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
             if (distance <= tolerance) {
-                return true;
+                bestLevelDistance = Math.min(bestLevelDistance, distance);
             }
         }
 
-        return false;
+        if (bestLevelDistance === Infinity) {
+            return false;
+        }
+
+        const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary').nodes();
+        let bestBoundaryDistance = Infinity;
+
+        for (const el of boundaryElements) {
+            if (!el) continue;
+
+            const x1 = parseFloat(el.getAttribute('x1'));
+            const y1 = parseFloat(el.getAttribute('y1'));
+            const x2 = parseFloat(el.getAttribute('x2'));
+            const y2 = parseFloat(el.getAttribute('y2'));
+            if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+
+            const elSel = d3.select(el);
+            const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
+            const isBoundaryHit = elSel.classed('volume-profile-boundary-hit');
+            const tolerance = isBoundaryHit
+                ? Math.max(14, (strokeWidth / 2) + 0.5)
+                : Math.max(4, (strokeWidth / 2) + 0.5);
+            const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+            if (distance <= tolerance) {
+                bestBoundaryDistance = Math.min(bestBoundaryDistance, distance);
+            }
+        }
+
+        if (bestBoundaryDistance !== Infinity && bestBoundaryDistance <= bestLevelDistance) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
