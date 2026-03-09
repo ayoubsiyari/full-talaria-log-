@@ -1441,11 +1441,16 @@ class VolumeProfileTool extends BaseDrawing {
         const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
         const chartLeftEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.min(...xScaleRange) : left;
         const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
+        const isAnchoredProxy = this._isAnchoredProxy === true;
+        const anchoredInsetMax = Math.max(0, ((chartRightEdge - chartLeftEdge) * 0.5) - 1);
+        const anchoredAxisInset = isAnchoredProxy ? Math.min(12, anchoredInsetMax) : 0;
+        const fixedProfileLeftEdge = chartLeftEdge + anchoredAxisInset;
+        const fixedProfileRightEdge = chartRightEdge - anchoredAxisInset;
         const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : effectiveProfileRight;
         const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
         const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
-        const levelLineStartX = hasFixedProfileSide ? chartLeftEdge : left;
-        const levelLineEndX = hasFixedProfileSide ? chartRightEdge : profileLineEndX;
+        const levelLineStartX = hasFixedProfileSide ? fixedProfileLeftEdge : left;
+        const levelLineEndX = hasFixedProfileSide ? fixedProfileRightEdge : profileLineEndX;
         const developingPOCColor = this.style.developingPOCColor || '#9ea4ad';
         const developingVAColor = this.style.developingVAColor || '#35bad1';
 
@@ -1481,9 +1486,9 @@ class VolumeProfileTool extends BaseDrawing {
             const currentSellColor = isInsideValueArea ? valueAreaSellColor : sellColor;
             let rowLeft;
             if (fixedProfileSide === 'left') {
-                rowLeft = chartLeftEdge;
+                rowLeft = fixedProfileLeftEdge;
             } else if (fixedProfileSide === 'right') {
-                rowLeft = chartRightEdge - totalWidth;
+                rowLeft = fixedProfileRightEdge - totalWidth;
             } else {
                 rowLeft = profilePlacement === 'right' ? effectiveProfileRight - totalWidth : effectiveProfileLeft;
             }
@@ -1527,10 +1532,11 @@ class VolumeProfileTool extends BaseDrawing {
                 const labelText = volumeDisplay === 'total'
                     ? `${formatVolumeValue(totalVolume)}`
                     : `${formatVolumeValue(buyVolume)}x${formatVolumeValue(sellVolume)}`;
-                const labelFontSize = Math.max(9, Math.min(24, barHeightPx * 0.72));
+                const labelFontSize = Math.max(8, Math.min(16, barHeightPx * 0.62));
+                const fixedSideLabelPadding = isAnchoredProxy ? 6 : 3;
                 const labelX = fixedProfileSide === 'left'
-                    ? chartLeftEdge + 3
-                    : (fixedProfileSide === 'right' ? chartRightEdge - 3 : (profilePlacement === 'right' ? effectiveProfileRight - 3 : effectiveProfileLeft + 3));
+                    ? fixedProfileLeftEdge + fixedSideLabelPadding
+                    : (fixedProfileSide === 'right' ? fixedProfileRightEdge - fixedSideLabelPadding : (profilePlacement === 'right' ? effectiveProfileRight - 3 : effectiveProfileLeft + 3));
                 const labelAnchor = fixedProfileSide === 'right'
                     ? 'end'
                     : (profilePlacement === 'right' ? 'end' : 'start');
@@ -1933,6 +1939,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         proxy._activeResizingPointIndex = Number.isFinite(this._activeResizingPointIndex)
             ? this._activeResizingPointIndex
             : null;
+        proxy._isAnchoredProxy = true;
         proxy.fixedProfileSide = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         proxy.render(container, scales);
 
