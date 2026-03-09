@@ -1009,10 +1009,11 @@ class VolumeProfileTool extends BaseDrawing {
 
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
-        const width = right - left;
+        const width = Math.max(1, right - left);
         const effectiveProfileLeft = Math.min(x1, x2Data);
         const effectiveProfileRight = Math.max(x1, x2Data);
-        const effectiveProfileWidth = Math.max(0, effectiveProfileRight - effectiveProfileLeft);
+        const rawEffectiveProfileWidth = Math.max(0, effectiveProfileRight - effectiveProfileLeft);
+        const effectiveProfileWidth = Math.max(1, rawEffectiveProfileWidth);
 
         const yDomain = scales.yScale.domain();
         const domainFirst = Array.isArray(yDomain) && yDomain.length > 0 ? yDomain[0] : this.points[0].y;
@@ -1026,7 +1027,7 @@ class VolumeProfileTool extends BaseDrawing {
         // Get chart data for volume profile calculation
         const startIndex = Math.max(0, Math.min(clampedIndex1, dataIndex2));
         const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, dataIndex2)) : Math.max(clampedIndex1, dataIndex2);
-        if (chartData.length === 0 || startIndex > endIndex || width <= 0 || effectiveProfileWidth <= 0) {
+        if (chartData.length === 0 || startIndex > endIndex) {
             this.createHandles(this.group, scales);
             return;
         }
@@ -1517,6 +1518,8 @@ class VolumeProfileTool extends BaseDrawing {
         const domainHigh = Math.max(domainFirst, domainLast);
         const fallbackTopY = Math.min(scales.yScale(domainLow), scales.yScale(domainHigh));
         const fallbackBottomY = Math.max(scales.yScale(domainLow), scales.yScale(domainHigh));
+        const guideTopY = fallbackTopY;
+        const guideBottomY = fallbackBottomY;
         const topY = Number.isFinite(this._profileTopY) ? this._profileTopY : fallbackTopY;
         const bottomY = Number.isFinite(this._profileBottomY) ? this._profileBottomY : fallbackBottomY;
         const middleY = topY + ((bottomY - topY) / 2);
@@ -1557,13 +1560,12 @@ class VolumeProfileTool extends BaseDrawing {
             group.append('line')
                 .attr('class', 'vertical-guide volume-profile-guide')
                 .attr('x1', cx)
-                .attr('y1', topY)
+                .attr('y1', guideTopY)
                 .attr('x2', cx)
-                .attr('y2', bottomY)
-                .attr('stroke', this.style.stroke || '#2962FF')
+                .attr('y2', guideBottomY)
+                .attr('stroke', 'rgba(148, 160, 184, 0.62)')
                 .attr('stroke-width', 1)
-                .attr('stroke-dasharray', '3,3')
-                .attr('opacity', 0.45)
+                .attr('opacity', 1)
                 .style('pointer-events', 'none');
 
             const handleGroup = group.append('g')

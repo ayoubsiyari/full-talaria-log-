@@ -3371,8 +3371,12 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
+                    self._skipHandleSetup = true;
                     this.renderDrawing(drawing);
-                    this.saveDrawings();
+                    self._skipHandleSetup = false;
+                    if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+                        drawing.showAxisHighlights();
+                    }
                     return true;
                 }
             }
