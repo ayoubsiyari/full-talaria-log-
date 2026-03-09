@@ -1568,7 +1568,7 @@ class TrianglePatternTool extends BaseDrawing {
         this.style.stroke = style.stroke || '#7a3ff2';
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.fill = style.fill || 'rgba(122, 63, 242, 0.16)';
-        this.style.boundaryDasharray = style.boundaryDasharray || '1,4';
+        this.style.boundaryDasharray = style.boundaryDasharray || '1,6';
         this.style.boundaryWidth = style.boundaryWidth || 1.5;
         this.style.labelFill = style.labelFill || this.style.stroke;
         this.style.labelTextColor = style.labelTextColor || '#ffffff';
@@ -1597,12 +1597,14 @@ class TrianglePatternTool extends BaseDrawing {
             const d = pointsPx[3];
 
             const viewport = this._getViewportXRange(scales, pointsPx);
-            const leftX = viewport ? viewport[0] : Math.min(a.x, b.x, c.x, d.x);
+            const rightX = viewport ? viewport[1] : Math.max(a.x, b.x, c.x, d.x);
 
-            const leftBottom = this._pointOnLineAtX(a, c, leftX) || { x: a.x, y: a.y };
-            const leftTop = this._pointOnLineAtX(b, d, leftX) || { x: b.x, y: b.y };
+            const topRightGuide = this._pointOnLineAtX(a, c, rightX) || { x: c.x, y: c.y };
+            const bottomLeftGuide = this._pointOnLineAtX(b, d, a.x) || { x: b.x, y: b.y };
+            const bottomRightGuide = this._pointOnLineAtX(b, d, rightX) || { x: d.x, y: d.y };
 
-            const fillPath = `M ${leftTop.x} ${leftTop.y} L ${d.x} ${d.y} L ${c.x} ${c.y} L ${leftBottom.x} ${leftBottom.y} Z`;
+            // Fill only the core ABCD shape.
+            const fillPath = `M ${a.x} ${a.y} L ${c.x} ${c.y} L ${d.x} ${d.y} L ${b.x} ${b.y} Z`;
             this.group.append('path')
                 .attr('d', fillPath)
                 .attr('fill', this.style.fill)
@@ -1610,37 +1612,41 @@ class TrianglePatternTool extends BaseDrawing {
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
 
-            // Dotted envelope boundaries (TradingView-like)
+            // TradingView-like dotted envelope guides.
             this.group.append('line')
-                .attr('x1', leftTop.x)
-                .attr('y1', leftTop.y)
-                .attr('x2', d.x)
-                .attr('y2', d.y)
+                .attr('x1', a.x)
+                .attr('y1', a.y)
+                .attr('x2', topRightGuide.x)
+                .attr('y2', topRightGuide.y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', this.style.boundaryWidth)
                 .attr('stroke-dasharray', this.style.boundaryDasharray)
+                .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
                 .style('pointer-events', 'none');
 
             this.group.append('line')
-                .attr('x1', leftBottom.x)
-                .attr('y1', leftBottom.y)
-                .attr('x2', c.x)
-                .attr('y2', c.y)
+                .attr('x1', bottomLeftGuide.x)
+                .attr('y1', bottomLeftGuide.y)
+                .attr('x2', bottomRightGuide.x)
+                .attr('y2', bottomRightGuide.y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', this.style.boundaryWidth)
                 .attr('stroke-dasharray', this.style.boundaryDasharray)
+                .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
                 .style('pointer-events', 'none');
 
+            // Left vertical connector between upper and lower guides at A.x.
             this.group.append('line')
-                .attr('x1', c.x)
-                .attr('y1', c.y)
-                .attr('x2', d.x)
-                .attr('y2', d.y)
+                .attr('x1', a.x)
+                .attr('y1', a.y)
+                .attr('x2', bottomLeftGuide.x)
+                .attr('y2', bottomLeftGuide.y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', this.style.boundaryWidth)
                 .attr('stroke-dasharray', this.style.boundaryDasharray)
+                .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
                 .style('pointer-events', 'none');
 
@@ -1695,7 +1701,7 @@ class TrianglePatternTool extends BaseDrawing {
                 placeAbove = point.y <= prev.y;
             }
 
-            this._drawPointTag(point.x, point.y + (placeAbove ? -14 : 14), label);
+            this._drawPointTag(point.x, point.y + (placeAbove ? -20 : 20), label);
         });
 
         this.createHandles(this.group, scales);
@@ -1753,9 +1759,9 @@ class TrianglePatternTool extends BaseDrawing {
     _drawPointTag(x, y, text) {
         if (!text) return;
 
-        const fontSize = 11;
-        const paddingX = 7;
-        const paddingY = 4;
+        const fontSize = 12;
+        const paddingX = 8;
+        const paddingY = 4.5;
         const width = Math.max(16, (String(text).length * 7) + (paddingX * 2));
         const height = fontSize + (paddingY * 2);
 
@@ -1764,7 +1770,7 @@ class TrianglePatternTool extends BaseDrawing {
             .attr('y', y - (height / 2))
             .attr('width', width)
             .attr('height', height)
-            .attr('rx', 4)
+            .attr('rx', 6)
             .attr('fill', this.style.labelFill)
             .attr('opacity', 0.95)
             .style('pointer-events', 'none');
