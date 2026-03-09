@@ -1552,21 +1552,25 @@ class VolumeProfileTool extends BaseDrawing {
         const topCornerIndex = sortedByX.length > 0 ? sortedByX[0].index : null;
         const bottomCornerIndex = sortedByX.length > 0 ? sortedByX[sortedByX.length - 1].index : null;
 
+        const showGuides = this._isActiveResizing === true;
+
         pointPositions.forEach(({ point, index, cx }) => {
             const handleY = index === topCornerIndex
                 ? topY
                 : (index === bottomCornerIndex ? bottomY : middleY);
 
-            group.append('line')
-                .attr('class', 'vertical-guide volume-profile-guide')
-                .attr('x1', cx)
-                .attr('y1', guideTopY)
-                .attr('x2', cx)
-                .attr('y2', guideBottomY)
-                .attr('stroke', 'rgba(148, 160, 184, 0.62)')
-                .attr('stroke-width', 1)
-                .attr('opacity', 1)
-                .style('pointer-events', 'none');
+            if (showGuides) {
+                group.append('line')
+                    .attr('class', 'vertical-guide volume-profile-guide')
+                    .attr('x1', cx)
+                    .attr('y1', guideTopY)
+                    .attr('x2', cx)
+                    .attr('y2', guideBottomY)
+                    .attr('stroke', 'rgba(148, 160, 184, 0.62)')
+                    .attr('stroke-width', 1)
+                    .attr('opacity', 1)
+                    .style('pointer-events', 'none');
+            }
 
             const handleGroup = group.append('g')
                 .attr('class', 'resize-handle-group')

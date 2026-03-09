@@ -3471,6 +3471,10 @@ class DrawingToolsManager {
         this.resizingDrawing = drawing;
         this.resizingPointIndex = pointIndex;
 
+        if (this.isVolumeProfileToolType(drawing.type)) {
+            drawing._isActiveResizing = true;
+        }
+
         const canvas = document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = 'move';
         this.svg.style('cursor', 'move');
@@ -3529,6 +3533,11 @@ class DrawingToolsManager {
         if (this.history && this.resizeBeforeState) {
             this.history.recordModify(drawing, this.resizeBeforeState);
         }
+
+        const isVolumeProfileResize = !!(drawing && this.isVolumeProfileToolType(drawing.type));
+        if (isVolumeProfileResize) {
+            drawing._isActiveResizing = false;
+        }
         
         this.isResizing = false;
         this.resizingDrawing = null;
@@ -3538,6 +3547,11 @@ class DrawingToolsManager {
         const canvas = document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
+
+        if (isVolumeProfileResize) {
+            this.renderDrawing(drawing);
+        }
+
         // Recalculate timestamps from new positions
         drawing.recalculateTimestamps();
         this.persistPositionToolDefaults(drawing);
