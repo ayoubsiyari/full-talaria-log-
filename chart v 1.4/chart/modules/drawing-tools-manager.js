@@ -5796,6 +5796,40 @@ class DrawingToolsManager {
                             }
                         }
                     }
+
+                    // Allow selecting/double-clicking inside the profile body area.
+                    if (!hitsById.has(drawing.id)) {
+                        const boundaryLines = drawing.group.selectAll('.volume-profile-boundary').nodes();
+                        if (Array.isArray(boundaryLines) && boundaryLines.length >= 2) {
+                            const xValues = [];
+                            let minY = Infinity;
+                            let maxY = -Infinity;
+
+                            boundaryLines.forEach((line) => {
+                                if (!line) return;
+                                const x1 = Number(line.getAttribute('x1'));
+                                const x2 = Number(line.getAttribute('x2'));
+                                const y1 = Number(line.getAttribute('y1'));
+                                const y2 = Number(line.getAttribute('y2'));
+                                if ([x1, x2, y1, y2].every(Number.isFinite)) {
+                                    xValues.push(x1, x2);
+                                    minY = Math.min(minY, y1, y2);
+                                    maxY = Math.max(maxY, y1, y2);
+                                }
+                            });
+
+                            if (xValues.length >= 2 && Number.isFinite(minY) && Number.isFinite(maxY)) {
+                                const minX = Math.min(...xValues);
+                                const maxX = Math.max(...xValues);
+                                const isInsideProfileBody = mouseX >= minX && mouseX <= maxX
+                                    && mouseY >= minY && mouseY <= maxY;
+
+                                if (isInsideProfileBody) {
+                                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                }
+                            }
+                        }
+                    }
                 } catch (error) {
                     console.warn('Error in volume profile boundary hit test for drawing:', drawing.id, error);
                 }
