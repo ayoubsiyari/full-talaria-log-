@@ -1561,6 +1561,8 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         if ((!hasOwn('fill') || style.fill === 'none' || style.fill === 'transparent') && style.showBackground !== false) {
             this.style.fill = 'rgba(14, 59, 70, 0.22)';
         }
+        if (this.style.showBackground === undefined) this.style.showBackground = true;
+        if (!Number.isFinite(Number(this.style.backgroundOpacity))) this.style.backgroundOpacity = 0.85;
         if (!hasOwn('buyColor')) this.style.buyColor = 'rgba(53, 186, 209, 0.82)';
         if (!hasOwn('sellColor')) this.style.sellColor = 'rgba(199, 71, 130, 0.82)';
         if (!hasOwn('valueAreaBuyColor')) this.style.valueAreaBuyColor = 'rgba(53, 186, 209, 1)';
