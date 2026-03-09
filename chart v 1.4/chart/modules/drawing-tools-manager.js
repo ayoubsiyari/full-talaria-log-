@@ -736,6 +736,12 @@ class DrawingToolsManager {
                 const isVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
                     this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
                 );
+                const isAnchoredVolumeProfileHit = drawingsAtPoint.some((d) => d && d.type === 'anchored-volume-profile');
+                const isVolumeProfileExplicitTarget = !!(
+                    rawTarget
+                    && rawTarget.closest
+                    && rawTarget.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group')
+                );
 
                 const isSecondClick = event.detail >= 2;
                 if (isSecondClick) {
@@ -759,6 +765,21 @@ class DrawingToolsManager {
                 }
 
                 if (isVolumeProfileLevelLineHit) {
+                    const best = drawingsAtPoint[0];
+                    if (best && !best.locked) {
+                        this.selectDrawing(best, false);
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
+                if (isAnchoredVolumeProfileHit && !isVolumeProfileExplicitTarget) {
                     const best = drawingsAtPoint[0];
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
