@@ -4740,10 +4740,10 @@ class DrawingToolsManager {
             return false;
         }
 
-        const labelPadX = 6;
-        const labelPadY = 4;
-        const clientPadX = 8;
-        const clientPadY = 6;
+        const labelPadX = 11;
+        const labelPadY = 8;
+        const clientPadX = 14;
+        const clientPadY = 10;
         const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
         const svgRect = svgNode && typeof svgNode.getBoundingClientRect === 'function'
             ? svgNode.getBoundingClientRect()
