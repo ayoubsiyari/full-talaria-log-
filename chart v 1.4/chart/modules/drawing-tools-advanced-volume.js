@@ -738,9 +738,9 @@ class AnchoredVWAPTool extends BaseDrawing {
                     .attr('cx', d => d.x)
                     .attr('cy', d => d.y)
                     .attr('r', markerRadius)
-                    .attr('fill', 'none')
-                    .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', 1.1)
+                    .attr('fill', 'transparent')
+                    .attr('stroke', anchorHandleStroke)
+                    .attr('stroke-width', anchorHandleStrokeWidth)
                     .attr('opacity', 0.95)
                     .style('pointer-events', 'none');
             }
