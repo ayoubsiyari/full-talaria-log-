@@ -638,7 +638,7 @@ class XABCDPatternTool extends BaseDrawing {
             placeRatioLabel(cdRatio, bdMidX, bdMidY, bx, by, dx, dy, 20);
         }
 
-        // Draw point labels with background boxes
+        // Draw point labels (text only, no background box)
         this.points.forEach((p, i) => {
             if (this.labels[i]) {
                 const px = pointsPx[i].x;
@@ -667,23 +667,14 @@ class XABCDPatternTool extends BaseDrawing {
                 const bestLabelPosition = pickLeastOverlappingLabelPosition(candidates, 20, 16, -12) || candidates[0];
                 const labelX = bestLabelPosition.x;
                 const labelY = bestLabelPosition.y;
-                
-                // Background box
-                this.group.append('rect')
-                    .attr('x', labelX - 10)
-                    .attr('y', labelY - 12)
-                    .attr('width', 20)
-                    .attr('height', 16)
-                    .attr('fill', this.style.stroke)
-                    .attr('rx', 2)
-                    .style('pointer-events', 'none');
-                
+
                 // Label text
                 this.group.append('text')
                     .attr('x', labelX)
                     .attr('y', labelY)
                     .attr('text-anchor', 'middle')
-                    .attr('fill', '#ffffff')
+                    .attr('dominant-baseline', 'middle')
+                    .attr('fill', this.style.stroke)
                     .attr('font-size', '11px')
                     .attr('font-weight', 'bold')
                     .style('pointer-events', 'none')
