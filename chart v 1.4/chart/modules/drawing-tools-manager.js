@@ -36,6 +36,9 @@ class DrawingToolsManager {
         this.eraserMode = false; // Eraser mode - click to delete drawings
         this.ctrlSelectMode = false; // Ctrl key held for hover-to-select mode
         this.riskRewardPreview = null;
+        this.isDraggingFirstTwo = false;
+        this.dragFirstTwoStart = null;
+        this.dragFirstTwoStartScreen = null;
         
         // Rectangular selection
         this.isRectSelecting = false;
@@ -822,6 +825,7 @@ class DrawingToolsManager {
         this.drawingState.reset();
         this.isDraggingFirstTwo = false;  // Reset drag state for multi-point tools
         this.dragFirstTwoStart = null;
+        this.dragFirstTwoStartScreen = null;
         
         // Update cursor
         this.svg.style('cursor', toolName ? 'crosshair' : 'default');
@@ -861,6 +865,8 @@ class DrawingToolsManager {
         // Reset continuous drawing flags
         this.isDrawingPath = false;
         this.isDraggingFirstTwo = false;
+        this.dragFirstTwoStart = null;
+        this.dragFirstTwoStartScreen = null;
         
         // DON'T clear eraser mode here - eraser is a cursor type, not a drawing tool
         // Eraser mode is managed by setCursorType() in chart.js
@@ -1332,6 +1338,10 @@ class DrawingToolsManager {
             if (toolInfo && toolInfo.dragFirstTwo) {
                 this.isDraggingFirstTwo = true;
                 this.dragFirstTwoStart = { ...point };
+                this.dragFirstTwoStartScreen = {
+                    x: Number(event.clientX),
+                    y: Number(event.clientY)
+                };
             }
         }
         
@@ -1753,6 +1763,34 @@ class DrawingToolsManager {
         if (this.currentTool && this.isDraggingFirstTwo) {
             const toolInfo = this.toolRegistry[this.currentTool];
             if (toolInfo && toolInfo.dragFirstTwo && this.drawingState.tempPoints.length === 1) {
+                const supportsClickAndDragPlacement = this.isCandleBoundTool(this.currentTool);
+                if (supportsClickAndDragPlacement) {
+                    const startScreen = this.dragFirstTwoStartScreen;
+                    const currentScreenX = Number(event.clientX);
+                    const currentScreenY = Number(event.clientY);
+                    let draggedEnough = true;
+
+                    if (
+                        startScreen &&
+                        Number.isFinite(startScreen.x) &&
+                        Number.isFinite(startScreen.y) &&
+                        Number.isFinite(currentScreenX) &&
+                        Number.isFinite(currentScreenY)
+                    ) {
+                        const dragDistancePx = Math.hypot(currentScreenX - startScreen.x, currentScreenY - startScreen.y);
+                        draggedEnough = dragDistancePx >= 4;
+                    }
+
+                    // No drag movement => keep first point and let next click place point 2.
+                    if (!draggedEnough) {
+                        this.isDraggingFirstTwo = false;
+                        this.dragFirstTwoStart = null;
+                        this.dragFirstTwoStartScreen = null;
+                        this.updateTempDrawing();
+                        return;
+                    }
+                }
+
                 let point = this.getDataPoint(event);
                 
                 // Apply angle constraint if shift held
@@ -1765,6 +1803,7 @@ class DrawingToolsManager {
                 this.drawingState.addPoint(point);
                 this.isDraggingFirstTwo = false;
                 this.dragFirstTwoStart = null;
+                this.dragFirstTwoStartScreen = null;
                 // If the tool is a simple 2-point tool, finalize immediately on mouseup
                 if (toolInfo.points === 2) {
                     this.finalizeDrawing();
@@ -2147,6 +2186,7 @@ class DrawingToolsManager {
             this.riskRewardPreview = null;
             this.isDraggingFirstTwo = false;
             this.dragFirstTwoStart = null;
+            this.dragFirstTwoStartScreen = null;
             
             // Clear the tool so button deactivates
             this.clearTool();
@@ -2214,6 +2254,7 @@ class DrawingToolsManager {
         this.riskRewardPreview = null;
         this.isDraggingFirstTwo = false;  // Reset for next drawing
         this.dragFirstTwoStart = null;
+        this.dragFirstTwoStartScreen = null;
         
         // Auto-deselect tool after drawing, with exceptions:
         // - Keep Drawing Mode: keep any tool active
