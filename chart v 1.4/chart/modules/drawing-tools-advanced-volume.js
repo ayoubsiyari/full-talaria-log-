@@ -935,6 +935,7 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.style.showPOC === undefined) this.style.showPOC = true;
         if (this.style.showVAH === undefined) this.style.showVAH = true;
         if (this.style.showVAL === undefined) this.style.showVAL = true;
+        if (this.style.showVolume === undefined) this.style.showVolume = true;
         if (this.style.showValues === undefined) this.style.showValues = true;
         if (!hasOwn('VAHColor')) this.style.VAHColor = '#089981';
         if (!hasOwn('VALColor')) this.style.VALColor = '#f23645';
@@ -1382,7 +1383,8 @@ class VolumeProfileTool extends BaseDrawing {
         const valueAreaBuyColor = this.style.valueAreaBuyColor || 'rgba(53, 186, 209, 1)';
         const valueAreaSellColor = this.style.valueAreaSellColor || 'rgba(199, 71, 130, 1)';
         const valuesColor = this.style.valuesColor || '#d1d4dc';
-        const showValues = this.style.showValues !== false;
+        const showVolume = this.style.showVolume !== false;
+        const showValues = showVolume && this.style.showValues !== false;
         const volumeDisplay = String(this.style.volumeDisplay || 'upDown').toLowerCase() === 'total' ? 'total' : 'upDown';
         const extendRightLevels = this.style.extendRight === true;
         const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
@@ -1406,7 +1408,7 @@ class VolumeProfileTool extends BaseDrawing {
 
         // Draw stacked buy/sell bars from the left side (TradingView-like fixed-range profile look).
         totalVolumeBins.forEach((totalVolume, i) => {
-            if (!Number.isFinite(totalVolume) || totalVolume <= 0) return;
+            if (!showVolume || !Number.isFinite(totalVolume) || totalVolume <= 0) return;
 
             const buyVolume = buyVolumeBins[i] || 0;
             const sellVolume = sellVolumeBins[i] || 0;
@@ -1764,6 +1766,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         if (this.style.showPOC === undefined) this.style.showPOC = true;
         if (this.style.showVAH === undefined) this.style.showVAH = true;
         if (this.style.showVAL === undefined) this.style.showVAL = true;
+        if (this.style.showVolume === undefined) this.style.showVolume = true;
         if (this.style.showValues === undefined) this.style.showValues = true;
         if (!hasOwn('VAHColor')) this.style.VAHColor = '#089981';
         if (!hasOwn('VALColor')) this.style.VALColor = '#f23645';

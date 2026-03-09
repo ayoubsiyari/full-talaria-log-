@@ -7640,6 +7640,7 @@ body.light-mode .template-save-dialog .dialog-title {
             : 70;
 
         if (drawing.style.extendRight === undefined) drawing.style.extendRight = false;
+        if (drawing.style.showVolume === undefined) drawing.style.showVolume = true;
 
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
@@ -7689,9 +7690,19 @@ body.light-mode .template-save-dialog .dialog-title {
             >
         `;
 
-        const volumeRow = createInputRow('Volume');
+        const volumeEnabled = drawing.style.showVolume !== false;
+        const volumeRow = createInputRow('');
+        volumeRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        volumeRow.label.innerHTML = `
+            <div class="tv-checkbox ${volumeEnabled ? 'checked' : ''}" data-prop="showVolume">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Volume</span>
+        `;
         volumeRow.controls.innerHTML = `
-            <select class="tv-select" data-prop="volumeDisplay" style="width: 130px;">
+            <select class="tv-select" data-prop="volumeDisplay" style="width: 130px; ${volumeEnabled ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${volumeEnabled ? '' : 'disabled'}>
                 <option value="upDown" ${drawing.style.volumeDisplay === 'upDown' ? 'selected' : ''}>Up/Down</option>
                 <option value="total" ${drawing.style.volumeDisplay === 'total' ? 'selected' : ''}>Total</option>
             </select>
@@ -8893,6 +8904,19 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (prop === 'showPOC' || prop === 'showVAH' || prop === 'showVAL') {
                     drawing.style[prop] = isChecked;
+                    self.renderPreview(drawing);
+                }
+
+                if (prop === 'showVolume') {
+                    drawing.style.showVolume = isChecked;
+                    this.pendingChanges.showVolume = isChecked;
+
+                    queryAll('.tv-select[data-prop="volumeDisplay"]').forEach((volumeDisplaySelect) => {
+                        volumeDisplaySelect.disabled = !isChecked;
+                        volumeDisplaySelect.style.opacity = isChecked ? '1' : '0.55';
+                        volumeDisplaySelect.style.cursor = isChecked ? 'pointer' : 'not-allowed';
+                    });
+
                     self.renderPreview(drawing);
                 }
 
@@ -10250,6 +10274,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.showPOC !== undefined) drawing.style.showPOC = this.pendingChanges.showPOC;
         if (this.pendingChanges.showVAH !== undefined) drawing.style.showVAH = this.pendingChanges.showVAH;
         if (this.pendingChanges.showVAL !== undefined) drawing.style.showVAL = this.pendingChanges.showVAL;
+        if (this.pendingChanges.showVolume !== undefined) drawing.style.showVolume = this.pendingChanges.showVolume;
         if (this.pendingChanges.showValues !== undefined) drawing.style.showValues = this.pendingChanges.showValues;
         if (this.pendingChanges.profilePlacement !== undefined) {
             drawing.style.profilePlacement = this.pendingChanges.profilePlacement === 'right' ? 'right' : 'left';
