@@ -842,7 +842,7 @@ class Chart {
      * Fetch a window of candles from /smart endpoint.
      * Returns last N candles at the requested timeframe.
      */
-    async _fetchSmartWindow(fileId, timeframe, session, anchor) {
+    async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null) {
         // In backtest mode, load from the START of the session range
         // so replay begins at the right place. Pan-loading fills the rest.
         const isBacktest = session && session.startDate;
@@ -857,11 +857,21 @@ class Chart {
             anchor: anchor
         });
 
-        if (session && session.startDate) {
+        const explicitStartTs = this.normalizeTimestampMs(windowRange?.startTs);
+        const explicitEndTs = this.normalizeTimestampMs(windowRange?.endTs);
+
+        if (Number.isFinite(explicitStartTs)) {
+            params.set('start_ts', String(Math.floor(explicitStartTs)));
+        }
+        if (Number.isFinite(explicitEndTs)) {
+            params.set('end_ts', String(Math.floor(explicitEndTs)));
+        }
+
+        if (!Number.isFinite(explicitStartTs) && session && session.startDate) {
             const ts = new Date(session.startDate).getTime();
             if (!isNaN(ts)) params.set('start_ts', String(ts));
         }
-        if (session && session.endDate) {
+        if (!Number.isFinite(explicitEndTs) && session && session.endDate) {
             const ts = new Date(session.endDate).getTime();
             if (!isNaN(ts)) params.set('end_ts', String(ts));
         }
@@ -8146,6 +8156,71 @@ class Chart {
     }
 
     /**
+     * Ensure a data window around target timestamp is loaded from server.
+     * Used by Go To when requested time is outside currently loaded candles.
+     */
+    async ensureGoToWindowContainsTimestamp(targetTimestamp, { usingReplay = false } = {}) {
+        if (!this.currentFileId || !Number.isFinite(targetTimestamp)) {
+            return false;
+        }
+
+        const session = this.backtestingSession || {};
+        const requestTimeframe = usingReplay
+            ? (this.replaySystem?.rawTimeframe || '1m')
+            : (this.currentTimeframe || '1m');
+
+        try {
+            const result = await this._fetchSmartWindow(
+                this.currentFileId,
+                requestTimeframe,
+                session,
+                'start',
+                { startTs: targetTimestamp }
+            );
+
+            if (!result || !result.data) {
+                return false;
+            }
+
+            this.rawData = [];
+            this.data = [];
+            this.totalCandles = result.total;
+            this._serverCursors = {
+                firstTs: result.first_cursor,
+                lastTs: result.last_cursor,
+                hasMoreLeft: result.has_more_left,
+                hasMoreRight: result.has_more_right
+            };
+            this._panLoading = false;
+
+            this.parseCSVChunk(result.data, 0);
+
+            if (usingReplay && this.replaySystem && this.replaySystem.isActive) {
+                this.replaySystem.fullRawData = Array.isArray(this.rawData) ? [...this.rawData] : [];
+                this.replaySystem.rawTimeframe = requestTimeframe;
+                this.replaySystem._fullRawDataMatchesTF = false;
+
+                if (this.replaySystem.fullRawData.length > 0) {
+                    this.replaySystem.currentIndex = 0;
+                    this.replaySystem.replayStartTimestamp = this.replaySystem.fullRawData[0].t;
+                    this.replaySystem.replayEndTimestamp = this.replaySystem.fullRawData[this.replaySystem.fullRawData.length - 1].t;
+                    this.replaySystem.replayTimestamp = this.replaySystem.fullRawData[0].t;
+                    this.replaySystem.tickElapsedMs = 0;
+                }
+
+                if (typeof this.replaySystem.updateSliderRange === 'function') {
+                    this.replaySystem.updateSliderRange();
+                }
+            }
+
+            return Array.isArray(this.rawData) && this.rawData.length > 0;
+        } catch (error) {
+            console.warn('⚠️ Failed to load Go To window around target timestamp', error);
+            return false;
+        }
+    }
+
+    /**
      * Jump to a specific date/time on the chart
      * @param {string} dateString - Date string in YYYY-MM-DD format
      */
@@ -8276,7 +8351,7 @@ class Chart {
      * Jump to a specific timestamp (UTC milliseconds)
      * @param {number} targetTimestamp - Unix timestamp in milliseconds
      */
-    jumpToTimestamp(targetTimestamp) {
+    async jumpToTimestamp(targetTimestamp, { skipWindowFetch = false } = {}) {
         if (!this.data || this.data.length === 0) {
             alert('No data loaded. Please upload a CSV file first.');
             return;
@@ -8303,6 +8378,26 @@ class Chart {
             if (!sourceData || sourceData.length === 0) {
                 alert('No data available to jump.');
                 return;
+            }
+
+            let minLoadedTs = Infinity;
+            let maxLoadedTs = -Infinity;
+            for (let i = 0; i < sourceData.length; i++) {
+                const ts = this.normalizeTimestampMs(sourceData[i]?.t);
+                if (!Number.isFinite(ts)) continue;
+                if (ts < minLoadedTs) minLoadedTs = ts;
+                if (ts > maxLoadedTs) maxLoadedTs = ts;
+            }
+
+            const hasLoadedRange = Number.isFinite(minLoadedTs) && Number.isFinite(maxLoadedTs);
+            const targetOutsideLoadedRange = hasLoadedRange &&
+                (normalizedTarget < minLoadedTs || normalizedTarget > maxLoadedTs);
+
+            if (!skipWindowFetch && targetOutsideLoadedRange && this.currentFileId) {
+                const loaded = await this.ensureGoToWindowContainsTimestamp(normalizedTarget, { usingReplay });
+                if (loaded) {
+                    return this.jumpToTimestamp(normalizedTarget, { skipWindowFetch: true });
+                }
             }
 
             // Prefer first candle on/after target timestamp.
