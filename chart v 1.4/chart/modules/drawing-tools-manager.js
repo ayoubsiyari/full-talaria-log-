@@ -671,7 +671,10 @@ class DrawingToolsManager {
 
             if (!drawingsAtPoint || drawingsAtPoint.length === 0) return false;
 
-            const drawing = drawingsAtPoint[0];
+            const valueLabelDrawing = drawingsAtPoint.find((d) =>
+                this.isVolumeProfileValuesLabelHit(d, mouseX, mouseY)
+            );
+            const drawing = valueLabelDrawing || drawingsAtPoint[0];
             if (!drawing || drawing.locked) return false;
 
             if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
@@ -762,6 +765,9 @@ class DrawingToolsManager {
                     this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
                 );
                 const isVolumeProfileHit = drawingsAtPoint.some((d) => d && this.isVolumeProfileToolType(d.type));
+                const isVolumeProfileValuesLabelHit = drawingsAtPoint.some((d) =>
+                    this.isVolumeProfileValuesLabelHit(d, mouseX, mouseY)
+                );
                 const isVolumeProfileValuesLabelTarget = !!(
                     rawTarget
                     && rawTarget.closest
@@ -796,7 +802,7 @@ class DrawingToolsManager {
                     return;
                 }
 
-                if (isVolumeProfileValuesLabelTarget && isVolumeProfileHit) {
+                if ((isVolumeProfileValuesLabelTarget || isVolumeProfileValuesLabelHit) && isVolumeProfileHit) {
                     const best = drawingsAtPoint[0];
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
@@ -1116,6 +1122,12 @@ class DrawingToolsManager {
             if (!isVolumeProfileLevelLineTarget && drawingsAtPoint.length > 0) {
                 isVolumeProfileLevelLineTarget = drawingsAtPoint.some((d) =>
                     this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
+                );
+            }
+
+            if (!isVolumeProfileValuesLabelTarget && drawingsAtPoint.length > 0) {
+                isVolumeProfileValuesLabelTarget = drawingsAtPoint.some((d) =>
+                    this.isVolumeProfileValuesLabelHit(d, mouseX, mouseY)
                 );
             }
 
@@ -3387,10 +3399,11 @@ class DrawingToolsManager {
             const svgRect = svgNode.getBoundingClientRect();
             const startMouseX = event.clientX - svgRect.left;
             const startMouseY = event.clientY - svgRect.top;
-            const shouldBlockVolumeProfileLevelLineDirectMove = drawings.some((d) =>
+            const shouldBlockVolumeProfileTextDirectMove = drawings.some((d) =>
                 this.isVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
+                || this.isVolumeProfileValuesLabelHit(d, startMouseX, startMouseY)
             );
-            if (shouldBlockVolumeProfileLevelLineDirectMove) {
+            if (shouldBlockVolumeProfileTextDirectMove) {
                 return;
             }
         }
@@ -4638,6 +4651,45 @@ class DrawingToolsManager {
         
         // [debug removed]
         return true;
+    }
+
+    /**
+     * Returns true when the given screen-space point is inside a volume profile values label box.
+     */
+    isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
+            return false;
+        }
+
+        const labelNodes = drawing.group.selectAll('.volume-profile-values-label').nodes();
+        if (!Array.isArray(labelNodes) || labelNodes.length === 0) {
+            return false;
+        }
+
+        const labelPadX = 6;
+        const labelPadY = 4;
+
+        for (const label of labelNodes) {
+            if (!label || typeof label.getBBox !== 'function') continue;
+
+            let bb = null;
+            try {
+                bb = label.getBBox();
+            } catch (_) {
+                bb = null;
+            }
+
+            if (!bb) continue;
+
+            const inside = mouseX >= (bb.x - labelPadX) && mouseX <= (bb.x + bb.width + labelPadX)
+                && mouseY >= (bb.y - labelPadY) && mouseY <= (bb.y + bb.height + labelPadY);
+
+            if (inside) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
