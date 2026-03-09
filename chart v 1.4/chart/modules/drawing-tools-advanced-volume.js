@@ -493,15 +493,7 @@ class AnchoredVWAPTool extends BaseDrawing {
                 .attr('opacity', 0.9)
                 .attr('stroke-dasharray', '5,5')
                 .style('pointer-events', 'none');
-            
-            this.group.append('text')
-                .attr('class', 'anchored-vwap-label')
-                .attr('x', anchorX + 10)
-                .attr('y', anchorY - 10)
-                .attr('fill', this.style.stroke)
-                .attr('font-size', '11px')
-                .style('pointer-events', 'none')
-                .text('VWAP (No Data)');
+
             return;
         }
         
@@ -881,16 +873,6 @@ class AnchoredVWAPTool extends BaseDrawing {
 
         this.group.selectAll('.anchored-vwap-anchor-hit, .anchored-vwap-anchor').raise();
 
-        // Label
-        this.group.append('text')
-            .attr('class', 'anchored-vwap-label')
-            .attr('x', anchorX + 10)
-            .attr('y', anchorY - 10)
-            .attr('fill', this.style.stroke)
-            .attr('font-size', '11px')
-            .attr('opacity', this.style.opacity)
-            .style('pointer-events', 'none')
-            .text('VWAP');
     }
 
     static fromJSON(data) {
