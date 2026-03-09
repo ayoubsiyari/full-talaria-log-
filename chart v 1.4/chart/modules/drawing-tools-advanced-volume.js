@@ -1003,6 +1003,37 @@ class VolumeProfileTool extends BaseDrawing {
             : (scales.chart && scales.chart.dataIndexToPixel
                 ? scales.chart.dataIndexToPixel(displayIndex2)
                 : scales.xScale(displayIndex2));
+
+        const pointY1 = Number.isFinite(this.points[0]?.y) ? scales.yScale(this.points[0].y) : NaN;
+        const pointY2 = Number.isFinite(this.points[1]?.y) ? scales.yScale(this.points[1].y) : NaN;
+
+        if (isPreview) {
+            const previewStroke = this.style.stroke || 'rgba(130, 164, 176, 0.45)';
+            const previewOpacityRaw = Number(this.style.opacity);
+            const previewOpacity = Number.isFinite(previewOpacityRaw)
+                ? Math.max(0, Math.min(1, previewOpacityRaw))
+                : 0.95;
+
+            if (Number.isFinite(pointY1) && Number.isFinite(pointY2)) {
+                this.group.append('line')
+                    .attr('class', 'volume-profile-preview-line')
+                    .attr('x1', x1)
+                    .attr('y1', pointY1)
+                    .attr('x2', x2)
+                    .attr('y2', pointY2)
+                    .attr('stroke', previewStroke)
+                    .attr('stroke-width', 2)
+                    .attr('stroke-dasharray', '')
+                    .attr('opacity', Math.min(1, previewOpacity))
+                    .style('pointer-events', 'none');
+
+                this.renderCornerPoint(this.group, x1, pointY1, Math.min(1, previewOpacity));
+                this.renderCornerPoint(this.group, x2, pointY2, Math.min(1, previewOpacity));
+            }
+
+            return;
+        }
+
         const x2Data = scales.chart && scales.chart.dataIndexToPixel
             ? scales.chart.dataIndexToPixel(dataIndex2)
             : scales.xScale(dataIndex2);
