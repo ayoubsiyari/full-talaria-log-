@@ -738,7 +738,7 @@ class DrawingToolsManager {
                 const isVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
                     this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
                 );
-                const isAnchoredVolumeProfileHit = drawingsAtPoint.some((d) => d && d.type === 'anchored-volume-profile');
+                const isVolumeProfileHit = drawingsAtPoint.some((d) => d && this.isVolumeProfileToolType(d.type));
                 const isVolumeProfileExplicitTarget = !!(
                     rawTarget
                     && rawTarget.closest
@@ -783,7 +783,7 @@ class DrawingToolsManager {
                     return;
                 }
 
-                if (isAnchoredVolumeProfileHit && !isVolumeProfileExplicitTarget) {
+                if (isVolumeProfileHit && !isVolumeProfileExplicitTarget) {
                     const best = drawingsAtPoint[0];
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
