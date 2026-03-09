@@ -156,7 +156,11 @@ class Chart {
             .attr('class', 'chart-context-menu')
             .attr('id', menuId)
             .style('position', 'fixed')  // Use fixed positioning for better panel support
+            .style('display', 'none')
             .style('visibility', 'hidden')
+            .style('opacity', '0')
+            .style('transform', 'none')
+            .style('transition', 'none')
             .style('background', 'rgba(5, 0, 40, 0.97)')
             .style('border', '1px solid #2a2e39')
             .style('border-radius', '4px')
@@ -14170,20 +14174,15 @@ class Chart {
         }
         
         const menu = this.contextMenu
+            .style('display', 'block')
             .style('visibility', 'visible')
             .style('left', menuX + 'px')
             .style('top', menuY + 'px')
-            .style('opacity', '0')
-            .style('transform', 'scale(0.95)')
-            .style('transition', 'all 0.1s ease-out')
+            .style('opacity', '1')
+            .style('transform', 'none')
+            .style('transition', 'none')
             .html('');
             
-        // Trigger reflow and add entrance animation
-        setTimeout(() => {
-            menu.style('opacity', '1')
-                .style('transform', 'scale(1)');
-        }, 0);
-        
         // Store the previous tool state
         this._previousTool = previousTool;
         
@@ -14255,7 +14254,12 @@ class Chart {
     }
     
     hideContextMenu() {
-        this.contextMenu.style('visibility', 'hidden');
+        this.contextMenu
+            .style('display', 'none')
+            .style('visibility', 'hidden')
+            .style('opacity', '0')
+            .style('transform', 'none')
+            .style('transition', 'none');
         
         // Restore previous tool state if it exists
         if (this._previousTool) {
@@ -14270,7 +14274,12 @@ class Chart {
         }
 
         // Hide ALL chart context menus (from all panels and main chart)
-        d3.selectAll('.chart-context-menu').style('visibility', 'hidden');
+        d3.selectAll('.chart-context-menu')
+            .style('display', 'none')
+            .style('visibility', 'hidden')
+            .style('opacity', '0')
+            .style('transform', 'none')
+            .style('transition', 'none');
         
         // Get price at cursor position with proper formatting
         let priceAtCursor = null;
@@ -14302,19 +14311,15 @@ class Chart {
         }
         
         const menu = this.contextMenu
+            .style('display', 'block')
             .style('visibility', 'visible')
             .style('left', menuX + 'px')
             .style('top', menuY + 'px')
-            .style('opacity', '0')
-            .style('transform', 'scale(0.95)')
-            .style('transition', 'all 0.1s ease-out')
+            .style('opacity', '1')
+            .style('transform', 'none')
+            .style('transition', 'none')
             .html('');
             
-        setTimeout(() => {
-            menu.style('opacity', '1')
-                .style('transform', 'scale(1)');
-        }, 0);
-        
         // Add menu items
         if (priceAtCursor && priceText) {
             this.addContextMenuItem(menu, `Copy price ${priceText}`, () => {
