@@ -830,6 +830,9 @@ class DrawingToolsManager {
         // Update cursor
         this.svg.style('cursor', toolName ? 'crosshair' : 'default');
         this.svg.style('pointer-events', toolName ? 'all' : 'none');
+        if (this.chart?.canvas) {
+            this.chart.canvas.style.cursor = toolName ? 'crosshair' : 'default';
+        }
         
         // Disable pointer events on all existing drawings when a tool is active
         if (toolName) {
@@ -837,11 +840,10 @@ class DrawingToolsManager {
                 if (drawing.group) {
                     drawing.group.style('pointer-events', 'none');
                     drawing.group.style('cursor', 'default');
-                    // Also disable pointer events on fill elements
-                    drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill').style('pointer-events', 'none');
-                    // Disable resize/custom handles while any drawing tool is active
-                    drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
-                        .style('pointer-events', 'none');
+                    // While in draw mode, existing drawings must not steal hover cursor or events.
+                    drawing.group.selectAll('*')
+                        .style('pointer-events', 'none')
+                        .style('cursor', 'default');
                 }
             });
         }
@@ -915,6 +917,11 @@ class DrawingToolsManager {
         // Clear favorites toolbar active state
         if (this.favoritesManager && typeof this.favoritesManager.syncActiveState === 'function') {
             this.favoritesManager.syncActiveState(null);
+        }
+
+        if (this.chart?.canvas) {
+            const cursorStyle = this.chart.getCurrentCursorStyle ? this.chart.getCurrentCursorStyle() : 'default';
+            this.chart.canvas.style.cursor = cursorStyle;
         }
     }
     
