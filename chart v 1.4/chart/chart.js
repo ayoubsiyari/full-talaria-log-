@@ -8088,6 +8088,46 @@ class Chart {
     }
 
     /**
+     * Seek replay to target index and force viewport to follow this jump once,
+     * while keeping the user's follow mode preference unchanged.
+     */
+    jumpReplayToIndex(targetIndex, { forceScroll = true } = {}) {
+        if (!this.replaySystem || !this.replaySystem.isActive) {
+            return false;
+        }
+
+        const replay = this.replaySystem;
+        const previousAutoScrollEnabled = replay.autoScrollEnabled;
+
+        try {
+            if (forceScroll) {
+                replay.autoScrollEnabled = true;
+            }
+
+            if (typeof replay.seekTo === 'function') {
+                replay.seekTo(targetIndex, { fromDrag: false });
+            } else {
+                const maxIndex = Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
+                    ? replay.fullRawData.length - 1
+                    : 0;
+                replay.currentIndex = Math.max(0, Math.min(targetIndex, maxIndex));
+                if (Array.isArray(replay.fullRawData) && replay.fullRawData[replay.currentIndex]) {
+                    replay.replayTimestamp = replay.fullRawData[replay.currentIndex].t;
+                }
+                replay.tickElapsedMs = 0;
+                replay.updateChartData(forceScroll);
+            }
+        } finally {
+            replay.autoScrollEnabled = previousAutoScrollEnabled;
+            if (typeof replay.updateAutoScrollIndicator === 'function') {
+                replay.updateAutoScrollIndicator();
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Jump to a specific date/time on the chart
      * @param {string} dateString - Date string in YYYY-MM-DD format
      */
@@ -8152,9 +8192,8 @@ class Chart {
             }
 
             if (usingReplay) {
-                // When replay is active, move replay position and let replay system handle rendering & panel sync
-                this.replaySystem.currentIndex = closestIndex;
-                this.replaySystem.updateChartData(true);
+                // Force one-off follow so Go To visibly moves even when replay follow mode is currently off.
+                this.jumpReplayToIndex(closestIndex, { forceScroll: true });
             } else {
                 // Normal mode: center the candle on screen
                 const m = this.margin;
@@ -8254,8 +8293,8 @@ class Chart {
             }
 
             if (usingReplay) {
-                this.replaySystem.currentIndex = closestIndex;
-                this.replaySystem.updateChartData(true);
+                // Force one-off follow so Go To visibly moves even when replay follow mode is currently off.
+                this.jumpReplayToIndex(closestIndex, { forceScroll: true });
             } else {
                 const m = this.margin;
                 const cw = this.w - m.l - m.r;
