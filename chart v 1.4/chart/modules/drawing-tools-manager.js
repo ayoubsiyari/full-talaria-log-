@@ -667,13 +667,15 @@ class DrawingToolsManager {
 
         // Double-click anywhere on a drawing (use same geometric hit-test as selection)
         svg.on('dblclick.drawing', (event) => {
-            if (this._suppressNextDrawingDblClick) {
-                this._suppressNextDrawingDblClick = false;
+            const suppressUntil = Number(this._suppressNextDrawingDblClickUntil || 0);
+            if (suppressUntil > 0 && Date.now() <= suppressUntil) {
+                this._suppressNextDrawingDblClickUntil = 0;
                 if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
                 if (typeof event.stopPropagation === 'function') event.stopPropagation();
                 if (typeof event.preventDefault === 'function') event.preventDefault();
                 return;
             }
+            this._suppressNextDrawingDblClickUntil = 0;
             openDrawingSettingsFromDoubleClick(event);
         });
         
@@ -747,7 +749,9 @@ class DrawingToolsManager {
                 if (isSecondClick) {
                     const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
                     if (openedFromDoubleClick) {
-                        this._suppressNextDrawingDblClick = true;
+                        // Prevent duplicate open from the browser's upcoming dblclick event.
+                        // Keep this suppression short-lived so later true dblclicks still work.
+                        this._suppressNextDrawingDblClickUntil = Date.now() + 600;
                     }
                     if (!openedFromDoubleClick) {
                         const best = drawingsAtPoint[0];
@@ -840,8 +844,9 @@ class DrawingToolsManager {
 
             const onDblClick = (event) => {
                 if (event.button !== 0) return;
-                if (this._suppressNextDrawingDblClick) {
-                    this._suppressNextDrawingDblClick = false;
+                const suppressUntil = Number(this._suppressNextDrawingDblClickUntil || 0);
+                if (suppressUntil > 0 && Date.now() <= suppressUntil) {
+                    this._suppressNextDrawingDblClickUntil = 0;
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -849,6 +854,7 @@ class DrawingToolsManager {
                     }
                     return;
                 }
+                this._suppressNextDrawingDblClickUntil = 0;
                 openDrawingSettingsFromDoubleClick(event);
             };
             canvas.addEventListener('dblclick', onDblClick, true);
