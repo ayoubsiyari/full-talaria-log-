@@ -943,13 +943,21 @@ class VolumeProfileTool extends BaseDrawing {
 
         const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
         const hasChartData = chartData.length > 0;
-        const rawIndex1 = Math.round(this.points[0].x);
-        const rawIndex2 = Math.round(this.points[1].x);
-        const clampedIndex1 = hasChartData ? Math.max(0, Math.min(chartData.length - 1, rawIndex1)) : rawIndex1;
-        const clampedIndex2 = hasChartData ? Math.max(0, Math.min(chartData.length - 1, rawIndex2)) : rawIndex2;
+        const rawIndex1 = Number.isFinite(this.points[0]?.x) ? Math.round(this.points[0].x) : 0;
+        const rawIndex2 = Number.isFinite(this.points[1]?.x) ? Math.round(this.points[1].x) : 0;
+        const maxDataIndex = hasChartData ? chartData.length - 1 : null;
+
+        // Left anchor stays bound to available data. Right anchor can extend into future space.
+        const clampedIndex1 = hasChartData
+            ? Math.max(0, Math.min(maxDataIndex, rawIndex1))
+            : Math.max(0, rawIndex1);
+        const displayIndex2 = Math.max(0, rawIndex2);
+        const dataIndex2 = hasChartData
+            ? Math.max(0, Math.min(maxDataIndex, rawIndex2))
+            : displayIndex2;
 
         this.points[0].x = clampedIndex1;
-        this.points[1].x = clampedIndex2;
+        this.points[1].x = displayIndex2;
 
         const fixedScreenRightX = Number(this.fixedScreenRightX);
         const hasFixedScreenRightX = Number.isFinite(fixedScreenRightX);
@@ -959,8 +967,8 @@ class VolumeProfileTool extends BaseDrawing {
         const x2 = hasFixedScreenRightX
             ? fixedScreenRightX
             : (scales.chart && scales.chart.dataIndexToPixel
-                ? scales.chart.dataIndexToPixel(clampedIndex2)
-                : scales.xScale(clampedIndex2));
+                ? scales.chart.dataIndexToPixel(displayIndex2)
+                : scales.xScale(displayIndex2));
 
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
@@ -976,8 +984,8 @@ class VolumeProfileTool extends BaseDrawing {
         const paneHeight = Math.max(1, paneBottom - paneTop);
 
         // Get chart data for volume profile calculation
-        const startIndex = Math.max(0, Math.min(clampedIndex1, clampedIndex2));
-        const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, clampedIndex2)) : Math.max(clampedIndex1, clampedIndex2);
+        const startIndex = Math.max(0, Math.min(clampedIndex1, dataIndex2));
+        const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, dataIndex2)) : Math.max(clampedIndex1, dataIndex2);
         if (chartData.length === 0 || startIndex > endIndex || width <= 0) {
             this.createHandles(this.group, scales);
             return;
@@ -1446,7 +1454,12 @@ class VolumeProfileTool extends BaseDrawing {
         this.points.forEach((point, index) => {
             let xIndex = Number.isFinite(point.x) ? Math.round(point.x) : 0;
             if (maxIndex !== null) {
-                xIndex = Math.max(0, Math.min(maxIndex, xIndex));
+                if (index === 1) {
+                    // Right VP boundary can live beyond last loaded candle (future space).
+                    xIndex = Math.max(0, xIndex);
+                } else {
+                    xIndex = Math.max(0, Math.min(maxIndex, xIndex));
+                }
             }
 
             const cx = scales.chart && scales.chart.dataIndexToPixel

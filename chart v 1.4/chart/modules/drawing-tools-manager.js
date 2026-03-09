@@ -2010,9 +2010,28 @@ class DrawingToolsManager {
             };
         }
 
+        const roundedX = Math.round(point.x);
+
+        // Fixed range VP: allow dragging the RIGHT boundary handle into future space
+        // (beyond last loaded candle), while keeping left boundary constrained.
+        if (this.isVolumeProfileToolType(toolType)) {
+            const isResizingVolumeProfile = !!(
+                this.isResizing &&
+                this.resizingDrawing &&
+                this.isVolumeProfileToolType(this.resizingDrawing.type)
+            );
+
+            if (isResizingVolumeProfile && this.resizingPointIndex === 1) {
+                return {
+                    ...point,
+                    x: Math.max(0, roundedX)
+                };
+            }
+        }
+
         return {
             ...point,
-            x: Math.max(0, Math.min(data.length - 1, Math.round(point.x)))
+            x: Math.max(0, Math.min(data.length - 1, roundedX))
         };
     }
 
