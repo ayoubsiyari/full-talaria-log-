@@ -6029,7 +6029,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 min="15"
                 max="65"
                 step="1"
-                style="width: 78px;"
+                style="width: 64px;"
             >
             <span class="tv-profile-width-value" style="color: #d1d4dc; font-size: 12px; min-width: 16px;">%</span>
         `;
@@ -6037,7 +6037,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const placement = String(drawing.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         const placementRow = createStyleRow('Placement');
         placementRow.controls.innerHTML = `
-            <select class="tv-select" data-prop="profilePlacement" style="width: 130px;">
+            <select class="tv-select" data-prop="profilePlacement" style="width: 112px;">
                 <option value="left" ${placement === 'left' ? 'selected' : ''}>Left</option>
                 <option value="right" ${placement === 'right' ? 'selected' : ''}>Right</option>
             </select>
