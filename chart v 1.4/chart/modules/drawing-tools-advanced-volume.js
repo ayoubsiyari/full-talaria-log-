@@ -643,39 +643,49 @@ class AnchoredVWAPTool extends BaseDrawing {
             }
         }
 
-        // Anchor point (TradingView-like: this is the only control target)
+        // Anchor point: align with standard resize-handle style.
+        const anchorHandleRadius = 3;
+        const anchorHitRadius = 12;
+        const anchorHandleStroke = '#2962FF';
+        const anchorHandleStrokeWidth = 2;
+
         this.group.append('circle')
             .attr('class', 'anchored-vwap-anchor-hit shape-border-hit')
             .attr('cx', anchorX)
             .attr('cy', anchorY)
-            .attr('r', 20)
+            .attr('r', anchorHitRadius)
             .attr('fill', 'transparent')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', 1)
+            .attr('stroke', 'none')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        this.group.append('circle')
+        const anchorHandle = this.group.append('circle')
             .attr('class', 'anchored-vwap-anchor')
             .attr('cx', anchorX)
             .attr('cy', anchorY)
-            .attr('r', 8)
-            .attr('fill', this.style.stroke)
-            .attr('stroke', '#ffffff')
-            .attr('stroke-width', 2)
-            .attr('opacity', this.style.opacity)
+            .attr('r', anchorHandleRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', anchorHandleStroke)
+            .attr('stroke-width', anchorHandleStrokeWidth)
+            .attr('opacity', 1)
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        this.group.append('circle')
-            .attr('class', 'anchored-vwap-anchor-center')
-            .attr('cx', anchorX)
-            .attr('cy', anchorY)
-            .attr('r', 2.5)
-            .attr('fill', '#2962FF')
-            .attr('stroke', '#ffffff')
-            .attr('stroke-width', 1)
-            .style('pointer-events', 'none');
+        anchorHandle
+            .on('mouseenter', function() {
+                d3.select(this)
+                    .transition()
+                    .duration(150)
+                    .attr('r', anchorHandleRadius + 1)
+                    .attr('stroke-width', anchorHandleStrokeWidth + 0.5);
+            })
+            .on('mouseleave', function() {
+                d3.select(this)
+                    .transition()
+                    .duration(150)
+                    .attr('r', anchorHandleRadius)
+                    .attr('stroke-width', anchorHandleStrokeWidth);
+            });
 
         const buildPoints = (transformFn = (point) => point.vwap) => {
             return vwapPoints.map(p => {
@@ -870,7 +880,6 @@ class AnchoredVWAPTool extends BaseDrawing {
         }
 
         this.group.selectAll('.anchored-vwap-anchor-hit, .anchored-vwap-anchor').raise();
-        this.group.selectAll('.anchored-vwap-anchor-center').raise();
 
         // Label
         this.group.append('text')

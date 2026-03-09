@@ -4587,6 +4587,22 @@ class DrawingToolsManager {
         try {
             const urlParams = new URLSearchParams(window.location.search);
             const drawingsParam = urlParams.get('drawings');
+
+            const allowUrlDrawingsSync = (
+                typeof window !== 'undefined' &&
+                window &&
+                window.__ENABLE_DRAWINGS_URL_SYNC__ === true
+            );
+
+            // URL drawings sync is opt-in only. If disabled, clean stale parameter and ignore it.
+            if (!allowUrlDrawingsSync) {
+                if (drawingsParam) {
+                    const url = new URL(window.location);
+                    url.searchParams.delete('drawings');
+                    window.history.replaceState({}, '', url);
+                }
+                return null;
+            }
             
             if (!drawingsParam) {
                 return null;
