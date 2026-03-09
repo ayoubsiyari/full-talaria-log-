@@ -909,6 +909,8 @@ class VolumeProfileTool extends BaseDrawing {
         if ((!hasOwn('fill') || style.fill === 'none' || style.fill === 'transparent') && style.showBackground !== false) {
             this.style.fill = 'rgba(14, 59, 70, 0.22)';
         }
+        if (this.style.showBackground === undefined) this.style.showBackground = true;
+        if (!Number.isFinite(Number(this.style.backgroundOpacity))) this.style.backgroundOpacity = 0.85;
         if (!hasOwn('buyColor')) this.style.buyColor = 'rgba(53, 186, 209, 0.82)';
         if (!hasOwn('sellColor')) this.style.sellColor = 'rgba(199, 71, 130, 0.82)';
         if (!hasOwn('valueAreaBuyColor')) this.style.valueAreaBuyColor = 'rgba(53, 186, 209, 1)';
@@ -969,10 +971,16 @@ class VolumeProfileTool extends BaseDrawing {
             : (scales.chart && scales.chart.dataIndexToPixel
                 ? scales.chart.dataIndexToPixel(displayIndex2)
                 : scales.xScale(displayIndex2));
+        const x2Data = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(dataIndex2)
+            : scales.xScale(dataIndex2);
 
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
         const width = right - left;
+        const effectiveProfileLeft = Math.min(x1, x2Data);
+        const effectiveProfileRight = Math.max(x1, x2Data);
+        const effectiveProfileWidth = Math.max(0, effectiveProfileRight - effectiveProfileLeft);
 
         const yDomain = scales.yScale.domain();
         const domainFirst = Array.isArray(yDomain) && yDomain.length > 0 ? yDomain[0] : this.points[0].y;
@@ -986,7 +994,7 @@ class VolumeProfileTool extends BaseDrawing {
         // Get chart data for volume profile calculation
         const startIndex = Math.max(0, Math.min(clampedIndex1, dataIndex2));
         const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, dataIndex2)) : Math.max(clampedIndex1, dataIndex2);
-        if (chartData.length === 0 || startIndex > endIndex || width <= 0) {
+        if (chartData.length === 0 || startIndex > endIndex || width <= 0 || effectiveProfileWidth <= 0) {
             this.createHandles(this.group, scales);
             return;
         }
@@ -1026,6 +1034,10 @@ class VolumeProfileTool extends BaseDrawing {
         const backgroundFill = showBackground
             ? (this.style.fill || 'rgba(14, 59, 70, 0.22)')
             : 'transparent';
+        const backgroundOpacityRaw = Number(this.style.backgroundOpacity);
+        const backgroundOpacity = Number.isFinite(backgroundOpacityRaw)
+            ? Math.max(0, Math.min(1, backgroundOpacityRaw))
+            : 0.85;
 
         // Visual profile background.
         this.group.append('rect')
@@ -1035,7 +1047,7 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('width', width)
             .attr('height', Math.max(1, height))
             .attr('fill', backgroundFill)
-            .attr('opacity', Math.min(1, globalOpacity * 0.85))
+            .attr('opacity', Math.min(1, globalOpacity * backgroundOpacity))
             .attr('stroke', 'none')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -1257,7 +1269,8 @@ class VolumeProfileTool extends BaseDrawing {
         }
         
         const profileWidthRatio = Math.max(0.15, Math.min(0.65, Number(this.style.profileWidthRatio) || 0.3));
-        const maxProfileWidth = Math.max(12, width * profileWidthRatio);
+        // Keep profile bar widths frozen once right boundary passes last loaded candle.
+        const maxProfileWidth = Math.max(12, effectiveProfileWidth * profileWidthRatio);
         const profilePlacement = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         const buyColor = this.style.buyColor || 'rgba(53, 186, 209, 0.82)';
         const sellColor = this.style.sellColor || 'rgba(199, 71, 130, 0.82)';
@@ -1270,7 +1283,7 @@ class VolumeProfileTool extends BaseDrawing {
         const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
         const chartLeftEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.min(...xScaleRange) : left;
         const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
-        const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : right;
+        const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : effectiveProfileRight;
         const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
         const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
         const levelLineStartX = hasFixedProfileSide ? chartLeftEdge : left;
@@ -1312,7 +1325,7 @@ class VolumeProfileTool extends BaseDrawing {
             } else if (fixedProfileSide === 'right') {
                 rowLeft = chartRightEdge - totalWidth;
             } else {
-                rowLeft = profilePlacement === 'right' ? right - totalWidth : left;
+                rowLeft = profilePlacement === 'right' ? effectiveProfileRight - totalWidth : effectiveProfileLeft;
             }
 
             if (volumeDisplay === 'total') {
@@ -1356,7 +1369,7 @@ class VolumeProfileTool extends BaseDrawing {
                     : `${formatVolumeValue(buyVolume)}x${formatVolumeValue(sellVolume)}`;
                 const labelX = fixedProfileSide === 'left'
                     ? chartLeftEdge + 3
-                    : (fixedProfileSide === 'right' ? chartRightEdge - 3 : (profilePlacement === 'right' ? right - 3 : left + 3));
+                    : (fixedProfileSide === 'right' ? chartRightEdge - 3 : (profilePlacement === 'right' ? effectiveProfileRight - 3 : effectiveProfileLeft + 3));
                 const labelAnchor = fixedProfileSide === 'right'
                     ? 'end'
                     : (profilePlacement === 'right' ? 'end' : 'start');

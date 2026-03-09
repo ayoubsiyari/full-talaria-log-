@@ -5929,6 +5929,11 @@ body.light-mode .template-save-dialog .dialog-title {
         if (!drawing.style.VAHColor) drawing.style.VAHColor = '#089981';
         if (!drawing.style.VALColor) drawing.style.VALColor = '#f23645';
         if (!drawing.style.valuesColor) drawing.style.valuesColor = '#d1d4dc';
+        if (drawing.style.showBackground === undefined) drawing.style.showBackground = true;
+        if (!Number.isFinite(Number(drawing.style.backgroundOpacity))) drawing.style.backgroundOpacity = 0.85;
+        if ((!drawing.style.fill || drawing.style.fill === 'none' || drawing.style.fill === 'transparent') && drawing.style.showBackground !== false) {
+            drawing.style.fill = 'rgba(14, 59, 70, 0.22)';
+        }
 
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
@@ -5995,6 +6000,24 @@ body.light-mode .template-save-dialog .dialog-title {
                 <option value="left" ${placement === 'left' ? 'selected' : ''}>Left</option>
                 <option value="right" ${placement === 'right' ? 'selected' : ''}>Right</option>
             </select>
+        `;
+
+        const zoneBackgroundEnabled = drawing.style.showBackground !== false;
+        const zoneBackgroundOpacityPercent = Math.max(0, Math.min(100, Math.round((Number(drawing.style.backgroundOpacity) || 0.85) * 100)));
+        const zoneBackgroundRow = createStyleRow('');
+        zoneBackgroundRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        zoneBackgroundRow.label.innerHTML = `
+            <div class="tv-checkbox ${zoneBackgroundEnabled ? 'checked' : ''}" data-prop="showBackground">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Zone Background</span>
+        `;
+        zoneBackgroundRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(14, 59, 70, 0.22)'};"></button>
+            <input type="range" class="tv-slider" data-prop="backgroundOpacity" value="${zoneBackgroundOpacityPercent}" min="0" max="100" step="1" style="width: 92px; accent-color: #2962ff;">
+            <span class="tv-background-opacity-value" style="color: #d1d4dc; font-size: 12px; min-width: 38px; text-align: right;">${zoneBackgroundOpacityPercent}%</span>
         `;
 
         const upVolumeRow = createStyleRow('Up Volume');
@@ -8537,7 +8560,18 @@ body.light-mode .template-save-dialog .dialog-title {
                 if (prop === 'showBackground') {
                     // For range tools, explicitly toggle showBackground and re-render immediately
                     const rangeTools = ['date-price-range', 'price-range', 'date-range'];
-                    if (rangeTools.includes(drawing.type)) {
+                    const volumeProfileTools = ['volume-profile', 'fixed-range-volume-profile', 'anchored-volume-profile'];
+                    if (volumeProfileTools.includes(drawing.type)) {
+                        drawing.style.showBackground = isChecked;
+                        if (isChecked) {
+                            drawing.style.fill = drawing.style._savedFill || this.pendingChanges.backgroundColor || drawing.style.fill || 'rgba(14, 59, 70, 0.22)';
+                        } else {
+                            if (drawing.style.fill && drawing.style.fill !== 'none' && drawing.style.fill !== 'transparent') {
+                                drawing.style._savedFill = drawing.style.fill;
+                            }
+                        }
+                    }
+                    else if (rangeTools.includes(drawing.type)) {
                         drawing.style.showBackground = isChecked;
                         if (isChecked) {
                             drawing.style.fill = drawing.style._savedFill || this.pendingChanges.backgroundColor || drawing.style.fill || 'rgba(41, 98, 255, 0.15)';
@@ -9365,6 +9399,32 @@ body.light-mode .template-save-dialog .dialog-title {
             control.addEventListener('change', applyProfileWidthRatio);
         });
 
+        queryAll('.tv-slider[data-prop="backgroundOpacity"]').forEach(slider => {
+            const isVolumeProfileTool = drawing.type === 'volume-profile'
+                || drawing.type === 'fixed-range-volume-profile'
+                || drawing.type === 'anchored-volume-profile';
+            if (!isVolumeProfileTool) return;
+
+            const applyBackgroundOpacity = () => {
+                const rawPercent = parseInt(String(slider.value || '').trim(), 10);
+                const percent = Number.isFinite(rawPercent) ? rawPercent : 85;
+                const opacity = Math.max(0, Math.min(1, percent / 100));
+
+                this.pendingChanges.backgroundOpacity = opacity;
+                drawing.style.backgroundOpacity = opacity;
+
+                const valueDisplay = slider.parentElement.querySelector('.tv-background-opacity-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = `${Math.round(opacity * 100)}%`;
+                }
+
+                self.renderPreview(drawing);
+            };
+
+            slider.addEventListener('input', applyBackgroundOpacity);
+            slider.addEventListener('change', applyBackgroundOpacity);
+        });
+
         queryAll('.tv-input[data-prop="rowSize"], .tv-input[data-prop="valueAreaVolume"]').forEach(input => {
             const prop = input.dataset.prop;
 
@@ -9836,6 +9896,23 @@ body.light-mode .template-save-dialog .dialog-title {
                     actualDrawing.group.selectAll('.middle-line').attr('stroke', finalColor);
                 }
             } else if (prop === 'backgroundColor') {
+                const isVolumeProfileTool = drawing.type === 'volume-profile'
+                    || drawing.type === 'fixed-range-volume-profile'
+                    || drawing.type === 'anchored-volume-profile';
+                if (isVolumeProfileTool) {
+                    actualDrawing.style.fill = finalColor;
+                    drawing.style.fill = finalColor;
+                    actualDrawing.style.showBackground = true;
+                    drawing.style.showBackground = true;
+                    this.pendingChanges.showBackground = true;
+                    this.pendingChanges.backgroundColor = finalColor;
+                    if (drawingManager) {
+                        drawingManager.renderDrawing(actualDrawing);
+                        drawingManager.saveDrawings();
+                    }
+                    return;
+                }
+
                 const usesBackgroundColor = ['callout', 'comment', 'notebox', 'anchored-text', 'pin'].includes(drawing.type);
                 if (usesBackgroundColor) {
                     actualDrawing.style.backgroundColor = finalColor;
@@ -10186,7 +10263,27 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.extendRight !== undefined) drawing.style.extendRight = this.pendingChanges.extendRight;
         
         // Background properties
-        if (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') {
+        const isVolumeProfileTool = drawing.type === 'volume-profile'
+            || drawing.type === 'fixed-range-volume-profile'
+            || drawing.type === 'anchored-volume-profile';
+
+        if (isVolumeProfileTool) {
+            if (this.pendingChanges.backgroundColor) drawing.style.fill = this.pendingChanges.backgroundColor;
+            if (this.pendingChanges.backgroundOpacity !== undefined) {
+                const parsedBackgroundOpacity = Number(this.pendingChanges.backgroundOpacity);
+                if (Number.isFinite(parsedBackgroundOpacity)) {
+                    drawing.style.backgroundOpacity = Math.max(0, Math.min(1, parsedBackgroundOpacity));
+                }
+            }
+            if (this.pendingChanges.showBackground !== undefined) {
+                drawing.style.showBackground = this.pendingChanges.showBackground;
+                if (this.pendingChanges.showBackground) {
+                    drawing.style.fill = this.pendingChanges.backgroundColor || drawing.style._savedFill || drawing.style.fill || 'rgba(14, 59, 70, 0.22)';
+                } else if (drawing.style.fill && drawing.style.fill !== 'none' && drawing.style.fill !== 'transparent') {
+                    drawing.style._savedFill = drawing.style.fill;
+                }
+            }
+        } else if (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') {
             if (this.pendingChanges.backgroundEnabled !== undefined) {
                 drawing.style.backgroundEnabled = this.pendingChanges.backgroundEnabled;
             }
