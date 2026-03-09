@@ -952,6 +952,9 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('class', 'drawing drawing-volume-profile')
             .attr('data-id', this.id);
 
+        this._profileTopY = null;
+        this._profileBottomY = null;
+
         if (this.points.length < 2) {
             if (isPreview) {
                 const point = this.points[0] || {};
@@ -1053,6 +1056,9 @@ class VolumeProfileTool extends BaseDrawing {
             return;
         }
 
+        this._profileTopY = top;
+        this._profileBottomY = bottom;
+
         const opacityRaw = Number(this.style.opacity);
         const globalOpacity = Number.isFinite(opacityRaw)
             ? Math.max(0, Math.min(1, opacityRaw))
@@ -1121,7 +1127,7 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('opacity', Math.min(1, globalOpacity * 0.95))
             .style('pointer-events', 'none');
 
-        if (isPreview || this.selected) {
+        if (isPreview) {
             this.renderCornerPoint(this.group, left, top, Math.min(1, globalOpacity * 0.95));
             this.renderCornerPoint(this.group, right, bottom, Math.min(1, globalOpacity * 0.95));
         }
@@ -1509,14 +1515,16 @@ class VolumeProfileTool extends BaseDrawing {
         const domainLast = Array.isArray(yDomain) && yDomain.length > 1 ? yDomain[yDomain.length - 1] : 0;
         const domainLow = Math.min(domainFirst, domainLast);
         const domainHigh = Math.max(domainFirst, domainLast);
-        const topY = Math.min(scales.yScale(domainLow), scales.yScale(domainHigh));
-        const bottomY = Math.max(scales.yScale(domainLow), scales.yScale(domainHigh));
-        const handleY = topY + ((bottomY - topY) / 2);
+        const fallbackTopY = Math.min(scales.yScale(domainLow), scales.yScale(domainHigh));
+        const fallbackBottomY = Math.max(scales.yScale(domainLow), scales.yScale(domainHigh));
+        const topY = Number.isFinite(this._profileTopY) ? this._profileTopY : fallbackTopY;
+        const bottomY = Number.isFinite(this._profileBottomY) ? this._profileBottomY : fallbackBottomY;
+        const middleY = topY + ((bottomY - topY) / 2);
 
         const handleRadius = 4;
         const hitRadius = 14;
 
-        this.points.forEach((point, index) => {
+        const pointPositions = this.points.map((point, index) => {
             let xIndex = Number.isFinite(point.x) ? Math.round(point.x) : 0;
             if (maxIndex !== null) {
                 if (index === 1) {
@@ -1530,6 +1538,21 @@ class VolumeProfileTool extends BaseDrawing {
             const cx = scales.chart && scales.chart.dataIndexToPixel
                 ? scales.chart.dataIndexToPixel(xIndex)
                 : scales.xScale(xIndex);
+
+            return { point, index, cx };
+        });
+
+        const sortedByX = [...pointPositions].sort((a, b) => {
+            if (a.cx === b.cx) return a.index - b.index;
+            return a.cx - b.cx;
+        });
+        const topCornerIndex = sortedByX.length > 0 ? sortedByX[0].index : null;
+        const bottomCornerIndex = sortedByX.length > 0 ? sortedByX[sortedByX.length - 1].index : null;
+
+        pointPositions.forEach(({ point, index, cx }) => {
+            const handleY = index === topCornerIndex
+                ? topY
+                : (index === bottomCornerIndex ? bottomY : middleY);
 
             group.append('line')
                 .attr('class', 'vertical-guide volume-profile-guide')
