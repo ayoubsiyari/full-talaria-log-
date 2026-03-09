@@ -3169,56 +3169,63 @@ body.light-mode .template-save-dialog .dialog-title {
         vwapRow.style.marginBottom = '12px';
         container.appendChild(vwapRow);
 
-        for (let bandNumber = 1; bandNumber <= 3; bandNumber++) {
-            const lowerPropKey = `vwapLowerBand${bandNumber}`;
+        for (let bandNumber = 1; bandNumber <= 2; bandNumber++) {
             const upperPropKey = `vwapUpperBand${bandNumber}`;
+            const lowerPropKey = `vwapLowerBand${bandNumber}`;
+            const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
+            const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
 
-            const lowerRow = this.createPropertyRow(
-                `Lower band #${bandNumber}`,
-                drawing.style[`${lowerPropKey}Enabled`] !== false,
-                {
-                    color: drawing.style[`${lowerPropKey}Color`],
-                    lineType: drawing.style[`${lowerPropKey}Type`],
-                    lineWidth: drawing.style[`${lowerPropKey}Width`]
-                },
-                drawing,
-                lowerPropKey
-            );
-            container.appendChild(lowerRow);
+            const bandEnabled = (drawing.style[`${upperPropKey}Enabled`] !== false)
+                || (drawing.style[`${lowerPropKey}Enabled`] !== false);
+            const bandColor = drawing.style[`${upperPropKey}Color`]
+                || drawing.style[`${lowerPropKey}Color`]
+                || bandDefaults[bandNumber - 1].color;
+            const bandType = drawing.style[`${upperPropKey}Type`]
+                || drawing.style[`${lowerPropKey}Type`]
+                || '2,2';
+            const bandWidth = drawing.style[`${upperPropKey}Width`]
+                || drawing.style[`${lowerPropKey}Width`]
+                || 1;
 
-            const upperRow = this.createPropertyRow(
-                `Upper band #${bandNumber}`,
-                drawing.style[`${upperPropKey}Enabled`] !== false,
+            // Keep upper/lower lines in sync while using a single Band row in settings.
+            drawing.style[`${upperPropKey}Enabled`] = bandEnabled;
+            drawing.style[`${lowerPropKey}Enabled`] = bandEnabled;
+            drawing.style[`${upperPropKey}Color`] = bandColor;
+            drawing.style[`${lowerPropKey}Color`] = bandColor;
+            drawing.style[`${upperPropKey}Type`] = bandType;
+            drawing.style[`${lowerPropKey}Type`] = bandType;
+            drawing.style[`${upperPropKey}Width`] = bandWidth;
+            drawing.style[`${lowerPropKey}Width`] = bandWidth;
+
+            const bandRow = this.createPropertyRow(
+                `Band #${bandNumber}`,
+                bandEnabled,
                 {
-                    color: drawing.style[`${upperPropKey}Color`],
-                    lineType: drawing.style[`${upperPropKey}Type`],
-                    lineWidth: drawing.style[`${upperPropKey}Width`]
+                    color: bandColor,
+                    lineType: bandType,
+                    lineWidth: bandWidth
                 },
                 drawing,
                 upperPropKey
             );
-            container.appendChild(upperRow);
+            container.appendChild(bandRow);
 
-            if (bandNumber === 1) {
-                const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
-                const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
-                const backgroundRow = document.createElement('div');
-                backgroundRow.className = 'tv-prop-row';
-                backgroundRow.innerHTML = `
-                    <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                        <div class="tv-checkbox ${drawing.style[backgroundEnabledProp] ? 'checked' : ''}" data-prop="${backgroundEnabledProp}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                        </div>
-                        Background #1
-                    </span>
-                    <div class="tv-prop-controls">
-                        <button class="tv-color-btn" data-prop="${backgroundColorProp}" style="background: ${drawing.style[backgroundColorProp]};"></button>
+            const backgroundRow = document.createElement('div');
+            backgroundRow.className = 'tv-prop-row';
+            backgroundRow.innerHTML = `
+                <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
+                    <div class="tv-checkbox ${drawing.style[backgroundEnabledProp] ? 'checked' : ''}" data-prop="${backgroundEnabledProp}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
                     </div>
-                `;
-                container.appendChild(backgroundRow);
-            }
+                    Background #${bandNumber}
+                </span>
+                <div class="tv-prop-controls">
+                    <button class="tv-color-btn" data-prop="${backgroundColorProp}" style="background: ${drawing.style[backgroundColorProp]};"></button>
+                </div>
+            `;
+            container.appendChild(backgroundRow);
         }
 
         const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
@@ -9004,6 +9011,13 @@ body.light-mode .template-save-dialog .dialog-title {
                     self.renderPreview(drawing);
                 }
 
+                const linkedUpperBandEnabledMatch = prop.match(/^vwapUpperBand([12])Enabled$/);
+                if (linkedUpperBandEnabledMatch) {
+                    const lowerEnabledProp = `vwapLowerBand${linkedUpperBandEnabledMatch[1]}Enabled`;
+                    this.pendingChanges[lowerEnabledProp] = isChecked;
+                    drawing.style[lowerEnabledProp] = isChecked;
+                }
+
                 if (/^vwap(?:Lower|Upper)Band[1-3]Enabled$/.test(prop) || /^vwapBand[1-3]BackgroundEnabled$/.test(prop)) {
                     drawing.style[prop] = isChecked;
                     self.renderPreview(drawing);
@@ -9224,6 +9238,14 @@ body.light-mode .template-save-dialog .dialog-title {
                         : '2,2';
                     drawing.style[prop] = normalizedType;
                     this.pendingChanges[prop] = normalizedType;
+
+                    const linkedUpperBandTypeMatch = prop.match(/^vwapUpperBand([12])Type$/);
+                    if (linkedUpperBandTypeMatch) {
+                        const lowerTypeProp = `vwapLowerBand${linkedUpperBandTypeMatch[1]}Type`;
+                        drawing.style[lowerTypeProp] = normalizedType;
+                        this.pendingChanges[lowerTypeProp] = normalizedType;
+                    }
+
                     self.renderPreview(drawing);
                 } else if (/^vwap(?:Lower|Upper)Band[1-3]Width$/.test(prop)) {
                     const parsedWidth = parseInt(value, 10);
@@ -9232,6 +9254,14 @@ body.light-mode .template-save-dialog .dialog-title {
                         : 1;
                     drawing.style[prop] = normalizedWidth;
                     this.pendingChanges[prop] = normalizedWidth;
+
+                    const linkedUpperBandWidthMatch = prop.match(/^vwapUpperBand([12])Width$/);
+                    if (linkedUpperBandWidthMatch) {
+                        const lowerWidthProp = `vwapLowerBand${linkedUpperBandWidthMatch[1]}Width`;
+                        drawing.style[lowerWidthProp] = normalizedWidth;
+                        this.pendingChanges[lowerWidthProp] = normalizedWidth;
+                    }
+
                     self.renderPreview(drawing);
                 } else if (prop === 'fontSize') {
                     drawing.style.fontSize = parseInt(value);
@@ -10123,6 +10153,15 @@ body.light-mode .template-save-dialog .dialog-title {
                 if (!actualDrawing.style) actualDrawing.style = {};
                 actualDrawing.style[prop] = finalColor;
                 drawing.style[prop] = finalColor;
+
+                const linkedUpperBandColorMatch = prop.match(/^vwapUpperBand([12])Color$/);
+                if (linkedUpperBandColorMatch) {
+                    const lowerColorProp = `vwapLowerBand${linkedUpperBandColorMatch[1]}Color`;
+                    actualDrawing.style[lowerColorProp] = finalColor;
+                    drawing.style[lowerColorProp] = finalColor;
+                    this.pendingChanges[lowerColorProp] = finalColor;
+                }
+
                 if (drawingManager) {
                     drawingManager.renderDrawing(actualDrawing);
                     drawingManager.saveDrawings();
