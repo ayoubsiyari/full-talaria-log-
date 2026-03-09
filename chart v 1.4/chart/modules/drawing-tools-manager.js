@@ -6033,6 +6033,54 @@ class DrawingToolsManager {
 
                     // Allow selecting/double-clicking inside the profile body area.
                     if (!hitsById.has(drawing.id)) {
+                        const isInsideRect = (rectNode, pad = 0) => {
+                            if (!rectNode) return false;
+
+                            const x = Number(rectNode.getAttribute('x'));
+                            const y = Number(rectNode.getAttribute('y'));
+                            const width = Number(rectNode.getAttribute('width'));
+                            const height = Number(rectNode.getAttribute('height'));
+                            if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+                                return false;
+                            }
+
+                            return mouseX >= (x - pad) && mouseX <= (x + width + pad)
+                                && mouseY >= (y - pad) && mouseY <= (y + height + pad);
+                        };
+
+                        // Hit test on the visible body itself (background and per-row bars).
+                        const rangeRect = drawing.group.select('.volume-profile-range').node();
+                        if (isInsideRect(rangeRect, 0.75)) {
+                            hitsById.set(drawing.id, { drawing, distance: 0, z });
+                        }
+                    }
+
+                    if (!hitsById.has(drawing.id)) {
+                        const barRects = drawing.group.selectAll('rect').nodes();
+                        for (const rect of barRects) {
+                            if (!rect) continue;
+
+                            const rectSel = d3.select(rect);
+                            if (rectSel.classed('volume-profile-range')) continue;
+
+                            const x = Number(rect.getAttribute('x'));
+                            const y = Number(rect.getAttribute('y'));
+                            const width = Number(rect.getAttribute('width'));
+                            const height = Number(rect.getAttribute('height'));
+                            if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+                                continue;
+                            }
+
+                            const insideBar = mouseX >= (x - 0.75) && mouseX <= (x + width + 0.75)
+                                && mouseY >= (y - 0.75) && mouseY <= (y + height + 0.75);
+                            if (insideBar) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!hitsById.has(drawing.id)) {
                         const boundaryLines = drawing.group.selectAll('.volume-profile-boundary').nodes();
                         if (Array.isArray(boundaryLines) && boundaryLines.length >= 2) {
                             const xValues = [];
