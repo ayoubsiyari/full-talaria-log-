@@ -1826,24 +1826,6 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         this.group.selectAll('.resize-handle-group[data-point-index="1"]').remove();
         this.group.selectAll('.resize-handle[data-point-index="1"], .resize-handle-hit[data-point-index="1"]').remove();
 
-        const guideNodes = this.group.selectAll('.vertical-guide.volume-profile-guide').nodes();
-        if (guideNodes.length > 1) {
-            let rightMostNode = null;
-            let rightMostX = -Infinity;
-            guideNodes.forEach((node) => {
-                const line = d3.select(node);
-                const lineX = Number(line.attr('x1'));
-                if (Number.isFinite(lineX) && lineX > rightMostX) {
-                    rightMostX = lineX;
-                    rightMostNode = node;
-                }
-            });
-
-            if (rightMostNode) {
-                d3.select(rightMostNode).remove();
-            }
-        }
-
         this.handles = Array.isArray(proxy.handles)
             ? proxy.handles.filter(h => h && h.index === 0)
             : [];
