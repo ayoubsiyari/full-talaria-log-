@@ -670,6 +670,38 @@ class DrawingSettingsPanel {
     border-color: #2962ff;
 }
 
+/* Volume Profile Inputs (Volume + Anchored Volume) */
+.tv-volume-profile-input {
+    width: 170px !important;
+    height: 34px !important;
+    border-radius: 7px !important;
+    font-size: 12px !important;
+    font-weight: 500;
+    background-color: rgba(255, 255, 255, 0.10) !important;
+    border-color: rgba(140, 148, 180, 0.30) !important;
+}
+
+.tv-select.tv-volume-profile-input {
+    padding: 5px 26px 5px 10px;
+}
+
+.tv-input.tv-volume-profile-input {
+    text-align: center;
+    padding: 6px 10px;
+}
+
+.tv-volume-profile-input:hover {
+    background-color: rgba(41, 98, 255, 0.14) !important;
+    border-color: rgba(41, 98, 255, 0.62) !important;
+    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.14);
+}
+
+.tv-volume-profile-input:focus {
+    outline: none;
+    border-color: #2962ff !important;
+    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.18);
+}
+
 /* Toggle Switch */
 .tv-toggle {
     width: 33px;
@@ -5795,7 +5827,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
 
-        const labelColumnWidth = 170;
+        const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
 
         const createStyleRow = (labelText) => {
@@ -7679,8 +7711,10 @@ body.light-mode .template-save-dialog .dialog-title {
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
 
-        const labelColumnWidth = 170;
+        const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
+        const controlFieldWidth = 170;
+        const controlFieldStyle = `width: ${controlFieldWidth}px;`;
 
         const createInputRow = (labelText) => {
             const row = document.createElement('div');
@@ -7704,7 +7738,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const rowsLayoutRow = createInputRow('Rows Layout');
         rowsLayoutRow.controls.innerHTML = `
-            <select class="tv-select" data-prop="rowsLayout" style="width: 130px;">
+            <select class="tv-select tv-volume-profile-input" data-prop="rowsLayout" style="${controlFieldStyle}">
                 <option value="numberOfRows" ${drawing.style.rowsLayout === 'numberOfRows' ? 'selected' : ''}>Number of Rows</option>
                 <option value="ticksPerRow" ${drawing.style.rowsLayout === 'ticksPerRow' ? 'selected' : ''}>Ticks Per Row</option>
             </select>
@@ -7714,13 +7748,13 @@ body.light-mode .template-save-dialog .dialog-title {
         rowSizeRow.controls.innerHTML = `
             <input
                 type="number"
-                class="tv-input"
+                class="tv-input tv-volume-profile-input"
                 data-prop="rowSize"
                 value="${drawing.style.rowSize}"
                 min="1"
                 max="500"
                 step="1"
-                style="width: 130px;"
+                style="${controlFieldStyle}"
             >
         `;
 
@@ -7736,7 +7770,7 @@ body.light-mode .template-save-dialog .dialog-title {
             <span class="tv-checkbox-label" style="white-space: nowrap;">Volume</span>
         `;
         volumeRow.controls.innerHTML = `
-            <select class="tv-select" data-prop="volumeDisplay" style="width: 130px; ${volumeEnabled ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${volumeEnabled ? '' : 'disabled'}>
+            <select class="tv-select tv-volume-profile-input" data-prop="volumeDisplay" style="${controlFieldStyle} ${volumeEnabled ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${volumeEnabled ? '' : 'disabled'}>
                 <option value="upDown" ${drawing.style.volumeDisplay === 'upDown' ? 'selected' : ''}>Up/Down</option>
                 <option value="total" ${drawing.style.volumeDisplay === 'total' ? 'selected' : ''}>Total</option>
             </select>
@@ -7746,13 +7780,13 @@ body.light-mode .template-save-dialog .dialog-title {
         valueAreaVolumeRow.controls.innerHTML = `
             <input
                 type="number"
-                class="tv-input"
+                class="tv-input tv-volume-profile-input"
                 data-prop="valueAreaVolume"
                 value="${drawing.style.valueAreaVolume}"
                 min="1"
                 max="100"
                 step="1"
-                style="width: 130px;"
+                style="${controlFieldStyle}"
             >
         `;
 
