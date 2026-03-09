@@ -8134,6 +8134,12 @@ class Chart {
 
             if (typeof replay.seekTo === 'function') {
                 replay.seekTo(targetIndex, { fromDrag: false });
+
+                // Some replay states can keep stale viewport until the next follow action.
+                // Force one more update while follow is temporarily enabled so Go To is immediate.
+                if (forceScroll && typeof replay.updateChartData === 'function') {
+                    replay.updateChartData(true);
+                }
             } else {
                 const maxIndex = Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
                     ? replay.fullRawData.length - 1
@@ -8149,6 +8155,10 @@ class Chart {
             replay.autoScrollEnabled = previousAutoScrollEnabled;
             if (typeof replay.updateAutoScrollIndicator === 'function') {
                 replay.updateAutoScrollIndicator();
+                requestAnimationFrame(() => {
+                    // Re-evaluate after render so the follow button state is accurate.
+                    replay.updateAutoScrollIndicator();
+                });
             }
         }
 
