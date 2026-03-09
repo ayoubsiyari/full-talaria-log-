@@ -2620,6 +2620,8 @@ class DrawingToolsManager {
 
         // Volume Profile tools: only boundary interactions should be selectable.
         if (this.isVolumeProfileToolType(drawing.type)) {
+            const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
+
             drawing.group.selectAll('line')
                 .style('pointer-events', 'none')
                 .style('cursor', 'default');
@@ -2634,7 +2636,7 @@ class DrawingToolsManager {
 
             drawing.group.selectAll('.volume-profile-level-line')
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('cursor', isAnchoredVolumeProfile ? 'default' : 'move');
 
             drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
                 .style('pointer-events', 'all');
@@ -2940,10 +2942,13 @@ class DrawingToolsManager {
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
         const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
+        const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
         const dragSelector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'
+                ? (isAnchoredVolumeProfile
+                    ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
+                    : '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group')
                 : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
