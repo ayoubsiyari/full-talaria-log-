@@ -1446,7 +1446,6 @@ class VolumeProfileTool extends BaseDrawing {
         const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
         const levelLineStartX = hasFixedProfileSide ? chartLeftEdge : left;
         const levelLineEndX = hasFixedProfileSide ? chartRightEdge : profileLineEndX;
-        const developingLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : right;
         const developingPOCColor = this.style.developingPOCColor || '#9ea4ad';
         const developingVAColor = this.style.developingVAColor || '#35bad1';
 
@@ -1581,11 +1580,8 @@ class VolumeProfileTool extends BaseDrawing {
             }
         }
 
-        const buildStepPath = (points, options = {}) => {
-            if (!Array.isArray(points) || points.length < 1) return '';
-
-            const extendToXRaw = Number(options.extendToX);
-            const extendToX = Number.isFinite(extendToXRaw) ? extendToXRaw : NaN;
+        const buildStepPath = (points) => {
+            if (!Array.isArray(points) || points.length < 2) return '';
 
             let path = '';
             let prevPoint = null;
@@ -1603,15 +1599,11 @@ class VolumeProfileTool extends BaseDrawing {
                 prevPoint = point;
             }
 
-            if (path && prevPoint && Number.isFinite(extendToX) && extendToX > (prevPoint.x + 0.25)) {
-                path += `L${extendToX},${prevPoint.y}`;
-            }
-
             return path;
         };
 
         if (showDevelopingPOC) {
-            const pocPath = buildStepPath(developingPocPoints, { extendToX: developingLineEndX });
+            const pocPath = buildStepPath(developingPocPoints);
             if (pocPath) {
                 this.group.append('path')
                     .attr('class', 'volume-profile-developing-line volume-profile-developing-poc-line')
@@ -1625,7 +1617,7 @@ class VolumeProfileTool extends BaseDrawing {
         }
 
         if (showDevelopingVA) {
-            const vahPath = buildStepPath(developingVahPoints, { extendToX: developingLineEndX });
+            const vahPath = buildStepPath(developingVahPoints);
             if (vahPath) {
                 this.group.append('path')
                     .attr('class', 'volume-profile-developing-line volume-profile-developing-vah-line')
@@ -1637,7 +1629,7 @@ class VolumeProfileTool extends BaseDrawing {
                     .style('pointer-events', 'none');
             }
 
-            const valPath = buildStepPath(developingValPoints, { extendToX: developingLineEndX });
+            const valPath = buildStepPath(developingValPoints);
             if (valPath) {
                 this.group.append('path')
                     .attr('class', 'volume-profile-developing-line volume-profile-developing-val-line')
