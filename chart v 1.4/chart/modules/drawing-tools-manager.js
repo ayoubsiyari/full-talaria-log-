@@ -836,8 +836,12 @@ class DrawingToolsManager {
             this.drawings.forEach(drawing => {
                 if (drawing.group) {
                     drawing.group.style('pointer-events', 'none');
+                    drawing.group.style('cursor', 'default');
                     // Also disable pointer events on fill elements
                     drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill').style('pointer-events', 'none');
+                    // Disable resize/custom handles while any drawing tool is active
+                    drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
+                        .style('pointer-events', 'none');
                 }
             });
         }
@@ -880,7 +884,7 @@ class DrawingToolsManager {
                 // Keep group pointer-events none
                 drawing.group.style('pointer-events', 'none');
                 // Lines, text, handles use 'all'
-                drawing.group.selectAll('line, polyline, text, .resize-handle, .custom-handle')
+                drawing.group.selectAll('line, polyline, text, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
                     .style('pointer-events', 'all');
                 // Shape borders use visibleStroke to ignore transparent fill
                 drawing.group.selectAll('.shape-border')
@@ -939,7 +943,8 @@ class DrawingToolsManager {
             ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
             : null;
         const isVolumeProfileBoundaryHandle = !!(handleNode && handleNode.classList && handleNode.classList.contains('volume-profile-boundary-hit'));
-        if (handleNode && !isVolumeProfileBoundaryHandle) {
+        const allowActiveToolHandleBypass = this.currentTool === 'polyline' || this.currentTool === 'path';
+        if (handleNode && !isVolumeProfileBoundaryHandle && (!this.currentTool || allowActiveToolHandleBypass)) {
             return;
         }
         
@@ -3291,6 +3296,7 @@ class DrawingToolsManager {
         
         handles.call(
             d3.drag()
+                .filter(() => !self.currentTool)
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
                     const handleRole = d3.select(this).attr('data-handle-role');
@@ -3350,6 +3356,7 @@ class DrawingToolsManager {
 
         drawing.group.selectAll('.custom-handle').call(
             d3.drag()
+                .filter(() => !self.currentTool)
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
                     const role = d3.select(this).attr('data-handle-role');
