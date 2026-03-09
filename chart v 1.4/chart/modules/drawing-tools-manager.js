@@ -3243,6 +3243,11 @@ class DrawingToolsManager {
             }, self.chart, false);
             return self.clampPointToCandleRange(point, drawing.type);
         };
+
+        const setAnchoredVWAPMovingState = (targetDrawing, isMoving) => {
+            if (!targetDrawing || targetDrawing.type !== 'anchored-vwap') return;
+            targetDrawing._isActiveMoving = !!isMoving;
+        };
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
         const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
@@ -3386,8 +3391,12 @@ class DrawingToolsManager {
                             points: d.points.map(p => ({...p})),
                             beforeState: self.history ? self.history.captureState(d) : null
                         }));
+                        multiDragStartPoints.forEach(item => {
+                            setAnchoredVWAPMovingState(item.drawing, true);
+                        });
                     } else {
                         multiDragStartPoints = null;
+                        setAnchoredVWAPMovingState(drawing, true);
                         // Capture state for undo (single drawing)
                         if (self.history) {
                             beforeState = self.history.captureState(drawing);
@@ -3462,6 +3471,14 @@ class DrawingToolsManager {
                             if (typeof item.drawing.recalculateTimestamps === 'function') {
                                 item.drawing.recalculateTimestamps();
                             }
+
+                            setAnchoredVWAPMovingState(item.drawing, false);
+                            if (item.drawing.type === 'anchored-vwap') {
+                                self.renderDrawing(item.drawing);
+                                if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
+                                    item.drawing.showAxisHighlights();
+                                }
+                            }
                         });
                         multiDragStartPoints = null;
                     } else {
@@ -3474,6 +3491,15 @@ class DrawingToolsManager {
                                 self.history.recordModify(drawing, beforeState);
                             }
                         }
+
+                        setAnchoredVWAPMovingState(drawing, false);
+                        if (drawing.type === 'anchored-vwap') {
+                            self.renderDrawing(drawing);
+                            if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+                                drawing.showAxisHighlights();
+                            }
+                        }
+
                         beforeState = null;
                     }
                     

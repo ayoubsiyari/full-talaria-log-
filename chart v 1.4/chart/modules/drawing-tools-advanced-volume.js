@@ -480,8 +480,13 @@ class AnchoredVWAPTool extends BaseDrawing {
         this.style.source = sourceMode;
         this.style.vwapBandsCalculationMode = bandsCalculationMode;
 
+        const shouldRenderVWAPCurves = this._isActiveMoving !== true;
+
         // If no data, draw a simple horizontal line from anchor point
         if (chartData.length === 0) {
+            if (!shouldRenderVWAPCurves) {
+                return;
+            }
             this.group.append('line')
                 .attr('class', 'anchored-vwap-curve')
                 .attr('x1', anchorX)
@@ -691,7 +696,7 @@ class AnchoredVWAPTool extends BaseDrawing {
         };
 
         // Draw VWAP line (make it more visible)
-        if (vwapPoints.length > 0) {
+        if (vwapPoints.length > 0 && shouldRenderVWAPCurves) {
             const line = d3.line()
                 .x(d => d.x)
                 .y(d => d.y);
