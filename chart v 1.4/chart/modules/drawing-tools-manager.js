@@ -667,6 +667,13 @@ class DrawingToolsManager {
 
         // Double-click anywhere on a drawing (use same geometric hit-test as selection)
         svg.on('dblclick.drawing', (event) => {
+            if (this._suppressNextDrawingDblClick) {
+                this._suppressNextDrawingDblClick = false;
+                if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+                if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                if (typeof event.preventDefault === 'function') event.preventDefault();
+                return;
+            }
             openDrawingSettingsFromDoubleClick(event);
         });
         
@@ -733,6 +740,9 @@ class DrawingToolsManager {
                 const isSecondClick = event.detail >= 2;
                 if (isSecondClick) {
                     const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
+                    if (openedFromDoubleClick) {
+                        this._suppressNextDrawingDblClick = true;
+                    }
                     if (!openedFromDoubleClick) {
                         const best = drawingsAtPoint[0];
                         if (best && !best.locked) {
@@ -809,6 +819,15 @@ class DrawingToolsManager {
 
             const onDblClick = (event) => {
                 if (event.button !== 0) return;
+                if (this._suppressNextDrawingDblClick) {
+                    this._suppressNextDrawingDblClick = false;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    return;
+                }
                 openDrawingSettingsFromDoubleClick(event);
             };
             canvas.addEventListener('dblclick', onDblClick, true);
