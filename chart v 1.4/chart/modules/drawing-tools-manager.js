@@ -949,6 +949,18 @@ class DrawingToolsManager {
         const handleNode = rawTargetNode && rawTargetNode.closest
             ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
             : null;
+        const levelLineNode = rawTargetNode && rawTargetNode.closest
+            ? rawTargetNode.closest('.volume-profile-level-line')
+            : null;
+        let isAnchoredVolumeProfileLevelLineTarget = false;
+        if (levelLineNode) {
+            const levelLineDrawingGroup = levelLineNode.closest('.drawing');
+            if (levelLineDrawingGroup) {
+                const levelLineDrawingId = d3.select(levelLineDrawingGroup).attr('data-id');
+                const levelLineDrawing = this.drawings.find(d => d && d.id === levelLineDrawingId);
+                isAnchoredVolumeProfileLevelLineTarget = !!(levelLineDrawing && levelLineDrawing.type === 'anchored-volume-profile');
+            }
+        }
         const isVolumeProfileBoundaryHandle = !!(handleNode && handleNode.classList && handleNode.classList.contains('volume-profile-boundary-hit'));
         const allowActiveToolHandleBypass = this.currentTool === 'polyline' || this.currentTool === 'path';
         if (handleNode && !isVolumeProfileBoundaryHandle && (!this.currentTool || allowActiveToolHandleBypass)) {
@@ -1071,7 +1083,10 @@ class DrawingToolsManager {
             // allowing lines behind shapes to be dragged on the first attempt.
             if (drawingsAtPoint.length > 1 && !event.shiftKey && !event.altKey) {
                 const best = drawingsAtPoint[0];
-                if (best && !best.locked) {
+                const shouldBlockAnchoredLevelLineDirectMove = isAnchoredVolumeProfileLevelLineTarget
+                    && best
+                    && best.type === 'anchored-volume-profile';
+                if (best && !best.locked && !shouldBlockAnchoredLevelLineDirectMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this.selectDrawing(best, false);
@@ -1085,7 +1100,10 @@ class DrawingToolsManager {
             // This avoids relying on DOM event targeting (which always hits the topmost SVG element).
             if (this.selectedDrawings && this.selectedDrawings.length > 0 && drawingsAtPoint.length > 0) {
                 const selectedAtPoint = this.selectedDrawings.filter(d => drawingsAtPoint.includes(d) && !d.locked);
-                if (selectedAtPoint.length > 0 && !event.shiftKey) {
+                const hasSelectedAnchoredVolumeProfileAtPoint = selectedAtPoint.some(d => d.type === 'anchored-volume-profile');
+                const shouldBlockSelectedAnchoredLevelLineDirectMove = isAnchoredVolumeProfileLevelLineTarget
+                    && hasSelectedAnchoredVolumeProfileAtPoint;
+                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedAnchoredLevelLineDirectMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(selectedAtPoint, event);
@@ -2862,9 +2880,16 @@ class DrawingToolsManager {
             // Check if hovering on inline-editable text - use move cursor
             const target = event?.target ? d3.select(event.target) : null;
             const isInlineEditable = target && target.classed('inline-editable-text');
+            const isAnchoredVolumeProfileLevelLineTarget = drawing.type === 'anchored-volume-profile'
+                && target
+                && target.classed('volume-profile-level-line');
             
             if (!drawing.locked) {
-                if (isInlineEditable) {
+                if (isAnchoredVolumeProfileLevelLineTarget) {
+                    drawing.group.style('cursor', 'default');
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'default';
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'default';
+                } else if (isInlineEditable) {
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
                 } else {
