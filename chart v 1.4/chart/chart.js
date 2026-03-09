@@ -1567,13 +1567,13 @@ class Chart {
             }
         });
         
-        // Close menus when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.chart-context-menu') && 
-                !e.target.closest('canvas')) {
+        // Close menus on first outside press (capture phase) for smooth UX.
+        document.addEventListener('mousedown', (e) => {
+            if (!e.target.closest('.chart-context-menu') &&
+                !e.target.closest('.drawing-style-editor')) {
                 this.hideContextMenu();
             }
-        });
+        }, true);
     }
     
     saveSettings() {
@@ -11218,14 +11218,14 @@ class Chart {
         let drawStart = null; 
         let drawStartData = null;
         
-        // Handle clicks outside context menu to close it
-        document.addEventListener('click', (e) => {
+        // Close context menu on first outside press (capture phase)
+        document.addEventListener('mousedown', (e) => {
             // Only hide if clicking outside both context menu and style editor
-            if (!e.target.closest('.chart-context-menu') && 
+            if (!e.target.closest('.chart-context-menu') &&
                 !e.target.closest('.drawing-style-editor')) {
                 this.hideContextMenu();
             }
-        });
+        }, true);
         
         // Prevent default context menu
         this.svg.node().addEventListener('contextmenu', (e) => {

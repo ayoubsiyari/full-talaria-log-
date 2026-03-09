@@ -15993,11 +15993,10 @@ class DrawingContextMenu {
         this.menu.style.left = `${menuX}px`;
         this.menu.style.top = `${menuY}px`;
 
-        // Close on click outside - use capture phase to ensure it fires before other handlers
-        requestAnimationFrame(() => {
-            document.addEventListener('click', this.handleOutsideClick, true);
-            document.addEventListener('contextmenu', this.handleOutsideClick, true);
-        });
+        // Close on outside interaction immediately (capture phase) so the first outside
+        // click closes the menu without feeling delayed.
+        document.addEventListener('mousedown', this.handleOutsideClick, true);
+        document.addEventListener('contextmenu', this.handleOutsideClick, true);
         
         return this.menu;
     }
@@ -16077,7 +16076,7 @@ class DrawingContextMenu {
             this.menu.remove();
             this.menu = null;
         }
-        document.removeEventListener('click', this.handleOutsideClick, true);
+        document.removeEventListener('mousedown', this.handleOutsideClick, true);
         document.removeEventListener('contextmenu', this.handleOutsideClick, true);
     }
 }
