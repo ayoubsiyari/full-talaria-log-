@@ -10776,7 +10776,8 @@
             border-radius: 6px !important;
         }
 
-        #patterns-dropdown.tool-dropdown-grid {
+        #patterns-dropdown.tool-dropdown-grid,
+        #volume-based-dropdown.tool-dropdown-grid {
             min-width: 360px !important;
             max-width: 440px !important;
         }
@@ -10937,7 +10938,8 @@
             text-align: left !important;
         }
 
-        #patterns-dropdown.tool-dropdown-grid .tool-btn::after {
+        #patterns-dropdown.tool-dropdown-grid .tool-btn::after,
+        #volume-based-dropdown.tool-dropdown-grid .tool-btn::after {
             max-width: none;
             overflow: visible;
             text-overflow: clip;
@@ -17531,7 +17533,7 @@
                     </div>
                 </div>
                 
-                <!-- Patterns Group (includes Elliott Waves and Volume-Based) -->
+                <!-- Patterns Group -->
                 <div class="tool-group">
                     <button class="tool-group-btn" data-group="patterns" data-tooltip="Patterns & Waves">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
@@ -17639,6 +17641,25 @@
                                 <circle cx="17" cy="4" r="1" fill="currentColor"/>
                             </svg>
                         </button>
+                    </div>
+                </div>
+
+                <!-- Volume-Based Group -->
+                <div class="tool-group">
+                    <button class="tool-group-btn" data-group="volume-based" data-tooltip="Volume-Based Tools">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <path d="M4 16c3-4 6-2 8-6s4-2 8-4" stroke-linecap="round"/>
+                            <path d="M4 12c3-2 6-1 8-3s4-1 8-2" stroke-linecap="round" opacity="0.4"/>
+                            <path d="M4 20c3-2 6-1 8-3s4-1 8-2" stroke-linecap="round" opacity="0.4"/>
+                            <circle cx="4" cy="16" r="2.5" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="dropdown-arrow" id="volumeBasedDropdownArrow" data-group="volume-based">
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="tool-dropdown tool-dropdown-grid" id="volume-based-dropdown">
                         <span class="tool-dropdown-label">VOLUME-BASED</span>
                         <button class="tool-btn" id="anchored-vwapTool" data-tooltip="Anchored VWAP">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
@@ -17668,16 +17689,6 @@
                             </svg>
                         </button>
                     </div>
-                </div>
-                
-                <!-- Ruler/Measure Tool -->
-                <div class="tool-group">
-                    <button class="tool-group-btn" id="rulerTool" data-tooltip="Ruler">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/>
-                            <path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/>
-                        </svg>
-                    </button>
                 </div>
                 
                 <div class="tool-divider"></div>
@@ -20842,7 +20853,8 @@
                 'text': 'textTool',
                 'analysis': 'fibonacci-retracementTool',
                 'projections': 'long-positionTool',
-                'patterns': 'elliott-impulseTool'
+                'patterns': 'elliott-impulseTool',
+                'volume-based': 'anchored-vwapTool'
             };
             
             // Initialize default tools for groups
