@@ -3169,7 +3169,7 @@ body.light-mode .template-save-dialog .dialog-title {
         vwapRow.style.marginBottom = '12px';
         container.appendChild(vwapRow);
 
-        for (let bandNumber = 1; bandNumber <= 2; bandNumber++) {
+        for (let bandNumber = 1; bandNumber <= 3; bandNumber++) {
             const upperPropKey = `vwapUpperBand${bandNumber}`;
             const lowerPropKey = `vwapLowerBand${bandNumber}`;
             const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
@@ -9011,7 +9011,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     self.renderPreview(drawing);
                 }
 
-                const linkedUpperBandEnabledMatch = prop.match(/^vwapUpperBand([12])Enabled$/);
+                const linkedUpperBandEnabledMatch = prop.match(/^vwapUpperBand([1-3])Enabled$/);
                 if (linkedUpperBandEnabledMatch) {
                     const lowerEnabledProp = `vwapLowerBand${linkedUpperBandEnabledMatch[1]}Enabled`;
                     this.pendingChanges[lowerEnabledProp] = isChecked;
@@ -9239,7 +9239,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style[prop] = normalizedType;
                     this.pendingChanges[prop] = normalizedType;
 
-                    const linkedUpperBandTypeMatch = prop.match(/^vwapUpperBand([12])Type$/);
+                    const linkedUpperBandTypeMatch = prop.match(/^vwapUpperBand([1-3])Type$/);
                     if (linkedUpperBandTypeMatch) {
                         const lowerTypeProp = `vwapLowerBand${linkedUpperBandTypeMatch[1]}Type`;
                         drawing.style[lowerTypeProp] = normalizedType;
@@ -9255,7 +9255,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style[prop] = normalizedWidth;
                     this.pendingChanges[prop] = normalizedWidth;
 
-                    const linkedUpperBandWidthMatch = prop.match(/^vwapUpperBand([12])Width$/);
+                    const linkedUpperBandWidthMatch = prop.match(/^vwapUpperBand([1-3])Width$/);
                     if (linkedUpperBandWidthMatch) {
                         const lowerWidthProp = `vwapLowerBand${linkedUpperBandWidthMatch[1]}Width`;
                         drawing.style[lowerWidthProp] = normalizedWidth;
@@ -10154,7 +10154,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 actualDrawing.style[prop] = finalColor;
                 drawing.style[prop] = finalColor;
 
-                const linkedUpperBandColorMatch = prop.match(/^vwapUpperBand([12])Color$/);
+                const linkedUpperBandColorMatch = prop.match(/^vwapUpperBand([1-3])Color$/);
                 if (linkedUpperBandColorMatch) {
                     const lowerColorProp = `vwapLowerBand${linkedUpperBandColorMatch[1]}Color`;
                     actualDrawing.style[lowerColorProp] = finalColor;
