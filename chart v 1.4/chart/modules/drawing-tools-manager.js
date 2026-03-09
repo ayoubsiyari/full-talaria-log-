@@ -2047,18 +2047,31 @@ class DrawingToolsManager {
      */
     getDataPoint(event, toolTypeOverride = this.currentTool) {
         let [screenX, screenY] = d3.pointer(event, this.svg.node());
+        const activeToolType = toolTypeOverride || this.currentTool;
+
+        const isResizingVolumeProfileRightBoundary = this.isVolumeProfileToolType(activeToolType)
+            && !!(
+                this.isResizing
+                && this.resizingDrawing
+                && this.isVolumeProfileToolType(this.resizingDrawing.type)
+                && this.resizingPointIndex === 1
+            );
 
         // Clamp to chart inner area so no drawing point can go outside the chart
         if (this.chart) {
             const m = this.chart.margin;
+            const minX = m.l;
             const maxX = this.chart.w - m.r;
             const maxY = this.chart.h - m.b;
-            screenX = Math.max(m.l, Math.min(maxX, screenX));
+
+            // For VP right-boundary resize, allow dragging past the container edge.
+            screenX = isResizingVolumeProfileRightBoundary
+                ? Math.max(minX, screenX)
+                : Math.max(minX, Math.min(maxX, screenX));
             screenY = Math.max(0, Math.min(maxY, screenY));
         }
         
         // Preserve legacy behavior: continuous coordinates are only for actively drawn freehand tools
-        const activeToolType = toolTypeOverride || this.currentTool;
         const isContinuousTool = this.currentTool === 'path' || 
                                   this.currentTool === 'brush' || 
                                   this.currentTool === 'highlighter';
