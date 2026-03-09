@@ -937,9 +937,13 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.style.showVAL === undefined) this.style.showVAL = true;
         if (this.style.showVolume === undefined) this.style.showVolume = true;
         if (this.style.showValues === undefined) this.style.showValues = true;
+        if (this.style.showDevelopingPOC === undefined) this.style.showDevelopingPOC = false;
+        if (this.style.showDevelopingVA === undefined) this.style.showDevelopingVA = false;
         if (!hasOwn('VAHColor')) this.style.VAHColor = '#089981';
         if (!hasOwn('VALColor')) this.style.VALColor = '#f23645';
         if (!hasOwn('valuesColor')) this.style.valuesColor = '#d1d4dc';
+        if (!hasOwn('developingPOCColor')) this.style.developingPOCColor = '#9ea4ad';
+        if (!hasOwn('developingVAColor')) this.style.developingVAColor = '#35bad1';
     }
 
     render(container, scales, isPreview = false) {
@@ -1256,17 +1260,77 @@ class VolumeProfileTool extends BaseDrawing {
             return;
         }
 
+        const valueAreaPercentRaw = Number(this.style.valueAreaVolume);
+        const valueAreaPercent = Number.isFinite(valueAreaPercentRaw)
+            ? Math.max(1, Math.min(100, valueAreaPercentRaw))
+            : 70;
+        const barHeight = height / numBins;
         const buyVolumeBins = new Array(numBins).fill(0);
         const sellVolumeBins = new Array(numBins).fill(0);
-        
+        const totalVolumeBins = new Array(numBins).fill(0);
+
+        const showDevelopingPOC = this.style.showDevelopingPOC === true;
+        const showDevelopingVA = this.style.showDevelopingVA === true;
+        const shouldRenderDevelopingLevels = showDevelopingPOC || showDevelopingVA;
+        const developingPocPoints = [];
+        const developingVahPoints = [];
+        const developingValPoints = [];
+
+        const resolvePocIndex = (volumeBins) => {
+            let bestIdx = 0;
+            let bestVol = -Infinity;
+            for (let idx = 0; idx < volumeBins.length; idx++) {
+                const vol = Number(volumeBins[idx]) || 0;
+                if (vol > bestVol) {
+                    bestVol = vol;
+                    bestIdx = idx;
+                }
+            }
+            return bestIdx;
+        };
+
+        const resolveValueAreaBounds = (volumeBins, pocIdx) => {
+            let valueAreaLow = pocIdx;
+            let valueAreaHigh = pocIdx;
+            const totalProfileVolume = volumeBins.reduce((sum, vol) => sum + Math.max(0, Number(vol) || 0), 0);
+            if (!(totalProfileVolume > 0)) {
+                return { valueAreaLow, valueAreaHigh };
+            }
+
+            const targetValueAreaVolume = totalProfileVolume * (valueAreaPercent / 100);
+            let accumulatedVolume = Math.max(0, Number(volumeBins[pocIdx]) || 0);
+
+            while (accumulatedVolume < targetValueAreaVolume && (valueAreaLow > 0 || valueAreaHigh < numBins - 1)) {
+                const nextLowVolume = valueAreaLow > 0 ? Math.max(0, Number(volumeBins[valueAreaLow - 1]) || 0) : -1;
+                const nextHighVolume = valueAreaHigh < numBins - 1 ? Math.max(0, Number(volumeBins[valueAreaHigh + 1]) || 0) : -1;
+
+                if (nextHighVolume > nextLowVolume && valueAreaHigh < numBins - 1) {
+                    valueAreaHigh += 1;
+                    accumulatedVolume += nextHighVolume;
+                } else if (valueAreaLow > 0) {
+                    valueAreaLow -= 1;
+                    accumulatedVolume += nextLowVolume;
+                } else if (valueAreaHigh < numBins - 1) {
+                    valueAreaHigh += 1;
+                    accumulatedVolume += nextHighVolume;
+                } else {
+                    break;
+                }
+            }
+
+            return { valueAreaLow, valueAreaHigh };
+        };
+
+        const binIndexToCenterY = (binIndex) => bottom - ((binIndex + 0.5) * barHeight);
+
         // Aggregate volume by price level
         for (let i = startIndex; i <= endIndex; i++) {
             const candle = chartData[i];
             if (!candle) continue;
-            
+
             const volume = (candle.v ?? candle.volume ?? 0);
             if (!Number.isFinite(volume) || volume <= 0) continue;
-            
+
             // Get candle's price range
             const open = candle.o ?? candle.open;
             const close = candle.c ?? candle.close;
@@ -1277,14 +1341,14 @@ class VolumeProfileTool extends BaseDrawing {
 
             const candleLow = Math.min(open, close, low);
             const candleHigh = Math.max(open, close, high);
-            
+
             // Skip candles completely outside the selected price range
             if (candleHigh < priceLow || candleLow > priceHigh) continue;
-            
+
             // Clamp candle range to selection range for proper volume distribution
             const effectiveLow = Math.max(candleLow, priceLow);
             const effectiveHigh = Math.min(candleHigh, priceHigh);
-            
+
             // Calculate overlap ratio to proportionally distribute volume
             const candleRange = candleHigh - candleLow;
             const overlapRange = effectiveHigh - effectiveLow;
@@ -1303,76 +1367,63 @@ class VolumeProfileTool extends BaseDrawing {
             }
             buyWeight = Math.max(0.1, Math.min(0.9, buyWeight));
             const sellWeight = 1 - buyWeight;
-            
+
             // Find which bins this candle's overlap touches
             const lowBin = Math.floor((effectiveLow - priceLow) / priceStep);
             const highBin = Math.floor((effectiveHigh - priceLow) / priceStep);
             const clampedLowBin = Math.max(0, lowBin);
             const clampedHighBin = Math.min(numBins - 1, highBin);
             if (clampedLowBin > clampedHighBin) continue;
-            
+
             // Distribute volume evenly across touched bins
             const binsSpanned = Math.max(1, clampedHighBin - clampedLowBin + 1);
             const buyPerBin = (effectiveVolume * buyWeight) / binsSpanned;
             const sellPerBin = (effectiveVolume * sellWeight) / binsSpanned;
-            
+
             for (let b = clampedLowBin; b <= clampedHighBin; b++) {
                 buyVolumeBins[b] += buyPerBin;
                 sellVolumeBins[b] += sellPerBin;
+                totalVolumeBins[b] += buyPerBin + sellPerBin;
+            }
+
+            if (shouldRenderDevelopingLevels) {
+                const profileX = scales.chart && scales.chart.dataIndexToPixel
+                    ? scales.chart.dataIndexToPixel(i)
+                    : scales.xScale(i);
+                if (!Number.isFinite(profileX)) continue;
+
+                const developingPocIndex = resolvePocIndex(totalVolumeBins);
+
+                if (showDevelopingPOC) {
+                    developingPocPoints.push({
+                        x: profileX,
+                        y: binIndexToCenterY(developingPocIndex)
+                    });
+                }
+
+                if (showDevelopingVA) {
+                    const { valueAreaLow: developingLow, valueAreaHigh: developingHigh } = resolveValueAreaBounds(totalVolumeBins, developingPocIndex);
+                    developingVahPoints.push({
+                        x: profileX,
+                        y: binIndexToCenterY(developingHigh)
+                    });
+                    developingValPoints.push({
+                        x: profileX,
+                        y: binIndexToCenterY(developingLow)
+                    });
+                }
             }
         }
-        
-        const totalVolumeBins = buyVolumeBins.map((buyVol, idx) => buyVol + sellVolumeBins[idx]);
 
         // Find max volume for scaling
         const maxVolume = Math.max(...totalVolumeBins, 0);
-        const barHeight = height / numBins;
         if (!Number.isFinite(maxVolume) || maxVolume <= 0) {
             this.createHandles(this.group, scales);
             return;
         }
 
-        // Find POC (Point of Control - highest volume level)
-        let pocIndex = 0;
-        let maxVol = 0;
-        totalVolumeBins.forEach((vol, idx) => {
-            if (vol > maxVol) {
-                maxVol = vol;
-                pocIndex = idx;
-            }
-        });
-
-        const valueAreaPercentRaw = Number(this.style.valueAreaVolume);
-        const valueAreaPercent = Number.isFinite(valueAreaPercentRaw)
-            ? Math.max(1, Math.min(100, valueAreaPercentRaw))
-            : 70;
-
-        // Approximate TradingView value area centered around POC.
-        let valueAreaLow = pocIndex;
-        let valueAreaHigh = pocIndex;
-        const totalProfileVolume = totalVolumeBins.reduce((sum, vol) => sum + vol, 0);
-        if (totalProfileVolume > 0) {
-            const targetValueAreaVolume = totalProfileVolume * (valueAreaPercent / 100);
-            let accumulatedVolume = totalVolumeBins[pocIndex] || 0;
-
-            while (accumulatedVolume < targetValueAreaVolume && (valueAreaLow > 0 || valueAreaHigh < numBins - 1)) {
-                const nextLowVolume = valueAreaLow > 0 ? totalVolumeBins[valueAreaLow - 1] : -1;
-                const nextHighVolume = valueAreaHigh < numBins - 1 ? totalVolumeBins[valueAreaHigh + 1] : -1;
-
-                if (nextHighVolume > nextLowVolume && valueAreaHigh < numBins - 1) {
-                    valueAreaHigh += 1;
-                    accumulatedVolume += Math.max(0, nextHighVolume);
-                } else if (valueAreaLow > 0) {
-                    valueAreaLow -= 1;
-                    accumulatedVolume += Math.max(0, nextLowVolume);
-                } else if (valueAreaHigh < numBins - 1) {
-                    valueAreaHigh += 1;
-                    accumulatedVolume += Math.max(0, nextHighVolume);
-                } else {
-                    break;
-                }
-            }
-        }
+        const pocIndex = resolvePocIndex(totalVolumeBins);
+        const { valueAreaLow, valueAreaHigh } = resolveValueAreaBounds(totalVolumeBins, pocIndex);
         
         const profileWidthRatio = Math.max(0.15, Math.min(0.65, Number(this.style.profileWidthRatio) || 0.3));
         // Keep profile bar widths frozen once right boundary passes last loaded candle.
@@ -1395,6 +1446,8 @@ class VolumeProfileTool extends BaseDrawing {
         const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
         const levelLineStartX = hasFixedProfileSide ? chartLeftEdge : left;
         const levelLineEndX = hasFixedProfileSide ? chartRightEdge : profileLineEndX;
+        const developingPOCColor = this.style.developingPOCColor || '#9ea4ad';
+        const developingVAColor = this.style.developingVAColor || '#35bad1';
 
         const formatVolumeValue = (value) => {
             const num = Number(value);
@@ -1524,6 +1577,68 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('opacity', Math.min(1, globalOpacity * 0.9))
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
+            }
+        }
+
+        const buildStepPath = (points) => {
+            if (!Array.isArray(points) || points.length < 2) return '';
+
+            let path = '';
+            let prevPoint = null;
+
+            for (const point of points) {
+                if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+
+                if (!prevPoint) {
+                    path += `M${point.x},${point.y}`;
+                    prevPoint = point;
+                    continue;
+                }
+
+                path += `L${point.x},${prevPoint.y}L${point.x},${point.y}`;
+                prevPoint = point;
+            }
+
+            return path;
+        };
+
+        if (showDevelopingPOC) {
+            const pocPath = buildStepPath(developingPocPoints);
+            if (pocPath) {
+                this.group.append('path')
+                    .attr('class', 'volume-profile-developing-line volume-profile-developing-poc-line')
+                    .attr('d', pocPath)
+                    .attr('fill', 'none')
+                    .attr('stroke', developingPOCColor)
+                    .attr('stroke-width', 1.1)
+                    .attr('opacity', Math.min(1, globalOpacity * 0.95))
+                    .style('pointer-events', 'none');
+            }
+        }
+
+        if (showDevelopingVA) {
+            const vahPath = buildStepPath(developingVahPoints);
+            if (vahPath) {
+                this.group.append('path')
+                    .attr('class', 'volume-profile-developing-line volume-profile-developing-vah-line')
+                    .attr('d', vahPath)
+                    .attr('fill', 'none')
+                    .attr('stroke', developingVAColor)
+                    .attr('stroke-width', 1.05)
+                    .attr('opacity', Math.min(1, globalOpacity * 0.9))
+                    .style('pointer-events', 'none');
+            }
+
+            const valPath = buildStepPath(developingValPoints);
+            if (valPath) {
+                this.group.append('path')
+                    .attr('class', 'volume-profile-developing-line volume-profile-developing-val-line')
+                    .attr('d', valPath)
+                    .attr('fill', 'none')
+                    .attr('stroke', developingVAColor)
+                    .attr('stroke-width', 1.05)
+                    .attr('opacity', Math.min(1, globalOpacity * 0.9))
+                    .style('pointer-events', 'none');
             }
         }
 
@@ -1768,9 +1883,13 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         if (this.style.showVAL === undefined) this.style.showVAL = true;
         if (this.style.showVolume === undefined) this.style.showVolume = true;
         if (this.style.showValues === undefined) this.style.showValues = true;
+        if (this.style.showDevelopingPOC === undefined) this.style.showDevelopingPOC = false;
+        if (this.style.showDevelopingVA === undefined) this.style.showDevelopingVA = false;
         if (!hasOwn('VAHColor')) this.style.VAHColor = '#089981';
         if (!hasOwn('VALColor')) this.style.VALColor = '#f23645';
         if (!hasOwn('valuesColor')) this.style.valuesColor = '#d1d4dc';
+        if (!hasOwn('developingPOCColor')) this.style.developingPOCColor = '#9ea4ad';
+        if (!hasOwn('developingVAColor')) this.style.developingVAColor = '#35bad1';
     }
 
     render(container, scales) {

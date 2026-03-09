@@ -5934,6 +5934,10 @@ body.light-mode .template-save-dialog .dialog-title {
         if (!drawing.style.VAHColor) drawing.style.VAHColor = '#089981';
         if (!drawing.style.VALColor) drawing.style.VALColor = '#f23645';
         if (!drawing.style.valuesColor) drawing.style.valuesColor = '#d1d4dc';
+        if (drawing.style.showDevelopingPOC === undefined) drawing.style.showDevelopingPOC = false;
+        if (drawing.style.showDevelopingVA === undefined) drawing.style.showDevelopingVA = false;
+        if (!drawing.style.developingPOCColor) drawing.style.developingPOCColor = '#9ea4ad';
+        if (!drawing.style.developingVAColor) drawing.style.developingVAColor = '#35bad1';
         if (drawing.style.showBackground === undefined) drawing.style.showBackground = true;
         if (!Number.isFinite(Number(drawing.style.backgroundOpacity))) drawing.style.backgroundOpacity = 0.85;
         if ((!drawing.style.fill || drawing.style.fill === 'none' || drawing.style.fill === 'transparent') && drawing.style.showBackground !== false) {
@@ -6088,6 +6092,36 @@ body.light-mode .template-save-dialog .dialog-title {
         `;
         valRow.controls.innerHTML = `
             <button class="tv-color-btn" data-prop="VALColor" style="background: ${drawing.style.VALColor || '#f23645'};"></button>
+        `;
+
+        const developingPocEnabled = drawing.style.showDevelopingPOC === true;
+        const developingPocRow = createStyleRow('');
+        developingPocRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        developingPocRow.label.innerHTML = `
+            <div class="tv-checkbox ${developingPocEnabled ? 'checked' : ''}" data-prop="showDevelopingPOC">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Developing POC</span>
+        `;
+        developingPocRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="developingPOCColor" style="background: ${drawing.style.developingPOCColor || '#9ea4ad'};"></button>
+        `;
+
+        const developingVaEnabled = drawing.style.showDevelopingVA === true;
+        const developingVaRow = createStyleRow('');
+        developingVaRow.label.style.cssText += 'display: inline-flex; align-items: center; gap: 8px;';
+        developingVaRow.label.innerHTML = `
+            <div class="tv-checkbox ${developingVaEnabled ? 'checked' : ''}" data-prop="showDevelopingVA">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <span class="tv-checkbox-label" style="white-space: nowrap;">Developing VA</span>
+        `;
+        developingVaRow.controls.innerHTML = `
+            <button class="tv-color-btn" data-prop="developingVAColor" style="background: ${drawing.style.developingVAColor || '#35bad1'};"></button>
         `;
 
         container.appendChild(section);
@@ -8902,7 +8936,13 @@ body.light-mode .template-save-dialog .dialog-title {
                     self.renderPreview(drawing);
                 }
 
-                if (prop === 'showPOC' || prop === 'showVAH' || prop === 'showVAL') {
+                if (
+                    prop === 'showPOC' ||
+                    prop === 'showVAH' ||
+                    prop === 'showVAL' ||
+                    prop === 'showDevelopingPOC' ||
+                    prop === 'showDevelopingVA'
+                ) {
                     drawing.style[prop] = isChecked;
                     self.renderPreview(drawing);
                 }
@@ -10058,6 +10098,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 prop === 'pocColor' ||
                 prop === 'VAHColor' ||
                 prop === 'VALColor' ||
+                prop === 'developingPOCColor' ||
+                prop === 'developingVAColor' ||
                 prop === 'buyColor' ||
                 prop === 'sellColor' ||
                 prop === 'valueAreaBuyColor' ||
@@ -10274,6 +10316,8 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.showPOC !== undefined) drawing.style.showPOC = this.pendingChanges.showPOC;
         if (this.pendingChanges.showVAH !== undefined) drawing.style.showVAH = this.pendingChanges.showVAH;
         if (this.pendingChanges.showVAL !== undefined) drawing.style.showVAL = this.pendingChanges.showVAL;
+        if (this.pendingChanges.showDevelopingPOC !== undefined) drawing.style.showDevelopingPOC = this.pendingChanges.showDevelopingPOC;
+        if (this.pendingChanges.showDevelopingVA !== undefined) drawing.style.showDevelopingVA = this.pendingChanges.showDevelopingVA;
         if (this.pendingChanges.showVolume !== undefined) drawing.style.showVolume = this.pendingChanges.showVolume;
         if (this.pendingChanges.showValues !== undefined) drawing.style.showValues = this.pendingChanges.showValues;
         if (this.pendingChanges.profilePlacement !== undefined) {
@@ -10287,6 +10331,8 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.valuesColor !== undefined) drawing.style.valuesColor = this.pendingChanges.valuesColor;
         if (this.pendingChanges.VAHColor !== undefined) drawing.style.VAHColor = this.pendingChanges.VAHColor;
         if (this.pendingChanges.VALColor !== undefined) drawing.style.VALColor = this.pendingChanges.VALColor;
+        if (this.pendingChanges.developingPOCColor !== undefined) drawing.style.developingPOCColor = this.pendingChanges.developingPOCColor;
+        if (this.pendingChanges.developingVAColor !== undefined) drawing.style.developingVAColor = this.pendingChanges.developingVAColor;
         
         // Extend left/right properties
         if (this.pendingChanges.extendLeft !== undefined) drawing.style.extendLeft = this.pendingChanges.extendLeft;
