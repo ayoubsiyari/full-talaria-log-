@@ -629,7 +629,12 @@ class DrawingToolsManager {
             const handleNode = rawTargetNode && rawTargetNode.closest
                 ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
                 : null;
-            if (handleNode) {
+            const isVolumeProfileBoundaryHandle = !!(
+                handleNode
+                && handleNode.classList
+                && handleNode.classList.contains('volume-profile-boundary-hit')
+            );
+            if (handleNode && !isVolumeProfileBoundaryHandle) {
                 return false;
             }
 
@@ -727,14 +732,17 @@ class DrawingToolsManager {
 
                 const isSecondClick = event.detail >= 2;
                 if (isSecondClick) {
-                    const best = drawingsAtPoint[0];
-                    if (best && !best.locked) {
-                        this.selectDrawing(best, false);
-                    }
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
+                    const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
+                    if (!openedFromDoubleClick) {
+                        const best = drawingsAtPoint[0];
+                        if (best && !best.locked) {
+                            this.selectDrawing(best, false);
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof event.stopImmediatePropagation === 'function') {
+                            event.stopImmediatePropagation();
+                        }
                     }
                     suppressNextCanvasClick = true;
                     return;
