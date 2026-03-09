@@ -7039,6 +7039,7 @@ class Chart {
                         <input type="date" id="goToDateInput" class="go-to-input" style="flex: 1.2;">
                         <input type="time" id="goToTimeInput" class="go-to-input" style="flex: 0.8;">
                         <button type="button" class="go-to-input-btn" id="goToDateBtn">Go</button>
+                        <button type="button" class="go-to-input-btn" id="goToDateReloadBtn" title="Reload data around this date, then jump">Reload</button>
                     </div>
                 </div>
                 <!-- Price Input -->
@@ -7162,6 +7163,7 @@ class Chart {
         const dateInput = menu.querySelector('#goToDateInput');
         const timeInput = menu.querySelector('#goToTimeInput');
         const dateBtn = menu.querySelector('#goToDateBtn');
+        const dateReloadBtn = menu.querySelector('#goToDateReloadBtn');
         
         // Set default values from current data (in current timezone)
         if (dateInput && this.data && this.data.length > 0) {
@@ -7182,7 +7184,7 @@ class Chart {
         }
         
         if (dateInput && dateBtn) {
-            const handleDateJump = () => {
+            const handleDateJump = async ({ forceReload = false } = {}) => {
                 let dateStr = dateInput.value;
                 if (!dateStr) return;
                 
@@ -7202,17 +7204,28 @@ class Chart {
                     : new Date(year, month - 1, day, hour, minute, 0).getTime();
                 
                 if (!Number.isNaN(targetTimestamp)) {
-                    chart.jumpToTimestamp(targetTimestamp);
+                    await chart.jumpToTimestamp(targetTimestamp, { forceWindowReload: forceReload });
                     menu.classList.remove('open');
                 }
             };
-            dateBtn.addEventListener('click', handleDateJump);
+            dateBtn.addEventListener('click', () => {
+                void handleDateJump({ forceReload: false });
+            });
+            if (dateReloadBtn) {
+                dateReloadBtn.addEventListener('click', () => {
+                    void handleDateJump({ forceReload: true });
+                });
+            }
             dateInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') handleDateJump();
+                if (e.key === 'Enter') {
+                    void handleDateJump({ forceReload: false });
+                }
             });
             if (timeInput) {
                 timeInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') handleDateJump();
+                    if (e.key === 'Enter') {
+                        void handleDateJump({ forceReload: false });
+                    }
                 });
             }
         }
@@ -8351,7 +8364,7 @@ class Chart {
      * Jump to a specific timestamp (UTC milliseconds)
      * @param {number} targetTimestamp - Unix timestamp in milliseconds
      */
-    async jumpToTimestamp(targetTimestamp, { skipWindowFetch = false } = {}) {
+    async jumpToTimestamp(targetTimestamp, { skipWindowFetch = false, forceWindowReload = false } = {}) {
         if (!this.data || this.data.length === 0) {
             alert('No data loaded. Please upload a CSV file first.');
             return;
@@ -8393,10 +8406,10 @@ class Chart {
             const targetOutsideLoadedRange = hasLoadedRange &&
                 (normalizedTarget < minLoadedTs || normalizedTarget > maxLoadedTs);
 
-            if (!skipWindowFetch && targetOutsideLoadedRange && this.currentFileId) {
+            if (!skipWindowFetch && this.currentFileId && (forceWindowReload || targetOutsideLoadedRange)) {
                 const loaded = await this.ensureGoToWindowContainsTimestamp(normalizedTarget, { usingReplay });
                 if (loaded) {
-                    return this.jumpToTimestamp(normalizedTarget, { skipWindowFetch: true });
+                    return this.jumpToTimestamp(normalizedTarget, { skipWindowFetch: true, forceWindowReload: false });
                 }
             }
 
