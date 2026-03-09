@@ -1014,6 +1014,31 @@ class VolumeProfileTool extends BaseDrawing {
                 ? Math.max(0, Math.min(1, previewOpacityRaw))
                 : 0.95;
 
+            const previewDomain = scales.yScale && typeof scales.yScale.domain === 'function'
+                ? scales.yScale.domain()
+                : [this.points[0]?.y, this.points[1]?.y];
+            const previewDomainFirst = Array.isArray(previewDomain) && previewDomain.length > 0 ? previewDomain[0] : this.points[0]?.y;
+            const previewDomainLast = Array.isArray(previewDomain) && previewDomain.length > 1 ? previewDomain[previewDomain.length - 1] : this.points[1]?.y;
+            const previewDomainLow = Math.min(previewDomainFirst, previewDomainLast);
+            const previewDomainHigh = Math.max(previewDomainFirst, previewDomainLast);
+            const previewGuideTopY = Math.min(scales.yScale(previewDomainLow), scales.yScale(previewDomainHigh));
+            const previewGuideBottomY = Math.max(scales.yScale(previewDomainLow), scales.yScale(previewDomainHigh));
+
+            if (Number.isFinite(previewGuideTopY) && Number.isFinite(previewGuideBottomY)) {
+                [x1, x2].forEach((guideX) => {
+                    this.group.append('line')
+                        .attr('class', 'vertical-guide volume-profile-guide')
+                        .attr('x1', guideX)
+                        .attr('y1', previewGuideTopY)
+                        .attr('x2', guideX)
+                        .attr('y2', previewGuideBottomY)
+                        .attr('stroke', 'rgba(148, 160, 184, 0.62)')
+                        .attr('stroke-width', 1)
+                        .attr('opacity', 1)
+                        .style('pointer-events', 'none');
+                });
+            }
+
             if (Number.isFinite(pointY1) && Number.isFinite(pointY2)) {
                 this.group.append('line')
                     .attr('class', 'volume-profile-preview-line')
@@ -1592,6 +1617,24 @@ class VolumeProfileTool extends BaseDrawing {
         const bottomCornerIndex = sortedByX.length > 0 ? sortedByX[sortedByX.length - 1].index : null;
 
         const showGuides = this._isActiveResizing === true;
+
+        if (showGuides && sortedByX.length > 1) {
+            const leftGuide = sortedByX[0];
+            const rightGuide = sortedByX[sortedByX.length - 1];
+            const guideLinkStroke = this.style.stroke || 'rgba(130, 164, 176, 0.75)';
+
+            group.append('line')
+                .attr('class', 'volume-profile-guide-link')
+                .attr('x1', leftGuide.cx)
+                .attr('y1', topY)
+                .attr('x2', rightGuide.cx)
+                .attr('y2', bottomY)
+                .attr('stroke', guideLinkStroke)
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '')
+                .attr('opacity', 1)
+                .style('pointer-events', 'none');
+        }
 
         pointPositions.forEach(({ point, index, cx }) => {
             const handleY = index === topCornerIndex
