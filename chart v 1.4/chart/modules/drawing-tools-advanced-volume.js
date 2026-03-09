@@ -1074,7 +1074,7 @@ class VolumeProfileTool extends BaseDrawing {
         const backgroundOpacity = Number.isFinite(backgroundOpacityRaw)
             ? Math.max(0, Math.min(1, backgroundOpacityRaw))
             : 0.85;
-        const shouldRenderProfileBody = isPreview || this._isActiveResizing !== true;
+        const shouldRenderProfileBody = !isPreview && this._isActiveResizing !== true;
 
         // Visual profile background.
         if (shouldRenderProfileBody) {
