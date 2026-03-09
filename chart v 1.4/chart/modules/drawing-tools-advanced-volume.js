@@ -1376,6 +1376,7 @@ class VolumeProfileTool extends BaseDrawing {
                 const labelText = volumeDisplay === 'total'
                     ? `${formatVolumeValue(totalVolume)}`
                     : `${formatVolumeValue(buyVolume)}x${formatVolumeValue(sellVolume)}`;
+                const labelFontSize = Math.max(9, Math.min(24, barHeightPx * 0.8));
                 const labelX = fixedProfileSide === 'left'
                     ? chartLeftEdge + 3
                     : (fixedProfileSide === 'right' ? chartRightEdge - 3 : (profilePlacement === 'right' ? effectiveProfileRight - 3 : effectiveProfileLeft + 3));
@@ -1389,7 +1390,7 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('dy', '0.32em')
                     .attr('text-anchor', labelAnchor)
                     .attr('fill', valuesColor)
-                    .attr('font-size', Math.max(9, Math.min(12, barHeightPx - 2)))
+                    .attr('font-size', labelFontSize)
                     .attr('opacity', Math.min(1, globalOpacity * 0.95))
                     .style('pointer-events', 'none')
                     .text(labelText);
