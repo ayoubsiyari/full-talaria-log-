@@ -1606,7 +1606,9 @@ class VolumeProfileTool extends BaseDrawing {
                 ? scales.chart.dataIndexToPixel(xIndex)
                 : scales.xScale(xIndex);
 
-            return { point, index, cx };
+            const pointY = Number.isFinite(point.y) ? scales.yScale(point.y) : NaN;
+
+            return { point, index, cx, pointY };
         });
 
         const sortedByX = [...pointPositions].sort((a, b) => {
@@ -1617,18 +1619,35 @@ class VolumeProfileTool extends BaseDrawing {
         const bottomCornerIndex = sortedByX.length > 0 ? sortedByX[sortedByX.length - 1].index : null;
 
         const showGuides = this._isActiveResizing === true;
+        const activeResizePointIndex = Number.isFinite(this._activeResizingPointIndex)
+            ? this._activeResizingPointIndex
+            : null;
+
+        const resolveHandleY = ({ index, pointY }) => {
+            const cornerY = index === topCornerIndex
+                ? topY
+                : (index === bottomCornerIndex ? bottomY : middleY);
+
+            if (showGuides && activeResizePointIndex === index && Number.isFinite(pointY)) {
+                return pointY;
+            }
+
+            return cornerY;
+        };
 
         if (showGuides && sortedByX.length > 1) {
             const leftGuide = sortedByX[0];
             const rightGuide = sortedByX[sortedByX.length - 1];
             const guideLinkStroke = this.style.stroke || 'rgba(130, 164, 176, 0.75)';
+            const leftGuideY = resolveHandleY(leftGuide);
+            const rightGuideY = resolveHandleY(rightGuide);
 
             group.append('line')
                 .attr('class', 'volume-profile-guide-link')
                 .attr('x1', leftGuide.cx)
-                .attr('y1', topY)
+                .attr('y1', leftGuideY)
                 .attr('x2', rightGuide.cx)
-                .attr('y2', bottomY)
+                .attr('y2', rightGuideY)
                 .attr('stroke', guideLinkStroke)
                 .attr('stroke-width', 2)
                 .attr('stroke-dasharray', '')
@@ -1636,10 +1655,8 @@ class VolumeProfileTool extends BaseDrawing {
                 .style('pointer-events', 'none');
         }
 
-        pointPositions.forEach(({ point, index, cx }) => {
-            const handleY = index === topCornerIndex
-                ? topY
-                : (index === bottomCornerIndex ? bottomY : middleY);
+        pointPositions.forEach(({ point, index, cx, pointY }) => {
+            const handleY = resolveHandleY({ index, pointY });
 
             if (showGuides) {
                 group.append('line')
@@ -1690,10 +1707,16 @@ class VolumeProfileTool extends BaseDrawing {
             return false;
         }
 
-        this.points[index] = {
+        const nextPoint = {
             ...this.points[index],
             x: context.point.x
         };
+
+        if (Number.isFinite(context.point.y)) {
+            nextPoint.y = context.point.y;
+        }
+
+        this.points[index] = nextPoint;
         this.meta.updatedAt = Date.now();
         return true;
     }

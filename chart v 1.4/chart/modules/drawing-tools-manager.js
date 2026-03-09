@@ -3473,6 +3473,7 @@ class DrawingToolsManager {
 
         if (this.isVolumeProfileToolType(drawing.type)) {
             drawing._isActiveResizing = true;
+            drawing._activeResizingPointIndex = Number.isFinite(pointIndex) ? pointIndex : null;
         }
 
         const canvas = document.getElementById('chartCanvas');
@@ -3537,6 +3538,7 @@ class DrawingToolsManager {
         const isVolumeProfileResize = !!(drawing && this.isVolumeProfileToolType(drawing.type));
         if (isVolumeProfileResize) {
             drawing._isActiveResizing = false;
+            drawing._activeResizingPointIndex = null;
         }
         
         this.isResizing = false;
