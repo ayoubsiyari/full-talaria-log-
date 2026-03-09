@@ -638,6 +638,29 @@ class DrawingToolsManager {
                 return false;
             }
 
+            const valueLabelNode = rawTargetNode && rawTargetNode.closest
+                ? rawTargetNode.closest('.volume-profile-values-label')
+                : null;
+            if (valueLabelNode) {
+                const valueLabelDrawingGroup = valueLabelNode.closest('.drawing');
+                const valueLabelDrawingId = valueLabelDrawingGroup
+                    ? d3.select(valueLabelDrawingGroup).attr('data-id')
+                    : null;
+                const valueLabelDrawing = valueLabelDrawingId
+                    ? this.drawings.find((d) => d && d.id === valueLabelDrawingId)
+                    : null;
+
+                if (valueLabelDrawing && this.isVolumeProfileToolType(valueLabelDrawing.type) && !valueLabelDrawing.locked) {
+                    if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+                    if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                    if (typeof event.preventDefault === 'function') event.preventDefault();
+
+                    this.selectDrawing(valueLabelDrawing);
+                    this.editDrawing(valueLabelDrawing, event.pageX, event.pageY);
+                    return true;
+                }
+            }
+
             const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
             if (!svgNode) return false;
 
