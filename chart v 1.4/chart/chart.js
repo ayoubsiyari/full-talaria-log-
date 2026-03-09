@@ -744,6 +744,38 @@ class Chart {
             }, 500);
         }
     }
+
+    getGoToLoadingOverlay() {
+        const chartContainer = this.canvas?.closest('.chart-container') || document.getElementById('chartContainer');
+        if (!chartContainer) return null;
+        return chartContainer.querySelector('.loading-overlay');
+    }
+
+    showGoToLoadingOverlay() {
+        const overlay = this.getGoToLoadingOverlay();
+        if (!overlay) return;
+
+        if (this._goToLoadingHideTimer) {
+            clearTimeout(this._goToLoadingHideTimer);
+            this._goToLoadingHideTimer = null;
+        }
+
+        overlay.style.display = 'flex';
+    }
+
+    hideGoToLoadingOverlay(delayMs = 120) {
+        const overlay = this.getGoToLoadingOverlay();
+        if (!overlay) return;
+
+        if (this._goToLoadingHideTimer) {
+            clearTimeout(this._goToLoadingHideTimer);
+        }
+
+        this._goToLoadingHideTimer = setTimeout(() => {
+            overlay.style.display = 'none';
+            this._goToLoadingHideTimer = null;
+        }, delayMs);
+    }
     
     /**
      * Auto-load data and start replay for backtesting session
@@ -7039,7 +7071,6 @@ class Chart {
                         <input type="date" id="goToDateInput" class="go-to-input" style="flex: 1.2;">
                         <input type="time" id="goToTimeInput" class="go-to-input" style="flex: 0.8;">
                         <button type="button" class="go-to-input-btn" id="goToDateBtn">Go</button>
-                        <button type="button" class="go-to-input-btn" id="goToDateReloadBtn" title="Reload data around this date, then jump">Reload</button>
                     </div>
                 </div>
                 <!-- Price Input -->
@@ -7163,7 +7194,6 @@ class Chart {
         const dateInput = menu.querySelector('#goToDateInput');
         const timeInput = menu.querySelector('#goToTimeInput');
         const dateBtn = menu.querySelector('#goToDateBtn');
-        const dateReloadBtn = menu.querySelector('#goToDateReloadBtn');
         
         // Set default values from current data (in current timezone)
         if (dateInput && this.data && this.data.length > 0) {
@@ -7184,7 +7214,7 @@ class Chart {
         }
         
         if (dateInput && dateBtn) {
-            const handleDateJump = async ({ forceReload = false } = {}) => {
+            const handleDateJump = async () => {
                 let dateStr = dateInput.value;
                 if (!dateStr) return;
                 
@@ -7204,27 +7234,25 @@ class Chart {
                     : new Date(year, month - 1, day, hour, minute, 0).getTime();
                 
                 if (!Number.isNaN(targetTimestamp)) {
-                    await chart.jumpToTimestamp(targetTimestamp, { forceWindowReload: forceReload });
+                    await chart.jumpToTimestamp(targetTimestamp, {
+                        forceWindowReload: true,
+                        showLoadingOverlay: true
+                    });
                     menu.classList.remove('open');
                 }
             };
             dateBtn.addEventListener('click', () => {
-                void handleDateJump({ forceReload: false });
+                void handleDateJump();
             });
-            if (dateReloadBtn) {
-                dateReloadBtn.addEventListener('click', () => {
-                    void handleDateJump({ forceReload: true });
-                });
-            }
             dateInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
-                    void handleDateJump({ forceReload: false });
+                    void handleDateJump();
                 }
             });
             if (timeInput) {
                 timeInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
-                        void handleDateJump({ forceReload: false });
+                        void handleDateJump();
                     }
                 });
             }
@@ -8364,10 +8392,15 @@ class Chart {
      * Jump to a specific timestamp (UTC milliseconds)
      * @param {number} targetTimestamp - Unix timestamp in milliseconds
      */
-    async jumpToTimestamp(targetTimestamp, { skipWindowFetch = false, forceWindowReload = false } = {}) {
+    async jumpToTimestamp(targetTimestamp, { skipWindowFetch = false, forceWindowReload = false, showLoadingOverlay = true } = {}) {
         if (!this.data || this.data.length === 0) {
             alert('No data loaded. Please upload a CSV file first.');
             return;
+        }
+
+        const shouldToggleOverlay = showLoadingOverlay && !skipWindowFetch;
+        if (shouldToggleOverlay) {
+            this.showGoToLoadingOverlay();
         }
 
         try {
@@ -8409,7 +8442,11 @@ class Chart {
             if (!skipWindowFetch && this.currentFileId && (forceWindowReload || targetOutsideLoadedRange)) {
                 const loaded = await this.ensureGoToWindowContainsTimestamp(normalizedTarget, { usingReplay });
                 if (loaded) {
-                    return this.jumpToTimestamp(normalizedTarget, { skipWindowFetch: true, forceWindowReload: false });
+                    return this.jumpToTimestamp(normalizedTarget, {
+                        skipWindowFetch: true,
+                        forceWindowReload: false,
+                        showLoadingOverlay: false
+                    });
                 }
             }
 
@@ -8463,6 +8500,10 @@ class Chart {
         } catch (error) {
             console.error('Error jumping to timestamp:', error);
             alert(`Failed to jump: ${error.message}`);
+        } finally {
+            if (shouldToggleOverlay) {
+                this.hideGoToLoadingOverlay();
+            }
         }
     }
     
