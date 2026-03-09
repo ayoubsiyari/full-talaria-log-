@@ -781,7 +781,17 @@ class DrawingToolsManager {
 
                 const isSecondClick = event.detail >= 2;
                 if (isSecondClick) {
-                    const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
+                    let openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
+                    if (!openedFromDoubleClick && (isVolumeProfileValuesLabelTarget || isVolumeProfileValuesLabelHit) && isVolumeProfileHit) {
+                        const labelDrawing = drawingsAtPoint.find((d) =>
+                            d && !d.locked && this.isVolumeProfileValuesLabelHit(d, mouseX, mouseY)
+                        );
+                        if (labelDrawing) {
+                            this.selectDrawing(labelDrawing, false);
+                            this.editDrawing(labelDrawing, event.pageX, event.pageY);
+                            openedFromDoubleClick = true;
+                        }
+                    }
                     if (openedFromDoubleClick) {
                         // Prevent duplicate open from the browser's upcoming dblclick event.
                         // Keep this suppression short-lived so later true dblclicks still work.
@@ -2822,7 +2832,7 @@ class DrawingToolsManager {
 
             drawing.group.selectAll('.volume-profile-values-label')
                 .style('pointer-events', 'all')
-                .style('cursor', 'default');
+                .style('cursor', 'move');
         }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
