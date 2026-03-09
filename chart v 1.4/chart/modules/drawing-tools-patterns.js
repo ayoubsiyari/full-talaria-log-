@@ -1597,14 +1597,28 @@ class TrianglePatternTool extends BaseDrawing {
             const d = pointsPx[3];
 
             const viewport = this._getViewportXRange(scales, pointsPx);
-            const rightX = viewport ? viewport[1] : Math.max(a.x, b.x, c.x, d.x);
+            const minX = Math.min(a.x, b.x, c.x, d.x);
+            const maxX = Math.max(a.x, b.x, c.x, d.x);
 
-            const topRightGuide = this._pointOnLineAtX(a, c, rightX) || { x: c.x, y: c.y };
+            const apex = this._lineIntersection(a, c, b, d);
+            const hasOuterApex = Boolean(
+                apex
+                && Number.isFinite(apex.x)
+                && Number.isFinite(apex.y)
+                && (apex.x >= (maxX + 2) || apex.x <= (minX - 2))
+            );
+
+            const rightX = viewport ? viewport[1] : maxX;
+            const topRightGuide = hasOuterApex
+                ? apex
+                : (this._pointOnLineAtX(a, c, rightX) || { x: c.x, y: c.y });
             const bottomLeftGuide = this._pointOnLineAtX(b, d, a.x) || { x: b.x, y: b.y };
-            const bottomRightGuide = this._pointOnLineAtX(b, d, rightX) || { x: d.x, y: d.y };
+            const bottomRightGuide = hasOuterApex
+                ? apex
+                : (this._pointOnLineAtX(b, d, rightX) || { x: d.x, y: d.y });
 
-            // Fill only the core ABCD shape.
-            const fillPath = `M ${a.x} ${a.y} L ${c.x} ${c.y} L ${d.x} ${d.y} L ${b.x} ${b.y} Z`;
+            // Fill projected outer envelope area.
+            const fillPath = `M ${a.x} ${a.y} L ${topRightGuide.x} ${topRightGuide.y} L ${bottomRightGuide.x} ${bottomRightGuide.y} L ${bottomLeftGuide.x} ${bottomLeftGuide.y} Z`;
             this.group.append('path')
                 .attr('d', fillPath)
                 .attr('fill', this.style.fill)
@@ -1754,6 +1768,33 @@ class TrianglePatternTool extends BaseDrawing {
             x,
             y: start.y + ((end.y - start.y) * t)
         };
+    }
+
+    _lineIntersection(a1, a2, b1, b2) {
+        if (!a1 || !a2 || !b1 || !b2) return null;
+
+        const x1 = Number(a1.x);
+        const y1 = Number(a1.y);
+        const x2 = Number(a2.x);
+        const y2 = Number(a2.y);
+        const x3 = Number(b1.x);
+        const y3 = Number(b1.y);
+        const x4 = Number(b2.x);
+        const y4 = Number(b2.y);
+
+        if (![x1, y1, x2, y2, x3, y3, x4, y4].every(Number.isFinite)) return null;
+
+        const denominator = ((x1 - x2) * (y3 - y4)) - ((y1 - y2) * (x3 - x4));
+        if (Math.abs(denominator) < 0.000001) return null;
+
+        const det1 = (x1 * y2) - (y1 * x2);
+        const det2 = (x3 * y4) - (y3 * x4);
+
+        const px = ((det1 * (x3 - x4)) - ((x1 - x2) * det2)) / denominator;
+        const py = ((det1 * (y3 - y4)) - ((y1 - y2) * det2)) / denominator;
+
+        if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+        return { x: px, y: py };
     }
 
     _drawPointTag(x, y, text) {
