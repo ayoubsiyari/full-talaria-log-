@@ -1074,19 +1074,22 @@ class VolumeProfileTool extends BaseDrawing {
         const backgroundOpacity = Number.isFinite(backgroundOpacityRaw)
             ? Math.max(0, Math.min(1, backgroundOpacityRaw))
             : 0.85;
+        const shouldRenderProfileBody = !(this.selected && !isPreview && this._isActiveResizing !== true);
 
         // Visual profile background.
-        this.group.append('rect')
-            .attr('class', 'volume-profile-range')
-            .attr('x', left)
-            .attr('y', top)
-            .attr('width', width)
-            .attr('height', Math.max(1, height))
-            .attr('fill', backgroundFill)
-            .attr('opacity', Math.min(1, globalOpacity * backgroundOpacity))
-            .attr('stroke', 'none')
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+        if (shouldRenderProfileBody) {
+            this.group.append('rect')
+                .attr('class', 'volume-profile-range')
+                .attr('x', left)
+                .attr('y', top)
+                .attr('width', width)
+                .attr('height', Math.max(1, height))
+                .attr('fill', backgroundFill)
+                .attr('opacity', Math.min(1, globalOpacity * backgroundOpacity))
+                .attr('stroke', 'none')
+                .style('pointer-events', 'none')
+                .style('cursor', 'default');
+        }
 
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
         [
@@ -1131,6 +1134,11 @@ class VolumeProfileTool extends BaseDrawing {
         if (isPreview) {
             this.renderCornerPoint(this.group, left, top, Math.min(1, globalOpacity * 0.95));
             this.renderCornerPoint(this.group, right, bottom, Math.min(1, globalOpacity * 0.95));
+        }
+
+        if (!shouldRenderProfileBody) {
+            this.createHandles(this.group, scales);
+            return;
         }
 
         if (!Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow || height <= 0) {
