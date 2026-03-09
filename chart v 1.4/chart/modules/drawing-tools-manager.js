@@ -919,6 +919,14 @@ class DrawingToolsManager {
                     const best = drawingsAtPoint[0];
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
+                        this._volumeProfileValueLabelClickState = {
+                            drawingId: best.id,
+                            time: now,
+                            mouseX,
+                            mouseY
+                        };
+                    } else {
+                        this._volumeProfileValueLabelClickState = null;
                     }
 
                     event.preventDefault();
@@ -934,6 +942,14 @@ class DrawingToolsManager {
                     const best = drawingsAtPoint[0];
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
+                        this._volumeProfileValueLabelClickState = {
+                            drawingId: best.id,
+                            time: now,
+                            mouseX,
+                            mouseY
+                        };
+                    } else {
+                        this._volumeProfileValueLabelClickState = null;
                     }
 
                     event.preventDefault();
