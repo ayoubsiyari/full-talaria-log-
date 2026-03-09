@@ -1472,7 +1472,7 @@ class VolumeProfileTool extends BaseDrawing {
                 const labelText = volumeDisplay === 'total'
                     ? `${formatVolumeValue(totalVolume)}`
                     : `${formatVolumeValue(buyVolume)}x${formatVolumeValue(sellVolume)}`;
-                const labelFontSize = Math.max(9, Math.min(24, barHeightPx * 0.8));
+                const labelFontSize = Math.max(9, Math.min(24, barHeightPx * 0.72));
                 const labelX = fixedProfileSide === 'left'
                     ? chartLeftEdge + 3
                     : (fixedProfileSide === 'right' ? chartRightEdge - 3 : (profilePlacement === 'right' ? effectiveProfileRight - 3 : effectiveProfileLeft + 3));
