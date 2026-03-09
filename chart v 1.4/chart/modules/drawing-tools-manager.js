@@ -2056,6 +2056,8 @@ class DrawingToolsManager {
                 && this.isVolumeProfileToolType(this.resizingDrawing.type)
                 && this.resizingPointIndex === 1
             );
+        const isInteractingWithExistingVolumeProfile = this.isVolumeProfileToolType(activeToolType)
+            && !this.currentTool;
 
         // Clamp to chart inner area so no drawing point can go outside the chart
         if (this.chart) {
@@ -2068,7 +2070,9 @@ class DrawingToolsManager {
             screenX = isResizingVolumeProfileRightBoundary
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
-            screenY = Math.max(0, Math.min(maxY, screenY));
+            screenY = isInteractingWithExistingVolumeProfile
+                ? screenY
+                : Math.max(0, Math.min(maxY, screenY));
         }
         
         // Preserve legacy behavior: continuous coordinates are only for actively drawn freehand tools
