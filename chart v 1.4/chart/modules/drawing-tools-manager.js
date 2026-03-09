@@ -4495,8 +4495,13 @@ class DrawingToolsManager {
             }
         }
         
-        // 4. Update URL with drawings for cross-tab/browser sharing
-        if (!isUndoRedo) {
+        // 4. Optional URL sync for drawings (disabled by default to avoid very long URLs / 414 errors)
+        const shouldSyncDrawingsToUrl = (
+            typeof window !== 'undefined' &&
+            window &&
+            window.__ENABLE_DRAWINGS_URL_SYNC__ === true
+        );
+        if (!isUndoRedo && shouldSyncDrawingsToUrl) {
             try {
                 this.updateURLWithDrawings();
             } catch (error) {
@@ -4656,6 +4661,17 @@ class DrawingToolsManager {
             // Compress and encode drawings
             const compressed = this.compressDrawings(this.drawings);
             if (!compressed) return;
+
+            // Hard limit guard: avoid generating URLs that can exceed server/browser limits.
+            // This protects refresh/navigation from 414 Request-URI Too Large.
+            const MAX_DRAWINGS_PARAM_LENGTH = 1500;
+            if (compressed.length > MAX_DRAWINGS_PARAM_LENGTH) {
+                const url = new URL(window.location);
+                url.searchParams.delete('drawings');
+                window.history.replaceState({}, '', url);
+                console.warn(`⚠️ Drawings URL sync skipped (${compressed.length} chars > ${MAX_DRAWINGS_PARAM_LENGTH}).`);
+                return;
+            }
             
             // Update URL without reloading page
             const url = new URL(window.location);
