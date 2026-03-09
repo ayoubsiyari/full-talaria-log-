@@ -8015,73 +8015,91 @@ class Chart {
     }
 
     /**
+     * Normalize timestamps to epoch milliseconds.
+     * Supports numbers, numeric strings, ISO-like date strings, and Date objects.
+     */
+    normalizeTimestampMs(value) {
+        if (value instanceof Date) {
+            const ts = value.getTime();
+            return Number.isFinite(ts) ? ts : NaN;
+        }
+
+        let ts = NaN;
+
+        if (typeof value === 'number') {
+            ts = value;
+        } else if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed) return NaN;
+
+            const numeric = Number(trimmed);
+            if (Number.isFinite(numeric)) {
+                ts = numeric;
+            } else {
+                const parsed = Date.parse(trimmed);
+                if (Number.isFinite(parsed)) {
+                    ts = parsed;
+                }
+            }
+        }
+
+        if (!Number.isFinite(ts)) return NaN;
+
+        // Heuristic: values below 1e11 are treated as seconds and converted to ms.
+        if (Math.abs(ts) < 1e11) {
+            ts *= 1000;
+        }
+
+        return ts;
+    }
+
+    /**
      * Resolve a Go To timestamp to a bar index.
-     * Prefers the first bar on/after the target timestamp so replay does not jump backwards.
+     * Prefers an exact timestamp match; otherwise the first bar on/after target time.
+     * Works even if sourceData is partially unsorted.
      */
     findGoToTargetIndex(sourceData, targetTimestamp) {
-        if (!Array.isArray(sourceData) || sourceData.length === 0 || !Number.isFinite(targetTimestamp)) {
+        if (!Array.isArray(sourceData) || sourceData.length === 0) {
             return -1;
         }
 
-        const getBarTimestamp = (bar) => {
-            const raw = bar?.t;
-            if (typeof raw === 'number') {
-                return Number.isFinite(raw) ? raw : NaN;
-            }
-            if (typeof raw === 'string') {
-                const parsed = Date.parse(raw);
-                return Number.isFinite(parsed) ? parsed : NaN;
-            }
-            return NaN;
-        };
-
-        let left = 0;
-        let right = sourceData.length - 1;
-        let firstOnOrAfter = -1;
-        let fallbackToLinearScan = false;
-
-        while (left <= right) {
-            const mid = (left + right) >> 1;
-            const ts = getBarTimestamp(sourceData[mid]);
-
-            if (!Number.isFinite(ts)) {
-                fallbackToLinearScan = true;
-                break;
-            }
-
-            if (ts >= targetTimestamp) {
-                firstOnOrAfter = mid;
-                right = mid - 1;
-            } else {
-                left = mid + 1;
-            }
+        const normalizedTarget = this.normalizeTimestampMs(targetTimestamp);
+        if (!Number.isFinite(normalizedTarget)) {
+            return -1;
         }
 
-        if (!fallbackToLinearScan) {
-            return firstOnOrAfter !== -1 ? firstOnOrAfter : sourceData.length - 1;
-        }
-
-        let firstOnOrAfterLinear = -1;
+        let exactIndex = -1;
+        let firstOnOrAfterIndex = -1;
+        let firstOnOrAfterTs = Infinity;
         let nearestIndex = -1;
         let minDiff = Infinity;
 
         for (let i = 0; i < sourceData.length; i++) {
-            const ts = getBarTimestamp(sourceData[i]);
+            const ts = this.normalizeTimestampMs(sourceData[i]?.t);
             if (!Number.isFinite(ts)) continue;
 
-            if (firstOnOrAfterLinear === -1 && ts >= targetTimestamp) {
-                firstOnOrAfterLinear = i;
+            if (ts === normalizedTarget && exactIndex === -1) {
+                exactIndex = i;
             }
 
-            const diff = Math.abs(ts - targetTimestamp);
+            if (ts >= normalizedTarget && ts < firstOnOrAfterTs) {
+                firstOnOrAfterTs = ts;
+                firstOnOrAfterIndex = i;
+            }
+
+            const diff = Math.abs(ts - normalizedTarget);
             if (diff < minDiff) {
                 minDiff = diff;
                 nearestIndex = i;
             }
         }
 
-        if (firstOnOrAfterLinear !== -1) {
-            return firstOnOrAfterLinear;
+        if (exactIndex !== -1) {
+            return exactIndex;
+        }
+
+        if (firstOnOrAfterIndex !== -1) {
+            return firstOnOrAfterIndex;
         }
 
         return nearestIndex;
@@ -8138,15 +8156,25 @@ class Chart {
         }
 
         try {
-            // Build a full date-time string using optional time input
-            let dateTimeString = dateString;
+            let timeStr = '00:00';
             if (this.timeSearchInput && this.timeSearchInput.value) {
-                // Use selected time (HH:MM) in local timezone
-                dateTimeString = `${dateString}T${this.timeSearchInput.value}`;
+                timeStr = this.timeSearchInput.value;
             }
 
-            const targetDate = new Date(dateTimeString);
-            const targetTimestamp = targetDate.getTime();
+            const [year, month, day] = String(dateString || '').split('-').map(Number);
+            const [hour = 0, minute = 0, second = 0] = String(timeStr || '').split(':').map(Number);
+
+            if (![year, month, day, hour, minute, second].every(Number.isFinite)) {
+                alert('Invalid date/time');
+                return;
+            }
+
+            const tm = window.timezoneManager;
+            const utcTimestamp = Date.UTC(year, month - 1, day, hour, minute, second, 0);
+            const targetTimestamp = tm
+                ? (utcTimestamp - tm.getOffsetMs())
+                : new Date(year, month - 1, day, hour, minute, second, 0).getTime();
+            const targetDate = new Date(targetTimestamp);
 
             // Validate the date/time
             if (isNaN(targetTimestamp)) {
@@ -8154,7 +8182,7 @@ class Chart {
                 return;
             }
 
-            console.log(`📅 Jumping to: ${dateTimeString}`);
+            console.log(`📅 Jumping to: ${dateString} ${timeStr}`);
             console.log(`🕐 Target timestamp: ${targetTimestamp}`);
 
             // Choose data source: full replay data when replay is active, otherwise current chart data
@@ -8180,12 +8208,13 @@ class Chart {
             }
 
             const closestCandle = sourceData[closestIndex];
-            const closestDate = new Date(closestCandle.t);
+            const closestTs = this.normalizeTimestampMs(closestCandle?.t);
+            const closestDate = new Date(closestTs);
             console.log(`🎯 Closest candle found at: ${closestDate.toLocaleString()}`);
             console.log(`📍 Index: ${closestIndex} of ${sourceData.length}`);
 
             // Check if the date is within a reasonable range
-            const daysDiff = Math.abs(targetTimestamp - closestCandle.t) / (1000 * 60 * 60 * 24);
+            const daysDiff = Math.abs(targetTimestamp - closestTs) / (1000 * 60 * 60 * 24);
             if (daysDiff > 30) {
                 const proceed = confirm(`The closest data found is ${Math.round(daysDiff)} days away from your selected date. Continue?`);
                 if (!proceed) return;
@@ -8254,7 +8283,13 @@ class Chart {
         }
 
         try {
-            console.log(`📅 Jumping to timestamp: ${targetTimestamp} (${new Date(targetTimestamp).toISOString()})`);
+            const normalizedTarget = this.normalizeTimestampMs(targetTimestamp);
+            if (!Number.isFinite(normalizedTarget)) {
+                alert('Invalid timestamp');
+                return;
+            }
+
+            console.log(`📅 Jumping to timestamp: ${normalizedTarget} (${new Date(normalizedTarget).toISOString()})`);
 
             // Choose data source: full replay data when replay is active
             let sourceData = this.data;
@@ -8271,7 +8306,7 @@ class Chart {
             }
 
             // Prefer first candle on/after target timestamp.
-            const closestIndex = this.findGoToTargetIndex(sourceData, targetTimestamp);
+            const closestIndex = this.findGoToTargetIndex(sourceData, normalizedTarget);
 
             if (closestIndex === -1) {
                 alert('Could not find data for the specified date/time');
@@ -8279,14 +8314,15 @@ class Chart {
             }
 
             const closestCandle = sourceData[closestIndex];
+            const closestTs = this.normalizeTimestampMs(closestCandle?.t);
             
             // Display using timezone manager
             const tm = window.timezoneManager;
-            const displayDate = tm ? tm.convertToTimezone(closestCandle.t) : new Date(closestCandle.t);
-            console.log(`🎯 Closest candle found at: ${tm ? tm.formatTime(closestCandle.t, 'full') : displayDate.toLocaleString()}`);
+            const displayDate = tm ? tm.convertToTimezone(closestTs) : new Date(closestTs);
+            console.log(`🎯 Closest candle found at: ${tm ? tm.formatTime(closestTs, 'full') : displayDate.toLocaleString()}`);
 
             // Check if the date is within a reasonable range
-            const daysDiff = Math.abs(targetTimestamp - closestCandle.t) / (1000 * 60 * 60 * 24);
+            const daysDiff = Math.abs(normalizedTarget - closestTs) / (1000 * 60 * 60 * 24);
             if (daysDiff > 30) {
                 const proceed = confirm(`The closest data found is ${Math.round(daysDiff)} days away from your selected date. Continue?`);
                 if (!proceed) return;
@@ -8310,10 +8346,10 @@ class Chart {
                 this.scheduleRender();
             }
 
-            console.log(`✅ Jumped to ${tm ? tm.formatTime(closestCandle.t, 'full') : displayDate.toLocaleString()}`);
+            console.log(`✅ Jumped to ${tm ? tm.formatTime(closestTs, 'full') : displayDate.toLocaleString()}`);
 
             if (typeof this.showNotification === 'function') {
-                this.showNotification(`Jumped to ${tm ? tm.formatTime(closestCandle.t, 'datetime') : displayDate.toLocaleString()}`);
+                this.showNotification(`Jumped to ${tm ? tm.formatTime(closestTs, 'datetime') : displayDate.toLocaleString()}`);
             }
 
         } catch (error) {
