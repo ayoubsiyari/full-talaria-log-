@@ -376,6 +376,26 @@ class DrawingToolsManager {
     }
 
     /**
+     * Returns the top-most visible volume-profile drawing whose values label contains the point.
+     */
+    findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, options = {}) {
+        const includeLocked = !!(options && options.includeLocked);
+
+        for (let i = this.drawings.length - 1; i >= 0; i--) {
+            const drawing = this.drawings[i];
+            if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) continue;
+            if (drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
+            if (!includeLocked && drawing.locked) continue;
+
+            if (this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY)) {
+                return drawing;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Initialize the drawing manager
      */
     init() {
@@ -667,13 +687,11 @@ class DrawingToolsManager {
             const svgRect = svgNode.getBoundingClientRect();
             const mouseX = event.clientX - svgRect.left;
             const mouseY = event.clientY - svgRect.top;
+            const valueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY);
             const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
 
-            if (!drawingsAtPoint || drawingsAtPoint.length === 0) return false;
+            if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && !valueLabelDrawing) return false;
 
-            const valueLabelDrawing = drawingsAtPoint.find((d) =>
-                this.isVolumeProfileValuesLabelHit(d, mouseX, mouseY)
-            );
             const drawing = valueLabelDrawing || drawingsAtPoint[0];
             if (!drawing || drawing.locked) return false;
 
@@ -759,7 +777,11 @@ class DrawingToolsManager {
                 const svgRect = svgNode.getBoundingClientRect();
                 const mouseX = event.clientX - svgRect.left;
                 const mouseY = event.clientY - svgRect.top;
-                const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+                let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+                const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
+                if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
+                    drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+                }
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
                 const isVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
                     this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
@@ -781,6 +803,7 @@ class DrawingToolsManager {
 
                 const isSecondClick = event.detail >= 2;
                 if (isSecondClick) {
+                    this._volumeProfileValueLabelClickState = null;
                     let openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
                     if (!openedFromDoubleClick && (isVolumeProfileValuesLabelTarget || isVolumeProfileValuesLabelHit) && isVolumeProfileHit) {
                         const labelDrawing = drawingsAtPoint.find((d) =>
@@ -813,9 +836,46 @@ class DrawingToolsManager {
                 }
 
                 if ((isVolumeProfileValuesLabelTarget || isVolumeProfileValuesLabelHit) && isVolumeProfileHit) {
-                    const best = drawingsAtPoint[0];
+                    const labelDrawing = drawingsAtPoint.find((d) =>
+                        d && !d.locked && this.isVolumeProfileValuesLabelHit(d, mouseX, mouseY)
+                    );
+                    const best = labelDrawing || drawingsAtPoint[0];
+
                     if (best && !best.locked) {
+                        const now = Date.now();
+                        const clickState = this._volumeProfileValueLabelClickState || null;
+                        const isSecondValueLabelClick = !!(
+                            clickState
+                            && clickState.drawingId === best.id
+                            && (now - clickState.time) <= 450
+                            && Math.abs((clickState.mouseX ?? 0) - mouseX) <= 14
+                            && Math.abs((clickState.mouseY ?? 0) - mouseY) <= 14
+                        );
+
+                        if (isSecondValueLabelClick) {
+                            this._volumeProfileValueLabelClickState = null;
+                            this.selectDrawing(best, false);
+                            this.editDrawing(best, event.pageX, event.pageY);
+                            this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof event.stopImmediatePropagation === 'function') {
+                                event.stopImmediatePropagation();
+                            }
+                            suppressNextCanvasClick = true;
+                            return;
+                        }
+
+                        this._volumeProfileValueLabelClickState = {
+                            drawingId: best.id,
+                            time: now,
+                            mouseX,
+                            mouseY
+                        };
                         this.selectDrawing(best, false);
+                    } else {
+                        this._volumeProfileValueLabelClickState = null;
                     }
 
                     event.preventDefault();
@@ -1127,7 +1187,11 @@ class DrawingToolsManager {
             }
             
             // Find all drawings at this point using geometric hit test
-            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+            let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+            const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
+            if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
+                drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+            }
 
             if (!isVolumeProfileLevelLineTarget && drawingsAtPoint.length > 0) {
                 isVolumeProfileLevelLineTarget = drawingsAtPoint.some((d) =>
@@ -4678,24 +4742,46 @@ class DrawingToolsManager {
 
         const labelPadX = 6;
         const labelPadY = 4;
+        const clientPadX = 8;
+        const clientPadY = 6;
+        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
+        const svgRect = svgNode && typeof svgNode.getBoundingClientRect === 'function'
+            ? svgNode.getBoundingClientRect()
+            : null;
+        const clientX = Number.isFinite(mouseX) && svgRect ? (svgRect.left + mouseX) : NaN;
+        const clientY = Number.isFinite(mouseY) && svgRect ? (svgRect.top + mouseY) : NaN;
 
         for (const label of labelNodes) {
-            if (!label || typeof label.getBBox !== 'function') continue;
+            if (!label) continue;
 
-            let bb = null;
-            try {
-                bb = label.getBBox();
-            } catch (_) {
-                bb = null;
+            let insideSvg = false;
+            if (typeof label.getBBox === 'function') {
+                let bb = null;
+                try {
+                    bb = label.getBBox();
+                } catch (_) {
+                    bb = null;
+                }
+
+                if (bb) {
+                    insideSvg = mouseX >= (bb.x - labelPadX) && mouseX <= (bb.x + bb.width + labelPadX)
+                        && mouseY >= (bb.y - labelPadY) && mouseY <= (bb.y + bb.height + labelPadY);
+                }
             }
 
-            if (!bb) continue;
-
-            const inside = mouseX >= (bb.x - labelPadX) && mouseX <= (bb.x + bb.width + labelPadX)
-                && mouseY >= (bb.y - labelPadY) && mouseY <= (bb.y + bb.height + labelPadY);
-
-            if (inside) {
+            if (insideSvg) {
                 return true;
+            }
+
+            if (Number.isFinite(clientX) && Number.isFinite(clientY) && typeof label.getBoundingClientRect === 'function') {
+                const rect = label.getBoundingClientRect();
+                if (rect) {
+                    const insideClient = clientX >= (rect.left - clientPadX) && clientX <= (rect.right + clientPadX)
+                        && clientY >= (rect.top - clientPadY) && clientY <= (rect.bottom + clientPadY);
+                    if (insideClient) {
+                        return true;
+                    }
+                }
             }
         }
 
@@ -5941,23 +6027,8 @@ class DrawingToolsManager {
                     }
 
                     // Also allow selecting from displayed candle value labels.
-                    if (!hitsById.has(drawing.id)) {
-                        const valueLabelNodes = drawing.group.selectAll('.volume-profile-values-label').nodes();
-                        const labelPadX = 6;
-                        const labelPadY = 4;
-
-                        for (const label of valueLabelNodes) {
-                            if (!label || typeof label.getBBox !== 'function') continue;
-
-                            const bb = label.getBBox();
-                            const inside = mouseX >= (bb.x - labelPadX) && mouseX <= (bb.x + bb.width + labelPadX)
-                                && mouseY >= (bb.y - labelPadY) && mouseY <= (bb.y + bb.height + labelPadY);
-
-                            if (inside) {
-                                hitsById.set(drawing.id, { drawing, distance: 0, z });
-                                break;
-                            }
-                        }
+                    if (!hitsById.has(drawing.id) && this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY)) {
+                        hitsById.set(drawing.id, { drawing, distance: 0, z });
                     }
 
                     // Allow selecting/double-clicking inside the profile body area.
@@ -6785,7 +6856,11 @@ class DrawingToolsManager {
         }
         
         // Check if cursor is over any drawing (use same geometric hit-test as selection)
-        const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+        let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+        const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
+        if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
+            drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+        }
 
         if (drawingsAtPoint.length > 0) {
             const cursorStyle = 'move';
