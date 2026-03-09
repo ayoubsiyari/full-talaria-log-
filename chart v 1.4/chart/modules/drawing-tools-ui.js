@@ -3109,6 +3109,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         bandDefaults.forEach((bandDefault, index) => {
             const bandNumber = index + 1;
+            const bandEnabledProp = `vwapBand${bandNumber}Enabled`;
             const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
             const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
             const upperColorProp = `vwapUpperBand${bandNumber}Color`;
@@ -3124,8 +3125,11 @@ body.light-mode .template-save-dialog .dialog-title {
             const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
             const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
 
-            if (drawing.style[upperEnabledProp] === undefined) drawing.style[upperEnabledProp] = true;
-            if (drawing.style[lowerEnabledProp] === undefined) drawing.style[lowerEnabledProp] = true;
+            if (drawing.style[bandEnabledProp] === undefined) drawing.style[bandEnabledProp] = bandNumber === 1;
+            const normalizedBandEnabled = drawing.style[bandEnabledProp] !== false;
+            drawing.style[bandEnabledProp] = normalizedBandEnabled;
+            drawing.style[upperEnabledProp] = normalizedBandEnabled;
+            drawing.style[lowerEnabledProp] = normalizedBandEnabled;
             if (!drawing.style[upperColorProp]) drawing.style[upperColorProp] = bandDefault.color;
             if (!drawing.style[lowerColorProp]) drawing.style[lowerColorProp] = bandDefault.color;
 
@@ -3172,11 +3176,11 @@ body.light-mode .template-save-dialog .dialog-title {
         for (let bandNumber = 1; bandNumber <= 3; bandNumber++) {
             const upperPropKey = `vwapUpperBand${bandNumber}`;
             const lowerPropKey = `vwapLowerBand${bandNumber}`;
+            const bandEnabledProp = `vwapBand${bandNumber}Enabled`;
             const backgroundEnabledProp = `vwapBand${bandNumber}BackgroundEnabled`;
             const backgroundColorProp = `vwapBand${bandNumber}BackgroundColor`;
 
-            const bandEnabled = (drawing.style[`${upperPropKey}Enabled`] !== false)
-                || (drawing.style[`${lowerPropKey}Enabled`] !== false);
+            const bandEnabled = drawing.style[bandEnabledProp] !== false;
             const bandColor = drawing.style[`${upperPropKey}Color`]
                 || drawing.style[`${lowerPropKey}Color`]
                 || bandDefaults[bandNumber - 1].color;
@@ -3188,6 +3192,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 || 1;
 
             // Keep upper/lower lines in sync while using a single Band row in settings.
+            drawing.style[bandEnabledProp] = bandEnabled;
             drawing.style[`${upperPropKey}Enabled`] = bandEnabled;
             drawing.style[`${lowerPropKey}Enabled`] = bandEnabled;
             drawing.style[`${upperPropKey}Color`] = bandColor;
@@ -7599,6 +7604,18 @@ body.light-mode .template-save-dialog .dialog-title {
         if (drawing.style.vwapBand1Enabled === undefined) drawing.style.vwapBand1Enabled = true;
         if (drawing.style.vwapBand2Enabled === undefined) drawing.style.vwapBand2Enabled = false;
         if (drawing.style.vwapBand3Enabled === undefined) drawing.style.vwapBand3Enabled = false;
+
+        [1, 2, 3].forEach((bandNumber) => {
+            const bandEnabledProp = `vwapBand${bandNumber}Enabled`;
+            const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
+            const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
+            const bandEnabled = drawing.style[bandEnabledProp] !== false;
+
+            drawing.style[bandEnabledProp] = bandEnabled;
+            drawing.style[upperEnabledProp] = bandEnabled;
+            drawing.style[lowerEnabledProp] = bandEnabled;
+        });
+
         drawing.style.vwapBand1Multiplier = normalizeMultiplier(drawing.style.vwapBand1Multiplier, 1);
         drawing.style.vwapBand2Multiplier = normalizeMultiplier(drawing.style.vwapBand2Multiplier, 2);
         drawing.style.vwapBand3Multiplier = normalizeMultiplier(drawing.style.vwapBand3Multiplier, 3);
@@ -8646,6 +8663,18 @@ body.light-mode .template-save-dialog .dialog-title {
                     }
                     
                     this.pendingChanges[prop] = isChecked;
+
+                    const syncLinkedCheckboxState = (targetProp, checked) => {
+                        queryAll(`.tv-checkbox[data-prop="${targetProp}"]`).forEach((checkboxEl) => {
+                            if (checkboxEl === cb) return;
+
+                            if (checkboxEl.tagName === 'INPUT' && checkboxEl.type === 'checkbox') {
+                                checkboxEl.checked = checked;
+                            } else {
+                                checkboxEl.classList.toggle('checked', checked);
+                            }
+                        });
+                    };
                 
                 // Live preview for background toggle
                 if (prop === 'showBackground') {
@@ -9007,15 +9036,44 @@ body.light-mode .template-save-dialog .dialog-title {
                 }
 
                 if (prop === 'vwapBand1Enabled' || prop === 'vwapBand2Enabled' || prop === 'vwapBand3Enabled') {
+                    const linkedBandMatch = prop.match(/^vwapBand([1-3])Enabled$/);
                     drawing.style[prop] = isChecked;
+
+                    if (linkedBandMatch) {
+                        const bandNumber = linkedBandMatch[1];
+                        const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
+                        const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
+
+                        this.pendingChanges[upperEnabledProp] = isChecked;
+                        this.pendingChanges[lowerEnabledProp] = isChecked;
+                        drawing.style[upperEnabledProp] = isChecked;
+                        drawing.style[lowerEnabledProp] = isChecked;
+
+                        syncLinkedCheckboxState(prop, isChecked);
+                        syncLinkedCheckboxState(upperEnabledProp, isChecked);
+                        syncLinkedCheckboxState(lowerEnabledProp, isChecked);
+                    }
+
                     self.renderPreview(drawing);
                 }
 
-                const linkedUpperBandEnabledMatch = prop.match(/^vwapUpperBand([1-3])Enabled$/);
-                if (linkedUpperBandEnabledMatch) {
-                    const lowerEnabledProp = `vwapLowerBand${linkedUpperBandEnabledMatch[1]}Enabled`;
+                const linkedBandEnabledMatch = prop.match(/^vwap(?:Upper|Lower)Band([1-3])Enabled$/);
+                if (linkedBandEnabledMatch) {
+                    const bandNumber = linkedBandEnabledMatch[1];
+                    const upperEnabledProp = `vwapUpperBand${bandNumber}Enabled`;
+                    const lowerEnabledProp = `vwapLowerBand${bandNumber}Enabled`;
+                    const inputEnabledProp = `vwapBand${bandNumber}Enabled`;
+
+                    this.pendingChanges[upperEnabledProp] = isChecked;
                     this.pendingChanges[lowerEnabledProp] = isChecked;
+                    this.pendingChanges[inputEnabledProp] = isChecked;
+                    drawing.style[upperEnabledProp] = isChecked;
                     drawing.style[lowerEnabledProp] = isChecked;
+                    drawing.style[inputEnabledProp] = isChecked;
+
+                    syncLinkedCheckboxState(upperEnabledProp, isChecked);
+                    syncLinkedCheckboxState(lowerEnabledProp, isChecked);
+                    syncLinkedCheckboxState(inputEnabledProp, isChecked);
                 }
 
                 if (/^vwap(?:Lower|Upper)Band[1-3]Enabled$/.test(prop) || /^vwapBand[1-3]BackgroundEnabled$/.test(prop)) {
@@ -10290,9 +10348,24 @@ body.light-mode .template-save-dialog .dialog-title {
                 ? 'percentage'
                 : 'standard_deviation';
         }
-        if (this.pendingChanges.vwapBand1Enabled !== undefined) drawing.style.vwapBand1Enabled = this.pendingChanges.vwapBand1Enabled;
-        if (this.pendingChanges.vwapBand2Enabled !== undefined) drawing.style.vwapBand2Enabled = this.pendingChanges.vwapBand2Enabled;
-        if (this.pendingChanges.vwapBand3Enabled !== undefined) drawing.style.vwapBand3Enabled = this.pendingChanges.vwapBand3Enabled;
+        if (this.pendingChanges.vwapBand1Enabled !== undefined) {
+            const bandEnabled = this.pendingChanges.vwapBand1Enabled;
+            drawing.style.vwapBand1Enabled = bandEnabled;
+            drawing.style.vwapUpperBand1Enabled = bandEnabled;
+            drawing.style.vwapLowerBand1Enabled = bandEnabled;
+        }
+        if (this.pendingChanges.vwapBand2Enabled !== undefined) {
+            const bandEnabled = this.pendingChanges.vwapBand2Enabled;
+            drawing.style.vwapBand2Enabled = bandEnabled;
+            drawing.style.vwapUpperBand2Enabled = bandEnabled;
+            drawing.style.vwapLowerBand2Enabled = bandEnabled;
+        }
+        if (this.pendingChanges.vwapBand3Enabled !== undefined) {
+            const bandEnabled = this.pendingChanges.vwapBand3Enabled;
+            drawing.style.vwapBand3Enabled = bandEnabled;
+            drawing.style.vwapUpperBand3Enabled = bandEnabled;
+            drawing.style.vwapLowerBand3Enabled = bandEnabled;
+        }
         if (this.pendingChanges.vwapBand1Multiplier !== undefined) {
             const parsed = Number(this.pendingChanges.vwapBand1Multiplier);
             if (Number.isFinite(parsed) && parsed > 0) drawing.style.vwapBand1Multiplier = Math.max(0.001, Math.min(1000, parsed));
