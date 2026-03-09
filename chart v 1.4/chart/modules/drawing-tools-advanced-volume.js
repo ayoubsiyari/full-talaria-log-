@@ -1807,6 +1807,10 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         proxy.visible = this.visible;
         proxy.locked = this.locked;
         proxy.meta = this.meta;
+        proxy._isActiveResizing = this._isActiveResizing === true;
+        proxy._activeResizingPointIndex = Number.isFinite(this._activeResizingPointIndex)
+            ? this._activeResizingPointIndex
+            : null;
         proxy.fixedProfileSide = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         proxy.render(container, scales);
 
