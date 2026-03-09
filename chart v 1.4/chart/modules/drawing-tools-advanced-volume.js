@@ -1025,8 +1025,8 @@ class VolumeProfileTool extends BaseDrawing {
             priceLow = domainLow;
         }
 
-        const top = Math.max(paneTop, Math.min(scales.yScale(priceHigh), scales.yScale(priceLow)));
-        const bottom = Math.min(paneBottom, Math.max(scales.yScale(priceHigh), scales.yScale(priceLow)));
+        const top = Math.min(scales.yScale(priceHigh), scales.yScale(priceLow));
+        const bottom = Math.max(scales.yScale(priceHigh), scales.yScale(priceLow));
         const height = bottom - top;
         if (!Number.isFinite(top) || !Number.isFinite(bottom) || height <= 0) {
             this.createHandles(this.group, scales);
@@ -1069,9 +1069,9 @@ class VolumeProfileTool extends BaseDrawing {
             this.group.append('line')
                 .attr('class', 'volume-profile-boundary-hit shape-border-hit resize-handle-hit')
                 .attr('x1', x)
-                .attr('y1', paneTop)
+                .attr('y1', top)
                 .attr('x2', x)
-                .attr('y2', paneBottom)
+                .attr('y2', bottom)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', boundaryHitWidth)
                 .style('pointer-events', 'stroke')
@@ -1082,9 +1082,9 @@ class VolumeProfileTool extends BaseDrawing {
         this.group.append('line')
             .attr('class', 'volume-profile-boundary')
             .attr('x1', left)
-            .attr('y1', paneTop)
+            .attr('y1', top)
             .attr('x2', left)
-            .attr('y2', paneBottom)
+            .attr('y2', bottom)
             .attr('stroke', boundaryStroke)
             .attr('stroke-width', boundaryWidth)
             .attr('opacity', Math.min(1, globalOpacity * 0.95))
@@ -1093,9 +1093,9 @@ class VolumeProfileTool extends BaseDrawing {
         this.group.append('line')
             .attr('class', 'volume-profile-boundary')
             .attr('x1', right)
-            .attr('y1', paneTop)
+            .attr('y1', top)
             .attr('x2', right)
-            .attr('y2', paneBottom)
+            .attr('y2', bottom)
             .attr('stroke', boundaryStroke)
             .attr('stroke-width', boundaryWidth)
             .attr('opacity', Math.min(1, globalOpacity * 0.95))
