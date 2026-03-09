@@ -801,6 +801,35 @@ class DrawingToolsManager {
                     && rawTarget.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group')
                 );
 
+                const now = Date.now();
+                const valueLabelClickState = this._volumeProfileValueLabelClickState || null;
+                const bestUnlockedVolumeProfile = drawingsAtPoint.find((d) =>
+                    d && !d.locked && this.isVolumeProfileToolType(d.type)
+                ) || null;
+                const isFollowupValueLabelClick = !!(
+                    valueLabelClickState
+                    && bestUnlockedVolumeProfile
+                    && valueLabelClickState.drawingId === bestUnlockedVolumeProfile.id
+                    && (now - valueLabelClickState.time) <= 700
+                    && Math.abs((valueLabelClickState.mouseX ?? 0) - mouseX) <= 24
+                    && Math.abs((valueLabelClickState.mouseY ?? 0) - mouseY) <= 24
+                );
+
+                if (isFollowupValueLabelClick) {
+                    this._volumeProfileValueLabelClickState = null;
+                    this.selectDrawing(bestUnlockedVolumeProfile, false);
+                    this.editDrawing(bestUnlockedVolumeProfile, event.pageX, event.pageY);
+                    this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
                 const isSecondClick = event.detail >= 2;
                 if (isSecondClick) {
                     this._volumeProfileValueLabelClickState = null;
@@ -842,14 +871,13 @@ class DrawingToolsManager {
                     const best = labelDrawing || drawingsAtPoint[0];
 
                     if (best && !best.locked) {
-                        const now = Date.now();
                         const clickState = this._volumeProfileValueLabelClickState || null;
                         const isSecondValueLabelClick = !!(
                             clickState
                             && clickState.drawingId === best.id
-                            && (now - clickState.time) <= 450
-                            && Math.abs((clickState.mouseX ?? 0) - mouseX) <= 14
-                            && Math.abs((clickState.mouseY ?? 0) - mouseY) <= 14
+                            && (now - clickState.time) <= 700
+                            && Math.abs((clickState.mouseX ?? 0) - mouseX) <= 24
+                            && Math.abs((clickState.mouseY ?? 0) - mouseY) <= 24
                         );
 
                         if (isSecondValueLabelClick) {
