@@ -1599,23 +1599,32 @@ class TrianglePatternTool extends BaseDrawing {
             const viewport = this._getViewportXRange(scales, pointsPx);
             const minX = Math.min(a.x, b.x, c.x, d.x);
             const maxX = Math.max(a.x, b.x, c.x, d.x);
+            const leftX = viewport ? viewport[0] : minX;
+            const rightX = viewport ? viewport[1] : maxX;
+
+            const acDx = c.x - a.x;
+            const bdDx = d.x - b.x;
+            const directionalBias = acDx + bdDx;
+            const projectionToRight = Math.abs(directionalBias) < 0.0001 ? (d.x >= b.x) : (directionalBias > 0);
+            const targetX = projectionToRight ? rightX : leftX;
 
             const apex = this._lineIntersection(a, c, b, d);
-            const hasOuterApex = Boolean(
+            const hasOuterApexOnForwardSide = Boolean(
                 apex
                 && Number.isFinite(apex.x)
                 && Number.isFinite(apex.y)
-                && (apex.x >= (maxX + 2) || apex.x <= (minX - 2))
+                && (projectionToRight
+                    ? apex.x >= (maxX + 2)
+                    : apex.x <= (minX - 2))
             );
 
-            const rightX = viewport ? viewport[1] : maxX;
-            const topRightGuide = hasOuterApex
+            const topRightGuide = hasOuterApexOnForwardSide
                 ? apex
-                : (this._pointOnLineAtX(a, c, rightX) || { x: c.x, y: c.y });
+                : (this._pointOnLineAtX(a, c, targetX) || { x: c.x, y: c.y });
             const bottomLeftGuide = this._pointOnLineAtX(b, d, a.x) || { x: b.x, y: b.y };
-            const bottomRightGuide = hasOuterApex
+            const bottomRightGuide = hasOuterApexOnForwardSide
                 ? apex
-                : (this._pointOnLineAtX(b, d, rightX) || { x: d.x, y: d.y });
+                : (this._pointOnLineAtX(b, d, targetX) || { x: d.x, y: d.y });
 
             // Fill projected outer envelope area.
             const fillPath = `M ${a.x} ${a.y} L ${topRightGuide.x} ${topRightGuide.y} L ${bottomRightGuide.x} ${bottomRightGuide.y} L ${bottomLeftGuide.x} ${bottomLeftGuide.y} Z`;
