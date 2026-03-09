@@ -721,6 +721,9 @@ class DrawingToolsManager {
                 const mouseY = event.clientY - svgRect.top;
                 const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
+                const isAnchoredVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
+                    this.isAnchoredVolumeProfileLevelLineHit(d, mouseX, mouseY)
+                );
 
                 const isSecondClick = event.detail >= 2;
                 if (isSecondClick) {
@@ -728,6 +731,21 @@ class DrawingToolsManager {
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
                     }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
+                if (isAnchoredVolumeProfileLevelLineHit) {
+                    const best = drawingsAtPoint[0];
+                    if (best && !best.locked) {
+                        this.selectDrawing(best, false);
+                    }
+
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -985,6 +1003,12 @@ class DrawingToolsManager {
             
             // Find all drawings at this point using geometric hit test
             const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+
+            if (!isAnchoredVolumeProfileLevelLineTarget && drawingsAtPoint.length > 0) {
+                isAnchoredVolumeProfileLevelLineTarget = drawingsAtPoint.some((d) =>
+                    this.isAnchoredVolumeProfileLevelLineHit(d, mouseX, mouseY)
+                );
+            }
 
             if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey) {
                 const lineTypeSet = new Set([
@@ -3235,6 +3259,19 @@ class DrawingToolsManager {
         const drawings = (Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings])
             .filter(d => d && d.type !== 'anchored-vwap');
         if (!drawings || drawings.length === 0) return;
+
+        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
+        if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+            const svgRect = svgNode.getBoundingClientRect();
+            const startMouseX = event.clientX - svgRect.left;
+            const startMouseY = event.clientY - svgRect.top;
+            const shouldBlockAnchoredLevelLineDirectMove = drawings.some((d) =>
+                this.isAnchoredVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
+            );
+            if (shouldBlockAnchoredLevelLineDirectMove) {
+                return;
+            }
+        }
 
         const singleDragType = drawings.length === 1 ? drawings[0].type : null;
         const startPoint = this.getDataPoint(event, singleDragType);
@@ -6348,6 +6385,40 @@ class DrawingToolsManager {
      */
     getLastStackedLines() {
         return this.lastStackedLines || null;
+    }
+
+    /**
+     * Returns true when the given screen-space point is on an anchored volume profile level line.
+     */
+    isAnchoredVolumeProfileLevelLineHit(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'anchored-volume-profile' || !drawing.group) {
+            return false;
+        }
+
+        const levelLines = drawing.group.selectAll('.volume-profile-level-line').nodes();
+        if (!Array.isArray(levelLines) || levelLines.length === 0) {
+            return false;
+        }
+
+        for (const line of levelLines) {
+            if (!line) continue;
+
+            const x1 = parseFloat(line.getAttribute('x1'));
+            const y1 = parseFloat(line.getAttribute('y1'));
+            const x2 = parseFloat(line.getAttribute('x2'));
+            const y2 = parseFloat(line.getAttribute('y2'));
+            if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+
+            const lineSel = d3.select(line);
+            const strokeWidth = parseFloat(lineSel.attr('stroke-width') || lineSel.style('stroke-width')) || 1;
+            const tolerance = Math.max(8, (strokeWidth / 2) + 0.75);
+            const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+            if (distance <= tolerance) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
