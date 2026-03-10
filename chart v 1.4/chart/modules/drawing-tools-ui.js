@@ -5993,6 +5993,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const labelColumnWidth = 170;
         const controlsColumnWidth = 180;
+        const useCompactFieldSize = drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
+        const compactControlStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;';
 
         const createStyleRow = (labelText) => {
             const row = document.createElement('div');
@@ -6041,7 +6043,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 min="15"
                 max="65"
                 step="1"
-                style="width: 64px;"
+                style="${useCompactFieldSize ? compactControlStyle : 'width: 64px;'}"
             >
             <span class="tv-profile-width-value" style="color: #d1d4dc; font-size: 12px; min-width: 16px;">%</span>
         `;
@@ -6049,7 +6051,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const placement = String(drawing.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         const placementRow = createStyleRow('Placement');
         placementRow.controls.innerHTML = `
-            <select class="tv-select" data-prop="profilePlacement" style="width: 112px;">
+            <select class="tv-select" data-prop="profilePlacement" style="${useCompactFieldSize ? compactControlStyle : 'width: 112px;'}">
                 <option value="left" ${placement === 'left' ? 'selected' : ''}>Left</option>
                 <option value="right" ${placement === 'right' ? 'selected' : ''}>Right</option>
             </select>
