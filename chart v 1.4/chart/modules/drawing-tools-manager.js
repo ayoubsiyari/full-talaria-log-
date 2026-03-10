@@ -1758,22 +1758,75 @@ class DrawingToolsManager {
      * @returns {Object} - The constrained point {x, y}
      */
     constrainToAngle(referencePoint, targetPoint) {
-        const dx = targetPoint.x - referencePoint.x;
-        const dy = targetPoint.y - referencePoint.y;
-        
-        // Calculate the angle in radians
-        const angle = Math.atan2(dy, dx);
-        
-        // Calculate distance from reference point
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Snap to nearest 45-degree increment (0, 45, 90, 135, 180, 225, 270, 315)
+        const fallbackSnap = () => {
+            const dx = targetPoint.x - referencePoint.x;
+            const dy = targetPoint.y - referencePoint.y;
+            const angle = Math.atan2(dy, dx);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+            return {
+                x: referencePoint.x + distance * Math.cos(snapAngle),
+                y: referencePoint.y + distance * Math.sin(snapAngle)
+            };
+        };
+
+        const xScale = this.chart?.xScale;
+        const yScale = this.chart?.yScale;
+        if (!xScale || !yScale || typeof yScale !== 'function' || typeof yScale.invert !== 'function') {
+            return fallbackSnap();
+        }
+
+        const toPixelX = (x) => {
+            if (this.chart && typeof this.chart.dataIndexToPixel === 'function') {
+                return this.chart.dataIndexToPixel(x);
+            }
+            return typeof xScale === 'function' ? xScale(x) : NaN;
+        };
+
+        const toDataX = (px) => {
+            if (this.chart && typeof this.chart.pixelToDataIndex === 'function') {
+                return this.chart.pixelToDataIndex(px);
+            }
+            return typeof xScale.invert === 'function' ? xScale.invert(px) : NaN;
+        };
+
+        const refPxX = toPixelX(referencePoint.x);
+        const refPxY = yScale(referencePoint.y);
+        const targetPxX = toPixelX(targetPoint.x);
+        const targetPxY = yScale(targetPoint.y);
+
+        if (
+            !Number.isFinite(refPxX) ||
+            !Number.isFinite(refPxY) ||
+            !Number.isFinite(targetPxX) ||
+            !Number.isFinite(targetPxY)
+        ) {
+            return fallbackSnap();
+        }
+
+        const dxPx = targetPxX - refPxX;
+        const dyPx = targetPxY - refPxY;
+        const distancePx = Math.sqrt(dxPx * dxPx + dyPx * dyPx);
+
+        if (!Number.isFinite(distancePx) || distancePx === 0) {
+            return { ...referencePoint };
+        }
+
+        const angle = Math.atan2(dyPx, dxPx);
         const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
-        
-        // Calculate new position based on snapped angle
+        const snappedPxX = refPxX + distancePx * Math.cos(snapAngle);
+        const snappedPxY = refPxY + distancePx * Math.sin(snapAngle);
+
+        const snappedX = toDataX(snappedPxX);
+        const snappedY = yScale.invert(snappedPxY);
+
+        if (!Number.isFinite(snappedX) || !Number.isFinite(snappedY)) {
+            return fallbackSnap();
+        }
+
         return {
-            x: referencePoint.x + distance * Math.cos(snapAngle),
-            y: referencePoint.y + distance * Math.sin(snapAngle)
+            x: snappedX,
+            y: snappedY
         };
     }
 
