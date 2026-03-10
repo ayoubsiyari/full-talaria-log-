@@ -1117,7 +1117,7 @@ class Chart {
                     this.priceOffset = v.priceOffset;
                 }
                 if (typeof v.priceZoom === 'number' && Number.isFinite(v.priceZoom)) {
-                    this.priceZoom = Math.max(0.05, Math.min(20, v.priceZoom));
+                    this.priceZoom = Math.max(0.05, v.priceZoom);
                 }
                 if (typeof v.autoScale === 'boolean') {
                     this.autoScale = v.autoScale;
@@ -6307,15 +6307,10 @@ class Chart {
         
         // Allow wider price zoom range
         const minZoom = 0.05;
-        const maxZoom = 20;
         
         if (this.priceZoom < minZoom) {
             const overshoot = minZoom - this.priceZoom;
             this.priceZoom = minZoom - Math.pow(overshoot, 0.88);
-            if (this.movement) this.movement.velocityY *= 0.5;
-        } else if (this.priceZoom > maxZoom) {
-            const overshoot = this.priceZoom - maxZoom;
-            this.priceZoom = maxZoom + Math.pow(overshoot, 0.88);
             if (this.movement) this.movement.velocityY *= 0.5;
         }
         
@@ -6341,7 +6336,7 @@ class Chart {
         
         this.zoomAnimation.targetOffsetX = Math.max(minOffset, Math.min(maxOffset, this.zoomAnimation.targetOffsetX));
         this.zoomAnimation.targetCandleWidth = Math.max(minWidth, Math.min(maxWidth, this.zoomAnimation.targetCandleWidth));
-        this.zoomAnimation.targetPriceZoom = Math.max(0.1, Math.min(10, this.zoomAnimation.targetPriceZoom));
+        this.zoomAnimation.targetPriceZoom = Math.max(0.1, this.zoomAnimation.targetPriceZoom);
     }
     
     // ═══════════════════════════════════════════════════════════════════
@@ -6425,7 +6420,7 @@ class Chart {
                 const paddedRange = newRange * 1.1;
                 const newZoom = this.priceZoom * (currentRange / paddedRange);
                 
-                this.priceZoom = Math.max(0.1, Math.min(20, newZoom));
+                this.priceZoom = Math.max(0.1, newZoom);
                 this.autoScale = false;
                 this.priceScale.autoScale = false;
                 
@@ -11412,7 +11407,7 @@ class Chart {
 
                 if (this.yScale) {
                     const oldZoom = this.priceZoom;
-                    const newZoom = Math.max(0.1, Math.min(20, oldZoom * priceZoomFactor));
+                    const newZoom = Math.max(0.1, oldZoom * priceZoomFactor);
 
                     if (newZoom !== oldZoom) {
                         const priceAreaHeight = this.h - m.t - m.b;
@@ -11712,7 +11707,7 @@ class Chart {
                 else if (this.drag.type === 'priceAxis' && this.yScale) {
                     const sensitivity = 0.008;
                     const zoomFactor = 1 - dy * sensitivity;
-                    const newZoom = Math.max(0.1, Math.min(20, this.priceZoom * zoomFactor));
+                    const newZoom = Math.max(0.1, this.priceZoom * zoomFactor);
                     
                     // Anchor at cursor Y
                     const m = this.margin;
