@@ -690,9 +690,22 @@ class DrawingToolsManager {
             const valueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY);
             const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
 
-            if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && !valueLabelDrawing) return false;
+            let fallbackVolumeProfileDrawing = null;
+            if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && rawTargetNode && rawTargetNode.closest) {
+                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line');
+                const domDrawingGroup = rawTargetNode.closest('.drawing');
+                if (volumeProfileHitNode && domDrawingGroup) {
+                    const domDrawingId = d3.select(domDrawingGroup).attr('data-id');
+                    const domDrawing = this.drawings.find((d) => d && d.id === domDrawingId);
+                    if (domDrawing && this.isVolumeProfileToolType(domDrawing.type)) {
+                        fallbackVolumeProfileDrawing = domDrawing;
+                    }
+                }
+            }
 
-            const drawing = valueLabelDrawing || drawingsAtPoint[0];
+            if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && !valueLabelDrawing && !fallbackVolumeProfileDrawing) return false;
+
+            const drawing = valueLabelDrawing || drawingsAtPoint[0] || fallbackVolumeProfileDrawing;
             if (!drawing || drawing.locked) return false;
 
             if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
@@ -782,6 +795,14 @@ class DrawingToolsManager {
                 const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
                 if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                     drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+                }
+                if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && event.detail >= 2) {
+                    const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
+                    if (openedFromDoubleClick) {
+                        this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
                 }
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
                 const isVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
@@ -3167,9 +3188,9 @@ class DrawingToolsManager {
             
             if (!drawing.locked) {
                 if (isVolumeProfileLevelLineTarget) {
-                    drawing.group.style('cursor', 'default');
-                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'default';
-                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'default';
+                    drawing.group.style('cursor', 'move');
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
                 } else if (isInlineEditable) {
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
