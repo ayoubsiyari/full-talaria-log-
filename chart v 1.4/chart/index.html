@@ -7368,8 +7368,8 @@
             padding: 0 !important;
             line-height: 1;
             cursor: default !important;
-            pointer-events: auto !important;
-            opacity: 1;
+            pointer-events: none !important;
+            opacity: 0;
             z-index: 100000;
             transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
             border: 1px solid rgba(63, 84, 124, 0.35);
@@ -7378,11 +7378,18 @@
             -webkit-backdrop-filter: blur(20px);
         }
 
+        .replay-playback-mode-settings:hover .replay-mode-dropdown-arrow,
+        .replay-toolbar .replay-mode-dropdown-arrow:hover,
+        .replay-toolbar .replay-mode-dropdown-arrow.dropdown-open {
+            opacity: 1;
+            pointer-events: auto !important;
+        }
+
         .replay-toolbar .replay-mode-dropdown-arrow svg {
             width: 12px;
             height: 8px;
             display: block;
-            transform: rotate(0deg);
+            transform: rotate(180deg);
             transition: transform 0.2s ease;
         }
 
@@ -7401,7 +7408,7 @@
         }
 
         .replay-toolbar .replay-mode-dropdown-arrow.dropdown-open svg {
-            transform: rotate(180deg);
+            transform: rotate(0deg);
         }
 
         .replay-mode-dropdown {
