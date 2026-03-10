@@ -6981,7 +6981,7 @@ class DrawingToolsManager {
         }
         
         // Check if cursor is over any drawing (use same geometric hit-test as selection)
-        let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+        let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
         const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
         if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
             drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
