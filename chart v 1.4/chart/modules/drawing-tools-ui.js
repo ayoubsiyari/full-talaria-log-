@@ -7739,8 +7739,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
-        const controlFieldWidth = 170;
-        const controlFieldStyle = `width: ${controlFieldWidth}px;`;
+        const useCompactFieldSize = drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
+        const controlFieldWidth = useCompactFieldSize ? 60 : 170;
+        const controlFieldStyle = useCompactFieldSize
+            ? `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;`
+            : `width: ${controlFieldWidth}px;`;
 
         const createInputRow = (labelText) => {
             const row = document.createElement('div');
