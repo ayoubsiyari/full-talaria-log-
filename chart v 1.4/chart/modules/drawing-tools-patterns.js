@@ -1998,21 +1998,6 @@ class ThreeDrivesTool extends BaseDrawing {
         if (!value) return;
 
         const fontSize = 12;
-        const paddingX = 9;
-        const paddingY = 4;
-        const width = Math.max(34, (value.length * (fontSize * 0.62)) + (paddingX * 2));
-        const height = fontSize + (paddingY * 2);
-
-        this.group.append('rect')
-            .attr('x', x - (width / 2))
-            .attr('y', y - (height / 2))
-            .attr('width', width)
-            .attr('height', height)
-            .attr('rx', 6)
-            .attr('fill', this.style.ratioFill)
-            .attr('opacity', 0.96)
-            .style('pointer-events', 'none');
-
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
