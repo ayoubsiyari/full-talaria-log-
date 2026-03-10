@@ -5830,7 +5830,7 @@ class DrawingToolsManager {
      * @param {number} mouseX - X coordinate in SVG space
      * @param {number} mouseY - Y coordinate in SVG space
      * @param {Object} options
-     * @param {boolean} options.includeVolumeProfileBodyHit - include VP bar hits for candle-bound profiles (and full body hits for anchored profile)
+     * @param {boolean} options.includeVolumeProfileBodyHit - include VP bar-rect hits (level/boundary hits are always checked)
      * @returns {Array} - Array of drawings at this point, sorted by z-order (topmost first)
      */
     findDrawingsAtPoint(mouseX, mouseY, options = {}) {
@@ -6093,9 +6093,8 @@ class DrawingToolsManager {
             // Volume Profile tools: select from boundaries/levels/labels.
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
-                    const isCandleBoundVolumeProfile = this.isCandleBoundTool(drawing.type);
-                    const allowProfileBodyZoneHit = !isCandleBoundVolumeProfile;
-                    const allowProfileBarHit = !isCandleBoundVolumeProfile || includeVolumeProfileBodyHit;
+                    const allowProfileBodyZoneHit = false;
+                    const allowProfileBarHit = includeVolumeProfileBodyHit;
                     let bestBoundaryDistance = Infinity;
                     const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
 
@@ -6130,7 +6129,7 @@ class DrawingToolsManager {
                         hitsById.set(drawing.id, { drawing, distance: 0, z });
                     }
 
-                    // Keep background zone hit-testing only for anchored volume profile.
+                    // Keep background zone/body non-reactive.
                     if (allowProfileBodyZoneHit && !hitsById.has(drawing.id)) {
                         const isInsideRect = (rectNode, pad = 0) => {
                             if (!rectNode) return false;
