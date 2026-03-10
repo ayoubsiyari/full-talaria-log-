@@ -518,7 +518,7 @@ class DatePriceRangeTool extends BaseDrawing {
         const priceDiff = p2.y - p1.y;
         const isDown = priceDiff < 0;
 
-        const selectionWidth = this.style.selectionWidth || 70;
+        const selectionWidth = this.style.selectionWidth || 48;
         const left = x - selectionWidth / 2;
         const right = x + selectionWidth / 2;
 
