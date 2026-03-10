@@ -2071,9 +2071,20 @@ class DrawingToolsManager {
                 this.finalizeDrawing();
             } else {
                 const isPersistentFreehandTool = this.currentTool === 'brush' || this.currentTool === 'highlighter';
-                if (isPersistentFreehandTool) {
-                    // Keep brush/highlighter active after a tap (single point).
-                    // We only clear temporary stroke state, not the active tool.
+                const hasSingleTapPoint = this.drawingState.tempPoints.length === 1;
+                if (isPersistentFreehandTool && hasSingleTapPoint) {
+                    // TradingView-like tap: persist a point for brush/highlighter on single click.
+                    const tapPoint = this.drawingState.tempPoints[0];
+                    if (tapPoint && Number.isFinite(tapPoint.x) && Number.isFinite(tapPoint.y)) {
+                        this.drawingState.tempPoints = [tapPoint, { ...tapPoint }];
+                        this.finalizeDrawing();
+                    } else {
+                        this.tempGroup.selectAll('*').remove();
+                        this.drawingState.reset();
+                        this.riskRewardPreview = null;
+                    }
+                } else if (isPersistentFreehandTool) {
+                    // Keep brush/highlighter active after a tap with no valid point.
                     this.tempGroup.selectAll('*').remove();
                     this.drawingState.reset();
                     this.riskRewardPreview = null;
