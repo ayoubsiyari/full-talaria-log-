@@ -734,11 +734,17 @@ class AnchoredVWAPTool extends BaseDrawing {
 
                 if (markerPoints.length === 0) return;
 
+                const reducedMarkerPoints = markerPoints.filter((_, idx) => (
+                    idx % 2 === 0 || idx === markerPoints.length - 1
+                ));
+
+                if (reducedMarkerPoints.length === 0) return;
+
                 this.group.append('g')
                     .attr('class', markerGroupClass)
                     .attr('opacity', this.selected ? 1 : 0)
                     .selectAll('circle')
-                    .data(markerPoints)
+                    .data(reducedMarkerPoints)
                     .enter()
                     .append('circle')
                     .attr('class', 'anchored-vwap-line-point')
