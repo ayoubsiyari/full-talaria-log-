@@ -654,7 +654,7 @@ class AnchoredVWAPTool extends BaseDrawing {
             .attr('fill', 'transparent')
             .attr('stroke', 'none')
             .style('pointer-events', 'all')
-            .style('cursor', 'move');
+            .style('cursor', 'ew-resize');
 
         const anchorHandle = this.group.append('circle')
             .attr('class', 'anchored-vwap-anchor')
@@ -666,7 +666,7 @@ class AnchoredVWAPTool extends BaseDrawing {
             .attr('stroke-width', anchorHandleStrokeWidth)
             .attr('opacity', 1)
             .style('pointer-events', 'all')
-            .style('cursor', 'move');
+            .style('cursor', 'ew-resize');
 
         anchorHandle
             .on('mouseenter', function() {

@@ -2953,7 +2953,7 @@ class DrawingToolsManager {
                 .style('pointer-events', 'none');
             drawing.group.selectAll('.anchored-vwap-anchor, .anchored-vwap-anchor-hit')
                 .style('pointer-events', 'all')
-                .style('cursor', 'move');
+                .style('cursor', 'ew-resize');
         }
 
         // Volume Profile tools: boundaries and level lines remain selectable,
@@ -3198,13 +3198,23 @@ class DrawingToolsManager {
             
             // Check if hovering on inline-editable text - use move cursor
             const target = event?.target ? d3.select(event.target) : null;
+            const rawTargetNode = event?.target || null;
+            const isResizeTarget = !!(
+                rawTargetNode &&
+                rawTargetNode.closest &&
+                rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .volume-profile-boundary-hit')
+            );
             const isInlineEditable = target && target.classed('inline-editable-text');
             const isVolumeProfileLevelLineTarget = self.isVolumeProfileToolType(drawing.type)
                 && target
                 && target.classed('volume-profile-level-line');
             
             if (!drawing.locked) {
-                if (isVolumeProfileLevelLineTarget) {
+                if (isResizeTarget) {
+                    drawing.group.style('cursor', 'ew-resize');
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'ew-resize';
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'ew-resize';
+                } else if (isVolumeProfileLevelLineTarget) {
                     drawing.group.style('cursor', 'move');
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
@@ -3715,7 +3725,7 @@ class DrawingToolsManager {
                     } else {
                         self.startHandleDrag(drawing, index, event);
                     }
-                    d3.select(this).style('cursor', 'move');
+                    d3.select(this).style('cursor', 'ew-resize');
                 })
                 .on('drag', function(event) {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) self.chart.updateCrosshair(event.sourceEvent);
@@ -3741,7 +3751,7 @@ class DrawingToolsManager {
                     }
                 })
                 .on('end', function(event) {
-                    d3.select(this).style('cursor', 'move');
+                    d3.select(this).style('cursor', 'ew-resize');
                     // Check if we're ending a custom handle drag
                     if (self.isCustomHandleDrag) {
                         self.endCustomHandleDrag(event);
@@ -3783,8 +3793,8 @@ class DrawingToolsManager {
         }
 
         const canvas = document.getElementById('chartCanvas');
-        if (canvas) canvas.style.cursor = 'move';
-        this.svg.style('cursor', 'move');
+        if (canvas) canvas.style.cursor = 'ew-resize';
+        this.svg.style('cursor', 'ew-resize');
         // Capture state for undo
         if (this.history) {
             this.resizeBeforeState = this.history.captureState(drawing);
