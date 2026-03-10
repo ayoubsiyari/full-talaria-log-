@@ -193,6 +193,10 @@ class DrawingSettingsPanel {
     --tv-prop-label-width: 170px;
     --tv-prop-controls-width: 180px;
     --tv-prop-row-gap: 16px;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 .tv-settings-modal.compact {
@@ -201,6 +205,15 @@ class DrawingSettingsPanel {
 
 .tv-settings-modal * {
     box-sizing: border-box;
+}
+
+.tv-settings-modal input,
+.tv-settings-modal textarea,
+.tv-settings-modal [contenteditable="true"] {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
 }
 
 /* Header */
