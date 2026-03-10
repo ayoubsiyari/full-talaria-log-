@@ -1428,7 +1428,7 @@ class VolumeProfileTool extends BaseDrawing {
         const pocIndex = resolvePocIndex(totalVolumeBins);
         const { valueAreaLow, valueAreaHigh } = resolveValueAreaBounds(totalVolumeBins, pocIndex);
         
-        const profileWidthRatio = Math.max(0.15, Math.min(0.65, Number(this.style.profileWidthRatio) || 0.3));
+        const profileWidthRatio = Math.max(0.15, Math.min(1, Number(this.style.profileWidthRatio) || 0.3));
         // Keep profile bar widths frozen once right boundary passes last loaded candle.
         const maxProfileWidth = Math.max(12, effectiveProfileWidth * profileWidthRatio);
         const profilePlacement = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';

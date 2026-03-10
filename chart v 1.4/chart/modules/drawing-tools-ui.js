@@ -6018,7 +6018,7 @@ body.light-mode .template-save-dialog .dialog-title {
             return { row, label, controls };
         };
 
-        const profileWidthPercent = Math.max(15, Math.min(65, Math.round(Number(drawing.style.profileWidthRatio || 0.3) * 100)));
+        const profileWidthPercent = Math.max(15, Math.min(100, Math.round(Number(drawing.style.profileWidthRatio || 0.3) * 100)));
 
         const valuesEnabled = drawing.style.showValues !== false;
         const valuesRow = createStyleRow('');
@@ -6043,7 +6043,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 data-prop="profileWidthRatio"
                 value="${profileWidthPercent}"
                 min="15"
-                max="65"
+                max="100"
                 step="1"
                 style="${useCompactFieldSize ? compactControlStyle : 'width: 64px;'}"
             >
@@ -9580,7 +9580,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const applyProfileWidthRatio = () => {
                 const rawPercent = parseInt(control.value, 10);
                 const percent = Number.isFinite(rawPercent) ? rawPercent : 30;
-                const ratio = Math.max(0.15, Math.min(0.65, percent / 100));
+                const ratio = Math.max(0.15, Math.min(1, percent / 100));
 
                 this.pendingChanges.profileWidthRatio = ratio;
                 drawing.style.profileWidthRatio = ratio;
@@ -10467,7 +10467,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.profileWidthRatio !== undefined) {
             const parsedProfileWidthRatio = Number(this.pendingChanges.profileWidthRatio);
             if (Number.isFinite(parsedProfileWidthRatio)) {
-                drawing.style.profileWidthRatio = Math.max(0.15, Math.min(0.65, parsedProfileWidthRatio));
+                drawing.style.profileWidthRatio = Math.max(0.15, Math.min(1, parsedProfileWidthRatio));
             }
         }
         if (this.pendingChanges.showPOC !== undefined) drawing.style.showPOC = this.pendingChanges.showPOC;
