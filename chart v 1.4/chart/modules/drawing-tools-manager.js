@@ -2003,8 +2003,23 @@ class DrawingToolsManager {
                 return;
             }
             const currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
-            this.resizingDrawing.points[this.resizingPointIndex] = currentPoint;
-            this.resizingDrawing.meta.updatedAt = Date.now();
+            let handledByDrawing = false;
+            if (typeof this.resizingDrawing.onPointHandleDrag === 'function') {
+                handledByDrawing = this.resizingDrawing.onPointHandleDrag(this.resizingPointIndex, {
+                    point: currentPoint,
+                    scales: {
+                        xScale: this.chart.xScale,
+                        yScale: this.chart.yScale,
+                        chart: this.chart
+                    }
+                }) === true;
+            }
+
+            if (!handledByDrawing) {
+                this.resizingDrawing.points[this.resizingPointIndex] = currentPoint;
+                this.resizingDrawing.meta.updatedAt = Date.now();
+            }
+
             this.scheduleRenderDrawing(this.resizingDrawing);
             return;
         }

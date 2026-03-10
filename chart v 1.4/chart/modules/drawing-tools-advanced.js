@@ -235,6 +235,79 @@ class DatePriceRangeTool extends BaseDrawing {
         };
     }
 
+    setModeVirtualHandlePoints(mode = this.getRangeMode()) {
+        const normalizedMode = this.normalizeRangeMode(mode);
+        this.virtualPoints = null;
+
+        if (!Array.isArray(this.points) || this.points.length < 2) return;
+
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+
+        if (normalizedMode === 'price') {
+            const midX = (p1.x + p2.x) / 2;
+            this.virtualPoints = [
+                { x: midX, y: p1.y },
+                { x: midX, y: p2.y }
+            ];
+            return;
+        }
+
+        if (normalizedMode === 'time') {
+            const midY = (p1.y + p2.y) / 2;
+            this.virtualPoints = [
+                { x: p1.x, y: midY },
+                { x: p2.x, y: midY }
+            ];
+        }
+    }
+
+    updateHandleCursor(mode = this.getRangeMode()) {
+        if (!this.group) return;
+
+        const normalizedMode = this.normalizeRangeMode(mode);
+        let cursor = 'nwse-resize';
+        if (normalizedMode === 'price') cursor = 'ns-resize';
+        if (normalizedMode === 'time') cursor = 'ew-resize';
+
+        this.group
+            .selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
+            .style('cursor', cursor);
+    }
+
+    onPointHandleDrag(index, context = {}) {
+        const { point } = context;
+        if (!point || !Number.isFinite(index) || index < 0 || index >= this.points.length) {
+            return false;
+        }
+
+        const mode = this.getRangeMode();
+
+        if (mode === 'price') {
+            const nextPoints = this.points.map(p => ({ ...p }));
+            nextPoints[index] = {
+                ...nextPoints[index],
+                y: point.y
+            };
+            this.points = nextPoints;
+            this.meta.updatedAt = Date.now();
+            return true;
+        }
+
+        if (mode === 'time') {
+            const nextPoints = this.points.map(p => ({ ...p }));
+            nextPoints[index] = {
+                ...nextPoints[index],
+                x: point.x
+            };
+            this.points = nextPoints;
+            this.meta.updatedAt = Date.now();
+            return true;
+        }
+
+        return false;
+    }
+
     buildRangeInfoLines(p1, p2, scales) {
         const info = this.style.infoSettings || {};
         if (info.showInfo === false) return [];
@@ -547,7 +620,9 @@ class DatePriceRangeTool extends BaseDrawing {
             }
         }
 
+        this.setModeVirtualHandlePoints('price');
         this.createHandles(this.group, scales);
+        this.updateHandleCursor('price');
         return this.group;
     }
 
@@ -668,7 +743,9 @@ class DatePriceRangeTool extends BaseDrawing {
             }
         }
 
+        this.setModeVirtualHandlePoints('time');
         this.createHandles(this.group, scales);
+        this.updateHandleCursor('time');
         return this.group;
     }
 
@@ -683,6 +760,8 @@ class DatePriceRangeTool extends BaseDrawing {
         if (mode === 'time') {
             return this.renderTimeRangeMode(container, scales);
         }
+
+        this.setModeVirtualHandlePoints('both');
 
         this.group = container.append('g')
             .attr('class', 'drawing date-price-range')
@@ -751,6 +830,7 @@ class DatePriceRangeTool extends BaseDrawing {
             const lines = this.buildRangeInfoLines(p1, p2, scales);
             if (lines.length === 0) {
                 this.createHandles(this.group, scales);
+                this.updateHandleCursor('both');
                 return this.group;
             }
 
@@ -804,6 +884,7 @@ class DatePriceRangeTool extends BaseDrawing {
         }
 
         this.createHandles(this.group, scales);
+        this.updateHandleCursor('both');
         return this.group;
     }
 
