@@ -7304,132 +7304,150 @@
 
         .replay-playback-mode-settings {
             position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            min-width: 64px;
+            overflow: visible;
+        }
+
+        .replay-mode-trigger {
+            width: 64px;
+            height: 34px;
+            min-width: 64px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: #a0aec0;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 98px;
-            height: 34px;
-            padding: 2px;
-            border-radius: 6px;
-            border: 1px solid rgba(78, 91, 126, 0.55);
-            background: rgba(78, 91, 126, 0.16);
-            overflow: hidden;
-        }
-
-        .replay-playback-mode-settings select[id^="replayPlaybackMode"] {
-            display: block;
-            width: 100%;
-            min-width: 94px;
-            height: 28px;
-            padding: 0 26px 0 10px;
-            border: none;
-            border-radius: 4px;
-            background-color: transparent;
-            color: #d1d4dc;
-            font-size: 11px;
+            gap: 4px;
+            padding: 0 8px;
+            font-size: 12px;
             font-weight: 600;
+            line-height: 1;
             text-transform: capitalize;
-            cursor: pointer;
+            cursor: default;
         }
 
-        .replay-playback-mode-settings select[id^="replayPlaybackMode"]:hover {
+        .replay-mode-trigger:hover {
             background: rgba(255, 255, 255, 0.1);
             color: #ffffff;
         }
 
-        .replay-mode-gear-btn {
-            width: 34px;
-            height: 34px;
-            min-width: 34px;
-            padding: 0;
-            border-radius: 4px;
-            display: inline-flex;
+        .replay-mode-trigger.active {
+            background: rgba(var(--sp-accent-rgb), 0.25);
+            color: #ffffff;
+        }
+
+        .replay-mode-trigger .replay-mode-current-label {
+            pointer-events: none;
+        }
+
+        .replay-mode-dropdown-arrow {
+            width: 32px;
+            height: 10px;
+            border: 1px solid rgba(63, 84, 124, 0.35);
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            background: rgba(0, 0, 0, 0.92);
+            color: #a0aec0;
+            display: flex;
             align-items: center;
             justify-content: center;
-        }
-
-        .replay-mode-gear-btn svg {
-            width: 18px;
-            height: 18px;
-            transition: transform 0.2s ease;
-        }
-
-        .replay-playback-mode-settings:hover .replay-mode-gear-btn svg,
-        .replay-playback-mode-settings:focus-within .replay-mode-gear-btn svg {
-            transform: rotate(20deg);
-        }
-
-        .replay-mode-popover {
             position: absolute;
             left: 50%;
-            bottom: calc(100% + 8px);
-            transform: translate(-50%, 6px);
-            display: flex;
-            flex-direction: row;
-            gap: 0;
-            min-width: 0;
+            bottom: -10px;
+            transform: translateX(-50%);
             padding: 0;
-            border: none;
-            background: transparent;
-            box-shadow: none;
-            opacity: 0;
-            visibility: hidden;
-            pointer-events: none;
-            overflow: visible;
-            transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
-            z-index: 10000;
-        }
-
-        .replay-playback-mode-settings:hover .replay-mode-popover,
-        .replay-playback-mode-settings:focus-within .replay-mode-popover,
-        .replay-mode-popover:hover {
+            cursor: default;
             opacity: 1;
-            visibility: visible;
-            pointer-events: auto;
-            transform: translate(-50%, 0);
-        }
-
-        .replay-mode-popover-label {
-            display: none;
-        }
-
-        .replay-mode-toggle {
-            display: inline-flex;
-            align-items: center;
-            width: auto;
-            padding: 2px;
-            gap: 2px;
-            border-radius: 6px;
-            border: 1px solid rgba(78, 91, 126, 0.55);
-            background: rgba(78, 91, 126, 0.16);
-        }
-
-        .replay-mode-toggle .replay-mode-option {
-            flex: 1 1 0;
-            height: 28px;
-            min-width: 0;
-            padding: 0 12px;
-            border: none;
-            border-radius: 4px;
-            background: transparent;
-            color: #d1d4dc;
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
+            z-index: 100000;
             transition: background 0.15s ease, color 0.15s ease;
         }
 
-        .replay-toolbar .replay-mode-toggle .replay-mode-option:hover {
-            background: rgba(255, 255, 255, 0.1);
+        .replay-mode-dropdown-arrow svg {
+            width: 12px;
+            height: 8px;
+        }
+
+        .replay-mode-dropdown-arrow:hover {
+            background: rgba(var(--sp-accent-rgb), 0.15);
+            color: #a0aec0;
+        }
+
+        .replay-mode-popover {
+            display: none;
+        }
+
+        .replay-mode-dropdown-arrow.dropdown-open {
+            background: rgba(var(--sp-accent-rgb), 0.15);
+            color: #a0aec0;
+        }
+
+        .replay-mode-dropdown-arrow.dropdown-open svg {
+            transform: rotate(180deg);
+            transition: transform 0.2s ease;
+        }
+
+        .replay-mode-dropdown {
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 12px);
+            transform: translateX(-50%);
+            display: none;
+            flex-direction: column;
+            min-width: 128px;
+            background: #050028;
+            border: 1px solid rgba(50, 50, 60, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+            z-index: 100001;
+            overflow: hidden;
+        }
+
+        .replay-mode-dropdown.show {
+            display: flex;
+        }
+
+        .replay-mode-dropdown-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #6b7280;
+            padding: 10px 12px 6px;
+            letter-spacing: 0.8px;
+        }
+
+        .replay-mode-option {
+            width: 100%;
+            height: 34px;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            color: #d1d4dc;
+            padding: 0 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-start;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: capitalize;
+            cursor: default;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .replay-mode-option:hover {
+            background: rgba(var(--sp-accent-rgb), 0.15);
             color: #ffffff;
         }
 
-        .replay-toolbar .replay-mode-toggle .replay-mode-option.active {
-            background: var(--sp-accent, #2962ff);
+        .replay-mode-option.active {
+            background: rgba(var(--sp-accent-rgb), 0.25);
             color: #ffffff;
         }
 
@@ -7494,47 +7512,58 @@
             font-weight: 700;
         }
 
-        body.light-mode .replay-mode-popover {
-            background: transparent;
-            border-color: transparent;
-            box-shadow: none;
+        body.light-mode .replay-mode-trigger {
+            color: #050028;
         }
 
-        body.light-mode .replay-mode-popover-label {
-            display: none;
+        body.light-mode .replay-mode-trigger:hover {
+            background: rgba(0, 0, 0, 0.08);
+            color: #000000;
         }
 
-        body.light-mode .replay-mode-toggle {
-            background: rgba(148, 163, 184, 0.14);
-            border-color: rgba(148, 163, 184, 0.38);
+        body.light-mode .replay-mode-trigger.active {
+            background: rgba(var(--sp-accent-rgb), 0.15);
+            color: var(--sp-accent);
         }
 
-        body.light-mode .replay-playback-mode-settings {
-            background: rgba(148, 163, 184, 0.14);
-            border-color: rgba(148, 163, 184, 0.38);
+        body.light-mode .replay-mode-dropdown-arrow {
+            background: rgba(255, 255, 255, 0.9);
+            color: #787b86;
+            border-color: #e0e3eb;
         }
 
-        body.light-mode .replay-playback-mode-settings select[id^="replayPlaybackMode"] {
-            color: #334155;
+        body.light-mode .replay-mode-dropdown-arrow:hover {
+            background: rgba(var(--sp-accent-rgb), 0.12);
+            color: var(--sp-accent);
         }
 
-        body.light-mode .replay-playback-mode-settings select[id^="replayPlaybackMode"]:hover {
-            background: rgba(51, 65, 85, 0.1);
-            color: #0f172a;
+        body.light-mode .replay-mode-dropdown-arrow.dropdown-open {
+            background: rgba(var(--sp-accent-rgb), 0.15);
+            color: var(--sp-accent);
         }
 
-        body.light-mode .replay-mode-toggle .replay-mode-option {
-            color: #334155;
+        body.light-mode .replay-mode-dropdown {
+            background: #ffffff;
+            border-color: #e0e3eb;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
         }
 
-        body.light-mode .replay-toolbar .replay-mode-toggle .replay-mode-option:hover {
-            background: rgba(51, 65, 85, 0.1);
-            color: #0f172a;
+        body.light-mode .replay-mode-dropdown-label {
+            color: #787b86;
         }
 
-        body.light-mode .replay-toolbar .replay-mode-toggle .replay-mode-option.active {
-            background: var(--sp-accent, #2962ff);
-            color: #ffffff;
+        body.light-mode .replay-mode-option {
+            color: #050028;
+        }
+
+        body.light-mode .replay-mode-option:hover {
+            background: rgba(var(--sp-accent-rgb), 0.08);
+            color: #1e293b;
+        }
+
+        body.light-mode .replay-mode-option.active {
+            background: rgba(var(--sp-accent-rgb), 0.12);
+            color: var(--sp-accent);
         }
 
         body.light-mode .replay-mode-note > summary {
@@ -18328,7 +18357,20 @@
 
                     <!-- Replay playback mode dropdown -->
                     <div class="replay-playback-mode-settings" title="Replay Playback Mode">
-                        <select id="replayPlaybackMode" title="Replay Playback Mode" aria-label="Replay Playback Mode">
+                        <button type="button" class="replay-mode-trigger" aria-label="Replay Playback Mode" aria-haspopup="true" aria-expanded="false">
+                            <span class="replay-mode-current-label">Tick</span>
+                        </button>
+                        <button type="button" class="replay-mode-dropdown-arrow" aria-label="Open Replay Playback Mode menu">
+                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <div class="replay-mode-dropdown" role="menu" aria-label="Replay Playback Mode options">
+                            <span class="replay-mode-dropdown-label">Replay mode</span>
+                            <button type="button" class="replay-mode-option active" data-mode="tick" aria-pressed="true">Tick</button>
+                            <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
+                        </div>
+                        <select id="replayPlaybackMode" title="Replay Playback Mode" aria-label="Replay Playback Mode" style="display:none;">
                             <option value="tick" selected>Tick</option>
                             <option value="candle">Candle</option>
                         </select>
@@ -19743,7 +19785,7 @@
          <script src="chart.js?v=20260305_TF_PIN_V78"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260305_TF_PIN_V60"></script>
+    <script src="modules/replay-system.js?v=20260305_TF_PIN_V61"></script>
     
     
     <!-- Order Management System -->

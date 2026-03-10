@@ -195,6 +195,8 @@ class ReplaySystem {
         }
 
         this.attachPlaybackModeOptionEvents(this.toolbar);
+        this.attachPlaybackModeTriggerEvents(this.toolbar);
+        this.attachPlaybackModeOutsideClickHandler();
         this.syncPlaybackModeControls();
 
         this.attachButtonEvents();
@@ -281,7 +283,78 @@ class ReplaySystem {
 
                 const mode = button.dataset.mode === 'candle' ? 'candle' : 'tick';
                 this.setPlaybackMode(mode);
+                this.closePlaybackModeDropdowns();
             });
+        });
+    }
+
+    attachPlaybackModeTriggerEvents(root = document) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+
+        const triggerButtons = root.querySelectorAll('.replay-mode-trigger, .replay-mode-dropdown-arrow');
+        triggerButtons.forEach((button) => {
+            if (!button || button.dataset.modeTriggerBound === '1') return;
+
+            button.dataset.modeTriggerBound = '1';
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const container = button.closest('.replay-playback-mode-settings');
+                this.togglePlaybackModeDropdown(container);
+            });
+        });
+    }
+
+    togglePlaybackModeDropdown(container) {
+        if (!container) return;
+
+        const dropdown = container.querySelector('.replay-mode-dropdown');
+        if (!dropdown) return;
+
+        const isOpen = dropdown.classList.contains('show');
+        this.closePlaybackModeDropdowns();
+
+        if (isOpen) return;
+
+        dropdown.classList.add('show');
+        dropdown.style.display = 'flex';
+
+        const arrow = container.querySelector('.replay-mode-dropdown-arrow');
+        if (arrow) {
+            arrow.classList.add('dropdown-open');
+        }
+
+        const trigger = container.querySelector('.replay-mode-trigger');
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', 'true');
+            trigger.classList.add('active');
+        }
+    }
+
+    attachPlaybackModeOutsideClickHandler() {
+        if (this._playbackModeOutsideClickBound) return;
+        this._playbackModeOutsideClickBound = true;
+
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.replay-playback-mode-settings')) return;
+            this.closePlaybackModeDropdowns();
+        });
+    }
+
+    closePlaybackModeDropdowns() {
+        document.querySelectorAll('.replay-mode-dropdown').forEach((dropdown) => {
+            dropdown.classList.remove('show');
+            dropdown.style.display = 'none';
+        });
+
+        document.querySelectorAll('.replay-mode-dropdown-arrow').forEach((arrow) => {
+            arrow.classList.remove('dropdown-open');
+        });
+
+        document.querySelectorAll('.replay-mode-trigger').forEach((button) => {
+            button.setAttribute('aria-expanded', 'false');
+            button.classList.remove('active');
         });
     }
     
@@ -336,6 +409,13 @@ class ReplaySystem {
         modeSelects.forEach(select => {
             if (select && select.value !== mode) {
                 select.value = mode;
+            }
+        });
+
+        const modeLabels = document.querySelectorAll('.replay-mode-current-label');
+        modeLabels.forEach(label => {
+            if (label) {
+                label.textContent = mode === 'candle' ? 'Candle' : 'Tick';
             }
         });
 
@@ -724,7 +804,15 @@ class ReplaySystem {
             });
         }
 
+        clone.querySelectorAll('.replay-mode-option').forEach((button) => {
+            button.removeAttribute('data-mode-bound');
+        });
+        clone.querySelectorAll('.replay-mode-trigger, .replay-mode-dropdown-arrow').forEach((button) => {
+            button.removeAttribute('data-mode-trigger-bound');
+        });
+
         this.attachPlaybackModeOptionEvents(clone);
+        this.attachPlaybackModeTriggerEvents(clone);
         this.syncPlaybackModeControls();
     }
 
