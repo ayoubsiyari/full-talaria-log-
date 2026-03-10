@@ -7338,8 +7338,8 @@
             color: #a0aec0;
         }
 
-        .replay-mode-trigger.active {
-            background: rgba(var(--sp-accent-rgb), 0.25);
+        .replay-mode-trigger.replay-open {
+            background: rgba(255, 255, 255, 0.08);
             color: #a0aec0;
         }
 
@@ -7391,7 +7391,7 @@
         }
 
         .replay-mode-dropdown-arrow.dropdown-open {
-            background: rgba(var(--sp-accent-rgb), 0.15);
+            background: rgba(0, 0, 0, 0.92);
             color: #a0aec0;
         }
 
@@ -7452,7 +7452,7 @@
             color: #ffffff;
         }
 
-        .replay-mode-option.active {
+        .replay-mode-option.replay-selected {
             background: rgba(var(--sp-accent-rgb), 0.25);
             color: #ffffff;
         }
@@ -7527,9 +7527,9 @@
             color: #000000;
         }
 
-        body.light-mode .replay-mode-trigger.active {
-            background: rgba(var(--sp-accent-rgb), 0.15);
-            color: var(--sp-accent);
+        body.light-mode .replay-mode-trigger.replay-open {
+            background: rgba(0, 0, 0, 0.08);
+            color: #000000;
         }
 
         body.light-mode .replay-mode-dropdown-arrow {
@@ -7544,8 +7544,8 @@
         }
 
         body.light-mode .replay-mode-dropdown-arrow.dropdown-open {
-            background: rgba(var(--sp-accent-rgb), 0.15);
-            color: var(--sp-accent);
+            background: rgba(255, 255, 255, 0.9);
+            color: #787b86;
         }
 
         body.light-mode .replay-mode-dropdown {
@@ -7567,7 +7567,7 @@
             color: #1e293b;
         }
 
-        body.light-mode .replay-mode-option.active {
+        body.light-mode .replay-mode-option.replay-selected {
             background: rgba(var(--sp-accent-rgb), 0.12);
             color: var(--sp-accent);
         }
@@ -18373,7 +18373,7 @@
                         </button>
                         <div class="replay-mode-dropdown" role="menu" aria-label="Replay Playback Mode options">
                             <span class="replay-mode-dropdown-label">Replay mode</span>
-                            <button type="button" class="replay-mode-option active" data-mode="tick" aria-pressed="true">Tick</button>
+                            <button type="button" class="replay-mode-option replay-selected" data-mode="tick" aria-pressed="true">Tick</button>
                             <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
                         </div>
                         <select id="replayPlaybackMode" title="Replay Playback Mode" aria-label="Replay Playback Mode" style="display:none;">
@@ -19791,7 +19791,7 @@
          <script src="chart.js?v=20260305_TF_PIN_V78"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260305_TF_PIN_V61"></script>
+    <script src="modules/replay-system.js?v=20260305_TF_PIN_V62"></script>
     
     
     <!-- Order Management System -->

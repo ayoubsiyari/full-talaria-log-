@@ -328,7 +328,8 @@ class ReplaySystem {
         const trigger = container.querySelector('.replay-mode-trigger');
         if (trigger) {
             trigger.setAttribute('aria-expanded', 'true');
-            trigger.classList.add('active');
+            trigger.classList.remove('active');
+            trigger.classList.add('replay-open');
         }
     }
 
@@ -355,6 +356,7 @@ class ReplaySystem {
         document.querySelectorAll('.replay-mode-trigger').forEach((button) => {
             button.setAttribute('aria-expanded', 'false');
             button.classList.remove('active');
+            button.classList.remove('replay-open');
         });
     }
     
@@ -426,7 +428,8 @@ class ReplaySystem {
             const optionMode = button.dataset.mode === 'candle' ? 'candle' : 'tick';
             const isActive = optionMode === mode;
 
-            button.classList.toggle('active', isActive);
+            button.classList.remove('active');
+            button.classList.toggle('replay-selected', isActive);
             button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
     }
