@@ -1058,7 +1058,7 @@
             border: none;
         }
         
-        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn),
+        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow),
         body.light-mode .replay-toolbar select:hover {
             background: rgba(0, 0, 0, 0.08);
             color: #000000;
@@ -7188,7 +7188,7 @@
             transition: all 0.15s ease;
         }
 
-        .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn),
+        .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow),
         .replay-toolbar select:hover {
             background: rgba(255, 255, 255, 0.08);
             color: #ffffff;
@@ -7313,14 +7313,14 @@
             overflow: visible;
         }
 
-        .replay-mode-trigger {
+        .replay-toolbar .replay-mode-trigger {
             width: 64px;
             height: 34px;
             min-width: 64px;
             border: none;
             border-radius: 4px;
             background: transparent;
-            color: #a0aec0;
+            color: #d1d4dc;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -7333,23 +7333,25 @@
             cursor: default;
         }
 
-        .replay-mode-trigger:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: #a0aec0;
+        .replay-toolbar .replay-mode-trigger:hover {
+            background: transparent;
+            color: #ffffff;
         }
 
-        .replay-mode-trigger.replay-open {
-            background: rgba(255, 255, 255, 0.08);
-            color: #a0aec0;
+        .replay-toolbar .replay-mode-trigger.replay-open {
+            background: transparent;
+            color: #ffffff;
         }
 
-        .replay-mode-trigger .replay-mode-current-label {
+        .replay-toolbar .replay-mode-trigger .replay-mode-current-label {
             pointer-events: none;
         }
 
-        .replay-mode-dropdown-arrow {
+        .replay-toolbar .replay-mode-dropdown-arrow {
             width: 32px;
-            height: 10px;
+            height: 10px !important;
+            min-height: 10px !important;
+            max-height: 10px !important;
             border: none;
             background: rgba(0, 0, 0, 0.92);
             color: #a0aec0;
@@ -7362,7 +7364,8 @@
             margin: 0 auto;
             bottom: -10px;
             border-radius: 0 0 4px 4px;
-            padding: 0;
+            padding: 0 !important;
+            line-height: 1;
             cursor: default !important;
             pointer-events: auto !important;
             opacity: 1;
@@ -7374,14 +7377,15 @@
             -webkit-backdrop-filter: blur(20px);
         }
 
-        .replay-mode-dropdown-arrow svg {
+        .replay-toolbar .replay-mode-dropdown-arrow svg {
             width: 12px;
             height: 8px;
+            display: block;
             transform: rotate(0deg);
             transition: transform 0.2s ease;
         }
 
-        .replay-mode-dropdown-arrow:hover {
+        .replay-toolbar .replay-mode-dropdown-arrow:hover {
             background: rgba(var(--sp-accent-rgb), 0.15);
             color: #a0aec0;
         }
@@ -7390,12 +7394,12 @@
             display: none;
         }
 
-        .replay-mode-dropdown-arrow.dropdown-open {
+        .replay-toolbar .replay-mode-dropdown-arrow.dropdown-open {
             background: rgba(0, 0, 0, 0.92);
             color: #a0aec0;
         }
 
-        .replay-mode-dropdown-arrow.dropdown-open svg {
+        .replay-toolbar .replay-mode-dropdown-arrow.dropdown-open svg {
             transform: rotate(180deg);
         }
 
@@ -7518,32 +7522,32 @@
             font-weight: 700;
         }
 
-        body.light-mode .replay-mode-trigger {
+        body.light-mode .replay-toolbar .replay-mode-trigger {
             color: #050028;
         }
 
-        body.light-mode .replay-mode-trigger:hover {
-            background: rgba(0, 0, 0, 0.08);
+        body.light-mode .replay-toolbar .replay-mode-trigger:hover {
+            background: transparent;
             color: #000000;
         }
 
-        body.light-mode .replay-mode-trigger.replay-open {
-            background: rgba(0, 0, 0, 0.08);
+        body.light-mode .replay-toolbar .replay-mode-trigger.replay-open {
+            background: transparent;
             color: #000000;
         }
 
-        body.light-mode .replay-mode-dropdown-arrow {
+        body.light-mode .replay-toolbar .replay-mode-dropdown-arrow {
             background: rgba(255, 255, 255, 0.9);
             color: #787b86;
             border-color: #e0e3eb;
         }
 
-        body.light-mode .replay-mode-dropdown-arrow:hover {
+        body.light-mode .replay-toolbar .replay-mode-dropdown-arrow:hover {
             background: rgba(var(--sp-accent-rgb), 0.12);
             color: var(--sp-accent);
         }
 
-        body.light-mode .replay-mode-dropdown-arrow.dropdown-open {
+        body.light-mode .replay-toolbar .replay-mode-dropdown-arrow.dropdown-open {
             background: rgba(255, 255, 255, 0.9);
             color: #787b86;
         }
