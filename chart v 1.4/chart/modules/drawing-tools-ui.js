@@ -5993,7 +5993,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const labelColumnWidth = 170;
         const controlsColumnWidth = 180;
-        const useCompactFieldSize = drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
+        const useCompactFieldSize = drawing.type === 'volume-profile'
+            || drawing.type === 'fixed-range-volume-profile'
+            || drawing.type === 'anchored-volume-profile';
         const compactControlStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;';
 
         const createStyleRow = (labelText) => {
@@ -7741,7 +7743,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
-        const useCompactFieldSize = drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
+        const useCompactFieldSize = drawing.type === 'volume-profile'
+            || drawing.type === 'fixed-range-volume-profile'
+            || drawing.type === 'anchored-volume-profile';
         const controlFieldWidth = useCompactFieldSize ? 60 : 170;
         const controlFieldStyle = useCompactFieldSize
             ? `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;`
