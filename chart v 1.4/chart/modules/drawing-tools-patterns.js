@@ -1294,24 +1294,13 @@ class HeadShouldersTool extends BaseDrawing {
         const tagText = String(text || '');
         if (!tagText) return;
 
-        const textWidth = Math.max(20, (tagText.length * 7) + 8);
-        const labelHeight = 16;
         const labelY = placeAbove ? (y - 18) : (y + 22);
-
-        this.group.append('rect')
-            .attr('x', x - (textWidth / 2))
-            .attr('y', labelY - 12)
-            .attr('width', textWidth)
-            .attr('height', labelHeight)
-            .attr('rx', 2)
-            .attr('fill', this.style.labelFill || this.style.stroke)
-            .style('pointer-events', 'none');
 
         this.group.append('text')
             .attr('x', x)
             .attr('y', labelY)
             .attr('text-anchor', 'middle')
-            .attr('fill', this.style.labelTextColor || '#ffffff')
+            .attr('fill', this.style.stroke)
             .attr('font-size', '11px')
             .attr('font-weight', 'bold')
             .style('pointer-events', 'none')
