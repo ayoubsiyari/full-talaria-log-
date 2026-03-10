@@ -688,7 +688,7 @@ class DrawingToolsManager {
             const mouseX = event.clientX - svgRect.left;
             const mouseY = event.clientY - svgRect.top;
             const valueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY);
-            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
 
             if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && !valueLabelDrawing) return false;
 
@@ -777,7 +777,8 @@ class DrawingToolsManager {
                 const svgRect = svgNode.getBoundingClientRect();
                 const mouseX = event.clientX - svgRect.left;
                 const mouseY = event.clientY - svgRect.top;
-                let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+                const includeVolumeProfileBodyHit = event.detail >= 2;
+                let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit });
                 const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
                 if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                     drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
@@ -1231,7 +1232,8 @@ class DrawingToolsManager {
             }
             
             // Find all drawings at this point using geometric hit test
-            let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY);
+            const includeVolumeProfileBodyHit = event.detail >= 2;
+            let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit });
             const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
             if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                 drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
@@ -5806,10 +5808,13 @@ class DrawingToolsManager {
      * STROKE-ONLY: Only detects lines/strokes, NOT fills - click on line to select
      * @param {number} mouseX - X coordinate in SVG space
      * @param {number} mouseY - Y coordinate in SVG space
+     * @param {Object} options
+     * @param {boolean} options.includeVolumeProfileBodyHit - include VP body/bar rect hits (used for double-click settings)
      * @returns {Array} - Array of drawings at this point, sorted by z-order (topmost first)
      */
-    findDrawingsAtPoint(mouseX, mouseY) {
+    findDrawingsAtPoint(mouseX, mouseY, options = {}) {
         const baseHitTolerance = 10; // pixels - how close to a line to consider it a hit
+        const includeVolumeProfileBodyHit = !!options.includeVolumeProfileBodyHit;
         const hitsById = new Map(); // drawingId -> { drawing, distance, z }
         
         const point = this.svg.node().createSVGPoint();
@@ -6067,7 +6072,7 @@ class DrawingToolsManager {
             // Volume Profile tools: select from boundaries/levels/labels.
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
-                    const allowProfileBodyHit = !this.isCandleBoundTool(drawing.type);
+                    const allowProfileBodyHit = includeVolumeProfileBodyHit || !this.isCandleBoundTool(drawing.type);
                     let bestBoundaryDistance = Infinity;
                     const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
 
