@@ -7646,8 +7646,10 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
-        const controlFieldWidth = 60;
-        const controlFieldStyle = `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
+        const numericFieldWidth = 60;
+        const selectFieldWidth = 170;
+        const numericFieldStyle = `width: ${numericFieldWidth}px !important; min-width: ${numericFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
+        const selectFieldStyle = `width: ${selectFieldWidth}px !important; min-width: ${selectFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
 
         const createInputRow = (labelText) => {
             const row = document.createElement('div');
@@ -7671,7 +7673,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const bandsModeRow = createInputRow('Bands Calculation Mode');
         bandsModeRow.controls.innerHTML = `
-            <select class="tv-select tv-anchored-vwap-input" data-prop="vwapBandsCalculationMode" style="${controlFieldStyle}">
+            <select class="tv-select tv-anchored-vwap-input" data-prop="vwapBandsCalculationMode" style="${selectFieldStyle}">
                 <option value="standard_deviation" ${drawing.style.vwapBandsCalculationMode === 'standard_deviation' ? 'selected' : ''}>Standard Deviation</option>
                 <option value="percentage" ${drawing.style.vwapBandsCalculationMode === 'percentage' ? 'selected' : ''}>Percentage</option>
             </select>
@@ -7701,7 +7703,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     min="0.001"
                     max="1000"
                     step="0.1"
-                    style="${controlFieldStyle} text-align: center;"
+                    style="${numericFieldStyle} text-align: center;"
                 >
             `;
         };
@@ -7716,7 +7718,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const sourceRow = createInputRow('Source');
         sourceRow.controls.innerHTML = `
-            <select class="tv-select tv-anchored-vwap-input" data-prop="source" style="${controlFieldStyle}">
+            <select class="tv-select tv-anchored-vwap-input" data-prop="source" style="${selectFieldStyle}">
                 <option value="hlc3" ${drawing.style.source === 'hlc3' ? 'selected' : ''}>(H + L + C) / 3</option>
                 <option value="hl2" ${drawing.style.source === 'hl2' ? 'selected' : ''}>(H + L) / 2</option>
                 <option value="ohlc4" ${drawing.style.source === 'ohlc4' ? 'selected' : ''}>(O + H + L + C) / 4</option>
