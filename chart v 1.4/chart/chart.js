@@ -189,7 +189,7 @@ class Chart {
         this.yScale = null;
         this.volumeScale = null;
         this.xBandScale = null;
-        this.margin = {t: 5, r: 60, b: 30, l: 0}; // Left margin 0 for full width (sidebar overlays)
+        this.margin = {t: 0, r: 60, b: 30, l: 0}; // Left margin 0 for full width (sidebar overlays)
         this.volumeHeight = 0.15;
         this.selectedDrawing = null;
         this.isLoading = false;
@@ -9166,9 +9166,9 @@ class Chart {
         
         // Dynamically calculate padding - smaller padding for better fit
         // Use 5% of price range as padding, but limit to reasonable visual space
-        let paddingPercent = 0.05; // 5% padding by default for better centering
-        if (this.priceZoom > 2) paddingPercent = 0.03;
-        if (this.priceZoom > 5) paddingPercent = 0.02;
+        let paddingPercent = 0.03; // Tighter default to reduce top/bottom empty space
+        if (this.priceZoom > 2) paddingPercent = 0.02;
+        if (this.priceZoom > 5) paddingPercent = 0.015;
         const padding = priceRange * paddingPercent;
         
         // Apply price zoom and offset with improved calculations
