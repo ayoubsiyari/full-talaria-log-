@@ -1992,7 +1992,7 @@ class ThreeDrivesTool extends BaseDrawing {
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('fill', this.style.ratioTextColor)
+            .attr('fill', this.style.stroke)
             .attr('font-size', `${fontSize}px`)
             .attr('font-weight', '600')
             .style('pointer-events', 'none')
