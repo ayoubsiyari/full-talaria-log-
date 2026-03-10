@@ -677,7 +677,7 @@ class DrawingSettingsPanel {
     border-radius: 7px !important;
     font-size: 12px !important;
     font-weight: 500;
-    background-color: rgba(255, 255, 255, 0.10) !important;
+    background-color: #050028 !important;
     border-color: rgba(140, 148, 180, 0.30) !important;
 }
 
@@ -700,6 +700,10 @@ class DrawingSettingsPanel {
     outline: none;
     border-color: #2962ff !important;
     box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.18);
+}
+
+.tv-anchored-vwap-input {
+    background-color: #050028 !important;
 }
 
 /* Toggle Switch */
@@ -5996,7 +6000,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const useCompactFieldSize = drawing.type === 'volume-profile'
             || drawing.type === 'fixed-range-volume-profile'
             || drawing.type === 'anchored-volume-profile';
-        const compactControlStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;';
+        const compactControlStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;';
 
         const createStyleRow = (labelText) => {
             const row = document.createElement('div');
@@ -7630,7 +7634,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
         const controlFieldWidth = 60;
-        const controlFieldStyle = `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;`;
+        const controlFieldStyle = `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
 
         const createInputRow = (labelText) => {
             const row = document.createElement('div');
@@ -7748,7 +7752,7 @@ body.light-mode .template-save-dialog .dialog-title {
             || drawing.type === 'anchored-volume-profile';
         const controlFieldWidth = useCompactFieldSize ? 60 : 170;
         const controlFieldStyle = useCompactFieldSize
-            ? `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;`
+            ? `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`
             : `width: ${controlFieldWidth}px;`;
 
         const createInputRow = (labelText) => {
