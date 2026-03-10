@@ -1902,41 +1902,54 @@ class ThreeDrivesTool extends BaseDrawing {
                 .style('cursor', 'move');
         }
 
-        // Dotted trend guide through drive peaks (points 1 -> 3 -> 5).
-        if (pointsPx.length >= 6) {
-            const peakA = pointsPx[1];
-            const peakB = pointsPx[3];
-            const peakC = pointsPx[5];
+        // Dotted trend guides and ratios through drive peaks (points 1 -> 3 -> 5).
+        // Show progressively so values appear earlier while drawing.
+        const peakA = pointsPx[1];
+        const peakB = pointsPx[3];
+        const peakC = pointsPx[5];
 
-            [[peakA, peakB], [peakB, peakC]].forEach(([start, end]) => {
-                if (!start || !end) return;
-                this.group.append('line')
-                    .attr('x1', start.x)
-                    .attr('y1', start.y)
-                    .attr('x2', end.x)
-                    .attr('y2', end.y)
-                    .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', this.style.guideWidth)
-                    .attr('stroke-dasharray', this.style.guideDasharray)
-                    .attr('stroke-linecap', 'round')
-                    .attr('opacity', 0.95)
-                    .style('pointer-events', 'none');
-            });
+        if (peakA && peakB) {
+            this.group.append('line')
+                .attr('x1', peakA.x)
+                .attr('y1', peakA.y)
+                .attr('x2', peakB.x)
+                .attr('y2', peakB.y)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-dasharray', this.style.guideDasharray)
+                .attr('stroke-linecap', 'round')
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
 
             const drive1 = this._getDriveMagnitude(this.points[0], this.points[1]);
             const drive2 = this._getDriveMagnitude(this.points[2], this.points[3]);
-            const drive3 = this._getDriveMagnitude(this.points[4], this.points[5]);
-
             const ratio12 = this._formatDriveRatio(drive2, drive1);
-            const ratio23 = this._formatDriveRatio(drive3, drive2);
 
-            if (ratio12 && peakA && peakB) {
+            if (ratio12) {
                 const pos = this._pointOnSegment(peakA, peakB, 0.5);
                 const offset = this._getPerpendicularOffset(peakA, peakB, -18);
                 this._drawRatioTag(pos.x + offset.x, pos.y + offset.y, ratio12);
             }
+        }
 
-            if (ratio23 && peakB && peakC) {
+        if (peakB && peakC) {
+            this.group.append('line')
+                .attr('x1', peakB.x)
+                .attr('y1', peakB.y)
+                .attr('x2', peakC.x)
+                .attr('y2', peakC.y)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-dasharray', this.style.guideDasharray)
+                .attr('stroke-linecap', 'round')
+                .attr('opacity', 0.95)
+                .style('pointer-events', 'none');
+
+            const drive2 = this._getDriveMagnitude(this.points[2], this.points[3]);
+            const drive3 = this._getDriveMagnitude(this.points[4], this.points[5]);
+            const ratio23 = this._formatDriveRatio(drive3, drive2);
+
+            if (ratio23) {
                 const pos = this._pointOnSegment(peakB, peakC, 0.5);
                 const offset = this._getPerpendicularOffset(peakB, peakC, -18);
                 this._drawRatioTag(pos.x + offset.x, pos.y + offset.y, ratio23);
