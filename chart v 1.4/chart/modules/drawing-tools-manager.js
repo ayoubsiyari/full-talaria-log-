@@ -3239,6 +3239,21 @@ class DrawingToolsManager {
         
         const handleMouseLeave = function() {
             if (self.currentTool) return;
+
+            if (self.isResizing || self.isCustomHandleDrag) {
+                drawing.group.style('cursor', 'ew-resize');
+                if (self.chart?.canvas) self.chart.canvas.style.cursor = 'ew-resize';
+                if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'ew-resize';
+                return;
+            }
+
+            if (self.isDragging || self.isDraggingFirstTwo) {
+                drawing.group.style('cursor', 'move');
+                if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
+                if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
+                return;
+            }
+
             drawing.group.style('cursor', 'default');
             if (self.chart?.canvas) {
                 const cursorStyle = self.chart.getCurrentCursorStyle ? self.chart.getCurrentCursorStyle() : 'default';
@@ -3889,8 +3904,8 @@ class DrawingToolsManager {
         this.customHandleRole = handleRole;
 
         const canvas = document.getElementById('chartCanvas');
-        if (canvas) canvas.style.cursor = 'move';
-        this.svg.style('cursor', 'move');
+        if (canvas) canvas.style.cursor = 'ew-resize';
+        this.svg.style('cursor', 'ew-resize');
         this.customHandlePointIndex = pointIndex; // Store point index for arc/curve
         this.customHandleStart = this.collectHandleContext(event);
         // Capture state for undo
@@ -6992,7 +7007,14 @@ class DrawingToolsManager {
         const canvas = document.getElementById('chartCanvas');
         if (!canvas) return;
 
-        if (this.isDragging || this.isResizing || this.isCustomHandleDrag || this.isDraggingFirstTwo) {
+        if (this.isResizing || this.isCustomHandleDrag) {
+            canvas.style.cursor = 'ew-resize';
+            this.svg.style('cursor', 'ew-resize');
+            this._cursorOverLine = true;
+            return;
+        }
+
+        if (this.isDragging || this.isDraggingFirstTwo) {
             canvas.style.cursor = 'move';
             this.svg.style('cursor', 'move');
             this._cursorOverLine = true;

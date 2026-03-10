@@ -7307,7 +7307,34 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            overflow: visible;
+            min-width: 98px;
+            height: 34px;
+            padding: 2px;
+            border-radius: 6px;
+            border: 1px solid rgba(78, 91, 126, 0.55);
+            background: rgba(78, 91, 126, 0.16);
+            overflow: hidden;
+        }
+
+        .replay-playback-mode-settings select[id^="replayPlaybackMode"] {
+            display: block;
+            width: 100%;
+            min-width: 94px;
+            height: 28px;
+            padding: 0 26px 0 10px;
+            border: none;
+            border-radius: 4px;
+            background-color: transparent;
+            color: #d1d4dc;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: capitalize;
+            cursor: pointer;
+        }
+
+        .replay-playback-mode-settings select[id^="replayPlaybackMode"]:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
         }
 
         .replay-mode-gear-btn {
@@ -7480,6 +7507,20 @@
         body.light-mode .replay-mode-toggle {
             background: rgba(148, 163, 184, 0.14);
             border-color: rgba(148, 163, 184, 0.38);
+        }
+
+        body.light-mode .replay-playback-mode-settings {
+            background: rgba(148, 163, 184, 0.14);
+            border-color: rgba(148, 163, 184, 0.38);
+        }
+
+        body.light-mode .replay-playback-mode-settings select[id^="replayPlaybackMode"] {
+            color: #334155;
+        }
+
+        body.light-mode .replay-playback-mode-settings select[id^="replayPlaybackMode"]:hover {
+            background: rgba(51, 65, 85, 0.1);
+            color: #0f172a;
         }
 
         body.light-mode .replay-mode-toggle .replay-mode-option {
@@ -18285,26 +18326,9 @@
                         <option value="1" selected>1x</option>
                     </select>
 
+                    <!-- Replay playback mode dropdown -->
                     <div class="replay-playback-mode-settings" title="Replay Playback Mode">
-                        <button type="button" class="replay-toolbar-btn replay-icon-btn replay-mode-gear-btn" aria-label="Replay mode settings">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <circle cx="12" cy="12" r="3.2"></circle>
-                                <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a1.6 1.6 0 1 1-2.26 2.26l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V19a1.6 1.6 0 1 1-3.2 0v-.2a1 1 0 0 0-.7-.95 1 1 0 0 0-1.05.24l-.1.1a1.6 1.6 0 0 1-2.26-2.26l.1-.1a1 1 0 0 0 .23-1.06 1 1 0 0 0-.95-.67H5a1.6 1.6 0 1 1 0-3.2h.2a1 1 0 0 0 .95-.67 1 1 0 0 0-.23-1.06l-.1-.1A1.6 1.6 0 0 1 8.08 5.6l.1.1a1 1 0 0 0 1.06.23 1 1 0 0 0 .67-.95V5a1.6 1.6 0 1 1 3.2 0v.2a1 1 0 0 0 .67.95 1 1 0 0 0 1.06-.23l.1-.1a1.6 1.6 0 0 1 2.26 2.26l-.1.1a1 1 0 0 0-.23 1.06 1 1 0 0 0 .95.67H19a1.6 1.6 0 1 1 0 3.2h-.2a1 1 0 0 0-.95.67Z"></path>
-                            </svg>
-                        </button>
-                        <div class="replay-mode-popover" role="menu" aria-label="Replay mode settings">
-                            <div class="replay-mode-toggle" role="group" aria-label="Replay mode toggle">
-                                <button type="button" class="replay-mode-option active" data-mode="tick" aria-pressed="true">Tick</button>
-                                <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
-                            </div>
-                            <details class="replay-mode-note">
-                                <summary aria-label="What does Candle mode do?">i</summary>
-                                <div class="replay-mode-note-panel">
-                                    <strong>Candle mode:</strong> replay advances one full candle at a time (no tick-by-tick movement). Use it when you want faster, bar-by-bar testing.
-                                </div>
-                            </details>
-                        </div>
-                        <select id="replayPlaybackMode" title="Replay Playback Mode" style="display:none;">
+                        <select id="replayPlaybackMode" title="Replay Playback Mode" aria-label="Replay Playback Mode">
                             <option value="tick" selected>Tick</option>
                             <option value="candle">Candle</option>
                         </select>
@@ -19705,7 +19729,7 @@
     <script src="modules/undo-redo-manager.js?v=20260305_TF_PIN_V58"></script>
     <script src="modules/preferences-sync.js?v=20260305_TF_PIN_V58"></script>
     <script src="modules/preferences-init.js?v=20260305_TF_PIN_V58"></script>
-    <script src="modules/drawing-tools-manager.js?v=20260305_TF_PIN_V119"></script>
+    <script src="modules/drawing-tools-manager.js?v=20260305_TF_PIN_V120"></script>
     <script src="modules/favorites-manager.js?v=20260305_TF_PIN_V58"></script>
     <script src="modules/keyboard-shortcuts.js?v=20260305_TF_PIN_V58"></script>
     <script src="modules/panel-manager.js?v=20260305_TF_PIN_V58"></script>
@@ -19716,10 +19740,10 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260305_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260305_TF_PIN_V77"></script>
+         <script src="chart.js?v=20260305_TF_PIN_V78"></script>
          <!-- Replay System -->
         <!-- Replay System -->
-    <script src="modules/replay-system.js?v=20260305_TF_PIN_V59"></script>
+    <script src="modules/replay-system.js?v=20260305_TF_PIN_V60"></script>
     
     
     <!-- Order Management System -->

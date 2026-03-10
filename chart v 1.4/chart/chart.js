@@ -11761,7 +11761,12 @@ class Chart {
                                           !e.target.classList.contains('chart-tooltip');
                     
                     const dm = this.drawingManager;
-                    if (dm && dm._cursorOverInlineText) {
+                    if (dm && (dm.isResizing || dm.isCustomHandleDrag)) {
+                        this.canvas.style.cursor = 'ew-resize';
+                        if (this.svg && this.svg.node()) {
+                            this.svg.node().style.cursor = 'ew-resize';
+                        }
+                    } else if (dm && dm._cursorOverInlineText) {
                         this.canvas.style.cursor = 'text';
                         if (this.svg && this.svg.node()) {
                             this.svg.node().style.cursor = 'text';
@@ -11881,7 +11886,20 @@ class Chart {
             this.drag.type = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
-            this.canvas.style.cursor = 'default';
+            const dm = this.drawingManager;
+            if (dm && (dm.isResizing || dm.isCustomHandleDrag)) {
+                this.canvas.style.cursor = 'ew-resize';
+                if (this.svg && this.svg.node()) {
+                    this.svg.node().style.cursor = 'ew-resize';
+                }
+            } else if (dm && (dm.isDragging || dm.isDraggingFirstTwo)) {
+                this.canvas.style.cursor = 'move';
+                if (this.svg && this.svg.node()) {
+                    this.svg.node().style.cursor = 'move';
+                }
+            } else {
+                this.canvas.style.cursor = 'default';
+            }
             // hideCrosshair is NOT called here — the document-level capture listener
             // calls updateCrosshair() on every move; its own boundary check hides the
             // crosshair when the mouse is genuinely outside the chart area.
