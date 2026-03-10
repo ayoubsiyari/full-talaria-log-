@@ -2228,6 +2228,7 @@ body.light-mode .template-save-dialog .dialog-title {
             'circle': 'Circle',
             'triangle': 'Triangle',
             'rotated-rectangle': 'Rotated Rectangle',
+            'date-price-range': 'Range Tool',
             'trendline': 'Trend Line',
             'horizontal': 'Horizontal Line',
             'vertical': 'Vertical Line',
@@ -2322,7 +2323,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Check if this drawing type should have a Text tab
         // Text-type drawings use STYLE tab for text controls, so they don't need a separate TEXT tab
         // Arrow-marker tools also show text in STYLE tab
-        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'price-range', 'date-range', 'long-position', 'short-position', 'elliott-impulse', 'elliott-correction', 'elliott-triangle', 'elliott-double-combo', 'elliott-triple-combo', 'bars-pattern', 'xabcd-pattern', 'cypher-pattern', 'head-shoulders', 'abcd-pattern', 'triangle-pattern', 'three-drives', 'volume-profile', 'fixed-range-volume-profile', 'anchored-volume-profile', 'anchored-vwap'];
+        const noTextTabTypes = ['arrow', 'triangle', 'ellipse', 'circle', 'rotated-rectangle', 'arc', 'curve', 'double-curve', 'cross-line', 'polyline', 'brush', 'highlighter', 'path', 'regression-trend', 'parallel-channel', 'flat-top-bottom', 'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'pin', 'callout', 'comment', 'pitchfork', 'pitchfan', 'emoji', 'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan', 'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'trend-fib-extension', 'gann-box', 'gann-square-fixed', 'gann-fan', 'date-price-range', 'long-position', 'short-position', 'elliott-impulse', 'elliott-correction', 'elliott-triangle', 'elliott-double-combo', 'elliott-triple-combo', 'bars-pattern', 'xabcd-pattern', 'cypher-pattern', 'head-shoulders', 'abcd-pattern', 'triangle-pattern', 'three-drives', 'volume-profile', 'fixed-range-volume-profile', 'anchored-volume-profile', 'anchored-vwap'];
         const hasTextTab = !noTextTabTypes.includes(drawing.type);
         
         const body = document.createElement('div');
@@ -2345,7 +2346,8 @@ body.light-mode .template-save-dialog .dialog-title {
         const isPositionInputsTool = drawing.type === 'long-position' || drawing.type === 'short-position';
         const isVolumeProfileInputsTool = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
         const isAnchoredVWAPInputsTool = drawing.type === 'anchored-vwap';
-        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool || isVolumeProfileInputsTool || isAnchoredVWAPInputsTool;
+        const isRangeInputsTool = drawing.type === 'date-price-range';
+        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool || isVolumeProfileInputsTool || isAnchoredVWAPInputsTool || isRangeInputsTool;
         const inputTabLabel = (isFibonacciInputTabTool || isGannInputTabTool) ? 'Input' : 'Inputs';
         
         let tabsHTML = '';
@@ -2432,6 +2434,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 this.buildVolumeProfileInputsTab(inputsPane, drawing);
             } else if (isAnchoredVWAPInputsTool) {
                 this.buildAnchoredVWAPInputsTab(inputsPane, drawing);
+            } else if (isRangeInputsTool) {
+                this.buildRangeInputsTab(inputsPane, drawing);
             }
         }
 
@@ -2506,7 +2510,7 @@ body.light-mode .template-save-dialog .dialog-title {
             return;
         }
 
-        const rangeTools = ['date-price-range', 'price-range', 'date-range'];
+        const rangeTools = ['date-price-range'];
         if (rangeTools.includes(drawing.type)) {
             this.buildRangeToolsStyleTab(container, drawing);
             return;
@@ -5830,6 +5834,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
     buildRangeToolsStyleTab(container, drawing) {
         if (!drawing.style) drawing.style = {};
+        this.ensureRangeInfoSettings(drawing);
 
         if (drawing.style.borderEnabled === undefined) drawing.style.borderEnabled = true;
         if (!drawing.style.borderColor) drawing.style.borderColor = drawing.style.stroke || '#2962ff';
@@ -5841,17 +5846,6 @@ body.light-mode .template-save-dialog .dialog-title {
         if (!drawing.style.fontSize) drawing.style.fontSize = 12;
         if (drawing.style.showLabelBackground === undefined) drawing.style.showLabelBackground = true;
         if (!drawing.style.labelBackgroundColor) drawing.style.labelBackgroundColor = 'rgba(30, 34, 45, 0.95)';
-        if (drawing.type === 'date-price-range' && !drawing.style.infoSettings) {
-            drawing.style.infoSettings = {
-                showInfo: true,
-                priceRange: true,
-                percentChange: true,
-                changeInPips: true,
-                barsRange: true,
-                dateTimeRange: true,
-                volume: true
-            };
-        }
 
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
@@ -7219,6 +7213,74 @@ body.light-mode .template-save-dialog .dialog-title {
         return gannToolsWithInputs.includes(drawingType);
     }
 
+    normalizeRangeMode(mode) {
+        const value = String(mode || '').toLowerCase().trim();
+        if (value === 'price') return 'price';
+        if (value === 'time' || value === 'date') return 'time';
+        return 'both';
+    }
+
+    getRangeModeForDrawing(drawing) {
+        if (!drawing || !drawing.style) return 'both';
+        return this.normalizeRangeMode(drawing.style.rangeMode);
+    }
+
+    getDefaultRangeInfoSettings(mode = 'both') {
+        const normalizedMode = this.normalizeRangeMode(mode);
+        if (normalizedMode === 'price') {
+            return {
+                showInfo: true,
+                priceRange: true,
+                percentChange: true,
+                changeInPips: true,
+                barsRange: false,
+                dateTimeRange: false,
+                volume: false
+            };
+        }
+
+        if (normalizedMode === 'time') {
+            return {
+                showInfo: true,
+                priceRange: false,
+                percentChange: false,
+                changeInPips: false,
+                barsRange: true,
+                dateTimeRange: true,
+                volume: false
+            };
+        }
+
+        return {
+            showInfo: true,
+            priceRange: true,
+            percentChange: true,
+            changeInPips: true,
+            barsRange: true,
+            dateTimeRange: true,
+            volume: true
+        };
+    }
+
+    ensureRangeInfoSettings(drawing) {
+        if (!drawing || drawing.type !== 'date-price-range') return;
+        if (!drawing.style) drawing.style = {};
+
+        const mode = this.getRangeModeForDrawing(drawing);
+        drawing.style.rangeMode = mode;
+
+        const currentInfo = drawing.style.infoSettings && typeof drawing.style.infoSettings === 'object'
+            ? drawing.style.infoSettings
+            : {};
+        const showInfo = currentInfo.showInfo !== false;
+
+        drawing.style.infoSettings = {
+            ...this.getDefaultRangeInfoSettings(mode),
+            ...currentInfo,
+            showInfo
+        };
+    }
+
     /**
      * Build Fibonacci Input Tab Content
      */
@@ -7259,6 +7321,51 @@ body.light-mode .template-save-dialog .dialog-title {
         }
 
         this.addRiskRewardInputs(d3.select(container), drawing);
+    }
+
+    buildRangeInputsTab(container, drawing) {
+        if (!drawing.style) drawing.style = {};
+        drawing.style.rangeMode = this.getRangeModeForDrawing(drawing);
+        this.ensureRangeInfoSettings(drawing);
+
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom: 20px; max-width: 420px;';
+
+        const labelColumnWidth = 190;
+        const controlsColumnWidth = 180;
+        const selectFieldWidth = 120;
+        const selectFieldStyle = `width: ${selectFieldWidth}px !important; min-width: ${selectFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
+
+        const createInputRow = (labelText) => {
+            const row = document.createElement('div');
+            row.className = 'tv-prop-row';
+            row.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
+
+            const label = document.createElement('span');
+            label.className = 'tv-prop-label';
+            label.style.cssText = `min-width: 0; width: ${labelColumnWidth}px; flex: 0 0 ${labelColumnWidth}px;`;
+            label.textContent = labelText;
+            row.appendChild(label);
+
+            const controls = document.createElement('div');
+            controls.className = 'tv-prop-controls';
+            controls.style.cssText = `width: ${controlsColumnWidth}px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;`;
+            row.appendChild(controls);
+
+            section.appendChild(row);
+            return { row, controls };
+        };
+
+        const modeRow = createInputRow('Range Type');
+        modeRow.controls.innerHTML = `
+            <select class="tv-select" data-prop="rangeMode" style="${selectFieldStyle}">
+                <option value="both" ${drawing.style.rangeMode === 'both' ? 'selected' : ''}>Date & Price</option>
+                <option value="price" ${drawing.style.rangeMode === 'price' ? 'selected' : ''}>Price Only</option>
+                <option value="time" ${drawing.style.rangeMode === 'time' ? 'selected' : ''}>Date/Time Only</option>
+            </select>
+        `;
+
+        container.appendChild(section);
     }
 
     /**
@@ -8713,7 +8820,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 // Live preview for background toggle
                 if (prop === 'showBackground') {
                     // For range tools, explicitly toggle showBackground and re-render immediately
-                    const rangeTools = ['date-price-range', 'price-range', 'date-range'];
+                    const rangeTools = ['date-price-range'];
                     const volumeProfileTools = ['volume-profile', 'fixed-range-volume-profile', 'anchored-volume-profile'];
                     if (volumeProfileTools.includes(drawing.type)) {
                         drawing.style.showBackground = isChecked;
@@ -8768,7 +8875,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 
                 // Live preview for border toggle
                 if (prop === 'showBorder') {
-                    const rangeTools = ['date-price-range', 'price-range', 'date-range'];
+                    const rangeTools = ['date-price-range'];
                     if (rangeTools.includes(drawing.type)) {
                         drawing.style.borderEnabled = isChecked;
                         this.pendingChanges.showBorder = isChecked;
@@ -8977,24 +9084,26 @@ body.light-mode .template-save-dialog .dialog-title {
                 // Handle Show Info toggle
                 if (prop === 'showInfo') {
                     if (!drawing.style.infoSettings || Object.keys(drawing.style.infoSettings).length === 0) {
-                        const defaultInfoSettings = { showInfo: false };
-                        this.getInfoDropdownOptions(drawing.type).forEach(option => {
-                            defaultInfoSettings[option.prop] = option.prop === 'priceRange';
-                        });
-
-                        if (drawing.type === 'date-price-range' && defaultInfoSettings.volume !== undefined) {
-                            defaultInfoSettings.volume = true;
+                        let defaultInfoSettings;
+                        if (drawing.type === 'date-price-range') {
+                            defaultInfoSettings = {
+                                ...this.getDefaultRangeInfoSettings(this.getRangeModeForDrawing(drawing)),
+                                showInfo: false
+                            };
+                        } else {
+                            defaultInfoSettings = { showInfo: false };
+                            this.getInfoDropdownOptions(drawing).forEach(option => {
+                                defaultInfoSettings[option.prop] = option.prop === 'priceRange';
+                            });
                         }
 
                         drawing.style.infoSettings = defaultInfoSettings;
                     }
 
-                    const infoOptionProps = this.getInfoDropdownOptions(drawing.type).map(option => option.prop);
+                    const infoOptionProps = this.getInfoDropdownOptions(drawing).map(option => option.prop);
                     const anySelected = infoOptionProps.some(p => drawing.style.infoSettings[p] === true);
                     if (!anySelected) {
-                        if (drawing.style.infoSettings.priceRange !== undefined) {
-                            drawing.style.infoSettings.priceRange = true;
-                        } else if (infoOptionProps.length > 0) {
+                        if (infoOptionProps.length > 0) {
                             drawing.style.infoSettings[infoOptionProps[0]] = true;
                         }
                     }
@@ -9214,6 +9323,29 @@ body.light-mode .template-save-dialog .dialog-title {
                     this.pendingChanges.vwapBandsCalculationMode = modeValue;
                     drawing.style.vwapBandsCalculationMode = modeValue;
                     self.renderPreview(drawing);
+                } else if (prop === 'rangeMode') {
+                    const normalizedMode = this.normalizeRangeMode(value);
+                    this.pendingChanges.rangeMode = normalizedMode;
+                    drawing.style.rangeMode = normalizedMode;
+
+                    const currentShowInfo = drawing.style.infoSettings?.showInfo !== false;
+                    drawing.style.infoSettings = {
+                        ...this.getDefaultRangeInfoSettings(normalizedMode),
+                        showInfo: currentShowInfo
+                    };
+                    this.pendingChanges.infoSettings = { ...drawing.style.infoSettings };
+
+                    const infoBtnLabel = modal.querySelector('.tv-info-dropdown-btn span');
+                    if (infoBtnLabel) {
+                        infoBtnLabel.textContent = this.getInfoSummaryText(drawing);
+                    }
+
+                    const activeInfoDropdown = document.querySelector('.settings-info-dropdown');
+                    if (activeInfoDropdown) {
+                        activeInfoDropdown.remove();
+                    }
+
+                    this.applyChangesImmediately(drawing);
                 } else if (prop === 'source') {
                     const sourceValue = ['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'].includes(value)
                         ? value
@@ -9236,7 +9368,7 @@ body.light-mode .template-save-dialog .dialog-title {
                             lines.attr('stroke-dasharray', value);
                         }
                     }
-                    if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+                    if (drawing.type === 'date-price-range') {
                         this.applyChangesImmediately(drawing);
                     } else {
                         this.applyChangesImmediately(drawing);
@@ -9263,7 +9395,7 @@ body.light-mode .template-save-dialog .dialog-title {
                             lines.attr('stroke-width', parseInt(value));
                         }
                     }
-                    if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+                    if (drawing.type === 'date-price-range') {
                         this.applyChangesImmediately(drawing);
                     } else {
                         this.applyChangesImmediately(drawing);
@@ -9362,7 +9494,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         const textElements = drawing.group.selectAll('text');
                         textElements.attr('font-size', parseInt(value));
                     }
-                    const rangeTools = ['date-price-range', 'price-range', 'date-range'];
+                    const rangeTools = ['date-price-range'];
                     if (rangeTools.includes(drawing.type)) {
                         this.applyChangesImmediately(drawing);
                     } else {
@@ -10075,7 +10207,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 }
 
                 // Range tools: keep border color in sync with line color
-                if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+                if (drawing.type === 'date-price-range') {
                     actualDrawing.style.borderColor = finalColor;
                     drawing.style.borderColor = finalColor;
                     this.pendingChanges.borderColor = finalColor;
@@ -10146,7 +10278,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     actualDrawing.style.fill = finalColor;
                     drawing.style.fill = finalColor;
                 }
-                if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+                if (drawing.type === 'date-price-range') {
                     actualDrawing.style.showBackground = true;
                     drawing.style.showBackground = true;
                     this.pendingChanges.showBackground = true;
@@ -10170,7 +10302,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 }
             } else if (
                 prop === 'borderColor' &&
-                (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range')
+                drawing.type === 'date-price-range'
             ) {
                 actualDrawing.style.borderColor = finalColor;
                 drawing.style.borderColor = finalColor;
@@ -10281,7 +10413,7 @@ body.light-mode .template-save-dialog .dialog-title {
             } else if (prop === 'textColor') {
                 actualDrawing.style.textColor = finalColor;
                 drawing.style.textColor = finalColor;
-                if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+                if (drawing.type === 'date-price-range') {
                     this.applyChangesImmediately(actualDrawing);
                     if (drawingManager) {
                         drawingManager.saveDrawings();
@@ -10605,7 +10737,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     drawing.style.borderColor = 'transparent';
                 }
             }
-        } else if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+        } else if (drawing.type === 'date-price-range') {
             if (this.pendingChanges.backgroundColor) drawing.style.fill = this.pendingChanges.backgroundColor;
             if (this.pendingChanges.showBackground !== undefined) {
                 drawing.style.showBackground = this.pendingChanges.showBackground;
@@ -10629,7 +10761,10 @@ body.light-mode .template-save-dialog .dialog-title {
         }
 
         // Range tools (projection range) specific style
-        if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+        if (drawing.type === 'date-price-range') {
+            if (this.pendingChanges.rangeMode !== undefined) {
+                drawing.style.rangeMode = this.normalizeRangeMode(this.pendingChanges.rangeMode);
+            }
             if (this.pendingChanges.showBorder !== undefined) drawing.style.borderEnabled = this.pendingChanges.showBorder;
             if (this.pendingChanges.borderColor) drawing.style.borderColor = this.pendingChanges.borderColor;
             if (this.pendingChanges.borderType !== undefined) drawing.style.borderDasharray = this.pendingChanges.borderType;
@@ -10637,6 +10772,12 @@ body.light-mode .template-save-dialog .dialog-title {
 
             if (this.pendingChanges.showLabelBackground !== undefined) drawing.style.showLabelBackground = this.pendingChanges.showLabelBackground;
             if (this.pendingChanges.labelBackgroundColor) drawing.style.labelBackgroundColor = this.pendingChanges.labelBackgroundColor;
+            if (this.pendingChanges.infoSettings && typeof this.pendingChanges.infoSettings === 'object') {
+                drawing.style.infoSettings = {
+                    ...(drawing.style.infoSettings || {}),
+                    ...this.pendingChanges.infoSettings
+                };
+            }
         }
         
         // Fill color (for pin marker)
@@ -10907,8 +11048,31 @@ body.light-mode .template-save-dialog .dialog-title {
         this.hide();
     }
 
-    getInfoDropdownOptions(drawingType) {
+    getInfoDropdownOptions(drawingOrType) {
+        const drawingType = typeof drawingOrType === 'string'
+            ? drawingOrType
+            : drawingOrType?.type;
+
         if (drawingType === 'date-price-range') {
+            const mode = typeof drawingOrType === 'string'
+                ? 'both'
+                : this.getRangeModeForDrawing(drawingOrType);
+
+            if (mode === 'price') {
+                return [
+                    { prop: 'priceRange', label: 'Price range' },
+                    { prop: 'percentChange', label: 'Percent change' },
+                    { prop: 'changeInPips', label: 'Change in pips' }
+                ];
+            }
+
+            if (mode === 'time') {
+                return [
+                    { prop: 'barsRange', label: 'Bars range' },
+                    { prop: 'dateTimeRange', label: 'Date/time range' }
+                ];
+            }
+
             return [
                 { prop: 'priceRange', label: 'Price range' },
                 { prop: 'percentChange', label: 'Percent change' },
@@ -10916,21 +11080,6 @@ body.light-mode .template-save-dialog .dialog-title {
                 { prop: 'barsRange', label: 'Bars range' },
                 { prop: 'dateTimeRange', label: 'Date/time range' },
                 { prop: 'volume', label: 'Volume' }
-            ];
-        }
-
-        if (drawingType === 'price-range') {
-            return [
-                { prop: 'priceRange', label: 'Price range' },
-                { prop: 'percentChange', label: 'Percent change' },
-                { prop: 'changeInPips', label: 'Change in pips' }
-            ];
-        }
-
-        if (drawingType === 'date-range') {
-            return [
-                { prop: 'barsRange', label: 'Bars range' },
-                { prop: 'dateTimeRange', label: 'Date/time range' }
             ];
         }
 
@@ -10946,7 +11095,7 @@ body.light-mode .template-save-dialog .dialog-title {
     }
 
     getInfoSummaryText(drawing) {
-        const options = this.getInfoDropdownOptions(drawing.type);
+        const options = this.getInfoDropdownOptions(drawing);
         const infoSettings = drawing.style?.infoSettings || {};
         const selectedLabels = options
             .filter(option => infoSettings[option.prop] === true)
@@ -10976,17 +11125,18 @@ body.light-mode .template-save-dialog .dialog-title {
             return;
         }
 
-        const infoOptions = this.getInfoDropdownOptions(drawing.type);
-        const infoDefaults = { showInfo: false };
+        const infoOptions = this.getInfoDropdownOptions(drawing);
+        const infoDefaults = drawing.type === 'date-price-range'
+            ? {
+                ...this.getDefaultRangeInfoSettings(this.getRangeModeForDrawing(drawing)),
+                showInfo: false
+            }
+            : { showInfo: false };
         infoOptions.forEach(option => {
-            infoDefaults[option.prop] = false;
+            if (!(option.prop in infoDefaults)) {
+                infoDefaults[option.prop] = false;
+            }
         });
-        if (infoDefaults.priceRange !== undefined) {
-            infoDefaults.priceRange = true;
-        }
-        if (drawing.type === 'date-price-range' && infoDefaults.volume !== undefined) {
-            infoDefaults.volume = true;
-        }
 
         const infoSettings = {
             ...infoDefaults,
@@ -10998,10 +11148,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (!anySelected) {
             if (!drawing.style.infoSettings) drawing.style.infoSettings = {};
 
-            if (infoSettings.priceRange !== undefined) {
-                infoSettings.priceRange = true;
-                drawing.style.infoSettings.priceRange = true;
-            } else if (infoOptionProps.length > 0) {
+            if (infoOptionProps.length > 0) {
                 const firstProp = infoOptionProps[0];
                 infoSettings[firstProp] = true;
                 drawing.style.infoSettings[firstProp] = true;
@@ -11073,7 +11220,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     btnLabel.textContent = self.getInfoSummaryText(drawing);
                 }
 
-                if (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range') {
+                if (drawing.type === 'date-price-range') {
                     self.applyChangesImmediately(drawing);
                 } else {
                     self.renderPreview(drawing);

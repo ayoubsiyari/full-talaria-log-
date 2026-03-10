@@ -140,8 +140,6 @@ class DrawingToolsManager {
             'fibonacci-extension': { class: FibonacciExtensionTool, points: 2 },
             'ruler': { class: RulerTool, points: 2 },
             'date-price-range': { class: DatePriceRangeTool, points: 2 },
-            'price-range': { class: PriceRangeTool, points: 2 },
-            'date-range': { class: DateRangeTool, points: 2 },
             'gann-box': { class: GannBoxTool, points: 2 },
             'anchored-vwap': { class: AnchoredVWAPTool, points: 1 },
             'volume-profile': { class: VolumeProfileTool, points: 2, dragFirstTwo: true },
@@ -5251,6 +5249,31 @@ class DrawingToolsManager {
         }
     }
 
+    normalizeLegacyRangeToolPayload(item) {
+        if (!item || typeof item !== 'object') return;
+
+        let inferredMode = null;
+        if (item.type === 'price-range') {
+            inferredMode = 'price';
+        } else if (item.type === 'date-range') {
+            inferredMode = 'time';
+        } else if (item.type === 'date-price-range') {
+            inferredMode = 'both';
+        } else {
+            return;
+        }
+
+        if (!item.style || typeof item.style !== 'object') {
+            item.style = {};
+        }
+
+        if (item.style.rangeMode === undefined || item.style.rangeMode === null || item.style.rangeMode === '') {
+            item.style.rangeMode = inferredMode;
+        }
+
+        item.type = 'date-price-range';
+    }
+
     /**
      * Load drawings from backend API for cross-device sync
      */
@@ -5397,6 +5420,7 @@ class DrawingToolsManager {
             }
             
             data.forEach((item, index) => {
+                this.normalizeLegacyRangeToolPayload(item);
                 normalizeDashPatterns(item);
                 const toolInfo = this.toolRegistry[item.type];
                 if (toolInfo) {
@@ -5489,6 +5513,7 @@ class DrawingToolsManager {
             }
 
             data.forEach((item) => {
+                this.normalizeLegacyRangeToolPayload(item);
                 normalizeDashPatterns(item);
                 const toolInfo = this.toolRegistry[item.type];
                 if (!toolInfo) return;
@@ -5535,6 +5560,7 @@ class DrawingToolsManager {
             const data = JSON.parse(jsonString);
             this.clearAll();
             data.forEach(item => {
+                this.normalizeLegacyRangeToolPayload(item);
                 const toolInfo = this.toolRegistry[item.type];
                 if (toolInfo) {
                     const drawing = toolInfo.class.fromJSON(item);
@@ -6164,7 +6190,7 @@ class DrawingToolsManager {
             }
 
             // Range tools: allow selecting/dragging by interior and info label box.
-            if (!hitsById.has(drawing.id) && (drawing.type === 'date-price-range' || drawing.type === 'price-range' || drawing.type === 'date-range')) {
+            if (!hitsById.has(drawing.id) && drawing.type === 'date-price-range') {
                 try {
                     const fillHits = drawing.group.selectAll('.range-fill-hit, .range-info-box').nodes();
                     for (const el of fillHits) {

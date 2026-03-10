@@ -162,14 +162,11 @@ class DatePriceRangeTool extends BaseDrawing {
         this.style.fontSize = style.fontSize || 12;
         this.style.showLabelBackground = style.showLabelBackground !== false;
         this.style.labelBackgroundColor = style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)';
-        this.style.infoSettings = style.infoSettings || {
-            showInfo: true,
-            priceRange: true,
-            percentChange: true,
-            changeInPips: true,
-            barsRange: true,
-            dateTimeRange: true,
-            volume: true
+        this.style.rangeMode = this.normalizeRangeMode(style.rangeMode);
+        const defaultInfoSettings = this.getDefaultInfoSettings(this.style.rangeMode);
+        this.style.infoSettings = {
+            ...defaultInfoSettings,
+            ...(style.infoSettings || {})
         };
     }
 
@@ -184,9 +181,64 @@ class DatePriceRangeTool extends BaseDrawing {
         return value > 0 ? '#22c55e' : '#ef4444';
     }
 
+    normalizeRangeMode(mode) {
+        const value = String(mode || '').toLowerCase().trim();
+        if (value === 'price') return 'price';
+        if (value === 'time' || value === 'date') return 'time';
+        return 'both';
+    }
+
+    getRangeMode() {
+        if (this.style && this.style.rangeMode !== undefined) {
+            return this.normalizeRangeMode(this.style.rangeMode);
+        }
+        if (this.type === 'price-range') return 'price';
+        if (this.type === 'date-range') return 'time';
+        return 'both';
+    }
+
+    getDefaultInfoSettings(mode = 'both') {
+        const normalizedMode = this.normalizeRangeMode(mode);
+
+        if (normalizedMode === 'price') {
+            return {
+                showInfo: true,
+                priceRange: true,
+                percentChange: true,
+                changeInPips: true,
+                barsRange: false,
+                dateTimeRange: false,
+                volume: false
+            };
+        }
+
+        if (normalizedMode === 'time') {
+            return {
+                showInfo: true,
+                priceRange: false,
+                percentChange: false,
+                changeInPips: false,
+                barsRange: true,
+                dateTimeRange: true,
+                volume: false
+            };
+        }
+
+        return {
+            showInfo: true,
+            priceRange: true,
+            percentChange: true,
+            changeInPips: true,
+            barsRange: true,
+            dateTimeRange: true,
+            volume: true
+        };
+    }
+
     buildRangeInfoLines(p1, p2, scales) {
         const info = this.style.infoSettings || {};
         if (info.showInfo === false) return [];
+        const mode = this.getRangeMode();
 
         const tickSize = this.getTickSize(scales);
         const decimals = this.getPriceDecimals(scales);
@@ -223,13 +275,13 @@ class DatePriceRangeTool extends BaseDrawing {
         const timeLine = timeParts.length > 0 ? timeParts.join(', ') : '';
 
         const lines = [];
-        if (priceLine) {
+        if (mode !== 'time' && priceLine) {
             lines.push({ text: priceLine, fill: neutral });
         }
-        if (timeLine) {
+        if (mode !== 'price' && timeLine) {
             lines.push({ text: timeLine, fill: neutral });
         }
-        if (info.volume !== false && volume !== null) {
+        if (mode === 'both' && info.volume !== false && volume !== null) {
             lines.push({ text: `Vol ${this.formatCompactVolume(volume)}`, fill: neutral });
         }
         return lines;
@@ -366,9 +418,271 @@ class DatePriceRangeTool extends BaseDrawing {
         return `${minutes}m`;
     }
 
+    renderPriceRangeMode(container, scales) {
+        if (this.group) this.group.remove();
+        if (this.points.length < 2) return;
+
+        this.group = container.append('g')
+            .attr('class', 'drawing date-price-range range-mode-price')
+            .attr('data-id', this.id)
+            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x)
+            : scales.xScale(p1.x);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x)
+            : scales.xScale(p2.x);
+        const x = (x1 + x2) / 2;
+        const y1 = scales.yScale(p1.y);
+        const y2 = scales.yScale(p2.y);
+
+        const top = Math.min(y1, y2);
+        const bottom = Math.max(y1, y2);
+
+        const priceDiff = p2.y - p1.y;
+        const isDown = priceDiff < 0;
+
+        const selectionWidth = this.style.selectionWidth || 70;
+        const left = x - selectionWidth / 2;
+        const right = x + selectionWidth / 2;
+
+        const svg = d3.select(container.node().ownerSVGElement);
+        const markerEnd = `dpr-price-end-${this.id}`;
+        if (typeof SVGHelpers !== 'undefined') {
+            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
+        }
+
+        this.group.append('rect')
+            .attr('class', 'range-fill-hit')
+            .attr('x', left)
+            .attr('y', top)
+            .attr('width', selectionWidth)
+            .attr('height', Math.max(0, bottom - top))
+            .attr('fill', this.style.showBackground ? this.style.fill : 'transparent')
+            .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
+            .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
+            .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', left).attr('y1', top)
+            .attr('x2', right).attr('y2', top)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        if (isDown) {
+            this.group.append('line')
+                .attr('x1', left).attr('y1', bottom)
+                .attr('x2', right).attr('y2', bottom)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.strokeWidth)
+                .attr('stroke-dasharray', this.style.strokeDasharray || null)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
+
+        this.group.append('line')
+            .attr('x1', x).attr('y1', isDown ? top : bottom)
+            .attr('x2', x).attr('y2', isDown ? bottom : top)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .attr('marker-end', `url(#${markerEnd})`)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        if (this.style.showLabel) {
+            const tickSize = this.getTickSize(scales);
+            const decimals = this.getPriceDecimals(scales);
+            const pct = (p1.y !== 0) ? (priceDiff / p1.y * 100) : 0;
+            const ticks = tickSize ? Math.round(priceDiff / tickSize) : 0;
+
+            const priceDiffStr = this.normalizeNegativeZeroString(priceDiff.toFixed(decimals));
+            const pctStr = this.normalizeNegativeZeroString(pct.toFixed(2));
+            const label = `${priceDiffStr} (${pctStr}%) ${ticks}`;
+
+            if (label) {
+                const labelGroup = this.group.append('g').style('pointer-events', 'none');
+                const labelY = isDown ? (bottom + 34) : (top - 12);
+                const text = labelGroup.append('text')
+                    .attr('x', x)
+                    .attr('y', labelY)
+                    .attr('text-anchor', 'middle')
+                    .attr('dominant-baseline', 'auto')
+                    .attr('fill', this.style.textColor || '#d1d4dc')
+                    .attr('font-size', `${this.style.fontSize || 12}px`)
+                    .attr('font-weight', '600')
+                    .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
+                    .text('');
+
+                text.append('tspan')
+                    .attr('x', x)
+                    .attr('dy', 0)
+                    .attr('fill', this.style.textColor || '#d1d4dc')
+                    .text(label);
+
+                const bbox = text.node().getBBox();
+                if (this.style.showLabelBackground) {
+                    const horizontalPadding = 8;
+                    const verticalPadding = 8;
+                    labelGroup.insert('rect', 'text')
+                        .attr('class', 'range-info-box')
+                        .attr('x', bbox.x - horizontalPadding)
+                        .attr('y', bbox.y - verticalPadding)
+                        .attr('width', bbox.width + (horizontalPadding * 2))
+                        .attr('height', bbox.height + (verticalPadding * 2))
+                        .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
+                        .attr('stroke', 'none')
+                        .attr('stroke-width', 0)
+                        .attr('stroke-dasharray', null)
+                        .attr('rx', 8);
+                }
+            }
+        }
+
+        this.createHandles(this.group, scales);
+        return this.group;
+    }
+
+    renderTimeRangeMode(container, scales) {
+        if (this.group) this.group.remove();
+        if (this.points.length < 2) return;
+
+        this.group = container.append('g')
+            .attr('class', 'drawing date-price-range range-mode-time')
+            .attr('data-id', this.id)
+            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x)
+            : scales.xScale(p1.x);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x)
+            : scales.xScale(p2.x);
+        const y1 = scales.yScale(p1.y);
+        const y2 = scales.yScale(p2.y);
+        const y = (y1 + y2) / 2;
+
+        const left = Math.min(x1, x2);
+        const right = Math.max(x1, x2);
+        const midX = (left + right) / 2;
+
+        const selectionHeight = this.style.selectionHeight || 70;
+        const top = y - selectionHeight / 2;
+        const bottom = y + selectionHeight / 2;
+
+        const svg = d3.select(container.node().ownerSVGElement);
+        const markerStart = `dpr-time-start-${this.id}`;
+        const markerEnd = `dpr-time-end-${this.id}`;
+        if (typeof SVGHelpers !== 'undefined') {
+            SVGHelpers.createArrowMarker(svg, markerStart, this.style.stroke || '#2962ff', true);
+            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
+        }
+
+        this.group.append('rect')
+            .attr('class', 'range-fill-hit')
+            .attr('x', left)
+            .attr('y', top)
+            .attr('width', Math.max(0, right - left))
+            .attr('height', selectionHeight)
+            .attr('fill', this.style.showBackground ? this.style.fill : 'transparent')
+            .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
+            .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
+            .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', left).attr('y1', top)
+            .attr('x2', left).attr('y2', bottom)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', right).attr('y1', top)
+            .attr('x2', right).attr('y2', bottom)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', left).attr('y1', y)
+            .attr('x2', right).attr('y2', y)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .attr('marker-start', `url(#${markerStart})`)
+            .attr('marker-end', `url(#${markerEnd})`)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        if (this.style.showLabel) {
+            const bars = Math.abs(Math.round(p2.x) - Math.round(p1.x));
+            const t1 = this.getTimestampAtIndex(Math.round(p1.x), scales);
+            const t2 = this.getTimestampAtIndex(Math.round(p2.x), scales);
+            const duration = this.formatDuration(t2 - t1);
+
+            const label = `${bars} bars, ${duration}`;
+            if (label) {
+                const labelGroup = this.group.append('g').style('pointer-events', 'none');
+                const text = labelGroup.append('text')
+                    .attr('x', midX)
+                    .attr('y', top - 12)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', this.style.textColor || '#d1d4dc')
+                    .attr('font-size', `${this.style.fontSize || 12}px`)
+                    .attr('font-weight', '600')
+                    .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
+                    .text(label);
+
+                const bbox = text.node().getBBox();
+                if (this.style.showLabelBackground) {
+                    const horizontalPadding = 8;
+                    const verticalPadding = 8;
+                    labelGroup.insert('rect', 'text')
+                        .attr('class', 'range-info-box')
+                        .attr('x', bbox.x - horizontalPadding)
+                        .attr('y', bbox.y - verticalPadding)
+                        .attr('width', bbox.width + (horizontalPadding * 2))
+                        .attr('height', bbox.height + (verticalPadding * 2))
+                        .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
+                        .attr('stroke', 'none')
+                        .attr('stroke-width', 0)
+                        .attr('stroke-dasharray', null)
+                        .attr('rx', 8);
+                }
+            }
+        }
+
+        this.createHandles(this.group, scales);
+        return this.group;
+    }
+
     render(container, scales) {
         if (this.group) this.group.remove();
         if (this.points.length < 2) return;
+
+        const mode = this.getRangeMode();
+        if (mode === 'price') {
+            return this.renderPriceRangeMode(container, scales);
+        }
+        if (mode === 'time') {
+            return this.renderTimeRangeMode(container, scales);
+        }
 
         this.group = container.append('g')
             .attr('class', 'drawing date-price-range')
@@ -494,7 +808,16 @@ class DatePriceRangeTool extends BaseDrawing {
     }
 
     static fromJSON(data, chart = null) {
-        const tool = new DatePriceRangeTool(data.points, data.style);
+        const inferredMode = (data && data.type === 'price-range')
+            ? 'price'
+            : ((data && data.type === 'date-range') ? 'time' : 'both');
+        const style = {
+            ...(data.style || {}),
+            rangeMode: (data && data.style && data.style.rangeMode !== undefined)
+                ? data.style.rangeMode
+                : inferredMode
+        };
+        const tool = new DatePriceRangeTool(data.points, style);
         tool.id = data.id;
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };

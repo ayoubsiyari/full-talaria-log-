@@ -977,7 +977,7 @@ class DrawingToolbar {
             // Arrow markers (fill-only arrows - no stroke)
             'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
             // Analysis tools with background fills
-            'date-price-range', 'price-range',
+            'date-price-range',
             // Patterns with fill
             'xabcd-pattern',
             // Text tools with background

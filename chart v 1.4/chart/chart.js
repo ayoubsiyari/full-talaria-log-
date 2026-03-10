@@ -12024,8 +12024,6 @@ class Chart {
             'fibonacci-extension',
             'ruler',
             'date-price-range',
-            'price-range',
-            'date-range',
             'gann-box',
             'anchored-vwap',
             'volume-profile',

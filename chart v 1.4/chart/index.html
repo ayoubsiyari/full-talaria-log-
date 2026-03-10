@@ -17611,7 +17611,7 @@
                                 <line x1="4" y1="20" x2="20" y2="20" stroke="#26a69a" stroke-dasharray="2,2"/>
                             </svg>
                         </button>
-                        <button class="tool-btn" id="date-price-rangeTool" data-tooltip="Date and Price Range">
+                        <button class="tool-btn" id="date-price-rangeTool" data-tooltip="Range Tool">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                                 <rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3,2"/>
                                 <line x1="4" y1="12" x2="20" y2="12"/>
@@ -17620,24 +17620,6 @@
                                 <circle cx="20" cy="4" r="1.5" fill="currentColor"/>
                                 <circle cx="4" cy="20" r="1.5" fill="currentColor"/>
                                 <circle cx="20" cy="20" r="1.5" fill="currentColor"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="price-rangeTool" data-tooltip="Price Range">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="12" y1="4" x2="12" y2="20" stroke-linecap="round"/>
-                                <line x1="8" y1="4" x2="16" y2="4" stroke-linecap="round"/>
-                                <line x1="8" y1="20" x2="16" y2="20" stroke-linecap="round"/>
-                                <path d="M12 7l-2-3M12 7l2-3" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M12 17l-2 3M12 17l2 3" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button class="tool-btn" id="date-rangeTool" data-tooltip="Date Range">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                <line x1="4" y1="12" x2="20" y2="12" stroke-linecap="round"/>
-                                <line x1="4" y1="8" x2="4" y2="16" stroke-linecap="round"/>
-                                <line x1="20" y1="8" x2="20" y2="16" stroke-linecap="round"/>
-                                <path d="M7 12l-3-2M7 12l-3 2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M17 12l3-2M17 12l3 2" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </button>
                     </div>
@@ -27358,7 +27340,7 @@ P['objecttree']={
                 content.innerHTML='<div style="color:#787b86;text-align:center;padding:40px 20px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="40" height="40" style="display:block;margin:0 auto 12px;opacity:.4;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><p style="margin:0;font-size:13px;">No drawings on chart</p></div>';
                 return;
             }
-            var typeLabels={trendline:'Trend Line',line:'Trend Line','extended-line':'Extended Line',ray:'Ray','horizontal-ray':'Horizontal Ray',horizontal:'Horizontal Line',hline:'Horizontal Line',vertical:'Vertical Line',vline:'Vertical Line','cross-line':'Cross Line',rectangle:'Rectangle',rect:'Rectangle',ellipse:'Ellipse',circle:'Circle',triangle:'Triangle','rotated-rectangle':'Rotated Rectangle','parallel-channel':'Parallel Channel','disjoint-channel':'Disjoint Channel',pitchfork:'Pitchfork','fib-retracement':'Fibonacci Retracement','fib-extension':'Fibonacci Extension','fibonacci-retracement':'Fibonacci Retracement','fibonacci-extension':'Fibonacci Extension','fib-channel':'Fib Channel','fib-timezone':'Fib Time Zones','gann-box':'Gann Box','gann-fan':'Gann Fan',text:'Text',arrow:'Arrow',arc:'Arc',polyline:'Polyline',path:'Path',brush:'Brush',highlighter:'Highlighter',notebox:'Note Box',label:'Label',emoji:'Emoji','long-position':'Long Position','short-position':'Short Position','anchored-vwap':'Anchored VWAP','volume-profile':'Volume Profile',ruler:'Ruler','price-range':'Price Range'};
+            var typeLabels={trendline:'Trend Line',line:'Trend Line','extended-line':'Extended Line',ray:'Ray','horizontal-ray':'Horizontal Ray',horizontal:'Horizontal Line',hline:'Horizontal Line',vertical:'Vertical Line',vline:'Vertical Line','cross-line':'Cross Line',rectangle:'Rectangle',rect:'Rectangle',ellipse:'Ellipse',circle:'Circle',triangle:'Triangle','rotated-rectangle':'Rotated Rectangle','parallel-channel':'Parallel Channel','disjoint-channel':'Disjoint Channel',pitchfork:'Pitchfork','fib-retracement':'Fibonacci Retracement','fib-extension':'Fibonacci Extension','fibonacci-retracement':'Fibonacci Retracement','fibonacci-extension':'Fibonacci Extension','fib-channel':'Fib Channel','fib-timezone':'Fib Time Zones','gann-box':'Gann Box','gann-fan':'Gann Fan',text:'Text',arrow:'Arrow',arc:'Arc',polyline:'Polyline',path:'Path',brush:'Brush',highlighter:'Highlighter',notebox:'Note Box',label:'Label',emoji:'Emoji','long-position':'Long Position','short-position':'Short Position','anchored-vwap':'Anchored VWAP','volume-profile':'Volume Profile',ruler:'Ruler','date-price-range':'Range Tool'};
             var rows=drawings.map(function(d,i){
                 var label=d.name||d.text||d.label||typeLabels[d.type]||d.type||'Drawing';
                 var vis=d.visible!==false;
