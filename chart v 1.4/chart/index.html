@@ -24653,6 +24653,11 @@ function showIndicatorsMenu() {
                         }
                     });
 
+                    const playbackModeSettings = document.querySelector('#replayToolbar .replay-playback-mode-settings');
+                    if (playbackModeSettings) {
+                        playbackModeSettings.style.opacity = opacity;
+                    }
+
                     document.body.classList.toggle('speed-slider-clone-active', opacity !== '1');
                 }
 
@@ -25050,6 +25055,50 @@ function showIndicatorsMenu() {
                     const divider = document.createElement('div');
                     divider.style.cssText = 'width: 1px; height: 24px; background: rgba(255,255,255,0.1);';
                     floatingClone.appendChild(divider);
+
+                    // Replay mode control (Tick/Candle) - keep it with detached floating bar
+                    const replayModeSource = document.querySelector('#replayToolbar .replay-playback-mode-settings');
+                    if (replayModeSource) {
+                        const replayModeClone = replayModeSource.cloneNode(true);
+                        replayModeClone.classList.add('replay-playback-mode-settings-clone');
+
+                        const replayModeSelectClone = replayModeClone.querySelector('#replayPlaybackMode');
+                        if (replayModeSelectClone) {
+                            replayModeSelectClone.id = 'replayPlaybackModeFloatingClone';
+                            const replaySystem = window.chart && window.chart.replaySystem;
+                            if (replaySystem && typeof replaySystem.getPlaybackMode === 'function') {
+                                replayModeSelectClone.value = replaySystem.getPlaybackMode();
+                            }
+                            replayModeSelectClone.addEventListener('change', (event) => {
+                                const rs = window.chart && window.chart.replaySystem;
+                                if (rs && typeof rs.setPlaybackMode === 'function') {
+                                    rs.setPlaybackMode(event.target.value);
+                                }
+                            });
+                        }
+
+                        replayModeClone.querySelectorAll('.replay-mode-option').forEach((button) => {
+                            button.removeAttribute('data-mode-bound');
+                        });
+                        replayModeClone.querySelectorAll('.replay-mode-trigger, .replay-mode-dropdown-arrow').forEach((button) => {
+                            button.removeAttribute('data-mode-trigger-bound');
+                        });
+
+                        floatingClone.appendChild(replayModeClone);
+
+                        const replaySystem = window.chart && window.chart.replaySystem;
+                        if (replaySystem) {
+                            if (typeof replaySystem.attachPlaybackModeOptionEvents === 'function') {
+                                replaySystem.attachPlaybackModeOptionEvents(replayModeClone);
+                            }
+                            if (typeof replaySystem.attachPlaybackModeTriggerEvents === 'function') {
+                                replaySystem.attachPlaybackModeTriggerEvents(replayModeClone);
+                            }
+                            if (typeof replaySystem.syncPlaybackModeControls === 'function') {
+                                replaySystem.syncPlaybackModeControls();
+                            }
+                        }
+                    }
                     
                     // Create Go Back button from scratch
                     const goBackClone = document.createElement('button');
