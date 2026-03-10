@@ -6642,10 +6642,14 @@
         body.speed-slider-clone-active #replayPlayPause,
         body.speed-slider-clone-active #replayStepForward,
         body.speed-slider-clone-active #goToControl,
-        body.speed-slider-clone-active .replay-playback-mode-settings,
+        body.speed-slider-clone-active #replayToolbar .replay-playback-mode-settings,
         body.speed-slider-clone-active #replayPlaybackMode,
         body.speed-slider-clone-active #intervalSliderWrapper {
             pointer-events: none;
+        }
+
+        body.speed-slider-clone-active #speedSliderClone .replay-playback-mode-settings {
+            pointer-events: auto;
         }
 
         body.speed-slider-clone-active #speedSliderClone {
@@ -7318,9 +7322,9 @@
             width: auto;
             height: 24px;
             min-width: 0;
-            border: none;
+            border: 1px solid rgba(78, 91, 126, 0.55);
             border-radius: 4px;
-            background: transparent !important;
+            background: rgba(255, 255, 255, 0.08) !important;
             color: #d1d4dc;
             display: inline-flex;
             align-items: center;
@@ -7337,13 +7341,13 @@
 
         .replay-toolbar .replay-mode-trigger:hover,
         #speedSliderClone .replay-mode-trigger:hover {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.12) !important;
             color: #ffffff;
         }
 
         .replay-toolbar .replay-mode-trigger.replay-open,
         #speedSliderClone .replay-mode-trigger.replay-open {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.12) !important;
             color: #ffffff;
         }
 
@@ -7539,18 +7543,20 @@
 
         body.light-mode .replay-toolbar .replay-mode-trigger,
         body.light-mode #speedSliderClone .replay-mode-trigger {
+            background: rgba(0, 0, 0, 0.06) !important;
+            border-color: #e0e3eb;
             color: #050028;
         }
 
         body.light-mode .replay-toolbar .replay-mode-trigger:hover,
         body.light-mode #speedSliderClone .replay-mode-trigger:hover {
-            background: transparent;
+            background: rgba(0, 0, 0, 0.1) !important;
             color: #000000;
         }
 
         body.light-mode .replay-toolbar .replay-mode-trigger.replay-open,
         body.light-mode #speedSliderClone .replay-mode-trigger.replay-open {
-            background: transparent;
+            background: rgba(0, 0, 0, 0.1) !important;
             color: #000000;
         }
 
