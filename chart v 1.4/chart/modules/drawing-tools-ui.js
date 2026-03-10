@@ -7765,10 +7765,14 @@ body.light-mode .template-save-dialog .dialog-title {
         const useCompactFieldSize = drawing.type === 'volume-profile'
             || drawing.type === 'fixed-range-volume-profile'
             || drawing.type === 'anchored-volume-profile';
-        const controlFieldWidth = useCompactFieldSize ? 60 : 170;
-        const controlFieldStyle = useCompactFieldSize
-            ? `width: ${controlFieldWidth}px !important; min-width: ${controlFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`
-            : `width: ${controlFieldWidth}px;`;
+        const numericFieldWidth = useCompactFieldSize ? 60 : 170;
+        const selectFieldWidth = useCompactFieldSize ? 120 : 170;
+        const numericFieldStyle = useCompactFieldSize
+            ? `width: ${numericFieldWidth}px !important; min-width: ${numericFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`
+            : `width: ${numericFieldWidth}px;`;
+        const selectFieldStyle = useCompactFieldSize
+            ? `width: ${selectFieldWidth}px !important; min-width: ${selectFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`
+            : `width: ${selectFieldWidth}px;`;
 
         const createInputRow = (labelText) => {
             const row = document.createElement('div');
@@ -7792,7 +7796,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const rowsLayoutRow = createInputRow('Rows Layout');
         rowsLayoutRow.controls.innerHTML = `
-            <select class="tv-select tv-volume-profile-input" data-prop="rowsLayout" style="${controlFieldStyle}">
+            <select class="tv-select tv-volume-profile-input" data-prop="rowsLayout" style="${selectFieldStyle}">
                 <option value="numberOfRows" ${drawing.style.rowsLayout === 'numberOfRows' ? 'selected' : ''}>Number of Rows</option>
                 <option value="ticksPerRow" ${drawing.style.rowsLayout === 'ticksPerRow' ? 'selected' : ''}>Ticks Per Row</option>
             </select>
@@ -7808,7 +7812,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 min="1"
                 max="500"
                 step="1"
-                style="${controlFieldStyle}"
+                style="${numericFieldStyle}"
             >
         `;
 
@@ -7824,7 +7828,7 @@ body.light-mode .template-save-dialog .dialog-title {
             <span class="tv-checkbox-label" style="white-space: nowrap;">Volume</span>
         `;
         volumeRow.controls.innerHTML = `
-            <select class="tv-select tv-volume-profile-input" data-prop="volumeDisplay" style="${controlFieldStyle} ${volumeEnabled ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${volumeEnabled ? '' : 'disabled'}>
+            <select class="tv-select tv-volume-profile-input" data-prop="volumeDisplay" style="${selectFieldStyle} ${volumeEnabled ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${volumeEnabled ? '' : 'disabled'}>
                 <option value="upDown" ${drawing.style.volumeDisplay === 'upDown' ? 'selected' : ''}>Up/Down</option>
                 <option value="total" ${drawing.style.volumeDisplay === 'total' ? 'selected' : ''}>Total</option>
             </select>
@@ -7840,7 +7844,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 min="1"
                 max="100"
                 step="1"
-                style="${controlFieldStyle}"
+                style="${numericFieldStyle}"
             >
         `;
 
