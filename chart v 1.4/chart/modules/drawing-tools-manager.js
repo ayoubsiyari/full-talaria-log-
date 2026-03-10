@@ -6067,6 +6067,7 @@ class DrawingToolsManager {
             // Volume Profile tools: select from boundaries/levels/labels.
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
+                    const allowProfileBodyHit = !this.isCandleBoundTool(drawing.type);
                     let bestBoundaryDistance = Infinity;
                     const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
 
@@ -6101,8 +6102,9 @@ class DrawingToolsManager {
                         hitsById.set(drawing.id, { drawing, distance: 0, z });
                     }
 
-                    // Allow selecting/double-clicking inside the profile body area.
-                    if (!hitsById.has(drawing.id)) {
+                    // For anchored volume profile keep body-hit behavior.
+                    // Fixed-range volume profile should only react from explicit lines/handles/labels.
+                    if (allowProfileBodyHit && !hitsById.has(drawing.id)) {
                         const isInsideRect = (rectNode, pad = 0) => {
                             if (!rectNode) return false;
 
@@ -6125,7 +6127,7 @@ class DrawingToolsManager {
                         }
                     }
 
-                    if (!hitsById.has(drawing.id)) {
+                    if (allowProfileBodyHit && !hitsById.has(drawing.id)) {
                         const barRects = drawing.group.selectAll('rect').nodes();
                         for (const rect of barRects) {
                             if (!rect) continue;
@@ -6150,7 +6152,7 @@ class DrawingToolsManager {
                         }
                     }
 
-                    if (!hitsById.has(drawing.id)) {
+                    if (allowProfileBodyHit && !hitsById.has(drawing.id)) {
                         const boundaryLines = drawing.group.selectAll('.volume-profile-boundary').nodes();
                         if (Array.isArray(boundaryLines) && boundaryLines.length >= 2) {
                             const xValues = [];
