@@ -1502,29 +1502,12 @@ class ABCDPatternTool extends BaseDrawing {
         if (!tagText) return;
 
         const fontSize = Number(options.fontSize) || 12;
-        const paddingX = Number(options.paddingX) || 10;
-        const paddingY = Number(options.paddingY) || 5;
-        const minWidth = Number(options.minWidth) || 24;
-        const cornerRadius = Number(options.cornerRadius);
-        const estimatedTextWidth = Math.max(minWidth, (tagText.length * (fontSize * 0.62)) + (paddingX * 2));
-        const tagHeight = fontSize + (paddingY * 2);
-
-        this.group.append('rect')
-            .attr('x', x - (estimatedTextWidth / 2))
-            .attr('y', y - (tagHeight / 2))
-            .attr('width', estimatedTextWidth)
-            .attr('height', tagHeight)
-            .attr('rx', Number.isFinite(cornerRadius) ? cornerRadius : 8)
-            .attr('fill', options.fill || this.style.labelFill)
-            .attr('opacity', options.opacity ?? 0.97)
-            .style('pointer-events', 'none');
-
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('fill', options.textColor || this.style.labelTextColor)
+            .attr('fill', this.style.stroke)
             .attr('font-size', `${fontSize}px`)
             .attr('font-weight', options.fontWeight || '600')
             .style('pointer-events', 'none')
@@ -1799,27 +1782,12 @@ class TrianglePatternTool extends BaseDrawing {
         if (!text) return;
 
         const fontSize = 12;
-        const paddingX = 8;
-        const paddingY = 4.5;
-        const width = Math.max(16, (String(text).length * 7) + (paddingX * 2));
-        const height = fontSize + (paddingY * 2);
-
-        this.group.append('rect')
-            .attr('x', x - (width / 2))
-            .attr('y', y - (height / 2))
-            .attr('width', width)
-            .attr('height', height)
-            .attr('rx', 6)
-            .attr('fill', this.style.labelFill)
-            .attr('opacity', 0.95)
-            .style('pointer-events', 'none');
-
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('fill', this.style.labelTextColor)
+            .attr('fill', this.style.stroke)
             .attr('font-size', `${fontSize}px`)
             .attr('font-weight', '600')
             .style('pointer-events', 'none')
