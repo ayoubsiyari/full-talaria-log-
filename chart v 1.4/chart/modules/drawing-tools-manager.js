@@ -5809,7 +5809,7 @@ class DrawingToolsManager {
      * @param {number} mouseX - X coordinate in SVG space
      * @param {number} mouseY - Y coordinate in SVG space
      * @param {Object} options
-     * @param {boolean} options.includeVolumeProfileBodyHit - include VP body/bar rect hits (used for double-click settings)
+     * @param {boolean} options.includeVolumeProfileBodyHit - include VP bar hits for candle-bound profiles (and full body hits for anchored profile)
      * @returns {Array} - Array of drawings at this point, sorted by z-order (topmost first)
      */
     findDrawingsAtPoint(mouseX, mouseY, options = {}) {
@@ -6072,7 +6072,9 @@ class DrawingToolsManager {
             // Volume Profile tools: select from boundaries/levels/labels.
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
-                    const allowProfileBodyHit = includeVolumeProfileBodyHit || !this.isCandleBoundTool(drawing.type);
+                    const isCandleBoundVolumeProfile = this.isCandleBoundTool(drawing.type);
+                    const allowProfileBodyZoneHit = !isCandleBoundVolumeProfile;
+                    const allowProfileBarHit = !isCandleBoundVolumeProfile || includeVolumeProfileBodyHit;
                     let bestBoundaryDistance = Infinity;
                     const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
 
@@ -6107,9 +6109,8 @@ class DrawingToolsManager {
                         hitsById.set(drawing.id, { drawing, distance: 0, z });
                     }
 
-                    // For anchored volume profile keep body-hit behavior.
-                    // Fixed-range volume profile should only react from explicit lines/handles/labels.
-                    if (allowProfileBodyHit && !hitsById.has(drawing.id)) {
+                    // Keep background zone hit-testing only for anchored volume profile.
+                    if (allowProfileBodyZoneHit && !hitsById.has(drawing.id)) {
                         const isInsideRect = (rectNode, pad = 0) => {
                             if (!rectNode) return false;
 
@@ -6132,7 +6133,7 @@ class DrawingToolsManager {
                         }
                     }
 
-                    if (allowProfileBodyHit && !hitsById.has(drawing.id)) {
+                    if (allowProfileBarHit && !hitsById.has(drawing.id)) {
                         const barRects = drawing.group.selectAll('rect').nodes();
                         for (const rect of barRects) {
                             if (!rect) continue;
@@ -6157,7 +6158,7 @@ class DrawingToolsManager {
                         }
                     }
 
-                    if (allowProfileBodyHit && !hitsById.has(drawing.id)) {
+                    if (allowProfileBodyZoneHit && !hitsById.has(drawing.id)) {
                         const boundaryLines = drawing.group.selectAll('.volume-profile-boundary').nodes();
                         if (Array.isArray(boundaryLines) && boundaryLines.length >= 2) {
                             const xValues = [];
