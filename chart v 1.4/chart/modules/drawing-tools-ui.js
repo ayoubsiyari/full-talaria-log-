@@ -7647,7 +7647,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
         const numericFieldWidth = 60;
-        const selectFieldWidth = 170;
+        const selectFieldWidth = 140;
         const numericFieldStyle = `width: ${numericFieldWidth}px !important; min-width: ${numericFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
         const selectFieldStyle = `width: ${selectFieldWidth}px !important; min-width: ${selectFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
 
