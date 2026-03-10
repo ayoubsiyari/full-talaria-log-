@@ -1171,7 +1171,9 @@ class DrawingToolsManager {
         
         // Clear UI active states from tool buttons
         document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
+        const cursorBtn = document.getElementById('cursorTool');
+        if (cursorBtn) cursorBtn.classList.add('active');
 
         if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
             window.syncMagnetButton();
@@ -2265,9 +2267,11 @@ class DrawingToolsManager {
         if (!this.drawingState.isDrawing && this.currentTool && persistentTools.includes(this.currentTool)) {
             // [debug removed]
             this.clearTool();
-            // Update UI - remove active from all tools (including cursor tool button)
+            // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
+            const cursorBtn = document.getElementById('cursorTool');
+            if (cursorBtn) cursorBtn.classList.add('active');
 
             if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
                 window.syncMagnetButton();
@@ -2676,9 +2680,11 @@ class DrawingToolsManager {
 
         if (!shouldKeepTool) {
             this.clearTool();
-            // Update UI - remove active from all tools (including cursor tool button)
+            // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
+            const cursorBtn = document.getElementById('cursorTool');
+            if (cursorBtn) cursorBtn.classList.add('active');
 
             if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
                 window.syncMagnetButton();

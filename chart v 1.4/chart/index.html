@@ -20984,7 +20984,7 @@
                         
                         // Remove active from all tools
                         document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
-                        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(b => b.classList.remove('active'));
+                        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
                         
                         // Activate cursor tool
                         const cursorBtn = document.getElementById('cursorTool');
@@ -21117,7 +21117,7 @@
                             
                             // Remove active class from ALL tool buttons (not just this dropdown)
                             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(t => t.classList.remove('active'));
-                            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(t => t.classList.remove('active'));
+                            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(t => t.classList.remove('active'));
                             
                             // Add active class to the selected tool
                             this.classList.add('active');
@@ -21248,7 +21248,7 @@
                         document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(btn => {
                             btn.classList.remove('active');
                         });
-                        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(btn => {
+                        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(btn => {
                             btn.classList.remove('active');
                         });
                         
@@ -21267,7 +21267,7 @@
                             btn.classList.remove('active');
                         });
                         document.querySelectorAll('.tool-group-btn').forEach(btn => {
-                            if (btn.id === 'magnetMode' || btn.id === 'magnetModeToolbar') return;
+                            if (btn.id === 'magnetMode' || btn.id === 'magnetModeToolbar' || btn.id === 'cursorTool') return;
                             btn.classList.remove('active');
                         });
                         document.querySelectorAll('.cursor-option').forEach(btn => {
@@ -21332,7 +21332,7 @@
                             
                             // Update active state on toolbar
                             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-                            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(b => b.classList.remove('active'));
+                            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
                             cursorBtn.classList.add('active');
                         }
                     }
