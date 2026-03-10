@@ -498,6 +498,12 @@ class DrawingToolsManager {
             commitStyleChange(drawing);
             self.renderDrawing(drawing);
             self.persistPositionToolDefaults(drawing);
+
+            const isPersistentFreehandTool = drawing && (drawing.type === 'brush' || drawing.type === 'highlighter');
+            if (isPersistentFreehandTool) {
+                self.saveToolStyle(drawing.type, drawing.style || {});
+            }
+
             self.saveDrawings();
         };
         
