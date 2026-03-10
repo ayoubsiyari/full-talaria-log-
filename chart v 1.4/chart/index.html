@@ -21084,7 +21084,7 @@
                         
                         // Remove active from all tools
                         document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
-                        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar)').forEach(b => b.classList.remove('active'));
+                        document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
                         
                         // Activate cursor tool
                         const cursorBtn = document.getElementById('cursorTool');
