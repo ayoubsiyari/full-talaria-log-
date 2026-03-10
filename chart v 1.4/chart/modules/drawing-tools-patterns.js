@@ -3,6 +3,11 @@
  * Advanced pattern recognition and wave analysis tools
  */
 
+const PATTERN_TEXT_SIZE_PX = 11;
+const PATTERN_TEXT_WEIGHT = '600';
+const PATTERN_LABEL_OFFSET_PX = 14;
+const PATTERN_VALUE_OFFSET_PX = 12;
+
 class BarsPatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('bars-pattern', points, style);
@@ -444,7 +449,7 @@ class XABCDPatternTool extends BaseDrawing {
                 .attr('x2', getX(this.points[2]))
                 .attr('y2', getY(this.points[2]))
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', 1)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', '3,3')
                 .attr('opacity', 0.6);
         }
@@ -461,7 +466,7 @@ class XABCDPatternTool extends BaseDrawing {
                 .attr('x2', cx)
                 .attr('y2', cy)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', 1)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', '3,3')
                 .attr('opacity', 0.6);
         }
@@ -474,7 +479,7 @@ class XABCDPatternTool extends BaseDrawing {
                 .attr('x2', getX(this.points[4]))
                 .attr('y2', getY(this.points[4]))
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', 1)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', '3,3')
                 .attr('opacity', 0.6);
         }
@@ -573,7 +578,7 @@ class XABCDPatternTool extends BaseDrawing {
             return best;
         };
 
-        const placeRatioLabel = (ratio, anchorX, anchorY, x1, y1, x2, y2, preferredDistance = 20) => {
+        const placeRatioLabel = (ratio, anchorX, anchorY, x1, y1, x2, y2, preferredDistance = PATTERN_VALUE_OFFSET_PX) => {
             if (!ratio) return;
             const boxWidth = ratio.length * 7 + 8;
             const boxHeight = 14;
@@ -583,8 +588,8 @@ class XABCDPatternTool extends BaseDrawing {
             const dx = x2 - x1;
             const dy = y2 - y1;
             const len = Math.sqrt(dx * dx + dy * dy);
-            const alongX = len > 0 ? (dx / len) * 12 : 0;
-            const alongY = len > 0 ? (dy / len) * 12 : 0;
+            const alongX = len > 0 ? (dx / len) * 8 : 0;
+            const alongY = len > 0 ? (dy / len) * 8 : 0;
 
             const candidates = [
                 { x: anchorX + primaryOffset.x, y: anchorY + primaryOffset.y },
@@ -610,7 +615,7 @@ class XABCDPatternTool extends BaseDrawing {
             const by = pointsPx[2].y;
             const abMidX = (ax + bx) / 2;
             const abMidY = (ay + by) / 2;
-            placeRatioLabel(abRatio, abMidX, abMidY, ax, ay, bx, by, 20);
+            placeRatioLabel(abRatio, abMidX, abMidY, ax, ay, bx, by, PATTERN_VALUE_OFFSET_PX);
         }
 
         if (this.points.length >= 4) {
@@ -623,7 +628,7 @@ class XABCDPatternTool extends BaseDrawing {
             // Position at 65% of the way from A to C (on the dashed line)
             const labelX = ax + (cx - ax) * 0.65;
             const labelY = ay + (cy - ay) * 0.65;
-            placeRatioLabel(bcRatio, labelX, labelY, ax, ay, cx, cy, -18);
+            placeRatioLabel(bcRatio, labelX, labelY, ax, ay, cx, cy, -PATTERN_VALUE_OFFSET_PX);
         }
 
         if (this.points.length >= 5) {
@@ -635,7 +640,7 @@ class XABCDPatternTool extends BaseDrawing {
             const dy = pointsPx[4].y;
             const bdMidX = (bx + dx) / 2;
             const bdMidY = (by + dy) / 2;
-            placeRatioLabel(cdRatio, bdMidX, bdMidY, bx, by, dx, dy, 20);
+            placeRatioLabel(cdRatio, bdMidX, bdMidY, bx, by, dx, dy, PATTERN_VALUE_OFFSET_PX);
         }
 
         // Draw point labels (text only, no background box)
@@ -652,17 +657,15 @@ class XABCDPatternTool extends BaseDrawing {
                 } else {
                     isTop = p.y < this.points[i - 1].y && p.y < this.points[i + 1].y;
                 }
-                const preferredLabelY = isTop ? py - 18 : py + 22;
-                const alternateLabelY = isTop ? py + 22 : py - 18;
+                const preferredLabelY = isTop ? py - PATTERN_LABEL_OFFSET_PX : py + PATTERN_LABEL_OFFSET_PX;
+                const alternateLabelY = isTop ? py + PATTERN_LABEL_OFFSET_PX : py - PATTERN_LABEL_OFFSET_PX;
                 const candidates = [
                     { x: px, y: preferredLabelY },
-                    { x: px - 16, y: preferredLabelY },
-                    { x: px + 16, y: preferredLabelY },
+                    { x: px - 12, y: preferredLabelY },
+                    { x: px + 12, y: preferredLabelY },
                     { x: px, y: alternateLabelY },
-                    { x: px - 16, y: alternateLabelY },
-                    { x: px + 16, y: alternateLabelY },
-                    { x: px - 24, y: preferredLabelY + 4 },
-                    { x: px + 24, y: preferredLabelY + 4 }
+                    { x: px - 12, y: alternateLabelY },
+                    { x: px + 12, y: alternateLabelY }
                 ];
                 const bestLabelPosition = pickLeastOverlappingLabelPosition(candidates, 20, 16, -12) || candidates[0];
                 const labelX = bestLabelPosition.x;
@@ -675,8 +678,8 @@ class XABCDPatternTool extends BaseDrawing {
                     .attr('text-anchor', 'middle')
                     .attr('dominant-baseline', 'middle')
                     .attr('fill', this.style.stroke)
-                    .attr('font-size', '11px')
-                    .attr('font-weight', 'bold')
+                    .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
+                    .attr('font-weight', PATTERN_TEXT_WEIGHT)
                     .style('pointer-events', 'none')
                     .text(this.labels[i]);
             }
@@ -706,8 +709,8 @@ class XABCDPatternTool extends BaseDrawing {
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('fill', '#ffffff')
-            .attr('font-size', '10px')
-            .attr('font-weight', '600')
+            .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
+            .attr('font-weight', PATTERN_TEXT_WEIGHT)
             .style('pointer-events', 'none')
             .text(ratio);
     }
@@ -769,11 +772,11 @@ class CypherPatternTool extends BaseDrawing {
         this.points.forEach((p, i) => {
             this.group.append('text')
                 .attr('x', getX(p))
-                .attr('y', getY(p) - 12)
+                .attr('y', getY(p) - PATTERN_LABEL_OFFSET_PX)
                 .attr('text-anchor', 'middle')
                 .attr('fill', this.style.stroke)
-                .attr('font-size', '12px')
-                .attr('font-weight', 'bold')
+                .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
+                .attr('font-weight', PATTERN_TEXT_WEIGHT)
                 .style('pointer-events', 'none')
                 .text(this.labels[i]);
         });
@@ -899,7 +902,7 @@ class HeadShouldersTool extends BaseDrawing {
                     .attr('x2', neckline.end.x)
                     .attr('y2', neckline.end.y)
                     .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', this.style.necklineWidth)
+                    .attr('stroke-width', this.style.strokeWidth)
                     .attr('stroke-dasharray', this.style.necklineDasharray)
                     .attr('stroke-linecap', 'round')
                     .attr('opacity', 0.95)
@@ -1294,15 +1297,15 @@ class HeadShouldersTool extends BaseDrawing {
         const tagText = String(text || '');
         if (!tagText) return;
 
-        const labelY = placeAbove ? (y - 18) : (y + 22);
+        const labelY = placeAbove ? (y - PATTERN_LABEL_OFFSET_PX) : (y + PATTERN_LABEL_OFFSET_PX);
 
         this.group.append('text')
             .attr('x', x)
             .attr('y', labelY)
             .attr('text-anchor', 'middle')
             .attr('fill', this.style.stroke)
-            .attr('font-size', '11px')
-            .attr('font-weight', 'bold')
+            .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
+            .attr('font-weight', PATTERN_TEXT_WEIGHT)
             .style('pointer-events', 'none')
             .text(tagText);
     }
@@ -1385,7 +1388,7 @@ class ABCDPatternTool extends BaseDrawing {
                 .attr('x2', c.x)
                 .attr('y2', c.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.guideDasharray)
                 .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
@@ -1394,12 +1397,12 @@ class ABCDPatternTool extends BaseDrawing {
             const bcOverAb = this._formatLegRatio(this.points[1], this.points[2], this.points[0], this.points[1]);
             if (bcOverAb) {
                 const pos = this._pointOnSegment(a, c, 0.52);
-                const offset = this._getPerpendicularOffset(a, c, 18);
+                const offset = this._getPerpendicularOffset(a, c, PATTERN_VALUE_OFFSET_PX);
                 this._drawTag(pos.x + offset.x, pos.y + offset.y, bcOverAb, {
                     minWidth: 52,
                     fill: this.style.ratioFill,
                     textColor: this.style.ratioTextColor,
-                    fontSize: 11
+                    fontSize: PATTERN_TEXT_SIZE_PX
                 });
             }
         }
@@ -1415,7 +1418,7 @@ class ABCDPatternTool extends BaseDrawing {
                 .attr('x2', d.x)
                 .attr('y2', d.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.guideDasharray)
                 .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
@@ -1424,12 +1427,12 @@ class ABCDPatternTool extends BaseDrawing {
             const cdOverBc = this._formatLegRatio(this.points[2], this.points[3], this.points[1], this.points[2]);
             if (cdOverBc) {
                 const pos = this._pointOnSegment(b, d, 0.48);
-                const offset = this._getPerpendicularOffset(b, d, 18);
+                const offset = this._getPerpendicularOffset(b, d, PATTERN_VALUE_OFFSET_PX);
                 this._drawTag(pos.x + offset.x, pos.y + offset.y, cdOverBc, {
                     minWidth: 52,
                     fill: this.style.ratioFill,
                     textColor: this.style.ratioTextColor,
-                    fontSize: 11
+                    fontSize: PATTERN_TEXT_SIZE_PX
                 });
             }
         }
@@ -1450,16 +1453,16 @@ class ABCDPatternTool extends BaseDrawing {
                 isTop = pointPx.y < prev.y;
             }
 
-            const offsetY = isTop ? -26 : 26;
+            const offsetY = isTop ? -PATTERN_LABEL_OFFSET_PX : PATTERN_LABEL_OFFSET_PX;
             this._drawTag(pointPx.x, pointPx.y + offsetY, label, {
                 minWidth: 20,
                 fill: this.style.labelFill,
                 textColor: this.style.labelTextColor,
-                fontSize: 11,
+                fontSize: PATTERN_TEXT_SIZE_PX,
                 paddingX: 6,
                 paddingY: 2.5,
                 cornerRadius: 2,
-                fontWeight: 'bold'
+                fontWeight: PATTERN_TEXT_WEIGHT
             });
         });
 
@@ -1501,7 +1504,7 @@ class ABCDPatternTool extends BaseDrawing {
         const tagText = String(text || '');
         if (!tagText) return;
 
-        const fontSize = Number(options.fontSize) || 12;
+        const fontSize = Number(options.fontSize) || PATTERN_TEXT_SIZE_PX;
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
@@ -1509,7 +1512,7 @@ class ABCDPatternTool extends BaseDrawing {
             .attr('dominant-baseline', 'middle')
             .attr('fill', this.style.stroke)
             .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', options.fontWeight || '600')
+            .attr('font-weight', options.fontWeight || PATTERN_TEXT_WEIGHT)
             .style('pointer-events', 'none')
             .text(tagText);
     }
@@ -1614,7 +1617,7 @@ class TrianglePatternTool extends BaseDrawing {
                 .attr('x2', topRightGuide.x)
                 .attr('y2', topRightGuide.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.boundaryWidth)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.boundaryDasharray)
                 .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
@@ -1626,7 +1629,7 @@ class TrianglePatternTool extends BaseDrawing {
                 .attr('x2', bottomRightGuide.x)
                 .attr('y2', bottomRightGuide.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.boundaryWidth)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.boundaryDasharray)
                 .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
@@ -1639,7 +1642,7 @@ class TrianglePatternTool extends BaseDrawing {
                 .attr('x2', bottomLeftGuide.x)
                 .attr('y2', bottomLeftGuide.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.boundaryWidth)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.boundaryDasharray)
                 .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
@@ -1696,7 +1699,7 @@ class TrianglePatternTool extends BaseDrawing {
                 placeAbove = point.y <= prev.y;
             }
 
-            this._drawPointTag(point.x, point.y + (placeAbove ? -20 : 20), label);
+            this._drawPointTag(point.x, point.y + (placeAbove ? -PATTERN_LABEL_OFFSET_PX : PATTERN_LABEL_OFFSET_PX), label);
         });
 
         this.createHandles(this.group, scales);
@@ -1781,7 +1784,7 @@ class TrianglePatternTool extends BaseDrawing {
     _drawPointTag(x, y, text) {
         if (!text) return;
 
-        const fontSize = 12;
+        const fontSize = PATTERN_TEXT_SIZE_PX;
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
@@ -1789,7 +1792,7 @@ class TrianglePatternTool extends BaseDrawing {
             .attr('dominant-baseline', 'middle')
             .attr('fill', this.style.stroke)
             .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', '600')
+            .attr('font-weight', PATTERN_TEXT_WEIGHT)
             .style('pointer-events', 'none')
             .text(text);
     }
@@ -1872,7 +1875,7 @@ class ThreeDrivesTool extends BaseDrawing {
                 .attr('x2', peakB.x)
                 .attr('y2', peakB.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.guideDasharray)
                 .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
@@ -1884,7 +1887,7 @@ class ThreeDrivesTool extends BaseDrawing {
 
             if (ratio12) {
                 const pos = this._pointOnSegment(peakA, peakB, 0.5);
-                const offset = this._getPerpendicularOffset(peakA, peakB, -18);
+                const offset = this._getPerpendicularOffset(peakA, peakB, -PATTERN_VALUE_OFFSET_PX);
                 this._drawRatioTag(pos.x + offset.x, pos.y + offset.y, ratio12);
             }
         }
@@ -1896,7 +1899,7 @@ class ThreeDrivesTool extends BaseDrawing {
                 .attr('x2', peakC.x)
                 .attr('y2', peakC.y)
                 .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.guideWidth)
+                .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.guideDasharray)
                 .attr('stroke-linecap', 'round')
                 .attr('opacity', 0.95)
@@ -1908,7 +1911,7 @@ class ThreeDrivesTool extends BaseDrawing {
 
             if (ratio23) {
                 const pos = this._pointOnSegment(peakB, peakC, 0.5);
-                const offset = this._getPerpendicularOffset(peakB, peakC, -18);
+                const offset = this._getPerpendicularOffset(peakB, peakC, -PATTERN_VALUE_OFFSET_PX);
                 this._drawRatioTag(pos.x + offset.x, pos.y + offset.y, ratio23);
             }
         }
@@ -1938,7 +1941,7 @@ class ThreeDrivesTool extends BaseDrawing {
         };
     }
 
-    _getPerpendicularOffset(start, end, distance = -18) {
+    _getPerpendicularOffset(start, end, distance = -PATTERN_VALUE_OFFSET_PX) {
         const dx = end.x - start.x;
         const dy = end.y - start.y;
         const length = Math.sqrt((dx * dx) + (dy * dy));
@@ -1954,7 +1957,7 @@ class ThreeDrivesTool extends BaseDrawing {
         const value = String(text || '');
         if (!value) return;
 
-        const fontSize = 12;
+        const fontSize = PATTERN_TEXT_SIZE_PX;
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
@@ -1962,7 +1965,7 @@ class ThreeDrivesTool extends BaseDrawing {
             .attr('dominant-baseline', 'middle')
             .attr('fill', this.style.stroke)
             .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', '600')
+            .attr('font-weight', PATTERN_TEXT_WEIGHT)
             .style('pointer-events', 'none')
             .text(value);
     }
@@ -1983,7 +1986,7 @@ class ThreeDrivesTool extends BaseDrawing {
     }
 }
 
-function getWaveLabelOffset(points, index, getX, getY, distance = 16) {
+function getWaveLabelOffset(points, index, getX, getY, distance = PATTERN_LABEL_OFFSET_PX) {
     const currentPoint = points[index];
     if (!currentPoint) {
         return { dx: 0, dy: -distance };
@@ -2045,7 +2048,7 @@ function getWaveLabelOffset(points, index, getX, getY, distance = 16) {
     };
 }
 
-function appendWaveLabel(group, points, index, label, getX, getY, style, fontSize = '12px') {
+function appendWaveLabel(group, points, index, label, getX, getY, style, fontSize = `${PATTERN_TEXT_SIZE_PX}px`) {
     if (!label) return;
 
     const point = points[index];
@@ -2055,7 +2058,7 @@ function appendWaveLabel(group, points, index, label, getX, getY, style, fontSiz
     const baseY = getY(point);
     if (!Number.isFinite(baseX) || !Number.isFinite(baseY)) return;
 
-    const offset = getWaveLabelOffset(points, index, getX, getY, 16);
+    const offset = getWaveLabelOffset(points, index, getX, getY, PATTERN_LABEL_OFFSET_PX);
 
     group.append('text')
         .attr('x', baseX + offset.dx)
@@ -2064,7 +2067,7 @@ function appendWaveLabel(group, points, index, label, getX, getY, style, fontSiz
         .attr('dominant-baseline', 'middle')
         .attr('fill', style.stroke)
         .attr('font-size', fontSize)
-        .attr('font-weight', 'bold')
+        .attr('font-weight', PATTERN_TEXT_WEIGHT)
         .style('pointer-events', 'none')
         .text(label);
 }
@@ -2108,7 +2111,7 @@ class ElliottImpulseTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            appendWaveLabel(this.group, this.points, i, this.labels[i] || '', getX, getY, this.style, '12px');
+            appendWaveLabel(this.group, this.points, i, this.labels[i] || '', getX, getY, this.style);
         });
 
         this.createHandles(this.group, scales);
@@ -2170,7 +2173,7 @@ class ElliottCorrectionTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style);
         });
 
         this.createHandles(this.group, scales);
