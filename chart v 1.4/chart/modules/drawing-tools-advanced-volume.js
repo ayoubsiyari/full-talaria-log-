@@ -1444,6 +1444,7 @@ class VolumeProfileTool extends BaseDrawing {
         const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
         const chartLeftEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.min(...xScaleRange) : left;
         const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
+        const isAnchoredProxy = this._isAnchoredProxy === true;
         const fixedProfileLeftEdge = chartLeftEdge;
         const fixedProfileRightEdge = chartRightEdge;
         const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : effectiveProfileRight;
