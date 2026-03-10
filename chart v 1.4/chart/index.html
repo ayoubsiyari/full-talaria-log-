@@ -7418,7 +7418,7 @@
             transform: translateX(-50%);
             display: none;
             flex-direction: column;
-            min-width: 128px;
+            min-width: 92px;
             background: #050028;
             border: 1px solid rgba(50, 50, 60, 0.9);
             border-radius: 8px;
@@ -7431,16 +7431,6 @@
             display: flex;
         }
 
-        .replay-mode-dropdown-label {
-            display: block;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: #6b7280;
-            padding: 10px 12px 6px;
-            letter-spacing: 0.8px;
-        }
-
         .replay-mode-option {
             width: 100%;
             height: 34px;
@@ -7448,7 +7438,7 @@
             border-radius: 0;
             background: transparent;
             color: #d1d4dc;
-            padding: 0 12px;
+            padding: 0 10px;
             display: inline-flex;
             align-items: center;
             justify-content: flex-start;
@@ -18384,7 +18374,6 @@
                             </svg>
                         </button>
                         <div class="replay-mode-dropdown" role="menu" aria-label="Replay Playback Mode options">
-                            <span class="replay-mode-dropdown-label">Replay mode</span>
                             <button type="button" class="replay-mode-option replay-selected" data-mode="tick" aria-pressed="true">Tick</button>
                             <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
                         </div>
