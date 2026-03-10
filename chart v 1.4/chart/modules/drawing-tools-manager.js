@@ -1711,6 +1711,12 @@ class DrawingToolsManager {
             this.finalizeDrawing();
             return;
         }
+
+        if (this.currentTool === 'date-price-range' && this.drawingState.tempPoints.length > 0) {
+            const anchorPoint = this.drawingState.tempPoints[0];
+            const rangeMode = this.getRangeToolMode();
+            point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
+        }
         
         const isComplete = this.drawingState.addPoint(point);
         // [debug removed]
@@ -2104,6 +2110,12 @@ class DrawingToolsManager {
             const p0 = this.drawingState.tempPoints[0];
             // Keep X same as first point, but Y follows mouse closely
             point = { x: p0.x, y: point.y };
+        }
+
+        if (this.currentTool === 'date-price-range' && this.drawingState.tempPoints.length > 0) {
+            const anchorPoint = this.drawingState.tempPoints[0];
+            const rangeMode = this.getRangeToolMode();
+            point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
         }
         
         if (
@@ -2509,6 +2521,58 @@ class DrawingToolsManager {
         }
 
         drawing.points = drawing.points.map(point => this.clampPointToCandleRange(point, drawing.type));
+    }
+
+    normalizeRangeMode(mode) {
+        const value = String(mode || '').toLowerCase().trim();
+        if (value === 'price') return 'price';
+        if (value === 'time' || value === 'date') return 'time';
+        return 'both';
+    }
+
+    getRangeToolMode(drawing = null) {
+        if (drawing && drawing.type === 'date-price-range') {
+            return this.normalizeRangeMode(drawing.style && drawing.style.rangeMode);
+        }
+
+        if (this.currentTool === 'date-price-range') {
+            const savedStyle = this.getSavedToolStyle('date-price-range') || {};
+            return this.normalizeRangeMode(savedStyle.rangeMode);
+        }
+
+        return 'both';
+    }
+
+    constrainDatePriceRangePoint(point, anchorPoint, mode = 'both') {
+        if (!point || !anchorPoint) return point;
+
+        const normalizedMode = this.normalizeRangeMode(mode);
+        if (normalizedMode === 'price') {
+            return {
+                ...point,
+                x: anchorPoint.x
+            };
+        }
+
+        if (normalizedMode === 'time') {
+            return {
+                ...point,
+                y: anchorPoint.y
+            };
+        }
+
+        return point;
+    }
+
+    getConstrainedDragDelta(drawing, dx, dy) {
+        const mode = this.getRangeToolMode(drawing);
+        if (mode === 'price') {
+            return { dx: 0, dy };
+        }
+        if (mode === 'time') {
+            return { dx, dy: 0 };
+        }
+        return { dx, dy };
     }
 
     /**
@@ -3558,9 +3622,10 @@ class DrawingToolsManager {
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
                         // Move all selected drawings together
                         multiDragStartPoints.forEach(item => {
+                            const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(item.drawing, dx, dy);
                             item.drawing.points = item.points.map(p => ({
-                                x: p.x + dx,
-                                y: p.y + dy
+                                x: p.x + constrainedDx,
+                                y: p.y + constrainedDy
                             }));
                             self.clampDrawingPointsToCandleRange(item.drawing);
                             self.renderDrawing(item.drawing);
@@ -3572,9 +3637,10 @@ class DrawingToolsManager {
                         });
                     } else {
                         // Move single drawing
+                        const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(drawing, dx, dy);
                         drawing.points = dragStartPoints.map(p => ({
-                            x: p.x + dx,
-                            y: p.y + dy
+                            x: p.x + constrainedDx,
+                            y: p.y + constrainedDy
                         }));
                         self.clampDrawingPointsToCandleRange(drawing);
                         
@@ -3713,9 +3779,10 @@ class DrawingToolsManager {
             if (dx !== 0 || dy !== 0) moved = true;
 
             startStates.forEach(item => {
+                const { dx: constrainedDx, dy: constrainedDy } = this.getConstrainedDragDelta(item.drawing, dx, dy);
                 item.drawing.points = item.points.map(pt => ({
-                    x: pt.x + dx,
-                    y: pt.y + dy
+                    x: pt.x + constrainedDx,
+                    y: pt.y + constrainedDy
                 }));
                 this.clampDrawingPointsToCandleRange(item.drawing);
 
