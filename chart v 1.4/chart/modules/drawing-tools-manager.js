@@ -2935,7 +2935,7 @@ class DrawingToolsManager {
 
             drawing.group.selectAll('.volume-profile-level-line')
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'default');
+                .style('cursor', 'move');
 
             drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
                 .style('pointer-events', 'all');
