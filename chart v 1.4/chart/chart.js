@@ -6253,15 +6253,17 @@ class Chart {
         const totalDataWidth = this.data.length * candleSpacing;
         
         // Right margin: Keep future space (TradingView style)
-        const rightMarginCandles = 5;
-        const rightMargin = rightMarginCandles * candleSpacing;
+        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
+            ? this.timeScale.rightOffsetCandles
+            : 5;
+        const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
         
         // Max offset: First candle can go up to right edge minus margin
         const maxOffset = cw - rightMargin;
         
-        // Min offset: Last candle stays at 30% from left (keeps chart usable)
+        // Min offset: stop left-pan when last candle reaches configured right margin
         const lastCandleX = (this.data.length - 1) * candleSpacing;
-        const minOffset = cw * 0.3 - lastCandleX;
+        const minOffset = cw - rightMargin - lastCandleX;
         
         // Proactive pan-loading: trigger when viewport is NEAR the edge (like TradingView)
         const isReplayActive = this.replaySystem && this.replaySystem.isActive;
@@ -6352,7 +6354,7 @@ class Chart {
         const rightMargin = (this.timeScale?.rightOffsetCandles || 5) * candleSpacing;
         const maxOffset = cw - rightMargin;
         const lastCandleX = (this.data.length - 1) * candleSpacing;
-        const minOffset = cw * 0.3 - lastCandleX;
+        const minOffset = cw - rightMargin - lastCandleX;
         
         // Snap back if out of bounds
         if (this.offsetX > maxOffset) {
@@ -11354,8 +11356,8 @@ class Chart {
             const candleSpacing = this.getCandleSpacing();
             const rightMargin = getRightOffset();
             const maxOffset = cw - rightMargin;
-            const lastCandleX = (this.data?.length || 1) * candleSpacing;
-            const minOffset = cw * 0.3 - lastCandleX;
+            const lastCandleX = Math.max(0, ((this.data?.length || 1) - 1)) * candleSpacing;
+            const minOffset = cw - rightMargin - lastCandleX;
             
             let resistedDx = dx;
             
