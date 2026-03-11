@@ -44,6 +44,66 @@ class ScreenshotManager {
         }
     }
 
+    isLightColor(colorValue) {
+        if (!colorValue || typeof colorValue !== 'string') return false;
+
+        const color = colorValue.trim();
+        let r;
+        let g;
+        let b;
+
+        const rgbMatch = color.match(/^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+        if (rgbMatch) {
+            r = parseInt(rgbMatch[1], 10);
+            g = parseInt(rgbMatch[2], 10);
+            b = parseInt(rgbMatch[3], 10);
+        } else if (color.startsWith('#')) {
+            let hex = color.slice(1);
+            if (hex.length === 3) {
+                hex = hex.split('').map((ch) => ch + ch).join('');
+            }
+            if (hex.length !== 6) return false;
+            r = parseInt(hex.slice(0, 2), 16);
+            g = parseInt(hex.slice(2, 4), 16);
+            b = parseInt(hex.slice(4, 6), 16);
+        } else {
+            return false;
+        }
+
+        if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return false;
+
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.65;
+    }
+
+    prepareScreenshotClone(clonedDoc, sourceElement = null) {
+        if (!clonedDoc) return;
+
+        const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
+        const useDarkBrand = this.isLightColor(backgroundColor);
+        const symbolSrc = useDarkBrand ? 'modules/logo-09.png' : 'modules/logo-08.png';
+        const wordmarkSrc = useDarkBrand ? 'modules/logo-14.png' : 'modules/logo-05.png';
+
+        clonedDoc.querySelectorAll('.chart-brand .logo-top').forEach((img) => {
+            img.setAttribute('src', symbolSrc);
+            img.style.filter = 'none';
+            img.style.opacity = '1';
+            img.style.visibility = 'visible';
+        });
+
+        clonedDoc.querySelectorAll('.chart-brand .logo-bottom').forEach((img) => {
+            img.setAttribute('src', wordmarkSrc);
+            img.style.filter = 'none';
+            img.style.opacity = '1';
+            img.style.visibility = 'visible';
+        });
+
+        const darkStack = clonedDoc.querySelector('.chart-brand .logo-dark');
+        const lightStack = clonedDoc.querySelector('.chart-brand .logo-light');
+        if (darkStack) darkStack.style.display = useDarkBrand ? 'none' : 'block';
+        if (lightStack) lightStack.style.display = useDarkBrand ? 'block' : 'none';
+    }
+
     /**
      * Show screenshot preview modal with quick actions
      */
@@ -86,7 +146,7 @@ class ScreenshotManager {
         header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom: 1px solid #253248;';
         header.innerHTML = `
             <div style="display:flex; align-items:center; gap:10px; color:#dbe8ff; font-size:14px; font-weight:600;">
-                <span style="display:inline-flex; width:22px; height:22px; align-items:center; justify-content:center; border-radius:6px; background: rgba(40, 178, 255, 0.18);">📸</span>
+                <span style="display:inline-flex; width:22px; height:22px; align-items:center; justify-content:center; border-radius:6px; background: rgba(40, 178, 255, 0.18);"></span>
                 Screenshot preview
             </div>
         `;
@@ -115,7 +175,7 @@ class ScreenshotManager {
         imageWrap.appendChild(image);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex; flex-wrap:wrap; gap:10px; padding:14px 16px 16px; border-top:1px solid #253248;';
+        actions.style.cssText = 'display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; padding:14px 16px 16px; border-top:1px solid #253248;';
 
         const mkBtn = (label, style) => {
             const btn = document.createElement('button');
@@ -279,7 +339,10 @@ class ScreenshotManager {
                 foreignObjectRendering: false,
                 scale: 2,
                 width: targetElement.offsetWidth,
-                height: targetElement.offsetHeight
+                height: targetElement.offsetHeight,
+                onclone: (clonedDoc) => {
+                    this.prepareScreenshotClone(clonedDoc, targetElement);
+                }
             });
             
             // Add watermark
@@ -654,6 +717,7 @@ class ScreenshotManager {
                 windowWidth: targetElement.scrollWidth,
                 windowHeight: targetElement.scrollHeight,
                 onclone: (clonedDoc) => {
+                    this.prepareScreenshotClone(clonedDoc, targetElement);
                     console.log('📸 Document cloned for capture');
                 }
             });
@@ -797,7 +861,10 @@ class ScreenshotManager {
                 width: chartContainer.offsetWidth,
                 height: chartContainer.offsetHeight,
                 foreignObjectRendering: false, // Disable for better compatibility
-                imageTimeout: 0
+                imageTimeout: 0,
+                onclone: (clonedDoc) => {
+                    this.prepareScreenshotClone(clonedDoc, chartContainer);
+                }
             });
             
             console.log('   Canvas created:', canvas.width, 'x', canvas.height);
