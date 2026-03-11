@@ -43,6 +43,136 @@ class ScreenshotManager {
             return false;
         }
     }
+
+    /**
+     * Show screenshot preview modal with quick actions
+     */
+    showScreenshotPreview(canvas) {
+        if (!canvas) return;
+
+        const existingPreview = document.getElementById('chartScreenshotPreviewModal');
+        if (existingPreview) existingPreview.remove();
+
+        const dataUrl = canvas.toDataURL('image/png');
+
+        const modal = document.createElement('div');
+        modal.id = 'chartScreenshotPreviewModal';
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 16, 0.86);
+            backdrop-filter: blur(5px);
+            z-index: 100002;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        `;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = `
+            width: min(960px, 94vw);
+            max-height: 92vh;
+            background: #0b1220;
+            border: 1px solid #253248;
+            border-radius: 14px;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        `;
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom: 1px solid #253248;';
+        header.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px; color:#dbe8ff; font-size:14px; font-weight:600;">
+                <span style="display:inline-flex; width:22px; height:22px; align-items:center; justify-content:center; border-radius:6px; background: rgba(40, 178, 255, 0.18);">📸</span>
+                Screenshot preview
+            </div>
+        `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = `
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: 1px solid #2e3c55;
+            background: #121d31;
+            color: #a9b9d4;
+            cursor: pointer;
+        `;
+        header.appendChild(closeBtn);
+
+        const imageWrap = document.createElement('div');
+        imageWrap.style.cssText = 'padding: 16px; overflow:auto; display:flex; justify-content:center; align-items:center; background:#070d18;';
+
+        const image = document.createElement('img');
+        image.src = dataUrl;
+        image.alt = 'Chart screenshot preview';
+        image.style.cssText = 'max-width:100%; max-height:62vh; border-radius:10px; border:1px solid #22324a; box-shadow: 0 10px 30px rgba(0,0,0,0.35);';
+        imageWrap.appendChild(image);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex; flex-wrap:wrap; gap:10px; padding:14px 16px 16px; border-top:1px solid #253248;';
+
+        const mkBtn = (label, style) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = label;
+            btn.style.cssText = style;
+            return btn;
+        };
+
+        const downloadBtn = mkBtn(
+            'Download',
+            'padding:10px 14px; border-radius:10px; border:1px solid #2d7cff; background:#1f6feb; color:#ffffff; font-weight:600; cursor:pointer;'
+        );
+        const copyBtn = mkBtn(
+            'Copy',
+            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:pointer;'
+        );
+        const linkBtn = mkBtn(
+            'Copy link',
+            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:pointer;'
+        );
+
+        actions.appendChild(downloadBtn);
+        actions.appendChild(copyBtn);
+        actions.appendChild(linkBtn);
+
+        panel.appendChild(header);
+        panel.appendChild(imageWrap);
+        panel.appendChild(actions);
+        modal.appendChild(panel);
+        document.body.appendChild(modal);
+
+        const closeModal = () => {
+            document.removeEventListener('keydown', handleEsc);
+            modal.remove();
+        };
+
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') closeModal();
+        };
+
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', handleEsc);
+
+        downloadBtn.addEventListener('click', () => {
+            this.downloadImage(canvas);
+        });
+        copyBtn.addEventListener('click', async () => {
+            await this.copyToClipboard(canvas);
+        });
+        linkBtn.addEventListener('click', async () => {
+            await this.copyLink(canvas);
+        });
+    }
     
     init() {
         console.log('📸 Screenshot Manager initialized');
@@ -64,10 +194,11 @@ class ScreenshotManager {
             return;
         }
         
-        // Toggle dropdown on button click
-        screenshotBtn.addEventListener('click', (e) => {
+        // Primary behavior: take screenshot and show on-screen preview with actions
+        screenshotBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            dropdown.classList.toggle('open');
+            dropdown.classList.remove('open');
+            await this.takeQuickScreenshot('preview');
         });
         
         // Close dropdown when clicking outside
@@ -153,6 +284,11 @@ class ScreenshotManager {
             
             // Add watermark
             this.addWatermark(canvas);
+
+            if (action === 'preview') {
+                this.showScreenshotPreview(canvas);
+                return;
+            }
             
             // Handle action
             if (action === 'download') {
