@@ -6285,34 +6285,6 @@ class DrawingToolsManager {
                 }
             }
 
-            // Range tools: allow selecting/dragging by interior and info label box.
-            if (!hitsById.has(drawing.id) && drawing.type === 'date-price-range') {
-                try {
-                    const fillHits = drawing.group.selectAll('.range-fill-hit, .range-info-box').nodes();
-                    for (const el of fillHits) {
-                        if (!el) continue;
-
-                        if (typeof el.isPointInFill === 'function') {
-                            if (el.isPointInFill(point)) {
-                                hitsById.set(drawing.id, { drawing, distance: 0, z });
-                                break;
-                            }
-                        } else if (typeof el.getBBox === 'function') {
-                            const bb = el.getBBox();
-                            const inside = mouseX >= bb.x && mouseX <= (bb.x + bb.width)
-                                && mouseY >= bb.y && mouseY <= (bb.y + bb.height);
-                            if (inside) {
-                                hitsById.set(drawing.id, { drawing, distance: 0, z });
-                                break;
-                            }
-                        }
-                    }
-                    if (hitsById.has(drawing.id)) continue;
-                } catch (error) {
-                    console.warn('Error in range fill hit test for drawing:', drawing.id, error);
-                }
-            }
-
             // Volume Profile tools: select from boundaries/levels/labels.
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
@@ -6468,6 +6440,15 @@ class DrawingToolsManager {
                     const elementSel = d3.select(element);
                     const opacity = elementSel.style('opacity');
                     if (opacity === '0') continue;
+
+                    if (drawing.type === 'date-price-range') {
+                        if (elementSel.classed('range-fill-hit') || elementSel.classed('range-info-box')) {
+                            continue;
+                        }
+                        if (element.tagName === 'line' && !elementSel.classed('range-mid-line-hit')) {
+                            continue;
+                        }
+                    }
 
                     const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
                     const isHitArea = elementSel.classed('shape-border-hit');

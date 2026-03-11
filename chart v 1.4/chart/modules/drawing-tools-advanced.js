@@ -538,30 +538,33 @@ class DatePriceRangeTool extends BaseDrawing {
             .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
             .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
             .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
-            .style('pointer-events', 'all')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         this.group.append('line')
+            .attr('class', 'range-cap-line')
             .attr('x1', left).attr('y1', top)
             .attr('x2', right).attr('y2', top)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
             .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         if (isDown) {
             this.group.append('line')
+                .attr('class', 'range-cap-line')
                 .attr('x1', left).attr('y1', bottom)
                 .attr('x2', right).attr('y2', bottom)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', this.style.strokeWidth)
                 .attr('stroke-dasharray', this.style.strokeDasharray || null)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none')
+                .style('cursor', 'default');
         }
 
         this.group.append('line')
+            .attr('class', 'range-mid-line-hit')
             .attr('x1', x).attr('y1', isDown ? top : bottom)
             .attr('x2', x).attr('y2', isDown ? bottom : top)
             .attr('stroke', this.style.stroke)
@@ -673,28 +676,31 @@ class DatePriceRangeTool extends BaseDrawing {
             .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
             .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
             .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
-            .style('pointer-events', 'all')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         this.group.append('line')
+            .attr('class', 'range-cap-line')
             .attr('x1', left).attr('y1', top)
             .attr('x2', left).attr('y2', bottom)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
             .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         this.group.append('line')
+            .attr('class', 'range-cap-line')
             .attr('x1', right).attr('y1', top)
             .attr('x2', right).attr('y2', bottom)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
             .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         this.group.append('line')
+            .attr('class', 'range-mid-line-hit')
             .attr('x1', left).attr('y1', y)
             .attr('x2', right).attr('y2', y)
             .attr('stroke', this.style.stroke)
@@ -803,10 +809,11 @@ class DatePriceRangeTool extends BaseDrawing {
             .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
             .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
             .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
-            .style('pointer-events', 'all')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         this.group.append('line')
+            .attr('class', 'range-mid-line-hit')
             .attr('x1', left).attr('y1', midY)
             .attr('x2', right).attr('y2', midY)
             .attr('stroke', this.style.stroke)
@@ -817,6 +824,7 @@ class DatePriceRangeTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.group.append('line')
+            .attr('class', 'range-mid-line-hit')
             .attr('x1', midX).attr('y1', top)
             .attr('x2', midX).attr('y2', bottom)
             .attr('stroke', this.style.stroke)
