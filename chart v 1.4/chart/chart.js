@@ -14466,7 +14466,7 @@ class Chart {
             .html('');
 
         this.addTradingViewContextMenuItem(menu, {
-            icon: '↺',
+            icon: 'reset',
             label: 'Reset chart view',
             shortcut: '⌥ R',
             onClick: () => {
@@ -14519,7 +14519,7 @@ class Chart {
 
         if (priceAtCursor && priceText) {
             this.addTradingViewContextMenuItem(menu, {
-                icon: '⏰',
+                icon: 'alert',
                 label: `Add alert on ${symbolName} at ${priceText}...`,
                 shortcut: '⌥ A',
                 onClick: () => {
@@ -14534,7 +14534,7 @@ class Chart {
 
             if (this.orderManager) {
                 this.addTradingViewContextMenuItem(menu, {
-                    icon: '↗',
+                    icon: 'buy',
                     label: `Buy 1 ${symbolName} @ ${priceText} limit`,
                     shortcut: '⇧ B',
                     onClick: () => {
@@ -14544,7 +14544,7 @@ class Chart {
                 });
 
                 this.addTradingViewContextMenuItem(menu, {
-                    icon: '↘',
+                    icon: 'sell',
                     label: `Sell 1 ${symbolName} @ ${priceText} stop`,
                     shortcut: '⇧ S',
                     onClick: () => {
@@ -14554,7 +14554,7 @@ class Chart {
                 });
 
                 this.addTradingViewContextMenuItem(menu, {
-                    icon: '🧾',
+                    icon: 'order',
                     label: `Add order on ${symbolName} at ${priceText}...`,
                     shortcut: '⇧ T',
                     onClick: () => {
@@ -14568,7 +14568,7 @@ class Chart {
         }
 
         this.addTradingViewContextMenuItem(menu, {
-            icon: '⚙',
+            icon: 'settings',
             label: 'Settings',
             onClick: () => {
                 this.openSettingsFromContextMenu();
@@ -14806,6 +14806,19 @@ class Chart {
             .style('margin', '6px 0');
     }
 
+    getTradingViewContextMenuIcon(iconKey = '') {
+        const icons = {
+            reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36" stroke-linecap="round" stroke-linejoin="round"></path><polyline points="3 4 3 10 9 10" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
+            alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V11a6 6 0 0 0-5-5.9V4a1 1 0 0 0-2 0v1.1A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M9.5 17a2.5 2.5 0 0 0 5 0" stroke-linecap="round"></path></svg>',
+            buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 17L17 7" stroke-linecap="round"></path><polyline points="10 7 17 7 17 14" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
+            sell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 7l10 10" stroke-linecap="round"></path><polyline points="10 17 17 17 17 10" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
+            order: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M8 3h6l4 4v14H8z" stroke-linejoin="round"></path><path d="M14 3v4h4" stroke-linecap="round" stroke-linejoin="round"></path><line x1="10" y1="12" x2="16" y2="12" stroke-linecap="round"></line><line x1="10" y1="16" x2="15" y2="16" stroke-linecap="round"></line></svg>',
+            settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
+        };
+
+        return icons[iconKey] || '';
+    }
+
     addTradingViewContextMenuItem(menu, options = {}) {
         const {
             icon = '',
@@ -14838,11 +14851,22 @@ class Chart {
             .style('min-width', '0');
 
         if (icon) {
-            left.append('span')
-                .style('width', '18px')
-                .style('text-align', 'center')
+            const iconWrap = left.append('span')
+                .attr('class', 'tv-context-icon')
+                .style('width', 'var(--talaria-ui-icon-size, 18px)')
+                .style('height', 'var(--talaria-ui-icon-size, 18px)')
+                .style('display', 'inline-flex')
+                .style('align-items', 'center')
+                .style('justify-content', 'center')
                 .style('opacity', '0.9')
-                .text(icon);
+                .style('flex-shrink', '0');
+
+            const iconSvg = this.getTradingViewContextMenuIcon(icon);
+            if (iconSvg) {
+                iconWrap.html(iconSvg);
+            } else {
+                iconWrap.style('text-align', 'center').text(icon);
+            }
         }
 
         left.append('span')

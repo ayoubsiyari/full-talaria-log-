@@ -12262,9 +12262,18 @@
         }
         
         .context-menu-item svg {
-            width: 16px;
-            height: 16px;
+            width: var(--talaria-ui-icon-size, 18px);
+            height: var(--talaria-ui-icon-size, 18px);
+            stroke-width: var(--talaria-ui-icon-stroke, 1.5);
             opacity: 0.7;
+        }
+
+        .tv-context-icon svg {
+            display: block;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: var(--talaria-ui-icon-stroke, 1.5);
+            vector-effect: non-scaling-stroke;
         }
         
         .context-menu-item:hover svg {
