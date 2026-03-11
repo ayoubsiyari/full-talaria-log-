@@ -186,6 +186,7 @@ class Chart {
         this.syncDrawings = true; // Enable drawing sync across panels
         this.syncCrosshair = true; // Enable crosshair sync across panels
         this.currentCrosshairTimestamp = null; // Track crosshair timestamp for sync
+        this.lockedCrosshairDataIndex = null;
         this.xScale = null;
         this.yScale = null;
         this.volumeScale = null;
@@ -9513,6 +9514,9 @@ class Chart {
         // Draw candlesticks
         this.drawCandles(visible);
 
+        // Optional marks overlay (TradingView-style "marks on bars")
+        this.drawMarksOnBars(visible);
+
         // Draw compare overlays (other symbols on same chart)
         if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
             try {
@@ -10567,6 +10571,58 @@ class Chart {
             this.ctx.stroke();
         }
         
+        this.ctx.restore();
+    }
+
+    drawMarksOnBars(visible) {
+        if (!this.chartSettings.showMarks || !visible || visible.length === 0 || !this.yScale) return;
+
+        const chartType = this.chartSettings.chartType || 'candles';
+        const supportedTypes = new Set(['candles', 'hollow', 'heikinashi', 'bars']);
+        if (!supportedTypes.has(chartType)) return;
+
+        const m = this.margin;
+        const ch = this.h - m.t - m.b;
+        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
+        const volumeAreaHeight = ch * effectiveVolumeHeight;
+        const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+
+        const minSpacing = 8;
+        const step = Math.max(1, Math.ceil(minSpacing / Math.max(1, this.candleWidth)));
+        const radius = Math.max(1.5, Math.min(3.5, this.candleWidth * 0.22));
+        const startIdx = this.visibleStartIndex || 0;
+
+        this.ctx.save();
+
+        for (let i = 0; i < visible.length; i += step) {
+            const idx = startIdx + i;
+            const candle = chartType === 'heikinashi'
+                ? (this.getDisplayCandle(idx) || visible[i])
+                : visible[i];
+
+            if (!candle) continue;
+
+            const x = this.dataIndexToPixel(idx);
+            if (x < m.l - 4 || x > this.w - m.r + 4) continue;
+
+            const y = this.yScale(candle.c);
+            if (!Number.isFinite(y) || y < m.t || y > priceAreaBottom) continue;
+
+            const isUp = candle.c >= candle.o;
+            const color = isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor;
+
+            this.ctx.beginPath();
+            this.ctx.globalAlpha = 0.8;
+            this.ctx.fillStyle = color;
+            this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = 0.95;
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeStyle = 'rgba(5, 0, 40, 0.75)';
+            this.ctx.stroke();
+        }
+
         this.ctx.restore();
     }
     
@@ -13675,7 +13731,12 @@ class Chart {
         const _dm = this.drawingManager;
         
         // Snap crosshair to candle center (like TradingView)
-        const dataIdx = Math.round(this.pixelToDataIndex(x));
+        let dataIdx = Math.round(this.pixelToDataIndex(x));
+        const isCrosshairLocked = !!this.chartSettings?.crosshairLocked;
+        if (isCrosshairLocked && Number.isFinite(this.lockedCrosshairDataIndex)) {
+            const lastIdx = Math.max(0, this.data.length - 1);
+            dataIdx = Math.max(0, Math.min(lastIdx, Math.round(this.lockedCrosshairDataIndex)));
+        }
         const snappedX = this.dataIndexToPixel(dataIdx); // Already returns candle center
         const hasSnappedCandle = dataIdx >= 0 && dataIdx < this.data.length;
         const snappedCandle = hasSnappedCandle ? this.data[dataIdx] : null;
@@ -14249,6 +14310,12 @@ class Chart {
             .style('opacity', '1')
             .style('transform', 'none')
             .style('transition', 'none')
+            .style('min-width', '200px')
+            .style('padding', '8px 0')
+            .style('background', 'rgba(5, 0, 40, 0.97)')
+            .style('border', '1px solid #2a2e39')
+            .style('border-radius', '4px')
+            .style('box-shadow', '0 4px 12px rgba(0,0,0,0.4)')
             .html('');
             
         // Store the previous tool state
@@ -14359,10 +14426,12 @@ class Chart {
             const decimals = this.getPriceDecimals(priceRange);
             priceText = priceAtCursor.toFixed(decimals);
         }
+
+        const symbolName = this.getContextMenuSymbolName();
         
         // Position menu using client coordinates (for fixed positioning)
-        const menuWidth = 280;
-        const menuHeight = 350;
+        const menuWidth = 430;
+        const menuHeight = 640;
         const viewport = {
             width: window.innerWidth,
             height: window.innerHeight
@@ -14386,116 +14455,426 @@ class Chart {
             .style('opacity', '1')
             .style('transform', 'none')
             .style('transition', 'none')
+            .style('min-width', '390px')
+            .style('padding', '10px 0')
+            .style('background', 'rgba(25, 27, 33, 0.97)')
+            .style('border', '1px solid rgba(104, 113, 133, 0.35)')
+            .style('border-radius', '14px')
+            .style('box-shadow', '0 18px 46px rgba(0,0,0,0.45)')
             .html('');
-            
-        // Add menu items
-        if (priceAtCursor && priceText) {
-            this.addContextMenuItem(menu, `Copy price ${priceText}`, () => {
-                navigator.clipboard.writeText(priceText);
-                this.showNotification(`Price ${priceText} copied to clipboard ✓`);
+
+        this.addTradingViewContextMenuItem(menu, {
+            icon: '↺',
+            label: 'Reset chart view',
+            shortcut: '⌥ R',
+            onClick: () => {
+                this.resetView();
+                this.showNotification('Chart view reset ✓');
                 this.hideContextMenu();
-            });
-            
-            // Quick add alert at price (instant, no modal)
-            this.addContextMenuItem(menu, `🔔 Add alert at ${priceText}`, () => {
-                if (window.alertSystem) {
-                    window.alertSystem.createAlert({
-                        price: priceAtCursor,
-                        condition: 'crossing',
-                        expiration: 'every_time',
-                        color: '#ff9800',
-                        showPopup: true,
-                        playSound: true
-                    });
-                } else {
-                    this.showError('Alert system not initialized');
-                }
-                this.hideContextMenu();
-            });
-            
-            this.addContextMenuItem(menu, '🔔 Add alert...', () => {
-                if (window.alertSystem) {
-                    window.alertSystem.createAlertAtPrice(priceAtCursor);
-                } else {
-                    this.showError('Alert system not initialized');
-                }
-                this.hideContextMenu();
-            });
-        }
-        
-        this.addContextMenuItem(menu, `Paste`, () => {
-            navigator.clipboard.readText().then(text => {
-                console.log('Pasted:', text);
-                this.showNotification('Paste: ' + text);
-            });
-            this.hideContextMenu();
-        });
-        
-        this.addContextMenuDivider(menu);
-        
-        // Toggle crosshair lock
-        const crosshairText = this.chartSettings.crosshairLocked 
-            ? 'Unlock vertical cursor line by time' 
-            : 'Lock vertical cursor line by time';
-        this.addContextMenuItem(menu, crosshairText, () => {
-            this.chartSettings.crosshairLocked = !this.chartSettings.crosshairLocked;
-            this.showNotification(this.chartSettings.crosshairLocked ? 'Crosshair locked ✓' : 'Crosshair unlocked ✓');
-            this.hideContextMenu();
-        });
-        
-        this.addContextMenuDivider(menu);
-        
-        this.addContextMenuItem(menu, 'Object Tree...', () => {
-            this.showObjectTree();
-            this.hideContextMenu();
-        });
-        
-        this.addContextMenuDivider(menu);
-        
-        // Count indicators (for demo purposes)
-        const indicatorCount = this.drawings.length;
-        if (indicatorCount > 0) {
-            this.addContextMenuItem(menu, `Remove ${indicatorCount} indicator${indicatorCount > 1 ? 's' : ''}`, () => {
-                if (confirm(`Remove all ${indicatorCount} drawings/indicators?`)) {
-                    this.drawings = [];
-                    // Save to localStorage
-                    localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify([]));
-                    this.scheduleRender();
-                    this.showNotification('All drawings removed ✓');
-                }
-                this.hideContextMenu();
-            });
-        }
-        
-        this.addContextMenuDivider(menu);
-        
-        // Toggle marks on bars
-        const marksText = this.chartSettings.showMarks 
-            ? 'Hide marks on bars' 
-            : 'Show marks on bars';
-        this.addContextMenuItem(menu, marksText, () => {
-            this.chartSettings.showMarks = !this.chartSettings.showMarks;
-            this.scheduleRender();
-            this.showNotification(this.chartSettings.showMarks ? 'Marks shown ✓' : 'Marks hidden ✓');
-            this.hideContextMenu();
-        });
-        
-        // Toggle trade markers (entry/exit signs)
-        const showTradeMarkers = this.chartSettings.showTradeMarkers !== false; // default true
-        const tradeMarkersText = showTradeMarkers 
-            ? 'Hide trade markers' 
-            : 'Show trade markers';
-        this.addContextMenuItem(menu, tradeMarkersText, () => {
-            this.chartSettings.showTradeMarkers = !showTradeMarkers;
-            // Toggle visibility of all trade markers
-            if (this.orderManager) {
-                this.orderManager.toggleTradeMarkers(this.chartSettings.showTradeMarkers);
             }
-            this.showNotification(this.chartSettings.showTradeMarkers ? 'Trade markers shown ✓' : 'Trade markers hidden ✓');
-            this.hideContextMenu();
         });
-        
-        this.addContextMenuDivider(menu);
+
+        this.addTradingViewContextMenuDivider(menu);
+
+        if (priceAtCursor && priceText) {
+            this.addTradingViewContextMenuItem(menu, {
+                label: `Copy price ${priceText}`,
+                onClick: async () => {
+                    const copied = await this.writeTextToClipboard(priceText);
+                    this.showNotification(copied ? `Price ${priceText} copied ✓` : 'Clipboard blocked. Copy failed.');
+                    this.hideContextMenu();
+                }
+            });
+        }
+
+        this.addTradingViewContextMenuItem(menu, {
+            label: 'Paste',
+            shortcut: '⌘ V',
+            onClick: async () => {
+                if (this.drawingManager && this.drawingManager.clipboardDrawing && typeof this.drawingManager.pasteDrawing === 'function') {
+                    this.drawingManager.pasteDrawing();
+                    this.showNotification('Drawing pasted ✓');
+                    this.hideContextMenu();
+                    return;
+                }
+
+                const clipboardText = await this.readTextFromClipboard();
+                const parsedPrice = this.parseClipboardNumber(clipboardText);
+                if (Number.isFinite(parsedPrice)) {
+                    const added = this.addHorizontalLineAtPrice(parsedPrice);
+                    this.showNotification(added ? `Price line added at ${parsedPrice.toFixed(5)} ✓` : 'Could not paste chart element');
+                } else if (clipboardText) {
+                    this.showNotification(`Clipboard text: ${clipboardText.slice(0, 40)}`);
+                } else {
+                    this.showNotification('Nothing to paste');
+                }
+
+                this.hideContextMenu();
+            }
+        });
+
+        this.addTradingViewContextMenuDivider(menu);
+
+        if (priceAtCursor && priceText) {
+            this.addTradingViewContextMenuItem(menu, {
+                icon: '⏰',
+                label: `Add alert on ${symbolName} at ${priceText}...`,
+                shortcut: '⌥ A',
+                onClick: () => {
+                    if (window.alertSystem) {
+                        window.alertSystem.createAlertAtPrice(priceAtCursor);
+                    } else {
+                        this.showNotification('Alert system not initialized');
+                    }
+                    this.hideContextMenu();
+                }
+            });
+
+            if (this.orderManager) {
+                this.addTradingViewContextMenuItem(menu, {
+                    icon: '↗',
+                    label: `Buy 1 ${symbolName} @ ${priceText} limit`,
+                    shortcut: '⇧ B',
+                    onClick: () => {
+                        this.openOrderPanelFromContext({ side: 'BUY', orderType: 'limit', entryPrice: priceAtCursor });
+                        this.hideContextMenu();
+                    }
+                });
+
+                this.addTradingViewContextMenuItem(menu, {
+                    icon: '↘',
+                    label: `Sell 1 ${symbolName} @ ${priceText} stop`,
+                    shortcut: '⇧ S',
+                    onClick: () => {
+                        this.openOrderPanelFromContext({ side: 'SELL', orderType: 'stop', entryPrice: priceAtCursor });
+                        this.hideContextMenu();
+                    }
+                });
+
+                this.addTradingViewContextMenuItem(menu, {
+                    icon: '🧾',
+                    label: `Add order on ${symbolName} at ${priceText}...`,
+                    shortcut: '⇧ T',
+                    onClick: () => {
+                        this.openOrderPanelFromContext({ entryPrice: priceAtCursor });
+                        this.hideContextMenu();
+                    }
+                });
+            }
+
+            this.addTradingViewContextMenuDivider(menu);
+        }
+
+        const crosshairText = this.chartSettings.crosshairLocked
+            ? 'Unlock vertical cursor line by time'
+            : 'Lock vertical cursor line by time';
+        this.addTradingViewContextMenuItem(menu, {
+            label: crosshairText,
+            onClick: () => {
+                this.chartSettings.crosshairLocked = !this.chartSettings.crosshairLocked;
+                if (this.chartSettings.crosshairLocked) {
+                    const lockIdx = Math.round(this.pixelToDataIndex(Number.isFinite(this.mouseX) ? this.mouseX : offsetX));
+                    this.lockedCrosshairDataIndex = Number.isFinite(lockIdx) ? lockIdx : null;
+                } else {
+                    this.lockedCrosshairDataIndex = null;
+                }
+                this.refreshCrosshairFromLastPointer?.();
+                this.showNotification(this.chartSettings.crosshairLocked ? 'Crosshair locked ✓' : 'Crosshair unlocked ✓');
+                this.hideContextMenu();
+            }
+        });
+
+        this.addTradingViewContextMenuDivider(menu);
+
+        this.addTradingViewContextMenuItem(menu, {
+            label: 'Table view',
+            onClick: () => {
+                this.showTableViewFromContextMenu();
+                this.hideContextMenu();
+            }
+        });
+
+        this.addTradingViewContextMenuItem(menu, {
+            label: 'Object tree',
+            onClick: () => {
+                this.showObjectTree();
+                this.hideContextMenu();
+            }
+        });
+
+        this.addTradingViewContextMenuItem(menu, {
+            label: 'Chart template',
+            hasSubmenu: true,
+            onClick: () => {
+                this.openChartTemplateFromContextMenu();
+                this.hideContextMenu();
+            }
+        });
+
+        this.addTradingViewContextMenuDivider(menu);
+
+        const marksText = this.chartSettings.showMarks ? 'Hide marks on bars' : 'Show marks on bars';
+        this.addTradingViewContextMenuItem(menu, {
+            label: marksText,
+            onClick: () => {
+                this.chartSettings.showMarks = !this.chartSettings.showMarks;
+                this.scheduleRender();
+                this.showNotification(this.chartSettings.showMarks ? 'Marks shown ✓' : 'Marks hidden ✓');
+                this.hideContextMenu();
+            }
+        });
+
+        const showTradeMarkers = this.chartSettings.showTradeMarkers !== false;
+        const tradeMarkersText = showTradeMarkers ? 'Hide trade markers' : 'Show trade markers';
+        this.addTradingViewContextMenuItem(menu, {
+            label: tradeMarkersText,
+            onClick: () => {
+                this.chartSettings.showTradeMarkers = !showTradeMarkers;
+                if (this.orderManager && typeof this.orderManager.toggleTradeMarkers === 'function') {
+                    this.orderManager.toggleTradeMarkers(this.chartSettings.showTradeMarkers);
+                }
+                this.showNotification(this.chartSettings.showTradeMarkers ? 'Trade markers shown ✓' : 'Trade markers hidden ✓');
+                this.hideContextMenu();
+            }
+        });
+    }
+
+    getContextMenuSymbolName() {
+        if (window.alertSystem && typeof window.alertSystem.getSymbolName === 'function') {
+            const symbol = window.alertSystem.getSymbolName();
+            if (symbol) return symbol;
+        }
+
+        if (this.currentFileId && typeof this.currentFileId === 'string') {
+            const parts = this.currentFileId.split('_');
+            return parts[parts.length - 1] || this.currentFileId;
+        }
+
+        return 'SYMBOL';
+    }
+
+    async writeTextToClipboard(text) {
+        if (!text) return false;
+
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+        } catch (error) {
+        }
+
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-1000px';
+            textarea.style.left = '-1000px';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return !!ok;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    async readTextFromClipboard() {
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.readText === 'function' && window.isSecureContext) {
+                return await navigator.clipboard.readText();
+            }
+        } catch (error) {
+        }
+        return '';
+    }
+
+    parseClipboardNumber(value) {
+        if (!value || typeof value !== 'string') return NaN;
+        const normalized = value.replace(/,/g, '').trim();
+        const parsed = Number.parseFloat(normalized);
+        return Number.isFinite(parsed) ? parsed : NaN;
+    }
+
+    addHorizontalLineAtPrice(price) {
+        if (!Number.isFinite(price)) return false;
+
+        const defaults = (this.toolDefaults && this.toolDefaults.horizontal) || {};
+        const newDrawing = {
+            type: 'horizontal',
+            price,
+            color: defaults.color || '#2962ff',
+            lineWidth: defaults.lineWidth || 2,
+            opacity: defaults.opacity !== undefined ? defaults.opacity : 1,
+            locked: false
+        };
+
+        this.drawings.push(newDrawing);
+        this.selectedDrawing = this.drawings.length - 1;
+
+        if (typeof this.syncDrawingToOtherPanels === 'function') {
+            this.syncDrawingToOtherPanels(newDrawing, 'add');
+        }
+
+        if (typeof this.updateToolDefaultsFromDrawing === 'function') {
+            this.updateToolDefaultsFromDrawing(newDrawing);
+        }
+
+        try {
+            localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+        } catch (error) {
+        }
+
+        this.scheduleRender();
+        return true;
+    }
+
+    openOrderPanelFromContext({ side = null, orderType = null, entryPrice = null } = {}) {
+        const manager = this.orderManager;
+        if (!manager) {
+            this.showNotification('Order manager not available in this mode');
+            return;
+        }
+
+        if (typeof manager.openOrderPanel === 'function') {
+            manager.openOrderPanel();
+        } else if (typeof manager.toggleOrderPanel === 'function') {
+            manager.toggleOrderPanel();
+        }
+
+        const applyPrefill = () => {
+            if (side === 'BUY') {
+                document.getElementById('buyTab')?.click();
+            } else if (side === 'SELL') {
+                document.getElementById('sellTab')?.click();
+            }
+
+            if (orderType) {
+                const orderTypeBtn = document.querySelector(`.order-type-btn[data-type="${orderType}"]`);
+                if (orderTypeBtn && typeof orderTypeBtn.click === 'function') {
+                    orderTypeBtn.click();
+                } else {
+                    manager.orderType = orderType;
+                }
+            }
+
+            const entryInput = document.getElementById('orderEntryPrice');
+            if (entryInput && Number.isFinite(entryPrice)) {
+                entryInput.value = entryPrice.toFixed(5);
+            }
+
+            manager.tpManuallyPositioned = false;
+            manager.slManuallyPositioned = false;
+
+            manager.syncDefaultTargetsToEntry?.();
+            manager.calculatePositionFromRisk?.();
+            manager.calculateAdvancedRiskReward?.();
+            manager.updatePlaceButtonText?.();
+            manager.updatePreviewLines?.();
+        };
+
+        requestAnimationFrame(() => requestAnimationFrame(applyPrefill));
+    }
+
+    showTableViewFromContextMenu() {
+        if (this.orderManager && typeof this.orderManager.showAllTradesTable === 'function') {
+            this.orderManager.showAllTradesTable();
+            return;
+        }
+
+        this.showNotification('Table view is available in trading mode');
+    }
+
+    openChartTemplateFromContextMenu() {
+        if (typeof this.showSettingsMenu === 'function') {
+            this.showSettingsMenu();
+            if (typeof this.showSettingsCategory === 'function') {
+                this.showSettingsCategory('candles');
+            }
+            return;
+        }
+
+        this.showNotification('Template menu unavailable');
+    }
+
+    addTradingViewContextMenuDivider(menu) {
+        menu.append('div')
+            .style('height', '1px')
+            .style('background', 'rgba(104, 113, 133, 0.38)')
+            .style('margin', '8px 0');
+    }
+
+    addTradingViewContextMenuItem(menu, options = {}) {
+        const {
+            icon = '',
+            label = '',
+            shortcut = '',
+            hasSubmenu = false,
+            onClick = null
+        } = options;
+
+        const item = menu.append('div')
+            .attr('class', 'context-menu-item tv-context-menu-item')
+            .style('padding', '10px 16px')
+            .style('cursor', 'default')
+            .style('user-select', 'none')
+            .style('transition', 'background 0.12s ease')
+            .style('color', '#d7d9df')
+            .style('font-size', '13px')
+            .style('line-height', '1.2');
+
+        const row = item.append('div')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('justify-content', 'space-between')
+            .style('gap', '14px');
+
+        const left = row.append('div')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('gap', icon ? '10px' : '0px')
+            .style('min-width', '0');
+
+        if (icon) {
+            left.append('span')
+                .style('width', '22px')
+                .style('text-align', 'center')
+                .style('opacity', '0.9')
+                .text(icon);
+        }
+
+        left.append('span')
+            .style('overflow', 'hidden')
+            .style('text-overflow', 'ellipsis')
+            .style('white-space', 'nowrap')
+            .text(label);
+
+        if (shortcut || hasSubmenu) {
+            row.append('span')
+                .style('flex-shrink', '0')
+                .style('color', 'rgba(189, 194, 207, 0.65)')
+                .style('font-size', hasSubmenu ? '19px' : '12px')
+                .style('font-weight', hasSubmenu ? '500' : '400')
+                .text(hasSubmenu ? '›' : shortcut);
+        }
+
+        item.on('mouseenter', function() {
+            d3.select(this).style('background', 'rgba(92, 99, 116, 0.24)');
+        });
+
+        item.on('mouseleave', function() {
+            d3.select(this).style('background', 'transparent');
+        });
+
+        item.on('click', async () => {
+            if (typeof onClick === 'function') {
+                await onClick();
+            }
+        });
     }
     
     showObjectTree() {

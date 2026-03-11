@@ -231,7 +231,7 @@ class ScreenshotManager {
             return this._brandLogoLoadPromise;
         }
 
-        const candidates = ['modules/logo-05.png', 'modules/logo-04.png'];
+        const candidates = ['modules/logo-05.png', 'modules/logo-14.png', 'modules/logo-04.png', 'modules/logo-09.png'];
 
         this._brandLogoLoadPromise = new Promise((resolve) => {
             const tryLoad = (index) => {
@@ -244,6 +244,7 @@ class ScreenshotManager {
                 const image = new Image();
                 image.decoding = 'async';
                 image.onload = () => {
+                    image.__talariaSource = candidates[index];
                     this._brandLogoImage = image;
                     this._brandLogoBounds = null;
                     this._brandLogoLoadPromise = null;
@@ -300,6 +301,8 @@ class ScreenshotManager {
         let minY = scratch.height;
         let maxX = -1;
         let maxY = -1;
+        let visiblePixelCount = 0;
+        let lumaSum = 0;
 
         for (let y = 0; y < scratch.height; y += 1) {
             for (let x = 0; x < scratch.width; x += 1) {
@@ -316,9 +319,13 @@ class ScreenshotManager {
                     if (y < minY) minY = y;
                     if (x > maxX) maxX = x;
                     if (y > maxY) maxY = y;
+                    visiblePixelCount += 1;
+                    lumaSum += (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
                 }
             }
         }
+
+        const averageLuma = visiblePixelCount > 0 ? (lumaSum / visiblePixelCount) : 0;
 
         const bounds = maxX >= minX && maxY >= minY
             ? {
@@ -326,6 +333,7 @@ class ScreenshotManager {
                 y: minY,
                 width: maxX - minX + 1,
                 height: maxY - minY + 1,
+                averageLuma,
                 sourceWidth: image.naturalWidth,
                 sourceHeight: image.naturalHeight
             }
@@ -334,6 +342,7 @@ class ScreenshotManager {
                 y: 0,
                 width: image.naturalWidth,
                 height: image.naturalHeight,
+                averageLuma,
                 sourceWidth: image.naturalWidth,
                 sourceHeight: image.naturalHeight
             };
@@ -363,6 +372,9 @@ class ScreenshotManager {
 
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
         const useDarkShadow = this.isLightColor(backgroundColor);
+        const canvasIsDark = !useDarkShadow;
+        const logoAppearsDark = typeof bounds.averageLuma === 'number' && bounds.averageLuma < 118;
+        const logoAppearsLight = typeof bounds.averageLuma === 'number' && bounds.averageLuma > 190;
 
         const marginX = Math.max(14, Math.round(canvas.width * 0.012));
         const marginY = Math.max(14, Math.round(canvas.height * 0.018));
@@ -379,7 +391,10 @@ class ScreenshotManager {
         const y = canvas.height - drawHeight - marginY;
 
         ctx.save();
-        ctx.globalAlpha = 0.96;
+        ctx.globalAlpha = 0.98;
+        if ((canvasIsDark && logoAppearsDark) || (!canvasIsDark && logoAppearsLight)) {
+            ctx.filter = 'brightness(0) invert(1)';
+        }
         ctx.shadowColor = useDarkShadow ? 'rgba(0, 0, 0, 0.42)' : 'rgba(3, 8, 17, 0.36)';
         ctx.shadowBlur = Math.max(4, Math.round(drawHeight * 0.16));
         ctx.shadowOffsetY = Math.max(1, Math.round(drawHeight * 0.06));
@@ -397,7 +412,14 @@ class ScreenshotManager {
         ctx.restore();
 
         canvas.__talariaLogoStamped = true;
-        console.log('📸 Logo stamped:', { x, y, drawWidth, drawHeight });
+        console.log('📸 Logo stamped:', {
+            source: logoImage.__talariaSource || 'unknown',
+            averageLuma: bounds.averageLuma,
+            x,
+            y,
+            drawWidth,
+            drawHeight
+        });
         return true;
     }
 
