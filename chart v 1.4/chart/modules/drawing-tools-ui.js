@@ -4275,7 +4275,7 @@ body.light-mode .template-save-dialog .dialog-title {
         section.className = 'tv-levels-section';
         section.style.cssText = (drawing.type === 'fib-channel' || drawing.type === 'fib-timezone' || drawing.type === 'fib-speed-fan')
             ? 'margin-top: 16px; padding-top: 0; border-top: none;'
-            : 'margin-top: 16px; padding-top: 12px; border-top: 1px solid #363a45;';
+            : 'margin-top: 16px; padding-top: 12px; border-top: none;';
 
         const header = document.createElement('div');
         header.style.cssText = 'color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;';
@@ -4588,7 +4588,7 @@ body.light-mode .template-save-dialog .dialog-title {
             }
 
             const controlsWrap = document.createElement('div');
-            controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #363a45;';
+            controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px;';
 
             const fibControlsColumnWidth = 180;
             const levelsModeSelectWidth = 96;
@@ -4702,7 +4702,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Options row (only for tools that support extend/zones)
         if (showCoreStyleControls && (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension' || drawing.type === 'fib-channel')) {
             const optionsRow = document.createElement('div');
-            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
+            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px;';
 
             const extendWrap = document.createElement('div');
             extendWrap.className = 'tv-checkbox-wrapper';
@@ -4766,7 +4766,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Fib Wedge zones (TradingView-like)
         if (drawing.type === 'fib-wedge') {
             const optionsRow = document.createElement('div');
-            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
+            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px;';
 
             const zonesLabel = document.createElement('label');
             zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
@@ -4801,7 +4801,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Fib Speed Resistance Arcs zones (TradingView-like)
         if (drawing.type === 'fib-arcs') {
             const optionsRow = document.createElement('div');
-            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
+            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px;';
 
             const zonesLabel = document.createElement('label');
             zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
@@ -4836,7 +4836,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Trend-Based Fib Time zones (TradingView-like)
         if (drawing.type === 'trend-fib-time') {
             const optionsRow = document.createElement('div');
-            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
+            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px;';
 
             const zonesLabel = document.createElement('label');
             zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
@@ -4871,7 +4871,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Reverse option (TradingView-like) for Fib Speed Resistance Fan
         if (drawing.type === 'fib-speed-fan') {
             const optionsRow = document.createElement('div');
-            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
+            optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px;';
 
             const bgLabel = document.createElement('label');
             bgLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
@@ -7449,7 +7449,7 @@ body.light-mode .template-save-dialog .dialog-title {
         section.appendChild(header);
 
         const controlsWrap = document.createElement('div');
-        controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #363a45;';
+        controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px;';
 
         const fibControlsColumnWidth = 180;
         const levelsModeSelectWidth = 96;
@@ -7560,7 +7560,7 @@ body.light-mode .template-save-dialog .dialog-title {
         section.appendChild(controlsWrap);
 
         const optionsRow = document.createElement('div');
-        optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
+        optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px;';
 
         const extendWrap = document.createElement('div');
         extendWrap.className = 'tv-checkbox-wrapper';
