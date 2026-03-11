@@ -6261,9 +6261,9 @@ class Chart {
         // Max offset: First candle can go up to right edge minus margin
         const maxOffset = cw - rightMargin;
         
-        // Min offset: stop left-pan when last candle reaches configured right margin
+        // Min offset: stop left-pan when last candle reaches left chart edge
         const lastCandleX = (this.data.length - 1) * candleSpacing;
-        const minOffset = cw - rightMargin - lastCandleX;
+        const minOffset = -lastCandleX;
         
         // Proactive pan-loading: trigger when viewport is NEAR the edge (like TradingView)
         const isReplayActive = this.replaySystem && this.replaySystem.isActive;
@@ -6354,7 +6354,7 @@ class Chart {
         const rightMargin = (this.timeScale?.rightOffsetCandles || 5) * candleSpacing;
         const maxOffset = cw - rightMargin;
         const lastCandleX = (this.data.length - 1) * candleSpacing;
-        const minOffset = cw - rightMargin - lastCandleX;
+        const minOffset = -lastCandleX;
         
         // Snap back if out of bounds
         if (this.offsetX > maxOffset) {
@@ -11357,7 +11357,7 @@ class Chart {
             const rightMargin = getRightOffset();
             const maxOffset = cw - rightMargin;
             const lastCandleX = Math.max(0, ((this.data?.length || 1) - 1)) * candleSpacing;
-            const minOffset = cw - rightMargin - lastCandleX;
+            const minOffset = -lastCandleX;
             
             let resistedDx = dx;
             
