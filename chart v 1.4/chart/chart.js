@@ -14430,8 +14430,8 @@ class Chart {
         const symbolName = this.getContextMenuSymbolName();
         
         // Position menu using client coordinates (for fixed positioning)
-        const menuWidth = 430;
-        const menuHeight = 640;
+        const menuWidth = 330;
+        const menuHeight = 520;
         const viewport = {
             width: window.innerWidth,
             height: window.innerHeight
@@ -14455,8 +14455,10 @@ class Chart {
             .style('opacity', '1')
             .style('transform', 'none')
             .style('transition', 'none')
-            .style('min-width', '390px')
-            .style('padding', '10px 0')
+            .style('min-width', '240px')
+            .style('width', 'fit-content')
+            .style('max-width', '330px')
+            .style('padding', '6px 0')
             .style('background', 'rgba(25, 27, 33, 0.97)')
             .style('border', '1px solid rgba(104, 113, 133, 0.35)')
             .style('border-radius', '14px')
@@ -14801,7 +14803,7 @@ class Chart {
         menu.append('div')
             .style('height', '1px')
             .style('background', 'rgba(104, 113, 133, 0.38)')
-            .style('margin', '8px 0');
+            .style('margin', '6px 0');
     }
 
     addTradingViewContextMenuItem(menu, options = {}) {
@@ -14815,29 +14817,29 @@ class Chart {
 
         const item = menu.append('div')
             .attr('class', 'context-menu-item tv-context-menu-item')
-            .style('padding', '10px 16px')
+            .style('padding', '8px 12px')
             .style('cursor', 'default')
             .style('user-select', 'none')
             .style('transition', 'background 0.12s ease')
             .style('color', '#d7d9df')
-            .style('font-size', '13px')
+            .style('font-size', '12px')
             .style('line-height', '1.2');
 
         const row = item.append('div')
             .style('display', 'flex')
             .style('align-items', 'center')
             .style('justify-content', 'space-between')
-            .style('gap', '14px');
+            .style('gap', '10px');
 
         const left = row.append('div')
             .style('display', 'flex')
             .style('align-items', 'center')
-            .style('gap', icon ? '10px' : '0px')
+            .style('gap', icon ? '8px' : '0px')
             .style('min-width', '0');
 
         if (icon) {
             left.append('span')
-                .style('width', '22px')
+                .style('width', '18px')
                 .style('text-align', 'center')
                 .style('opacity', '0.9')
                 .text(icon);
@@ -14853,7 +14855,7 @@ class Chart {
             row.append('span')
                 .style('flex-shrink', '0')
                 .style('color', 'rgba(189, 194, 207, 0.65)')
-                .style('font-size', hasSubmenu ? '19px' : '12px')
+                .style('font-size', hasSubmenu ? '16px' : '11px')
                 .style('font-weight', hasSubmenu ? '500' : '400')
                 .text(hasSubmenu ? '›' : shortcut);
         }
