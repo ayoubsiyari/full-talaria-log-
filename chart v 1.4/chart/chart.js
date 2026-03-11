@@ -14565,48 +14565,11 @@ class Chart {
             this.addTradingViewContextMenuDivider(menu);
         }
 
-        const crosshairText = this.chartSettings.crosshairLocked
-            ? 'Unlock vertical cursor line by time'
-            : 'Lock vertical cursor line by time';
         this.addTradingViewContextMenuItem(menu, {
-            label: crosshairText,
+            icon: '⚙',
+            label: 'Settings',
             onClick: () => {
-                this.chartSettings.crosshairLocked = !this.chartSettings.crosshairLocked;
-                if (this.chartSettings.crosshairLocked) {
-                    const lockIdx = Math.round(this.pixelToDataIndex(Number.isFinite(this.mouseX) ? this.mouseX : offsetX));
-                    this.lockedCrosshairDataIndex = Number.isFinite(lockIdx) ? lockIdx : null;
-                } else {
-                    this.lockedCrosshairDataIndex = null;
-                }
-                this.refreshCrosshairFromLastPointer?.();
-                this.showNotification(this.chartSettings.crosshairLocked ? 'Crosshair locked ✓' : 'Crosshair unlocked ✓');
-                this.hideContextMenu();
-            }
-        });
-
-        this.addTradingViewContextMenuDivider(menu);
-
-        this.addTradingViewContextMenuItem(menu, {
-            label: 'Table view',
-            onClick: () => {
-                this.showTableViewFromContextMenu();
-                this.hideContextMenu();
-            }
-        });
-
-        this.addTradingViewContextMenuItem(menu, {
-            label: 'Object tree',
-            onClick: () => {
-                this.showObjectTree();
-                this.hideContextMenu();
-            }
-        });
-
-        this.addTradingViewContextMenuItem(menu, {
-            label: 'Chart template',
-            hasSubmenu: true,
-            onClick: () => {
-                this.openChartTemplateFromContextMenu();
+                this.openSettingsFromContextMenu();
                 this.hideContextMenu();
             }
         });
@@ -14787,6 +14750,27 @@ class Chart {
         }
 
         this.showNotification('Table view is available in trading mode');
+    }
+
+    openSettingsFromContextMenu() {
+        if (typeof window !== 'undefined') {
+            if (typeof window._openMode === 'function') {
+                window._openMode();
+                return;
+            }
+
+            if (typeof window._spOpen === 'function') {
+                window._spOpen('symbol');
+                return;
+            }
+        }
+
+        if (typeof this.showSettingsMenu === 'function') {
+            this.showSettingsMenu();
+            return;
+        }
+
+        this.showNotification('Settings unavailable');
     }
 
     openChartTemplateFromContextMenu() {
