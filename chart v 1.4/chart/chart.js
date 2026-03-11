@@ -11040,11 +11040,14 @@ class Chart {
      * Snap a price to the nearest OHLC value of a candle
      * @param {number} dataIdx - Data index
      * @param {number} price - Price to snap
+     * @param {object} options - Optional flags
+     * @param {boolean} options.force - Force snap even when magnet mode is off
      * @returns {number} Snapped price
      */
-    snapToOHLC(dataIdx, price) {
-        const mode = this.magnetMode;
-        const isActive = (mode === true) || (typeof mode === 'string' && mode !== 'off');
+    snapToOHLC(dataIdx, price, options = {}) {
+        const force = !!(options && options.force);
+        const mode = force ? 'strong' : this.magnetMode;
+        const isActive = force || (mode === true) || (typeof mode === 'string' && mode !== 'off');
         if (!isActive || dataIdx < 0 || dataIdx >= this.data.length) {
             return price;
         }
@@ -13634,14 +13637,34 @@ class Chart {
         const hLine = container.querySelector('.crosshair-horizontal');
         const priceLabel = container.querySelector('.price-label');
         const timeLabel = container.querySelector('.time-label');
+        const _dm = this.drawingManager;
         
         // Snap crosshair to candle center (like TradingView)
         const dataIdx = Math.round(this.pixelToDataIndex(x));
         const snappedX = this.dataIndexToPixel(dataIdx); // Already returns candle center
+        const hasSnappedCandle = dataIdx >= 0 && dataIdx < this.data.length;
+        const snappedCandle = hasSnappedCandle ? this.data[dataIdx] : null;
+
+        let crosshairY = y;
+        let crosshairPrice = this.yScale ? this.yScale.invert(y) : null;
+        const shouldCtrlSnapCrosshair = !!(
+            _dm
+            && _dm.currentTool
+            && (e.ctrlKey || e.metaKey)
+            && this.yScale
+            && hasSnappedCandle
+            && Number.isFinite(crosshairPrice)
+        );
+        if (shouldCtrlSnapCrosshair) {
+            const snappedPrice = this.snapToOHLC(dataIdx, crosshairPrice, { force: true });
+            if (Number.isFinite(snappedPrice)) {
+                crosshairPrice = snappedPrice;
+                crosshairY = this.yScale(snappedPrice);
+            }
+        }
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
         // DON'T show lines for 'dot' or 'arrow' cursor types
-        const _dm = this.drawingManager;
         const _drawingActive = !!(_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDrawing || _dm.isDragging));
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
@@ -13665,7 +13688,7 @@ class Chart {
             vLine.style.background = vBg;
         }
         if (hLine) {
-            hLine.style.top = y + 'px';
+            hLine.style.top = crosshairY + 'px';
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
@@ -13697,7 +13720,7 @@ class Chart {
         }
         
         if (priceLabel && this.yScale) {
-            const price = this.yScale.invert(y);
+            const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
             // Format price with appropriate decimals
             let decimals = 2;
             if (price < 0.01) decimals = 6;
@@ -13712,7 +13735,7 @@ class Chart {
             const _axisW = _axisLeft ? m.l : m.r;
             priceLabel.style.left = (_axisLeft ? 2 : (this.w - m.r)) + 'px';
             priceLabel.style.right = 'auto';
-            priceLabel.style.top = y + 'px';
+            priceLabel.style.top = crosshairY + 'px';
             priceLabel.style.transform = 'translateY(-50%)';
             priceLabel.style.width = (_axisW - 4) + 'px';
             priceLabel.style.textAlign = 'center';
@@ -13722,9 +13745,7 @@ class Chart {
             if (this.chartSettings.cursorLabelTextColor) priceLabel.style.color = this.chartSettings.cursorLabelTextColor;
         }
         
-        const snappedDataIdx = Math.round(this.pixelToDataIndex(x));
-        const hasSnappedCandle = snappedDataIdx >= 0 && snappedDataIdx < this.data.length;
-        const snappedCandle = hasSnappedCandle ? this.data[snappedDataIdx] : null;
+        const snappedDataIdx = dataIdx;
 
         if (timeLabel && this.xScale && this.data.length > 0) {
             
@@ -13788,7 +13809,7 @@ class Chart {
                 // Store and broadcast timestamp for panel sync
                 this.currentCrosshairTimestamp = candle.t;
                 if (this.syncCrosshair && this.yScale) {
-                    const price = this.yScale.invert(y);
+                    const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
                     this.broadcastCrosshairSync(candle.t, price);
                 }
                 
