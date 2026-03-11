@@ -211,18 +211,19 @@ class ScreenshotManager {
         this._captureLoaderElement = null;
     }
 
-    loadImageAsset(relativePath) {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = () => resolve(null);
-
-            try {
-                img.src = new URL(relativePath, window.location.href).href;
-            } catch (error) {
-                img.src = relativePath;
-            }
-        });
+    drawRoundedRect(ctx, x, y, width, height, radius) {
+        const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + width - r, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+        ctx.lineTo(x + width, y + height - r);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+        ctx.lineTo(x + r, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
     }
 
     async addBrandLogo(canvas, sourceElement = null) {
@@ -232,26 +233,59 @@ class ScreenshotManager {
 
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
         const useDarkBrand = this.isLightColor(backgroundColor);
-        const logoSrc = useDarkBrand ? 'modules/logo-06.png' : 'modules/logo-05.png';
 
-        const logoImage = await this.loadImageAsset(logoSrc);
-        if (!logoImage || !logoImage.naturalWidth || !logoImage.naturalHeight) return;
+        const paddingX = Math.max(10, Math.round(canvas.width * 0.008));
+        const paddingY = Math.max(18, Math.round(canvas.height * 0.018));
+        const badgeHeight = Math.max(34, Math.round(canvas.height * 0.055));
+        const badgeWidth = Math.max(190, Math.round(badgeHeight * 4.7));
+        const x = paddingX;
+        const y = canvas.height - badgeHeight - paddingY;
 
-        const maxLogoWidth = Math.max(180, Math.round(canvas.width * 0.34));
-        let targetHeight = Math.max(32, Math.round(canvas.height * 0.08));
-        let targetWidth = Math.round((logoImage.naturalWidth / logoImage.naturalHeight) * targetHeight);
-
-        if (targetWidth > maxLogoWidth) {
-            targetWidth = maxLogoWidth;
-            targetHeight = Math.round((logoImage.naturalHeight / logoImage.naturalWidth) * targetWidth);
-        }
-
-        const x = Math.max(10, Math.round(canvas.width * 0.008));
-        const y = canvas.height - targetHeight - Math.max(18, Math.round(canvas.height * 0.018));
+        const panelFill = useDarkBrand ? 'rgba(245, 249, 255, 0.92)' : 'rgba(7, 14, 28, 0.82)';
+        const panelStroke = useDarkBrand ? 'rgba(28, 72, 164, 0.25)' : 'rgba(122, 168, 255, 0.34)';
+        const textColor = useDarkBrand ? '#173a7c' : '#e9f2ff';
 
         ctx.save();
-        ctx.globalAlpha = 0.92;
-        ctx.drawImage(logoImage, x, y, targetWidth, targetHeight);
+
+        this.drawRoundedRect(ctx, x, y, badgeWidth, badgeHeight, Math.round(badgeHeight * 0.28));
+        ctx.fillStyle = panelFill;
+        ctx.fill();
+        ctx.strokeStyle = panelStroke;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        const iconSize = Math.round(badgeHeight * 0.62);
+        const iconX = x + Math.round(badgeHeight * 0.18);
+        const iconY = y + Math.round((badgeHeight - iconSize) / 2);
+        const iconGradient = ctx.createLinearGradient(iconX, iconY, iconX + iconSize, iconY + iconSize);
+        iconGradient.addColorStop(0, '#4ea3ff');
+        iconGradient.addColorStop(1, '#2d5bff');
+
+        this.drawRoundedRect(ctx, iconX, iconY, iconSize, iconSize, Math.max(4, Math.round(iconSize * 0.24)));
+        ctx.fillStyle = iconGradient;
+        ctx.fill();
+
+        const tTopY = iconY + Math.round(iconSize * 0.28);
+        const tBottomY = iconY + Math.round(iconSize * 0.74);
+        const tLeftX = iconX + Math.round(iconSize * 0.26);
+        const tRightX = iconX + Math.round(iconSize * 0.74);
+        const tMidX = iconX + Math.round(iconSize * 0.5);
+
+        ctx.beginPath();
+        ctx.moveTo(tLeftX, tTopY);
+        ctx.lineTo(tRightX, tTopY);
+        ctx.moveTo(tMidX, tTopY);
+        ctx.lineTo(tMidX, tBottomY);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.lineWidth = Math.max(2, Math.round(iconSize * 0.12));
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        ctx.font = `600 ${Math.max(14, Math.round(badgeHeight * 0.42))}px "Segoe UI", Arial, sans-serif`;
+        ctx.fillStyle = textColor;
+        ctx.textBaseline = 'middle';
+        ctx.fillText('TALARIA', iconX + iconSize + Math.round(badgeHeight * 0.24), y + Math.round(badgeHeight * 0.54));
+
         ctx.restore();
     }
 
