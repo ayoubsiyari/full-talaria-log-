@@ -304,8 +304,14 @@ class ScreenshotManager {
         for (let y = 0; y < scratch.height; y += 1) {
             for (let x = 0; x < scratch.width; x += 1) {
                 const i = (y * scratch.width + x) * 4;
+                const red = pixels[i];
+                const green = pixels[i + 1];
+                const blue = pixels[i + 2];
                 const alpha = pixels[i + 3];
-                if (alpha > 8) {
+
+                // Works for both transparent logos and opaque logos on near-black backgrounds
+                const hasVisibleContent = alpha > 0 && ((red + green + blue) > 20 || alpha < 250);
+                if (hasVisibleContent) {
                     if (x < minX) minX = x;
                     if (y < minY) minY = y;
                     if (x > maxX) maxX = x;
@@ -344,20 +350,26 @@ class ScreenshotManager {
         if (!ctx) return false;
 
         const logoImage = await this.getBrandLogoImage();
-        if (!logoImage) return false;
+        if (!logoImage) {
+            console.warn('📸 Logo stamp skipped: logo image could not be loaded');
+            return false;
+        }
 
         const bounds = this.getVisibleLogoBounds(logoImage);
-        if (!bounds || !bounds.width || !bounds.height) return false;
+        if (!bounds || !bounds.width || !bounds.height) {
+            console.warn('📸 Logo stamp skipped: no visible logo bounds detected');
+            return false;
+        }
 
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
         const useDarkShadow = this.isLightColor(backgroundColor);
 
-        const marginX = Math.max(12, Math.round(canvas.width * 0.012));
+        const marginX = Math.max(14, Math.round(canvas.width * 0.012));
         const marginY = Math.max(14, Math.round(canvas.height * 0.018));
-        let drawHeight = Math.max(34, Math.round(canvas.height * 0.07));
+        let drawHeight = Math.max(48, Math.round(canvas.height * 0.095));
         let drawWidth = Math.round((bounds.width / bounds.height) * drawHeight);
 
-        const maxWidth = Math.max(220, Math.round(canvas.width * 0.32));
+        const maxWidth = Math.max(300, Math.round(canvas.width * 0.42));
         if (drawWidth > maxWidth) {
             drawWidth = maxWidth;
             drawHeight = Math.round((bounds.height / bounds.width) * drawWidth);
@@ -385,6 +397,7 @@ class ScreenshotManager {
         ctx.restore();
 
         canvas.__talariaLogoStamped = true;
+        console.log('📸 Logo stamped:', { x, y, drawWidth, drawHeight });
         return true;
     }
 
