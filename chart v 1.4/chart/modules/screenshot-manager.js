@@ -226,7 +226,7 @@ class ScreenshotManager {
         ctx.closePath();
     }
 
-    async addBrandLogo(canvas, sourceElement = null) {
+    addBrandLogo(canvas, sourceElement = null) {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -234,16 +234,16 @@ class ScreenshotManager {
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
         const useDarkBrand = this.isLightColor(backgroundColor);
 
-        const paddingX = Math.max(10, Math.round(canvas.width * 0.008));
-        const paddingY = Math.max(18, Math.round(canvas.height * 0.018));
-        const badgeHeight = Math.max(34, Math.round(canvas.height * 0.055));
-        const badgeWidth = Math.max(190, Math.round(badgeHeight * 4.7));
+        const paddingX = Math.max(12, Math.round(canvas.width * 0.012));
+        const paddingY = Math.max(12, Math.round(canvas.height * 0.012));
+        const badgeHeight = Math.max(38, Math.round(canvas.height * 0.07));
+        const badgeWidth = Math.max(220, Math.round(badgeHeight * 4.9));
         const x = paddingX;
-        const y = canvas.height - badgeHeight - paddingY;
+        const y = paddingY;
 
-        const panelFill = useDarkBrand ? 'rgba(245, 249, 255, 0.92)' : 'rgba(7, 14, 28, 0.82)';
-        const panelStroke = useDarkBrand ? 'rgba(28, 72, 164, 0.25)' : 'rgba(122, 168, 255, 0.34)';
-        const textColor = useDarkBrand ? '#173a7c' : '#e9f2ff';
+        const panelFill = useDarkBrand ? 'rgba(255, 255, 255, 0.95)' : 'rgba(6, 13, 25, 0.92)';
+        const panelStroke = useDarkBrand ? 'rgba(38, 84, 170, 0.5)' : 'rgba(122, 168, 255, 0.55)';
+        const textColor = useDarkBrand ? '#173a7c' : '#f4f8ff';
 
         ctx.save();
 
@@ -265,8 +265,8 @@ class ScreenshotManager {
         ctx.fillStyle = iconGradient;
         ctx.fill();
 
-        const tTopY = iconY + Math.round(iconSize * 0.28);
-        const tBottomY = iconY + Math.round(iconSize * 0.74);
+        const tTopY = iconY + Math.round(iconSize * 0.26);
+        const tBottomY = iconY + Math.round(iconSize * 0.76);
         const tLeftX = iconX + Math.round(iconSize * 0.26);
         const tRightX = iconX + Math.round(iconSize * 0.74);
         const tMidX = iconX + Math.round(iconSize * 0.5);
@@ -281,7 +281,7 @@ class ScreenshotManager {
         ctx.lineCap = 'round';
         ctx.stroke();
 
-        ctx.font = `600 ${Math.max(14, Math.round(badgeHeight * 0.42))}px "Segoe UI", Arial, sans-serif`;
+        ctx.font = `700 ${Math.max(15, Math.round(badgeHeight * 0.42))}px "Segoe UI", Arial, sans-serif`;
         ctx.fillStyle = textColor;
         ctx.textBaseline = 'middle';
         ctx.fillText('TALARIA', iconX + iconSize + Math.round(badgeHeight * 0.24), y + Math.round(badgeHeight * 0.54));
@@ -294,6 +294,9 @@ class ScreenshotManager {
      */
     showScreenshotPreview(canvas) {
         if (!canvas) return;
+
+        // Final guarantee for preview path: stamp logo right before display/export actions
+        this.addBrandLogo(canvas);
 
         const existingPreview = document.getElementById('chartScreenshotPreviewModal');
         if (existingPreview) existingPreview.remove();
@@ -536,7 +539,7 @@ class ScreenshotManager {
             
             // Add watermark
             this.addWatermark(canvas);
-            await this.addBrandLogo(canvas, targetElement);
+            this.addBrandLogo(canvas, targetElement);
 
             if (action === 'preview') {
                 this.showScreenshotPreview(canvas);
@@ -924,8 +927,8 @@ class ScreenshotManager {
             // Add watermark if enabled
             if (includeWatermark) {
                 this.addWatermark(canvas);
-                await this.addBrandLogo(canvas, targetElement);
             }
+            this.addBrandLogo(canvas, targetElement);
             
             // Convert to desired format
             const imageType = format === 'jpg' ? 'image/jpeg' : 'image/png';
@@ -1066,7 +1069,7 @@ class ScreenshotManager {
             
             // Add subtle watermark
             this.addWatermark(canvas);
-            await this.addBrandLogo(canvas, chartContainer);
+            this.addBrandLogo(canvas, chartContainer);
             
             // Convert to base64 with compression
             let dataUrl = null;
