@@ -16104,17 +16104,58 @@
             border-radius: 4px !important;
         }
         
-        /* ALL toolbar icons - FINAL 18x18 override */
+        :root {
+            --talaria-ui-icon-size: 18px;
+        }
+
+        /* Unified UI SVG size across website + script modules */
         .toolbar .toolbar-icon-btn svg,
         .toolbar .toolbar-icon-btn-dark svg,
         .toolbar .toolbar-icon-btn-light svg,
         .toolbar .tool-group-btn svg,
         .toolbar .toolbar-tool-btn svg,
         .toolbar .symbol-plus-btn svg,
+        .toolbar svg,
         .left-sidebar .tool-btn svg,
-        .left-sidebar .tool-group-btn svg {
-            width: 18px !important;
-            height: 18px !important;
+        .left-sidebar .tool-group-btn svg,
+        .left-sidebar svg,
+        .right-sidebar-icons svg,
+        .right-sidebar-icon-btn svg,
+        .sp-sidebar svg,
+        .sp-nav-item svg,
+        .sp-content-header svg,
+        .side-panel-item svg,
+        .settings-menu-item svg,
+        .settings-back-btn svg,
+        .sidebar-timeframe-arrow svg,
+        .replay-toolbar svg,
+        .challenge-toolbar-btn svg,
+        button[class*="btn"] svg,
+        button[class*="-btn"] svg,
+        button[id$="Btn"] svg,
+        .chart-context-menu svg,
+        .tv-context-menu svg,
+        .tool-dropdown svg,
+        .screenshot-dropdown-menu svg,
+        .help-dropdown-menu svg,
+        .profile-dropdown-menu svg,
+        .toolbar-color-icon-wrapper svg,
+        .object-tree-action-btn svg,
+        .object-tree-jump-btn svg,
+        .template-item-delete svg,
+        .template-delete-btn svg,
+        .tv-template-delete svg,
+        #indicatorSettingsPanel svg,
+        #indicatorMenu svg,
+        #ohlcIndicators svg,
+        .pane-visibility-btn svg,
+        .pane-settings-btn svg,
+        .pane-delete-btn svg,
+        .overlay-visibility-btn svg,
+        .overlay-settings-btn svg,
+        .overlay-delete-btn svg {
+            width: var(--talaria-ui-icon-size) !important;
+            height: var(--talaria-ui-icon-size) !important;
         }
         
         /* FINAL gap override - 6px everywhere */
