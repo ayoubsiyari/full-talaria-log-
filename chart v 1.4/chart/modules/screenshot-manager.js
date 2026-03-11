@@ -126,6 +126,91 @@ class ScreenshotManager {
         if (lightStack) lightStack.style.display = useDarkBrand ? 'block' : 'none';
     }
 
+    ensureCaptureLoaderStyles() {
+        if (document.getElementById('chartScreenshotLoaderStyles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'chartScreenshotLoaderStyles';
+        style.textContent = `
+            @keyframes chartScreenshotSpin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+
+            @keyframes chartScreenshotPulse {
+                0%, 100% { opacity: 0.68; }
+                50% { opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    showCaptureLoader(message = 'Capturing screenshot...') {
+        this.ensureCaptureLoaderStyles();
+        this.hideCaptureLoader();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'chartScreenshotCaptureLoader';
+        overlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 100003;
+            background: rgba(2, 6, 16, 0.42);
+            backdrop-filter: blur(2px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: all;
+        `;
+
+        const card = document.createElement('div');
+        card.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            background: rgba(10, 18, 34, 0.92);
+            border: 1px solid #2a3b57;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
+        `;
+
+        const spinner = document.createElement('div');
+        spinner.style.cssText = `
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid rgba(141, 187, 255, 0.28);
+            border-top-color: #53a4ff;
+            animation: chartScreenshotSpin 0.85s linear infinite;
+        `;
+
+        const label = document.createElement('div');
+        label.textContent = message;
+        label.style.cssText = `
+            color: #e5f0ff;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            animation: chartScreenshotPulse 1.15s ease-in-out infinite;
+        `;
+
+        card.appendChild(spinner);
+        card.appendChild(label);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+
+        this._captureLoaderElement = overlay;
+    }
+
+    hideCaptureLoader() {
+        const loader = this._captureLoaderElement || document.getElementById('chartScreenshotCaptureLoader');
+        if (loader && loader.parentNode) {
+            loader.parentNode.removeChild(loader);
+        }
+        this._captureLoaderElement = null;
+    }
+
     /**
      * Show screenshot preview modal with quick actions
      */
@@ -338,6 +423,11 @@ class ScreenshotManager {
      * Take a quick screenshot with default settings
      */
     async takeQuickScreenshot(action = 'download') {
+        const loadingMessage = action === 'preview'
+            ? 'Preparing screenshot preview...'
+            : 'Capturing screenshot...';
+        this.showCaptureLoader(loadingMessage);
+
         try {
             console.log('📸 Quick screenshot:', action);
             
@@ -388,6 +478,8 @@ class ScreenshotManager {
         } catch (error) {
             console.error('Screenshot error:', error);
             this.showNotification('Failed to capture screenshot', 'error');
+        } finally {
+            this.hideCaptureLoader();
         }
     }
     
@@ -656,6 +748,8 @@ class ScreenshotManager {
      * Take screenshot
      */
     async takeScreenshot(action = 'download') {
+        this.showCaptureLoader('Capturing screenshot...');
+
         try {
             // Get options
             const includeToolbar = document.getElementById('includeToolbar')?.checked ?? true;
@@ -666,8 +760,6 @@ class ScreenshotManager {
             const quality = parseFloat(document.getElementById('imageQuality')?.value ?? 0.9);
             
             console.log('📸 Taking screenshot...', { action, format, includeToolbar, includeSidebar });
-            
-            this.showNotification('Capturing screenshot...', 'info');
             
             // Close the modal first
             document.getElementById('screenshotModal')?.remove();
@@ -811,6 +903,8 @@ class ScreenshotManager {
         } catch (error) {
             console.error('❌ Screenshot error:', error);
             this.showNotification('Screenshot failed: ' + error.message, 'error');
+        } finally {
+            this.hideCaptureLoader();
         }
     }
     
