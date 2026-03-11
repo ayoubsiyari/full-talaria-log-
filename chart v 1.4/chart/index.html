@@ -11008,10 +11008,11 @@
         }
 
         .tool-dropdown-grid .tool-btn > svg:first-child {
-            width: 24px !important;
-            height: 24px !important;
-            min-width: 24px !important;
-            min-height: 24px !important;
+            width: var(--talaria-ui-icon-size, 18px) !important;
+            height: var(--talaria-ui-icon-size, 18px) !important;
+            min-width: var(--talaria-ui-icon-size, 18px) !important;
+            min-height: var(--talaria-ui-icon-size, 18px) !important;
+            stroke-width: var(--talaria-ui-icon-stroke, 1.5) !important;
             flex-shrink: 0 !important;
             order: 1;
             opacity: 0.85;
@@ -16106,6 +16107,7 @@
         
         :root {
             --talaria-ui-icon-size: 18px;
+            --talaria-ui-icon-stroke: 1.5;
         }
 
         /* Unified UI SVG size across website + script modules */
