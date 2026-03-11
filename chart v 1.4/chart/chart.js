@@ -6678,8 +6678,12 @@ class Chart {
         
         document.addEventListener('keydown', (e) => {
             // Track CTRL key for tooltip showing
-            if (e.key === 'Control') {
-                this.ctrlPressed = true;
+            if (e.key === 'Control' || e.key === 'Meta') {
+                this.ctrlPressed = e.ctrlKey || e.metaKey;
+                this.refreshCrosshairFromLastPointer({
+                    ctrlKey: e.ctrlKey,
+                    metaKey: e.metaKey
+                });
             }
             
             // Escape - deselect tool
@@ -6783,9 +6787,15 @@ class Chart {
         
         // Track CTRL key release - hide tooltip when CTRL is released
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'Control') {
-                this.ctrlPressed = false;
-                this.hideTooltip();
+            if (e.key === 'Control' || e.key === 'Meta') {
+                this.ctrlPressed = e.ctrlKey || e.metaKey;
+                this.refreshCrosshairFromLastPointer({
+                    ctrlKey: e.ctrlKey,
+                    metaKey: e.metaKey
+                });
+                if (!this.ctrlPressed) {
+                    this.hideTooltip();
+                }
             }
         });
     }
@@ -13616,10 +13626,33 @@ class Chart {
         }
     }
     
+    refreshCrosshairFromLastPointer(keyState = {}) {
+        if (!this.canvas) return;
+        if (!Number.isFinite(this.mouseX) || !Number.isFinite(this.mouseY)) return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const syntheticEvent = {
+            clientX: rect.left + this.mouseX,
+            clientY: rect.top + this.mouseY,
+            ctrlKey: keyState.ctrlKey !== undefined ? !!keyState.ctrlKey : !!this._lastCrosshairCtrlKey,
+            metaKey: keyState.metaKey !== undefined ? !!keyState.metaKey : !!this._lastCrosshairMetaKey
+        };
+
+        this.updateCrosshair(syntheticEvent);
+        if (typeof this.updateTooltip === 'function') {
+            this.updateTooltip(syntheticEvent);
+        }
+    }
+
     updateCrosshair(e) {
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
+
+        this.mouseX = x;
+        this.mouseY = y;
+        this._lastCrosshairCtrlKey = !!e.ctrlKey;
+        this._lastCrosshairMetaKey = !!e.metaKey;
         
         if (x < m.l || x > this.w - m.r || y < m.t || y > this.h - m.b) {
             this.hideCrosshair();

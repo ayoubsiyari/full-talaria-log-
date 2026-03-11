@@ -329,6 +329,15 @@ class KeyboardShortcutsManager {
         this.modifiers.alt = e.altKey;
         this.modifiers.shift = e.shiftKey;
         this.modifiers.meta = e.metaKey;
+
+        if ((e.key === 'Control' || e.key === 'Meta')
+            && this.chart
+            && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
+            this.chart.refreshCrosshairFromLastPointer({
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey
+            });
+        }
         
         // Skip if typing in input fields (except for specific shortcuts)
         if (this.isInputFocused) {
@@ -372,6 +381,15 @@ class KeyboardShortcutsManager {
         this.modifiers.alt = e.altKey;
         this.modifiers.shift = e.shiftKey;
         this.modifiers.meta = e.metaKey;
+
+        if ((e.key === 'Control' || e.key === 'Meta')
+            && this.chart
+            && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
+            this.chart.refreshCrosshairFromLastPointer({
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey
+            });
+        }
     }
     
     /**
