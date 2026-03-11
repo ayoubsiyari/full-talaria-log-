@@ -211,6 +211,50 @@ class ScreenshotManager {
         this._captureLoaderElement = null;
     }
 
+    loadImageAsset(relativePath) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+
+            try {
+                img.src = new URL(relativePath, window.location.href).href;
+            } catch (error) {
+                img.src = relativePath;
+            }
+        });
+    }
+
+    async addBrandLogo(canvas, sourceElement = null) {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
+        const useDarkBrand = this.isLightColor(backgroundColor);
+        const logoSrc = useDarkBrand ? 'modules/logo-06.png' : 'modules/logo-05.png';
+
+        const logoImage = await this.loadImageAsset(logoSrc);
+        if (!logoImage || !logoImage.naturalWidth || !logoImage.naturalHeight) return;
+
+        const maxLogoWidth = Math.max(180, Math.round(canvas.width * 0.34));
+        let targetHeight = Math.max(32, Math.round(canvas.height * 0.08));
+        let targetWidth = Math.round((logoImage.naturalWidth / logoImage.naturalHeight) * targetHeight);
+
+        if (targetWidth > maxLogoWidth) {
+            targetWidth = maxLogoWidth;
+            targetHeight = Math.round((logoImage.naturalHeight / logoImage.naturalWidth) * targetWidth);
+        }
+
+        const x = Math.max(10, Math.round(canvas.width * 0.008));
+        const y = canvas.height - targetHeight - Math.max(18, Math.round(canvas.height * 0.018));
+
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(logoImage, x, y, targetWidth, targetHeight);
+        ctx.restore();
+    }
+
     /**
      * Show screenshot preview modal with quick actions
      */
@@ -458,6 +502,7 @@ class ScreenshotManager {
             
             // Add watermark
             this.addWatermark(canvas);
+            await this.addBrandLogo(canvas, targetElement);
 
             if (action === 'preview') {
                 this.showScreenshotPreview(canvas);
@@ -845,6 +890,7 @@ class ScreenshotManager {
             // Add watermark if enabled
             if (includeWatermark) {
                 this.addWatermark(canvas);
+                await this.addBrandLogo(canvas, targetElement);
             }
             
             // Convert to desired format
@@ -986,6 +1032,7 @@ class ScreenshotManager {
             
             // Add subtle watermark
             this.addWatermark(canvas);
+            await this.addBrandLogo(canvas, chartContainer);
             
             // Convert to base64 with compression
             let dataUrl = null;
