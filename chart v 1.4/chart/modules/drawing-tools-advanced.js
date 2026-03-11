@@ -785,20 +785,6 @@ class DatePriceRangeTool extends BaseDrawing {
         const midX = (left + right) / 2;
         const midY = (top + bottom) / 2;
 
-        const compactAxisLines = !this.style.showBackground && !this.style.borderEnabled;
-        const compactWidth = this.style.selectionWidth || 30;
-        const compactHeight = this.style.selectionHeight || 30;
-        const horizontalLineLength = compactAxisLines
-            ? Math.min(Math.max(0, right - left), compactWidth)
-            : Math.max(0, right - left);
-        const verticalLineLength = compactAxisLines
-            ? Math.min(Math.max(0, bottom - top), compactHeight)
-            : Math.max(0, bottom - top);
-        const horizontalLineLeft = midX - (horizontalLineLength / 2);
-        const horizontalLineRight = midX + (horizontalLineLength / 2);
-        const verticalLineTop = midY - (verticalLineLength / 2);
-        const verticalLineBottom = midY + (verticalLineLength / 2);
-
         const svg = d3.select(container.node().ownerSVGElement);
         const markerRight = `dpr-right-${this.id}`;
         const markerDown = `dpr-down-${this.id}`;
@@ -821,8 +807,8 @@ class DatePriceRangeTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.group.append('line')
-            .attr('x1', horizontalLineLeft).attr('y1', midY)
-            .attr('x2', horizontalLineRight).attr('y2', midY)
+            .attr('x1', left).attr('y1', midY)
+            .attr('x2', right).attr('y2', midY)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
             .attr('stroke-dasharray', this.style.strokeDasharray || null)
@@ -831,8 +817,8 @@ class DatePriceRangeTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.group.append('line')
-            .attr('x1', midX).attr('y1', verticalLineTop)
-            .attr('x2', midX).attr('y2', verticalLineBottom)
+            .attr('x1', midX).attr('y1', top)
+            .attr('x2', midX).attr('y2', bottom)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
             .attr('stroke-dasharray', this.style.strokeDasharray || null)
