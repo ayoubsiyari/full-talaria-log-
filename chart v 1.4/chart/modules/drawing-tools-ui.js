@@ -5852,6 +5852,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const labelColumnWidth = 190;
         const controlsColumnWidth = 180;
+        const compactSelectStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;';
 
         const createStyleRow = (labelText) => {
             const row = document.createElement('div');
@@ -5878,6 +5879,18 @@ body.light-mode .template-save-dialog .dialog-title {
             lineType: drawing.style.strokeDasharray || '',
             lineWidth: drawing.style.strokeWidth || 2
         }, 'line', drawing);
+        lineRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
+        const lineLabel = lineRow.querySelector('.tv-prop-label');
+        if (lineLabel) {
+            lineLabel.style.cssText = `min-width: 0; width: ${labelColumnWidth}px; flex: 0 0 ${labelColumnWidth}px; cursor: default;`;
+        }
+        const lineControls = lineRow.querySelector('.tv-prop-controls');
+        if (lineControls) {
+            lineControls.style.cssText = `width: ${controlsColumnWidth}px; flex: 0 0 ${controlsColumnWidth}px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;`;
+        }
+        lineRow.querySelectorAll('.tv-select').forEach((select) => {
+            select.style.cssText = `${select.style.cssText}; ${compactSelectStyle}`;
+        });
         section.appendChild(lineRow);
 
         const borderEnabled = drawing.style.borderEnabled !== false;
@@ -5895,13 +5908,13 @@ body.light-mode .template-save-dialog .dialog-title {
         `;
         borderRow.controls.innerHTML = `
             <button class="tv-color-btn" data-prop="borderColor" style="background: ${drawing.style.borderColor || drawing.style.stroke || '#2962ff'};"></button>
-            <select class="tv-select" data-prop="borderType" style="width: 40px;">
+            <select class="tv-select" data-prop="borderType" style="${compactSelectStyle}">
                 <option value="" ${borderDash === '' ? 'selected' : ''}>───────</option>
                 <option value="10,6" ${(borderDash === '10,6' || borderDash === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
                 <option value="2,2" ${borderDash === '2,2' ? 'selected' : ''}>··········</option>
                 <option value="8,4,2,4" ${borderDash === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
             </select>
-            <select class="tv-select" data-prop="borderWidth" style="width: 48px;">
+            <select class="tv-select" data-prop="borderWidth" style="${compactSelectStyle}">
                 ${[1,2,3,4].map(w => `<option value="${w}" ${parseInt(borderWidth, 10) === w ? 'selected' : ''}>${w}px</option>`).join('')}
             </select>
         `;
@@ -5934,7 +5947,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const statsRow = createStyleRow('Stats');
             statsRow.row.style.marginBottom = '12px';
             statsRow.controls.innerHTML = `
-                <button class="tv-info-dropdown-btn" style="width: 100%; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: space-between;">
+                <button class="tv-info-dropdown-btn" style="width: 100%; height: 30px; padding: 0 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background-color: #050028; color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: space-between;">
                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statsSummary}</span>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M6 9l6 6 6-6"/>
@@ -5947,7 +5960,7 @@ body.light-mode .template-save-dialog .dialog-title {
         labelRow.row.style.marginTop = '16px';
         labelRow.controls.innerHTML = `
             <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#ffffff'};"></button>
-            <select class="tv-select" data-prop="fontSize" style="width: 92px; min-width: 92px;">
+            <select class="tv-select" data-prop="fontSize" style="${compactSelectStyle}">
                 ${[8,9,10,11,12,14,16,18,20,24,28,32].map(s => `<option value="${s}" ${parseInt(drawing.style.fontSize || 12, 10) === s ? 'selected' : ''}>${s}</option>`).join('')}
             </select>
         `;
