@@ -6,6 +6,9 @@
 class ScreenshotManager {
     constructor(chart) {
         this.chart = chart;
+        this._brandLogoImage = null;
+        this._brandLogoLoadPromise = null;
+        this._brandLogoBounds = null;
         this.init();
     }
 
@@ -211,92 +214,188 @@ class ScreenshotManager {
         this._captureLoaderElement = null;
     }
 
-    drawRoundedRect(ctx, x, y, width, height, radius) {
-        const r = Math.max(0, Math.min(radius, width / 2, height / 2));
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + width - r, y);
-        ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-        ctx.lineTo(x + width, y + height - r);
-        ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-        ctx.lineTo(x + r, y + height);
-        ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
+    resolveAssetUrl(relativePath) {
+        try {
+            return new URL(relativePath, window.location.href).href;
+        } catch (error) {
+            return relativePath;
+        }
     }
 
-    addBrandLogo(canvas, sourceElement = null) {
-        if (!canvas) return;
+    async getBrandLogoImage() {
+        if (this._brandLogoImage && this._brandLogoImage.complete && this._brandLogoImage.naturalWidth > 0) {
+            return this._brandLogoImage;
+        }
+
+        if (this._brandLogoLoadPromise) {
+            return this._brandLogoLoadPromise;
+        }
+
+        const candidates = ['modules/logo-05.png', 'modules/logo-04.png'];
+
+        this._brandLogoLoadPromise = new Promise((resolve) => {
+            const tryLoad = (index) => {
+                if (index >= candidates.length) {
+                    this._brandLogoLoadPromise = null;
+                    resolve(null);
+                    return;
+                }
+
+                const image = new Image();
+                image.decoding = 'async';
+                image.onload = () => {
+                    this._brandLogoImage = image;
+                    this._brandLogoBounds = null;
+                    this._brandLogoLoadPromise = null;
+                    resolve(image);
+                };
+                image.onerror = () => {
+                    tryLoad(index + 1);
+                };
+                image.src = this.resolveAssetUrl(candidates[index]);
+            };
+
+            tryLoad(0);
+        });
+
+        return this._brandLogoLoadPromise;
+    }
+
+    getVisibleLogoBounds(image) {
+        if (!image) {
+            return null;
+        }
+
+        if (
+            this._brandLogoBounds &&
+            this._brandLogoBounds.sourceWidth === image.naturalWidth &&
+            this._brandLogoBounds.sourceHeight === image.naturalHeight
+        ) {
+            return this._brandLogoBounds;
+        }
+
+        const scratch = document.createElement('canvas');
+        scratch.width = image.naturalWidth;
+        scratch.height = image.naturalHeight;
+        const scratchCtx = scratch.getContext('2d', { willReadFrequently: true });
+
+        if (!scratchCtx) {
+            const fallback = {
+                x: 0,
+                y: 0,
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+                sourceWidth: image.naturalWidth,
+                sourceHeight: image.naturalHeight
+            };
+            this._brandLogoBounds = fallback;
+            return fallback;
+        }
+
+        scratchCtx.clearRect(0, 0, scratch.width, scratch.height);
+        scratchCtx.drawImage(image, 0, 0);
+        const pixels = scratchCtx.getImageData(0, 0, scratch.width, scratch.height).data;
+
+        let minX = scratch.width;
+        let minY = scratch.height;
+        let maxX = -1;
+        let maxY = -1;
+
+        for (let y = 0; y < scratch.height; y += 1) {
+            for (let x = 0; x < scratch.width; x += 1) {
+                const i = (y * scratch.width + x) * 4;
+                const alpha = pixels[i + 3];
+                if (alpha > 8) {
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+
+        const bounds = maxX >= minX && maxY >= minY
+            ? {
+                x: minX,
+                y: minY,
+                width: maxX - minX + 1,
+                height: maxY - minY + 1,
+                sourceWidth: image.naturalWidth,
+                sourceHeight: image.naturalHeight
+            }
+            : {
+                x: 0,
+                y: 0,
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+                sourceWidth: image.naturalWidth,
+                sourceHeight: image.naturalHeight
+            };
+
+        this._brandLogoBounds = bounds;
+        return bounds;
+    }
+
+    async addBrandLogo(canvas, sourceElement = null) {
+        if (!canvas) return false;
+        if (canvas.__talariaLogoStamped) return true;
+
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) return false;
+
+        const logoImage = await this.getBrandLogoImage();
+        if (!logoImage) return false;
+
+        const bounds = this.getVisibleLogoBounds(logoImage);
+        if (!bounds || !bounds.width || !bounds.height) return false;
 
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
-        const useDarkBrand = this.isLightColor(backgroundColor);
+        const useDarkShadow = this.isLightColor(backgroundColor);
 
-        const paddingX = Math.max(12, Math.round(canvas.width * 0.012));
-        const paddingY = Math.max(12, Math.round(canvas.height * 0.012));
-        const badgeHeight = Math.max(38, Math.round(canvas.height * 0.07));
-        const badgeWidth = Math.max(220, Math.round(badgeHeight * 4.9));
-        const x = paddingX;
-        const y = paddingY;
+        const marginX = Math.max(12, Math.round(canvas.width * 0.012));
+        const marginY = Math.max(14, Math.round(canvas.height * 0.018));
+        let drawHeight = Math.max(34, Math.round(canvas.height * 0.07));
+        let drawWidth = Math.round((bounds.width / bounds.height) * drawHeight);
 
-        const panelFill = useDarkBrand ? 'rgba(255, 255, 255, 0.95)' : 'rgba(6, 13, 25, 0.92)';
-        const panelStroke = useDarkBrand ? 'rgba(38, 84, 170, 0.5)' : 'rgba(122, 168, 255, 0.55)';
-        const textColor = useDarkBrand ? '#173a7c' : '#f4f8ff';
+        const maxWidth = Math.max(220, Math.round(canvas.width * 0.32));
+        if (drawWidth > maxWidth) {
+            drawWidth = maxWidth;
+            drawHeight = Math.round((bounds.height / bounds.width) * drawWidth);
+        }
+
+        const x = marginX;
+        const y = canvas.height - drawHeight - marginY;
 
         ctx.save();
-
-        this.drawRoundedRect(ctx, x, y, badgeWidth, badgeHeight, Math.round(badgeHeight * 0.28));
-        ctx.fillStyle = panelFill;
-        ctx.fill();
-        ctx.strokeStyle = panelStroke;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        const iconSize = Math.round(badgeHeight * 0.62);
-        const iconX = x + Math.round(badgeHeight * 0.18);
-        const iconY = y + Math.round((badgeHeight - iconSize) / 2);
-        const iconGradient = ctx.createLinearGradient(iconX, iconY, iconX + iconSize, iconY + iconSize);
-        iconGradient.addColorStop(0, '#4ea3ff');
-        iconGradient.addColorStop(1, '#2d5bff');
-
-        this.drawRoundedRect(ctx, iconX, iconY, iconSize, iconSize, Math.max(4, Math.round(iconSize * 0.24)));
-        ctx.fillStyle = iconGradient;
-        ctx.fill();
-
-        const tTopY = iconY + Math.round(iconSize * 0.26);
-        const tBottomY = iconY + Math.round(iconSize * 0.76);
-        const tLeftX = iconX + Math.round(iconSize * 0.26);
-        const tRightX = iconX + Math.round(iconSize * 0.74);
-        const tMidX = iconX + Math.round(iconSize * 0.5);
-
-        ctx.beginPath();
-        ctx.moveTo(tLeftX, tTopY);
-        ctx.lineTo(tRightX, tTopY);
-        ctx.moveTo(tMidX, tTopY);
-        ctx.lineTo(tMidX, tBottomY);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.lineWidth = Math.max(2, Math.round(iconSize * 0.12));
-        ctx.lineCap = 'round';
-        ctx.stroke();
-
-        ctx.font = `700 ${Math.max(15, Math.round(badgeHeight * 0.42))}px "Segoe UI", Arial, sans-serif`;
-        ctx.fillStyle = textColor;
-        ctx.textBaseline = 'middle';
-        ctx.fillText('TALARIA', iconX + iconSize + Math.round(badgeHeight * 0.24), y + Math.round(badgeHeight * 0.54));
-
+        ctx.globalAlpha = 0.96;
+        ctx.shadowColor = useDarkShadow ? 'rgba(0, 0, 0, 0.42)' : 'rgba(3, 8, 17, 0.36)';
+        ctx.shadowBlur = Math.max(4, Math.round(drawHeight * 0.16));
+        ctx.shadowOffsetY = Math.max(1, Math.round(drawHeight * 0.06));
+        ctx.drawImage(
+            logoImage,
+            bounds.x,
+            bounds.y,
+            bounds.width,
+            bounds.height,
+            x,
+            y,
+            drawWidth,
+            drawHeight
+        );
         ctx.restore();
+
+        canvas.__talariaLogoStamped = true;
+        return true;
     }
 
     /**
      * Show screenshot preview modal with quick actions
      */
-    showScreenshotPreview(canvas) {
+    async showScreenshotPreview(canvas) {
         if (!canvas) return;
 
         // Final guarantee for preview path: stamp logo right before display/export actions
-        this.addBrandLogo(canvas);
+        await this.addBrandLogo(canvas);
 
         const existingPreview = document.getElementById('chartScreenshotPreviewModal');
         if (existingPreview) existingPreview.remove();
@@ -424,6 +523,7 @@ class ScreenshotManager {
     init() {
         console.log('📸 Screenshot Manager initialized');
         
+        this.getBrandLogoImage();
         this.initDropdown();
         this.initKeyboardShortcuts();
     }
@@ -539,10 +639,10 @@ class ScreenshotManager {
             
             // Add watermark
             this.addWatermark(canvas);
-            this.addBrandLogo(canvas, targetElement);
+            await this.addBrandLogo(canvas, targetElement);
 
             if (action === 'preview') {
-                this.showScreenshotPreview(canvas);
+                await this.showScreenshotPreview(canvas);
                 return;
             }
             
@@ -928,7 +1028,7 @@ class ScreenshotManager {
             if (includeWatermark) {
                 this.addWatermark(canvas);
             }
-            this.addBrandLogo(canvas, targetElement);
+            await this.addBrandLogo(canvas, targetElement);
             
             // Convert to desired format
             const imageType = format === 'jpg' ? 'image/jpeg' : 'image/png';
@@ -1069,7 +1169,7 @@ class ScreenshotManager {
             
             // Add subtle watermark
             this.addWatermark(canvas);
-            this.addBrandLogo(canvas, chartContainer);
+            await this.addBrandLogo(canvas, chartContainer);
             
             // Convert to base64 with compression
             let dataUrl = null;
