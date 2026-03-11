@@ -81,19 +81,41 @@ class ScreenshotManager {
 
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
         const useDarkBrand = this.isLightColor(backgroundColor);
-        const symbolSrc = useDarkBrand ? 'modules/logo-09.png' : 'modules/logo-08.png';
-        const wordmarkSrc = useDarkBrand ? 'modules/logo-14.png' : 'modules/logo-05.png';
+        const toAbsoluteAssetUrl = (relativePath) => {
+            try {
+                return new URL(relativePath, window.location.href).href;
+            } catch (error) {
+                return relativePath;
+            }
+        };
+
+        const symbolSrc = toAbsoluteAssetUrl(useDarkBrand ? 'modules/logo-09.png' : 'modules/logo-08.png');
+        const wordmarkSrc = toAbsoluteAssetUrl(useDarkBrand ? 'modules/logo-14.png' : 'modules/logo-05.png');
+
+        const chartBrand = clonedDoc.querySelector('.chart-brand');
+        if (chartBrand) {
+            chartBrand.style.display = 'block';
+            chartBrand.style.visibility = 'visible';
+            chartBrand.style.opacity = '1';
+        }
+
+        clonedDoc.querySelectorAll('.chart-brand .brand-stack').forEach((stack) => {
+            stack.style.visibility = 'visible';
+            stack.style.opacity = '1';
+        });
 
         clonedDoc.querySelectorAll('.chart-brand .logo-top').forEach((img) => {
             img.setAttribute('src', symbolSrc);
-            img.style.filter = 'none';
+            img.setAttribute('crossorigin', 'anonymous');
+            img.style.setProperty('filter', 'none', 'important');
             img.style.opacity = '1';
             img.style.visibility = 'visible';
         });
 
         clonedDoc.querySelectorAll('.chart-brand .logo-bottom').forEach((img) => {
             img.setAttribute('src', wordmarkSrc);
-            img.style.filter = 'none';
+            img.setAttribute('crossorigin', 'anonymous');
+            img.style.setProperty('filter', 'none', 'important');
             img.style.opacity = '1';
             img.style.visibility = 'visible';
         });
@@ -146,7 +168,6 @@ class ScreenshotManager {
         header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom: 1px solid #253248;';
         header.innerHTML = `
             <div style="display:flex; align-items:center; gap:10px; color:#dbe8ff; font-size:14px; font-weight:600;">
-                <span style="display:inline-flex; width:22px; height:22px; align-items:center; justify-content:center; border-radius:6px; background: rgba(40, 178, 255, 0.18);"></span>
                 Screenshot preview
             </div>
         `;
