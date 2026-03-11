@@ -2419,6 +2419,20 @@ class DrawingToolsManager {
             );
         const isInteractingWithExistingVolumeProfile = this.isVolumeProfileToolType(activeToolType)
             && !this.currentTool;
+        const isInteractingWithExistingDatePriceRange = activeToolType === 'date-price-range'
+            && !this.currentTool;
+        const rangeInteractionDrawing = (this.isResizing && this.resizingDrawing && this.resizingDrawing.type === 'date-price-range')
+            ? this.resizingDrawing
+            : ((this.isDragging && this.draggingDrawing && this.draggingDrawing.type === 'date-price-range')
+                ? this.draggingDrawing
+                : ((this.isCustomHandleDrag && this.customHandleDrawing && this.customHandleDrawing.type === 'date-price-range')
+                    ? this.customHandleDrawing
+                    : null));
+        const rangeInteractionMode = isInteractingWithExistingDatePriceRange
+            ? this.getRangeToolMode(rangeInteractionDrawing)
+            : 'both';
+        const allowRangeVerticalOverflow = isInteractingWithExistingDatePriceRange
+            && rangeInteractionMode !== 'time';
 
         // Clamp to chart inner area so no drawing point can go outside the chart
         if (this.chart) {
@@ -2431,7 +2445,7 @@ class DrawingToolsManager {
             screenX = isResizingVolumeProfileRightBoundary
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
-            screenY = isInteractingWithExistingVolumeProfile
+            screenY = (isInteractingWithExistingVolumeProfile || allowRangeVerticalOverflow)
                 ? screenY
                 : Math.max(0, Math.min(maxY, screenY));
         }
