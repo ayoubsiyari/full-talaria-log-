@@ -14790,6 +14790,18 @@ class Chart {
     }
 
     openChartTemplateFromContextMenu() {
+        if (typeof window !== 'undefined') {
+            if (typeof window._openMode === 'function') {
+                window._openMode('template');
+                return;
+            }
+
+            if (typeof window._spOpen === 'function') {
+                window._spOpen('template');
+                return;
+            }
+        }
+
         if (typeof this.showSettingsMenu === 'function') {
             this.showSettingsMenu();
             if (typeof this.showSettingsCategory === 'function') {
@@ -14878,101 +14890,34 @@ class Chart {
     }
     
     showObjectTree() {
-        // Create object tree panel
-        const panel = d3.select('body')
-            .append('div')
-            .attr('class', 'object-tree-panel')
-            .style('position', 'fixed')
-            .style('right', '20px')
-            .style('top', '80px')
-            .style('width', '240px')
-            .style('max-height', '400px')
-            .style('background', 'rgba(5, 0, 40, 0.98)')
-            .style('border', '1px solid #2a2e39')
-            .style('border-radius', '6px')
-            .style('box-shadow', '0 8px 24px rgba(0,0,0,0.4)')
-            .style('z-index', '2000')
-            .style('overflow', 'hidden');
-        
-        // Header
-        const header = panel.append('div')
-            .style('padding', '10px 12px')
-            .style('border-bottom', '1px solid #2a2e39')
-            .style('background', 'linear-gradient(to right, rgba(41,98,255,0.1), transparent)')
-            .style('display', 'flex')
-            .style('justify-content', 'space-between')
-            .style('align-items', 'center');
-        
-        header.append('div')
-            .style('color', '#d1d4dc')
-            .style('font-weight', '600')
-            .style('font-size', '13px')
-            .text('📊 Object Tree');
-        
-        header.append('div')
-            .style('cursor', 'pointer')
-            .style('color', '#787b86')
-            .style('font-size', '18px')
-            .text('✕')
-            .on('click', () => panel.remove());
-        
-        // Content
-        const content = panel.append('div')
-            .style('padding', '10px')
-            .style('max-height', '350px')
-            .style('overflow-y', 'auto');
-        
-        if (this.drawings.length === 0) {
-            content.append('div')
-                .style('color', '#787b86')
-                .style('text-align', 'center')
-                .style('padding', '15px')
-                .style('font-size', '13px')
-                .text('No drawings or indicators');
-        } else {
-            this.drawings.forEach((drawing, idx) => {
-                const item = content.append('div')
-                    .style('padding', '8px 10px')
-                    .style('margin-bottom', '6px')
-                    .style('background', '#050028')
-                    .style('border-radius', '4px')
-                    .style('cursor', 'default')
-                    .style('transition', 'all 0.2s')
-                    .on('mouseenter', function() {
-                        d3.select(this).style('background', '#2962ff');
-                    })
-                    .on('mouseleave', function() {
-                        d3.select(this).style('background', '#050028');
-                    })
-                    .on('click', () => {
-                        this.selectedDrawing = idx;
-                        this.scheduleRender();
-                    });
-                
-                const icon = {
-                    trendline: '📈',
-                    horizontal: '⭐',
-                    vertical: '⭐',
-                    rectangle: '⬛',
-                    fibonacci: '🔢',
-                    text: '📝'
-                }[drawing.type] || '✏️';
-                
-                item.append('div')
-                    .style('display', 'flex')
-                    .style('justify-content', 'space-between')
-                    .style('align-items', 'center')
-                    .style('font-size', '13px')
-                    .html(`
-                        <span style="color: #d1d4dc;">
-                            ${icon} ${drawing.type.charAt(0).toUpperCase() + drawing.type.slice(1)}
-                        </span>
-                        <span style="color: #787b86; font-size: 11px;">
-                            ${drawing.locked ? '🔒' : ''}
-                        </span>
-                    `);
-            });
+        if (typeof window !== 'undefined') {
+            if (typeof window._openMode === 'function') {
+                window._openMode('objecttree');
+                return;
+            }
+
+            if (typeof window._spOpen === 'function') {
+                window._spOpen('objecttree');
+                return;
+            }
         }
+
+        if (this.objectTreeManager) {
+            if (typeof this.objectTreeManager.show === 'function') {
+                this.objectTreeManager.show();
+                if (typeof this.objectTreeManager.refresh === 'function') {
+                    this.objectTreeManager.refresh();
+                }
+                return;
+            }
+
+            if (typeof this.objectTreeManager.toggle === 'function') {
+                this.objectTreeManager.toggle();
+                return;
+            }
+        }
+
+        this.showNotification('Object tree unavailable');
     }
     
     showInlineTextEditor(drawing, drawingIndex) {
