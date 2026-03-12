@@ -781,35 +781,6 @@
     }
 
     // ===== Chart Integration =====
-    function calculateStochastic(data, period, smoothK, smoothD) {
-        const k = [];
-        const d = [];
-        
-        for (let i = 0; i < data.length; i++) {
-            if (i < period - 1) {
-                k.push(null);
-            } else {
-                let highest = data[i].h;
-                let lowest = data[i].l;
-                
-                for (let j = 1; j < period; j++) {
-                    highest = Math.max(highest, data[i - j].h);
-                    lowest = Math.min(lowest, data[i - j].l);
-                }
-                
-                const kValue = ((data[i].c - lowest) / (highest - lowest)) * 100;
-                k.push(kValue);
-            }
-        }
-        
-        // Smooth %K to get %D
-        const smoothedK = calculateSMA(k.map(v => ({c: v || 0})), smoothK, 'c');
-        const smoothedD = calculateSMA(smoothedK.map(v => ({c: v || 0})), smoothD, 'c');
-        
-        return { k: smoothedK, d: smoothedD };
-    }
-    
-    // ===== Chart Integration =====
     
     Chart.prototype.initIndicators = function() {
         this.indicators = {
@@ -1172,30 +1143,16 @@
                 this.indicators.data[indicator.id] = calculateVWAP(this.data);
                 break;
             case 'atr':
-                indicator.params.period = params.period || 14;
-                indicator.style.color = params.color || '#ff6d00';
-                indicator.style.lineWidth = 2;
-                indicator.overlay = false;
                 indicator.name = 'ATR(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
                 break;
 
             case 'cci':
-                indicator.params.period = params.period || 20;
-                indicator.style.color = params.color || '#00e676';
-                indicator.style.lineWidth = 2;
-                indicator.overlay = false;
                 indicator.name = 'CCI(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
                 break;
 
             case 'adx':
-                indicator.params.period = params.period || 14;
-                indicator.style.adxColor = params.adxColor || '#ff00ff';
-                indicator.style.plusDIColor = params.plusDIColor || '#00e676';
-                indicator.style.minusDIColor = params.minusDIColor || '#f23645';
-                indicator.style.lineWidth = 2;
-                indicator.overlay = false;
                 indicator.name = 'ADX(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
                 break;
@@ -1798,6 +1755,18 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         const indicatorData = this.indicators.data[indicator.id];
         if (!indicatorData) return;
         
+        // Type-specific rendering for multi-series indicators
+        if (indicator.type === 'macd') {
+            this._renderMACDPanel(ctx, m, panelTop, panelBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'stoch' || indicator.type === 'stochastic') {
+            this._renderStochPanel(ctx, m, panelTop, panelBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'adx') {
+            this._renderADXPanel(ctx, m, panelTop, panelBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        }
+
         // Get values array - skip non-array data
         if (!Array.isArray(indicatorData)) return;
         let values = indicatorData;
@@ -1879,7 +1848,48 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         if (started) {
             ctx.stroke();
         }
-        
+
+        // Reference lines for oscillators
+        if (indicator.type === 'rsi') {
+            [[70, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.35)'], [30, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
+                const ry = scaleY(lvl);
+                if (ry > panelTop && ry < panelBottom) {
+                    ctx.strokeStyle = col;
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([3, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(m.l, ry);
+                    ctx.lineTo(this.w - m.r, ry);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = col;
+                    ctx.font = '9px Roboto';
+                    ctx.textAlign = 'right';
+                    ctx.fillText(lvl, this.w - m.r - 2, ry - 2);
+                }
+            });
+            ctx.textAlign = 'left';
+        } else if (indicator.type === 'cci') {
+            [[-100, 'rgba(38,166,154,0.5)'], [0, 'rgba(120,123,134,0.35)'], [100, 'rgba(239,83,80,0.5)']].forEach(([lvl, col]) => {
+                const ry = scaleY(lvl);
+                if (ry > panelTop && ry < panelBottom) {
+                    ctx.strokeStyle = col;
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([3, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(m.l, ry);
+                    ctx.lineTo(this.w - m.r, ry);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = col;
+                    ctx.font = '9px Roboto';
+                    ctx.textAlign = 'right';
+                    ctx.fillText(lvl, this.w - m.r - 2, ry - 2);
+                }
+            });
+            ctx.textAlign = 'left';
+        }
+
         // Get current value (find the last non-null value in visible range)
         let currentValue = null;
         for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
@@ -2493,7 +2503,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             settingsBtn.title = 'Click to edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = '#2962ff';
+                settingsBtn.style.background = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
                 settingsBtn.style.transform = 'scale(1.1)';
             };
             settingsBtn.onmouseleave = function() {
@@ -2792,9 +2802,9 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         
         const applyBtn = document.createElement('button');
         applyBtn.textContent = 'Apply Changes';
-        applyBtn.style.cssText = 'padding: 10px 20px; background: #2962ff; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;';
-        applyBtn.onmouseenter = function() { applyBtn.style.background = '#1e53e5'; };
-        applyBtn.onmouseleave = function() { applyBtn.style.background = '#2962ff'; };
+        applyBtn.style.cssText = 'padding: 10px 20px; background: var(--sp-accent, #2962ff); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;';
+        applyBtn.onmouseenter = function() { applyBtn.style.background = 'rgba(var(--sp-accent-rgb, 41,98,255), 0.8)'; };
+        applyBtn.onmouseleave = function() { applyBtn.style.background = 'var(--sp-accent, #2962ff)'; };
         
         const self = this;
         applyBtn.onclick = function() {
@@ -2859,6 +2869,192 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         }
     };
     
+    // ---- Helper: draw a single line in a sub-panel using a pre-computed scaleY ----
+    Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY) {
+        if (!values) return;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth || 2;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        let started = false;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val === null || val === undefined || isNaN(val)) { started = false; continue; }
+            const x = this.dataIndexToPixel(i);
+            const y = scaleY(val);
+            if (y === null || x < m.l - 10 || x > this.w - m.r + 10) continue;
+            if (!started) { ctx.moveTo(x, y); started = true; }
+            else { ctx.lineTo(x, y); }
+        }
+        if (started) ctx.stroke();
+    };
+
+    // ---- MACD panel: histogram bars + MACD line + signal line + zero line ----
+    Chart.prototype._renderMACDPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        if (!data.macd || !data.signal || !data.histogram) return;
+        const macdArr = data.macd, signalArr = data.signal, histArr = data.histogram;
+
+        let min = Infinity, max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd; i++) {
+            [macdArr[i], signalArr[i], histArr[i]].forEach(v => {
+                if (v !== null && v !== undefined && !isNaN(v)) { min = Math.min(min, v); max = Math.max(max, v); }
+            });
+        }
+        if (min === Infinity) return;
+        const range = max - min || 1;
+        min -= range * 0.1; max += range * 0.1;
+        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - ((v - min) / (max - min)) * (panelHeight - 10);
+
+        // Zero line
+        const zeroY = scaleY(0);
+        if (zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, zeroY);
+            ctx.lineTo(this.w - m.r, zeroY);
+            ctx.stroke();
+        }
+
+        // Histogram bars
+        const barW = Math.max(1, (this.candleWidth || 8) * 0.8);
+        for (let i = visibleStart; i < visibleEnd && i < histArr.length; i++) {
+            const val = histArr[i];
+            if (val === null || val === undefined || isNaN(val)) continue;
+            const x = this.dataIndexToPixel(i);
+            if (x < m.l || x > this.w - m.r) continue;
+            const y = scaleY(val);
+            const z = (zeroY !== null && !isNaN(zeroY)) ? zeroY : (panelBottom - 5);
+            const prevVal = (i > visibleStart) ? histArr[i - 1] : null;
+            const growing = (prevVal === null || val >= prevVal);
+            ctx.fillStyle = val >= 0
+                ? (growing ? 'rgba(38,166,154,0.85)' : 'rgba(38,166,154,0.4)')
+                : (growing ? 'rgba(239,83,80,0.4)' : 'rgba(239,83,80,0.85)');
+            ctx.fillRect(x - barW / 2, Math.min(y, z), barW, Math.max(1, Math.abs(y - z)));
+        }
+
+        this._drawPanelLine(ctx, m, macdArr, indicator.style.macdColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+        this._drawPanelLine(ctx, m, signalArr, indicator.style.signalColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+
+        // Label
+        let lastM = null, lastS = null;
+        for (let i = Math.min(visibleEnd - 1, macdArr.length - 1); i >= visibleStart; i--) {
+            if (macdArr[i] !== null && !isNaN(macdArr[i])) { lastM = macdArr[i]; lastS = signalArr[i]; break; }
+        }
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 11px Roboto';
+        ctx.fillStyle = indicator.style.macdColor || '#2962ff';
+        ctx.fillText(indicator.name, m.l + 5, panelTop + 14);
+        if (lastM !== null) {
+            const off = ctx.measureText(indicator.name + ' ').width;
+            ctx.font = '11px Roboto';
+            ctx.fillStyle = indicator.style.macdColor || '#2962ff';
+            const mStr = 'M:' + lastM.toFixed(5);
+            ctx.fillText(mStr, m.l + 5 + off, panelTop + 14);
+            if (lastS !== null) {
+                ctx.fillStyle = indicator.style.signalColor || '#f23645';
+                ctx.fillText('  S:' + lastS.toFixed(5), m.l + 5 + off + ctx.measureText(mStr).width, panelTop + 14);
+            }
+        }
+    };
+
+    // ---- Stochastic panel: %K + %D lines + 80/50/20 reference levels ----
+    Chart.prototype._renderStochPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        if (!data.k || !data.d) return;
+        const kArr = data.k, dArr = data.d;
+        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - (v / 100) * (panelHeight - 10);
+
+        [[80, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.3)'], [20, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
+            const ry = scaleY(lvl);
+            if (ry !== null && ry > panelTop && ry < panelBottom) {
+                ctx.strokeStyle = col;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(m.l, ry);
+                ctx.lineTo(this.w - m.r, ry);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = col;
+                ctx.font = '9px Roboto';
+                ctx.textAlign = 'right';
+                ctx.fillText(lvl, this.w - m.r - 2, ry - 2);
+            }
+        });
+
+        this._drawPanelLine(ctx, m, kArr, indicator.style.kColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+        this._drawPanelLine(ctx, m, dArr, indicator.style.dColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+
+        let lastK = null, lastD = null;
+        for (let i = Math.min(visibleEnd - 1, kArr.length - 1); i >= visibleStart; i--) {
+            if (kArr[i] !== null && !isNaN(kArr[i])) { lastK = kArr[i]; lastD = dArr[i]; break; }
+        }
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 11px Roboto';
+        ctx.fillStyle = indicator.style.kColor || '#2962ff';
+        ctx.fillText(indicator.name, m.l + 5, panelTop + 14);
+        if (lastK !== null) {
+            const off = ctx.measureText(indicator.name + ' ').width;
+            ctx.font = '11px Roboto';
+            ctx.fillStyle = indicator.style.kColor || '#2962ff';
+            const kStr = 'K:' + lastK.toFixed(2);
+            ctx.fillText(kStr, m.l + 5 + off, panelTop + 14);
+            if (lastD !== null) {
+                ctx.fillStyle = indicator.style.dColor || '#f23645';
+                ctx.fillText('  D:' + lastD.toFixed(2), m.l + 5 + off + ctx.measureText(kStr).width, panelTop + 14);
+            }
+        }
+    };
+
+    // ---- ADX panel: ADX + +DI + -DI lines + 25 threshold ----
+    Chart.prototype._renderADXPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        if (!data.adx || !data.plusDI || !data.minusDI) return;
+        const adxArr = data.adx, plusArr = data.plusDI, minusArr = data.minusDI;
+
+        let max = 0;
+        for (let i = visibleStart; i < visibleEnd; i++) {
+            [adxArr[i], plusArr[i], minusArr[i]].forEach(v => { if (v !== null && !isNaN(v)) max = Math.max(max, v); });
+        }
+        max = Math.max(max * 1.1, 60);
+        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - (v / max) * (panelHeight - 10);
+
+        // 25 threshold line
+        const thY = scaleY(25);
+        if (thY !== null && thY > panelTop && thY < panelBottom) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, thY);
+            ctx.lineTo(this.w - m.r, thY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.font = '9px Roboto';
+            ctx.textAlign = 'right';
+            ctx.fillText('25', this.w - m.r - 2, thY - 2);
+        }
+
+        this._drawPanelLine(ctx, m, plusArr, indicator.style.plusDIColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+        this._drawPanelLine(ctx, m, minusArr, indicator.style.minusDIColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+        this._drawPanelLine(ctx, m, adxArr, indicator.style.adxColor || '#ff00ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+
+        let lastADX = null;
+        for (let i = Math.min(visibleEnd - 1, adxArr.length - 1); i >= visibleStart; i--) {
+            if (adxArr[i] !== null && !isNaN(adxArr[i])) { lastADX = adxArr[i]; break; }
+        }
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 11px Roboto';
+        ctx.fillStyle = indicator.style.adxColor || '#ff00ff';
+        ctx.fillText(indicator.name, m.l + 5, panelTop + 14);
+        if (lastADX !== null) {
+            ctx.font = '11px Roboto';
+            ctx.fillStyle = '#d1d4dc';
+            ctx.fillText(' ' + lastADX.toFixed(2), m.l + 5 + ctx.measureText(indicator.name).width, panelTop + 14);
+        }
+    };
+
     // Mark as loaded
     window.INDICATORS_MODULE_LOADED = true;
     console.log('✅ Full Indicators Module Loaded Successfully');
