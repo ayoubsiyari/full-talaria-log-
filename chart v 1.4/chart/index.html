@@ -27778,7 +27778,6 @@ P['profile']={
         var _sbar='width:130px;min-width:130px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;overflow-y:auto;';
         var navDefs=[
             {k:'language',lbl:'Language',svg:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'},
-            {k:'theme',lbl:'Theme',svg:'<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>'},
             {k:'timezone',lbl:'Timezone',svg:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'},
             null,
             {k:'account',lbl:'Account',svg:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'},
@@ -27801,23 +27800,38 @@ P['profile']={
         var layout=document.getElementById('spProfileLayout'); if(!layout)return;
         var content=document.getElementById('spProfileContentInner'); if(!content)return;
         function ppLoad(key){
+            var titleEl=document.getElementById('spContentTitle');
+            var _T=window._i18nT||function(s){return s;};
+            if(key==='language'){
+                if(titleEl)titleEl.textContent=_T('Language');
+                var curLang=localStorage.getItem('chartLanguage')||'en';
+                var langs=[
+                    {code:'en',label:'English',native:'English'},
+                    {code:'ar',label:'Arabic',native:'العربية',rtl:true}
+                ];
+                var check='<svg viewBox="0 0 24 24" fill="none" stroke="var(--sp-accent,#2962ff)" stroke-width="2.5" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>';
+                content.innerHTML='<div style="padding:4px 0;"><p style="color:#787b86;font-size:12px;margin:0 0 14px;">'+_T('Select display language')+'</p>'
+                    +langs.map(function(l){
+                        var sel=l.code===curLang;
+                        return'<div class="side-panel-item" data-lang-code="'+l.code+'" style="border-radius:6px;cursor:pointer;background:'+(sel?'rgba(var(--sp-accent-rgb,41,98,255),0.12)':'transparent')+';margin-bottom:2px;" onmouseenter="if(!this.classList.contains(\'lang-selected\'))this.style.background=\'rgba(255,255,255,0.06)\'" onmouseleave="if(!this.classList.contains(\'lang-selected\'))this.style.background=\'transparent\'">'
+                            +'<span style="flex:1;font-size:13px;font-weight:500;">'+l.native+'</span>'
+                            +'<span style="color:#787b86;font-size:11px;margin-right:8px;">'+l.label+'</span>'
+                            +(sel?check:'')
+                            +'</div>';
+                    }).join('')
+                    +'</div>';
+                content.querySelectorAll('[data-lang-code]').forEach(function(el){
+                    el.addEventListener('click',function(){
+                        window._applyLanguage(el.dataset.langCode);
+                        ppLoad('language');
+                    });
+                });
+                return;
+            }
             if(typeof _profileSections==='undefined')return;
             var s=_profileSections[key]; if(!s)return;
-            var titleEl=document.getElementById('spContentTitle'); if(titleEl)titleEl.textContent=s.title;
+            if(titleEl)titleEl.textContent=_T(s.title);
             content.innerHTML=s.html;
-            if(key==='theme'){
-                var ptc=content.querySelector('#profileThemeContent'); if(!ptc)return;
-                var isDark=!document.body.classList.contains('light-mode');
-                ptc.innerHTML='<p style="color:#787b86;font-size:12px;margin:0 0 14px;">Choose your interface theme</p>'
-                    +'<div style="display:flex;gap:10px;">'
-                    +'<button id="ppThemeDark2" style="flex:1;padding:28px 10px 14px;border-radius:10px;border:2px solid '+(isDark?'var(--sp-accent,#2962ff)':'rgba(255,255,255,0.1)')+';background:'+(isDark?'rgba(var(--sp-accent-rgb,41,98,255),0.1)':'rgba(255,255,255,0.03)')+';cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24" style="color:#d1d4dc;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span style="color:#d1d4dc;font-size:12px;font-weight:600;">Dark</span></button>'
-                    +'<button id="ppThemeLight2" style="flex:1;padding:28px 10px 14px;border-radius:10px;border:2px solid '+(!isDark?'var(--sp-accent,#2962ff)':'rgba(255,255,255,0.1)')+';background:'+(!isDark?'rgba(var(--sp-accent-rgb,41,98,255),0.1)':'rgba(255,255,255,0.03)')+';cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24" style="color:#d1d4dc;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><span style="color:#d1d4dc;font-size:12px;font-weight:600;">Light</span></button>'
-                    +'</div>';
-                var d=content.querySelector('#ppThemeDark2');
-                var l=content.querySelector('#ppThemeLight2');
-                if(d)d.addEventListener('click',function(){document.body.classList.remove('light-mode');ppLoad('theme');});
-                if(l)l.addEventListener('click',function(){document.body.classList.add('light-mode');ppLoad('theme');});
-            }
             if(key==='timezone'){var tz=content.querySelector('#profileTzDisplay');if(tz&&window.timezoneManager&&window.timezoneManager.getCurrentLabel)tz.textContent=window.timezoneManager.getCurrentLabel();}
             if(key==='account'){
                 content.querySelectorAll('[onclick]').forEach(function(el){var fn=el.getAttribute('onclick');if(fn&&fn.indexOf('location')>-1){el.removeAttribute('onclick');el.style.cursor='pointer';el.addEventListener('click',function(){var m=fn.match(/href='([^']+)'/);if(m)window.location.href=m[1];});}});
@@ -27975,6 +27989,134 @@ window._closeSidePanel=function(id){
     var p=document.getElementById(id);
     if(p)p.classList.remove('open');
 };
+
+/* ── i18n / Arabic Translation System ── */
+window._translations={
+    ar:{
+        /* Toolbar tooltips */
+        'Panel Layouts':'تخطيطات الألواح','Screenshot':'لقطة شاشة','Fullscreen':'ملء الشاشة',
+        'Global Markets':'الأسواق العالمية','Object Tree':'شجرة الكائنات','Alerts':'التنبيهات',
+        'Settings':'الإعدادات','Help':'المساعدة','Profile':'الملف الشخصي',
+        'Chart Type':'نوع الرسم البياني','Compare':'مقارنة','Indicators':'المؤشرات',
+        'New Order':'أمر جديد','Replay':'إعادة التشغيل','Undo':'تراجع','Redo':'إعادة',
+        'Measure':'القياس','Magnet':'المغناطيس','Lock':'قفل','Drawing Tools':'أدوات الرسم',
+        /* Settings nav sections */
+        'Symbol':'الرمز','Status line':'سطر الحالة','Canvas':'اللوحة','Trading':'التداول',
+        'Template':'القالب','Scales and lines':'المقاييس والخطوط','General':'عام',
+        'Watchlist':'قائمة المراقبة','News':'الأخبار','Panel Layouts':'تخطيطات الألواح',
+        /* Profile nav */
+        'Language':'اللغة','Timezone':'المنطقة الزمنية','Account':'الحساب','Log Out':'تسجيل الخروج',
+        /* Help nav */
+        'Contact':'اتصل بنا','Shortcuts':'اختصارات','FAQ':'الأسئلة الشائعة',
+        'Education':'التعليم','Changelog':'سجل التغييرات',
+        /* Panel titles */
+        'Contact Support':'الدعم الفني','Keyboard Shortcuts':'اختصارات لوحة المفاتيح',
+        'Account Settings':'إعدادات الحساب',
+        /* Content labels */
+        'Select display language':'اختر لغة العرض',
+        'Current timezone used for chart display':'المنطقة الزمنية المستخدمة في الرسم البياني',
+        'Change timezone via the Globe icon in the toolbar.':'يمكن تغيير المنطقة الزمنية عبر أيقونة الكرة الأرضية في شريط الأدوات.',
+        /* Chart type labels */
+        'Candles':'شموع','Bars':'أعمدة','Line':'خط','Area':'منطقة',
+        'Heikin Ashi':'هيكن أشي','Hollow Candles':'شموع مجوفة',
+        /* Timeframe labels */
+        '1 minute':'دقيقة','5 minutes':'5 دقائق','15 minutes':'15 دقيقة',
+        '30 minutes':'30 دقيقة','1 hour':'ساعة','4 hours':'4 ساعات',
+        '1 day':'يوم','1 week':'أسبوع','1 month':'شهر',
+        /* Common UI */
+        'Save':'حفظ','Cancel':'إلغاء','Close':'إغلاق','Delete':'حذف',
+        'Add':'إضافة','Edit':'تعديل','Reset':'إعادة تعيين','Apply':'تطبيق',
+        'Loading...':'جارٍ التحميل...','No data':'لا توجد بيانات',
+        'Search...':'بحث...','Search symbols':'البحث عن رموز',
+        /* Drawing tool names */
+        'Trend Line':'خط الاتجاه','Horizontal Line':'خط أفقي','Vertical Line':'خط عمودي',
+        'Ray':'شعاع','Extended Line':'خط ممتد','Parallel Channel':'قناة موازية',
+        'Rectangle':'مستطيل','Circle':'دائرة','Triangle':'مثلث',
+        'Arrow':'سهم','Text':'نص','Note':'ملاحظة',
+        'Fibonacci Retracement':'تصحيح فيبوناتشي','Fibonacci Extension':'امتداد فيبوناتشي',
+        'Pitchfork':'شوكة أندروز','Fib Fan':'مروحة فيبوناتشي',
+        'Volume Profile':'ملف الحجم','VWAP':'متوسط السعر المرجح بالحجم',
+        /* Indicators */
+        'Volume':'الحجم','Moving Average':'المتوسط المتحرك',
+        'Bollinger Bands':'بولينجر باندز','RSI':'مؤشر القوة النسبية',
+        'MACD':'ماكد','Stochastic':'العشوائي','ATR':'متوسط المدى الحقيقي',
+        /* Status bar */
+        'O':'ف','H':'أع','L':'أد','C':'إغ',
+        /* New order form */
+        'Buy':'شراء','Sell':'بيع','Market':'سوق','Limit':'محدد','Stop':'إيقاف',
+        'Qty':'الكمية','Price':'السعر','TP':'جني الأرباح','SL':'وقف الخسارة'
+    }
+};
+window._i18nT=function(str){
+    if(!str)return str;
+    var lang=localStorage.getItem('chartLanguage')||'en';
+    if(lang==='en')return str;
+    var t=window._translations[lang];
+    return(t&&t[str])||str;
+};
+window._applyLanguage=function(lang){
+    var prev=localStorage.getItem('chartLanguage')||'en';
+    localStorage.setItem('chartLanguage',lang);
+    var t=window._translations[lang]||{};
+    var isRTL=(lang==='ar');
+    /* Set document dir/lang */
+    document.documentElement.lang=lang;
+    document.documentElement.dir=isRTL?'rtl':'ltr';
+    /* Translate data-tooltip attributes */
+    document.querySelectorAll('[data-tooltip]').forEach(function(el){
+        var orig=el.getAttribute('data-i18n-orig-tooltip');
+        if(!orig){orig=el.getAttribute('data-tooltip');el.setAttribute('data-i18n-orig-tooltip',orig);}
+        el.setAttribute('data-tooltip',t[orig]||orig);
+    });
+    /* Translate visible nav spans — both settings panel and standalone panels */
+    document.querySelectorAll('.sp-nav-item span, .sp-sidebar-header span').forEach(function(el){
+        var orig=el.getAttribute('data-i18n-orig');
+        if(!orig){orig=el.textContent.trim();el.setAttribute('data-i18n-orig',orig);}
+        el.textContent=t[orig]||orig;
+    });
+    /* Translate timeframe buttons */
+    document.querySelectorAll('[data-tf],.sidebar-timeframe-btn,[data-timeframe]').forEach(function(el){
+        var orig=el.getAttribute('data-i18n-orig-text');
+        if(!orig){orig=(el.textContent||'').trim();if(orig)el.setAttribute('data-i18n-orig-text',orig);}
+        if(orig&&t[orig])el.textContent=t[orig];
+    });
+    /* Translate chart type dropdown labels */
+    document.querySelectorAll('[data-chart-type] span, .chart-type-label').forEach(function(el){
+        var orig=el.getAttribute('data-i18n-orig');
+        if(!orig){orig=el.textContent.trim();el.setAttribute('data-i18n-orig',orig);}
+        if(orig&&t[orig])el.textContent=t[orig];
+    });
+    /* Update open settings panel title if visible */
+    var panelOpen=document.getElementById('settingsPanel');
+    if(panelOpen&&panelOpen.classList.contains('open')){
+        var titleEl=document.getElementById('spContentTitle');
+        if(titleEl){var orig=titleEl.getAttribute('data-i18n-orig')||titleEl.textContent.trim();titleEl.setAttribute('data-i18n-orig',orig);titleEl.textContent=t[orig]||orig;}
+    }
+    /* RTL: flip panel slide direction */
+    var styleTag=document.getElementById('_i18nRTLStyle');
+    if(!styleTag){styleTag=document.createElement('style');styleTag.id='_i18nRTLStyle';document.head.appendChild(styleTag);}
+    if(isRTL){
+        styleTag.textContent=
+            '.settings-panel{right:auto!important;left:-440px;border-left:none;border-right:1px solid rgba(255,255,255,0.07);transition:left 0.28s cubic-bezier(.4,0,.2,1)!important;}'
+            +'.settings-panel.open{left:0!important;right:auto!important;}'
+            +'.side-panel{right:auto!important;left:-440px;border-left:none;border-right:1px solid rgba(255,255,255,0.07);transition:left 0.28s cubic-bezier(.4,0,.2,1)!important;}'
+            +'.side-panel.open{left:0!important;right:auto!important;}'
+            +'.sp-content-header{direction:rtl;}'
+            +'.sp-content-body{direction:rtl;}'
+            +'.sp-nav-item{direction:rtl;}'
+            +'[data-tooltip]::after{left:50%;right:auto;}'
+            +'.side-panel-item{direction:rtl;}'
+            +'kbd{font-family:monospace;}'
+            +'.toolbar{direction:ltr;}';
+    }else{
+        styleTag.textContent='';
+    }
+};
+/* Apply stored language on load */
+(function(){
+    var saved=localStorage.getItem('chartLanguage');
+    if(saved&&saved!=='en'){document.addEventListener('DOMContentLoaded',function(){window._applyLanguage(saved);});}
+})();
 
 /* ── Help Panel content ── */
 var _helpSections={
