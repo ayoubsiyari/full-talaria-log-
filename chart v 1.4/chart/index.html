@@ -19852,7 +19852,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260312_TF_PIN_V90"></script>
+         <script src="chart.js?v=20260312_TF_PIN_V91"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260312_TF_PIN_V62"></script>
@@ -27087,41 +27087,27 @@ P['canvas']={title:'Canvas',build:function(){
     var gridStyle=cs.gridStyle||'Vert and horz';
     var ro=(c&&c.timeScale&&c.timeScale.rightOffset!=null)?c.timeScale.rightOffset:10;
     var panelAccent=getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim();
+    function sw(id,val){var s=String(val||'#000000');return '<button id="sw_'+id+'" data-color="'+s+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+s+';cursor:pointer;flex-shrink:0;" onmouseover="this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.boxShadow=\'none\'"></button>';}
+    function row(label,ctrl){return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span>'+ctrl+'</div>';}
+    var gridOpts=[['Vert and horz','Vert and horz'],['Vertical','Vert only'],['Horizontal','Horz only'],['None','No lines']];
+    var gridSel='<select id="sl_cv_grid" class="settings-select" style="width:116px;height:28px;padding:0 28px 0 8px;flex-shrink:0;">'+gridOpts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===gridStyle?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
+    var fontOpts=[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']];
+    var curFont=String(cs.scaleTextSize||cs.scaleFontSize||'12');
+    var fontSel='<select id="sl_cv_scaleFont" class="settings-select" style="width:60px;height:28px;padding:0 22px 0 6px;flex-shrink:0;">'+fontOpts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===curFont?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
+    var cxCol=cs.crosshairColor||'#787b86';
+    var cxDash=({solid:'none',dashed:'8 4',dotted:'2 4'})[cs.crosshairPattern||'dashed']||'8 4';
+    var crosshairBtn='<button onclick="window._openCrosshairColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:0 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_cxColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+cxCol+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_cxLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+cxDash+'"/></svg></button>';
+    var slCol=cs.scaleLinesColor||'#2a2e39';
+    var slW=Math.max(1,parseInt(cs.scaleLineWidth,10)||2);
+    var slDash=({solid:'none',dashed:'8 4',dotted:'2 4'})[cs.scaleLinePattern||'solid']||'none';
+    var scaleLinesBtn='<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:0 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+slCol+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+slW+'" stroke-dasharray="'+slDash+'" stroke-linecap="round"/></svg></button>';
     return sec(st('CHART BASIC STYLES')+
-        '<div class="tv-row" style="margin-bottom:10px;">'+
-            '<span class="settings-input-label" style="flex:1;">Background</span>'+
-            clr('','cv_bg',cs.backgroundColor||'#050028')+
-        '</div>'+
-        '<div class="tv-row" style="margin-bottom:10px;">'+
-            '<span class="settings-input-label" style="flex:1;">Grid lines</span>'+
-            selI('cv_grid',[['Vert and horz','Vert and horz'],['Vertical','Vert only'],['Horizontal','Horz only'],['None','No lines']],gridStyle)+
-            clr('','cv_gridClr',cs.gridColor||'rgba(42,46,57,0.6)')+
-        '</div>'+
-        '<div class="tv-row" style="margin-bottom:10px;">'+
-            '<span class="settings-input-label" style="flex:1;">Crosshair</span>'+
-            (function(){
-                var col=cs.crosshairColor||'#787b86';
-                var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
-                var dash=dashMap[cs.crosshairPattern||'dashed']||'8 4';
-                return '<button onclick="window._openCrosshairColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_cxColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_cxLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+dash+'"/></svg></button>';
-            })()+
-        '</div>')+
+        row('Background', sw('cv_bg', cs.backgroundColor||'#050028'))+
+        row('Grid lines', '<div style="display:flex;align-items:center;gap:6px;">'+gridSel+sw('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)')+'</div>')+
+        row('Crosshair', crosshairBtn))+
     sec(st('SCALES')+
-            '<div class="tv-row" style="margin-bottom:10px;">'+
-                '<span class="settings-input-label" style="flex:1;">Text</span>'+
-                clr('','cv_scaleText',cs.scaleTextColor||'#ffffff')+
-                selI('cv_scaleFont',[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']],String(cs.scaleTextSize||cs.scaleFontSize||'12'),'72px')+
-            '</div>'+
-            '<div class="tv-row" style="margin-bottom:4px;">'+
-                '<span class="settings-input-label" style="flex:1;">Lines</span>'+
-                (function(){
-                    var col=cs.scaleLinesColor||'#2a2e39';
-                    var w=Math.max(1,parseInt(cs.scaleLineWidth,10)||2);
-                    var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
-                    var dash=dashMap[cs.scaleLinePattern||'solid']||'none';
-                    return '<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+w+'" stroke-dasharray="'+dash+'" stroke-linecap="round"/></svg></button>';
-                })()+
-            '</div>')+
+        row('Text', '<div style="display:flex;align-items:center;gap:6px;">'+sw('cv_scaleText', cs.scaleTextColor||'#ffffff')+fontSel+'</div>')+
+        row('Lines', scaleLinesBtn))+
     sec(st('MARGINS')+
         irow('Right (bars)','cv_marginRight',ro,0,300))+
     sec(st('SETTINGS PANEL THEME')+
