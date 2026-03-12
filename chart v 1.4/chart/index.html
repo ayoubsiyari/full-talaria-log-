@@ -2220,8 +2220,8 @@
         }
 
         .toolbar-icon-btn-dark:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: #a0aec0;
+            background: var(--sp-hover-bg, rgba(255, 255, 255, 0.08));
+            color: var(--sp-text, #a0aec0);
         }
 
         .toolbar-icon-btn-dark svg {
@@ -2298,8 +2298,8 @@
             transition: all 0.15s ease;
         }
         .toolbar-icon-btn-light:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: #a0aec0;
+            background: var(--sp-hover-bg, rgba(255, 255, 255, 0.08));
+            color: var(--sp-text, #a0aec0);
         }
 
 
@@ -3347,7 +3347,7 @@
             padding: 8px 10px;
             border-radius: 4px;
             cursor: default;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
             font-size: 13px;
             transition: all 0.15s ease;
         }
@@ -3397,7 +3397,7 @@
         }
 
         .profile-avatar-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--sp-hover-bg, rgba(255, 255, 255, 0.08));
             color: var(--sp-accent);
         }
 
@@ -3664,7 +3664,7 @@
             border-radius: 4px;
             background: transparent;
             border: none;
-            color: #a0aec0;
+            color: var(--sp-text-muted, #a0aec0);
             cursor: default;
             transition: all 0.15s ease;
             flex-shrink: 0;
@@ -3673,8 +3673,8 @@
         }
 
         .toolbar-icon-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: #a0aec0;
+            background: var(--sp-hover-bg, rgba(255, 255, 255, 0.08));
+            color: var(--sp-text, #a0aec0);
         }
 
         .toolbar-icon-btn svg {
@@ -12224,17 +12224,17 @@
 
         /* Context Menu Styling */
         .chart-context-menu {
-            background: #050028;
+            background: var(--sp-bg, #050028);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--sp-ui-border, rgba(255, 255, 255, 0.08));
             border-radius: 6px;
             padding: 4px;
             min-width: 200px;
             box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
             font-size: 13px;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
             animation: menuFadeIn 0.12s ease-out;
         }
         
@@ -12257,8 +12257,8 @@
         }
 
         .context-menu-item:hover {
-            background: #2a2e39;
-            color: #ffffff;
+            background: var(--sp-ui-surface-bg, #2a2e39);
+            color: var(--sp-text-active, #ffffff);
         }
         
         .context-menu-item svg {
@@ -12282,14 +12282,14 @@
         
         .context-menu-divider {
             height: 1px;
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--sp-ui-border, rgba(255, 255, 255, 0.08));
             margin: 4px 8px;
         }
         
         .context-menu-shortcut {
             margin-left: auto;
             font-size: 11px;
-            color: #787b86;
+            color: var(--sp-text-muted, #787b86);
             font-weight: 500;
         }
 
@@ -12299,14 +12299,14 @@
 
         /* Drawing Style Editor */
         .drawing-style-editor {
-            background: #050028;
+            background: var(--sp-bg, #050028);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--sp-ui-border, rgba(255, 255, 255, 0.06));
             border-radius: 8px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
             width: 320px;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
             font-size: 13px;
             overflow: visible;
@@ -19852,7 +19852,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260312_TF_PIN_V86"></script>
+         <script src="chart.js?v=20260312_TF_PIN_V87"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260312_TF_PIN_V62"></script>
@@ -26912,10 +26912,10 @@ function chk(label,id,on){ return '<div class="settings-checkbox-item'+(on?' che
 function irow(label,id,val,mn,mx,step){ return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><input type="number" id="nr_'+id+'" class="settings-input" value="'+val+'" min="'+mn+'" max="'+mx+'" step="'+(step||1)+'"></div>'; }
 function sel(label,id,opts,cur){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><select id="sl_'+id+'" class="settings-select" style="margin-left:auto;max-width:168px;">'+o+'</select></div>'; }
 function selI(id,opts,cur,w){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<select id="sl_'+id+'" class="settings-select" style="width:'+(w||'130px')+';flex-shrink:0;">'+o+'</select>'; }
-function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+safeVal+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+safeVal+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
-function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:var(--sp-accent);font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:#787b86;margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
+function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+safeVal+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+safeVal+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
+function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:var(--sp-accent);font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--sp-text-muted,#787b86);margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
 function savebtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:var(--sp-accent);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">'+label+'</button>'; }
-function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:transparent;color:#787b86;border:1px solid rgba(255,255,255,0.1);border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
+function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:transparent;color:var(--sp-text-muted,#787b86);border:1px solid var(--sp-input-border,rgba(255,255,255,0.1));border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
 function toHex(c){ if(!c)return '#000000'; if(/^#[0-9a-f]{6}$/i.test(c))return c; var m=String(c).match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/); if(m)return '#'+[m[1],m[2],m[3]].map(function(n){return('0'+parseInt(n).toString(16)).slice(-2);}).join(''); return '#000000'; }
 
 /* wirers */
@@ -27108,7 +27108,7 @@ P['canvas']={title:'Canvas',build:function(){
                 var col=cs.crosshairColor||'#787b86';
                 var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
                 var dash=dashMap[cs.crosshairPattern||'dashed']||'8 4';
-                return '<button onclick="window._openCrosshairColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_cxColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_cxLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+dash+'"/></svg></button>';
+                return '<button onclick="window._openCrosshairColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_cxColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_cxLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+dash+'"/></svg></button>';
             })()+
         '</div>')+
     sec(st('SCALES')+
@@ -27124,7 +27124,7 @@ P['canvas']={title:'Canvas',build:function(){
                     var w=Math.max(1,parseInt(cs.scaleLineWidth,10)||2);
                     var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
                     var dash=dashMap[cs.scaleLinePattern||'solid']||'none';
-                    return '<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+w+'" stroke-dasharray="'+dash+'" stroke-linecap="round"/></svg></button>';
+                    return '<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:4px 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+col+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+w+'" stroke-dasharray="'+dash+'" stroke-linecap="round"/></svg></button>';
                 })()+
             '</div>')+
     sec(st('MARGINS')+
