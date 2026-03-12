@@ -440,6 +440,8 @@ class Chart {
 
             // Settings panel theme
             settingsPanelAccentColor: '#2962ff',
+            settingsPanelSecondaryColor: '#7b61ff',
+            settingsPanelTextColor: '#e0e3ea',
             settingsPanelBgColor: '#050028',
             settingsPanelSidebarBgColor: '#050028',
             
@@ -4350,8 +4352,34 @@ class Chart {
             const surfaceBg = mixRgb(panelRgb, deepUiBase, 0.58);
             const sidebarUiBg = mixRgb(sidebarRgb, deepUiBase, 0.62);
             const borderColorRgb = mixRgb(surfaceBg, [162, 176, 216], 0.24);
+            // Secondary accent + text colors
+            const secondaryColor = targetChart.chartSettings.settingsPanelSecondaryColor || '#7b61ff';
+            const textColor = targetChart.chartSettings.settingsPanelTextColor || '#e0e3ea';
+            const secondaryRgb = toRgbArray(secondaryColor, [123, 97, 255]);
+            const textRgb = toRgbArray(textColor, [224, 227, 234]);
+
+            // Derive muted text (mix text toward panel bg)
+            const textMutedRgb = mixRgb(textRgb, panelRgb, 0.52);
+            // Input/button bg: slightly lighter than surface
+            const inputBgRgb = mixRgb(surfaceBg, [255, 255, 255], 0.06);
+            const inputBorderRgb = mixRgb(surfaceBg, [255, 255, 255], 0.14);
+            const btnBorderRgb = mixRgb(surfaceBg, [255, 255, 255], 0.20);
+            const hoverBgRgb = mixRgb(surfaceBg, [255, 255, 255], 0.05);
+            const navIconRgb = mixRgb(textMutedRgb, panelRgb, 0.25);
+
             root.style.setProperty('--sp-accent', accentColor);
             root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
+            root.style.setProperty('--sp-secondary', secondaryColor);
+            root.style.setProperty('--sp-secondary-rgb', `${secondaryRgb[0]}, ${secondaryRgb[1]}, ${secondaryRgb[2]}`);
+            root.style.setProperty('--sp-text', rgbToCss(textRgb));
+            root.style.setProperty('--sp-text-muted', rgbToCss(textMutedRgb));
+            root.style.setProperty('--sp-text-active', '#ffffff');
+            root.style.setProperty('--sp-nav-icon-color', rgbToCss(navIconRgb));
+            root.style.setProperty('--sp-hover-bg', rgbaToCss(hoverBgRgb, 0.55));
+            root.style.setProperty('--sp-input-bg', rgbaToCss(inputBgRgb, 0.72));
+            root.style.setProperty('--sp-input-border', rgbaToCss(inputBorderRgb, 0.55));
+            root.style.setProperty('--sp-btn-border', rgbaToCss(btnBorderRgb, 0.65));
+            root.style.setProperty('--sp-select-bg', rgbaToCss(inputBgRgb, 0.72));
             root.style.setProperty('--sp-bg', panelBg);
             root.style.setProperty('--sp-sidebar-bg', sidebarBg);
             root.style.setProperty('--sp-ui-chrome-bg', rgbToCss(chromeBg));
@@ -4557,7 +4585,9 @@ class Chart {
             'priceLineColor',
             'areaLineColor',
             'areaFillColor',
-            'baselineColor'
+            'baselineColor',
+            'settingsPanelSecondaryColor',
+            'settingsPanelTextColor'
         ];
 
         const snapshot = { name: name };

@@ -2623,7 +2623,7 @@
             align-items: center;
             gap: 10px;
             padding: 20px 16px 16px;
-            color: #e0e3ea;
+            color: var(--sp-text, #e0e3ea);
             font-size: 14px;
             font-weight: 700;
             letter-spacing: 0.02em;
@@ -2639,16 +2639,16 @@
             padding: 9px 12px;
             border-radius: 8px;
             cursor: pointer;
-            color: #787b86;
+            color: var(--sp-text-muted, #787b86);
             font-size: 13px;
             font-weight: 500;
             transition: background 0.15s, color 0.15s;
             user-select: none;
         }
-        .sp-nav-item:hover { background: rgba(255,255,255,0.05); color: #d1d5db; }
-        .sp-nav-item.active { background: rgba(var(--sp-accent-rgb),0.18); color: #fff; }
+        .sp-nav-item:hover { background: var(--sp-hover-bg, rgba(255,255,255,0.05)); color: var(--sp-text, #d1d5db); }
+        .sp-nav-item.active { background: rgba(var(--sp-accent-rgb),0.18); color: var(--sp-text-active, #fff); }
         .sp-nav-item.active svg { color: var(--sp-accent); }
-        .sp-nav-item svg { flex-shrink: 0; color: #555a6e; transition: color 0.15s; }
+        .sp-nav-item svg { flex-shrink: 0; color: var(--sp-nav-icon-color, #555a6e); transition: color 0.15s; }
 
         /* Settings mode: hide items that have dedicated toolbar buttons */
         #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="alerts"],
@@ -2679,17 +2679,17 @@
         #spContentTitle {
             font-size: 15px;
             font-weight: 700;
-            color: #e0e3ea;
+            color: var(--sp-text, #e0e3ea);
             letter-spacing: 0.01em;
         }
         .sp-close-btn {
             display: flex; align-items: center; justify-content: center;
             width: 30px; height: 30px;
             border: none; background: transparent;
-            color: #787b86; cursor: pointer; border-radius: 6px;
+            color: var(--sp-text-muted, #787b86); cursor: pointer; border-radius: 6px;
             transition: background 0.15s, color 0.15s;
         }
-        .sp-close-btn:hover { background: rgba(255,255,255,0.07); color: #fff; }
+        .sp-close-btn:hover { background: var(--sp-hover-bg, rgba(255,255,255,0.07)); color: var(--sp-text-active, #fff); }
 
         .sp-content-body {
             flex: 1;
@@ -2900,14 +2900,14 @@
         .side-panel-item {
             display: flex; align-items: center; gap: 14px;
             padding: 14px 24px;
-            cursor: pointer; color: #d1d4dc; font-size: 13px;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            cursor: pointer; color: var(--sp-text, #d1d4dc); font-size: 13px;
+            border-bottom: 1px solid var(--sp-ui-border, rgba(255,255,255,0.04));
             transition: background 0.15s; user-select: none;
         }
-        .side-panel-item:hover { background: rgba(255,255,255,0.05); }
-        .side-panel-item svg { width: 18px; height: 18px; color: #787b86; flex-shrink: 0; }
+        .side-panel-item:hover { background: var(--sp-hover-bg, rgba(255,255,255,0.05)); }
+        .side-panel-item svg { width: 18px; height: 18px; color: var(--sp-text-muted, #787b86); flex-shrink: 0; }
         .side-panel-item > span:first-of-type { flex: 1; }
-        .side-panel-value { color: #787b86; font-size: 12px; }
+        .side-panel-value { color: var(--sp-text-muted, #787b86); font-size: 12px; }
         .side-panel-badge {
             background: var(--sp-accent); color: #fff;
             border-radius: 10px; padding: 1px 8px;
@@ -2917,8 +2917,8 @@
         .side-panel-item.sp-danger svg { color: #f23645; }
         .side-panel-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
         .side-panel-footer {
-            padding: 14px 24px; color: #555a6e; font-size: 12px;
-            border-top: 1px solid rgba(255,255,255,0.06);
+            padding: 14px 24px; color: var(--sp-text-muted, #555a6e); font-size: 12px;
+            border-top: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
         }
 
         /* Settings Content Styles */
@@ -2962,7 +2962,7 @@
         .settings-section-title {
             font-size: 11px;
             font-weight: 600;
-            color: #787b86;
+            color: var(--sp-text-muted, #787b86);
             letter-spacing: 0.5px;
             text-transform: uppercase;
             margin-bottom: 12px;
@@ -2994,15 +2994,15 @@
             align-items: flex-start;
             gap: 12px;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: var(--sp-input-bg, rgba(255, 255, 255, 0.02));
+            border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.06));
             border-radius: 8px;
             cursor: default;
             transition: all 0.15s ease;
         }
 
         .settings-radio-item:hover {
-            background: rgba(255, 255, 255, 0.04);
+            background: var(--sp-hover-bg, rgba(255, 255, 255, 0.04));
         }
 
         .settings-radio-item.selected {
@@ -3013,7 +3013,7 @@
         .settings-radio-circle {
             width: 20px;
             height: 20px;
-            border: 2px solid #787b86;
+            border: 2px solid var(--sp-text-muted, #787b86);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -3043,13 +3043,13 @@
             margin: 0 0 4px 0;
             font-size: 14px;
             font-weight: 500;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
         }
 
         .settings-radio-content p {
             margin: 0;
             font-size: 12px;
-            color: #787b86;
+            color: var(--sp-text-muted, #787b86);
             line-height: 1.4;
         }
 
@@ -3064,7 +3064,7 @@
         .settings-checkbox {
             width: 16px;
             height: 16px;
-            border: 2px solid #363a45;
+            border: 2px solid var(--sp-input-border, #363a45);
             border-radius: 3px;
             display: flex;
             align-items: center;
@@ -3075,7 +3075,7 @@
         }
 
         .settings-checkbox-item:hover .settings-checkbox {
-            border-color: #4b5567;
+            border-color: var(--sp-btn-border, #4b5567);
         }
 
         .settings-checkbox-item.checked .settings-checkbox {
@@ -3142,7 +3142,7 @@
 
         .settings-checkbox-label {
             font-size: 14px;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
         }
 
         .settings-slider-group {
@@ -3151,7 +3151,7 @@
 
         .settings-slider-label {
             font-size: 11px;
-            color: #787b86;
+            color: var(--sp-text-muted, #787b86);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 12px;
@@ -3160,7 +3160,7 @@
         .settings-slider {
             width: 100%;
             height: 4px;
-            background: #2a2e39;
+            background: var(--sp-input-bg, #2a2e39);
             border-radius: 2px;
             appearance: none;
             cursor: default;
@@ -3180,7 +3180,7 @@
             justify-content: space-between;
             margin-top: 8px;
             font-size: 11px;
-            color: #787b86;
+            color: var(--sp-text-muted, #787b86);
         }
 
         .settings-input-row {
@@ -3188,21 +3188,21 @@
             align-items: center;
             justify-content: space-between;
             padding: 12px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            border-bottom: 1px solid var(--sp-ui-border, rgba(255, 255, 255, 0.04));
         }
 
         .settings-input-label {
             font-size: 14px;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
         }
 
         .settings-input {
             width: 100px;
             padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--sp-input-bg, rgba(255, 255, 255, 0.04));
+            border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.1));
             border-radius: 6px;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
             font-size: 14px;
             text-align: center;
         }
@@ -3265,12 +3265,12 @@
             justify-content: center;
             width: 10px;
             height: 8px;
-            color: #787b86;
+            color: var(--sp-text-muted, #787b86);
             transition: color 0.15s;
         }
         
         .custom-spinner-btn:hover {
-            color: #ffffff;
+            color: var(--sp-text-active, #ffffff);
         }
         
         .custom-spinner-btn svg {
@@ -3284,10 +3284,10 @@
         .settings-select {
             width: 140px;
             padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--sp-select-bg, rgba(255, 255, 255, 0.04));
+            border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.1));
             border-radius: 6px;
-            color: #ffffff;
+            color: var(--sp-text, #ffffff);
             font-size: 14px;
             cursor: default;
             appearance: none;
@@ -3296,23 +3296,23 @@
             background-position: right 12px center;
             padding-right: 36px;
         }
-
         .settings-select:focus {
             outline: none;
             border-color: var(--sp-accent);
+            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.15);
         }
-        
+
         /* Dark dropdown options */
         .tv-select,
         .settings-select {
-            background-color: #000000 !important;
-            color: #d1d4dc;
+            background-color: var(--sp-select-bg, rgba(0,0,0,0.85)) !important;
+            color: var(--sp-text, #d1d4dc);
         }
         
         .tv-select option,
         .settings-select option {
-            background-color: #000000;
-            color: #d1d4dc;
+            background-color: var(--sp-ui-chrome-bg, #000000);
+            color: var(--sp-text, #d1d4dc);
             padding: 8px;
         }
         
@@ -19852,7 +19852,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260312_TF_PIN_V85"></script>
+         <script src="chart.js?v=20260312_TF_PIN_V86"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260312_TF_PIN_V62"></script>
@@ -27130,10 +27130,26 @@ P['canvas']={title:'Canvas',build:function(){
     sec(st('MARGINS')+
         irow('Right (bars)','cv_marginRight',ro,0,300))+
     sec(st('SETTINGS PANEL THEME')+
-        clr('Accent','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
+        clr('Primary (accent)','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
+        clr('Secondary','sp_sec',cs.settingsPanelSecondaryColor||'#7b61ff')+
+        clr('Text color','sp_text',cs.settingsPanelTextColor||'#e0e3ea')+
         clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
+        '<div class="settings-input-row" style="padding-top:4px;">'+
+            '<span class="settings-input-label">Full theme preset</span>'+
+            '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:152px;">'+
+                '<option value="">Custom</option>'+
+                '<option value="talaria-dark">Talaria Dark</option>'+
+                '<option value="talaria-light">Talaria Light</option>'+
+                '<option value="ocean-blue">Ocean Blue</option>'+
+                '<option value="emerald">Emerald</option>'+
+                '<option value="midnight-purple">Midnight Purple</option>'+
+                '<option value="crimson">Crimson</option>'+
+                '<option value="gold">Gold</option>'+
+                '<option value="carbon">Carbon</option>'+
+            '</select>'+
+        '</div>'+
         '<div class="settings-input-row" style="justify-content:flex-end; padding-top:4px;">'+
-            '<button id="btn_sp_reset_theme" type="button" style="padding:7px 12px;border:1px solid rgba(255,255,255,0.18);border-radius:6px;background:transparent;color:#d1d4dc;font-size:12px;font-weight:600;cursor:pointer;">Reset theme</button>'+
+            '<button id="btn_sp_reset_theme" type="button" style="padding:7px 12px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.18));border-radius:6px;background:transparent;color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;cursor:pointer;">Reset theme</button>'+
         '</div>');
 },wire:function(){
     wClr('cv_bg',function(v){
@@ -27168,6 +27184,40 @@ P['canvas']={title:'Canvas',build:function(){
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
     wClr('sp_acc',function(v){set('settingsPanelAccentColor',v);});
+    wClr('sp_sec',function(v){set('settingsPanelSecondaryColor',v);});
+    wClr('sp_text',function(v){set('settingsPanelTextColor',v);});
+
+    // Full theme presets
+    var UI_THEMES={
+        'talaria-dark':   {accent:'#2962ff',secondary:'#7b61ff',text:'#e0e3ea',bg:'#050028',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(42,46,57,0.6)',backgroundColor:'#050028'},
+        'talaria-light':  {accent:'#1a56db',secondary:'#6d28d9',text:'#131722',bg:'#f5f6fa',bodyUp:'#089981',bodyDown:'#e53935',gridColor:'rgba(0,0,0,0.1)',backgroundColor:'#f5f6fa'},
+        'ocean-blue':     {accent:'#00bcd4',secondary:'#0288d1',text:'#e0ffff',bg:'#0a1929',bodyUp:'#00bcd4',bodyDown:'#ff6e40',gridColor:'rgba(0,188,212,0.12)',backgroundColor:'#071a2b'},
+        'emerald':        {accent:'#00e676',secondary:'#00bfa5',text:'#e8f5e9',bg:'#0d1f0d',bodyUp:'#00e676',bodyDown:'#ff1744',gridColor:'rgba(0,230,118,0.12)',backgroundColor:'#0a1a0a'},
+        'midnight-purple':{accent:'#9c27b0',secondary:'#7b61ff',text:'#f3e5f5',bg:'#0d0516',bodyUp:'#7c4dff',bodyDown:'#ff4081',gridColor:'rgba(156,39,176,0.15)',backgroundColor:'#0a0412'},
+        'crimson':        {accent:'#f23645',secondary:'#ff6b35',text:'#ffe0e0',bg:'#1a0505',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(242,54,69,0.12)',backgroundColor:'#160303'},
+        'gold':           {accent:'#f5c518',secondary:'#ff9800',text:'#fff9e0',bg:'#1a1500',bodyUp:'#f5c518',bodyDown:'#e53935',gridColor:'rgba(245,197,24,0.12)',backgroundColor:'#150f00'},
+        'carbon':         {accent:'#90a4ae',secondary:'#78909c',text:'#eceff1',bg:'#1a1a1a',bodyUp:'#80cbc4',bodyDown:'#ef9a9a',gridColor:'rgba(144,164,174,0.12)',backgroundColor:'#121212'}
+    };
+    var themePresetSel=document.getElementById('sl_sp_theme_preset');
+    if(themePresetSel){
+        themePresetSel.addEventListener('change',function(){
+            var v=this.value;if(!v)return;
+            var t=UI_THEMES[v];if(!t)return;
+            var c=ch();if(!c)return;
+            var cs=c.chartSettings=c.chartSettings||{};
+            if(t.accent){cs.settingsPanelAccentColor=t.accent;var s=document.getElementById('sw_sp_acc');if(s){s.style.background=t.accent;s.dataset.color=t.accent;}}
+            if(t.secondary){cs.settingsPanelSecondaryColor=t.secondary;var s2=document.getElementById('sw_sp_sec');if(s2){s2.style.background=t.secondary;s2.dataset.color=t.secondary;}}
+            if(t.text){cs.settingsPanelTextColor=t.text;var s3=document.getElementById('sw_sp_text');if(s3){s3.style.background=t.text;s3.dataset.color=t.text;}}
+            if(t.bg){cs.settingsPanelBgColor=t.bg;cs.settingsPanelSidebarBgColor=t.bg;var s4=document.getElementById('sw_sp_bg');if(s4){s4.style.background=t.bg;s4.dataset.color=t.bg;}}
+            if(t.bodyUp){cs.bodyUpColor=t.bodyUp;cs.wickUpColor=t.bodyUp;cs.borderUpColor=t.bodyUp;}
+            if(t.bodyDown){cs.bodyDownColor=t.bodyDown;cs.wickDownColor=t.bodyDown;cs.borderDownColor=t.bodyDown;}
+            if(t.gridColor)cs.gridColor=t.gridColor;
+            if(t.backgroundColor){cs.backgroundColor=t.backgroundColor;if(c.canvas)c.canvas.style.backgroundColor=t.backgroundColor;}
+            apply();
+            try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(cs));}
+        });
+    }
+
     wClr('sp_bg',function(v){
         var c=ch();if(!c)return;
         c.chartSettings=c.chartSettings||{};
@@ -27185,6 +27235,8 @@ P['canvas']={title:'Canvas',build:function(){
         var bg=defaults.settingsPanelBgColor||'#050028';
 
         c.chartSettings.settingsPanelAccentColor=accent;
+        c.chartSettings.settingsPanelSecondaryColor='#7b61ff';
+        c.chartSettings.settingsPanelTextColor='#e0e3ea';
         c.chartSettings.settingsPanelBgColor=bg;
         c.chartSettings.settingsPanelSidebarBgColor=bg;
 
@@ -27192,6 +27244,10 @@ P['canvas']={title:'Canvas',build:function(){
         if(swAccent){swAccent.dataset.color=accent;swAccent.style.background=accent;}
         var swBg=document.getElementById('sw_sp_bg');
         if(swBg){swBg.dataset.color=bg;swBg.style.background=bg;}
+        var swSec=document.getElementById('sw_sp_sec');
+        if(swSec){swSec.dataset.color='#7b61ff';swSec.style.background='#7b61ff';}
+        var swText=document.getElementById('sw_sp_text');
+        if(swText){swText.dataset.color='#e0e3ea';swText.style.background='#e0e3ea';}
 
         apply();
     });
