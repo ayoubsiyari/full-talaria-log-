@@ -1058,6 +1058,7 @@
         }
         
         this.indicators.active.push(indicator);
+        this._updateIndicatorPanelHeight();
         console.log('✅ Added indicator:', indicator.name);
         
         if (typeof this.render === 'function') {
@@ -1594,6 +1595,7 @@
             
             this.indicators.active.splice(index, 1);
             delete this.indicators.data[id];
+            this._updateIndicatorPanelHeight();
             
             console.log('🗑️ Removed indicator:', indicator.name);
             
@@ -1631,6 +1633,7 @@
 
         this.indicators.active = [];
         this.indicators.data = {};
+        this.separateIndicatorPanelHeight = 0;
 
         if (typeof this.render === 'function') {
             this.render();
@@ -1722,22 +1725,27 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const totalHeight = this.h;
     const chartWidth = this.w - m.l - m.r;
     
-    // Calculate panel dimensions
-    const panelHeight = 100; // Fixed height for indicator panel
+    // Each indicator gets its own 100px sub-panel, stacked vertically
+    const perPanelHeight = 100;
+    const totalPanelHeight = separateIndicators.length * perPanelHeight;
     const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? 
         (this.h - m.t - m.b) * this.volumeHeight : 0;
-    
+
+    // Track total height so calculateScales can reserve the right amount of space
+    this.separateIndicatorPanelHeight = totalPanelHeight;
+
     // Panel position: above volume, below price chart
     const panelBottom = totalHeight - m.b - effectiveVolumeHeight;
-    const panelTop = panelBottom - panelHeight;
+    const panelTop = panelBottom - totalPanelHeight;
     
-    // Draw panel background
+    // Draw full panel background
     ctx.fillStyle = '#131722';
-    ctx.fillRect(m.l, panelTop, chartWidth, panelHeight);
+    ctx.fillRect(m.l, panelTop, chartWidth, totalPanelHeight);
     
-    // Draw top separator line
+    // Outer top separator
     ctx.strokeStyle = '#363a45';
     ctx.lineWidth = 1;
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(m.l, panelTop);
     ctx.lineTo(this.w - m.r, panelTop);
@@ -1747,23 +1755,38 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const visibleStart = Math.max(0, Math.floor(this.visibleStartIndex || 0));
     const visibleEnd = Math.min(this.data.length, Math.ceil(this.visibleEndIndex || this.data.length));
     
-    // Draw each indicator
+    // Draw each indicator in its own slot (idx 0 = bottommost slot)
     separateIndicators.forEach((indicator, idx) => {
         // Skip volume indicator - it has its own dedicated rendering
         if (indicator.type === 'volume' || indicator.isVolume) return;
+
+        // Per-indicator slot boundaries
+        const indBottom = panelBottom - idx * perPanelHeight;
+        const indTop    = indBottom - perPanelHeight;
+
+        // Separator between slots
+        if (idx > 0) {
+            ctx.strokeStyle = '#2a2e39';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, indBottom);
+            ctx.lineTo(this.w - m.r, indBottom);
+            ctx.stroke();
+        }
         
         const indicatorData = this.indicators.data[indicator.id];
         if (!indicatorData) return;
         
         // Type-specific rendering for multi-series indicators
         if (indicator.type === 'macd') {
-            this._renderMACDPanel(ctx, m, panelTop, panelBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            this._renderMACDPanel(ctx, m, indTop, indBottom, perPanelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'stoch' || indicator.type === 'stochastic') {
-            this._renderStochPanel(ctx, m, panelTop, panelBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            this._renderStochPanel(ctx, m, indTop, indBottom, perPanelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'adx') {
-            this._renderADXPanel(ctx, m, panelTop, panelBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            this._renderADXPanel(ctx, m, indTop, indBottom, perPanelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         }
 
@@ -1792,7 +1815,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         // Scale function for Y axis
         const scaleY = (val) => {
             if (val === null || val === undefined) return null;
-            return panelBottom - 5 - ((val - min) / (max - min)) * (panelHeight - 10);
+            return indBottom - 5 - ((val - min) / (max - min)) * (perPanelHeight - 10);
         };
         
         const color = indicator.style.color || '#ff6d00';
@@ -1853,7 +1876,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         if (indicator.type === 'rsi') {
             [[70, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.35)'], [30, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
                 const ry = scaleY(lvl);
-                if (ry > panelTop && ry < panelBottom) {
+                if (ry > indTop && ry < indBottom) {
                     ctx.strokeStyle = col;
                     ctx.lineWidth = 1;
                     ctx.setLineDash([3, 3]);
@@ -1872,7 +1895,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         } else if (indicator.type === 'cci') {
             [[-100, 'rgba(38,166,154,0.5)'], [0, 'rgba(120,123,134,0.35)'], [100, 'rgba(239,83,80,0.5)']].forEach(([lvl, col]) => {
                 const ry = scaleY(lvl);
-                if (ry > panelTop && ry < panelBottom) {
+                if (ry > indTop && ry < indBottom) {
                     ctx.strokeStyle = col;
                     ctx.lineWidth = 1;
                     ctx.setLineDash([3, 3]);
@@ -1924,9 +1947,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         ctx.textAlign = 'left';
         const valueText = displayValue !== null && displayValue !== undefined ? 
             displayValue.toFixed(5) : '—';
-        ctx.fillText(`${indicator.name}`, m.l + 5, panelTop + 14);
+        ctx.fillText(`${indicator.name}`, m.l + 5, indTop + 14);
         ctx.font = '11px Roboto';
-        ctx.fillText(valueText, m.l + 5 + ctx.measureText(indicator.name + ' ').width, panelTop + 14);
+        ctx.fillText(valueText, m.l + 5 + ctx.measureText(indicator.name + ' ').width, indTop + 14);
         
         // Draw current value label on right axis
         if (currentValue !== null && currentValue !== undefined && !isNaN(currentValue)) {
@@ -1956,21 +1979,21 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         }
     });
     
-    // Store panel info for mouse interactions
+    // Store panel info for mouse interactions (full stacked area)
     this.separatePanelInfo = {
         top: panelTop,
         bottom: panelBottom,
-        height: panelHeight,
-        indicators: separateIndicators,
-        min: min,
-        max: max,
-        scaleY: (val) => panelBottom - 5 - ((val - min) / (max - min)) * (panelHeight - 10),
-        inverseScaleY: (y) => min + ((panelBottom - 5 - y) / (panelHeight - 10)) * (max - min)
+        height: totalPanelHeight,
+        perPanelHeight: perPanelHeight,
+        indicators: separateIndicators
     };
     
-    // Draw crosshair value if mouse is in panel
+    // Draw crosshair value if mouse is in the stacked panel area
     if (this.mouseY >= panelTop && this.mouseY <= panelBottom && this.mouseX >= m.l && this.mouseX <= this.w - m.r) {
-        this.drawSeparatePanelCrosshair(ctx, m, panelTop, panelBottom, panelHeight, separateIndicators, min, max);
+        const slotIdx = Math.min(Math.floor((panelBottom - this.mouseY) / perPanelHeight), separateIndicators.length - 1);
+        const slotBottom = panelBottom - slotIdx * perPanelHeight;
+        const slotTop    = slotBottom - perPanelHeight;
+        this.drawSeparatePanelCrosshair(ctx, m, slotTop, slotBottom, perPanelHeight, [separateIndicators[slotIdx]], 0, 100);
     }
     
     ctx.textAlign = 'left'; // Reset
@@ -2869,6 +2892,19 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         }
     };
     
+    // Recompute the total pixel height reserved for separate-panel indicators
+    Chart.prototype._updateIndicatorPanelHeight = function() {
+        if (!this.indicators || !this.indicators.active) {
+            this.separateIndicatorPanelHeight = 0;
+            return;
+        }
+        const count = this.indicators.active.filter(function(ind) {
+            if (ind.type === 'volume' || ind.isVolume) return false;
+            return (ind.overlay === false || ind.separatePanel === true) && ind.visible !== false;
+        }).length;
+        this.separateIndicatorPanelHeight = count * 100;
+    };
+
     // ---- Helper: draw a single line in a sub-panel using a pre-computed scaleY ----
     Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY) {
         if (!values) return;

@@ -9212,9 +9212,10 @@ class Chart {
         if (visible.length === 0) {
             // Only set default scales if we've never had valid data before
             if (!this.xScale || !this.yScale) {
+                const _indPanelH = this.separateIndicatorPanelHeight || 0;
                 this.xScale = d3.scaleLinear().domain([0, 1]).range([m.l, this.w - m.r]);
-                this.yScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - volumeAreaHeight, m.t]);
-                this.volumeScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b, this.h - m.b - volumeAreaHeight]);
+                this.yScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - volumeAreaHeight - _indPanelH, m.t]);
+                this.volumeScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - _indPanelH, this.h - m.b - volumeAreaHeight - _indPanelH]);
             }
             // Otherwise, keep the existing scales so drawings remain visible
             return;
@@ -9300,14 +9301,15 @@ class Chart {
                      Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visible.length])
             .range([m.l, this.w - m.r]);
         
+        const indPanelH = this.separateIndicatorPanelHeight || 0;
         this.yScale = d3.scaleLinear()
             .domain([domainMin, domainMax])
-            .range([this.h - m.b - volumeAreaHeight, m.t]);
+            .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
         const maxVolume = Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
-            .range([this.h - m.b, this.h - m.b - volumeAreaHeight]);
+            .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
         
         // Create scales object for order manager compatibility
         this.scales = {
