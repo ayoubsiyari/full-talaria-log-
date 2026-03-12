@@ -575,9 +575,9 @@ class DrawingSettingsPanel {
 .tv-align-btn {
     width: 21px;
     height: 21px;
-    border: 1px solid rgba(50, 50, 60, 0.9);
-    background: rgba(255,255,255,0.05);
-    color: #787b86;
+    border: 1px solid var(--sp-input-border, rgba(50, 50, 60, 0.9));
+    background: var(--sp-input-bg, rgba(255,255,255,0.05));
+    color: var(--sp-text-muted, #787b86);
     cursor: default;
     display: flex;
     align-items: center;
@@ -586,19 +586,19 @@ class DrawingSettingsPanel {
 }
 
 .tv-align-btn:hover {
-    background: linear-gradient(180deg, #6c6d71ff 0%, #6e7074ff 50%);
-    border-color: rgba(90, 90, 100, 0.9);
+    background: var(--sp-hover-bg, rgba(255,255,255,0.08));
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9));
 }
 
 .tv-align-btn.active {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
-    border-color: rgba(41, 98, 255, 0.85);
-    color: #ffffff;
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45));
+    border-color: rgba(var(--sp-accent-rgb), 0.85);
+    color: var(--sp-text-active, #ffffff);
 }
 
 .tv-align-btn.active:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55));
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
 }
 
 /* Ending/Info dropdown buttons */
@@ -1919,7 +1919,7 @@ body.light-mode .tv-line-type-select:hover {
     font-weight: 700;
     letter-spacing: 1.2px;
     text-transform: uppercase;
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     background: transparent;
     border: none;
     border-radius: 4px;
@@ -1930,17 +1930,17 @@ body.light-mode .tv-line-type-select:hover {
 }
 
 .tv-side-tab-btn:hover .front {
-    color: #d1d4dc;
-    background: rgba(255, 255, 255, 0.06);
+    color: var(--sp-text, #d1d4dc);
+    background: var(--sp-hover-bg, rgba(255, 255, 255, 0.06));
 }
 
 .tv-side-tab-btn.active .front {
-    color: #2962ff;
-    background: rgba(41, 98, 255, 0.12);
+    color: var(--sp-accent, #2962ff);
+    background: rgba(var(--sp-accent-rgb), 0.12);
 }
 
 .tv-side-tab-btn.active:hover .front {
-    background: rgba(41, 98, 255, 0.16);
+    background: rgba(var(--sp-accent-rgb), 0.16);
 }
 
 /* Light mode */
@@ -1976,7 +1976,7 @@ body.light-mode .tv-side-tab-btn.active:hover .front {
     flex-direction: column;
     gap: 6px;
     padding: 10px 8px;
-    border-right: 1px solid rgba(255,255,255,0.06);
+    border-right: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
     align-items: center;
 }
 
@@ -1984,7 +1984,7 @@ body.light-mode .tv-side-tab-btn.active:hover .front {
     display: flex;
     gap: 6px;
     padding: 6px 10px;
-    border-bottom: 3px solid rgba(255,255,255,0.18);
+    border-bottom: 3px solid var(--sp-input-border, rgba(255,255,255,0.18));
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
@@ -2006,20 +2006,20 @@ body.light-mode .tv-side-tab-btn.active:hover .front {
 }
 
 .tv-collapsible-tabs-top .tv-collapsible-tab-btn:hover {
-    border-color: rgba(41, 98, 255, 0.9);
-    background: rgba(41, 98, 255, 0.18) !important;
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.14);
+    border-color: rgba(var(--sp-accent-rgb), 0.9);
+    background: rgba(var(--sp-accent-rgb), 0.18) !important;
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.14);
 }
 
 .tv-collapsible-tabs-top .tv-collapsible-tab-btn.active {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.55), rgba(41, 98, 255, 0.30)) !important;
-    border-color: rgba(41, 98, 255, 0.9) !important;
-    color: #fff !important;
-    box-shadow: 0 6px 14px rgba(41, 98, 255, 0.14) !important;
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.55), rgba(var(--sp-accent-rgb), 0.30)) !important;
+    border-color: rgba(var(--sp-accent-rgb), 0.9) !important;
+    color: var(--sp-text-active, #fff) !important;
+    box-shadow: 0 6px 14px rgba(var(--sp-accent-rgb), 0.14) !important;
 }
 
 .tv-collapsible-tabs-top .tv-collapsible-tab-btn.active:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.62), rgba(41, 98, 255, 0.34)) !important;
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.62), rgba(var(--sp-accent-rgb), 0.34)) !important;
 }
 
 .tv-collapsible-tabs-top .tv-collapsible-tab-btn span {
@@ -2045,10 +2045,10 @@ body.light-mode .tv-side-tab-btn.active:hover .front {
     align-items: center;
     justify-content: center;
     padding: 10px 4px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--sp-input-bg, rgba(255,255,255,0.06));
+    border: 1px solid var(--sp-input-border, rgba(255,255,255,0.08));
     border-radius: 14px;
-    color: rgba(209, 212, 220, 0.65);
+    color: var(--sp-text-muted, rgba(209, 212, 220, 0.65));
     font-size: 11px;
     font-weight: 700;
     cursor: default;
@@ -2065,15 +2065,15 @@ body.light-mode .tv-side-tab-btn.active:hover .front {
 }
 
 .tv-collapsible-tab-btn:hover {
-    background: rgba(255,255,255,0.09);
-    color: rgba(209, 212, 220, 0.85);
+    background: var(--sp-hover-bg, rgba(255,255,255,0.09));
+    color: var(--sp-text, rgba(209, 212, 220, 0.85));
 }
 
 .tv-collapsible-tab-btn.active {
-    background: linear-gradient(180deg, rgba(41,98,255,0.95) 0%, rgba(41,98,255,0.55) 100%);
-    border-color: rgba(41, 98, 255, 0.75);
-    color: #ffffff;
-    box-shadow: 0 10px 24px rgba(41, 98, 255, 0.25);
+    background: linear-gradient(180deg, rgba(var(--sp-accent-rgb), 0.95) 0%, rgba(var(--sp-accent-rgb), 0.55) 100%);
+    border-color: rgba(var(--sp-accent-rgb), 0.75);
+    color: var(--sp-text-active, #ffffff);
+    box-shadow: 0 10px 24px rgba(var(--sp-accent-rgb), 0.25);
 }
 
 .tv-collapsible-tab-btn .tab-arrow {
