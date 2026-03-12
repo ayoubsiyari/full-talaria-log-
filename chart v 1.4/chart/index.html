@@ -2871,18 +2871,18 @@
         .sp-content-body::-webkit-scrollbar-track { background: transparent; }
         .sp-content-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 
-        /* ── Generic Side Panels (Notifications, Help, Profile) ── */
+        /* ── Generic Side Panels (Help, Profile) – two-column layout ── */
         .side-panel {
             position: fixed;
             top: 48px;
             right: -440px;
             width: 420px;
             height: calc(100vh - 48px);
-            background: #0a0a1a;
-            border-left: 1px solid rgba(255,255,255,0.07);
+            background: linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.12)), var(--sp-bg, #050028);
+            border-left: 1px solid var(--sp-ui-border, rgba(255,255,255,0.07));
             z-index: 1000010;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             transition: right 0.28s cubic-bezier(.4,0,.2,1);
             box-shadow: -8px 0 40px rgba(0,0,0,0.6);
         }
@@ -16737,73 +16737,86 @@
 
     <!-- Help Panel -->
     <div class="side-panel" id="helpPanel">
-        <div class="sp-content-header">
-            <span class="side-panel-title">Help</span>
-            <button class="sp-close-btn" onclick="event.stopPropagation();window._closeSidePanel('helpPanel');">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
+        <div class="sp-sidebar">
+            <div class="sp-sidebar-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
+                <span>Help</span>
+            </div>
+            <nav class="sp-nav" id="helpNav">
+                <div class="sp-nav-item active" data-hp="contact">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                    <span>Contact</span>
+                </div>
+                <div class="sp-nav-item" data-hp="shortcuts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
+                    <span>Shortcuts</span>
+                </div>
+                <div class="sp-nav-item" data-hp="faq">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
+                    <span>FAQ</span>
+                </div>
+                <div class="sp-nav-item" data-hp="education">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg>
+                    <span>Education</span>
+                </div>
+                <div class="sp-nav-divider"></div>
+                <div class="sp-nav-item" data-hp="changelog">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    <span>Changelog</span>
+                </div>
+            </nav>
+            <div class="side-panel-footer" style="margin-top:auto;">v1.4.9</div>
         </div>
-        <div class="side-panel-body">
-            <div class="side-panel-item" id="helpContactSupport">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
-                <span>Contact Support</span>
+        <div class="sp-content-wrap">
+            <div class="sp-content-header">
+                <span id="helpContentTitle">Contact Support</span>
+                <button class="sp-close-btn" onclick="event.stopPropagation();window._closeSidePanel('helpPanel');">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
             </div>
-            <div class="side-panel-item" id="helpKeyboardShortcuts">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
-                <span>Keyboard shortcuts</span>
-            </div>
-            <div class="side-panel-item" id="helpFAQ">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
-                <span>FAQ</span>
-            </div>
-            <div class="side-panel-item" id="helpEducation">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg>
-                <span>Education</span>
-            </div>
-            <div class="side-panel-divider"></div>
-            <div class="side-panel-item" id="helpChangelog">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                <span>Changelog</span>
-                <span class="side-panel-badge">1</span>
-            </div>
-            <div class="side-panel-footer">Current version 1.4.9</div>
+            <div class="sp-content-body" id="helpPanelContent"></div>
         </div>
     </div>
 
     <!-- Profile Panel -->
     <div class="side-panel" id="profilePanel">
-        <div class="sp-content-header">
-            <span class="side-panel-title">Profile</span>
-            <button class="sp-close-btn" onclick="event.stopPropagation();window._closeSidePanel('profilePanel');">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
+        <div class="sp-sidebar">
+            <div class="sp-sidebar-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Profile</span>
+            </div>
+            <nav class="sp-nav" id="profileNav">
+                <div class="sp-nav-item active" data-pp="language">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <span>Language</span>
+                </div>
+                <div class="sp-nav-item" data-pp="theme">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    <span>Theme</span>
+                </div>
+                <div class="sp-nav-item" data-pp="timezone">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span>Timezone</span>
+                </div>
+                <div class="sp-nav-divider"></div>
+                <div class="sp-nav-item" data-pp="account">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span>Account</span>
+                </div>
+                <div class="sp-nav-item" data-pp="logout" style="color:#f23645;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#f23645" stroke-width="1.5" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Log Out</span>
+                </div>
+            </nav>
         </div>
-        <div class="side-panel-body">
-            <div class="side-panel-item" id="profileLanguage2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                <span>Language</span>
-                <span class="side-panel-value">English</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="color:#555a6e;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>
+        <div class="sp-content-wrap">
+            <div class="sp-content-header">
+                <span id="profileContentTitle">Language</span>
+                <button class="sp-close-btn" onclick="event.stopPropagation();window._closeSidePanel('profilePanel');">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
             </div>
-            <div class="side-panel-item" id="profileTheme2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                <span>Theme</span>
-                <span class="side-panel-value" id="profileThemeValue2">Dark</span>
-            </div>
-            <div class="side-panel-item" id="profileTimezone2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span>Timezone</span>
-                <span class="side-panel-value">UTC+1</span>
-            </div>
-            <div class="side-panel-divider"></div>
-            <div class="side-panel-item" id="profileAccount2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span>Account Settings</span>
-            </div>
-            <div class="side-panel-item sp-danger" id="profileLogout2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                <span>Log Out</span>
-            </div>
+            <div class="sp-content-body" id="profilePanelContent"></div>
         </div>
     </div>
 
@@ -27882,6 +27895,106 @@ window._closeSidePanel=function(id){
     var p=document.getElementById(id);
     if(p)p.classList.remove('open');
 };
+
+/* ── Help Panel content ── */
+var _helpSections={
+    contact:{title:'Contact Support',html:'<div style="padding:8px 0;"><p style="color:#d1d4dc;font-size:13px;line-height:1.6;margin:0 0 20px;">Have a question or issue? Our support team is here to help.</p><a href="mailto:support@talaria.com" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,0.05);border-radius:8px;color:var(--sp-accent,#2962ff);text-decoration:none;font-size:13px;font-weight:500;" onmouseenter="this.style.background=\'rgba(255,255,255,0.09)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.05)\'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>support@talaria.com</a></div>'},
+    shortcuts:{title:'Keyboard Shortcuts',html:'<div style="padding:4px 0;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody id="kbShortcutsBody"></tbody></table></div>'},
+    faq:{title:'FAQ',html:'<div style="padding:4px 0;" id="helpFaqBody"></div>'},
+    education:{title:'Education',html:'<div style="padding:8px 0;"><p style="color:#787b86;font-size:12px;margin:0 0 16px;">Learn how to use Talaria Chart effectively.</p><div class="side-panel-item" style="border-radius:6px;cursor:pointer;" onmouseenter="this.style.background=\'rgba(255,255,255,0.07)\'" onmouseleave="this.style.background=\'transparent\'" onclick="window.open(\'https://docs.talaria.com\',\'_blank\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg><span>Documentation</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="margin-left:auto;color:#555a6e;"><polyline points="9 18 15 12 9 6"/></svg></div><div class="side-panel-item" style="border-radius:6px;cursor:pointer;" onmouseenter="this.style.background=\'rgba(255,255,255,0.07)\'" onmouseleave="this.style.background=\'transparent\'" onclick="window.open(\'https://youtube.com\',\'_blank\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Video Tutorials</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="margin-left:auto;color:#555a6e;"><polyline points="9 18 15 12 9 6"/></svg></div></div>'},
+    changelog:{title:'Changelog',html:'<div style="padding:4px 0;"><div style="display:flex;align-items:center;gap:10px;padding:10px 0 14px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:14px;"><span style="background:var(--sp-accent,#2962ff);color:#fff;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">NEW</span><span style="color:#d1d4dc;font-size:13px;font-weight:600;">Version 1.4.9</span></div><div style="color:#d1d4dc;font-size:12px;line-height:1.7;"><p style="margin:0 0 8px;font-weight:600;color:#fff;">What\'s new</p><ul style="margin:0;padding-left:18px;color:#787b86;"><li>Two-column Help &amp; Profile panels</li><li>Performance improvements (render loop, RAF binding)</li><li>Template and color settings caching</li><li>Screenshot latency improvements</li></ul></div></div>'}
+};
+function _helpLoad(key){
+    var s=_helpSections[key]; if(!s)return;
+    var t=document.getElementById('helpContentTitle'); if(t)t.textContent=s.title;
+    var c=document.getElementById('helpPanelContent'); if(!c)return;
+    c.innerHTML=s.html;
+    if(key==='shortcuts'){
+        var rows=[['Ctrl/Cmd + Z','Undo'],['Ctrl/Cmd + Y','Redo'],['Ctrl/Cmd + S','Save'],['Alt + T','Toggle theme'],['F','Fit to view'],['R','Replay mode'],['Delete','Remove selected'],['Esc','Cancel / deselect'],['+ / -','Zoom in / out']];
+        var tb=document.getElementById('kbShortcutsBody');
+        if(tb){tb.innerHTML=rows.map(function(r){return'<tr><td style="padding:8px 12px;color:#d1d4dc;border-bottom:1px solid rgba(255,255,255,0.05);"><kbd style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:2px 7px;font-size:11px;font-family:monospace;">'+r[0]+'</kbd></td><td style="padding:8px 12px;color:#787b86;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05);">'+r[1]+'</td></tr>';}).join('');}
+    }
+    if(key==='faq'){
+        var faqs=[['What file formats are supported?','CSV files with OHLCV data. Columns: timestamp, open, high, low, close, volume.'],['How do I take a screenshot?','Click the camera icon in the toolbar. The chart is captured instantly.'],['Can I use custom indicators?','Yes — open the Indicators panel and add from the available list.'],['How do I save my drawings?','Drawings are saved automatically to localStorage and synced to your account.']];
+        var fb=document.getElementById('helpFaqBody');
+        if(fb){fb.innerHTML=faqs.map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');}
+    }
+}
+function _helpWireNav(){
+    var nav=document.getElementById('helpNav'); if(!nav)return;
+    nav.querySelectorAll('.sp-nav-item[data-hp]').forEach(function(item){
+        item.addEventListener('click',function(e){
+            e.stopPropagation();
+            nav.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});
+            item.classList.add('active');
+            _helpLoad(item.dataset.hp);
+        });
+    });
+    _helpLoad('contact');
+}
+
+/* ── Profile Panel content ── */
+var _profileSections={
+    language:{title:'Language',html:'<div style="padding:4px 0;"><p style="color:#787b86;font-size:12px;margin:0 0 14px;">Select display language</p><div class="side-panel-item" style="background:rgba(var(--sp-accent-rgb,41,98,255),0.14);border-radius:6px;pointer-events:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span style="flex:1;">English</span><svg viewBox="0 0 24 24" fill="none" stroke="var(--sp-accent,#2962ff)" stroke-width="2.5" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg></div></div>'},
+    theme:{title:'Theme',html:'<div style="padding:8px 0;" id="profileThemeContent"></div>'},
+    timezone:{title:'Timezone',html:'<div style="padding:4px 0;"><p style="color:#787b86;font-size:12px;margin:0 0 14px;">Current timezone used for chart display</p><div class="side-panel-item" style="border-radius:6px;pointer-events:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span style="flex:1;">Timezone</span><span id="profileTzDisplay" style="color:#787b86;font-size:12px;">UTC+1</span></div><p style="color:#555a6e;font-size:11px;margin:12px 0 0;line-height:1.5;">Change timezone via the Globe icon in the toolbar.</p></div>'},
+    account:{title:'Account Settings',html:'<div style="padding:8px 0;"><div class="side-panel-item" style="border-radius:6px;cursor:pointer;" onmouseenter="this.style.background=\'rgba(255,255,255,0.07)\'" onmouseleave="this.style.background=\'transparent\'" onclick="window.location.href=\'/profile\'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span style="flex:1;">Account &amp; Profile</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="color:#555a6e;"><polyline points="9 18 15 12 9 6"/></svg></div><div class="side-panel-item" style="border-radius:6px;cursor:pointer;margin-top:2px;" onmouseenter="this.style.background=\'rgba(255,255,255,0.07)\'" onmouseleave="this.style.background=\'transparent\'" onclick="window.location.href=\'/billing\'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg><span style="flex:1;">Billing &amp; Plan</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="color:#555a6e;"><polyline points="9 18 15 12 9 6"/></svg></div></div>'},
+    logout:{title:'Log Out',html:'<div style="padding:8px 0;"><p style="color:#787b86;font-size:13px;margin:0 0 20px;line-height:1.6;">You will be signed out of your Talaria account on this device.</p><button onclick="window.location.href=\'/logout\'" style="display:flex;align-items:center;gap:8px;background:rgba(242,54,69,0.12);border:1px solid rgba(242,54,69,0.3);color:#f23645;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;" onmouseenter="this.style.background=\'rgba(242,54,69,0.2)\'" onmouseleave="this.style.background=\'rgba(242,54,69,0.12)\'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Log Out</button></div>'}
+};
+function _profileLoad(key){
+    var s=_profileSections[key]; if(!s)return;
+    var t=document.getElementById('profileContentTitle'); if(t)t.textContent=s.title;
+    var c=document.getElementById('profilePanelContent'); if(!c)return;
+    c.innerHTML=s.html;
+    if(key==='theme'){
+        var ptc=document.getElementById('profileThemeContent'); if(!ptc)return;
+        var isDark=!document.body.classList.contains('light-mode');
+        ptc.innerHTML='<p style="color:#787b86;font-size:12px;margin:0 0 14px;">Choose your interface theme</p><div style="display:flex;gap:10px;">'
+            +'<button id="ppThemeDark" style="flex:1;padding:28px 10px 14px;border-radius:10px;border:2px solid '+(isDark?'var(--sp-accent,#2962ff)':'rgba(255,255,255,0.1)')+';background:'+(isDark?'rgba(var(--sp-accent-rgb,41,98,255),0.1)':'rgba(255,255,255,0.03)')+';cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:8px;" onmouseenter="if(!document.body.classList.contains(\'light-mode\'))return;this.style.borderColor=\'rgba(255,255,255,0.2)\'" onmouseleave="if(!document.body.classList.contains(\'light-mode\'))return;this.style.borderColor=\'rgba(255,255,255,0.1)\'">'
+            +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24" style="color:#d1d4dc;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+            +'<span style="color:#d1d4dc;font-size:12px;font-weight:600;">Dark</span></button>'
+            +'<button id="ppThemeLight" style="flex:1;padding:28px 10px 14px;border-radius:10px;border:2px solid '+(!isDark?'var(--sp-accent,#2962ff)':'rgba(255,255,255,0.1)')+';background:'+(!isDark?'rgba(var(--sp-accent-rgb,41,98,255),0.1)':'rgba(255,255,255,0.03)')+';cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:8px;" onmouseenter="if(document.body.classList.contains(\'light-mode\'))return;this.style.borderColor=\'rgba(255,255,255,0.2)\'" onmouseleave="if(document.body.classList.contains(\'light-mode\'))return;this.style.borderColor=\'rgba(255,255,255,0.1)\'">'
+            +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24" style="color:#d1d4dc;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+            +'<span style="color:#d1d4dc;font-size:12px;font-weight:600;">Light</span></button></div>';
+        document.getElementById('ppThemeDark').addEventListener('click',function(){
+            document.body.classList.remove('light-mode');
+            _profileLoad('theme');
+        });
+        document.getElementById('ppThemeLight').addEventListener('click',function(){
+            document.body.classList.add('light-mode');
+            _profileLoad('theme');
+        });
+    }
+    if(key==='timezone'){
+        var tzDisplay=document.getElementById('profileTzDisplay');
+        if(tzDisplay&&window.timezoneManager){tzDisplay.textContent=window.timezoneManager.getCurrentLabel?window.timezoneManager.getCurrentLabel():'UTC+1';}
+    }
+}
+function _profileWireNav(){
+    var nav=document.getElementById('profileNav'); if(!nav)return;
+    nav.querySelectorAll('.sp-nav-item[data-pp]').forEach(function(item){
+        item.addEventListener('click',function(e){
+            e.stopPropagation();
+            nav.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});
+            item.classList.add('active');
+            _profileLoad(item.dataset.pp);
+        });
+    });
+    _profileLoad('language');
+}
+
+/* Wire nav on open */
+(function(){
+    var _helpWired=false, _profileWired=false;
+    var _origOpen=window._openSidePanel;
+    window._openSidePanel=function(id){
+        _origOpen(id);
+        if(id==='helpPanel'&&!_helpWired){_helpWireNav();_helpWired=true;}
+        else if(id==='helpPanel'){_helpLoad('contact');document.getElementById('helpNav')&&document.getElementById('helpNav').querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.hp==='contact');});}
+        if(id==='profilePanel'&&!_profileWired){_profileWireNav();_profileWired=true;}
+        else if(id==='profilePanel'){_profileLoad('language');document.getElementById('profileNav')&&document.getElementById('profileNav').querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.pp==='language');});}
+    };
+})();
 document.addEventListener('click',function(e){
     var triggerIds=['toolbarAlertsBtn','helpBtn','profileBtn'];
     var isBtn=triggerIds.some(function(id){var b=document.getElementById(id);return b&&b.contains(e.target);});
