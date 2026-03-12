@@ -177,7 +177,7 @@ class DrawingToolsManager {
         // Add Fibonacci & Gann tools (only if classes loaded)
         if (typeof FibChannelTool !== 'undefined') {
             this.toolRegistry['fib-channel'] = { class: FibChannelTool, points: 3 };
-            this.toolRegistry['fib-timezone'] = { class: FibTimeZoneTool, points: 2 };
+            this.toolRegistry['fib-timezone'] = { class: FibTimeZoneTool, points: 3 };
             this.toolRegistry['fib-speed-fan'] = { class: FibSpeedFanTool, points: 2 };
             this.toolRegistry['trend-fib-time'] = { class: TrendFibTimeTool, points: 2 };
             this.toolRegistry['fib-circles'] = { class: FibCirclesTool, points: 2 };
