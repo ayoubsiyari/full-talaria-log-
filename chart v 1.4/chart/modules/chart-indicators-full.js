@@ -1718,7 +1718,12 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         return isSeparate && isVisible;
     });
     
-    if (separateIndicators.length === 0) return;
+    if (separateIndicators.length === 0) {
+        const _cv = this.ctx && this.ctx.canvas;
+        const _wp = _cv ? _cv.parentElement : null;
+        if (_wp) { const _ol = _wp.querySelector('#separatePanelsOverlay'); if (_ol) _ol.innerHTML = ''; }
+        return;
+    }
     
     const ctx = this.ctx;
     const m = this.margin;
@@ -1941,15 +1946,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             }
         }
         
-        // Draw indicator label in top-left
-        ctx.fillStyle = color;
-        ctx.font = 'bold 11px Roboto';
-        ctx.textAlign = 'left';
-        const valueText = displayValue !== null && displayValue !== undefined ? 
-            displayValue.toFixed(5) : '—';
-        ctx.fillText(`${indicator.name}`, m.l + 5, indTop + 14);
-        ctx.font = '11px Roboto';
-        ctx.fillText(valueText, m.l + 5 + ctx.measureText(indicator.name + ' ').width, indTop + 14);
+        // Store for HTML overlay label
+        indicator._displayColor = color;
+        indicator._displayLabel = displayValue !== null && displayValue !== undefined ? displayValue.toFixed(4) : '—';
         
         // Draw current value label on right axis
         if (currentValue !== null && currentValue !== undefined && !isNaN(currentValue)) {
@@ -1997,6 +1996,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     }
     
     ctx.textAlign = 'left'; // Reset
+
+    // Build TradingView-style HTML label bars
+    this._updateSeparatePanelLabels(panelBottom, perPanelHeight, separateIndicators, m);
 };
 
 // Draw crosshair and value for separate panel indicators
@@ -2978,21 +2980,8 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         for (let i = Math.min(visibleEnd - 1, macdArr.length - 1); i >= visibleStart; i--) {
             if (macdArr[i] !== null && !isNaN(macdArr[i])) { lastM = macdArr[i]; lastS = signalArr[i]; break; }
         }
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 11px Roboto';
-        ctx.fillStyle = indicator.style.macdColor || '#2962ff';
-        ctx.fillText(indicator.name, m.l + 5, panelTop + 14);
-        if (lastM !== null) {
-            const off = ctx.measureText(indicator.name + ' ').width;
-            ctx.font = '11px Roboto';
-            ctx.fillStyle = indicator.style.macdColor || '#2962ff';
-            const mStr = 'M:' + lastM.toFixed(5);
-            ctx.fillText(mStr, m.l + 5 + off, panelTop + 14);
-            if (lastS !== null) {
-                ctx.fillStyle = indicator.style.signalColor || '#f23645';
-                ctx.fillText('  S:' + lastS.toFixed(5), m.l + 5 + off + ctx.measureText(mStr).width, panelTop + 14);
-            }
-        }
+        indicator._displayColor = indicator.style.macdColor || '#2962ff';
+        indicator._displayLabel = lastM !== null ? 'M:' + lastM.toFixed(5) + (lastS !== null ? '  S:' + lastS.toFixed(5) : '') : '';
     };
 
     // ---- Stochastic panel: %K + %D lines + 80/50/20 reference levels ----
@@ -3026,21 +3015,8 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         for (let i = Math.min(visibleEnd - 1, kArr.length - 1); i >= visibleStart; i--) {
             if (kArr[i] !== null && !isNaN(kArr[i])) { lastK = kArr[i]; lastD = dArr[i]; break; }
         }
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 11px Roboto';
-        ctx.fillStyle = indicator.style.kColor || '#2962ff';
-        ctx.fillText(indicator.name, m.l + 5, panelTop + 14);
-        if (lastK !== null) {
-            const off = ctx.measureText(indicator.name + ' ').width;
-            ctx.font = '11px Roboto';
-            ctx.fillStyle = indicator.style.kColor || '#2962ff';
-            const kStr = 'K:' + lastK.toFixed(2);
-            ctx.fillText(kStr, m.l + 5 + off, panelTop + 14);
-            if (lastD !== null) {
-                ctx.fillStyle = indicator.style.dColor || '#f23645';
-                ctx.fillText('  D:' + lastD.toFixed(2), m.l + 5 + off + ctx.measureText(kStr).width, panelTop + 14);
-            }
-        }
+        indicator._displayColor = indicator.style.kColor || '#2962ff';
+        indicator._displayLabel = lastK !== null ? 'K:' + lastK.toFixed(2) + (lastD !== null ? '  D:' + lastD.toFixed(2) : '') : '';
     };
 
     // ---- ADX panel: ADX + +DI + -DI lines + 25 threshold ----
@@ -3080,15 +3056,124 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         for (let i = Math.min(visibleEnd - 1, adxArr.length - 1); i >= visibleStart; i--) {
             if (adxArr[i] !== null && !isNaN(adxArr[i])) { lastADX = adxArr[i]; break; }
         }
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 11px Roboto';
-        ctx.fillStyle = indicator.style.adxColor || '#ff00ff';
-        ctx.fillText(indicator.name, m.l + 5, panelTop + 14);
-        if (lastADX !== null) {
-            ctx.font = '11px Roboto';
-            ctx.fillStyle = '#d1d4dc';
-            ctx.fillText(' ' + lastADX.toFixed(2), m.l + 5 + ctx.measureText(indicator.name).width, panelTop + 14);
+        indicator._displayColor = indicator.style.adxColor || '#ff00ff';
+        indicator._displayLabel = lastADX !== null ? lastADX.toFixed(2) : '';
+    };
+
+    // Build/refresh TradingView-style HTML label bars for each separate panel indicator slot
+    Chart.prototype._updateSeparatePanelLabels = function(panelBottom, perPanelHeight, indicators, m) {
+        const canvas = this.ctx && this.ctx.canvas;
+        const wrapper = canvas ? canvas.parentElement : null;
+        if (!wrapper) return;
+
+        let overlay = wrapper.querySelector('#separatePanelsOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'separatePanelsOverlay';
+            overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;';
+            wrapper.appendChild(overlay);
         }
+        overlay.innerHTML = '';
+
+        const self = this;
+
+        indicators.forEach(function(indicator, idx) {
+            if (indicator.type === 'volume' || indicator.isVolume) return;
+
+            const slotTop = panelBottom - (idx + 1) * perPanelHeight;
+            const color   = indicator._displayColor || indicator.style.color || '#2962ff';
+            const label   = indicator._displayLabel  || '';
+            const visible = indicator.visible !== false;
+
+            const bar = document.createElement('div');
+            bar.style.cssText = [
+                'position:absolute',
+                'top:' + (slotTop + 4) + 'px',
+                'left:' + (m.l + 6) + 'px',
+                'height:22px',
+                'display:inline-flex',
+                'align-items:center',
+                'gap:5px',
+                'padding:0 8px',
+                'background:rgba(19,23,34,0.88)',
+                'border:1px solid rgba(255,255,255,0.08)',
+                'border-radius:4px',
+                'pointer-events:auto',
+                'z-index:10',
+                'white-space:nowrap',
+                'user-select:none',
+                'font-family:Roboto,sans-serif'
+            ].join(';');
+
+            // Color swatch
+            const swatch = document.createElement('span');
+            swatch.style.cssText = 'width:12px;height:2px;background:' + color + ';border-radius:1px;flex-shrink:0;display:inline-block;';
+            bar.appendChild(swatch);
+
+            // Name
+            const nameEl = document.createElement('span');
+            nameEl.textContent = indicator.name;
+            nameEl.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:500;opacity:' + (visible ? '1' : '0.4') + ';';
+            bar.appendChild(nameEl);
+
+            // Value
+            if (label) {
+                const valEl = document.createElement('span');
+                valEl.style.cssText = 'color:' + color + ';font-size:11px;margin-left:2px;';
+                valEl.textContent = label;
+                bar.appendChild(valEl);
+            }
+
+            // Divider
+            const div = document.createElement('span');
+            div.style.cssText = 'width:1px;height:12px;background:rgba(255,255,255,0.1);margin:0 3px;flex-shrink:0;display:inline-block;';
+            bar.appendChild(div);
+
+            // Eye toggle
+            const eyeBtn = document.createElement('span');
+            eyeBtn.title = visible ? 'Hide' : 'Show';
+            eyeBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:2px;border-radius:2px;';
+            eyeBtn.innerHTML = visible
+                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+            eyeBtn.onmouseenter = function() { eyeBtn.style.color = '#d1d4dc'; };
+            eyeBtn.onmouseleave = function() { eyeBtn.style.color = '#787b86'; };
+            eyeBtn.onclick = function(e) {
+                e.stopPropagation();
+                indicator.visible = (indicator.visible === false) ? true : false;
+                self._updateIndicatorPanelHeight();
+                if (typeof self.render === 'function') self.render();
+            };
+            bar.appendChild(eyeBtn);
+
+            // Settings
+            const setBtn = document.createElement('span');
+            setBtn.title = 'Settings';
+            setBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:2px;border-radius:2px;';
+            setBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+            setBtn.onmouseenter = function() { setBtn.style.color = '#d1d4dc'; };
+            setBtn.onmouseleave = function() { setBtn.style.color = '#787b86'; };
+            setBtn.onclick = function(e) {
+                e.stopPropagation();
+                if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(indicator.id);
+            };
+            bar.appendChild(setBtn);
+
+            // Delete
+            const delBtn = document.createElement('span');
+            delBtn.title = 'Remove';
+            delBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:2px;border-radius:2px;';
+            delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+            delBtn.onmouseenter = function() { delBtn.style.color = '#f23645'; };
+            delBtn.onmouseleave = function() { delBtn.style.color = '#787b86'; };
+            delBtn.onclick = function(e) {
+                e.stopPropagation();
+                if (typeof self.removeIndicator === 'function') self.removeIndicator(indicator.id);
+            };
+            bar.appendChild(delBtn);
+
+            overlay.appendChild(bar);
+        });
     };
 
     // Mark as loaded
