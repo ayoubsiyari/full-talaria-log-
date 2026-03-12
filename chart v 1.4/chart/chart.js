@@ -4658,9 +4658,7 @@ class Chart {
                 symbolTextColor: '#131722',
                 crosshairColor: 'rgba(120, 123, 134, 0.3)',
                 cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#131722',
-                volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
-                settingsPanelBgColor: '#ffffff', settingsPanelAccentColor: '#2962ff',
-                settingsPanelSecondaryColor: '#7b61ff', settingsPanelTextColor: '#131722'
+                volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)'
             },
             'binance': {
                 name: 'Binance',
@@ -5005,9 +5003,7 @@ class Chart {
                 symbolTextColor: '#1e293b',
                 crosshairColor: 'rgba(71, 85, 105, 0.4)',
                 cursorLabelTextColor: '#f0f4f8', cursorLabelBgColor: '#0284c7',
-                volumeUpColor: 'rgba(2, 132, 199, 0.45)', volumeDownColor: 'rgba(220, 38, 38, 0.45)',
-                settingsPanelBgColor: '#f0f4f8', settingsPanelAccentColor: '#0284c7',
-                settingsPanelSecondaryColor: '#7c3aed', settingsPanelTextColor: '#1e293b'
+                volumeUpColor: 'rgba(2, 132, 199, 0.45)', volumeDownColor: 'rgba(220, 38, 38, 0.45)'
             },
             'arctic': {
                 name: 'Arctic Ice',
@@ -5020,9 +5016,7 @@ class Chart {
                 symbolTextColor: '#03045e',
                 crosshairColor: 'rgba(0, 150, 199, 0.4)',
                 cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#0077b6',
-                volumeUpColor: 'rgba(0, 150, 199, 0.5)', volumeDownColor: 'rgba(2, 62, 138, 0.5)',
-                settingsPanelBgColor: '#e8f4f8', settingsPanelAccentColor: '#0096c7',
-                settingsPanelSecondaryColor: '#023e8a', settingsPanelTextColor: '#03045e'
+                volumeUpColor: 'rgba(0, 150, 199, 0.5)', volumeDownColor: 'rgba(2, 62, 138, 0.5)'
             },
             'sepia': {
                 name: 'Sepia Vintage',
@@ -5034,9 +5028,7 @@ class Chart {
                 scaleTextColor: '#6b5344', symbolTextColor: '#3d2914',
                 crosshairColor: 'rgba(139, 119, 101, 0.4)',
                 cursorLabelTextColor: '#f5f0e1', cursorLabelBgColor: '#5d4e37',
-                volumeUpColor: 'rgba(93, 78, 55, 0.5)', volumeDownColor: 'rgba(139, 69, 19, 0.5)',
-                settingsPanelBgColor: '#f5f0e1', settingsPanelAccentColor: '#5d4e37',
-                settingsPanelSecondaryColor: '#8b4513', settingsPanelTextColor: '#3d2914'
+                volumeUpColor: 'rgba(93, 78, 55, 0.5)', volumeDownColor: 'rgba(139, 69, 19, 0.5)'
             },
             'monochrome': {
                 name: 'Monochrome',
@@ -5048,9 +5040,7 @@ class Chart {
                 scaleTextColor: '#666666', symbolTextColor: '#000000',
                 crosshairColor: 'rgba(0, 0, 0, 0.3)',
                 cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#333333',
-                volumeUpColor: 'rgba(51, 51, 51, 0.5)', volumeDownColor: 'rgba(153, 153, 153, 0.5)',
-                settingsPanelBgColor: '#ffffff', settingsPanelAccentColor: '#333333',
-                settingsPanelSecondaryColor: '#999999', settingsPanelTextColor: '#000000'
+                volumeUpColor: 'rgba(51, 51, 51, 0.5)', volumeDownColor: 'rgba(153, 153, 153, 0.5)'
             },
             'hermes': {
                 name: 'Hermes',
@@ -5063,9 +5053,7 @@ class Chart {
                 symbolTextColor: '#2f4f4f',
                 crosshairColor: 'rgba(47, 79, 79, 0.35)',
                 cursorLabelTextColor: '#f0f0f0', cursorLabelBgColor: '#2f4f4f',
-                volumeUpColor: 'rgba(47, 79, 79, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)',
-                settingsPanelBgColor: '#f0f0f0', settingsPanelAccentColor: '#2f4f4f',
-                settingsPanelSecondaryColor: '#556b2f', settingsPanelTextColor: '#2f4f4f'
+                volumeUpColor: 'rgba(47, 79, 79, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)'
             },
             'kaito': {
                 name: 'Kaito',
@@ -5078,9 +5066,7 @@ class Chart {
                 symbolTextColor: '#333333',
                 crosshairColor: 'rgba(51, 51, 51, 0.3)',
                 cursorLabelTextColor: '#f5f5f5', cursorLabelBgColor: '#333333',
-                volumeUpColor: 'rgba(77, 77, 77, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)',
-                settingsPanelBgColor: '#f5f5f5', settingsPanelAccentColor: '#4d4d4d',
-                settingsPanelSecondaryColor: '#a9a9a9', settingsPanelTextColor: '#333333'
+                volumeUpColor: 'rgba(77, 77, 77, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)'
             }
         };
     }
