@@ -3204,10 +3204,11 @@
 
         .settings-input-label {
             font-size: 14px;
-            color: var(--sp-text, #ffffff);
+            color: #d1d4dc;
             min-width: 90px;
             flex-shrink: 0;
         }
+        body.light-mode .settings-input-label { color: #131722; }
 
         .settings-input {
             width: 100px;
@@ -27100,7 +27101,7 @@ P['canvas']={title:'Canvas',build:function(){
     var ro=(c&&c.timeScale&&c.timeScale.rightOffset!=null)?c.timeScale.rightOffset:10;
     var panelAccent=getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim();
     function sw(id,val){var s=String(val||'#000000');return '<button id="sw_'+id+'" data-color="'+s+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+s+';cursor:pointer;flex-shrink:0;" onmouseover="this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.boxShadow=\'none\'"></button>';}
-    function row(label,ctrl){return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span>'+ctrl+'</div>';}
+    function row(label,ctrl){return '<div class="settings-input-row"><span class="settings-input-label" style="flex:1;min-width:0;">'+label+'</span><div style="display:flex;align-items:center;justify-content:flex-end;min-width:160px;flex-shrink:0;">'+ctrl+'</div></div>';}
     var gridOpts=[['Vert and horz','Vert and horz'],['Vertical','Vert only'],['Horizontal','Horz only'],['None','No lines']];
     var gridSel='<select id="sl_cv_grid" class="settings-select" style="width:116px;height:28px;padding:0 28px 0 8px;flex-shrink:0;">'+gridOpts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===gridStyle?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
     var fontOpts=[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']];
