@@ -429,6 +429,15 @@ class Chart {
             showCandleWick: true,
             colorBasedOnPreviousClose: false,
 
+            // Price line (last close horizontal line)
+            showPriceLine: true,
+            priceLineColor: '#2962ff',
+
+            // Area / Baseline chart colors
+            areaLineColor: '#089981',
+            areaFillColor: 'rgba(8, 153, 129, 0.28)',
+            baselineColor: '#787b86',
+
             // Settings panel theme
             settingsPanelAccentColor: '#2962ff',
             settingsPanelBgColor: '#050028',
@@ -4543,7 +4552,12 @@ class Chart {
             'settingsPanelBgColor',
             'settingsPanelSidebarBgColor',
             'volumeUpColor',
-            'volumeDownColor'
+            'volumeDownColor',
+            'showPriceLine',
+            'priceLineColor',
+            'areaLineColor',
+            'areaFillColor',
+            'baselineColor'
         ];
 
         const snapshot = { name: name };
@@ -9514,6 +9528,9 @@ class Chart {
         // Draw candlesticks
         this.drawCandles(visible);
 
+        // Draw last-price line (if enabled)
+        this.drawPriceLine(visible);
+
         // Optional marks overlay (TradingView-style "marks on bars")
         this.drawMarksOnBars(visible);
 
@@ -9656,7 +9673,7 @@ class Chart {
         
         // Volume section separator (only show if volume is visible)
         if (this.chartSettings.showVolume && volumeAreaHeight > 0) {
-            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            this.ctx.strokeStyle = this.chartSettings.gridColor || 'rgba(255, 255, 255, 0.08)';
             this.ctx.lineWidth = 1;
             this.ctx.beginPath();
             this.ctx.moveTo(m.l, this.h - m.b - volumeAreaHeight);
@@ -10802,15 +10819,33 @@ class Chart {
         this.ctx.lineTo(lastX, bottomY);
         this.ctx.closePath();
         
-        // Create gradient
+        // Create gradient using areaFillColor
+        const areaLineColor = this.chartSettings.areaLineColor || this.chartSettings.bodyUpColor || '#089981';
+        const areaFillColor = this.chartSettings.areaFillColor || (areaLineColor + '40');
         const gradient = this.ctx.createLinearGradient(0, m.t, 0, bottomY);
-        gradient.addColorStop(0, this.chartSettings.bodyUpColor + '40');
-        gradient.addColorStop(1, this.chartSettings.bodyUpColor + '05');
+        if (areaFillColor.startsWith('rgba') || areaFillColor.startsWith('rgb')) {
+            gradient.addColorStop(0, areaFillColor);
+            gradient.addColorStop(1, areaFillColor.replace(/,\s*[\d.]+\)$/, ', 0)'));
+        } else {
+            gradient.addColorStop(0, areaFillColor + '40');
+            gradient.addColorStop(1, areaFillColor + '05');
+        }
         this.ctx.fillStyle = gradient;
         this.ctx.fill();
-        
-        // Draw line on top
-        this.drawLineChart(visible);
+
+        // Draw line using areaLineColor
+        this.ctx.strokeStyle = areaLineColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.lineJoin = 'round';
+        this.ctx.lineCap = 'round';
+        this.ctx.beginPath();
+        visible.forEach((d, i) => {
+            const idx = this.visibleStartIndex + i;
+            const x = this.dataIndexToPixel(idx);
+            const y = this.yScale(d.c);
+            if (i === 0) { this.ctx.moveTo(x, y); } else { this.ctx.lineTo(x, y); }
+        });
+        this.ctx.stroke();
     }
     
     /**
@@ -10901,7 +10936,7 @@ class Chart {
         }
         
         // Draw baseline (dashed line)
-        this.ctx.strokeStyle = '#787b86';
+        this.ctx.strokeStyle = this.chartSettings.baselineColor || '#787b86';
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([4, 4]);
         this.ctx.beginPath();
@@ -10911,6 +10946,59 @@ class Chart {
         this.ctx.setLineDash([]);
     }
     
+    /**
+     * Draw last-price horizontal line (TradingView-style price line)
+     */
+    drawPriceLine(visible) {
+        if (this.chartSettings.showPriceLine === false) return;
+        if (!this.data || this.data.length === 0) return;
+        if (!this.yScale) return;
+
+        const lastCandle = this.data[this.data.length - 1];
+        if (!lastCandle) return;
+        const price = lastCandle.c;
+        const y = this.yScale(price);
+        const m = this.margin;
+        if (!isFinite(y) || y < m.t || y > this.h - m.b) return;
+
+        const color = this.chartSettings.priceLineColor || '#2962ff';
+        const axisLeft = !!this.priceAxisLeft;
+        const axisW = axisLeft ? m.l : m.r;
+        const axisX = axisLeft ? 0 : this.w - m.r;
+
+        this.ctx.save();
+
+        // Dashed line across chart area
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([4, 4]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(m.l, y);
+        this.ctx.lineTo(this.w - m.r, y);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+
+        // Price label on axis
+        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+        const decimals = this.getPriceDecimals(priceRange);
+        const priceText = price.toFixed(decimals);
+        const labelH = 16;
+        const labelX = axisLeft ? 2 : axisX + 2;
+        const labelW = axisW - 4;
+
+        this.ctx.fillStyle = color;
+        this.ctx.fillRect(labelX, Math.round(y) - labelH / 2, labelW, labelH);
+
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = `${this.chartSettings.scaleTextSize || 12}px Roboto`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(priceText, axisLeft ? m.l / 2 : this.w - m.r / 2, Math.round(y));
+        this.ctx.textBaseline = 'alphabetic';
+
+        this.ctx.restore();
+    }
+
     /**
      * Draw OHLC Bars Chart
      */
