@@ -910,12 +910,13 @@ function createIndicatorSelectionMenu(chartInstance) {
         };
         
         item.onclick = () => {
+            const ac = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
             // Update active state
             Object.keys(categoryButtons).forEach(k => {
                 categoryButtons[k].style.background = 'transparent';
                 categoryButtons[k].style.color = isLightMode ? '#131722' : '#d1d4dc';
             });
-            item.style.background = '#2962ff';
+            item.style.background = ac;
             item.style.color = '#ffffff';
             activeCategory = key;
             filterByCategory(key);
@@ -932,8 +933,8 @@ function createIndicatorSelectionMenu(chartInstance) {
     sidebar.appendChild(createCategoryItem(null, 'PERSONAL', true));
     sidebar.appendChild(createCategoryItem('favorites', categories.favorites));
 
-    // Set initial active
-    categoryButtons['technicals'].style.background = '#2962ff';
+    // Set initial active (will be refreshed by updateThemeColors on open)
+    categoryButtons['technicals'].style.background = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
     categoryButtons['technicals'].style.color = '#ffffff';
 
     contentArea.appendChild(sidebar);
@@ -1107,9 +1108,14 @@ function createIndicatorSelectionMenu(chartInstance) {
         sidebar.style.borderRight = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
         
         // Update category buttons
+        const ac = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
         Object.keys(categoryButtons).forEach(k => {
             if (activeCategory !== k) {
+                categoryButtons[k].style.background = 'transparent';
                 categoryButtons[k].style.color = lightMode ? '#131722' : '#d1d4dc';
+            } else {
+                categoryButtons[k].style.background = ac;
+                categoryButtons[k].style.color = '#ffffff';
             }
         });
         
@@ -1344,7 +1350,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const saveBtn = document.createElement('button');
     saveBtn.style.cssText = `
-        background: #2962ff;
+        background: var(--sp-accent, #2962ff);
         color: white;
         border: none;
         border-radius: 4px;
@@ -1355,8 +1361,8 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         transition: background 0.2s;
     `;
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
-    saveBtn.onmouseenter = () => { saveBtn.style.background = '#1e53e5'; };
-    saveBtn.onmouseleave = () => { saveBtn.style.background = '#2962ff'; };
+    saveBtn.onmouseenter = () => { saveBtn.style.background = `rgba(var(--sp-accent-rgb, 41,98,255), 0.8)`; };
+    saveBtn.onmouseleave = () => { saveBtn.style.background = 'var(--sp-accent, #2962ff)'; };
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
         closeAllPalettes();
