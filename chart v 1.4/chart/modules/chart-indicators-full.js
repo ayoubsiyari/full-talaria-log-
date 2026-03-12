@@ -3066,7 +3066,15 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         const wrapper = canvas ? canvas.parentElement : null;
         if (!wrapper) return;
 
+        // State-key caching: only rebuild DOM when something actually changed.
+        // Rebuilding innerHTML on every render() is a major perf bottleneck.
+        const stateKey = panelBottom + ':' + perPanelHeight + '|' + indicators.map(function(ind) {
+            return ind.id + ':' + (ind.visible !== false ? '1' : '0') + ':' + (ind._displayLabel || '') + ':' + (ind._displayColor || '');
+        }).join('|');
+
         let overlay = wrapper.querySelector('#separatePanelsOverlay');
+        if (overlay && overlay._stateKey === stateKey) return;
+
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.id = 'separatePanelsOverlay';
@@ -3074,9 +3082,11 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             wrapper.appendChild(overlay);
         }
         overlay.innerHTML = '';
+        overlay._stateKey = stateKey;
 
         const self = this;
-        const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+        // Use accent color cached by applyChartSettings — avoids getComputedStyle in the hot render path
+        const accentColor = this._cachedAccentColor || '#2962ff';
 
         indicators.forEach(function(indicator, idx) {
             if (indicator.type === 'volume' || indicator.isVolume) return;

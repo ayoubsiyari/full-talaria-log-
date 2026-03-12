@@ -1713,39 +1713,42 @@ class Chart {
     }
     
     async loadSavedSettings() {
-        // Try loading from API first for cross-device sync
-        const apiSettings = await this.loadSettingsFromAPI();
-        
+        // Apply localStorage settings immediately (non-blocking) so the chart
+        // renders on the first frame without waiting for the API network call.
         try {
-            if (apiSettings && Object.keys(apiSettings).length > 0) {
-                // Use API data if available
-                this.chartSettings = { ...this.chartSettings, ...apiSettings };
-                console.log('📥 Chart settings loaded from cloud');
+            const saved = localStorage.getItem('chartSettings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                this.chartSettings = { ...this.chartSettings, ...settings };
+                console.log('📥 Chart settings loaded from localStorage');
             } else {
-                // Fall back to localStorage
-                const saved = localStorage.getItem('chartSettings');
-                if (saved) {
-                    const settings = JSON.parse(saved);
-                    // Merge saved settings with defaults
-                    this.chartSettings = { ...this.chartSettings, ...settings };
-                    console.log('📥 Chart settings loaded from localStorage');
-                } else {
-                    // Only apply dark theme defaults if no saved settings exist
-                    this.chartSettings.backgroundColor = '#050028';
-                    this.chartSettings.scaleLinesColor = '#050028';
-                    this.chartSettings.scaleTextColor = '#ffffff';
-                    this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
-                    this.chartSettings.cursorLabelTextColor = '#d1d4dc';
-                    this.chartSettings.cursorLabelBgColor = '#363a45';
-                    this.chartSettings.symbolTextColor = '#d1d4dc';
-                }
+                // Only apply dark theme defaults if no saved settings exist
+                this.chartSettings.backgroundColor = '#050028';
+                this.chartSettings.scaleLinesColor = '#050028';
+                this.chartSettings.scaleTextColor = '#ffffff';
+                this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
+                this.chartSettings.cursorLabelTextColor = '#d1d4dc';
+                this.chartSettings.cursorLabelBgColor = '#363a45';
+                this.chartSettings.symbolTextColor = '#d1d4dc';
             }
-            
-            // Always apply chart settings (even with defaults)
-            this.applyChartSettings();
+            // Apply immediately so first render uses correct colors
+            this._applyChartSettingsImmediate(null, null);
         } catch (e) {
-            console.error('Failed to load settings:', e);
+            console.error('Failed to load local settings:', e);
         }
+
+        // Sync from API in the background — does NOT block the initial render
+        this.loadSettingsFromAPI().then((apiSettings) => {
+            try {
+                if (apiSettings && Object.keys(apiSettings).length > 0) {
+                    this.chartSettings = { ...this.chartSettings, ...apiSettings };
+                    console.log('📥 Chart settings synced from cloud');
+                    this._applyChartSettingsImmediate(null, null);
+                }
+            } catch (e) {
+                console.error('Failed to apply cloud settings:', e);
+            }
+        }).catch(() => {});
     }
     
     getChartViewSnapshot() {
@@ -4244,6 +4247,22 @@ class Chart {
     }
     
     applyChartSettings(settingKey = null, settingValue = null) {
+        // Debounce full (no-arg) calls so rapid startup calls don't each trigger
+        // 20+ CSS variable sets + querySelectorAll + scheduleRender.
+        if (settingKey === null && settingValue === null) {
+            if (this._applyChartSettingsPending) return;
+            this._applyChartSettingsPending = true;
+            const self = this;
+            requestAnimationFrame(function() {
+                self._applyChartSettingsPending = false;
+                self._applyChartSettingsImmediate(null, null);
+            });
+            return;
+        }
+        this._applyChartSettingsImmediate(settingKey, settingValue);
+    }
+
+    _applyChartSettingsImmediate(settingKey = null, settingValue = null) {
         // Determine which chart to apply settings to
         const targetChart = this._settingsSourceChart || this;
 
@@ -4366,6 +4385,10 @@ class Chart {
             const btnBorderRgb = mixRgb(surfaceBg, [255, 255, 255], 0.20);
             const hoverBgRgb = mixRgb(surfaceBg, [255, 255, 255], 0.05);
             const navIconRgb = mixRgb(textMutedRgb, panelRgb, 0.25);
+
+            // Cache accent color on both chart instances so render path avoids getComputedStyle
+            this._cachedAccentColor = accentColor;
+            targetChart._cachedAccentColor = accentColor;
 
             root.style.setProperty('--sp-accent', accentColor);
             root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));

@@ -19866,7 +19866,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260312_TF_PIN_V95"></script>
+         <script src="chart.js?v=20260312_TF_PIN_V96"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260312_TF_PIN_V62"></script>
@@ -19877,6 +19877,19 @@
     
     <!-- Screenshot Manager -->
     <script src="modules/screenshot-manager.js?v=20260312_TF_PIN_V68"></script>
+    <!-- Preload html2canvas in the background so first screenshot is instant -->
+    <script>
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            if (typeof html2canvas === 'undefined') {
+                var s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+                s.async = true;
+                document.head.appendChild(s);
+            }
+        }, 4000);
+    });
+    </script>
     
     <!-- Alert System -->
     <script src="modules/alert-system.js?v=20260312_TF_PIN_V58"></script>
@@ -19997,7 +20010,7 @@
     
     <!-- Chart Indicators Module (Full version with ADR, ATR, Sessions) -->
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
-    <script src="modules/chart-indicators-full.js?v=20260312_TF_PIN_V62"></script>
+    <script src="modules/chart-indicators-full.js?v=20260312_TF_PIN_V63"></script>
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
     <script src="modules/indicator-ui.js?v=20260312_TF_PIN_V59"></script>
     
