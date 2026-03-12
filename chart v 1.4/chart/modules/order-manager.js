@@ -3148,23 +3148,12 @@ class OrderManager {
         placeOrderBtn.id = 'placeOrderBtn';
         placeOrderBtn.className = 'new-order-btn';
         placeOrderBtn.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: #2962FF;
-            color: white;
             font-weight: 600;
             font-size: 13px;
             min-width: 120px;
             padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.15s ease;
         `;
         placeOrderBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg> New order';
-        placeOrderBtn.onmouseenter = () => placeOrderBtn.style.background = '#1e4fd9';
-        placeOrderBtn.onmouseleave = () => placeOrderBtn.style.background = '#2962FF';
         placeOrderBtn.onclick = () => this.toggleOrderPanel();
         
         orderContainer.appendChild(placeOrderBtn);
