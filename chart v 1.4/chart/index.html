@@ -28059,9 +28059,8 @@ window._applyLanguage=function(lang){
     localStorage.setItem('chartLanguage',lang);
     var t=window._translations[lang]||{};
     var isRTL=(lang==='ar');
-    /* Set document dir/lang */
+    /* Set document lang only — do NOT flip layout direction */
     document.documentElement.lang=lang;
-    document.documentElement.dir=isRTL?'rtl':'ltr';
     /* Translate data-tooltip attributes */
     document.querySelectorAll('[data-tooltip]').forEach(function(el){
         var orig=el.getAttribute('data-i18n-orig-tooltip');
@@ -28091,25 +28090,6 @@ window._applyLanguage=function(lang){
     if(panelOpen&&panelOpen.classList.contains('open')){
         var titleEl=document.getElementById('spContentTitle');
         if(titleEl){var orig=titleEl.getAttribute('data-i18n-orig')||titleEl.textContent.trim();titleEl.setAttribute('data-i18n-orig',orig);titleEl.textContent=t[orig]||orig;}
-    }
-    /* RTL: flip panel slide direction */
-    var styleTag=document.getElementById('_i18nRTLStyle');
-    if(!styleTag){styleTag=document.createElement('style');styleTag.id='_i18nRTLStyle';document.head.appendChild(styleTag);}
-    if(isRTL){
-        styleTag.textContent=
-            '.settings-panel{right:auto!important;left:-440px;border-left:none;border-right:1px solid rgba(255,255,255,0.07);transition:left 0.28s cubic-bezier(.4,0,.2,1)!important;}'
-            +'.settings-panel.open{left:0!important;right:auto!important;}'
-            +'.side-panel{right:auto!important;left:-440px;border-left:none;border-right:1px solid rgba(255,255,255,0.07);transition:left 0.28s cubic-bezier(.4,0,.2,1)!important;}'
-            +'.side-panel.open{left:0!important;right:auto!important;}'
-            +'.sp-content-header{direction:rtl;}'
-            +'.sp-content-body{direction:rtl;}'
-            +'.sp-nav-item{direction:rtl;}'
-            +'[data-tooltip]::after{left:50%;right:auto;}'
-            +'.side-panel-item{direction:rtl;}'
-            +'kbd{font-family:monospace;}'
-            +'.toolbar{direction:ltr;}';
-    }else{
-        styleTag.textContent='';
     }
 };
 /* Apply stored language on load */
