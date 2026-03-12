@@ -19852,7 +19852,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260312_TF_PIN_V93"></script>
+         <script src="chart.js?v=20260312_TF_PIN_V94"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260312_TF_PIN_V62"></script>
@@ -26992,8 +26992,7 @@ P['symbol']={title:'Symbol',build:function(){
     var plC=cs.priceLineColor||'#2962ff';
     var aLC=cs.areaLineColor||cs.bodyUpColor||'#089981',aFC=cs.areaFillColor||'rgba(8,153,129,0.28)';
     var blC=cs.baselineColor||'#787b86';
-    var extraSec=sec(st('VOLUME')+
-        '<div class="tv-row">'+clr('Up','volUp',vU)+clr('Down','volDn',vD)+'</div>');
+    var extraSec='';
     var priceLineSec=sec(st('PRICE LINE')+
         '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+clr('','plClr',plC)+'</div>');
     var areaSec=(type==='area')?sec(st('AREA COLORS')+clr('Line color','areaLC',aLC)+clr('Fill color','areaFC',aFC)):'';
