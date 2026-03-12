@@ -3162,7 +3162,7 @@ class OrderManager {
             cursor: pointer;
             transition: background 0.15s ease;
         `;
-        placeOrderBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> New order';
+        placeOrderBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg> New order';
         placeOrderBtn.onmouseenter = () => placeOrderBtn.style.background = '#1e4fd9';
         placeOrderBtn.onmouseleave = () => placeOrderBtn.style.background = '#2962FF';
         placeOrderBtn.onclick = () => this.toggleOrderPanel();

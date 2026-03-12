@@ -673,7 +673,7 @@ class DrawingToolbar {
             </style>
             
             <div class="toolbar-drag-handle" title="Drag to move">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
                     <circle cx="6" cy="6" r="1.5"/>
                     <circle cx="12" cy="6" r="1.5"/>
                     <circle cx="6" cy="12" r="1.5"/>
@@ -688,7 +688,7 @@ class DrawingToolbar {
             <!-- Template Button with Dropdown -->
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-template" title="Template">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 3v17a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1H3"/>
                         <path d="M16 19h6"/>
                         <path d="M19 22v-6"/>
@@ -713,7 +713,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="${strokeLabel}">
                     <div class="toolbar-color-icon-wrapper" id="stroke-color-preview">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                             <path d="m15 5 4 4"/>
                         </svg>
@@ -728,7 +728,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="Fill Color">
                     <div class="toolbar-color-icon-wrapper" id="fill-color-preview">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/>
                             <path d="m5 2 5 5"/>
                             <path d="M2 13h15"/>
@@ -744,25 +744,25 @@ class DrawingToolbar {
             ${lineTools.includes(drawing.type) ? `
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-style-btn" title="Line Style">
-                    <svg width="32" height="24" viewBox="0 0 32 24">
-                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="2" stroke-dasharray="${style.dashArray || '0'}"/>
+                    <svg width="18" height="18" viewBox="0 0 32 24">
+                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${style.dashArray || '0'}"/>
                     </svg>
                 </button>
                 <div class="toolbar-dropdown" id="line-style-dropdown">
                     <div class="toolbar-dropdown-item ${!style.dashArray || style.dashArray === '0' ? 'active' : ''}" data-dash="0">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
                         <span>Solid</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '10,6' || style.dashArray === '5,5' ? 'active' : ''}" data-dash="10,6">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="10,6"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="10,6"/></svg>
                         <span>Dashed</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '2,2' ? 'active' : ''}" data-dash="2,2">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="2,2"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/></svg>
                         <span>Dotted</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '8,4,2,4' ? 'active' : ''}" data-dash="8,4,2,4">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="8,4,2,4"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="8,4,2,4"/></svg>
                         <span>Dash-Dot</span>
                     </div>
                 </div>
@@ -786,7 +786,7 @@ class DrawingToolbar {
             <!-- Lock -->
             <div class="toolbar-item">
                 <button class="toolbar-btn ${drawing.locked ? 'active' : ''}" id="tb-lock" title="${drawing.locked ? 'Unlock' : 'Lock'}">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         ${drawing.locked ? 
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>' :
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>'
@@ -798,7 +798,7 @@ class DrawingToolbar {
             <!-- Delete -->
             <div class="toolbar-item">
                 <button class="toolbar-btn toolbar-btn-danger" id="tb-delete" title="Delete">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
                     </svg>
                 </button>
@@ -807,7 +807,7 @@ class DrawingToolbar {
             <!-- Settings -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-settings" title="Settings">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
                     </svg>
@@ -817,7 +817,7 @@ class DrawingToolbar {
             <!-- More Options (3 dots) -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-more" title="More Options">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                         <circle cx="5" cy="12" r="2"/>
                         <circle cx="12" cy="12" r="2"/>
                         <circle cx="19" cy="12" r="2"/>
@@ -831,7 +831,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="${strokeLabel}">
                     <div class="toolbar-color-icon-wrapper" id="stroke-color-preview">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                             <path d="m15 5 4 4"/>
                         </svg>
@@ -846,7 +846,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="Fill Color">
                     <div class="toolbar-color-icon-wrapper" id="fill-color-preview">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/>
                             <path d="m5 2 5 5"/>
                             <path d="M2 13h15"/>
@@ -862,25 +862,25 @@ class DrawingToolbar {
             ${showLineControls ? `
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-style-btn" title="Line Style">
-                    <svg width="32" height="24" viewBox="0 0 32 24">
-                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="2" stroke-dasharray="${style.dashArray || '0'}"/>
+                    <svg width="18" height="18" viewBox="0 0 32 24">
+                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${style.dashArray || '0'}"/>
                     </svg>
                 </button>
                 <div class="toolbar-dropdown" id="line-style-dropdown">
                     <div class="toolbar-dropdown-item ${!style.dashArray || style.dashArray === '0' ? 'active' : ''}" data-dash="0">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
                         <span>Solid</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '10,6' || style.dashArray === '5,5' ? 'active' : ''}" data-dash="10,6">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="10,6"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="10,6"/></svg>
                         <span>Dashed</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '2,2' ? 'active' : ''}" data-dash="2,2">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="2,2"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/></svg>
                         <span>Dotted</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '8,4,2,4' ? 'active' : ''}" data-dash="8,4,2,4">
-                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="8,4,2,4"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="8,4,2,4"/></svg>
                         <span>Dash-Dot</span>
                     </div>
                 </div>
@@ -915,10 +915,10 @@ class DrawingToolbar {
             ${isRiskReward ? `
             <div class="toolbar-item">
                 <button class="toolbar-btn ${drawing.meta?.executed ? 'executed' : ''}" id="tb-execute" title="${drawing.meta?.executed ? 'Order Executed' : 'Execute Order'}" style="${drawing.meta?.executed ? 'color: #22c55e;' : ''}">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         ${drawing.meta?.executed ? 
                             '<polyline points="20 6 9 17 4 12"/>' :
-                            '<text x="2" y="20" font-size="22" font-weight="bold" fill="currentColor" stroke="none">$</text><line x1="17" y1="2" x2="17" y2="12" stroke-width="2.5"/><line x1="12" y1="7" x2="22" y2="7" stroke-width="2.5"/>'
+                            '<text x="2" y="20" font-size="22" font-weight="bold" fill="currentColor" stroke="none">$</text><line x1="17" y1="2" x2="17" y2="12" stroke-width="1.5"/><line x1="12" y1="7" x2="22" y2="7" stroke-width="1.5"/>'
                         }
                     </svg>
                 </button>
@@ -928,7 +928,7 @@ class DrawingToolbar {
             <!-- Settings -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-settings" title="Settings">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
                     </svg>
@@ -938,7 +938,7 @@ class DrawingToolbar {
             <!-- Lock -->
             <div class="toolbar-item">
                 <button class="toolbar-btn ${drawing.locked ? 'active' : ''}" id="tb-lock" title="${drawing.locked ? 'Unlock' : 'Lock'}">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         ${drawing.locked ? 
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>' :
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>'
@@ -950,7 +950,7 @@ class DrawingToolbar {
             <!-- Delete -->
             <div class="toolbar-item">
                 <button class="toolbar-btn toolbar-btn-danger" id="tb-delete" title="Delete">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
                     </svg>
                 </button>
@@ -959,7 +959,7 @@ class DrawingToolbar {
             <!-- More Options (3 dots) -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-more" title="More Options">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                         <circle cx="5" cy="12" r="2"/>
                         <circle cx="12" cy="12" r="2"/>
                         <circle cx="19" cy="12" r="2"/>
@@ -1394,7 +1394,7 @@ class DrawingToolbar {
                     drawing.style.strokeDasharray = dash;
                     
                     // Update button icon
-                    styleBtn.innerHTML = `<svg width="32" height="24" viewBox="0 0 32 24"><line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="2" stroke-dasharray="${dash}"/></svg>`;
+                    styleBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 32 24"><line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${dash}"/></svg>`;
                     
                     // Update active state
                     styleDropdown.querySelectorAll('.toolbar-dropdown-item').forEach(i => i.classList.remove('active'));
@@ -1510,7 +1510,7 @@ class DrawingToolbar {
                 
                 // Update icon
                 lockBtn.innerHTML = `
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         ${drawing.locked ? 
                             '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>' :
                             '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M17 11V7a5 5 0 00-5-5 5 5 0 00-3 .9"/>'}
@@ -1549,7 +1549,7 @@ class DrawingToolbar {
                 executeBtn.classList.add('executed');
                 executeBtn.title = 'Order Executed';
                 executeBtn.innerHTML = `
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <polyline points="20 6 9 17 4 12"/>
                     </svg>
                 `;
@@ -1782,7 +1782,7 @@ class DrawingToolbar {
                     <span>${t.name}</span>
                 </div>
                 <div class="template-item-delete" data-template-id="${t.id}">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M18 6L6 18M6 6l12 12"/>
                     </svg>
                 </div>

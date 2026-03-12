@@ -427,8 +427,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-checkbox {
-    width: 16px;
-    height: 16px;
+    width: 22px;
+    height: 22px;
     border: 2px solid #363a45;
     border-radius: 3px;
     cursor: default;
@@ -451,9 +451,10 @@ class DrawingSettingsPanel {
 }
 
 .tv-checkbox svg {
-    width: 11px;
-    height: 11px;
+    width: 18px;
+    height: 18px;
     stroke: #fff;
+    stroke-width: 1.5 !important;
     opacity: 0;
     transition: opacity 0.15s;
 }
@@ -885,8 +886,15 @@ class DrawingSettingsPanel {
 }
 
 .tv-align-btn svg {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
+    stroke-width: 1.5;
+}
+
+.tv-info-dropdown-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 1.5;
 }
 
 /* Style Button (Italic/Bold) */
@@ -2310,7 +2318,7 @@ body.light-mode .template-save-dialog .dialog-title {
         header.style.cssText = 'cursor: move; user-select: none;';
         header.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; overflow: hidden;">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" style="cursor: default;" title="Double-click to edit">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="1.5" style="cursor: default;" title="Double-click to edit">
                     <path d="M12 20h9"></path>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                 </svg>
@@ -2355,7 +2363,7 @@ body.light-mode .template-save-dialog .dialog-title {
         tabsHTML += `
             <button class="tv-collapsible-tab-btn active" data-tab="style">
                 <span>Style</span>
-                <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="tab-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M9 18l6-6-6-6"/>
                 </svg>
             </button>`;
@@ -2364,7 +2372,7 @@ body.light-mode .template-save-dialog .dialog-title {
             tabsHTML += `
             <button class="tv-collapsible-tab-btn" data-tab="inputs">
                 <span>${inputTabLabel}</span>
-                <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="tab-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M9 18l6-6-6-6"/>
                 </svg>
             </button>`;
@@ -2374,7 +2382,7 @@ body.light-mode .template-save-dialog .dialog-title {
             tabsHTML += `
             <button class="tv-collapsible-tab-btn" data-tab="text">
                 <span>Text</span>
-                <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="tab-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M9 18l6-6-6-6"/>
                 </svg>
             </button>`;
@@ -2388,7 +2396,7 @@ body.light-mode .template-save-dialog .dialog-title {
             tabsHTML += `
             <button class="tv-collapsible-tab-btn" data-tab="coordinates">
                 <span>Coordinates</span>
-                <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="tab-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M9 18l6-6-6-6"/>
                 </svg>
             </button>`;
@@ -2397,7 +2405,7 @@ body.light-mode .template-save-dialog .dialog-title {
         tabsHTML += `
             <button class="tv-collapsible-tab-btn" data-tab="timeframes">
                 <span>Visibility</span>
-                <svg class="tab-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="tab-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M9 18l6-6-6-6"/>
                 </svg>
             </button>`;
@@ -2908,7 +2916,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 <div class="tv-prop-controls">
                     <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px;">
                         <span>Select</span>
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M6 9l6 6 6-6"/>
                         </svg>
                     </button>
@@ -4200,13 +4208,13 @@ body.light-mode .template-save-dialog .dialog-title {
                 transition: all 0.15s;
             `;
             checkboxWrapper.innerHTML = level.enabled ? 
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : '';
+                '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>' : '';
             checkboxWrapper.onclick = (e) => {
                 e.stopPropagation();
                 level.enabled = !level.enabled;
                 checkboxWrapper.style.background = level.enabled ? '#2962ff' : 'transparent';
                 checkboxWrapper.innerHTML = level.enabled ? 
-                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : '';
+                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>' : '';
                 
                 // Update the drawing's level data
                 if (drawing.levels && drawing.levels[idx]) {
@@ -5949,7 +5957,7 @@ body.light-mode .template-save-dialog .dialog-title {
             statsRow.controls.innerHTML = `
                 <button class="tv-info-dropdown-btn" style="width: 100%; height: 30px; padding: 0 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background-color: #050028; color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: space-between;">
                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statsSummary}</span>
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M6 9l6 6 6-6"/>
                     </svg>
                 </button>
@@ -6341,7 +6349,7 @@ body.light-mode .template-save-dialog .dialog-title {
                             // Add delete button
                             const deleteBtn = document.createElement('button');
                             deleteBtn.innerHTML = `
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <polyline points="3 6 5 6 21 6"></polyline>
                                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                                     <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -6419,7 +6427,7 @@ body.light-mode .template-save-dialog .dialog-title {
             // Delete button (trash icon)
             const deleteBtn = document.createElement('button');
             deleteBtn.innerHTML = `
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <polyline points="3 6 5 6 21 6"></polyline>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                     <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -6772,17 +6780,17 @@ body.light-mode .template-save-dialog .dialog-title {
             <span class="tv-checkbox-label">Alignment</span>
             <div class="tv-prop-controls" style="margin-left: auto; gap: 4px;">
                 <button class="tv-align-btn ${drawing.style.textAlign === 'left' || !drawing.style.textAlign ? 'active' : ''}" data-prop="textHAlign" data-value="left" title="Left">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/>
                     </svg>
                 </button>
                 <button class="tv-align-btn ${drawing.style.textAlign === 'center' ? 'active' : ''}" data-prop="textHAlign" data-value="center" title="Center">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
                     </svg>
                 </button>
                 <button class="tv-align-btn ${drawing.style.textAlign === 'right' ? 'active' : ''}" data-prop="textHAlign" data-value="right" title="Right">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/>
                     </svg>
                 </button>
@@ -7128,20 +7136,20 @@ body.light-mode .template-save-dialog .dialog-title {
                 <div class="tv-align-label">Vertical Alignment</div>
                 <div class="tv-align-buttons">
                     <button class="tv-align-btn ${currentVAlign === 'top' ? 'active' : ''}" data-prop="textVAlign" data-value="top">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <line x1="12" y1="4" x2="12" y2="20"/>
                             <polyline points="8 8 12 4 16 8"/>
                         </svg>
                     </button>
                     <button class="tv-align-btn ${currentVAlign === 'middle' ? 'active' : ''}" data-prop="textVAlign" data-value="middle">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <line x1="4" y1="12" x2="20" y2="12"/>
                             <polyline points="8 8 12 12 8 16"/>
                             <polyline points="16 8 12 12 16 16"/>
                         </svg>
                     </button>
                     <button class="tv-align-btn ${currentVAlign === 'bottom' ? 'active' : ''}" data-prop="textVAlign" data-value="bottom">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <line x1="12" y1="4" x2="12" y2="20"/>
                             <polyline points="8 16 12 20 16 16"/>
                         </svg>
@@ -7160,21 +7168,21 @@ body.light-mode .template-save-dialog .dialog-title {
                 <div class="tv-align-label">Horizontal Alignment</div>
                 <div class="tv-align-buttons">
                     <button class="tv-align-btn ${(drawing.style.textHAlign || 'center') === 'left' ? 'active' : ''}" data-prop="textHAlign" data-value="left">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <line x1="4" y1="6" x2="20" y2="6"/>
                             <line x1="4" y1="12" x2="14" y2="12"/>
                             <line x1="4" y1="18" x2="18" y2="18"/>
                         </svg>
                     </button>
                     <button class="tv-align-btn ${(drawing.style.textHAlign || 'center') === 'center' ? 'active' : ''}" data-prop="textHAlign" data-value="center">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <line x1="4" y1="6" x2="20" y2="6"/>
                             <line x1="7" y1="12" x2="17" y2="12"/>
                             <line x1="5" y1="18" x2="19" y2="18"/>
                         </svg>
                     </button>
                     <button class="tv-align-btn ${(drawing.style.textHAlign || 'center') === 'right' ? 'active' : ''}" data-prop="textHAlign" data-value="right">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <line x1="4" y1="6" x2="20" y2="6"/>
                             <line x1="10" y1="12" x2="20" y2="12"/>
                             <line x1="6" y1="18" x2="20" y2="18"/>
@@ -8458,7 +8466,7 @@ body.light-mode .template-save-dialog .dialog-title {
                                 ${t.name}
                             </span>
                             <span class="tv-template-delete" data-template-id="${t.id}">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <path d="M18 6L6 18M6 6l12 12"/>
                                 </svg>
                             </span>
@@ -11388,7 +11396,7 @@ showTemplateDropdown(btn, drawing, modal) {
                 ">
                     <span>${t.name}</span>
                     <span class="template-delete-btn" data-template-id="${t.id}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M18 6L6 18M6 6l12 12"/>
                         </svg>
                     </span>
@@ -12623,7 +12631,7 @@ applyTemplate(drawing, templateId, modal) {
                 // Delete button (trash icon)
                 const deleteBtn = document.createElement('button');
                 deleteBtn.innerHTML = `
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <polyline points="3 6 5 6 21 6"></polyline>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                         <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -16245,50 +16253,50 @@ class DrawingContextMenu {
     getIcon(name) {
         const icons = {
             clone: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="6" y="6" width="10" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M4 12H3a1 1 0 01-1-1V3a1 1 0 011-1h8a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.2"/>
+                <rect x="6" y="6" width="10" height="10" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M4 12H3a1 1 0 01-1-1V3a1 1 0 011-1h8a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.5"/>
             </svg>`,
             copy: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="6" y="6" width="10" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M4 12H3a1 1 0 01-1-1V3a1 1 0 011-1h8a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.2"/>
+                <rect x="6" y="6" width="10" height="10" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M4 12H3a1 1 0 01-1-1V3a1 1 0 011-1h8a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.5"/>
             </svg>`,
             lock: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="4" y="8" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M6 8V5a3 3 0 016 0v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <rect x="4" y="8" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M6 8V5a3 3 0 016 0v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>`,
             unlock: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="4" y="8" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M6 8V5a3 3 0 015.9-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <rect x="4" y="8" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M6 8V5a3 3 0 015.9-.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>`,
             hide: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.5 9s2.5-5 6.5-5 6.5 5 6.5 5-2.5 5-6.5 5-6.5-5-6.5-5z" stroke="currentColor" stroke-width="1.2"/>
-                <circle cx="9" cy="9" r="2" stroke="currentColor" stroke-width="1.2"/>
-                <line x1="3" y1="15" x2="15" y2="3" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M2.5 9s2.5-5 6.5-5 6.5 5 6.5 5-2.5 5-6.5 5-6.5-5-6.5-5z" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="9" cy="9" r="2" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="3" y1="15" x2="15" y2="3" stroke="currentColor" stroke-width="1.5"/>
             </svg>`,
             show: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.5 9s2.5-5 6.5-5 6.5 5 6.5 5-2.5 5-6.5 5-6.5-5-6.5-5z" stroke="currentColor" stroke-width="1.2"/>
-                <circle cx="9" cy="9" r="2" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M2.5 9s2.5-5 6.5-5 6.5 5 6.5 5-2.5 5-6.5 5-6.5-5-6.5-5z" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="9" cy="9" r="2" stroke="currentColor" stroke-width="1.5"/>
             </svg>`,
             remove: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 5h12M7 5V4a1 1 0 011-1h2a1 1 0 011 1v1m2 0v10a1 1 0 01-1 1H6a1 1 0 01-1-1V5h10z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <path d="M3 5h12M7 5V4a1 1 0 011-1h2a1 1 0 011 1v1m2 0v10a1 1 0 01-1 1H6a1 1 0 01-1-1V5h10z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>`,
             settings: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
             </svg>`,
             layers: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 2L2 6l7 4 7-4-7-4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-                <path d="M2 9l7 4 7-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M2 12l7 4 7-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M9 2L2 6l7 4 7-4-7-4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M2 9l7 4 7-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 12l7 4 7-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>`,
             tree: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="2" y="2" width="5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-                <rect x="10" y="7" width="5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-                <rect x="10" y="12" width="5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M7 4h2v10H7M9 9h1M9 14h1" stroke="currentColor" stroke-width="1.2"/>
+                <rect x="2" y="2" width="5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="10" y="7" width="5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="10" y="12" width="5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M7 4h2v10H7M9 9h1M9 14h1" stroke="currentColor" stroke-width="1.5"/>
             </svg>`,
-            arrow: `<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-                <path d="M2 1l4 3-4 3V1z"/>
+            arrow: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 6 15 12 9 18"/>
             </svg>`
         };
         return icons[name] || '';
