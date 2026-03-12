@@ -2980,7 +2980,18 @@
         }
         .tv-row .settings-input-row {
             margin: 0;
+            padding: 0;
+            border-bottom: none;
             flex-shrink: 0;
+        }
+        .tv-row .settings-input-label:empty { display: none; }
+        .tv-colors {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 64px;
+            flex-shrink: 0;
+            justify-content: flex-end;
         }
 
         .settings-radio-group {
@@ -3194,6 +3205,8 @@
         .settings-input-label {
             font-size: 14px;
             color: var(--sp-text, #ffffff);
+            min-width: 90px;
+            flex-shrink: 0;
         }
 
         .settings-input {
@@ -26972,15 +26985,15 @@ P['symbol']={title:'Symbol',build:function(){
     }
     if(isCandleType){
         colorSec=sec(st('CANDLES')+
-            '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div>'+
-            '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div>'+
-            '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div>'+
-            '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+clr('','uniClr',cs.unifiedBarColor||bU)+'</div>');
+            '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+'<div class="tv-colors">'+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+'<div class="tv-colors">'+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+'<div class="tv-colors">'+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+'<div class="tv-colors tv-colors--single">'+clr('','uniClr',cs.unifiedBarColor||bU)+'</div></div>');
     } else if(type==='bars'){
         colorSec=sec(st('BARS')+
-            '<div class="tv-row">'+chk('Up bar','showBody',cs.showCandleBody!==false)+clr('','bodyUp',bU)+'</div>'+
-            '<div class="tv-row">'+chk('Down bar','showBdr',true)+clr('','bodyDn',bD)+'</div>'+
-            '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+clr('','uniClr',cs.unifiedBarColor||bU)+'</div>');
+            '<div class="tv-row">'+chk('Up bar','showBody',cs.showCandleBody!==false)+'<div class="tv-colors tv-colors--single">'+clr('','bodyUp',bU)+'</div></div>'+
+            '<div class="tv-row">'+chk('Down bar','showBdr',true)+'<div class="tv-colors tv-colors--single">'+clr('','bodyDn',bD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+'<div class="tv-colors tv-colors--single">'+clr('','uniClr',cs.unifiedBarColor||bU)+'</div></div>');
     } else if(type==='line'){
         colorSec=sec(st('LINE')+clr('Line color','bodyUp',lC));
     } else if(type==='area'){
@@ -26994,7 +27007,7 @@ P['symbol']={title:'Symbol',build:function(){
     var blC=cs.baselineColor||'#787b86';
     var extraSec='';
     var priceLineSec=sec(st('PRICE LINE')+
-        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+clr('','plClr',plC)+'</div>');
+        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>');
     var areaSec=(type==='area')?sec(st('AREA COLORS')+clr('Line color','areaLC',aLC)+clr('Fill color','areaFC',aFC)):'';
     var baselineSec=(type==='baseline')?sec(st('BASELINE COLOR')+clr('Baseline color','blClr',blC)):'';
     return templateSec+
