@@ -495,6 +495,9 @@ class Chart {
 
         this._defaultChartSettings = JSON.parse(JSON.stringify(this.chartSettings));
 	        
+	        // Pre-bind animate once so requestAnimationFrame doesn't allocate a new function every frame
+	        this._animateBound = this.animate.bind(this);
+	        
 	        this.init();
 	        this.animate(); // Start the animation loop
 	    }
@@ -9201,11 +9204,13 @@ class Chart {
      * This ensures consistent spacing calculations throughout the chart
      */
     getCandleSpacing() {
+        // Memoize by candleWidth — called 10+ times per render frame
+        if (this._candleWidthAtCache === this.candleWidth) return this._candleSpacingCache;
         const FIXED_SPACING = 0;
-        const effectiveSpacing = this.candleWidth <= 3 ? 0 : // No spacing when very zoomed out
-                               this.candleWidth <= 5 ? 0 : // Minimal spacing when zoomed out
-                               FIXED_SPACING; // Normal spacing otherwise
-        return this.candleWidth + effectiveSpacing;
+        const effectiveSpacing = this.candleWidth <= 5 ? 0 : FIXED_SPACING;
+        this._candleSpacingCache = this.candleWidth + effectiveSpacing;
+        this._candleWidthAtCache = this.candleWidth;
+        return this._candleSpacingCache;
     }
     
     /**
@@ -9458,7 +9463,7 @@ class Chart {
     }
     
     animate() {
-        requestAnimationFrame(this.animate.bind(this));
+        requestAnimationFrame(this._animateBound);
         
         this.animateZoom();
 
@@ -10320,24 +10325,20 @@ class Chart {
      * Update logo visibility based on current theme (light/dark)
      */
     updateLogoForTheme() {
-        const logoDark = document.querySelector('.chart-brand .logo-dark');
-        const logoLight = document.querySelector('.chart-brand .logo-light');
-        
-        if (!logoDark || !logoLight) return;
-        
-        // Check if background is light or dark based on actual backgroundColor
         const bgColor = this.chartSettings?.backgroundColor || '#050028';
-        const isLightTheme = this.isLightColor(bgColor);
-        
-        if (isLightTheme) {
-            // Light background - show dark/black logo
-            logoDark.style.display = 'none';
-            logoLight.style.display = 'block';
-        } else {
-            // Dark background - show light/white logo
-            logoDark.style.display = 'block';
-            logoLight.style.display = 'none';
+        // Skip expensive querySelector + color parse when background hasn't changed
+        if (this._logoCachedBg === bgColor) return;
+        this._logoCachedBg = bgColor;
+
+        if (!this._logoDark) {
+            this._logoDark = document.querySelector('.chart-brand .logo-dark');
+            this._logoLight = document.querySelector('.chart-brand .logo-light');
         }
+        if (!this._logoDark || !this._logoLight) return;
+
+        const isLight = this.isLightColor(bgColor);
+        this._logoDark.style.display = isLight ? 'none' : 'block';
+        this._logoLight.style.display = isLight ? 'block' : 'none';
     }
     
     /**

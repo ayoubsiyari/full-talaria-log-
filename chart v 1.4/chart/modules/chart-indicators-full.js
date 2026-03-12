@@ -1419,7 +1419,6 @@
         }
         
         const self = this;
-        console.log('📊 Setting up volume indicator line...');
         
         // Match exact styling of other indicators
         volumeLine.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 6px; margin-right: 8px; border-radius: 3px; transition: background 0.2s;';
@@ -1453,7 +1452,6 @@
         // Visibility toggle button
         const visibilityBtn = volumeLine.querySelector('.volume-visibility-btn');
         if (visibilityBtn) {
-            console.log('📊 Found visibility button');
             visibilityBtn.style.opacity = indicator.visible !== false ? '1' : '0.5';
             visibilityBtn.style.cursor = 'pointer';
             
@@ -1470,7 +1468,6 @@
             newVisBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                console.log('👁 Volume visibility clicked');
                 indicator.visible = indicator.visible === false ? true : false;
                 self.chartSettings.showVolume = indicator.visible !== false;
                 
@@ -1492,7 +1489,6 @@
         // Settings button
         const settingsBtn = volumeLine.querySelector('.volume-settings-btn');
         if (settingsBtn) {
-            console.log('📊 Found settings button');
             settingsBtn.style.cursor = 'pointer';
             
             // Clone to remove old listeners
@@ -1508,7 +1504,6 @@
             newSettingsBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                console.log('⚙️ Volume settings clicked');
                 self.showVolumeSettings();
             });
         }
@@ -1516,7 +1511,6 @@
         // Remove button
         const removeBtn = volumeLine.querySelector('.volume-remove-btn');
         if (removeBtn) {
-            console.log('📊 Found remove button');
             removeBtn.style.cursor = 'pointer';
             
             // Clone to remove old listeners
@@ -1532,7 +1526,6 @@
             newRemoveBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                console.log('🗑️ Volume remove clicked');
                 // Find and remove volume indicator
                 const volumeInd = self.indicators.active.find(function(ind) {
                     return ind.type === 'volume' || ind.isVolume;
@@ -1543,7 +1536,6 @@
             });
         }
         
-        console.log('✅ Volume indicator line setup complete');
     };
     
     Chart.prototype.hideVolumeIndicatorLine = function() {
@@ -2473,10 +2465,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         if (!div) return;
         
         // Don't update if modal is open (prevents destroying DOM while editing)
-        if (document.getElementById('indicator-settings-modal')) {
-            console.log('⚠️ Skipping indicator update - modal is open');
-            return;
-        }
+        if (document.getElementById('indicator-settings-modal')) return;
         
         div.innerHTML = '';
         
@@ -2491,11 +2480,8 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             return ind.overlay !== false;
         });
         
-        console.log('📊 Creating indicator items for:', overlayIndicators.length, 'indicators');
-        
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
-            console.log('Creating UI for indicator:', indicator.name);
             const item = document.createElement('div');
             item.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; margin-right: 8px; margin-bottom: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s; pointer-events: auto;';
             
@@ -2528,7 +2514,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             settingsBtn.title = 'Click to edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
                 settingsBtn.style.transform = 'scale(1.1)';
             };
             settingsBtn.onmouseleave = function() {
@@ -2537,8 +2523,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
                 settingsBtn.style.transform = 'scale(1)';
             };
             item.appendChild(settingsBtn);
-            console.log('Settings button added:', settingsBtn.textContent);
-            
+
             // Remove button (X icon)
             const removeBtn = document.createElement('span');
             removeBtn.innerHTML = '×';
@@ -2560,21 +2545,12 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             
             // Only the settings button is clickable for editing
             settingsBtn.onclick = function(e) {
-                if (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-                
-                console.log(`⚙️ Settings button clicked for "${indicator.name}"`);
-                
-                // Call the settings function directly without flags
+                if (e) { e.preventDefault(); e.stopPropagation(); }
                 self.showIndicatorSettings(id);
-                
                 return false;
             };
             removeBtn.onclick = function(e) {
                 e.stopPropagation();
-                console.log(`❌ Remove button clicked for "${indicator.name}"`);
                 self.removeIndicator(id);
             };
             
