@@ -3060,7 +3060,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         indicator._displayLabel = lastADX !== null ? lastADX.toFixed(2) : '';
     };
 
-    // Build/refresh TradingView-style HTML label bars for each separate panel indicator slot
+    // Build/refresh indicator label pills for each separate panel slot (matches OHLC panel style)
     Chart.prototype._updateSeparatePanelLabels = function(panelBottom, perPanelHeight, indicators, m) {
         const canvas = this.ctx && this.ctx.canvas;
         const wrapper = canvas ? canvas.parentElement : null;
@@ -3076,6 +3076,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         overlay.innerHTML = '';
 
         const self = this;
+        const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
 
         indicators.forEach(function(indicator, idx) {
             if (indicator.type === 'volume' || indicator.isVolume) return;
@@ -3085,57 +3086,55 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             const label   = indicator._displayLabel  || '';
             const visible = indicator.visible !== false;
 
+            // Pill container — same style as OHLC overlay indicator items
             const bar = document.createElement('div');
             bar.style.cssText = [
                 'position:absolute',
-                'top:' + (slotTop + 4) + 'px',
+                'top:' + (slotTop + 5) + 'px',
                 'left:' + (m.l + 6) + 'px',
-                'height:22px',
                 'display:inline-flex',
                 'align-items:center',
-                'gap:5px',
-                'padding:0 8px',
-                'background:rgba(19,23,34,0.88)',
-                'border:1px solid rgba(255,255,255,0.08)',
+                'gap:4px',
+                'padding:4px 8px',
                 'border-radius:4px',
+                'background:rgba(255,255,255,0.05)',
+                'transition:background 0.2s',
                 'pointer-events:auto',
                 'z-index:10',
                 'white-space:nowrap',
                 'user-select:none',
                 'font-family:Roboto,sans-serif'
             ].join(';');
+            bar.onmouseenter = function() { bar.style.background = 'rgba(255,255,255,0.1)'; };
+            bar.onmouseleave = function() { bar.style.background = 'rgba(255,255,255,0.05)'; };
 
-            // Color swatch
-            const swatch = document.createElement('span');
-            swatch.style.cssText = 'width:12px;height:2px;background:' + color + ';border-radius:1px;flex-shrink:0;display:inline-block;';
-            bar.appendChild(swatch);
+            // — dash in indicator color (same as OHLC style)
+            const dash = document.createElement('span');
+            dash.textContent = '—';
+            dash.style.cssText = 'color:' + color + ';font-size:14px;font-weight:700;line-height:1;flex-shrink:0;opacity:' + (visible ? '1' : '0.4') + ';';
+            bar.appendChild(dash);
 
-            // Name
+            // Indicator name
             const nameEl = document.createElement('span');
             nameEl.textContent = indicator.name;
-            nameEl.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:500;opacity:' + (visible ? '1' : '0.4') + ';';
+            nameEl.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.4') + ';';
             bar.appendChild(nameEl);
 
-            // Value
+            // Current value (after name, in indicator color)
             if (label) {
                 const valEl = document.createElement('span');
-                valEl.style.cssText = 'color:' + color + ';font-size:11px;margin-left:2px;';
+                valEl.style.cssText = 'color:#d1d4dc;font-size:12px;margin-left:2px;';
                 valEl.textContent = label;
                 bar.appendChild(valEl);
             }
 
-            // Divider
-            const div = document.createElement('span');
-            div.style.cssText = 'width:1px;height:12px;background:rgba(255,255,255,0.1);margin:0 3px;flex-shrink:0;display:inline-block;';
-            bar.appendChild(div);
-
-            // Eye toggle
+            // Eye toggle — SVG icon
             const eyeBtn = document.createElement('span');
             eyeBtn.title = visible ? 'Hide' : 'Show';
-            eyeBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:2px;border-radius:2px;';
+            eyeBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:0 2px;margin-left:4px;';
             eyeBtn.innerHTML = visible
-                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
-                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
             eyeBtn.onmouseenter = function() { eyeBtn.style.color = '#d1d4dc'; };
             eyeBtn.onmouseleave = function() { eyeBtn.style.color = '#787b86'; };
             eyeBtn.onclick = function(e) {
@@ -3146,26 +3145,35 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             };
             bar.appendChild(eyeBtn);
 
-            // Settings
+            // Pencil / edit settings button (matches screenshot)
             const setBtn = document.createElement('span');
             setBtn.title = 'Settings';
-            setBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:2px;border-radius:2px;';
-            setBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-            setBtn.onmouseenter = function() { setBtn.style.color = '#d1d4dc'; };
-            setBtn.onmouseleave = function() { setBtn.style.color = '#787b86'; };
+            setBtn.style.cssText = 'cursor:pointer;color:#787b86;font-size:14px;font-weight:bold;padding:0 4px;border-radius:3px;transition:all 0.2s;display:inline-block;line-height:1;';
+            setBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            setBtn.onmouseenter = function() {
+                setBtn.style.color = '#ffffff';
+                setBtn.style.background = accentColor;
+                setBtn.style.transform = 'scale(1.1)';
+            };
+            setBtn.onmouseleave = function() {
+                setBtn.style.color = '#787b86';
+                setBtn.style.background = 'transparent';
+                setBtn.style.transform = 'scale(1)';
+            };
             setBtn.onclick = function(e) {
+                e.preventDefault();
                 e.stopPropagation();
                 if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(indicator.id);
             };
             bar.appendChild(setBtn);
 
-            // Delete
+            // × remove button — matches OHLC style exactly
             const delBtn = document.createElement('span');
-            delBtn.title = 'Remove';
-            delBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:2px;border-radius:2px;';
-            delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
-            delBtn.onmouseenter = function() { delBtn.style.color = '#f23645'; };
-            delBtn.onmouseleave = function() { delBtn.style.color = '#787b86'; };
+            delBtn.innerHTML = '&times;';
+            delBtn.title = 'Remove indicator';
+            delBtn.style.cssText = 'cursor:pointer;opacity:0.6;font-size:18px;font-weight:bold;color:#f23645;margin-left:4px;transition:all 0.2s;line-height:1;display:flex;align-items:center;padding:0 2px;pointer-events:auto;';
+            delBtn.onmouseenter = function() { delBtn.style.opacity = '1'; delBtn.style.transform = 'scale(1.2)'; };
+            delBtn.onmouseleave = function() { delBtn.style.opacity = '0.6'; delBtn.style.transform = 'scale(1)'; };
             delBtn.onclick = function(e) {
                 e.stopPropagation();
                 if (typeof self.removeIndicator === 'function') self.removeIndicator(indicator.id);
