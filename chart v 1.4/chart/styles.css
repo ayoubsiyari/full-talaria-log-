@@ -945,10 +945,10 @@ body {
     left: 0 !important;
     right: 0 !important;
     height: 60px;
-    background: #000000;
+    background: var(--sp-bg, #000000);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    border-top: 1px solid #2a2e39;
+    border-top: 1px solid var(--sp-ui-border, #2a2e39);
     box-shadow: none;
     z-index: 99999 !important;
     padding: 0 20px;

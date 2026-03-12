@@ -8343,13 +8343,13 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
-            background: #050028;
-            border: 1px solid rgba(71, 85, 105, 0.4);
+            background: var(--sp-bg, #050028);
+            border: 1px solid var(--sp-ui-border, rgba(71, 85, 105, 0.4));
             border-radius: 16px;
             padding: 12px 24px 24px;
             position: relative;
             backdrop-filter: blur(20px);
-            color: #e2e8f0;
+            color: var(--sp-text, #e2e8f0);
             margin: 0 auto;
             box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
         }
@@ -8359,7 +8359,7 @@
             position: absolute;
             inset: 0;
             border-radius: inherit;
-            border: 1px solid rgba(124, 58, 237, 0.2);
+            border: 1px solid rgba(var(--sp-accent-rgb), 0.2);
             pointer-events: none;
         }
 
@@ -8381,8 +8381,8 @@
             font-weight: 700;
             letter-spacing: 0.03em;
             text-transform: uppercase;
-            color: rgba(148, 163, 184, 0.85);
-            background: rgba(30, 41, 59, 0.6);
+            color: var(--sp-text-muted, rgba(148, 163, 184, 0.85));
+            background: var(--sp-input-bg, rgba(30, 41, 59, 0.6));
             cursor: default;
             transition: all 0.2s ease;
             border: 1px solid transparent;
@@ -8390,22 +8390,22 @@
         }
 
         .replay-tab-btn:hover {
-            color: #e2e8f0;
-            background: rgba(51, 65, 85, 0.8);
-            border-color: rgba(124, 58, 237, 0.3);
+            color: var(--sp-text, #e2e8f0);
+            background: var(--sp-hover-bg, rgba(51, 65, 85, 0.8));
+            border-color: rgba(var(--sp-accent-rgb), 0.3);
         }
 
         .replay-tab-btn.active {
-            background: rgba(124, 58, 237, 0.2);
-            color: #a78bfa;
-            border-color: rgba(124, 58, 237, 0.4);
-            box-shadow: 0 4px 16px rgba(124, 58, 237, 0.2), inset 0 -2px 0 0 #7c3aed;
+            background: rgba(var(--sp-accent-rgb), 0.2);
+            color: var(--sp-accent, #a78bfa);
+            border-color: rgba(var(--sp-accent-rgb), 0.4);
+            box-shadow: 0 4px 16px rgba(var(--sp-accent-rgb), 0.2), inset 0 -2px 0 0 var(--sp-accent);
         }
 
         .replay-tabs-body {
-            background: rgba(5, 0, 40, 0.8);
+            background: var(--sp-bg, rgba(5, 0, 40, 0.8));
             border-radius: 12px;
-            border: 1px solid rgba(71, 85, 105, 0.3);
+            border: 1px solid var(--sp-ui-border, rgba(71, 85, 105, 0.3));
             padding: 20px;
             height: 800px;
             display: flex;
@@ -8448,12 +8448,12 @@
         }
 
         .replay-tab-scroller::-webkit-scrollbar-thumb {
-            background: rgba(124, 58, 237, 0.4);
+            background: rgba(var(--sp-accent-rgb), 0.4);
             border-radius: 4px;
         }
 
         .replay-tab-scroller::-webkit-scrollbar-thumb:hover {
-            background: rgba(124, 58, 237, 0.6);
+            background: rgba(var(--sp-accent-rgb), 0.6);
         }
 
         .replay-tab-empty {
@@ -8489,9 +8489,9 @@
             align-items: center;
             gap: 12px;
             padding: 16px;
-            background: #050028 !important;
+            background: var(--sp-ui-surface-bg, var(--sp-bg, #050028)) !important;
             border-radius: 10px;
-            border: 1px solid rgba(124, 58, 237, 0.25) !important;
+            border: 1px solid rgba(var(--sp-accent-rgb), 0.25) !important;
         }
 
         .analytics-stat-card .stat-icon {
@@ -8519,8 +8519,8 @@
         }
 
         .analytics-stat-card .stat-icon.neutral {
-            background: rgba(124, 58, 237, 0.2);
-            color: #a78bfa;
+            background: rgba(var(--sp-accent-rgb), 0.2);
+            color: var(--sp-accent, #a78bfa);
         }
 
         .analytics-stat-card .stat-content {
@@ -8553,9 +8553,9 @@
 
         .analytics-metric-card {
             padding: 14px;
-            background: #1e293b !important;
+            background: var(--sp-ui-surface-bg, #1e293b) !important;
             border-radius: 10px;
-            border: 1px solid rgba(78, 91, 126, 0.4) !important;
+            border: 1px solid var(--sp-ui-border, rgba(78, 91, 126, 0.4)) !important;
         }
 
         .analytics-metric-card .metric-header {
@@ -8595,7 +8595,7 @@
         }
 
         .analytics-metric-card .metric-bar-fill.win {
-            background: #050028;
+            background: #22c55e;
         }
 
         .analytics-metric-card .metric-details {
@@ -8628,9 +8628,9 @@
 
         .analytics-detail-card {
             padding: 16px;
-            background: #1e293b !important;
+            background: var(--sp-ui-surface-bg, #1e293b) !important;
             border-radius: 10px;
-            border: 1px solid rgba(78, 91, 126, 0.4) !important;
+            border: 1px solid var(--sp-ui-border, rgba(78, 91, 126, 0.4)) !important;
         }
 
         .analytics-detail-card h4 {
@@ -8714,11 +8714,11 @@
             justify-content: flex-start;
             align-items: center;
             font-size: 12px;
-            color: rgba(148, 163, 184, 0.85);
-            background: #050028;
+            color: var(--sp-text-muted, rgba(148, 163, 184, 0.85));
+            background: var(--sp-ui-surface-bg, var(--sp-bg, #050028));
             padding: 14px 18px;
             border-radius: 10px;
-            border: 1px solid rgba(71, 85, 105, 0.3);
+            border: 1px solid var(--sp-ui-border, rgba(71, 85, 105, 0.3));
         }
 
         .replay-meta-item {
@@ -8754,8 +8754,8 @@
             align-items: center;
             justify-content: space-between;
             padding: 12px 16px;
-            background: #050028;
-            border-bottom: 2px solid rgba(124, 58, 237, 0.2);
+            background: var(--sp-ui-surface-bg, var(--sp-bg, #050028));
+            border-bottom: 2px solid rgba(var(--sp-accent-rgb), 0.2);
             border-radius: 8px 8px 0 0;
             margin-bottom: 0;
         }
@@ -8772,8 +8772,8 @@
             font-size: 11px;
             font-weight: 700;
             padding: 3px 10px;
-            background: rgba(124, 58, 237, 0.25);
-            color: #a78bfa;
+            background: rgba(var(--sp-accent-rgb), 0.25);
+            color: var(--sp-accent, #a78bfa);
             border-radius: 999px;
         }
 
@@ -8795,7 +8795,7 @@
         }
 
         .replay-tab-table thead {
-            background: #050028;
+            background: var(--sp-ui-surface-bg, var(--sp-bg, #050028));
         }
 
         .replay-tab-table th,
@@ -8913,7 +8913,7 @@
 
         .replay-collapse-toggle:hover {
             background: rgba(55, 65, 91, 0.9);
-            border-color: rgba(124, 58, 237, 0.4);
+            border-color: rgba(var(--sp-accent-rgb), 0.4);
             color: #ffffff;
             transform: translateY(-1px);
         }
@@ -19852,7 +19852,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
     
-         <script src="chart.js?v=20260312_TF_PIN_V92"></script>
+         <script src="chart.js?v=20260312_TF_PIN_V93"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script src="modules/replay-system.js?v=20260312_TF_PIN_V62"></script>
