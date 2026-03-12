@@ -180,8 +180,8 @@ class DrawingSettingsPanel {
     min-width: 420px;
     max-width: 92vw;
     max-height: 90vh;
-    background: #050028;
-    border: 1px solid rgba(60, 60, 72, 0.95);
+    background: var(--sp-bg, #050028);
+    border: 1px solid var(--sp-ui-border, rgba(60, 60, 72, 0.95));
     border-radius: 14px;
     box-shadow: 0 22px 65px rgba(0, 0, 0, 0.65);
     z-index: 12000;
@@ -189,7 +189,7 @@ class DrawingSettingsPanel {
     flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
     font-size: 12px;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     --tv-prop-label-width: 170px;
     --tv-prop-controls-width: 180px;
     --tv-prop-row-gap: 16px;
@@ -230,7 +230,7 @@ class DrawingSettingsPanel {
     align-items: center;
     justify-content: space-between;
     padding: 10px 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--sp-ui-border, rgba(255, 255, 255, 0.06));
 }
 
 .tv-footer-left,
@@ -241,13 +241,13 @@ class DrawingSettingsPanel {
 }
 
 .tv-btn-template {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.10);
-    color: #d1d4dc;
+    background: var(--sp-input-bg, rgba(255,255,255,0.06));
+    border: 1px solid var(--sp-input-border, rgba(255,255,255,0.10));
+    color: var(--sp-text, #d1d4dc);
 }
 
 .tv-btn-template:hover {
-    background: rgba(255,255,255,0.09);
+    background: var(--sp-hover-bg, rgba(255,255,255,0.09));
 }
 
 .tv-settings-body {
@@ -259,14 +259,14 @@ class DrawingSettingsPanel {
 .tv-modal-title {
     font-size: 19px;
     font-weight: 600;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     margin: 0;
 }
 
 .tv-modal-close {
     background: none;
     border: none;
-    color: #8a909f;
+    color: var(--sp-text-muted, #8a909f);
     font-size: 16px;
     cursor: default;
     padding: 2px 3px;
@@ -276,15 +276,15 @@ class DrawingSettingsPanel {
 }
 
 .tv-modal-close:hover {
-    background: rgba(41, 98, 255, 0.15);
-    color: #ffffff;
+    background: rgba(var(--sp-accent-rgb), 0.15);
+    color: var(--sp-text-active, #ffffff);
 }
 
 /* Tab Header */
 .tv-tab-header {
     display: flex;
     padding: 3px 10px;
-    background: rgba(255,255,255,0.05);
+    background: var(--sp-input-bg, rgba(255,255,255,0.05));
     border-radius: 6px;
     margin: 8px 12px 0;
 }
@@ -294,7 +294,7 @@ class DrawingSettingsPanel {
     padding: 8px 18px;
     border: 1px solid transparent;
     background: transparent;
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     font-size: 13px;
     font-weight: 500;
     cursor: default;
@@ -305,14 +305,14 @@ class DrawingSettingsPanel {
 }
 
 .tv-tab-btn:hover {
-    color: #d1d4dc;
-    background: rgba(255,255,255,0.06);
+    color: var(--sp-text, #d1d4dc);
+    background: var(--sp-hover-bg, rgba(255,255,255,0.06));
 }
 
 .tv-tab-btn.active {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.55), rgba(41, 98, 255, 0.30));
-    color: #fff;
-    box-shadow: 0 6px 16px rgba(41, 98, 255, 0.18);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.55), rgba(var(--sp-accent-rgb), 0.30));
+    color: var(--sp-text-active, #fff);
+    box-shadow: 0 6px 16px rgba(var(--sp-accent-rgb), 0.18);
 }
 
 /* Tab Content */
@@ -373,29 +373,29 @@ class DrawingSettingsPanel {
 }
 
 .tv-description-label {
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 11px;
     min-width: 75px;
 }
 
 .tv-description-input {
     flex: 1;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(50, 50, 60, 0.9);
+    background: var(--sp-input-bg, rgba(255,255,255,0.05));
+    border: 1px solid var(--sp-input-border, rgba(50, 50, 60, 0.9));
     border-radius: 4px;
     padding: 8px 10px;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 11px;
     outline: none;
     transition: border-color 0.15s;
 }
 
 .tv-description-input:focus {
-    border-color: #2962ff;
+    border-color: var(--sp-accent, #2962ff);
 }
 
 .tv-description-input::placeholder {
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
 }
 
 /* Property Row with Checkbox */
@@ -429,7 +429,7 @@ class DrawingSettingsPanel {
 .tv-checkbox {
     width: 22px;
     height: 22px;
-    border: 2px solid #363a45;
+    border: 2px solid var(--sp-input-border, #363a45);
     border-radius: 3px;
     cursor: default;
     display: flex;
@@ -440,14 +440,14 @@ class DrawingSettingsPanel {
 }
 
 .tv-checkbox.checked {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
-    border-color: rgba(41, 98, 255, 0.85);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45));
+    border-color: rgba(var(--sp-accent-rgb), 0.85);
 }
 
 .tv-checkbox.checked:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
-    border-color: rgba(41, 98, 255, 0.85);
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55));
+    border-color: rgba(var(--sp-accent-rgb), 0.85);
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
 }
 
 .tv-checkbox svg {
@@ -464,7 +464,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-checkbox-label {
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 11px;
     cursor: default;
     user-select: none;
@@ -474,7 +474,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-prop-label {
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 11px;
     cursor: default;
     user-select: none;
@@ -485,7 +485,7 @@ class DrawingSettingsPanel {
     display: flex;
     align-items: center;
     gap: var(--tv-prop-row-gap);
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     font-size: 10px;
     margin-bottom: 8px;
 }
@@ -551,14 +551,14 @@ class DrawingSettingsPanel {
     width: 30px;
     height: 30px;
     border-radius: 4px;
-    border: 2px solid rgba(50, 50, 60, 0.9);
+    border: 2px solid var(--sp-input-border, rgba(50, 50, 60, 0.9));
     cursor: default;
     box-sizing: border-box;
     transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
 .tv-color-btn:hover {
-    border-color: #838fb1ff;
+    border-color: var(--sp-btn-border, #838fb1ff);
     transform: scale(1.05);
 }
 
@@ -568,7 +568,7 @@ class DrawingSettingsPanel {
 
 .tv-color-btn:focus {
     outline: none;
-    border-color: #2962ff;
+    border-color: var(--sp-accent, #2962ff);
 }
 
 /* Alignment Buttons */
@@ -606,25 +606,25 @@ class DrawingSettingsPanel {
 .tv-info-dropdown-btn {
     -webkit-appearance: none !important;
     appearance: none !important;
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    background-color: var(--sp-input-bg, rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.12)) !important;
     border-radius: 4px !important;
-    color: #d1d4dc !important;
+    color: var(--sp-text, #d1d4dc) !important;
 }
 
 .tv-ending-dropdown-btn:hover,
 .tv-info-dropdown-btn:hover {
-    background-color: rgba(255, 255, 255, 0.14) !important;
-    border-color: rgba(41, 98, 255, 0.65) !important;
+    background-color: var(--sp-hover-bg, rgba(255, 255, 255, 0.14)) !important;
+    border-color: rgba(var(--sp-accent-rgb), 0.65) !important;
 }
 
 /* Dropdown Select */
 .tv-select {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: var(--sp-select-bg, rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.12));
     border-radius: 4px;
     padding: 5px 21px 5px 8px;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 11px;
     cursor: default;
     appearance: none;
@@ -644,29 +644,29 @@ class DrawingSettingsPanel {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23787b86' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 6px center;
-    background-color: rgba(41, 98, 255, 0.14);
+    background-color: rgba(var(--sp-accent-rgb), 0.14);
     background-size: 8px, 100%;
-    border-color: rgba(41, 98, 255, 0.65);
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.14);
+    border-color: rgba(var(--sp-accent-rgb), 0.65);
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.14);
 }
 
 .tv-select:focus {
     outline: none;
-    border-color: #2962ff;
+    border-color: var(--sp-accent, #2962ff);
 }
 
 .tv-select option {
-    background: #1e222d !important; /* native dropdown list must use hex */
-    color: #d1d4dc;
+    background: var(--sp-ui-chrome-bg, #1e222d) !important;
+    color: var(--sp-text, #d1d4dc);
 }
 
 /* Number Input */
 .tv-input {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: var(--sp-input-bg, rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.12));
     border-radius: 4px;
     padding: 6px 9px;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 11px;
     text-align: right;
     height: 27px;
@@ -675,13 +675,13 @@ class DrawingSettingsPanel {
 }
 
 .tv-input:hover {
-    background: rgba(255,255,255,0.05);
-    border-color: rgba(90, 90, 100, 0.9);
+    background: var(--sp-hover-bg, rgba(255,255,255,0.05));
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9));
 }
 
 .tv-input:focus {
     outline: none;
-    border-color: #2962ff;
+    border-color: var(--sp-accent, #2962ff);
 }
 
 /* Volume Profile Inputs (Volume + Anchored Volume) */
@@ -691,8 +691,8 @@ class DrawingSettingsPanel {
     border-radius: 7px !important;
     font-size: 12px !important;
     font-weight: 500;
-    background-color: #050028 !important;
-    border-color: rgba(140, 148, 180, 0.30) !important;
+    background-color: var(--sp-bg, #050028) !important;
+    border-color: var(--sp-input-border, rgba(140, 148, 180, 0.30)) !important;
 }
 
 .tv-select.tv-volume-profile-input {
@@ -705,26 +705,26 @@ class DrawingSettingsPanel {
 }
 
 .tv-volume-profile-input:hover {
-    background-color: rgba(41, 98, 255, 0.14) !important;
-    border-color: rgba(41, 98, 255, 0.62) !important;
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.14);
+    background-color: rgba(var(--sp-accent-rgb), 0.14) !important;
+    border-color: rgba(var(--sp-accent-rgb), 0.62) !important;
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.14);
 }
 
 .tv-volume-profile-input:focus {
     outline: none;
-    border-color: #2962ff !important;
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.18);
+    border-color: var(--sp-accent, #2962ff) !important;
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.18);
 }
 
 .tv-anchored-vwap-input {
-    background-color: #050028 !important;
+    background-color: var(--sp-bg, #050028) !important;
 }
 
 /* Toggle Switch */
 .tv-toggle {
     width: 33px;
     height: 18px;
-    background: #363a45;
+    background: var(--sp-input-border, #363a45);
     border-radius: 9px;
     cursor: default;
     position: relative;
@@ -732,16 +732,16 @@ class DrawingSettingsPanel {
 }
 
 .tv-toggle:hover {
-    background: #4a4e59;
+    background: var(--sp-btn-border, #4a4e59);
 }
 
 .tv-toggle.active {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45));
 }
 
 .tv-toggle.active:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55));
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
 }
 
 .tv-toggle::after {
@@ -766,8 +766,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-ending-dropdown-btn:hover {
-    background: rgba(255,255,255,0.08) !important;
-    border-color: rgba(90, 90, 100, 0.9) !important;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.08)) !important;
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9)) !important;
 }
 
 .tv-ending-dropdown-btn:active {
@@ -780,11 +780,11 @@ class DrawingSettingsPanel {
 }
 
 .tv-ending-option:hover {
-    background: rgba(41, 98, 255, 0.15) !important;
+    background: rgba(var(--sp-accent-rgb), 0.15) !important;
 }
 
 .tv-ending-option:active {
-    background: rgba(41, 98, 255, 0.25) !important;
+    background: rgba(var(--sp-accent-rgb), 0.25) !important;
 }
 
 /* Extend Options */
@@ -810,11 +810,11 @@ class DrawingSettingsPanel {
     width: 100%;
     min-height: 45px;
     max-height: 60px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(60,60,80,0.5);
+    background: var(--sp-input-bg, rgba(255,255,255,0.05));
+    border: 1px solid var(--sp-input-border, rgba(60,60,80,0.5));
     border-radius: 4px;
     padding: 9px;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 11px;
     resize: none;
     outline: none;
@@ -822,7 +822,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-text-input:focus {
-    border-color: #2962ff;
+    border-color: var(--sp-accent, #2962ff);
 }
 
 /* Alignment Buttons */
@@ -831,7 +831,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-align-label {
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     font-size: 10px;
     font-style: italic;
     margin-bottom: 6px;
@@ -839,7 +839,7 @@ class DrawingSettingsPanel {
 
 .tv-align-buttons {
     display: flex;
-    background: rgba(255,255,255,0.05);
+    background: var(--sp-input-bg, rgba(255,255,255,0.05));
     border-radius: 8px;
     padding: 3px;
     gap: 6px;
@@ -851,7 +851,7 @@ class DrawingSettingsPanel {
     padding: 8px;
     border: none;
     background: transparent;
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     cursor: default;
     transition: all 0.15s;
     display: flex;
@@ -861,14 +861,14 @@ class DrawingSettingsPanel {
 }
 
 .tv-align-btn:hover {
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(90, 90, 100, 0.9);
-    color: #d1d4dc;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.08));
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9));
+    color: var(--sp-text, #d1d4dc);
 }
 
 .tv-align-btn.active {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45)) !important;
-    color: #fff !important;
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45)) !important;
+    color: var(--sp-text-active, #fff) !important;
     border: none !important;
     opacity: 1 !important;
     filter: none !important;
@@ -881,8 +881,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-align-btn.active:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55)) !important;
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55)) !important;
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
 }
 
 .tv-align-btn svg {
@@ -901,10 +901,10 @@ class DrawingSettingsPanel {
 .tv-style-btn {
     width: 24px;
     height: 24px;
-    border: 1px solid #363a45;
+    border: 1px solid var(--sp-input-border, #363a45);
     border-radius: 4px;
     background: transparent;
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     font-size: 11px;
     font-weight: normal;
     font-style: normal;
@@ -922,20 +922,20 @@ class DrawingSettingsPanel {
 }
 
 .tv-style-btn:hover {
-    background: rgba(255,255,255,0.05);
-    border-color: rgba(90, 90, 100, 0.9);
-    color: #d1d4dc;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.05));
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9));
+    color: var(--sp-text, #d1d4dc);
 }
 
 .tv-style-btn.active {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
-    border-color: rgba(41, 98, 255, 0.85);
-    color: #fff;
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45));
+    border-color: rgba(var(--sp-accent-rgb), 0.85);
+    color: var(--sp-text-active, #fff);
 }
 
 .tv-style-btn.active:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55));
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
 }
 
 .tv-coords-list {
@@ -953,7 +953,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-coords-label {
-    color: rgba(209, 212, 220, 0.95);
+    color: var(--sp-text, rgba(209, 212, 220, 0.95));
     font-size: 13px;
     font-weight: 500;
     letter-spacing: 0.01em;
@@ -994,7 +994,7 @@ class DrawingSettingsPanel {
     border: 0;
     outline: none;
     background: transparent;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     flex: 1;
     display: flex;
     align-items: center;
@@ -1005,12 +1005,12 @@ class DrawingSettingsPanel {
 
 .tv-coords-stepper-btn:hover {
     background: transparent;
-    color: #ffffff;
+    color: var(--sp-text-active, #ffffff);
 }
 
 .tv-coords-stepper-btn:active {
     background: transparent;
-    color: #ffffff;
+    color: var(--sp-text-active, #ffffff);
 }
 
 .tv-coords-stepper-btn svg {
@@ -1022,10 +1022,10 @@ class DrawingSettingsPanel {
 .tv-coords-input {
     width: 140px;
     height: 30px;
-    border: 2px solid rgba(120, 123, 134, 0.55);
+    border: 2px solid var(--sp-input-border, rgba(120, 123, 134, 0.55));
     border-radius: 10px;
-    background: rgba(0,0,0,0.65);
-    color: #d1d4dc;
+    background: var(--sp-bg, rgba(0,0,0,0.65));
+    color: var(--sp-text, #d1d4dc);
     padding: 0 10px;
     font-size: 12px;
     outline: none;
@@ -1043,16 +1043,16 @@ class DrawingSettingsPanel {
 }
 
 .tv-coords-input:focus {
-    border-color: rgba(41,98,255,0.9);
-    box-shadow: 0 0 0 4px rgba(41,98,255,0.22);
+    border-color: rgba(var(--sp-accent-rgb),0.9);
+    box-shadow: 0 0 0 4px rgba(var(--sp-accent-rgb),0.22);
 }
 
 /* Line Ending Button */
 .tv-ending-btn {
-    border: 1px solid rgba(50, 50, 60, 0.9);
+    border: 1px solid var(--sp-input-border, rgba(50, 50, 60, 0.9));
     border-radius: 6px;
-    background: rgba(255,255,255,0.05);
-    color: #787b86;
+    background: var(--sp-input-bg, rgba(255,255,255,0.05));
+    color: var(--sp-text-muted, #787b86);
     cursor: default;
     transition: all 0.15s;
     display: flex;
@@ -1062,20 +1062,20 @@ class DrawingSettingsPanel {
 }
 
 .tv-ending-btn:hover {
-    background: rgba(255,255,255,0.05);
-    border-color: rgba(90, 90, 100, 0.9);
-    color: #d1d4dc;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.05));
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9));
+    color: var(--sp-text, #d1d4dc);
 }
 
 .tv-ending-btn.active {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
-    border-color: rgba(41, 98, 255, 0.85);
-    color: #fff;
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45));
+    border-color: rgba(var(--sp-accent-rgb), 0.85);
+    color: var(--sp-text-active, #fff);
 }
 
 .tv-ending-btn.active:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55));
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
 }
 
 /* Timeframes Tab */
@@ -1101,16 +1101,16 @@ class DrawingSettingsPanel {
 }
 
 .tv-timeframe-range-label {
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 14px;
 }
 
 .tv-timeframe-range-input {
     height: 34px;
-    border: 2px solid rgba(120, 123, 134, 0.55);
+    border: 2px solid var(--sp-input-border, rgba(120, 123, 134, 0.55));
     border-radius: 10px;
-    background: rgba(0,0,0,0.65);
-    color: #d1d4dc;
+    background: var(--sp-bg, rgba(0,0,0,0.65));
+    color: var(--sp-text, #d1d4dc);
     padding: 0 12px;
     font-size: 13px;
     outline: none;
@@ -1119,8 +1119,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-timeframe-range-input:focus {
-    border-color: rgba(41,98,255,0.9);
-    box-shadow: 0 0 0 4px rgba(41,98,255,0.22);
+    border-color: rgba(var(--sp-accent-rgb),0.9);
+    box-shadow: 0 0 0 4px rgba(var(--sp-accent-rgb),0.22);
 }
 
 .tv-timeframe-slider {
@@ -1208,7 +1208,7 @@ class DrawingSettingsPanel {
     align-items: center;
     justify-content: space-between;
     padding: 12px 15px;
-    border-top: 1px solid #2a2e39;
+    border-top: 1px solid var(--sp-ui-border, #2a2e39);
 }
 
 .tv-footer-right {
@@ -1222,10 +1222,10 @@ class DrawingSettingsPanel {
     align-items: center;
     gap: 6px;
     padding: 8px 12px;
-    background: #0a0a0a !important;
-    border: 1px solid #1a1a1a !important;
+    background: var(--sp-input-bg, rgba(255,255,255,0.06)) !important;
+    border: 1px solid var(--sp-input-border, rgba(255,255,255,0.1)) !important;
     border-radius: 8px;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 13px;
     font-weight: 500;
     cursor: default;
@@ -1233,8 +1233,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-template-btn:hover {
-    background: #1a1c20 !important;
-    border-color: #363a45 !important;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.09)) !important;
+    border-color: var(--sp-btn-border, #363a45) !important;
 }
 
 .tv-template-btn svg {
@@ -1244,23 +1244,23 @@ class DrawingSettingsPanel {
 
 /* Dark mode button styling with !important to override inline styles */
 .tv-ending-dropdown-btn {
-    background: #000000 !important;
-    border: 1px solid #2a2e39 !important;
+    background: var(--sp-bg, rgba(0,0,0,0.85)) !important;
+    border: 1px solid var(--sp-input-border, #2a2e39) !important;
 }
 
 .tv-ending-dropdown-btn:hover {
-    background: #1a1c20 !important;
-    border-color: #363a45 !important;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.08)) !important;
+    border-color: var(--sp-btn-border, #363a45) !important;
 }
 
 .tv-info-dropdown-btn {
-    background: #000000 !important;
-    border: 1px solid #2a2e39 !important;
+    background: var(--sp-bg, rgba(0,0,0,0.85)) !important;
+    border: 1px solid var(--sp-input-border, #2a2e39) !important;
 }
 
 .tv-info-dropdown-btn:hover {
-    background: #1a1c20 !important;
-    border-color: #363a45 !important;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.08)) !important;
+    border-color: var(--sp-btn-border, #363a45) !important;
 }
 
 .tv-footer-actions {
@@ -1278,27 +1278,27 @@ class DrawingSettingsPanel {
 }
 
 .tv-btn-cancel {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.10);
-    color: #d1d4dc;
+    background: var(--sp-input-bg, rgba(255,255,255,0.06));
+    border: 1px solid var(--sp-input-border, rgba(255,255,255,0.10));
+    color: var(--sp-text, #d1d4dc);
     margin-right: 8px;
     transition: all 0.15s ease;
 }
 
 .tv-btn-cancel:hover {
-    background: rgba(255,255,255,0.09);
-    color: #d1d4dc;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.09));
+    color: var(--sp-text, #d1d4dc);
 }
 
 .tv-btn-apply {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
-    border: 1px solid rgba(41, 98, 255, 0.85);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45));
+    border: 1px solid rgba(var(--sp-accent-rgb), 0.85);
     color: #fff;
 }
 
 .tv-btn-apply:hover {
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55));
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
 }
 
 /* Line Style Preview in Dropdown */
@@ -1316,8 +1316,8 @@ class DrawingSettingsPanel {
 /* Color Picker Popup */
 .tv-color-picker {
     position: fixed;
-    background: #050028;
-    border: 1px solid #2a2e39;
+    background: var(--sp-bg, #050028);
+    border: 1px solid var(--sp-ui-border, #2a2e39);
     border-radius: 6px;
     padding: 12px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -1357,7 +1357,7 @@ class DrawingSettingsPanel {
     width: 18px;
     height: 18px;
     cursor: default;
-    accent-color: #2962ff;
+    accent-color: var(--sp-accent, #2962ff);
     flex-shrink: 0;
 }
 
@@ -1367,7 +1367,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-info-option:hover {
-    background: rgba(41, 98, 255, 0.1);
+    background: rgba(var(--sp-accent-rgb), 0.1);
 }
 
 .tv-info-dropdown-btn {
@@ -1375,15 +1375,15 @@ class DrawingSettingsPanel {
 }
 
 .tv-info-dropdown-btn:hover {
-    background: rgba(255,255,255,0.08) !important;
-    border-color: rgba(90, 90, 100, 0.9) !important;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.08)) !important;
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9)) !important;
 }
 
 /* Opacity Slider */
 .tv-opacity-section {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid #363a45;
+    border-top: 1px solid var(--sp-ui-border, #363a45);
 }
 
 .tv-opacity-row {
@@ -1393,7 +1393,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-opacity-label {
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     font-size: 12px;
     min-width: 50px;
 }
@@ -1403,7 +1403,7 @@ class DrawingSettingsPanel {
     height: 4px;
     -webkit-appearance: none;
     appearance: none;
-    background: linear-gradient(to right, transparent, #2962ff);
+    background: linear-gradient(to right, transparent, var(--sp-accent, #2962ff));
     border-radius: 2px;
     cursor: default;
 }
@@ -1431,11 +1431,11 @@ class DrawingSettingsPanel {
 
 .tv-opacity-input {
     width: 50px;
-    background: #1e222d;
-    border: 1px solid #363a45;
+    background: var(--sp-ui-chrome-bg, #1e222d);
+    border: 1px solid var(--sp-input-border, #363a45);
     border-radius: 4px;
     padding: 4px 6px;
-    color: #d1d4dc;
+    color: var(--sp-text, #d1d4dc);
     font-size: 12px;
     text-align: center;
 }
@@ -1451,7 +1451,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-opacity-percent {
-    color: #787b86;
+    color: var(--sp-text-muted, #787b86);
     font-size: 12px;
 }
 
