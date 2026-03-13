@@ -19841,12 +19841,11 @@
     
     <!-- LZString for URL compression -->
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
     <!-- Drawing Tools Modules (load in order) -->
     <script defer src="modules/drawing-tools-base.js?v=20260312_TF_PIN_V58"></script>
-       <script defer src="modules/drawing-tools-lines.js?v=20260312_TF_PIN_V58"></script>
+    <script defer src="modules/drawing-tools-lines.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-shapes.js?v=20260312_TF_PIN_V58"></script>
-     <script defer src="modules/drawing-tools-fibonacci.js?v=20260312_TF_PIN_V58"></script>
+    <script defer src="modules/drawing-tools-fibonacci.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-text.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-emoji.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-image.js?v=20260312_TF_PIN_V58"></script>
@@ -19858,7 +19857,7 @@
     <script defer src="modules/drawing-tools-patterns.js?v=20260312_TF_PIN_V101"></script>
     <script defer src="modules/drawing-tools-fib-gann.js?v=20260312_TF_PIN_V60"></script>
     <script defer src="modules/drawing-tools-channels.js?v=20260312_TF_PIN_V58"></script>
-     <script defer src="modules/drawing-tools-ui.js?v=20260312_TF_PIN_V95"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260312_TF_PIN_V95"></script>
     <script defer src="modules/color-picker.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-toolbar.js?v=20260312_TF_PIN_V59"></script>
     <script defer src="modules/undo-redo-manager.js?v=20260312_TF_PIN_V58"></script>
@@ -19871,23 +19870,11 @@
     <script defer src="modules/timeframe-favorites.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/propfirm-tracker.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/compare-overlay.js?v=20260312_TF_PIN_V58"></script>
-    
-    <!-- Timezone Manager - must load before chart.js -->
     <script defer src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
-    
-         <script defer src="chart.js?v=20260313_TF_PIN_V102"></script>
-         <!-- Replay System -->
-        <!-- Replay System -->
+    <script defer src="chart.js?v=20260313_TF_PIN_V103"></script>
     <script defer src="modules/replay-system.js?v=20260313_TF_PIN_V63"></script>
-    
-    
-    <!-- Order Management System -->
     <script defer src="modules/order-manager.js?v=20260312_TF_PIN_V92"></script>
-    
-    <!-- Screenshot Manager -->
     <script defer src="modules/screenshot-manager.js?v=20260313_TF_PIN_V74"></script>
-    
-    <!-- Alert System -->
     <script defer src="modules/alert-system.js?v=20260312_TF_PIN_V58"></script>
     
     <!-- Force Screenshot Manager Initialization -->
@@ -21193,6 +21180,7 @@
                     // Actually activate the drawing tool (only if not deselecting)
                     if (!isDeselecting && toolName) {
                         isActivatingTool = true; // Set flag before activation
+                        let _retries = 0;
                         const activateTool = () => {
                             const chart = window.chart || window.mainChart;
                             if (chart && chart.drawingManager) {
@@ -21201,8 +21189,11 @@
                                 setTimeout(() => {
                                     isActivatingTool = false;
                                 }, 100);
-                            } else {
+                            } else if (_retries < 20) {
+                                _retries++;
                                 setTimeout(activateTool, 100);
+                            } else {
+                                isActivatingTool = false; // Give up after ~2 s
                             }
                         };
                         activateTool();

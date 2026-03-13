@@ -12103,7 +12103,6 @@ class Chart {
             'cross-line',
             // Shapes
             'rectangle',
-            'rotated-rectangle',
             'ellipse',
             'circle',
             'triangle',
@@ -12116,16 +12115,12 @@ class Chart {
             'arrow-mark-up',
             'arrow-mark-down',
             // Labels & Text
-            'label',
             'text', 
-            'notebox',
-            'anchored-text',
             'note',
             'price-note',
             'pin',
             'callout',
             'comment',
-            'price-label',
             'price-label-2',
             'signpost-2',
             'flag-mark',
@@ -12137,8 +12132,6 @@ class Chart {
             'highlighter',
             // Analysis
             'fibonacci-retracement', 
-            'fibonacci-extension',
-            'ruler',
             'date-price-range',
             'gann-box',
             'anchored-vwap',
@@ -12148,9 +12141,7 @@ class Chart {
             'long-position',
             'short-position',
             // Patterns
-            'bars-pattern',
             'xabcd-pattern',
-            'cypher-pattern',
             'head-shoulders',
             'abcd-pattern',
             'triangle-pattern',
@@ -12161,10 +12152,6 @@ class Chart {
             'elliott-triangle',
             'elliott-double-combo',
             'elliott-triple-combo',
-            // Cycles
-            'cyclic-lines',
-            'time-cycles',
-            'sine-line',
             // Advanced Fibonacci
             'fib-channel',
             'fib-timezone',
@@ -12174,11 +12161,9 @@ class Chart {
             'fib-spiral',
             'fib-arcs',
             'fib-wedge',
-            'pitchfan',
             'trend-fib-extension',
             // Advanced Gann
             'gann-square-fixed',
-            'gann-square',
             'gann-fan'
         ];
 
