@@ -19885,20 +19885,7 @@
     <script defer src="modules/order-manager.js?v=20260312_TF_PIN_V92"></script>
     
     <!-- Screenshot Manager -->
-    <script defer src="modules/screenshot-manager.js?v=20260312_TF_PIN_V68"></script>
-    <!-- Preload html2canvas in the background so first screenshot is instant -->
-    <script>
-    window.addEventListener('load', function() {
-        setTimeout(function() {
-            if (typeof html2canvas === 'undefined') {
-                var s = document.createElement('script');
-                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-                s.async = true;
-                document.head.appendChild(s);
-            }
-        }, 4000);
-    });
-    </script>
+    <script defer src="modules/screenshot-manager.js?v=20260313_TF_PIN_V69"></script>
     
     <!-- Alert System -->
     <script defer src="modules/alert-system.js?v=20260312_TF_PIN_V58"></script>

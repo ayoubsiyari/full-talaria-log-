@@ -412,14 +412,6 @@ class ScreenshotManager {
         ctx.restore();
 
         canvas.__talariaLogoStamped = true;
-        console.log('📸 Logo stamped:', {
-            source: logoImage.__talariaSource || 'unknown',
-            averageLuma: bounds.averageLuma,
-            x,
-            y,
-            drawWidth,
-            drawHeight
-        });
         return true;
     }
 
@@ -556,8 +548,6 @@ class ScreenshotManager {
     }
     
     init() {
-        console.log('📸 Screenshot Manager initialized');
-        
         this.getBrandLogoImage();
         this.initDropdown();
         this.initKeyboardShortcuts();
@@ -645,32 +635,14 @@ class ScreenshotManager {
         this.showCaptureLoader(loadingMessage);
 
         try {
-            console.log('📸 Quick screenshot:', action);
-            
             // Get the chart container
             let targetElement = document.getElementById('chart-container');
             if (!targetElement) targetElement = document.querySelector('.chart-wrapper');
             if (!targetElement) targetElement = document.querySelector('.container');
             if (!targetElement) targetElement = document.body;
             
-            // Load html2canvas if not already loaded
-            if (typeof html2canvas === 'undefined') {
-                await this.loadHtml2Canvas();
-            }
-            
-            // Take screenshot
-            const canvas = await html2canvas(targetElement, {
-                backgroundColor: this.getScreenshotBackgroundColor(targetElement),
-                useCORS: true,
-                allowTaint: true,
-                foreignObjectRendering: false,
-                scale: 2,
-                width: targetElement.offsetWidth,
-                height: targetElement.offsetHeight,
-                onclone: (clonedDoc) => {
-                    this.prepareScreenshotClone(clonedDoc, targetElement);
-                }
-            });
+            const canvas = await this.captureCanvasDirect(targetElement, 2);
+            if (!canvas) throw new Error('Canvas capture returned null');
             
             // Add watermark
             this.addWatermark(canvas);
@@ -976,34 +948,15 @@ class ScreenshotManager {
             const format = document.querySelector('input[name="imageFormat"]:checked')?.value ?? 'png';
             const quality = parseFloat(document.getElementById('imageQuality')?.value ?? 0.9);
             
-            console.log('📸 Taking screenshot...', { action, format, includeToolbar, includeSidebar });
-            
             // Close the modal first
             document.getElementById('screenshotModal')?.remove();
-            
-            // Wait a moment for modal to close
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Get the chart container - try multiple selectors
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Get the chart container
             let targetElement = document.getElementById('chart-container');
-            if (!targetElement) {
-                targetElement = document.querySelector('.chart-wrapper');
-            }
-            if (!targetElement) {
-                targetElement = document.querySelector('.container');
-            }
-            if (!targetElement) {
-                targetElement = document.body;
-            }
-            
-            console.log('📸 Target element:', targetElement.id || targetElement.className || 'body');
-            
-            // Load html2canvas if not already loaded
-            if (typeof html2canvas === 'undefined') {
-                console.log('📦 Loading html2canvas...');
-                await this.loadHtml2Canvas();
-                console.log('✅ html2canvas loaded');
-            }
+            if (!targetElement) targetElement = document.querySelector('.chart-wrapper');
+            if (!targetElement) targetElement = document.querySelector('.container');
+            if (!targetElement) targetElement = document.body;
             
             // Temporarily hide/show elements based on options
             const toolbar = document.querySelector('.toolbar');
@@ -1032,27 +985,8 @@ class ScreenshotManager {
                 }
             }
             
-            console.log('📸 Capturing with html2canvas...');
-            
-            // Take screenshot with html2canvas
-            const canvas = await html2canvas(targetElement, {
-                backgroundColor: this.getScreenshotBackgroundColor(targetElement),
-                logging: true,
-                useCORS: true,
-                allowTaint: true,
-                foreignObjectRendering: false,
-                scale: 2, // Higher resolution
-                width: targetElement.offsetWidth,
-                height: targetElement.offsetHeight,
-                windowWidth: targetElement.scrollWidth,
-                windowHeight: targetElement.scrollHeight,
-                onclone: (clonedDoc) => {
-                    this.prepareScreenshotClone(clonedDoc, targetElement);
-                    console.log('📸 Document cloned for capture');
-                }
-            });
-            
-            console.log('✅ Screenshot captured! Canvas size:', canvas.width, 'x', canvas.height);
+            const canvas = await this.captureCanvasDirect(targetElement, 2);
+            if (!canvas) throw new Error('Canvas capture returned null');
             
             // Restore original styles
             originalStyles.forEach((originalDisplay, element) => {
@@ -1144,16 +1078,80 @@ class ScreenshotManager {
     }
     
     /**
-     * Load html2canvas library dynamically
+     * Fast canvas compositing — replaces html2canvas entirely.
+     * Reads pixels directly from existing <canvas> elements and serialises
+     * any <svg> overlays (drawings). No DOM cloning, no CDN download.
+     * @param {Element} container  Root element to capture
+     * @param {number}  scale      Output pixel ratio (default 2 for retina)
      */
-    loadHtml2Canvas() {
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
+    async captureCanvasDirect(container, scale = 2) {
+        if (!container) return null;
+
+        const rect = container.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+
+        const out = document.createElement('canvas');
+        out.width  = Math.round(rect.width  * scale);
+        out.height = Math.round(rect.height * scale);
+        const ctx = out.getContext('2d');
+        if (!ctx) return null;
+
+        // Background
+        ctx.fillStyle = this.getScreenshotBackgroundColor(container) || '#050028';
+        ctx.fillRect(0, 0, out.width, out.height);
+
+        // Helper: map an element's bounding rect onto the output canvas
+        const place = (el) => {
+            const r = el.getBoundingClientRect();
+            return {
+                x: (r.left - rect.left) * scale,
+                y: (r.top  - rect.top)  * scale,
+                w: r.width  * scale,
+                h: r.height * scale
+            };
+        };
+
+        // 1. Draw every <canvas> in DOM order (chart + panels)
+        for (const c of container.querySelectorAll('canvas')) {
+            if (!c.width || !c.height) continue;
+            const s = window.getComputedStyle(c);
+            if (s.display === 'none' || s.visibility === 'hidden') continue;
+            const { x, y, w, h } = place(c);
+            if (w > 0 && h > 0) ctx.drawImage(c, x, y, w, h);
+        }
+
+        // 2. Render SVG drawing overlays on top
+        for (const svg of container.querySelectorAll('svg')) {
+            const s = window.getComputedStyle(svg);
+            if (s.display === 'none' || s.visibility === 'hidden') continue;
+            const svgRect = svg.getBoundingClientRect();
+            if (!svgRect.width || !svgRect.height) continue;
+            try {
+                const clone = svg.cloneNode(true);
+                clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                clone.setAttribute('width',  String(svgRect.width));
+                clone.setAttribute('height', String(svgRect.height));
+                if (!clone.getAttribute('viewBox')) {
+                    clone.setAttribute('viewBox', `0 0 ${svgRect.width} ${svgRect.height}`);
+                }
+                const blob = new Blob([new XMLSerializer().serializeToString(clone)],
+                                      { type: 'image/svg+xml' });
+                const url  = URL.createObjectURL(blob);
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const { x, y, w, h } = place(svg);
+                        if (w > 0 && h > 0) ctx.drawImage(img, x, y, w, h);
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    };
+                    img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+                    img.src = url;
+                });
+            } catch (_) { /* ignore per-SVG errors */ }
+        }
+
+        return out;
     }
     
     /**
@@ -1162,45 +1160,12 @@ class ScreenshotManager {
      */
     async captureChartSnapshot() {
         try {
-            console.log('📸 Auto-capturing chart snapshot...');
-            
-            // Load html2canvas if needed
-            if (typeof html2canvas === 'undefined') {
-                await this.loadHtml2Canvas();
-            }
-            
-            // Get chart container - prefer chart-wrapper for better compatibility
-            let chartContainer = document.querySelector('.chart-wrapper');
-            if (!chartContainer) {
-                chartContainer = document.getElementById('chartWrapper');
-            }
-            if (!chartContainer) {
-                chartContainer = document.getElementById('chart-container');
-            }
-            if (!chartContainer) {
-                chartContainer = document.body;
-            }
-            
-            console.log('   Capturing element:', chartContainer.id || chartContainer.className || 'body');
-            console.log('   Element dimensions:', chartContainer.offsetWidth, 'x', chartContainer.offsetHeight);
-            
-            // Capture with minimal options for speed
-            const canvas = await html2canvas(chartContainer, {
-                backgroundColor: this.getScreenshotBackgroundColor(chartContainer),
-                logging: false,
-                useCORS: true,
-                allowTaint: false, // Changed to false to avoid tainted canvas
-                scale: 1, // Reduced scale to avoid memory issues
-                width: chartContainer.offsetWidth,
-                height: chartContainer.offsetHeight,
-                foreignObjectRendering: false, // Disable for better compatibility
-                imageTimeout: 0,
-                onclone: (clonedDoc) => {
-                    this.prepareScreenshotClone(clonedDoc, chartContainer);
-                }
-            });
-            
-            console.log('   Canvas created:', canvas.width, 'x', canvas.height);
+            let chartContainer = document.getElementById('chart-container');
+            if (!chartContainer) chartContainer = document.querySelector('.chart-wrapper');
+            if (!chartContainer) chartContainer = document.body;
+
+            // scale=1 keeps file size small for journal storage
+            const canvas = await this.captureCanvasDirect(chartContainer, 1);
             
             // Add subtle watermark
             this.addWatermark(canvas);
@@ -1210,14 +1175,12 @@ class ScreenshotManager {
             let dataUrl = null;
             try {
                 dataUrl = canvas.toDataURL('image/jpeg', 0.7); // 70% quality for smaller size
-                console.log('   toDataURL successful');
-            } catch (err) {
+                } catch (err) {
                 console.error('❌ toDataURL failed:', err.message);
                 // Try PNG fallback
                 try {
                     dataUrl = canvas.toDataURL('image/png');
-                    console.log('   PNG fallback successful');
-                } catch (err2) {
+                        } catch (err2) {
                     console.error('❌ PNG fallback also failed:', err2.message);
                     return null;
                 }
@@ -1229,9 +1192,6 @@ class ScreenshotManager {
                 console.error('   dataUrl:', dataUrl ? dataUrl.substring(0, 50) : 'null');
                 return null;
             }
-            
-            console.log('✅ Chart snapshot captured:', (dataUrl.length / 1024).toFixed(2) + ' KB');
-            console.log('   Data URL preview:', dataUrl.substring(0, 100) + '...');
             
             return dataUrl;
             
@@ -1302,39 +1262,19 @@ class ScreenshotManager {
     }
 }
 
-// Initialize immediately when script loads
-console.log('📸 Screenshot Manager script loaded');
-
-// Try multiple initialization strategies
 function initScreenshotManager() {
-    console.log('📸 Attempting Screenshot Manager initialization...');
-    console.log('   window.chart:', window.chart);
-    console.log('   window.orderManager:', window.orderManager);
-    
     if (window.chart) {
         window.screenshotManager = new ScreenshotManager(window.chart);
-        console.log('✅ Screenshot Manager initialized successfully!');
         return true;
     }
     return false;
 }
 
-// Strategy 1: Try immediate
 if (!initScreenshotManager()) {
-    console.log('⏳ Chart not ready, trying DOMContentLoaded...');
-    
-    // Strategy 2: On DOMContentLoaded
     document.addEventListener('DOMContentLoaded', () => {
         if (!initScreenshotManager()) {
-            console.log('⏳ Chart still not ready, trying window load...');
-            
-            // Strategy 3: On window load
             window.addEventListener('load', () => {
-                setTimeout(() => {
-                    if (!initScreenshotManager()) {
-                        console.error('❌ Screenshot Manager: Failed to initialize - chart not found!');
-                    }
-                }, 500);
+                setTimeout(initScreenshotManager, 500);
             });
         }
     });
