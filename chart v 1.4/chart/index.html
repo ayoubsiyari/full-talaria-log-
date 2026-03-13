@@ -13696,8 +13696,8 @@
         }
 
         .alert-modal {
-            background: #050028;
-            border: 1px solid #2a2e39;
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, #111a35));
+            border: 1px solid var(--sp-ui-border, #363a45);
             border-radius: 12px;
             width: 420px;
             max-width: 90vw;
@@ -13709,7 +13709,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 18px 24px;
-            border-bottom: 1px solid #2a2e39;
+            border-bottom: 1px solid var(--sp-ui-border, #363a45);
         }
 
         .alert-modal-header h3 {
@@ -13762,8 +13762,8 @@
         .alert-form-group select {
             width: 100%;
             padding: 12px 14px;
-            background: rgba(20, 20, 25, 0.8);
-            border: 1px solid #2a2e39;
+            background: var(--sp-ui-chrome-bg, #0d142b);
+            border: 1px solid var(--sp-ui-border, #363a45);
             border-radius: 6px;
             color: #ffffff;
             font-size: 14px;
@@ -13773,7 +13773,7 @@
 
         .alert-form-group input:focus,
         .alert-form-group select:focus {
-            border-color: #4a9eff;
+            border-color: var(--sp-accent, #2962ff);
         }
 
         .alert-form-group input[readonly] {
@@ -13791,7 +13791,7 @@
             width: 44px;
             height: 44px;
             padding: 0;
-            border: 2px solid #2a2e39;
+            border: 2px solid var(--sp-ui-border, #363a45);
             border-radius: 8px;
             cursor: default;
             transition: border-color 0.15s ease;
@@ -13841,7 +13841,7 @@
         .alert-checkbox-label input[type="checkbox"]:not(.tv-native-checkbox) {
             width: 18px;
             height: 18px;
-            accent-color: #4a9eff;
+            accent-color: var(--sp-accent, #2962ff);
         }
 
         .alert-modal-footer {
@@ -13849,7 +13849,7 @@
             justify-content: flex-end;
             gap: 12px;
             padding: 18px 24px;
-            border-top: 1px solid #2a2e39;
+            border-top: 1px solid var(--sp-ui-border, #363a45);
         }
 
         .alert-modal-btn {
@@ -13865,7 +13865,7 @@
         .alert-modal-btn.cancel {
             background: transparent;
             color: #8f98ba;
-            border: 1px solid #2a2e39;
+            border: 1px solid var(--sp-ui-border, #363a45);
         }
 
         .alert-modal-btn.cancel:hover {
@@ -13874,12 +13874,12 @@
         }
 
         .alert-modal-btn.primary {
-            background: #050028;
+            background: var(--sp-accent, #2962ff);
             color: #ffffff;
         }
 
         .alert-modal-btn.primary:hover {
-            background: #050028;
+            background: rgba(var(--sp-accent-rgb, 41, 98, 255), 0.85);
             transform: translateY(-1px);
         }
 
