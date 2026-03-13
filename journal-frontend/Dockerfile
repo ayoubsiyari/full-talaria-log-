@@ -3,10 +3,16 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install && npm install --save-dev @craco/craco@7 && rm -f node_modules/papaparse/papaparse.min.js
+RUN npm install && rm -f node_modules/papaparse/papaparse.min.js && \
+    node -e "\
+    const fs=require('fs'),p='node_modules/react-scripts/config/webpack.config.js';\
+    let c=fs.readFileSync(p,'utf8');\
+    c=c.replace('resolve: {','resolve: {fallback:{stream:false,buffer:false,crypto:false,path:false,os:false,fs:false,http:false,https:false,zlib:false},');\
+    fs.writeFileSync(p,c);\
+    "
 
 COPY . .
-RUN CI=false GENERATE_SOURCEMAP=false npx craco build
+RUN CI=false GENERATE_SOURCEMAP=false npm run build
 
 FROM nginx:alpine
 COPY --from=builder /app/build /usr/share/nginx/html
