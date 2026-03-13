@@ -593,6 +593,14 @@ class ScreenshotManager {
     }
 
     async takeQuickScreenshot(action = 'download') {
+        // Close settings panel if open and wait for its slide-out animation (280ms)
+        const settingsPanel = document.getElementById('settingsPanel');
+        const settingsWasOpen = settingsPanel?.classList.contains('open');
+        if (settingsWasOpen && typeof window.closePanel === 'function') {
+            window.closePanel();
+            await new Promise(resolve => setTimeout(resolve, 310));
+        }
+
         this.flashCapture();
 
         try {
