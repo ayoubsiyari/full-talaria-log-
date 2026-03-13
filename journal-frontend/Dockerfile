@@ -3,10 +3,10 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm install && rm -f node_modules/papaparse/papaparse.min.js
 
 COPY . .
-RUN NODE_OPTIONS="--max-old-space-size=4096" node --stack-size=65536 node_modules/.bin/react-scripts build
+RUN GENERATE_SOURCEMAP=false npm run build
 
 FROM nginx:alpine
 COPY --from=builder /app/build /usr/share/nginx/html
