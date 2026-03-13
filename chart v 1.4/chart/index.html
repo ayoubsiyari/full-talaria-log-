@@ -26978,31 +26978,17 @@ P['template']={title:'Template',build:function(){
         +'<select id="sl_chart_only_tpl" class="settings-select" style="margin-left:auto;max-width:220px;">'
         +(typeof c.getTemplateSelectorOptionsHtml==='function'?c.getTemplateSelectorOptionsHtml():'<option value="">—</option>')
         +'</select></div>');
-    /* ── Talaria Templates swatch grid ── */
-    var swatches='';
+    /* ── Talaria Templates dropdown ── */
+    var talariaOpts='<option value="">— Select Template —</option>';
     if(typeof c.getTalariaTemplateSwatches==='function'){
-        var list=c.getTalariaTemplateSwatches();
-        list.forEach(function(t){
-            var isActive=(c._lastTemplateSelected===t.id);
-            var check=isActive?'<svg viewBox="0 0 24 24" fill="none" stroke="'+t.accent+'" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>':'';
-            swatches+='<div class="tl-swatch-card" data-tpl-full-id="'+t.id+'" '
-                +'style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;'
-                +'background:'+(isActive?'rgba(255,255,255,0.06)':'transparent')+';transition:background 0.12s;" '
-                +'onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" '
-                +'onmouseleave="this.style.background=\''+(isActive?'rgba(255,255,255,0.06)':'transparent')+'\';">'
-                +'<div style="display:flex;gap:3px;flex-shrink:0;">'
-                +'<span style="width:10px;height:10px;border-radius:50%;background:'+t.accent+';"></span>'
-                +'<span style="width:10px;height:10px;border-radius:50%;background:'+t.up+';"></span>'
-                +'<span style="width:10px;height:10px;border-radius:50%;background:'+t.down+';"></span>'
-                +'</div>'
-                +'<span style="flex:1;color:#d1d4dc;font-size:12px;font-weight:500;">'+t.name+'</span>'
-                +check
-                +'</div>';
+        c.getTalariaTemplateSwatches().forEach(function(t){
+            talariaOpts+='<option value="'+t.id+'">'+t.name+'</option>';
         });
     }
     var talariaTplHtml=sec(st('TALARIA TEMPLATES')
-        +'<p style="color:#787b86;font-size:11px;margin:0 0 8px;line-height:1.5;">Full theme — updates chart colors AND panel/sidebar accent colors.</p>'
-        +'<div id="tl-swatch-grid" style="display:flex;flex-direction:column;gap:1px;">'+swatches+'</div>');
+        +'<p style="color:#787b86;font-size:11px;margin:0 0 10px;line-height:1.5;">Full theme — updates chart colors AND panel/sidebar accent colors.</p>'
+        +'<div class="settings-input-row"><span class="settings-input-label">Template</span>'
+        +'<select id="sl_talaria_tpl" class="settings-select" style="margin-left:auto;max-width:220px;">'+talariaOpts+'</select></div>');
     return chartTplHtml+talariaTplHtml;
 },wire:function(){
     var c=ch();
@@ -27019,25 +27005,19 @@ P['template']={title:'Template',build:function(){
             try{if(cv.saveSettings)cv.saveSettings();}catch(e){}
         });
     }
-    /* Talaria swatch cards */
-    document.querySelectorAll('.tl-swatch-card').forEach(function(card){
-        card.addEventListener('mouseenter',function(){this.style.opacity='0.85';});
-        card.addEventListener('mouseleave',function(){this.style.opacity='1';});
-        card.addEventListener('click',function(){
+    /* Talaria Templates dropdown */
+    var talSel=document.getElementById('sl_talaria_tpl');
+    if(talSel){
+        if(c&&c._lastTemplateSelected)talSel.value=c._lastTemplateSelected;
+        talSel.addEventListener('change',function(){
             var cv=ch();
             if(!cv||typeof cv.applyTemplate!=='function')return;
-            var id=this.dataset.tplFullId;
-            if(!id)return;
-            cv._lastTemplateSelected=id;
-            cv.applyTemplate(id);
+            var v=this.value;
+            if(v){cv._lastTemplateSelected=v;cv.applyTemplate(v);}
+            else{cv._lastTemplateSelected=null;}
             try{if(cv.saveSettings)cv.saveSettings();}catch(e){}
-            /* Update active border on all cards */
-            document.querySelectorAll('.tl-swatch-card').forEach(function(c2){c2.style.borderColor='transparent';});
-            var swatches=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];
-            var match=swatches.find(function(s){return s.id===id;});
-            if(match)this.style.borderColor=match.accent;
         });
-    });
+    }
 }};
 
 /* ── SYMBOL ── */
