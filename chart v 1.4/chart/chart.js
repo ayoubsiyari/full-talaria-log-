@@ -5162,6 +5162,32 @@ class Chart {
         this.showNotification(`Chart template "${template.name}" applied ✓`);
     }
 
+    applyPanelOnlyTemplate(templateName) {
+        const PANEL_KEYS = [
+            'settingsPanelAccentColor','settingsPanelBgColor','settingsPanelSidebarBgColor',
+            'settingsPanelSecondaryColor','settingsPanelTextColor'
+        ];
+        let template = null;
+        if (templateName && typeof templateName === 'string' && templateName.startsWith('user:')) {
+            const id = templateName.slice(5);
+            const ut = this.getUserChartTemplates();
+            template = ut ? ut[id] : null;
+        } else {
+            const templates = this.getChartTemplates();
+            template = templates ? templates[templateName] : null;
+        }
+        if (!template) return;
+        this._lastPanelOnlyTemplate = templateName;
+        PANEL_KEYS.forEach(key => {
+            if (template[key] !== undefined) {
+                this.chartSettings[key] = template[key];
+            }
+        });
+        if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
+        this.applyChartSettings();
+        this.showNotification(`Panel template "${template.name}" applied ✓`);
+    }
+
     getTalariaTemplateSwatches() {
         const templates = this.getChartTemplates();
         return Object.entries(templates).map(([id, t]) => ({
