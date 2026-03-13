@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
-RUN NODE_OPTIONS="--max-old-space-size=4096 --stack-size=65536" npm run build
+RUN NODE_OPTIONS="--max-old-space-size=4096" node --stack-size=65536 node_modules/.bin/react-scripts build
 
 FROM nginx:alpine
 COPY --from=builder /app/build /usr/share/nginx/html
