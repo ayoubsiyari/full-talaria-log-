@@ -14833,13 +14833,13 @@ class Chart {
             .style('white-space', 'nowrap')
             .text(label);
 
-        if (shortcut || hasSubmenu) {
+        if (hasSubmenu) {
             row.append('span')
                 .style('flex-shrink', '0')
                 .style('color', 'rgba(189, 194, 207, 0.65)')
-                .style('font-size', hasSubmenu ? '16px' : '11px')
-                .style('font-weight', hasSubmenu ? '500' : '400')
-                .text(hasSubmenu ? '›' : shortcut);
+                .style('font-size', '16px')
+                .style('font-weight', '500')
+                .text('›');
         }
 
         item.on('mouseenter', function() {
