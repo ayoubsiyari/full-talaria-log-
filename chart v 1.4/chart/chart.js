@@ -5136,6 +5136,44 @@ class Chart {
         this.showNotification(`Template "${template.name}" applied ✓`);
     }
 
+    applyChartOnlyTemplate(templateName) {
+        const PANEL_KEYS = new Set([
+            'settingsPanelAccentColor','settingsPanelBgColor','settingsPanelSidebarBgColor',
+            'settingsPanelSecondaryColor','settingsPanelTextColor'
+        ]);
+        let template = null;
+        if (templateName && typeof templateName === 'string' && templateName.startsWith('user:')) {
+            const id = templateName.slice(5);
+            const ut = this.getUserChartTemplates();
+            template = ut ? ut[id] : null;
+        } else {
+            const templates = this.getChartTemplates();
+            template = templates ? templates[templateName] : null;
+        }
+        if (!template) return;
+        this._lastChartOnlyTemplate = templateName;
+        Object.keys(template).forEach(key => {
+            if (key !== 'name' && !PANEL_KEYS.has(key)) {
+                this.chartSettings[key] = template[key];
+            }
+        });
+        if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
+        this.applyChartSettings();
+        this.showNotification(`Chart template "${template.name}" applied ✓`);
+    }
+
+    getTalariaTemplateSwatches() {
+        const templates = this.getChartTemplates();
+        return Object.entries(templates).map(([id, t]) => ({
+            id,
+            name: t.name || id,
+            bg: t.backgroundColor || '#1e222d',
+            accent: t.settingsPanelAccentColor || t.bodyUpColor || '#2962ff',
+            up: t.bodyUpColor || '#089981',
+            down: t.bodyDownColor || '#f23645'
+        }));
+    }
+
     resetChartSettingsToDefault() {
         this.chartSettings = JSON.parse(JSON.stringify(this._defaultChartSettings || {}));
         try {
@@ -14615,58 +14653,42 @@ class Chart {
             .style('box-shadow', '0 18px 46px rgba(0,0,0,0.45)')
             .html('');
 
-        this.addTradingViewContextMenuItem(menu, {
-            icon: 'reset',
-            label: 'Reset chart view',
-            shortcut: '⌥ R',
-            onClick: () => {
-                this.resetView();
-                this.showNotification('Chart view reset ✓');
-                this.hideContextMenu();
-            }
-        });
-
-        this.addTradingViewContextMenuDivider(menu);
-
-        if (priceAtCursor && priceText) {
+        // ── 1. Buy / Sell / Add Order ──────────────────────────────
+        if (priceAtCursor && priceText && this.orderManager) {
             this.addTradingViewContextMenuItem(menu, {
-                label: `Copy price ${priceText}`,
-                onClick: async () => {
-                    const copied = await this.writeTextToClipboard(priceText);
-                    this.showNotification(copied ? `Price ${priceText} copied ✓` : 'Clipboard blocked. Copy failed.');
+                icon: 'buy',
+                label: `Buy 1 ${symbolName} @ ${priceText} limit`,
+                shortcut: '⇧ B',
+                onClick: () => {
+                    this.openOrderPanelFromContext({ side: 'BUY', orderType: 'limit', entryPrice: priceAtCursor });
                     this.hideContextMenu();
                 }
             });
+
+            this.addTradingViewContextMenuItem(menu, {
+                icon: 'sell',
+                label: `Sell 1 ${symbolName} @ ${priceText} stop`,
+                shortcut: '⇧ S',
+                onClick: () => {
+                    this.openOrderPanelFromContext({ side: 'SELL', orderType: 'stop', entryPrice: priceAtCursor });
+                    this.hideContextMenu();
+                }
+            });
+
+            this.addTradingViewContextMenuItem(menu, {
+                icon: 'order',
+                label: `Add order on ${symbolName} at ${priceText}...`,
+                shortcut: '⇧ T',
+                onClick: () => {
+                    this.openOrderPanelFromContext({ entryPrice: priceAtCursor });
+                    this.hideContextMenu();
+                }
+            });
+
+            this.addTradingViewContextMenuDivider(menu);
         }
 
-        this.addTradingViewContextMenuItem(menu, {
-            label: 'Paste',
-            shortcut: '⌘ V',
-            onClick: async () => {
-                if (this.drawingManager && this.drawingManager.clipboardDrawing && typeof this.drawingManager.pasteDrawing === 'function') {
-                    this.drawingManager.pasteDrawing();
-                    this.showNotification('Drawing pasted ✓');
-                    this.hideContextMenu();
-                    return;
-                }
-
-                const clipboardText = await this.readTextFromClipboard();
-                const parsedPrice = this.parseClipboardNumber(clipboardText);
-                if (Number.isFinite(parsedPrice)) {
-                    const added = this.addHorizontalLineAtPrice(parsedPrice);
-                    this.showNotification(added ? `Price line added at ${parsedPrice.toFixed(5)} ✓` : 'Could not paste chart element');
-                } else if (clipboardText) {
-                    this.showNotification(`Clipboard text: ${clipboardText.slice(0, 40)}`);
-                } else {
-                    this.showNotification('Nothing to paste');
-                }
-
-                this.hideContextMenu();
-            }
-        });
-
-        this.addTradingViewContextMenuDivider(menu);
-
+        // ── 2. Add Alert ────────────────────────────────────────────
         if (priceAtCursor && priceText) {
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'alert',
@@ -14682,52 +14704,49 @@ class Chart {
                 }
             });
 
-            if (this.orderManager) {
-                this.addTradingViewContextMenuItem(menu, {
-                    icon: 'buy',
-                    label: `Buy 1 ${symbolName} @ ${priceText} limit`,
-                    shortcut: '⇧ B',
-                    onClick: () => {
-                        this.openOrderPanelFromContext({ side: 'BUY', orderType: 'limit', entryPrice: priceAtCursor });
-                        this.hideContextMenu();
-                    }
-                });
-
-                this.addTradingViewContextMenuItem(menu, {
-                    icon: 'sell',
-                    label: `Sell 1 ${symbolName} @ ${priceText} stop`,
-                    shortcut: '⇧ S',
-                    onClick: () => {
-                        this.openOrderPanelFromContext({ side: 'SELL', orderType: 'stop', entryPrice: priceAtCursor });
-                        this.hideContextMenu();
-                    }
-                });
-
-                this.addTradingViewContextMenuItem(menu, {
-                    icon: 'order',
-                    label: `Add order on ${symbolName} at ${priceText}...`,
-                    shortcut: '⇧ T',
-                    onClick: () => {
-                        this.openOrderPanelFromContext({ entryPrice: priceAtCursor });
-                        this.hideContextMenu();
-                    }
-                });
-            }
-
             this.addTradingViewContextMenuDivider(menu);
         }
 
+        // ── 3. Copy price ───────────────────────────────────────────
+        if (priceAtCursor && priceText) {
+            this.addTradingViewContextMenuItem(menu, {
+                label: `Copy price ${priceText}`,
+                onClick: async () => {
+                    const copied = await this.writeTextToClipboard(priceText);
+                    this.showNotification(copied ? `Price ${priceText} copied ✓` : 'Clipboard blocked. Copy failed.');
+                    this.hideContextMenu();
+                }
+            });
+        }
+
+        // ── 4. Paste ────────────────────────────────────────────────
         this.addTradingViewContextMenuItem(menu, {
-            icon: 'settings',
-            label: 'Settings',
-            onClick: () => {
-                this.openSettingsFromContextMenu();
+            label: 'Paste',
+            shortcut: '⌘ V',
+            onClick: async () => {
+                if (this.drawingManager && this.drawingManager.clipboardDrawing && typeof this.drawingManager.pasteDrawing === 'function') {
+                    this.drawingManager.pasteDrawing();
+                    this.showNotification('Drawing pasted ✓');
+                    this.hideContextMenu();
+                    return;
+                }
+                const clipboardText = await this.readTextFromClipboard();
+                const parsedPrice = this.parseClipboardNumber(clipboardText);
+                if (Number.isFinite(parsedPrice)) {
+                    const added = this.addHorizontalLineAtPrice(parsedPrice);
+                    this.showNotification(added ? `Price line added at ${parsedPrice.toFixed(5)} ✓` : 'Could not paste chart element');
+                } else if (clipboardText) {
+                    this.showNotification(`Clipboard text: ${clipboardText.slice(0, 40)}`);
+                } else {
+                    this.showNotification('Nothing to paste');
+                }
                 this.hideContextMenu();
             }
         });
 
         this.addTradingViewContextMenuDivider(menu);
 
+        // ── 5. Show marks on bars ───────────────────────────────────
         const marksText = this.chartSettings.showMarks ? 'Hide marks on bars' : 'Show marks on bars';
         this.addTradingViewContextMenuItem(menu, {
             label: marksText,
@@ -14739,6 +14758,7 @@ class Chart {
             }
         });
 
+        // ── 6. Trade markers ────────────────────────────────────────
         const showTradeMarkers = this.chartSettings.showTradeMarkers !== false;
         const tradeMarkersText = showTradeMarkers ? 'Hide trade markers' : 'Show trade markers';
         this.addTradingViewContextMenuItem(menu, {
@@ -14749,6 +14769,18 @@ class Chart {
                     this.orderManager.toggleTradeMarkers(this.chartSettings.showTradeMarkers);
                 }
                 this.showNotification(this.chartSettings.showTradeMarkers ? 'Trade markers shown ✓' : 'Trade markers hidden ✓');
+                this.hideContextMenu();
+            }
+        });
+
+        this.addTradingViewContextMenuDivider(menu);
+
+        // ── 7. Settings ─────────────────────────────────────────────
+        this.addTradingViewContextMenuItem(menu, {
+            icon: 'settings',
+            label: 'Settings',
+            onClick: () => {
+                this.openSettingsFromContextMenu();
                 this.hideContextMenu();
             }
         });
