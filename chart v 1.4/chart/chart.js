@@ -503,50 +503,35 @@ class Chart {
 	    }
 	
 	    init() {
-        console.log(`📊 Chart init() started (${this.isPanel ? 'Panel' : 'Main'})`);
-        console.log('Canvas:', this.canvas);
-        console.log('Canvas dimensions:', this.canvas.offsetWidth, 'x', this.canvas.offsetHeight);
         
         this.resize();
-        console.log('✓ Resized - Canvas:', this.w, 'x', this.h);
         
         this.setupEvents();
-        console.log('✓ Events setup');
         
         // Only setup UI controls for main chart
         if (!this.isPanel) {
             this.createTooltip();
-            console.log('✓ Tooltip created');
             
             this.setupChartSettingsMenu();
-            console.log('✓ Chart settings menu setup');
             
             this.setupCSVLoader();
-            console.log('✓ CSV loader setup');
             
             this.setupFileSelector();
-            console.log('✓ File selector setup');
             
             this.setupKeyboardShortcuts();
-            console.log('✓ Keyboard shortcuts setup');
             
             this.setupDateSearch();
-            console.log('✓ Date search setup');
             
             this.setupTimeframeButtons();
-            console.log('✓ Timeframe buttons setup');
             
             this.setupOHLCCollapse();
-            console.log('✓ OHLC collapse setup');
             
             this.setupChartClickToCloseMenus();
-            console.log('✓ Chart click to close menus setup');
             
             // Initialize OHLC panel with default values
             this.updateChartOHLCSymbol('CHART');
             
             this.loadAvailableFiles();
-            console.log('✓ Loading available files...');
             
             // Load saved drawings from localStorage
             this.loadDrawingsFromStorage();
@@ -589,18 +574,14 @@ class Chart {
         if (!this.isPanel) {
             // Main chart gets its own managers
             this.initDrawingTools();
-            console.log('✓ Drawing Tools Manager initialized');
             
             // Initialize Replay System (only for main chart)
             this.initReplaySystem();
-            console.log('✓ Replay System initialized');
         } else {
             // Panels get their own drawing manager but share replay/order systems
             this.initDrawingTools();
-            console.log('✓ Panel Drawing Tools Manager initialized');
             
             // Panels will reference the main chart's replay and order systems
-            console.log('✓ Panel chart - will use main chart replay/order systems');
         }
         
         // Initialize Indicators system
@@ -612,7 +593,6 @@ class Chart {
         if (!this.isPanel && typeof CompareOverlay !== 'undefined') {
             try {
                 this.compareOverlay = new CompareOverlay(this);
-                console.log('✓ Compare Overlay initialized');
             } catch (e) {
                 console.error('Failed to initialize CompareOverlay:', e);
             }
@@ -620,7 +600,6 @@ class Chart {
         
         this.fitToView(); // Position chart to show latest data on right
         this.render();
-        console.log('✓ Initial render complete');
         
         // Force a re-render after a short delay to ensure chart is visible after page reload
         // Also re-measure canvas dimensions after page layout completes to fix squished/broken appearance
@@ -628,13 +607,11 @@ class Chart {
             this.resize(); // Re-measure canvas after layout completes
             this.fitToView();
             this.render();
-            console.log('✓ Delayed re-render complete (ensures visibility and correct dimensions)');
         }, 100);
         
         // Listen for timezone changes (only for main chart)
         if (!this.isPanel && window.timezoneManager) {
             window.timezoneManager.addListener(() => {
-                console.log('🌍 Timezone changed, re-rendering chart');
                 this.scheduleRender();
             });
         }
@@ -654,8 +631,6 @@ class Chart {
         
         if (mode === 'backtest' || mode === 'propfirm') {
             const isPropFirm = mode === 'propfirm';
-            console.log(`🎯 ${isPropFirm ? 'Prop Firm' : 'Backtesting'} mode detected from URL`);
-            console.log('🔗 URL params:', window.location.search);
             
             // Show loading screen
             const loader = document.getElementById('backtestingLoader');
@@ -695,7 +670,6 @@ class Chart {
             }
 
             if (session) {
-                console.log(`📋 Loading ${isPropFirm ? 'prop firm' : 'backtesting'} session:`, session);
                 
                 // Store session data in chart
                 this.backtestingSession = session;
@@ -714,7 +688,6 @@ class Chart {
                 this.updateLoaderStep(1, 'active');
                 
                 // Load data directly (no file selector needed in backtesting mode)
-                console.log('⏳ Loading file data...');
                 setTimeout(() => {
                     this.autoLoadBacktestingData(session);
                 }, 500);
@@ -802,7 +775,6 @@ class Chart {
      */
     async autoLoadBacktestingData(session) {
         if (this.backtestingStarted) {
-            console.log('⚠️ Backtesting already started, skipping...');
             return;
         }
         
@@ -844,7 +816,6 @@ class Chart {
             this.loadedRanges.set(0, result.returned);
             this.currentFileId = fileId;
             
-            console.log(`✅ Loaded ${this.rawData.length}/${result.total} raw candles at ${replayRawTf} (display: ${displayTf})`);
             this.updateLoaderProgress(70, 'Preparing chart...');
             
             if (session.fileName) {
@@ -859,13 +830,6 @@ class Chart {
             
             this.updateChartTitle(this.currentSymbol);
             this.updateDateRange();
-            
-            this.updateLoaderProgress(80, 'Calculating indicators...');
-            this.updateLoaderStep(2, 'active');
-            
-            if (typeof this.recalculateIndicators === 'function') {
-                this.recalculateIndicators();
-            }
             
             this.updateLoaderStep(2, 'completed');
             this.updateLoaderProgress(90, 'Rendering chart...');
@@ -937,7 +901,6 @@ class Chart {
      * Switch to a different file/symbol without page reload
      */
     async loadFileData(fileId) {
-        console.log(`🔄 Switching to file: ${fileId}`);
         
         try {
             const symbolDisplay = document.getElementById('symbolDisplay');
@@ -987,7 +950,6 @@ class Chart {
                 window.replaySystem.updateChartData();
             }
             
-            console.log(`✅ Switched to ${this.currentSymbol} with ${this.rawData.length}/${result.total} candles at ${requestTimeframe}`);
             
         } catch (error) {
             console.error('❌ Failed to switch symbol:', error);
@@ -1004,17 +966,11 @@ class Chart {
             return;
         }
         
-        console.log('🎬 Starting backtesting replay mode...');
-        console.log('📋 Session:', session.sessionName);
-        console.log('📁 File:', session.fileName);
         
         const startTime = new Date(session.startDate).getTime();
         const endTime = new Date(session.endDate).getTime();
         
-        console.log(`📅 Session range: ${new Date(startTime).toLocaleString()} to ${new Date(endTime).toLocaleString()}`);
-        console.log(`📊 Data loaded: ${this.rawData.length} candles`);
         if (this.rawData.length > 0) {
-            console.log(`📅 Data range: ${new Date(this.rawData[0].t).toLocaleString()} to ${new Date(this.rawData[this.rawData.length - 1].t).toLocaleString()}`);
         }
         
         // Server already filtered data to session date range via start_ts/end_ts.
@@ -1022,18 +978,15 @@ class Chart {
         // to append/prepend candles as the user scrolls through the full range.
         // Just use the data as-is and let pan-loading fill in more as needed.
         this.data = this.resampleData(this.rawData, this.currentTimeframe || '1m');
-        console.log(`📊 Using ${this.data.length} candles for ${this.currentTimeframe} timeframe (source: 1m raw)`);
         
         // Recalculate indicators
         if (typeof this.recalculateIndicators === 'function') {
             this.recalculateIndicators();
-            console.log('📈 Indicators recalculated');
         }
         
         // Fit to view and render
         this.fitToView();
         this.render();
-        console.log('🎨 Chart rendered');
         
         // Auto-enter replay mode with first candle
         if (!this.replaySystem) {
@@ -1042,25 +995,13 @@ class Chart {
         }
 
         if (this.replaySystem) {
-            console.log('⏳ Entering replay mode in 1 second...');
             setTimeout(() => {
-                console.log('🎮 Starting replay system...');
                 this.replaySystem.enterReplayMode();
-
                 this.loadTradingSessionStateIfNeeded();
-                
-                // Complete loader and hide it
                 this.updateLoaderProgress(100, 'Replay mode active!');
                 this.updateLoaderStep(3, 'completed');
-                
-                setTimeout(() => {
-                    this.hideLoader();
-                }, 800);
-                
-                console.log('✅ Backtesting session started!');
-                console.log(`💰 Starting balance: $${session.startBalance}`);
-                console.log('🎯 Use the replay controls to navigate through time');
-            }, 1000);
+                setTimeout(() => { this.hideLoader(); }, 200);
+            }, 100);
         } else {
             console.error('❌ Replay system not available!');
             alert('Replay system not loaded. Please refresh the page.');
@@ -1165,14 +1106,12 @@ class Chart {
                 // Validate restored view against real candles on next scale calculation
                 this._pendingChartViewSanityCheck = true;
                 this.scheduleRender();
-                console.log('📍 Restored chart view from session state');
             }
 
             // Restore chart settings (colors, type, etc.)
             if (state.chartSettings && typeof state.chartSettings === 'object') {
                 this.chartSettings = { ...this.chartSettings, ...state.chartSettings };
                 if (typeof this.applyChartSettings === 'function') this.applyChartSettings();
-                console.log('🎨 Restored chart settings from session state');
             }
 
             // Restore tool defaults (drawing colors/styles)
@@ -1182,7 +1121,6 @@ class Chart {
                         this.toolDefaults[tool] = { ...this.toolDefaults[tool], ...state.toolDefaults[tool] };
                     }
                 });
-                console.log('🖊️ Restored tool defaults from session state');
             }
 
             // Restore indicators
@@ -1218,7 +1156,6 @@ class Chart {
             }
         });
         if (typeof this.render === 'function') this.render();
-        console.log(`📈 Restored ${list.length} indicators from session state`);
     }
 
     scheduleSessionStateSave(patch) {
@@ -1264,7 +1201,6 @@ class Chart {
     initDrawingTools() {
         try {
             this.drawingManager = new DrawingToolsManager(this);
-            console.log('✅ Drawing Tools Manager created successfully');
             
             // Initialize Object Tree Manager
             if (typeof ObjectTreeManager !== 'undefined') {
@@ -1273,7 +1209,6 @@ class Chart {
                 // Store reference in drawing manager for callbacks
                 this.drawingManager.objectTreeManager = this.objectTreeManager;
                 
-                console.log('✅ Object Tree Manager created successfully');
             }
             
             // Initialize Favorites Manager
@@ -1283,11 +1218,9 @@ class Chart {
                 // Store reference in drawing manager for syncing active state
                 this.drawingManager.favoritesManager = this.favoritesManager;
                 
-                console.log('✅ Favorites Manager created successfully');
             }
         } catch (error) {
             console.error('❌ Failed to initialize Drawing Tools Manager:', error);
-            console.log('Drawing tools will not be available');
         }
     }
     
@@ -1301,7 +1234,6 @@ class Chart {
 
             if (typeof replaySystemCtor === 'function') {
                 this.replaySystem = new replaySystemCtor(this);
-                console.log('✅ Replay System initialized successfully');
                 
                 // Initialize Order Manager for backtesting
                 this.initOrderManager();
@@ -1323,7 +1255,6 @@ class Chart {
             }
         } catch (error) {
             console.error('❌ Failed to initialize Replay System:', error);
-            console.log('Replay mode will not be available');
         }
     }
     
@@ -1334,7 +1265,6 @@ class Chart {
         try {
             if (typeof OrderManager !== 'undefined' && this.replaySystem) {
                 this.orderManager = new OrderManager(this, this.replaySystem);
-                console.log('✅ Order Manager initialized successfully');
             }
         } catch (error) {
             console.error('❌ Failed to initialize Order Manager:', error);
@@ -1600,7 +1530,6 @@ class Chart {
         try {
             // 1. Save to localStorage immediately (instant, works offline)
             localStorage.setItem('chartSettings', JSON.stringify(this.chartSettings));
-            console.log('✅ Chart settings saved to localStorage');
         } catch (error) {
             console.error('❌ Failed to save settings:', error);
         }
@@ -1658,7 +1587,6 @@ class Chart {
             
             if (response.ok) {
                 const result = await response.json();
-                console.log('✅ Chart settings synced to cloud');
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - settings saved locally only');
             } else {
@@ -1723,7 +1651,6 @@ class Chart {
             if (saved) {
                 const settings = JSON.parse(saved);
                 this.chartSettings = { ...this.chartSettings, ...settings };
-                console.log('📥 Chart settings loaded from localStorage');
             } else {
                 // Only apply dark theme defaults if no saved settings exist
                 this.chartSettings.backgroundColor = '#050028';
@@ -1745,7 +1672,6 @@ class Chart {
             try {
                 if (apiSettings && Object.keys(apiSettings).length > 0) {
                     this.chartSettings = { ...this.chartSettings, ...apiSettings };
-                    console.log('📥 Chart settings synced from cloud');
                     this._applyChartSettingsImmediate(null, null);
                 }
             } catch (e) {
@@ -1782,7 +1708,6 @@ class Chart {
                         this.toolDefaults[tool] = { ...this.toolDefaults[tool], ...savedDefaults[tool] };
                     }
                 });
-                console.log('✅ Tool defaults loaded from localStorage');
             }
         } catch (e) {
             console.error('Failed to load tool defaults:', e);
@@ -1792,7 +1717,6 @@ class Chart {
     saveToolDefaults() {
         try {
             localStorage.setItem('toolDefaults', JSON.stringify(this.toolDefaults));
-            console.log('💾 Tool defaults saved');
         } catch (e) {
             console.error('Failed to save tool defaults:', e);
         }
@@ -1804,15 +1728,11 @@ class Chart {
             const saved = localStorage.getItem(`chart_drawings_${this.currentFileId || 'default'}`);
             if (saved) {
                 this.drawings = JSON.parse(saved);
-                console.log(`✅ Loaded ${this.drawings.length} drawings from localStorage`);
-                console.log('📋 Drawing colors:', this.drawings.map((d, i) => `${i}: type=${d.type}, color=${d.color}`));
                 
                 // Only redraw if scales are ready, otherwise wait for next render
                 if (this.xScale && this.yScale) {
-                    console.log('✓ Scales ready, redrawing loaded drawings');
                     this.redrawDrawings();
                 } else {
-                    console.log('⏳ Scales not ready, will draw on next render');
                     this.scheduleRender();
                 }
             }
@@ -2247,7 +2167,6 @@ class Chart {
             this.updateOHLCIndicators();
         }
 
-        console.log('🗑️ All indicators cleared (fallback)');
         return true;
     }
 
@@ -2829,10 +2748,8 @@ class Chart {
         // Title
         const titleRow = this.addSettingRow(section);
         const { input: titleInput } = this.addCheckbox(titleRow, 'Title', this.chartSettings.symbolTitle);
-        console.log('Title checkbox created, initial value:', this.chartSettings.symbolTitle);
         titleInput.on('change', () => {
             const newValue = titleInput.property('checked');
-            console.log('Title checkbox changed to:', newValue);
             this.chartSettings.symbolTitle = newValue;
             this.scheduleRender();
         });
@@ -3096,10 +3013,8 @@ class Chart {
         // Body
         const bodyRow = this.addSettingRow(section);
         const { input: bodyInput } = this.addCheckbox(bodyRow, 'Body', this.chartSettings.showCandleBody);
-        console.log('Body checkbox created, initial value:', this.chartSettings.showCandleBody);
         bodyInput.on('change', () => {
             const newValue = bodyInput.property('checked');
-            console.log('Body checkbox changed to:', newValue);
             this.chartSettings.showCandleBody = newValue;
             this.scheduleRender();
         });
@@ -3121,10 +3036,8 @@ class Chart {
         // Wick
         const wickRow = this.addSettingRow(section);
         const { input: wickInput } = this.addCheckbox(wickRow, 'Wick', this.chartSettings.showCandleWick);
-        console.log('Wick checkbox created, initial value:', this.chartSettings.showCandleWick);
         wickInput.on('change', () => {
             const newValue = wickInput.property('checked');
-            console.log('Wick checkbox changed to:', newValue);
             this.chartSettings.showCandleWick = newValue;
             this.scheduleRender();
         });
@@ -5263,10 +5176,8 @@ class Chart {
             return;
         }
         
-        console.log('✓ File selector element found');
         fileSelect.addEventListener('change', async (e) => {
             const fileId = e.target.value;
-            console.log(`📁 File selected: ${fileId}`);
             if (!fileId) return;
             
             this.currentFileId = fileId;
@@ -5276,43 +5187,32 @@ class Chart {
     
     async loadFileFromServer(fileId) {
         try {
-            console.log(`📥 Loading file ID: ${fileId} from server...`);
             this.isLoading = true;
             this.currentFileId = fileId;
             
             // First request to get metadata and initial chunk
             const url = `${this.apiUrl}/file/${fileId}?offset=0&limit=${this.chunkSize}`;
-            console.log(`📡 Fetching: ${url}`);
             
             const response = await fetch(url);
-            console.log(`📡 Response status: ${response.status}`);
             
             const result = await response.json();
-            console.log(`📦 Received data, total candles: ${result.total}, returned: ${result.returned}`);
             
             if (result.data) {
                 this.totalCandles = result.total;
                 this.loadedRanges.clear();
                 
-                console.log(`📝 Parsing CSV data (${result.data.length} chars)...`);
                 
                 // Parse initial chunk
                 this.parseCSVChunk(result.data, 0);
                 this.loadedRanges.set(0, this.chunkSize);
                 
-                console.log(`✅ Loaded initial chunk: ${result.returned}/${result.total} candles`);
-                console.log(`📊 Raw data length: ${this.rawData.length}`);
-                console.log(`📊 Working data length: ${this.data.length}`);
                 
                 // If dataset is small, load everything
                 if (result.total <= this.chunkSize) {
-                    console.log('📊 Small dataset - all data loaded');
                 } else {
-                    console.log(`📊 Large dataset detected (${result.total} candles) - using lazy loading`);
                 }
                 
                 // Force render to show data
-                console.log(' Forcing render...');
                 this.scheduleRender();
             } else {
                 console.error('❌ No data in response');
@@ -5414,7 +5314,6 @@ class Chart {
             // Store detected symbol
             if (detectedSymbol && startIndex === 0) {
                 this.currentSymbol = detectedSymbol;
-                console.log(`📊 Detected symbol: ${detectedSymbol}`);
             }
             
             // Parse new data
@@ -5484,9 +5383,6 @@ class Chart {
                 this.recalculateIndicators();
             }
             
-            console.log(`✅ Parsed ${newData.length} candles from CSV chunk`);
-            console.log(`📊 Total rawData: ${this.rawData.length} candles`);
-            console.log(`📊 Working data (${this.currentTimeframe}): ${this.data.length} candles`);
             
             // Update date range for date picker
             this.updateDateRange();
@@ -5500,7 +5396,6 @@ class Chart {
             // Do NOT call jumpToLatest() here — it resets candleWidth/zoom on every chunk
             // including pan-loads, which would destroy the user's current zoom level.
             if (startIndex === 0) {
-                console.log('🎯 Auto-positioning to latest candles (initial load)...');
                 // Force resize first so this.w/h are accurate before fitToView calculates offsetX.
                 // Without this, fitToView may run with this.w=0 and compute a wrong offsetX.
                 this.resize();
@@ -5515,20 +5410,17 @@ class Chart {
                 if (fileChanged) {
                     // File changed - clear old drawings from previous file
                     if (this.drawingManager.drawings.length > 0) {
-                        console.log('🗑️ Clearing old drawings from previous file...');
                         this.drawingManager.drawings.forEach(d => d.destroy());
                         this.drawingManager.drawings = [];
                     }
                     
                     // Load drawings for the new file
                     if (typeof this.drawingManager.loadDrawings === 'function') {
-                        console.log('🎨 Loading saved drawings for new file...');
                         this.drawingManager.loadDrawings();
                     }
                 } else if (!this._lastLoadedFileId) {
                     // First load ever - load drawings
                     if (typeof this.drawingManager.loadDrawings === 'function') {
-                        console.log('🎨 Loading saved drawings (initial load)...');
                         this.drawingManager.loadDrawings();
                     }
                 }
@@ -5670,7 +5562,6 @@ class Chart {
             if (result.data) {
                 this.parseCSVChunk(result.data, startIndex);
                 this.loadedRanges.set(startIndex, endIndex);
-                console.log(`📦 Loaded range: ${startIndex}-${endIndex}`);
             }
             
             this.isLoadingChunk = false;
@@ -5741,7 +5632,6 @@ class Chart {
     }
 
     setCursorType(type, skipSync = false) {
-        console.log('🖱️ setCursorType called with:', type);
         this.cursorType = type;
         
         // Clear any active drawing tool when switching cursor types
@@ -5791,10 +5681,8 @@ class Chart {
         
         // If eraser mode, enable eraser functionality and add click handler
         if (type === 'eraser') {
-            console.log('🧹 Setting eraser mode ON, drawingManager exists:', !!this.drawingManager);
             if (this.drawingManager) {
                 this.drawingManager.setEraserMode(true);
-                console.log('🧹 Eraser mode set, current state:', this.drawingManager.eraserMode);
                 // Clear any active drawing tool to prevent drawing
                 this.tool = null;
             } else {
@@ -5803,7 +5691,6 @@ class Chart {
             // Add eraser click handler to SVG
             this.setupEraserClickHandler();
         } else {
-            console.log('🧹 Setting eraser mode OFF');
             if (this.drawingManager) {
                 this.drawingManager.setEraserMode(false);
             }
@@ -5822,7 +5709,6 @@ class Chart {
             this.syncCursorTypeToAllCharts(type);
         }
         
-        console.log('🖱️ Cursor type:', type);
     }
     
     /**
@@ -5924,7 +5810,6 @@ class Chart {
             // Only handle if in eraser mode
             if (!chartInstance.drawingManager || !chartInstance.drawingManager.eraserMode) return;
             
-            console.log('🧹 Eraser click detected');
             
             // Find if click was on a drawing element
             let target = event.target;
@@ -5935,7 +5820,6 @@ class Chart {
             while (target && target !== this && attempts < 10) {
                 if (target.hasAttribute && target.hasAttribute('data-id')) {
                     drawingId = target.getAttribute('data-id');
-                    console.log('🧹 Found drawing ID:', drawingId);
                     break;
                 }
                 target = target.parentElement;
@@ -5947,17 +5831,14 @@ class Chart {
                 event.stopPropagation();
                 event.preventDefault();
                 
-                console.log('🧹 Attempting to erase:', drawingId);
                 chartInstance.drawingManager.handleEraserClick(drawingId);
                 // Re-render to update the display
                 chartInstance.scheduleRender();
             } else {
-                console.log('🧹 No drawing found at click position');
             }
         });
         
         this._eraserHandlerAttached = true;
-        console.log('🧹 Eraser click handler attached');
     }
 
 	    resize() {
@@ -6041,7 +5922,6 @@ class Chart {
         // Skip if chart view was already restored from session state
         // This preserves the user's scroll position when continuing a session
         if (this._chartViewRestored) {
-            console.log('📍 fitToView skipped - chart view already restored from session');
             return;
         }
         
@@ -6071,12 +5951,6 @@ class Chart {
             this.offsetX = cw - lastCandleX - padding;
         }
         
-        console.log('📍 fitToView:', {
-            dataLength: this.data.length,
-            offsetX: this.offsetX,
-            candleWidth: this.candleWidth,
-            candleSpacing: candleSpacing
-        });
         
         // Apply constraints to ensure valid position
         this.constrainOffset();
@@ -6087,7 +5961,6 @@ class Chart {
      * Resets zoom and shows the most recent data
      */
     jumpToLatest() {
-        console.log('🎯 Jumping to latest candles...');
         
         // Clear the restored flag so fitToView() can reposition
         this._chartViewRestored = false;
@@ -6104,7 +5977,6 @@ class Chart {
         // Re-render
         this.scheduleRender();
         
-        console.log('✅ Jumped to latest - showing last candles');
     }
     
     /**
@@ -6229,7 +6101,6 @@ class Chart {
         // Update the logo/title to show the symbol
         this.updateChartTitle(symbol);
         
-        console.log(`📊 Symbol selector updated: ${symbol}`);
     }
     
     /**
@@ -6615,7 +6486,6 @@ class Chart {
         this.scheduleRender();
         this.dispatchScrollSync();
         
-        console.log('📦 Box zoom applied:', { startIdx, endIdx, newCandleWidth });
     }
     
     // ═══════════════════════════════════════════════════════════════════
@@ -6741,7 +6611,6 @@ class Chart {
         if (!csvBtn || !csvInput) return;
         
         csvBtn.addEventListener('click', () => {
-            console.log('📂 CSV Upload button clicked');
             csvInput.click();
         });
         csvInput.addEventListener('change', async (e) => {
@@ -6757,8 +6626,6 @@ class Chart {
 	            reader.onload = async (e) => {
 	                const csvData = e.target.result;
 	                
-	                console.log(`📁 File loaded: ${file.name}`);
-	                console.log(`📏 File size: ${csvData.length} characters`);
 	                
 	                try {
 	                    // Use existing local parsing logic
@@ -6771,14 +6638,10 @@ class Chart {
 	                    if (!this.currentSymbol) {
 	                        this.currentSymbol = this.extractSymbolFromFilename(file.name);
 	                        if (this.currentSymbol) {
-	                            console.log(`📊 Extracted symbol from filename: ${this.currentSymbol}`);
 	                            this.updateSymbolSelector(this.currentSymbol);
 	                        }
 	                    }
 	                    
-	                    console.log(`✅ Successfully loaded "${file.name}"`);
-	                    console.log(`📊 Total candles: ${this.rawData.length}`);
-	                    console.log(`📊 Working data: ${this.data.length}`);
 	                    
 	                    this.jumpToLatest();
 	                    this.scheduleRender();
@@ -6819,7 +6682,6 @@ class Chart {
         // Use the new KeyboardShortcutsManager if available
         if (typeof KeyboardShortcutsManager !== 'undefined') {
             this.keyboardShortcuts = new KeyboardShortcutsManager(this);
-            console.log('⌨️ TradingView-style keyboard shortcuts initialized');
         } else {
             // Fallback to basic shortcuts
             console.warn('⚠️ KeyboardShortcutsManager not found, using basic shortcuts');
@@ -6875,7 +6737,6 @@ class Chart {
             // Home - jump to latest candles
             if (e.key === 'Home') {
                 e.preventDefault();
-                console.log('🏠 Home key pressed - jumping to latest');
                 this.jumpToLatest();
             }
             // M - toggle magnet mode
@@ -6891,7 +6752,6 @@ class Chart {
                     this.magnetMode = modes[(idx + 1) % modes.length];
                 }
                 this.syncMagnetButton();
-                console.log('🧲 Magnet mode:', this.magnetMode);
             }
             // Ctrl/Cmd + U - unlock all drawings
             if ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U')) {
@@ -6904,10 +6764,8 @@ class Chart {
                     }
                 });
                 if (unlockedCount > 0) {
-                    console.log(`🔓 Unlocked ${unlockedCount} drawing(s)`);
                     this.scheduleRender();
                 } else {
-                    console.log('ℹ️ No locked drawings found');
                 }
             }
             // + or = to zoom in
@@ -6970,13 +6828,6 @@ class Chart {
         const settingsCancel = document.getElementById('goToSettingsCancel');
         const settingsCloseButtons = document.querySelectorAll('[data-go-to-settings-close]');
 
-        console.log('📅 setupDateSearch: found elements', {
-            dateInput: !!dateInput,
-            timeInput: !!timeInput,
-            toggle: !!toggle,
-            menu: !!menu,
-            settingsModal: !!settingsModal
-        });
 
         if (!toggle || !menu) {
             console.warn('⚠️ Go To controls not found, skipping setupDateSearch');
@@ -7025,7 +6876,6 @@ class Chart {
             menu.style.top = `${top}px`;
             menu.style.visibility = 'visible';
             
-            console.log('📅 Go To menu opened at', left, top);
         };
 
         const closeMenu = () => {
@@ -7469,7 +7319,6 @@ class Chart {
         }
         
         if (targetIndex === -1) {
-            console.log('📍 No bar found at price', targetPrice);
             return;
         }
         
@@ -7483,7 +7332,6 @@ class Chart {
             this.jumpToDate(dateStr);
         }
         
-        console.log('📍 Jumped to price', targetPrice, 'at index', targetIndex);
     }
     
     /**
@@ -7502,7 +7350,6 @@ class Chart {
         this.yScale.domain([newMin, newMax]);
         this.scheduleRender();
         
-        console.log('📍 Centered on price', targetPrice);
     }
 
     renderGoToSettings(container) {
@@ -7757,7 +7604,6 @@ class Chart {
         if (asianHigh !== null) {
             this.jumpToPrice(asianHigh);
         } else {
-            console.log('No Asian session high found');
         }
     }
     
@@ -7769,7 +7615,6 @@ class Chart {
         if (asianLow !== null) {
             this.jumpToPrice(asianLow);
         } else {
-            console.log('No Asian session low found');
         }
     }
     
@@ -7902,7 +7747,6 @@ class Chart {
         }
         
         if (!preset.enabled) {
-            console.log('Preset is disabled:', key);
             return;
         }
 
@@ -8088,8 +7932,6 @@ class Chart {
         this.dateRangeMin = minDate;
         this.dateRangeMax = maxDate;
         
-        console.log(`📅 Date range updated: ${minDateStr} to ${maxDateStr}`);
-        console.log(`   ${this.data.length} candles available`);
     }
     
     /**
@@ -8466,8 +8308,6 @@ class Chart {
                 return;
             }
 
-            console.log(`📅 Jumping to: ${dateString} ${timeStr}`);
-            console.log(`🕐 Target timestamp: ${targetTimestamp}`);
 
             // Choose data source: full replay data when replay is active, otherwise current chart data
             let sourceData = this.data;
@@ -8494,8 +8334,6 @@ class Chart {
             const closestCandle = sourceData[closestIndex];
             const closestTs = this.normalizeTimestampMs(closestCandle?.t);
             const closestDate = new Date(closestTs);
-            console.log(`🎯 Closest candle found at: ${closestDate.toLocaleString()}`);
-            console.log(`📍 Index: ${closestIndex} of ${sourceData.length}`);
 
             // Check if the date is within a reasonable range
             const daysDiff = Math.abs(targetTimestamp - closestTs) / (1000 * 60 * 60 * 24);
@@ -8529,7 +8367,6 @@ class Chart {
                 this.scheduleRender();
             }
 
-            console.log(`✅ Jumped to ${closestDate.toLocaleString()}`);
 
             // Show a brief notification
             if (typeof this.showNotification === 'function') {
@@ -8578,7 +8415,6 @@ class Chart {
                 return;
             }
 
-            console.log(`📅 Jumping to timestamp: ${normalizedTarget} (${new Date(normalizedTarget).toISOString()})`);
 
             // Choose data source: full replay data when replay is active
             let sourceData = this.data;
@@ -8632,7 +8468,6 @@ class Chart {
             // Display using timezone manager
             const tm = window.timezoneManager;
             const displayDate = tm ? tm.convertToTimezone(closestTs) : new Date(closestTs);
-            console.log(`🎯 Closest candle found at: ${tm ? tm.formatTime(closestTs, 'full') : displayDate.toLocaleString()}`);
 
             // Check if the date is within a reasonable range
             const daysDiff = Math.abs(normalizedTarget - closestTs) / (1000 * 60 * 60 * 24);
@@ -8659,7 +8494,6 @@ class Chart {
                 this.scheduleRender();
             }
 
-            console.log(`✅ Jumped to ${tm ? tm.formatTime(closestTs, 'full') : displayDate.toLocaleString()}`);
 
             if (typeof this.showNotification === 'function') {
                 this.showNotification(`Jumped to ${tm ? tm.formatTime(closestTs, 'datetime') : displayDate.toLocaleString()}`);
@@ -8677,12 +8511,10 @@ class Chart {
     
     setupTimeframeButtons() {
         const buttons = document.querySelectorAll('.timeframe-btn');
-        console.log(`✓ Found ${buttons.length} timeframe buttons`);
         
         buttons.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const timeframe = e.target.dataset.timeframe;
-                console.log(`⏱️ Timeframe clicked: ${timeframe}`);
                 
                 document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
@@ -8794,7 +8626,6 @@ class Chart {
             // NOTE: parseCSVChunk already dispatches chartDataLoaded internally,
             // so we do NOT call _fireChartDataLoaded() here to avoid double-refresh of drawings
             
-            console.log(`✅ ${timeframe}: loaded ${this.rawData.length}/${result.total} candles`);
         } catch (error) {
             console.error('❌ Timeframe change failed:', error);
             if (this.hideLoader) this.hideLoader();
@@ -9116,7 +8947,6 @@ class Chart {
                     this.scheduleRender();
                 }
                 
-                console.log(`📦 Pan ${direction}: +${uniqueNew.length} candles (master: ${isReplay ? this.replaySystem.fullRawData.length : this.rawData.length})`);
 
                 if (isReplay &&
                     direction === 'forward' &&
@@ -9267,7 +9097,6 @@ class Chart {
             this.parseCSVChunk(csv, 0);
             
             if (this.rawData.length > 0) {
-                console.log(`✅ Loaded ${this.rawData.length} candles from CSV file`);
             } else {
                 throw new Error('No valid data found in CSV');
             }
@@ -9653,8 +9482,6 @@ class Chart {
         
         // Log first render with data
         if (!this.hasRenderedData) {
-            console.log(` First render with data! Visible candles: ${visible.length}, Total: ${this.data.length}`);
-            console.log('First visible candle:', visible[0]);
             this.hasRenderedData = true;
         }
 
@@ -11329,7 +11156,6 @@ class Chart {
         
         if (drawn === 0 && visible.length > 0) {
             console.warn('⚠️ No candles drawn! All', visible.length, 'candles are outside viewport. Skipped:', skipped);
-            console.log('   offsetX:', this.offsetX, 'Canvas width:', this.w);
         }
     }
 
@@ -11393,7 +11219,6 @@ class Chart {
                     .on('start', (event) => {
                         circle.style('cursor', 'move');
                         event.sourceEvent.stopPropagation(); // Prevent shape drag
-                        console.log('🎯 Handle drag started:', handle.type);
                     })
                     .on('drag', (event) => {
                         const newX = event.x;
@@ -11452,7 +11277,6 @@ class Chart {
                         try {
                             const drawingsData = JSON.stringify(chart.drawings);
                             localStorage.setItem(`chart_drawings_${chart.currentFileId || 'default'}`, drawingsData);
-                            console.log('✅ Handle drag completed and saved');
                         } catch (e) {
                             console.error('Failed to save after resize:', e);
                         }
@@ -11557,7 +11381,6 @@ class Chart {
             }
         });
         
-        console.log('🖱️  Setting up TradingView-style mouse events...');
         
         // ═══════════════════════════════════════════════════════════════════
         // STEP 2 — Mouse Position Detection Helper
@@ -11808,11 +11631,9 @@ class Chart {
             // Unlock axes IMMEDIATELY if clicking on them - before any other processing
             // Skip if we're currently processing a double-click event
             if (mode === 'priceAxis' && this.priceScale.locked && !this._isDoubleClicking) {
-                console.log('🔓 Price scale UNLOCKED (immediate on mousedown)');
                 this.priceScale.locked = false;
                 e.preventDefault();
             } else if (mode === 'timeAxis' && this.timeScale.locked && !this._isDoubleClicking) {
-                console.log('🔓 Time scale UNLOCKED (immediate on mousedown)');
                 this.timeScale.locked = false;
                 e.preventDefault();
             } else if (mode === 'priceAxis' || mode === 'timeAxis') {
@@ -11857,7 +11678,6 @@ class Chart {
             
             // Set drag type based on cursor location
             if (mode === 'priceAxis') {
-                console.log('🎯 Setting drag type to priceAxis, locked:', this.priceScale.locked, 'detail:', e.detail);
                 this.drag.type = 'priceAxis';
                 this.autoScale = false;
                 this.priceScale.autoScale = false;
@@ -11865,7 +11685,6 @@ class Chart {
                 // Ensure cursor is correct
                 this.canvas.style.cursor = 'ns-resize';
             } else if (mode === 'timeAxis') {
-                console.log('🎯 Setting drag type to timeAxis, locked:', this.timeScale.locked, 'detail:', e.detail);
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
             } else if (mode === 'chart') {
@@ -12263,14 +12082,12 @@ class Chart {
                 this.priceZoom = 1;
                 this.priceOffset = 0;
 
-                console.log('🔒 Price scale AUTO-SCALED and LOCKED (double-click)');
                 
                 this.scheduleRender();
             } else if (mode === 'timeAxis') {
                 // TradingView-style: reset zoom/size and jump to latest (current) candle
                 this.jumpToLatest();
 
-                console.log('🎯 Time axis double-click → reset zoom + jump to latest candle');
 
                 this.dispatchScrollSync();
             }
@@ -12445,19 +12262,14 @@ class Chart {
         // Standalone emoji tool button (optional). Safe even if not present.
         const emojiBtn = document.getElementById('emojiToolStandalone');
 
-        console.log('🔍 Drawing manager:', !!this.drawingManager);
-        console.log('🔍 EmojiPickerPanel class:', typeof EmojiPickerPanel);
         
         if (emojiBtn && this.drawingManager) {
             // Initialize emoji picker
             if (typeof EmojiPickerPanel !== 'undefined') {
                 const emojiPicker = new EmojiPickerPanel();
-                console.log('✅ Emoji picker created:', emojiPicker);
-                console.log('✅ Picker panel element:', emojiPicker.panel);
                 
                 // Wire up selection callback
                 emojiPicker.onSelect = (options) => {
-                    console.log('🎨 Emoji selected:', options);
                     if (this.drawingManager && typeof this.drawingManager.handleEmojiSelection === 'function') {
                         this.drawingManager.handleEmojiSelection(options);
                         // Update active state
@@ -12474,20 +12286,11 @@ class Chart {
                 
                 // Toggle picker on button click
                 emojiBtn.addEventListener('click', (event) => {
-                    console.log('🖱️🖱️🖱️ EMOJI BUTTON CLICKED! 🖱️🖱️🖱️');
                     event.preventDefault();
                     event.stopPropagation();
-                    console.log('🔍 Event:', event);
-                    console.log('🔍 Picker object:', emojiPicker);
-                    console.log('🔍 Picker visible before toggle:', emojiPicker.visible);
-                    console.log('🔍 Calling toggle with button:', emojiBtn);
                     emojiPicker.toggle(emojiBtn);
-                    console.log('🔍 Picker visible after toggle:', emojiPicker.visible);
-                    console.log('🔍 Panel display:', emojiPicker.panel?.style.display);
-                    console.log('🔍 Panel className:', emojiPicker.panel?.className);
                 }, true);
                 
-                console.log('✅ Emoji picker initialized and event listener attached');
             } else {
                 console.warn('⚠️ EmojiPickerPanel not loaded');
             }
@@ -12507,12 +12310,10 @@ class Chart {
         this.cursorType = this.cursorType || 'cross';
         this.showCrosshairLines = true; // Default to showing crosshair lines (cross mode)
         
-        console.log('🖱️ Setting up cursor options, dropdown found:', !!cursorDropdown);
         
         // Cursor option handlers
         if (cursorDropdown) {
             const cursorOptions = cursorDropdown.querySelectorAll('.cursor-option');
-            console.log('🖱️ Found cursor options:', cursorOptions.length);
             
             // Set 'cross' as selected by default in the UI
             cursorOptions.forEach(option => {
@@ -12536,7 +12337,6 @@ class Chart {
                     const cursorType = option.getAttribute('data-cursor');
                     if (!cursorType) return;
                     
-                    console.log('🖱️ Cursor option clicked:', cursorType);
                     
                     // Set cursor type (this will handle tool clearing internally)
                     chartInstance.setCursorType(cursorType);
@@ -12589,7 +12389,6 @@ class Chart {
                         this.magnetMode = modes[(idx + 1) % modes.length];
                     }
                     this.syncMagnetButton();
-                    console.log('🧲 Magnet mode:', this.magnetMode);
                 });
             }
         });
@@ -12608,7 +12407,6 @@ class Chart {
                                 btn.setAttribute('title', `Keep Drawing Mode (${isOn ? 'ON' : 'OFF'})`);
                             }
                         });
-                        console.log('✏️ Keep Drawing mode:', isOn ? 'ON' : 'OFF');
                     }
                 });
             }
@@ -12655,7 +12453,6 @@ class Chart {
         const jumpLatestBtn = document.getElementById('jumpToLatest');
         if (jumpLatestBtn) {
             jumpLatestBtn.addEventListener('click', () => {
-                console.log('🏠 Jump to Latest button clicked');
                 this.jumpToLatest();
             });
         }
@@ -12664,28 +12461,17 @@ class Chart {
         const testBtn = document.getElementById('testInteraction');
         if (testBtn) {
             testBtn.addEventListener('click', () => {
-                console.log('🔍 TESTING CHART INTERACTION...');
-                console.log('Canvas element:', this.canvas);
-                console.log('Canvas display:', window.getComputedStyle(this.canvas).display);
-                console.log('Canvas pointer-events:', window.getComputedStyle(this.canvas).pointerEvents);
-                console.log('Canvas z-index:', window.getComputedStyle(this.canvas).zIndex);
-                console.log('Canvas position:', window.getComputedStyle(this.canvas).position);
-                console.log('Canvas dimensions:', this.canvas.offsetWidth, 'x', this.canvas.offsetHeight);
-                console.log('Data loaded:', this.data.length, 'candles');
                 
                 // Force enable pointer events
                 this.canvas.style.pointerEvents = 'auto';
                 this.canvas.style.touchAction = 'none';
-                console.log('✅ Forced pointer-events: auto');
                 
                 // Test by adding a one-time click listener
                 const testClick = () => {
-                    console.log('🎉 CANVAS CLICK WORKS!');
                     alert('Canvas is clickable! Mouse events are working.');
                     this.canvas.removeEventListener('click', testClick);
                 };
                 this.canvas.addEventListener('click', testClick);
-                console.log('👉 Now click anywhere on the chart area...');
             });
         }
 
@@ -12693,11 +12479,9 @@ class Chart {
         
         // Handle SVG mousedown for drawing and selection
         this.svg.on('mousedown', (event) => {
-            console.log('🖱️ SVG mousedown detected');
             
             // SKIP if in eraser mode - let eraser handler handle it
             if (this.drawingManager && this.drawingManager.eraserMode) {
-                console.log('🧹 Eraser mode active - skipping drawing');
                 return;
             }
             
@@ -12709,7 +12493,6 @@ class Chart {
             
             // Ensure we have valid scales before proceeding
             if (!this.xScale || !this.yScale) {
-                console.log('⚠️ Missing scales');
                 return;
             }
             
@@ -12717,7 +12500,6 @@ class Chart {
                 // Selection mode
                 const foundDrawing = this.findDrawingAtPoint(x, y);
                 if (foundDrawing) {
-                    console.log('🎯 Drawing selected:', foundDrawing.drawing.type);
                     this.selectedDrawing = foundDrawing.index;
                     this.scheduleRender();
 
@@ -12725,14 +12507,12 @@ class Chart {
                     // not on mousedown. This allows right-drag box zoom without
                     // opening the menu at the same time.
                 } else {
-                    console.log('   No drawing found - deselecting on canvas click');
                     this.selectedDrawing = null;
                     this.hideContextMenu();
                     this.scheduleRender(); // Update visual to show deselection
                 }
             } else {
                 // Drawing mode
-                console.log('🖌️ Starting drawing with tool:', this.tool);
                 
                 // Calculate data coordinates - snap to candle center
                 const dataIdx = Math.round(this.pixelToDataIndex(x));
@@ -12745,7 +12525,6 @@ class Chart {
                 // Store start points - use snapped X for pixel position
                 start = [snappedX, y];
                 startData = {idx: dataIdx, price};
-                console.log('Drawing started at:', {dataIdx, price});
             }
         });
         
@@ -12874,14 +12653,12 @@ class Chart {
         
         // Handle clicks on the SVG for drawing selection
         this.svg.on('click', (event) => {
-            console.log('🖱️ SVG Click detected at:', d3.pointer(event));
             
             // SKIP if click originated from toolbar or UI elements
             if (event.target.closest('.tool-btn') || 
                 event.target.closest('.tool-dropdown') || 
                 event.target.closest('.tool-group-btn') ||
                 event.target.closest('.toolbar')) {
-                console.log('   ⏭️ Skipping - click from toolbar');
                 return;
             }
             
@@ -12892,18 +12669,12 @@ class Chart {
             
             if (!this.tool) { // Only handle selection when not in drawing mode
                 const [x, y] = d3.pointer(event);
-                console.log('   Checking for drawings at:', {x, y});
                 const foundDrawing = this.findDrawingAtPoint(x, y);
                 
                 if (foundDrawing) {
-                    console.log('   ✅ Found drawing:', {
-                        type: foundDrawing.drawing.type,
-                        index: foundDrawing.index
-                    });
                     this.selectedDrawing = foundDrawing.index;
                     event.stopPropagation(); // Only stop if we found a drawing
                 } else {
-                    console.log('   ❌ No drawing found - deselecting');
                     this.selectedDrawing = null;
                     // Don't stop propagation - let it bubble to canvas
                 }
@@ -12969,7 +12740,6 @@ class Chart {
                     }
                     
                     if (newDrawing) {
-                        console.log('✏️ Drawing completed:', newDrawing.type);
                         
                         // Apply saved tool defaults for this tool type
                         const defaults = this.toolDefaults[newDrawing.type] || {};
@@ -12978,7 +12748,6 @@ class Chart {
                         newDrawing.opacity = defaults.opacity !== undefined ? defaults.opacity : 1;
                         newDrawing.locked = false; // Ensure new drawings are not locked
                         
-                        console.log('New drawing created with color:', newDrawing.color, 'from defaults:', defaults.color);
                         
                         // Apply fill properties for shapes
                         if (newDrawing.type === 'rectangle' || newDrawing.type === 'fibonacci') {
@@ -13043,13 +12812,6 @@ class Chart {
         // Make left sidebar draggable
         this.setupDraggableToolbox();
         
-        console.log('✅ All mouse event listeners attached successfully!');
-        console.log('   - Wheel (zoom)');
-        console.log('   - Double-click (jump to latest)');
-        console.log('   - Mouse down/move/up (pan and drag)');
-        console.log('   - Mouse leave (cleanup)');
-        console.log('   - Touch events (mobile support)');
-        console.log('👉 Try: Mouse wheel to zoom, drag to pan, double-click price axis');
     }
     
     setupTouchEvents() {
@@ -13275,12 +13037,6 @@ class Chart {
             };
             
             if (idx === 0 || idx === 1) {
-                console.log(`Drawing ${idx}:`, {
-                    type: drawing.type,
-                    hasColor: !!drawing.color,
-                    colorValue: drawing.color,
-                    styleStroke: style.stroke
-                });
             }
             
             // Note: Don't initialize properties here - they're set when drawing is created
@@ -13637,18 +13393,11 @@ class Chart {
                 let hasMoved = false; // Track if shape actually moved
                 
                 element.on('mousedown', function(event) {
-                    console.log('🖱️ Mousedown on shape:', {
-                        type: drawing.type,
-                        locked: drawing.locked,
-                        button: event.button
-                    });
                     
                     if (drawing.locked) {
-                        console.log('❌ Shape is locked, cannot drag');
                         return; // Don't drag if locked
                     }
                     if (event.button !== 0) {
-                        console.log('❌ Not left mouse button');
                         return; // Only left mouse button
                     }
                     
@@ -13672,7 +13421,6 @@ class Chart {
                         type: drawing.type
                     };
                     
-                    console.log('🎯 Shape drag started:', drawing.type, dragStartData);
                     
                     element.style('cursor', 'move');
                     
@@ -13793,7 +13541,6 @@ class Chart {
                         if (didMove) {
                             chart.saveDrawingChanges(drawing);
                             chart.redrawDrawings();
-                            console.log('✅ Shape drag completed');
                         }
                     };
                     
@@ -13809,15 +13556,9 @@ class Chart {
                 element.on('click', (event) => {
                     event.stopPropagation(); // Prevent bubbling
                     
-                    console.log(`👆 Click event on shape ${idx}:`, {
-                        hasMoved,
-                        currentSelection: chart.selectedDrawing,
-                        type: drawing.type
-                    });
                     
                     // Don't change selection if we just finished dragging
                     if (hasMoved) {
-                        console.log('   ⏭️ Skipping click - shape was dragged');
                         hasMoved = false;
                         return;
                     }
@@ -13828,10 +13569,8 @@ class Chart {
                         // Clicking same shape = deselect
                         chart.selectedDrawing = null;
                         chart.hideContextMenu();
-                        console.log('   🔵 Deselected shape:', idx);
                     } else {
                         // Clicking different shape = select it
-                        console.log(`   🟢 Selecting shape ${idx} (previous: ${chart.selectedDrawing})`);
                         chart.selectedDrawing = idx;
                         // Show context menu automatically when selecting
                         chart.showContextMenu(event.clientX, event.clientY, {index: idx, drawing}, null);
@@ -13846,7 +13585,6 @@ class Chart {
                     if (chart.shouldSuppressRightClickContextMenu(event)) {
                         return;
                     }
-                    console.log('🖱️ Right-click on drawing');
                     chart.selectedDrawing = idx;
                     chart.showContextMenu(event.clientX, event.clientY, {index: idx, drawing}, null);
                     chart.scheduleRender();
@@ -14028,7 +13766,6 @@ class Chart {
             // Append to proper container - use chart wrapper for main chart, panel container for panels
             const appendTarget = this.isPanel ? container : (document.querySelector('.chart-wrapper') || document.body);
             appendTarget.appendChild(dotIndicator);
-            console.log('● Created dot indicator in:', appendTarget.className || appendTarget.tagName);
         }
         if (dotIndicator) {
             if (this.cursorType === 'dot' && !this.tool) {
@@ -15325,12 +15062,6 @@ class Chart {
         // Always use the drawing from the array to ensure we have the correct reference
         const actualDrawing = this.drawings[drawingIndex];
         
-        console.log('🎨 Opening style editor for drawing:', {
-            index: drawingIndex,
-            type: actualDrawing.type,
-            color: actualDrawing.color,
-            sameReference: drawing === actualDrawing
-        });
         
         // Create or show style editor panel with enhanced UI
         const styleEditor = d3.select('body')
@@ -15381,7 +15112,6 @@ class Chart {
         this.positionsHidden = false;
         this.handleVisibilityMenuOutsideClick = this.handleVisibilityMenuOutsideClick.bind(this);
 
-        console.log('✅ Chart initialized with modular architecture');
             
         // Header with drawing type and icon
         const headerIcon = {
@@ -15520,11 +15250,7 @@ class Chart {
                 
         } else if (drawing.type === 'trendline' || drawing.type === 'rectangle') {
             this.addColorPicker(content, 'Line Color', actualDrawing.color || '#2962ff', (color) => {
-                console.log('🎨 Color picker changed to:', color);
-                console.log('   Drawing index:', drawingIndex);
                 actualDrawing.color = color;
-                console.log('   Drawing after:', actualDrawing.color);
-                console.log('   Array color:', chart.drawings[drawingIndex].color);
                 chart.saveDrawingChanges(actualDrawing);
                 chart.render();
             });
@@ -15954,22 +15680,13 @@ class Chart {
      * Only works for panel instances
      */
     syncDrawingToOtherPanels(drawing, action = 'add') {
-        console.log(`🔍 syncDrawingToOtherPanels called:`, {
-            isPanel: this.isPanel,
-            hasPanel: !!this.panel,
-            hasSyncSystem: !!window.panelDrawingSync,
-            action: action,
-            drawingType: drawing.type
-        });
         
         // Only sync if this is a panel instance and sync system is available
         if (!this.isPanel || !this.panel || !window.panelDrawingSync) {
-            console.log('⚠️ Sync skipped - not a panel or sync system not available');
             return;
         }
         
         // Call the global sync system
-        console.log(`✅ Calling panelDrawingSync.syncDrawing for panel ${this.panel.index}`);
         window.panelDrawingSync.syncDrawing(this.panel, drawing, action);
     }
     
@@ -16034,7 +15751,6 @@ class Chart {
         const currentStyle = isSelected ? colors.selected : colors.default;
 
         function applyStyle(element, style, highlight = false) {
-            console.log('Applying style:', { type, highlight, style });
             
             const effectiveStyle = highlight ? {
                 ...style,
@@ -16085,7 +15801,6 @@ class Chart {
         // Add hover effects
         element
             .on('mouseenter', () => {
-                console.log('🖱️ Drawing hover:', type);
                 applyStyle(element, colors.hover, true);
                 element.style('cursor', 'default');
             })
@@ -16223,20 +15938,12 @@ class Chart {
             console.warn('Drawing not found by reference, saving entire array');
         } else {
             // Drawing was found - it's already updated in the array
-            console.log('💾 Saving drawing:', {
-                index,
-                type: this.drawings[index].type,
-                color: this.drawings[index].color,
-                fillColor: this.drawings[index].fillColor,
-                lineWidth: this.drawings[index].lineWidth
-            });
         }
         
         // Save all drawings to localStorage
         try {
             const drawingsData = JSON.stringify(this.drawings);
             localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, drawingsData);
-            console.log('💾 Drawings saved to localStorage:', this.drawings.length, 'drawings');
         } catch (e) {
             console.error('Failed to save drawings to localStorage:', e);
         }
@@ -16601,26 +16308,21 @@ class Chart {
      * Broadcast drawing change to all other panels
      */
     broadcastDrawingChange(action, drawing, drawingIndex = null) {
-        console.log(`✏️ Broadcast attempt: ${action}, isPanel=${this.isPanel}, syncEnabled=${window.panelManager?.syncSettings?.drawings}`);
         
         if (!window.panelManager || !window.panelManager.panels) {
-            console.log('   ❌ No panel manager');
             return;
         }
         
         // Check if drawings sync is enabled in panel manager
         if (!window.panelManager.syncSettings.drawings) {
-            console.log('   ❌ Drawings sync disabled');
             return;
         }
         
         // Only sync from panel charts
         if (!this.isPanel) {
-            console.log('   ❌ Not a panel chart');
             return;
         }
         
-        console.log(`✏️ Broadcasting drawing ${action} to ${window.panelManager.panels.length - 1} other panels`);
         
         // Serialize the drawing for sync
         const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : drawing;
@@ -16628,7 +16330,6 @@ class Chart {
         // Get all panel chart instances
         window.panelManager.panels.forEach(panel => {
             if (panel.chartInstance && panel.chartInstance !== this) {
-                console.log(`   → Sending to panel ${panel.index}`);
                 panel.chartInstance.receiveDrawingChange(action, drawingData, drawingIndex);
             }
         });
@@ -16638,10 +16339,8 @@ class Chart {
      * Receive and apply drawing change from another panel
      */
     receiveDrawingChange(action, drawing, drawingIndex = null) {
-        console.log(`📥 Receive attempt: ${action}, hasDrawingManager=${!!this.drawingManager}`);
         
         if (!this.drawingManager) {
-            console.log('   ❌ No drawing manager on this panel');
             return;
         }
         
@@ -16657,11 +16356,9 @@ class Chart {
             if (action === 'add') {
                 // Clone the drawing data
                 const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
-                console.log(`   Processing add: type=${drawingData.type}, id=${drawingData.id}`);
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
                 if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                    console.log(`   Converting timestamps to indices for panel (TF: ${this.currentTimeframe}, data: ${this.data.length} candles)`);
                     if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                         // Preserve original timestamp points for storage
                         const originalTimestampPoints = drawingData.points.map(p => ({
@@ -16670,13 +16367,10 @@ class Chart {
                         }));
                         
                         // Debug: Show what we're converting
-                        console.log(`   Original timestamp: ${originalTimestampPoints[0]?.timestamp} (${new Date(originalTimestampPoints[0]?.timestamp).toISOString()})`);
-                        console.log(`   Data range: ${this.data[0]?.t} - ${this.data[this.data.length-1]?.t}`);
                         
                         // Convert to index-based points for rendering (with correct timeframe)
                         drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
                         
-                        console.log(`   Converted to index: ${drawingData.points[0]?.x}`);
                         
                         // Store original timestamps in a separate field
                         drawingData._originalTimestampPoints = originalTimestampPoints;
@@ -16685,7 +16379,6 @@ class Chart {
                 
                 // Use drawing manager to create and add the drawing
                 const toolInfo = dm.toolRegistry ? dm.toolRegistry[drawingData.type] : null;
-                console.log(`   ToolInfo found: ${!!toolInfo}, hasFromJSON: ${!!(toolInfo?.class?.fromJSON)}`);
                 
                 if (toolInfo && toolInfo.class && toolInfo.class.fromJSON) {
                     const drawingObj = toolInfo.class.fromJSON(drawingData, this);
@@ -16706,7 +16399,6 @@ class Chart {
                         if (this.data && this.data.length > 0 && this.xScale && this.yScale) {
                             try {
                                 dm.renderDrawing(drawingObj);
-                                console.log(`   ✅ Rendered on panel`);
                             } catch (err) {
                                 console.warn('   ⚠️ Render error:', err.message);
                             }
@@ -16717,7 +16409,6 @@ class Chart {
                     
                     if (!tryRender()) {
                         // Defer render - try a few times
-                        console.log('   ⏳ Chart not ready, deferring render...');
                         let attempts = 0;
                         const retryRender = setInterval(() => {
                             attempts++;
@@ -16728,10 +16419,7 @@ class Chart {
                     }
                     dm.saveDrawings();
                     
-                    console.log(`📥 ✅ Received drawing: ${drawingData.type}`);
                 } else {
-                    console.log(`   ❌ Could not find tool info for type: ${drawingData.type}`);
-                    console.log(`   Available tools:`, dm.toolRegistry ? Object.keys(dm.toolRegistry) : 'none');
                 }
             } else if (action === 'remove') {
                 // Find and remove drawing by ID
@@ -16742,7 +16430,6 @@ class Chart {
                     dm.drawings.splice(index, 1);
                     existingDrawing.destroy();
                     dm.saveDrawings();
-                    console.log(`📥 Removed drawing: ${drawingId}`);
                 }
             } else if (action === 'update') {
                 // Find and update drawing by ID
@@ -16778,14 +16465,12 @@ class Chart {
                     
                     dm.renderDrawing(existingDrawing);
                     dm.saveDrawings();
-                    console.log(`📥 Updated drawing: ${drawingId}`);
                 }
             } else if (action === 'clear') {
                 // Clear all drawings
                 dm.drawings.forEach(d => d.destroy());
                 dm.drawings = [];
                 dm.saveDrawings();
-                console.log('📥 Cleared all drawings');
             }
             
         } finally {
@@ -16799,7 +16484,6 @@ class Chart {
 
 // Initialize chart when DOM is ready
 document.addEventListener('DOMContentLoaded', async function() {
-    console.log('🚀 Initializing Trading Chart...');
 
     try {
         if (window.waitForD3 instanceof Promise) {
@@ -16818,12 +16502,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     const chartInstance = new Chart();
     window.chart = chartInstance;
     window.mainChart = chartInstance;
-    console.log('✅ Chart initialized successfully');
     
     // Initialize timeframe favorites
     if (typeof TimeframeFavorites !== 'undefined') {
         window.timeframeFavorites = new TimeframeFavorites(chartInstance);
-        console.log('✅ Timeframe favorites initialized');
     }
     
     // Setup axis cursor zones to forward events to canvas
@@ -16867,11 +16549,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     }
     
-    console.log('✅ Axis cursor zones initialized');
     
     // Listen for panel creation events to ensure all tools work in multi-panel mode
     window.addEventListener('panelsCreated', (event) => {
-        console.log('📊 Panels created, ensuring all tools are available:', event.detail);
         
         // The drawing manager is shared across all panels
         // All new tools (emoji, gann-box, anchored-vwap, volume-profile) are already registered
@@ -16880,7 +16560,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Ensure emoji picker works with all panels
         const simplePicker = window.simplePicker;
         if (simplePicker && chartInstance.drawingManager) {
-            console.log('✅ Emoji picker and advanced tools available for all panels');
         }
     });
 });
