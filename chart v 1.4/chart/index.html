@@ -19852,7 +19852,7 @@
     <script defer src="modules/emoji-picker.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/emoji-picker-simple.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-advanced-volume.js?v=20260312_TF_PIN_V120"></script>
-    <script defer src="modules/drawing-tools-advanced.js?v=20260312_TF_PIN_V65"></script>
+    <script defer src="modules/ drawing-tools-advanced.js?v=20260312_TF_PIN_V65"></script>
     <script defer src="modules/drawing-tools-extended.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-patterns.js?v=20260312_TF_PIN_V101"></script>
     <script defer src="modules/drawing-tools-fib-gann.js?v=20260312_TF_PIN_V60"></script>
@@ -19871,7 +19871,7 @@
     <script defer src="modules/propfirm-tracker.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/compare-overlay.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="chart.js?v=20260313_TF_PIN_V103"></script>
+    <script defer src="chart.js?v=20260313_TF_PIN_V104"></script>
     <script defer src="modules/replay-system.js?v=20260313_TF_PIN_V63"></script>
     <script defer src="modules/order-manager.js?v=20260312_TF_PIN_V92"></script>
     <script defer src="modules/screenshot-manager.js?v=20260313_TF_PIN_V74"></script>
@@ -21093,7 +21093,6 @@
             });
             
             // Close dropdown when selecting a tool and update group button icon
-            let isActivatingTool = false; // Flag to prevent double-activation
             document.querySelectorAll('.tool-dropdown .tool-btn').forEach(btn => {
                 btn.addEventListener('click', function(e) {
                     // Stop propagation to prevent click from reaching SVG/canvas
@@ -21102,11 +21101,6 @@
                     
                     // Don't close dropdown for emoji tool - it has its own picker
                     if (this.id === 'emojiTool') {
-                        return;
-                    }
-                    
-                    // Prevent double-activation from programmatic clicks
-                    if (isActivatingTool) {
                         return;
                     }
                     
@@ -21201,24 +21195,10 @@
                     
                     // Actually activate the drawing tool (only if not deselecting)
                     if (!isDeselecting && toolName) {
-                        isActivatingTool = true; // Set flag before activation
-                        let _retries = 0;
-                        const activateTool = () => {
-                            const chart = window.chart || window.mainChart;
-                            if (chart && chart.drawingManager) {
-                                chart.drawingManager.setTool(toolName);
-                                // Clear flag after activation
-                                setTimeout(() => {
-                                    isActivatingTool = false;
-                                }, 100);
-                            } else if (_retries < 20) {
-                                _retries++;
-                                setTimeout(activateTool, 100);
-                            } else {
-                                isActivatingTool = false; // Give up after ~2 s
-                            }
-                        };
-                        activateTool();
+                        const chart = window.chart || window.mainChart;
+                        if (chart && chart.drawingManager) {
+                            chart.drawingManager.setTool(toolName);
+                        }
                     }
                     
                     setTimeout(() => {

@@ -12175,13 +12175,19 @@ class Chart {
                 return;
             }
             btn.addEventListener('click', () => {
+                // Check if the parent dropdown is currently open (user clicked from open dropdown)
+                const parentDropdown = btn.closest('.tool-dropdown');
+                const dropdownIsOpen = parentDropdown && parentDropdown.classList.contains('show');
+
                 const isSameToolActive = !!(
+                    !dropdownIsOpen &&
                     this.drawingManager &&
                     this.drawingManager.currentTool === tool &&
                     btn.classList.contains('active')
                 );
 
                 // Toggle behavior: clicking the active tool again deselects it and returns to cursor mode.
+                // Only applies when dropdown is NOT open (direct clicks on visible buttons).
                 if (isSameToolActive) {
                     this.drawingManager.clearTool();
                     if (typeof this.drawingManager.deselectAll === 'function') {
