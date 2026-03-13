@@ -27834,53 +27834,100 @@ P['profile']={
             content.innerHTML=s.html;
             if(key==='timezone'){var tz=content.querySelector('#profileTzDisplay');if(tz&&window.timezoneManager&&window.timezoneManager.getCurrentLabel)tz.textContent=window.timezoneManager.getCurrentLabel();}
             if(key==='account'){
-                /* Wire nav items */
-                content.querySelectorAll('[data-acct-href]').forEach(function(el){
-                    el.addEventListener('click',function(){window.location.href=el.dataset.acctHref;});
-                });
-                /* Helper: apply user data to card elements */
+                var _liveUser={};
+                function _acctPlanLabel(u){
+                    var src=u||_liveUser||{};
+                    try{var ls=JSON.parse(localStorage.getItem('talaria_current_user')||'{}');if(ls.is_admin||src.role==='admin')return'ADMIN';if(ls.has_journal_access)return'PRO';}catch(e){}
+                    return'FREE';
+                }
+                function _acctBadgeCSS(plan){
+                    var p=(plan||'FREE').toUpperCase();
+                    var a=(p==='ADMIN'),pr=(p==='PRO');
+                    var c=a?'#e8a000':pr?'#f5a623':'var(--sp-accent,#2962ff)';
+                    var bg=a?'rgba(232,160,0,0.15)':pr?'rgba(245,166,35,0.15)':'rgba(var(--sp-accent-rgb,41,98,255),0.15)';
+                    var bd=a?'rgba(232,160,0,0.4)':pr?'rgba(245,166,35,0.4)':'rgba(var(--sp-accent-rgb,41,98,255),0.35)';
+                    return{label:p,color:c,bg:bg,border:bd};
+                }
+                function _badge(plan){var b=_acctBadgeCSS(plan);return'<span style="background:'+b.bg+';color:'+b.color+';border:1px solid '+b.border+';border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700;letter-spacing:0.5px;">'+b.label+'</span>';}
+                function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+                function _backBtn(label){return'<button class="_acctBack" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:#787b86;font-size:12px;cursor:pointer;padding:0 0 14px;font-family:inherit;" onmouseenter="this.style.color=\'#d1d4dc\'" onmouseleave="this.style.color=\'#787b86\'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>'+(label||'Back')+'</button>';}
+                function _row(label,value){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:rgba(255,255,255,0.04);border-radius:8px;"><span style="color:#787b86;font-size:12px;">'+label+'</span><span style="color:#d1d4dc;font-size:12px;font-weight:500;">'+value+'</span></div>';}
+                /* ── Sub-view: Account & Profile ── */
+                function _showProfile(){
+                    var u=_liveUser;
+                    var plan=_acctPlanLabel(u);
+                    var b=_acctBadgeCSS(plan);
+                    var initial=((u.name||u.email||'U').charAt(0)).toUpperCase();
+                    var joined=u.created_at?new Date(u.created_at).toLocaleDateString(undefined,{year:'numeric',month:'long'}):'';
+                    content.innerHTML=_backBtn('Account Settings')
+                        +'<div style="text-align:center;padding:8px 0 18px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:14px;">'
+                        +'<div style="width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,'+b.color+',#6c63ff);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;margin:0 auto 10px;">'+initial+'</div>'
+                        +'<div style="color:#d1d4dc;font-size:14px;font-weight:600;">'+_esc(u.name||'User')+'</div>'
+                        +'<div style="color:#555a6e;font-size:11px;margin-top:3px;">'+_esc(u.email||'—')+'</div>'
+                        +(joined?'<div style="color:#555a6e;font-size:10px;margin-top:3px;">Member since '+joined+'</div>':'')
+                        +'</div>'
+                        +'<div style="display:flex;flex-direction:column;gap:6px;">'
+                        +_row('Display Name',_esc(u.name||'—'))
+                        +_row('Email',_esc(u.email||'—'))
+                        +_row('Plan',_badge(plan))
+                        +_row('Role',_esc(u.role||'user'))
+                        +'</div>';
+                    content.querySelector('._acctBack').addEventListener('click',function(){ppLoad('account');});
+                }
+                /* ── Sub-view: Billing & Plan ── */
+                function _showBilling(){
+                    var plan=_acctPlanLabel(_liveUser);
+                    var b=_acctBadgeCSS(plan);
+                    var isFree=(plan==='FREE');
+                    content.innerHTML=_backBtn('Account Settings')
+                        +'<div style="text-align:center;padding:12px 0 18px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:14px;">'
+                        +_badge(plan)
+                        +'<div style="color:#d1d4dc;font-size:16px;font-weight:700;margin-top:10px;">'+b.label+' Plan</div>'
+                        +'<div style="color:#787b86;font-size:12px;margin-top:4px;">'+(isFree?'Limited access':'Full access to all features')+'</div>'
+                        +'</div>'
+                        +'<div style="display:flex;flex-direction:column;gap:6px;">'
+                        +_row('Current plan',_badge(plan))
+                        +_row('Status',isFree?'<span style="color:#787b86;">Free tier</span>':'<span style="color:#26a69a;">Active</span>')
+                        +'</div>'
+                        +(isFree?'<div style="margin-top:16px;background:rgba(var(--sp-accent-rgb,41,98,255),0.08);border:1px solid rgba(var(--sp-accent-rgb,41,98,255),0.2);border-radius:10px;padding:14px 16px;">'
+                            +'<div style="color:#d1d4dc;font-size:12px;font-weight:600;margin-bottom:4px;">Upgrade to Pro</div>'
+                            +'<div style="color:#787b86;font-size:11px;line-height:1.5;margin-bottom:10px;">Unlock the full trading journal, advanced analytics, and unlimited data.</div>'
+                            +'<button onclick="window.open(\'https://talaria.services/pricing\',\'_blank\')" style="background:var(--sp-accent,#2962ff);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;">View Plans</button>'
+                            +'</div>':'');
+                    content.querySelector('._acctBack').addEventListener('click',function(){ppLoad('account');});
+                }
+                /* ── Overview card fill ── */
                 function _acctFill(name,email,plan){
                     var avatarEl=content.querySelector('#acctAvatar');
                     var nameEl=content.querySelector('#acctName');
                     var emailEl=content.querySelector('#acctEmail');
                     var badgeEl=content.querySelector('#acctPlanBadge');
                     var inlineEl=content.querySelector('#acctPlanInline');
-                    var planLabel=(plan||'FREE').toUpperCase();
-                    var isPaid=(planLabel!=='FREE');
-                    var isAdmin=(planLabel==='ADMIN');
-                    var badgeColor=isAdmin?'#e8a000':isPaid?'#f5a623':'var(--sp-accent,#2962ff)';
-                    var badgeBg=isAdmin?'rgba(232,160,0,0.15)':isPaid?'rgba(245,166,35,0.15)':'rgba(var(--sp-accent-rgb,41,98,255),0.15)';
-                    var badgeBorder=isAdmin?'rgba(232,160,0,0.4)':isPaid?'rgba(245,166,35,0.4)':'rgba(var(--sp-accent-rgb,41,98,255),0.35)';
+                    var b=_acctBadgeCSS(plan);
                     if(avatarEl)avatarEl.textContent=(name.charAt(0)||'U').toUpperCase();
                     if(nameEl)nameEl.textContent=name||'User';
                     if(emailEl)emailEl.textContent=email||'—';
-                    if(badgeEl){badgeEl.textContent=planLabel;badgeEl.style.color=badgeColor;badgeEl.style.background=badgeBg;badgeEl.style.borderColor=badgeBorder;}
-                    if(inlineEl){inlineEl.textContent=planLabel;inlineEl.style.color=badgeColor;inlineEl.style.background=badgeBg;}
+                    if(badgeEl){badgeEl.textContent=b.label;badgeEl.style.color=b.color;badgeEl.style.background=b.bg;badgeEl.style.borderColor=b.border;}
+                    if(inlineEl){inlineEl.textContent=b.label;inlineEl.style.color=b.color;inlineEl.style.background=b.bg;}
                 }
-                /* Derive plan label from localStorage (set at login) */
-                function _acctPlan(){
-                    try{
-                        var u=JSON.parse(localStorage.getItem('talaria_current_user')||'{}');
-                        if(u.is_admin)return'ADMIN';
-                        if(u.has_journal_access)return'PRO';
-                    }catch(e){}
-                    return'FREE';
-                }
-                /* 1. Quick fill from localStorage while fetch is in-flight */
+                /* Wire nav items — inline sub-views instead of navigation */
+                content.querySelectorAll('[data-acct-href]').forEach(function(el){
+                    el.addEventListener('click',function(){
+                        if(el.dataset.acctHref==='/profile')_showProfile();
+                        else if(el.dataset.acctHref==='/billing')_showBilling();
+                    });
+                });
+                /* 1. Quick fill from localStorage */
                 (function(){
-                    try{
-                        var u=JSON.parse(localStorage.getItem('talaria_current_user')||'{}');
-                        _acctFill(u.name||'',u.email||'',_acctPlan());
-                    }catch(e){}
+                    try{var u=JSON.parse(localStorage.getItem('talaria_current_user')||'{}');_acctFill(u.name||'',u.email||'',_acctPlanLabel(u));}catch(e){}
                 })();
-                /* 2. Refresh with live data from /api/auth/me */
+                /* 2. Refresh with live data */
                 fetch('/api/auth/me',{credentials:'include',cache:'no-store'})
                     .then(function(r){return r.ok?r.json():null;})
                     .then(function(d){
                         if(!d||!d.user)return;
-                        var u=d.user;
-                        var plan=u.role==='admin'?'ADMIN':_acctPlan();
-                        _acctFill(u.name||'',u.email||'',plan);
+                        _liveUser=d.user;
+                        _acctFill(d.user.name||'',d.user.email||'',_acctPlanLabel(d.user));
                     })
                     .catch(function(){});
             }
