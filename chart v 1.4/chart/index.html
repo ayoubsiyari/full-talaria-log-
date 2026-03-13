@@ -19875,7 +19875,7 @@
     <!-- Timezone Manager - must load before chart.js -->
     <script defer src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
     
-         <script defer src="chart.js?v=20260313_TF_PIN_V99"></script>
+         <script defer src="chart.js?v=20260313_TF_PIN_V100"></script>
          <!-- Replay System -->
         <!-- Replay System -->
     <script defer src="modules/replay-system.js?v=20260313_TF_PIN_V63"></script>
@@ -21495,7 +21495,7 @@
                 } catch (err) {
                 }
             } else {
-                if (!panelsContainer)                if (typeof PanelManager === 'undefined')            }
+            }
             
             // Global window resize handler for all panel charts
             window.addEventListener('resize', () => {

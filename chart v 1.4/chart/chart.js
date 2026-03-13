@@ -812,6 +812,10 @@ class Chart {
             this._panLoading = false;
             
             this.loadedRanges.clear();
+            // Show step 2 active and yield to browser before the blocking parse
+            this.updateLoaderStep(2, 'active');
+            this.updateLoaderProgress(45, 'Calculating indicators...');
+            await new Promise(resolve => setTimeout(resolve, 0));
             this.parseCSVChunk(result.data, 0);
             this.loadedRanges.set(0, result.returned);
             this.currentFileId = fileId;
@@ -973,18 +977,9 @@ class Chart {
         if (this.rawData.length > 0) {
         }
         
-        // Server already filtered data to session date range via start_ts/end_ts.
-        // Do NOT slice rawData here — that would break pan-loading which needs
-        // to append/prepend candles as the user scrolls through the full range.
-        // Just use the data as-is and let pan-loading fill in more as needed.
-        this.data = this.resampleData(this.rawData, this.currentTimeframe || '1m');
-        
-        // Recalculate indicators
-        if (typeof this.recalculateIndicators === 'function') {
-            this.recalculateIndicators();
-        }
-        
-        // Fit to view and render
+        // parseCSVChunk already resampled this.data and recalculated indicators.
+        // Skip the redundant full-dataset pass here — enterReplayMode will set up
+        // the correct sliced data immediately after.
         this.fitToView();
         this.render();
         
