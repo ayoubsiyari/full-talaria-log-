@@ -1,16 +1,12 @@
 // Full Chart Indicators Module with all basic indicators
 (function(global) {
-    console.log('📊 Full Indicators Module Loading...');
     
     // Wait for Chart class to be defined
     function initIndicatorsModule() {
         if (typeof global.Chart === 'undefined') {
-            console.log('⏳ Waiting for Chart class...');
             setTimeout(initIndicatorsModule, 100);
             return;
         }
-        
-        console.log('✅ Chart class found, attaching indicator methods...');
         attachIndicatorMethods();
     }
     
@@ -787,7 +783,6 @@
             active: [],
             data: {}
         };
-        console.log('✅ Indicators system initialized');
     };
     
     Chart.prototype.addIndicator = function(type, params) {
@@ -799,7 +794,6 @@
     }
     
     if (!this.data || this.data.length === 0) {
-        console.warn('⚠️ No data loaded - please load a CSV file first');
         alert('Please load chart data first before adding indicators.');
         return;
     }
@@ -1053,13 +1047,11 @@
                 break;
                 
             default:
-                console.error('Unknown indicator type:', type);
                 return;
         }
         
         this.indicators.active.push(indicator);
         this._updateIndicatorPanelHeight();
-        console.log('✅ Added indicator:', indicator.name);
         
         if (typeof this.render === 'function') {
             this.render();
@@ -1096,7 +1088,6 @@
         });
         
         if (!indicator) {
-            console.warn('⚠️ Indicator not found:', id);
             return;
         }
         
@@ -1300,8 +1291,6 @@
                 break;
         }
         
-        console.log('✅ Updated indicator:', indicator.name);
-        
         if (typeof this.render === 'function') {
             this.render();
         }
@@ -1316,8 +1305,6 @@
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;
         }
-        
-        console.log('🔄 Recalculating indicators for new timeframe...');
         
         this.indicators.active.forEach(function(indicator) {
             switch (indicator.type) {
@@ -1407,14 +1394,11 @@
                     break;
             }
         }, this);
-        
-        console.log('✅ Indicators recalculated');
     };
     
     Chart.prototype.setupVolumeIndicatorLine = function(indicator) {
         const volumeLine = document.getElementById('volumeIndicatorLine');
         if (!volumeLine) {
-            console.warn('⚠️ Volume indicator line not found in DOM');
             return;
         }
         
@@ -1557,7 +1541,6 @@
         });
         
         if (!volumeInd) {
-            console.warn('No volume indicator found');
             return;
         }
         
@@ -1588,8 +1571,6 @@
             this.indicators.active.splice(index, 1);
             delete this.indicators.data[id];
             this._updateIndicatorPanelHeight();
-            
-            console.log('🗑️ Removed indicator:', indicator.name);
             
             if (typeof this.render === 'function') {
                 this.render();
@@ -1636,7 +1617,6 @@
         }
 
         this.persistIndicators();
-        console.log('🗑️ All indicators cleared');
         return true;
     };
     
@@ -2567,7 +2547,6 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     
     Chart.prototype.showIndicatorSettings = function(id) {
         try {
-            console.log('🔧 Opening settings for indicator:', id);
             
             // First, let's test with a simple alert to make sure the function is called
             const indicator = this.indicators.active.find(function(ind) {
@@ -2575,18 +2554,14 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             });
             
             if (!indicator) {
-                console.error('❌ Indicator not found:', id);
                 alert('Error: Indicator not found');
                 return;
             }
-            
-            console.log('📊 Found indicator:', indicator);
-            console.log('📊 Opening edit panel for:', indicator.name);
+
         
         // Check if modal already exists
         const existingModal = document.getElementById('indicator-settings-modal');
         if (existingModal) {
-            console.log('⚠️ Removing existing modal');
             existingModal.remove();
         }
         
@@ -2628,7 +2603,6 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         closeBtn.textContent = '×';
         closeBtn.style.cssText = 'background: none; border: none; font-size: 24px; color: #666; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;';
         closeBtn.onclick = function() {
-            console.log('🔒 Close button clicked');
             modal.remove();
         };
         closeBtn.onmouseenter = function() { closeBtn.style.color = '#000'; };
@@ -2797,7 +2771,6 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             cancelBtn.style.borderColor = '#ccc';
         };
         cancelBtn.onclick = function() {
-            console.log('❌ Cancel button clicked');
             modal.remove();
         };
         
@@ -2829,8 +2802,6 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             if (inputs.histogramColor) newParams.histogramColor = inputs.histogramColor.value;
             if (inputs.kColor) newParams.kColor = inputs.kColor.value;
             if (inputs.dColor) newParams.dColor = inputs.dColor.value;
-            
-            console.log('✅ Applying changes:', newParams);
             self.updateIndicator(id, newParams);
             modal.remove();
         };
@@ -2841,18 +2812,15 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         
         modal.appendChild(dialog);
         document.body.appendChild(modal);
-        
-        console.log('✅ Modal added to document body');
-        console.log('Modal element:', modal);
-        console.log('Dialog element:', dialog);
+
+
         
         // Verify modal is visible
         const modalRect = modal.getBoundingClientRect();
         const dialogRect = dialog.getBoundingClientRect();
-        console.log('Modal dimensions:', modalRect.width, 'x', modalRect.height);
-        console.log('Dialog dimensions:', dialogRect.width, 'x', dialogRect.height);
-        console.log('Modal computed style display:', window.getComputedStyle(modal).display);
-        console.log('Dialog computed style display:', window.getComputedStyle(dialog).display);
+
+
+
         
         // Force focus to the modal
         modal.focus();
@@ -2860,12 +2828,10 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         // Close on background click
         modal.onclick = function(e) {
             if (e.target === modal) {
-                console.log('🔒 Background clicked, closing modal');
                 modal.remove();
             }
         };
         } catch (error) {
-            console.error('❌ Error showing indicator settings:', error);
             alert('Error opening indicator settings: ' + error.message);
         }
     };
@@ -3172,7 +3138,6 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
 
     // Mark as loaded
     window.INDICATORS_MODULE_LOADED = true;
-    console.log('✅ Full Indicators Module Loaded Successfully');
     
     } // End of attachIndicatorMethods
     

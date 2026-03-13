@@ -19805,11 +19805,9 @@
                 script.crossOrigin = 'anonymous';
                 script.referrerPolicy = 'no-referrer';
                 script.onload = function() {
-                    console.log('[Chart] D3 fallback loaded from jsDelivr');
                 };
                 script.onerror = function() {
                     const error = new Error('Failed to load D3 from fallback CDN');
-                    console.error(error);
                     if (typeof rejectWaiting === 'function') {
                         rejectWaiting(error);
                     }
@@ -19830,7 +19828,6 @@
 
                     if (performance.now() - start > timeoutMs) {
                         const error = new Error('Timed out waiting for D3 to load');
-                        console.error(error);
                         reject(error);
                         return;
                     }
@@ -19911,13 +19908,9 @@
         // Ensure screenshot manager initializes after everything loads
         setTimeout(() => {
             if (!window.screenshotManager && window.chart) {
-                console.log('🔧 Force-initializing Screenshot Manager...');
                 window.screenshotManager = new ScreenshotManager(window.chart);
-                console.log('✅ Screenshot Manager force-initialized');
             } else if (!window.screenshotManager) {
-                console.error('❌ Cannot initialize Screenshot Manager - chart not found');
             } else {
-                console.log('✅ Screenshot Manager already initialized');
             }
         }, 2000);
     </script>
@@ -19928,7 +19921,6 @@
             // Initialize alert system after chart is ready
             setTimeout(() => {
                 if (!window.alertSystem && window.chart) {
-                    console.log('🔧 Initializing Alert System...');
                     window.alertSystem = new AlertSystem(window.chart);
                     
                     // Hook into chart render to refresh alert lines
@@ -19940,9 +19932,7 @@
                         }
                     };
                     
-                    console.log('✅ Alert System initialized');
                 } else if (!window.alertSystem) {
-                    console.error('❌ Cannot initialize Alert System - chart not found');
                 }
             }, 2500);
         })();
@@ -20014,7 +20004,6 @@
                 }
             });
             
-            console.log('✅ Fullscreen system initialized');
         })();
     </script>
     
@@ -20022,7 +20011,7 @@
     
     <!-- Chart Indicators Module (Full version with ADR, ATR, Sessions) -->
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
-    <script defer src="modules/chart-indicators-full.js?v=20260312_TF_PIN_V64"></script>
+    <script defer src="modules/chart-indicators-full.js?v=20260313_TF_PIN_V65"></script>
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
     <script defer src="modules/indicator-ui.js?v=20260312_TF_PIN_V59"></script>
     
@@ -20036,7 +20025,6 @@
                     if (window.chart || window.mainChart) {
                         const chartInstance = window.chart || window.mainChart;
                         setupIndicatorUI(chartInstance);
-                        console.log('✅ Indicator UI initialized');
                     } else {
                         // Retry after a short delay
                         setTimeout(trySetup, 100);
@@ -20049,7 +20037,6 @@
                     trySetup();
                 }
             } else {
-                console.error('❌ setupIndicatorUI function not found');
             }
         })();
     </script>
@@ -20126,7 +20113,6 @@
                         loadPropFirmRulesCompact(sessionData);
                     }
                 } catch (e) {
-                    console.error('Error parsing session:', e);
                 }
             }
 
@@ -20464,7 +20450,6 @@
                         container.appendChild(item);
                     }
                 } catch (error) {
-                    console.error('Error loading watchlist:', error);
                     container.innerHTML = '<div style="padding: 20px; text-align: center; color: #6a6a7a;">No files available</div>';
                 }
             }
@@ -20485,7 +20470,6 @@
                         };
                     }
                 } catch (error) {
-                    console.error('Error fetching file data:', error);
                 }
                 return { price: 0, change: 0, changePercent: 0 };
             }
@@ -20552,7 +20536,6 @@
 
         // Load prop firm rules from session
         function loadPropFirmRules(sessionData) {
-            console.log('Loading prop firm rules:', sessionData);
             
             // Set balance
             const balanceEl = document.getElementById('challengeBalance');
@@ -20667,7 +20650,6 @@
 
         // Compact Toolbar Dropdown Functions
         function loadPropFirmRulesCompact(sessionData) {
-            console.log('Loading compact prop firm rules:', sessionData);
             
             // Set balance
             const balanceEl = document.getElementById('challengeBalanceDropdown');
@@ -21063,7 +21045,6 @@
                         const cursorBtn = document.getElementById('cursorTool');
                         if (cursorBtn) cursorBtn.classList.add('active');
                         
-                        console.log('🖱️ Tool deselected, returned to cursor mode');
                         return;
                     }
                     
@@ -21130,7 +21111,6 @@
                     
                     // Prevent double-activation from programmatic clicks
                     if (isActivatingTool) {
-                        console.log('⏭️ Skipping duplicate tool activation');
                         return;
                     }
                     
@@ -21172,7 +21152,6 @@
                             isDeselecting = false; // Clear flag after dropdown closes
                         }, 150);
                         
-                        console.log('🖱️ Tool deselected, returned to cursor mode');
                         return;
                     }
                     
@@ -21231,13 +21210,11 @@
                             const chart = window.chart || window.mainChart;
                             if (chart && chart.drawingManager) {
                                 chart.drawingManager.setTool(toolName);
-                                console.log('🎨 Activated tool:', toolName);
                                 // Clear flag after activation
                                 setTimeout(() => {
                                     isActivatingTool = false;
                                 }, 100);
                             } else {
-                                console.warn('⏳ Chart not ready, retrying in 100ms...');
                                 setTimeout(activateTool, 100);
                             }
                         };
@@ -21328,7 +21305,6 @@
                         // Set cursor tool as active
                         this.classList.add('active');
                         
-                        console.log('🖱️ Reactivated drawing tool:', lastToolName);
                     } else {
                         // No last tool, just clear and return to cursor mode
                         if (typeof chart !== 'undefined' && chart.drawingManager) {
@@ -21350,7 +21326,6 @@
                         // Set cursor tool as active
                         this.classList.add('active');
                         
-                        console.log('🖱️ Cursor tool activated');
                     }
                 });
             }
@@ -21362,14 +21337,11 @@
                     const toolName = this.getAttribute('data-drawing-tool');
                     const clickedBtn = this;
                     
-                    console.log('🖌️ Brush/Highlighter clicked:', toolName);
                     
                     // Activate the drawing tool FIRST
                     if (toolName && typeof chart !== 'undefined' && chart.drawingManager) {
-                        console.log('🖌️ Setting drawing tool:', toolName);
                         chart.drawingManager.setTool(toolName);
                     } else {
-                        console.warn('🖌️ Chart not ready, trying again in 100ms');
                         setTimeout(() => {
                             if (typeof chart !== 'undefined' && chart.drawingManager) {
                                 chart.drawingManager.setTool(toolName);
@@ -21427,38 +21399,13 @@
                 });
             });
             
-            console.log('📊 Trading Chart Pro - Drawing Tools Loaded');
-            console.log('');
-            console.log('🎨 Drawing Tools (Grouped):');
-            console.log('  📏 Lines (4): Trendline, Horizontal, Vertical, Ray');
-            console.log('  🔷 Shapes (5): Rectangle, Ellipse, Triangle, Arrow, Label');
-            console.log('  📝 Text (2): Text, Note Box');
-            console.log('  📊 Fibonacci (2): Retracement, Extension');
-            console.log('  📐 Measurement (2): Ruler, Risk-Reward');
-            console.log('  ✏️ Freeform (2): Path/Pen, Brush');
-            console.log('');
-            console.log('⌨️ Keyboard Shortcuts:');
-            console.log('  Esc - Cursor tool / Cancel drawing');
-            console.log('  T - Trend line');
-            console.log('  H - Horizontal line');
-            console.log('  V - Vertical line');
-            console.log('  R - Rectangle');
-            console.log('  F - Fibonacci Retracement');
-            console.log('  M - Toggle magnet mode (snap to OHLC)');
-            console.log('  Delete - Delete selected drawing');
-            console.log('');
-            console.log('💡 Click group icons to expand tool options!');
             
             // Initialize Panel Manager
             const panelsContainer = document.getElementById('panels-container');
-            console.log('🔍 Panels container found:', !!panelsContainer);
-            console.log('🔍 PanelManager class available:', typeof PanelManager !== 'undefined');
             
             if (panelsContainer && typeof PanelManager !== 'undefined') {
                 try {
                     window.panelManager = new PanelManager(panelsContainer);
-                    console.log('✅ Panel Manager initialized successfully');
-                    console.log('   Current layout:', window.panelManager.getCurrentLayout());
                     
                     // Setup settings button to open chart settings menu
                     const settingsBtn = document.getElementById('syncPanelSettingsBtn');
@@ -21472,29 +21419,18 @@
                     
                     // Listen for panel creation to render charts
                     window.addEventListener('panelsCreated', (event) => {
-                        console.log('📊 Panels created!', event.detail.panels.length, 'panels');
-                        console.log('   Layout:', event.detail.layout);
                         const panels = event.detail.panels;
                         
                         // Check visibility
-                        console.log('   Panels container display:', panelsContainer.style.display);
-                        console.log('   Chart wrapper display:', document.getElementById('chartWrapper')?.style.display);
                         
                         // Wait a bit for panels to be fully sized, then render charts
                         setTimeout(() => {
-                            console.log('🔍 Checking for chart data...');
-                            console.log('   Chart object exists:', typeof chart !== 'undefined');
-                            console.log('   Chart has data:', typeof chart !== 'undefined' && chart.data ? chart.data.length : 0);
                             
                             if (typeof chart !== 'undefined' && chart.data && chart.data.length > 0) {
-                                console.log('📊 Initializing Chart instances in panels...');
                                 panels.forEach((panel, idx) => {
-                                    console.log(`   Creating chart for panel ${idx}...`);
                                     initPanelChart(panel);
                                 });
                             } else {
-                                console.log('📊 Panels ready - upload CSV to see charts');
-                                console.log('   Panels are visible with placeholders');
                             }
                         }, 200);
                         
@@ -21504,7 +21440,6 @@
                     
                     // Listen for panel selection - clear ALL drawing tools when switching panels
                     window.addEventListener('panelSelected', (event) => {
-                        console.log('🎯 Panel selected:', event.detail.panelIndex);
                         
                         // Clear drawing tool from ALL charts when switching panels
                         // This ensures one-shot drawing: select tool, draw once, done
@@ -21538,19 +21473,16 @@
                             const matchingBtn = document.querySelector(`.timeframe-btn[data-timeframe="${panelTimeframe}"]`);
                             if (matchingBtn) {
                                 matchingBtn.classList.add('active');
-                                console.log(`⏱️ Timeframe bar updated to: ${panelTimeframe}`);
                             }
                         }
                     });
                     
                     // Listen for return to single panel mode to clear drawing tools
                     window.addEventListener('returnedToSinglePanel', (event) => {
-                        console.log('↩️ Returned to single panel mode');
                         
                         // Clear any active drawing tool
                         if (typeof chart !== 'undefined' && chart.drawingManager) {
                             if (chart.drawingManager.currentTool) {
-                                console.log('🔧 Clearing drawing tool:', chart.drawingManager.currentTool);
                                 chart.drawingManager.clearTool();
                                 
                                 // Update toolbar UI to show cursor as active
@@ -21561,13 +21493,9 @@
                         }
                     });
                 } catch (err) {
-                    console.error('❌ Error initializing Panel Manager:', err);
                 }
             } else {
-                console.error('❌ Cannot initialize Panel Manager:');
-                if (!panelsContainer) console.error('   - Panels container not found');
-                if (typeof PanelManager === 'undefined') console.error('   - PanelManager class not loaded');
-            }
+                if (!panelsContainer)                if (typeof PanelManager === 'undefined')            }
             
             // Global window resize handler for all panel charts
             window.addEventListener('resize', () => {
@@ -21588,7 +21516,6 @@
                 timeframeInterceptionActive = true;
                 
                 const timeframeButtons = document.querySelectorAll('.timeframe-btn');
-                console.log('⌚ Intercepting', timeframeButtons.length, 'timeframe buttons');
                 
                 timeframeButtons.forEach(btn => {
                     btn.addEventListener('click', (e) => {
@@ -21598,7 +21525,6 @@
                             e.stopImmediatePropagation();
                             
                             const timeframe = btn.dataset.timeframe;
-                            console.log(`⌚ Timeframe ${timeframe} → Update selected panel`);
                             
                             // Update the selected panel's timeframe
                             window.panelManager.updateSelectedPanelTimeframe(timeframe);
@@ -21629,20 +21555,17 @@
                     });
                 }
                 
-                console.log(`🎯 Crosshair sync ${window.crosshairSyncEnabled ? 'enabled' : 'disabled'}`);
                 return window.crosshairSyncEnabled;
             };
             
             // Function to sync settings from main chart to all panels
             function syncAllPanelSettings() {
                 if (typeof chart === 'undefined') {
-                    console.log('⚠️ Cannot sync: No main chart');
                     return;
                 }
                 
                 // Check if we're in multi-panel mode
                 if (!window.panelManager || window.panelManager.getCurrentLayout() === '1') {
-                    console.log('ℹ️ In single panel mode - refreshing main chart');
                     if (chart.render) {
                         chart.render();
                         if (chart.showNotification) {
@@ -21654,16 +21577,13 @@
                 
                 const panels = window.panelManager.getPanels();
                 if (!panels || panels.length === 0) {
-                    console.log('⚠️ No panels to sync');
                     return;
                 }
                 
-                console.log(`🔄 Syncing settings from main chart to ${panels.length} panels...`);
                 
                 let syncedCount = 0;
                 panels.forEach((panel, idx) => {
                     if (!panel.chartInstance) {
-                        console.log(`   ⏭️ Panel ${idx} has no chart instance`);
                         return;
                     }
                     
@@ -21676,7 +21596,6 @@
                             panel.chartInstance.canvas.style.backgroundColor = chart.chartSettings.backgroundColor;
                         }
                         
-                        console.log(`   ✅ Settings synced to panel ${idx}`);
                         syncedCount++;
                     }
                     
@@ -21684,7 +21603,6 @@
                     panel.chartInstance.render();
                 });
                 
-                console.log(`✅ Settings synced to ${syncedCount} panels`);
                 
                 // Show notification
                 if (chart.showNotification) {
@@ -21699,23 +21617,19 @@
             function initPanelChart(panel) {
                 // Skip main chart (Panel 0) - it already exists
                 if (panel.isMainChart) {
-                    console.log(`Panel 0 is main chart - already initialized`);
                     return panel.chartInstance;
                 }
                 
                 if (!panel.canvas || !panel.svg) {
-                    console.error(`Panel ${panel.index} missing canvas or SVG`);
                     return;
                 }
                 
                 // Check if panel already has a chart instance
                 if (panel.chartInstance) {
-                    console.log(`Panel ${panel.index} already has chart instance`);
                     return panel.chartInstance;
                 }
                 
                 try {
-                    console.log(`🔧 Creating Chart instance for panel ${panel.index}...`);
                     
                     // Hide placeholder
                     if (panel.placeholder) {
@@ -21743,29 +21657,24 @@
                         // Copy chart appearance settings
                         if (chart.chartSettings) {
                             panelChart.chartSettings = JSON.parse(JSON.stringify(chart.chartSettings));
-                            console.log(`   📋 Copied chart settings to panel ${panel.index}`);
                             
                             // Apply background color immediately
                             if (panelChart.canvas) {
                                 panelChart.canvas.style.backgroundColor = panelChart.chartSettings.backgroundColor;
-                                console.log(`   🎨 Applied background: ${panelChart.chartSettings.backgroundColor}`);
                             }
                         }
                         
                         // Sync cursor type from main chart
                         if (chart.cursorType) {
                             panelChart.setCursorType(chart.cursorType, true); // skipSync to avoid loop
-                            console.log(`   🖱️ Synced cursor type: ${chart.cursorType}`);
                         }
                         
                         // Link to main chart's replay and order systems
                         if (chart.replaySystem) {
                             panelChart.replaySystem = chart.replaySystem;
-                            console.log(`   🔗 Linked to main chart's replay system`);
                         }
                         if (chart.orderManager) {
                             panelChart.orderManager = chart.orderManager;
-                            console.log(`   🔗 Linked to main chart's order manager`);
                         }
                         
                         // Copy data if available
@@ -21775,9 +21684,7 @@
                             panelChart.currentSymbol = chart.currentSymbol;
                             panelChart.totalCandles = chart.totalCandles;
                             
-                            console.log(`✅ Panel ${panel.index} initialized with ${panelChart.data.length} candles`);
                         } else {
-                            console.log(`⚠️ Panel ${panel.index} initialized without data`);
                         }
                     }
                     
@@ -21795,9 +21702,7 @@
                         // Set the SVG as a D3 selection on the chart (required by DrawingToolsManager)
                         panelChart.svg = d3.select(panel.svg);
                         panelChart.drawingManager = new DrawingToolsManager(panelChart);
-                        console.log(`✏️ Drawing manager initialized for panel ${panel.index}`);
                     } else {
-                        console.warn(`⚠️ Could not init drawing manager for panel ${panel.index}: DrawingToolsManager=${typeof DrawingToolsManager}, svg=${!!panel.svg}, d3=${typeof d3}`);
                     }
                     
                     // Store chart instance in panel
@@ -21833,13 +21738,11 @@
                         });
                         resizeObserver.observe(panel.chartContainer);
                         panel.resizeObserver = resizeObserver; // Store for cleanup
-                        console.log(`📐 Resize observer added for panel ${panel.index}`);
                     }
                     
                     return panelChart;
                     
                 } catch (err) {
-                    console.error(`Error creating chart for panel ${panel.index}:`, err);
                     return null;
                 }
             }
@@ -21903,34 +21806,26 @@
                     });
                     
                     if (!this.enabled || !window.panelManager) {
-                        console.log('⚠️ Sync disabled or no panel manager');
                         return;
                     }
                     
                     const panels = window.panelManager.getPanels();
                     const sourceTimeframe = sourcePanel.timeframe;
                     
-                    console.log(`🔄 Syncing drawing (${action}) from panel ${sourcePanel.index} [${sourceTimeframe}]`);
-                    console.log(`   Total panels: ${panels.length}`);
                     
                     panels.forEach(targetPanel => {
-                        console.log(`   Checking panel ${targetPanel.index}: timeframe=${targetPanel.timeframe}, hasInstance=${!!targetPanel.chartInstance}`);
                         
                         // Skip source panel and panels with different timeframes
                         if (targetPanel.index === sourcePanel.index) {
-                            console.log(`   ⏭️ Skipping source panel ${targetPanel.index}`);
                             return;
                         }
                         if (targetPanel.timeframe !== sourceTimeframe) {
-                            console.log(`   ⏭️ Skipping panel ${targetPanel.index} - different timeframe (${targetPanel.timeframe} vs ${sourceTimeframe})`);
                             return;
                         }
                         if (!targetPanel.chartInstance) {
-                            console.log(`   ⚠️ Panel ${targetPanel.index} has no chart instance`);
                             return;
                         }
                         
-                        console.log(`   → Syncing to panel ${targetPanel.index} [${targetPanel.timeframe}]`);
                         
                         if (action === 'add' || action === 'update') {
                             // Clone the drawing
@@ -21985,7 +21880,6 @@
                     const sourceTimeframe = sourcePanel.timeframe;
                     const sourceDrawings = sourcePanel.chartInstance?.drawings || [];
                     
-                    console.log(`🔄 Syncing ALL drawings from panel ${sourcePanel.index} [${sourceTimeframe}]`);
                     
                     panels.forEach(targetPanel => {
                         if (targetPanel.index === sourcePanel.index) return;
@@ -21996,7 +21890,6 @@
                         targetPanel.chartInstance.drawings = JSON.parse(JSON.stringify(sourceDrawings));
                         targetPanel.chartInstance.render();
                         
-                        console.log(`   → Synced ${sourceDrawings.length} drawings to panel ${targetPanel.index}`);
                     });
                 }
             };
@@ -22008,12 +21901,10 @@
             // Listen for panel timeframe changes
             window.addEventListener('panelTimeframeChanged', (event) => {
                 const { panelIndex, timeframe, panel } = event.detail;
-                console.log(`📊 Panel ${panelIndex} timeframe changed to: ${timeframe}`);
                 
                 // Update the panel's chart instance timeframe
                 if (panel && panel.chartInstance) {
                     panel.chartInstance.setTimeframe(timeframe);
-                    console.log(`✅ Panel ${panelIndex} updated to ${timeframe}`);
                     
                     // Sync interval to other panels if enabled
                     if (window.panelManager && window.panelManager.syncSettings.interval) {
@@ -22024,7 +21915,6 @@
                     const targetPanel = panels[panelIndex];
                     if (targetPanel && targetPanel.chartInstance) {
                         targetPanel.chartInstance.setTimeframe(timeframe);
-                        console.log(`✅ Panel ${panelIndex} updated to ${timeframe}`);
                         
                         // Sync interval to other panels if enabled
                         if (window.panelManager.syncSettings.interval) {
@@ -22036,13 +21926,11 @@
             
             // Listen for data loaded event to render panels
             window.addEventListener('chartDataLoaded', (event) => {
-                console.log('📊 Chart data loaded event received');
                 
                 // Check if we're in panel mode
                 if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
                     const panels = window.panelManager.getPanels();
                     if (panels && panels.length > 0) {
-                        console.log(`🔄 Updating ${panels.length} panel charts with new data...`);
                         panels.forEach((panel, idx) => {
                             if (!panel.chartInstance) {
                                 // Create chart instance if it doesn't exist
@@ -22052,7 +21940,6 @@
                                 renderPanelChart(panel, event.detail.data);
                             }
                         });
-                        console.log('✅ All panels updated with new data');
                     }
                 }
             });
@@ -22092,7 +21979,6 @@
 // Replace the showIndicatorsMenu function in your HTML file with this:
 
 function showIndicatorsMenu() {
-    console.log('📊 showIndicatorsMenu called');
     
     // Determine target chart based on panel layout
     let targetChart;
@@ -22104,16 +21990,13 @@ function showIndicatorsMenu() {
         
         if (selectedPanel && selectedPanel.chartInstance) {
             targetChart = selectedPanel.chartInstance;
-            console.log(`🎯 Using Panel ${selectedPanel.index + 1} chart instance`);
         } else {
             // Fall back to main chart if no panel is selected
             targetChart = window.mainChart || window.chart;
-            console.log('⚠️ No panel selected, using main chart');
         }
     } else {
         // Single panel mode - use main chart
         targetChart = window.mainChart || window.chart;
-        console.log('📊 Single panel mode - using main chart');
     }
     
     if (!targetChart) {
@@ -22765,14 +22648,12 @@ function showIndicatorsMenu() {
                     }
                 }
                 
-                console.log(message, params);
                 
                 // Show notification if available
                 if (targetChart.showNotification) {
                     targetChart.showNotification(message);
                 }
             } catch (err) {
-                console.error('❌ Error adding indicator:', err);
                 if (targetChart.showNotification) {
                     targetChart.showNotification('❌ Failed to add indicator');
                 }
@@ -23010,13 +22891,11 @@ function showIndicatorsMenu() {
             const timeframeMenu = document.getElementById('timeframeMenu');
             const timeframeSelect = document.getElementById('replayTimeframe');
             
-            console.log('Timeframe setup:', { timeframeToggle, timeframeMenu, timeframeSelect });
-            
+                        
             if (timeframeToggle && timeframeMenu) {
                 timeframeToggle.addEventListener('click', function(e) {
                     e.stopPropagation();
                     e.preventDefault();
-                    console.log('Timeframe button clicked');
                     
                     if (timeframeMenu.classList.contains('show')) {
                         timeframeMenu.classList.remove('show');
@@ -23026,7 +22905,6 @@ function showIndicatorsMenu() {
                         timeframeMenu.style.left = rect.left + 'px';
                         timeframeMenu.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
                         timeframeMenu.classList.add('show');
-                        console.log('Menu should be visible now');
                     }
                 });
                 
@@ -23063,7 +22941,6 @@ function showIndicatorsMenu() {
                     });
                 });
             } else {
-                console.log('Timeframe elements not found!');
             }
             
             // Close Trades dropdown handler
@@ -23274,7 +23151,6 @@ function showIndicatorsMenu() {
                 };
             }
             
-            console.log('✅ Emoji picker initialized and available globally for all panels');
         });
     </script>
     
@@ -23288,11 +23164,9 @@ function showIndicatorsMenu() {
                 const magnetDropdown = document.getElementById('magnetDropdown');
                 
                 if (!magnetBtn) {
-                    console.warn('⚠️ Magnet button not found');
                     return;
                 }
                 
-                console.log('✅ Magnet button found, initializing handler...');
                 
                 // Store the last selected magnet type (default to 'strong')
                 let lastMagnetType = localStorage.getItem('magnetType') || 'strong';
@@ -23300,21 +23174,17 @@ function showIndicatorsMenu() {
                 
                 // Function to apply magnet mode
                 function applyMagnetMode(mode) {
-                    console.log('🧲 Applying magnet mode:', mode);
                     // Try to set on drawing manager
                     if (window.chart && window.chart.drawingManager) {
                         window.chart.drawingManager.setMagnetMode(mode);
                         window.chart.drawingManager.magnetMode = mode;
-                        console.log('🧲 Set on drawingManager');
                     }
                     // Also set on chart object
                     if (window.chart) {
                         window.chart.magnetMode = mode;
-                        console.log('🧲 Set on chart');
                     }
                     // Store globally as fallback
                     window.magnetMode = mode;
-                    console.log('🧲 Set globally:', window.magnetMode);
 
                     if (window.chart && typeof window.chart.syncMagnetButton === 'function') {
                         window.chart.syncMagnetButton();
@@ -23389,7 +23259,6 @@ function showIndicatorsMenu() {
                         const nextMode = lastMagnetType;
                         applyMagnetMode(nextMode);
                         updateMagnetButtons(nextMode);
-                        console.log(`🧲 Magnet mode ON (${nextMode})`);
                     }
                 }
 
@@ -23442,7 +23311,6 @@ function showIndicatorsMenu() {
                             applyMagnetMode('off');
                             updateMagnetButtons('off');
                             magnetDropdown.style.display = 'none';
-                            console.log('🧲 Magnet type set to: OFF');
                             return;
                         }
                         
@@ -23461,7 +23329,6 @@ function showIndicatorsMenu() {
                         // Close dropdown
                         magnetDropdown.style.display = 'none';
                         
-                        console.log(`🧲 Magnet type set to: ${type.toUpperCase()}`);
                     });
                 });
 
@@ -23526,7 +23393,6 @@ function showIndicatorsMenu() {
                         window.chart.snapToIndicators = snapToIndicators;
                     }
                     
-                    console.log(`📊 Snap to indicators: ${snapToIndicators ? 'ON' : 'OFF'}`);
                 });
                 
                 // Make the whole row clickable
@@ -23548,7 +23414,6 @@ function showIndicatorsMenu() {
                         window.chart.drawingManager.snapToIndicators = snapToIndicators;
                     }
                 }
-                console.log(`📊 Snap to indicators initialized: ${snapToIndicators ? 'ON' : 'OFF'}`);
             }
             
             // Initialize dropdown to show saved type (only if dropdown exists)
@@ -23589,7 +23454,6 @@ function showIndicatorsMenu() {
                 window.chart.syncMagnetButton = window.syncMagnetButton;
             }
             
-            console.log('✅ Magnet mode split button initialized');
             }, 500); // End setTimeout
         });
     </script>
@@ -23604,7 +23468,6 @@ function showIndicatorsMenu() {
                 try {
                     const session = JSON.parse(sessionData);
                     const sessionType = session.type || 'standard';
-                    console.log(`📊 ${sessionType === 'propfirm' ? 'Prop Firm' : 'Standard Backtesting'} session loaded:`, session);
                     
                     // Store settings globally for access by other modules
                     window.backtestingSettings = {
@@ -23633,9 +23496,7 @@ function showIndicatorsMenu() {
                     // Initialize navigation integrity system
                     initNavigationIntegrity(window.backtestingSettings.allowBackNavigation);
                     
-                    console.log(`✅ ${sessionType === 'propfirm' ? 'Prop Firm' : 'Standard'} settings initialized (locked)`);
                 } catch (error) {
-                    console.error('❌ Error loading backtesting session:', error);
                 }
             } else {
                 // No session data, default to allowing back navigation
@@ -23645,7 +23506,6 @@ function showIndicatorsMenu() {
                     defaultRisk: 1,
                     allowBackNavigation: true
                 });
-                console.log('ℹ️ No backtesting session found, using defaults (locked)');
             }
         });
         
@@ -23657,7 +23517,6 @@ function showIndicatorsMenu() {
             const goBackBtn = document.getElementById('replayGoBack');
             
             if (!badge || !stepBackwardBtn || !stepForwardBtn) {
-                console.warn('⚠️ Navigation integrity elements not found');
                 return;
             }
             
@@ -23776,7 +23635,6 @@ function showIndicatorsMenu() {
             }
             
             // Navigation integrity is locked - no global access for security
-            console.log('🔒 Navigation integrity system locked:', allowBackNav ? 'Back nav allowed' : 'Back nav disabled (secured)');
         }
     </script>
 
@@ -23789,7 +23647,6 @@ function showIndicatorsMenu() {
             if (sessionData) {
                 try {
                     const session = JSON.parse(sessionData);
-                    console.log('📊 Backtesting session configuration loaded:', session);
                     
                     // Store session globally for access by other modules
                     window.backtestingSession = session;
@@ -23798,7 +23655,6 @@ function showIndicatorsMenu() {
                     const modeBadge = document.getElementById('sessionModeBadge');
                     if (modeBadge) {
                         const sessionType = session.type || 'standard'; // Default to standard if type not set
-                        console.log('🏷️ Session type detected:', sessionType);
                         
                         if (sessionType === 'propfirm') {
                             modeBadge.textContent = '🏆 Prop Firm';
@@ -23808,9 +23664,7 @@ function showIndicatorsMenu() {
                             modeBadge.className = 'session-mode-badge standard';
                         }
                         modeBadge.style.display = 'inline-block';
-                        console.log('✅ Mode badge displayed:', modeBadge.textContent);
                     } else {
-                        console.warn('⚠️ Mode badge element not found');
                     }
                     
                     // Initialize session info panel
@@ -23821,20 +23675,16 @@ function showIndicatorsMenu() {
                     
                     // Auto-apply protection preset if specified
                     if (session.protectionPreset) {
-                        console.log('🛡️ Auto-applying protection preset:', session.protectionPreset.name);
                         // Wait for OrderManager to be initialized
                         setTimeout(() => {
                             if (window.chart && window.chart.orderManager) {
                                 window.chart.orderManager.applyProtectionSettings(session.protectionPreset);
-                                console.log('✅ Protection preset applied successfully');
                             } else {
-                                console.warn('⚠️ OrderManager not yet initialized, preset will need to be applied manually');
                             }
                         }, 1000);
                     }
                     
                 } catch (error) {
-                    console.error('❌ Error loading backtesting session:', error);
                 }
             }
         });
@@ -23890,7 +23740,6 @@ function showIndicatorsMenu() {
                 panel.classList.remove('active');
             });
 
-            console.log('✅ Session info panel initialized');
         }
 
         function initSessionManager(session) {
@@ -23915,7 +23764,6 @@ function showIndicatorsMenu() {
                 // Check if trading is allowed
                 canTrade() {
                     if (this.status !== 'active') {
-                        console.warn('⚠️ Session is not active');
                         return { allowed: false, reason: 'Session is paused or stopped' };
                     }
 
@@ -24108,7 +23956,6 @@ function showIndicatorsMenu() {
                         const pipValue = 10 * lotSize;
                         const spreadCost = spreadPips * pipValue;
                         totalCost += spreadCost;
-                        console.log(`💰 Spread cost: ${spreadPips} pips = $${spreadCost.toFixed(2)}`);
                     }
 
                     // 2. Slippage cost
@@ -24117,7 +23964,6 @@ function showIndicatorsMenu() {
                         const pipValue = 10 * lotSize;
                         const slippageCost = slippagePips * pipValue;
                         totalCost += slippageCost;
-                        console.log(`💰 Slippage cost: ${slippagePips} pips = $${slippageCost.toFixed(2)}`);
                     }
 
                     // 3. Commission
@@ -24138,7 +23984,6 @@ function showIndicatorsMenu() {
                         }
                         
                         totalCost += commissionCost;
-                        console.log(`💰 Commission: $${commissionCost.toFixed(2)}`);
                     }
 
                     return totalCost;
@@ -24156,7 +24001,6 @@ function showIndicatorsMenu() {
                     const pipValue = 10 * lotSize;
                     const swapCost = Math.abs(swapPips) * pipValue * daysHeld;
 
-                    console.log(`💰 Swap fees: ${swapPips} pips × ${daysHeld} days = $${swapCost.toFixed(2)}`);
                     return swapCost;
                 },
 
@@ -24176,7 +24020,6 @@ function showIndicatorsMenu() {
                     
                     const netProfit = profit - totalCosts;
                     
-                    console.log(`💰 Trade P&L: Gross = $${profit.toFixed(2)}, Costs = $${totalCosts.toFixed(2)}, Net = $${netProfit.toFixed(2)}`);
                     
                     return {
                         grossProfit: profit,
@@ -24257,7 +24100,6 @@ function showIndicatorsMenu() {
                             stopLoss = direction === 'long' ? 
                                 entryPrice - atrDistance : 
                                 entryPrice + atrDistance;
-                            console.warn('⚠️ ATR calculation not yet implemented, using fixed pips');
                             break;
 
                         case 'trailing':
@@ -24279,7 +24121,6 @@ function showIndicatorsMenu() {
                         const actualDistance = Math.abs(entryPrice - stopLoss);
                         
                         if (actualDistance > maxDistance) {
-                            console.warn(`⚠️ Stop loss ${actualDistance.toFixed(5)} exceeds max ${maxDistance.toFixed(5)}`);
                             stopLoss = direction === 'long' ? 
                                 entryPrice - maxDistance : 
                                 entryPrice + maxDistance;
@@ -24363,20 +24204,17 @@ function showIndicatorsMenu() {
                     }
                     this.stats.dailyPnL += trade.profit;
 
-                    console.log('📊 Session stats updated:', this.stats);
                 },
 
                 pauseSession(reason) {
                     this.status = 'paused';
                     this.updateStatusUI();
-                    console.warn(`⏸️ Session paused: ${reason}`);
                     alert(`⏸️ Session paused:\n${reason}`);
                 },
 
                 stopSession(reason) {
                     this.status = 'stopped';
                     this.updateStatusUI();
-                    console.warn(`🛑 Session stopped: ${reason}`);
                     alert(`🛑 Session stopped:\n${reason}\n\nCheck your results in the History tab.`);
                 },
 
@@ -24405,7 +24243,6 @@ function showIndicatorsMenu() {
         
         // Global function to set replay speed from buttons
         window.setReplaySpeed = function(speed, button) {
-            console.log('🎚️ Speed button clicked:', speed);
             
             // Update active state on buttons
             const allButtons = document.querySelectorAll('.speed-option');
@@ -24416,7 +24253,6 @@ function showIndicatorsMenu() {
             if (window.chart && window.chart.replaySystem) {
                 window.chart.replaySystem.setSpeed(speed);
             } else {
-                console.log('⚠️ Replay system not found, storing speed for later');
                 window._pendingReplaySpeed = speed;
             }
             
@@ -25828,7 +25664,6 @@ function showIndicatorsMenu() {
                         languageSubmenu.classList.remove('open');
                         profileMenu.classList.add('open');
                         
-                        console.log('Language changed to:', lang);
                     });
                 });
                 
@@ -25866,7 +25701,6 @@ function showIndicatorsMenu() {
 
         // Open Compare Symbol Modal (called by + button)
         function openCompareSymbolModal() {
-            console.log('📊 Opening Compare Symbol modal');
             if (window.chart && window.chart.compareOverlay) {
                 window.chart.compareOverlay.openModal();
             } else {
@@ -25921,7 +25755,6 @@ function showIndicatorsMenu() {
                 if (window._spLoad) window._spLoad(section, activeNav);
             }
 
-            console.log(`🔄 Toolbar synced to panel ${detail.panelIndex} (${chartType}, ${timeframe})`);
         });
 
         // Chart Type Selector - Initialize when DOM is ready
@@ -25930,12 +25763,10 @@ function showIndicatorsMenu() {
             const chartTypeDropdown = document.getElementById('chartTypeDropdown');
             
             if (!chartTypeBtn || !chartTypeDropdown) {
-                console.log('Chart type elements not found, retrying...');
                 setTimeout(initChartTypeSelector, 100);
                 return;
             }
             
-            console.log('✅ Chart type selector initialized');
             
             // Move dropdown to body to prevent clipping
             document.body.appendChild(chartTypeDropdown);
@@ -26067,7 +25898,6 @@ function showIndicatorsMenu() {
                 const symbolDisplay = document.getElementById('symbolDisplay');
                 
                 if (!symbolPlusBtn || !symbolSwitcherDropdown) {
-                    console.log('Symbol switcher elements not found, retrying...');
                     setTimeout(initSymbolSwitcher, 100);
                     return;
                 }
@@ -26164,7 +25994,6 @@ function showIndicatorsMenu() {
                     const numericFileId = parseInt(fileId);
                     const symbolName = fileName.replace(/\.(csv|CSV)$/, '');
                     
-                    console.log(`Adding symbol ${symbolName} (fileId: ${numericFileId}) with mode: ${mode}`);
                     
                     switch (mode) {
                         case 'same-scale':
@@ -26172,7 +26001,6 @@ function showIndicatorsMenu() {
                             if (window.chart && window.chart.compareOverlay) {
                                 window.chart.compareOverlay.addOverlay(numericFileId, symbolName);
                             } else {
-                                console.error('Compare overlay not available');
                             }
                             break;
                             
@@ -26181,7 +26009,6 @@ function showIndicatorsMenu() {
                             if (window.chart && window.chart.compareOverlay) {
                                 window.chart.compareOverlay.addOverlay(numericFileId, symbolName);
                             } else {
-                                console.error('Compare overlay not available');
                             }
                             break;
                             
@@ -26347,13 +26174,11 @@ function showIndicatorsMenu() {
                                                     delBtn.addEventListener('mouseleave', () => { delBtn.style.color = '#787b86'; delBtn.style.background = 'transparent'; });
                                                 }
                                                 
-                                                console.log(`✅ Panel 1 synced: timeframe=${mainTimeframe}, DIRECT scroll sync enabled`);
                                             }
                                         }
                                     }
                                 }, 600);
                             } else {
-                                console.error('Panel manager not available');
                             }
                             break;
                     }
@@ -26366,7 +26191,6 @@ function showIndicatorsMenu() {
                         const mainTimeframe = timeframe || window.chart?.currentTimeframe || '1m';
                         const apiUrl = window.chart?.apiUrl || window.CHART_API_URL || '/api';
                         
-                        console.log(`Loading ${fileName} into panel ${panel.index} with timeframe ${mainTimeframe}`);
                         
                         // Fetch data from API (same format as compare overlay)
                         const response = await fetch(`${apiUrl}/file/${fileId}?offset=0&limit=50000`);
@@ -26374,14 +26198,12 @@ function showIndicatorsMenu() {
                         
                         const result = await response.json();
                         if (!result.data) {
-                            console.warn('No data in response');
                             return;
                         }
                         
                         // Parse CSV data like compare overlay does
                         const rawData = parseCSVDataForPanel(result.data);
                         if (rawData.length === 0) {
-                            console.warn('No candles parsed from CSV');
                             return;
                         }
                         
@@ -26409,7 +26231,6 @@ function showIndicatorsMenu() {
                         // Setup replay sync for this panel
                         setupPanelReplaySync(panel);
                     } catch (error) {
-                        console.error('Error loading panel data:', error);
                     }
                 }
                 
@@ -26492,14 +26313,11 @@ function showIndicatorsMenu() {
                 // Simple candle drawing for panel
                 // Make it globally accessible for render sync
                 const drawCandlesOnPanel = window.drawCandlesOnPanel = function(panel, candles) {
-                    console.log('📊 drawCandlesOnPanel called with', candles?.length, 'candles');
                     
                     if (!panel || !panel.canvas) {
-                        console.error('No panel or canvas');
                         return;
                     }
                     if (!candles || candles.length === 0) {
-                        console.error('No candles to draw');
                         return;
                     }
                     
@@ -26511,7 +26329,6 @@ function showIndicatorsMenu() {
                     canvas.width = rect.width;
                     canvas.height = rect.height;
                     
-                    console.log('Canvas size:', canvas.width, 'x', canvas.height);
                     
                     const width = canvas.width;
                     const height = canvas.height;
@@ -26534,7 +26351,6 @@ function showIndicatorsMenu() {
                         visibleCandles = candles.slice(-maxCandles);
                     }
                     
-                    console.log('Showing', visibleCandles.length, 'of', candles.length, 'candles');
                     
                     if (visibleCandles.length === 0) {
                         ctx.fillStyle = '#787b86';
@@ -26641,7 +26457,6 @@ function showIndicatorsMenu() {
                 }
                 
                 
-                console.log('✅ Symbol switcher initialized');
             }
             
             // Run when DOM is ready
@@ -26728,7 +26543,6 @@ function showIndicatorsMenu() {
                         
                         // Re-render
                         chart.render();
-                        console.log(`✅ Applied settings to panel: chartType=${chartType}, colors applied`, chart.chartSettings);
                     }
                     closePopup();
                 });
@@ -26761,7 +26575,6 @@ function showIndicatorsMenu() {
                 });
             });
             
-            console.log('✅ New pane settings popup initialized');
         })();
 
     </script>
@@ -26917,16 +26730,13 @@ window._openScaleLinesColorPicker=function(btn){
 };
 window._spClr=function(btn){
     var c=btn.dataset.color||getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim();
-    console.log('[SP] _spClr called, color=',c,'openColorPicker=',typeof window.openColorPicker);
     if(window.openColorPicker){
         window.openColorPicker(c,function(v){
-            console.log('[SP] color picked:',v);
             btn.style.background=v;
             btn.dataset.color=v;
             if(btn._onChange)btn._onChange(v);
         },btn);
     } else {
-        console.error('[SP] window.openColorPicker not defined!');
     }
 };
 /* ── SETTINGS PANEL – fully inlined v3 ── */
@@ -28013,8 +27823,8 @@ function loadSection(type){
     var el=document.getElementById('settingsPanelContent');
     if(!el)return;
     var def=P[type]||(window._spPanels&&window._spPanels[type]);
-    try{ el.innerHTML=def?def.build():'<p style="color:#787b86;padding:20px 0;">Coming soon.</p>'; }catch(e){ el.innerHTML='<p style="color:#f23645;">Error: '+e.message+'</p>'; console.error(e); }
-    try{ if(def&&def.wire)def.wire(); }catch(e){ console.error(e); }
+    try{ el.innerHTML=def?def.build():'<p style="color:#787b86;padding:20px 0;">Coming soon.</p>'; }catch(e){ el.innerHTML='<p style="color:#f23645;">Error: '+e.message+'</p>'; }
+    try{ if(def&&def.wire)def.wire(); }catch(e){ }
 }
 
 window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
@@ -28386,8 +28196,7 @@ function _spWireDom(){
     panel  = document.getElementById('settingsPanel');
     btn    = document.getElementById('settingsBtn');
     closeB = document.getElementById('settingsPanelClose');
-    if(!panel){console.error('[SP] settingsPanel element not found!');return;}
-    console.log('[SP] DOM wired. panel=',!!panel,'btn=',!!btn);
+    if(!panel){return;}
     if(closeB)closeB.addEventListener('click',function(e){e.stopPropagation();closePanel();});
     document.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
         item.addEventListener('click',function(e){e.stopPropagation();window._spLoad(this.dataset.settings,this);});
@@ -28508,7 +28317,6 @@ setTimeout(function(){
     if(s.leverage)document.querySelectorAll('#challengeLeverage,.leverage-value').forEach(function(el){el.textContent='1:'+s.leverage;});
 },1200);
 
-console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
 })();
 
 /* ── UTC Timezone Dropdown (bottom bar) ── */
@@ -28669,7 +28477,7 @@ console.log('[SP] inlined settings panel ready. Panels:', Object.keys(P));
     }
 })();
 
-}catch(e){ console.error('[SP] FATAL ERROR:', e.message, e.stack); }
+}catch(e){ }
     </script>
 
     <script>

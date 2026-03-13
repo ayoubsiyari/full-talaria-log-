@@ -811,9 +811,6 @@ class Chart {
             };
             this._panLoading = false;
             
-            this.updateLoaderProgress(50, 'Calculating indicators...');
-            this.updateLoaderStep(2, 'active');
-            
             this.loadedRanges.clear();
             this.parseCSVChunk(result.data, 0);
             this.loadedRanges.set(0, result.returned);
@@ -867,9 +864,9 @@ class Chart {
         const isBacktest = session && session.startDate;
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
-        // Load enough candles to give replay a comfortable runway without
-        // freezing the browser on parse. Pan-loading fills forward automatically.
-        const limit = isBacktest ? '10000' : '5000';
+        // In backtest mode, preload the maximum smart-window batch to reduce
+        // edge stalls when replay crosses the first loaded segment.
+        const limit = isBacktest ? '100000' : '5000';
         const params = new URLSearchParams({
             timeframe: timeframe,
             limit: limit,
