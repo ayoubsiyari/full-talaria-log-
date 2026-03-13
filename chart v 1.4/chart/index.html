@@ -26982,14 +26982,14 @@ P['template']={title:'Template',build:function(){
     function mkdd(id, items, selId){
         var sel=items.find(function(t){return t.id===selId;})||null;
         var trigInner=sel
-            ?dots(sel)+'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;margin-left:8px;">'+sel.name+'</span>'
+            ?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+sel.name+'</span>'+dots(sel)
             :'<span style="flex:1;font-size:12px;color:#787b86;">\u2014 Select Template \u2014</span>';
         var opts='';
         items.forEach(function(t){
             var isAct=selId===t.id;
             opts+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(isAct?'rgba(255,255,255,0.08)':'transparent')+';">'
-                +dots(t)
                 +'<span style="flex:1;font-size:12px;color:'+(isAct?'#fff':'#d1d4dc')+';">'+t.name+'</span>'
+                +dots(t)
                 +(isAct?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')
                 +'</div>';
         });
@@ -27009,13 +27009,15 @@ P['template']={title:'Template',build:function(){
     var talariaTplHtml=sec(st('TALARIA TEMPLATES')
         +'<p style="color:#787b86;font-size:11px;margin:0 0 10px;line-height:1.5;">Full theme \u2014 updates chart colors AND panel/sidebar accent colors.</p>'
         +mkdd('tl_talaria_dd',swList,c._lastTemplateSelected||null));
+    var panelSwList=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():swList;
     var panelTplHtml=sec(st('PANEL TEMPLATES')
         +'<p style="color:#787b86;font-size:11px;margin:0 0 10px;line-height:1.5;">Changes panel &amp; sidebar colors only \u2014 chart colors stay unchanged.</p>'
-        +mkdd('tl_panel_dd',swList,c._lastPanelOnlyTemplate||null));
+        +mkdd('tl_panel_dd',panelSwList,c._lastPanelOnlyTemplate||null));
     return chartTplHtml+talariaTplHtml+panelTplHtml;
 },wire:function(){
     var c=ch();
     var swList=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];
+    var panelSwList=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():swList;
     function dots(t){
         return '<span style="display:flex;gap:3px;flex-shrink:0;">'
             +'<span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span>'
@@ -27023,7 +27025,7 @@ P['template']={title:'Template',build:function(){
             +'<span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span>'
             +'</span>';
     }
-    function setupDd(id, methodName, propName){
+    function setupDd(id, methodName, propName, list){
         var trig=document.getElementById(id+'_trig');
         var panel=document.getElementById(id+'_panel');
         if(!trig||!panel)return;
@@ -27049,11 +27051,11 @@ P['template']={title:'Template',build:function(){
                 if(typeof cv[methodName]==='function')cv[methodName](tid);
                 try{if(cv.saveSettings)cv.saveSettings();}catch(e2){}
                 panel.style.display='none';
-                var match=swList.find(function(s){return s.id===tid;});
+                var match=(list||swList).find(function(s){return s.id===tid;});
                 var trig2=document.getElementById(id+'_trig');
                 if(trig2&&match){
-                    trig2.innerHTML=dots(match)
-                        +'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;margin-left:8px;">'+match.name+'</span>'
+                    trig2.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+match.name+'</span>'
+                        +dots(match)
                         +'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
                 }
                 panel.querySelectorAll('.tl-dd-opt').forEach(function(o){
@@ -27062,9 +27064,9 @@ P['template']={title:'Template',build:function(){
             });
         });
     }
-    setupDd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate');
-    setupDd('tl_talaria_dd','applyTemplate','_lastTemplateSelected');
-    setupDd('tl_panel_dd','applyPanelOnlyTemplate','_lastPanelOnlyTemplate');
+    setupDd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate',swList);
+    setupDd('tl_talaria_dd','applyTemplate','_lastTemplateSelected',swList);
+    setupDd('tl_panel_dd','applyPanelOnlyTemplate','_lastPanelOnlyTemplate',panelSwList);
     document.addEventListener('click',function(){
         document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
     });

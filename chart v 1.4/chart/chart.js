@@ -5188,6 +5188,21 @@ class Chart {
         this.showNotification(`Panel template "${template.name}" applied ✓`);
     }
 
+    getPanelTemplateSwatches() {
+        const PANEL_KEYS = ['settingsPanelAccentColor','settingsPanelBgColor','settingsPanelSidebarBgColor','settingsPanelSecondaryColor','settingsPanelTextColor'];
+        const templates = this.getChartTemplates();
+        return Object.entries(templates)
+            .filter(([,t]) => PANEL_KEYS.some(k => t[k] !== undefined))
+            .map(([id, t]) => ({
+                id,
+                name: t.name || id,
+                bg: t.settingsPanelBgColor || t.backgroundColor || '#1e222d',
+                accent: t.settingsPanelAccentColor || '#2962ff',
+                up: t.settingsPanelSecondaryColor || t.bodyUpColor || '#089981',
+                down: t.bodyDownColor || '#f23645'
+            }));
+    }
+
     getTalariaTemplateSwatches() {
         const templates = this.getChartTemplates();
         return Object.entries(templates).map(([id, t]) => ({
