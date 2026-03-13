@@ -814,9 +814,10 @@ class Chart {
             this.loadedRanges.clear();
             // Show step 2 active and yield to browser before the blocking parse
             this.updateLoaderStep(2, 'active');
-            this.updateLoaderProgress(45, 'Calculating indicators...');
+            this.updateLoaderProgress(45, 'Parsing data...');
             await new Promise(resolve => setTimeout(resolve, 0));
-            this.parseCSVChunk(result.data, 0);
+            // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
+            this.parseCSVChunk(result.data, 0, { skipIndicators: true });
             this.loadedRanges.set(0, result.returned);
             this.currentFileId = fileId;
             
@@ -5228,9 +5229,9 @@ class Chart {
      * @param {string} csv - CSV data
      * @param {number} startIndex - Starting index in the full dataset
      */
-    parseCSVChunk(csv, startIndex) {
+    parseCSVChunk(csv, startIndex, options = {}) {
         try {
-            const lines = csv.trim().split('\n').filter(line => line.trim().length > 0);
+            const lines = csv.split('\n');
             if (lines.length < 1) return;
             
             // Try to parse first line to detect if it's a header or data
@@ -5314,22 +5315,24 @@ class Chart {
             // Parse new data
             const newData = [];
             for (let i = dataStartIdx; i < lines.length; i++) {
-                const cols = lines[i].split(separator).map(c => c.trim());
+                const line = lines[i];
+                if (!line || line.length < 5) continue;
+                const cols = line.split(separator);
                 if (cols.length < 5) continue;
                 
                 // Parse timestamp
                 let t;
                 if (dateIdx >= 0 && timeIdx >= 0 && timeIdx !== dateIdx) {
                     // Separate date and time columns
-                    const dateStr = cols[dateIdx];
-                    const timeStr = cols[timeIdx];
+                    const dateStr = cols[dateIdx].trim();
+                    const timeStr = cols[timeIdx].trim();
                     t = this.parseDateTime(dateStr, timeStr);
                 } else if (dateIdx >= 0) {
                     // Combined datetime column
-                    t = this.parseDateTime(cols[dateIdx]);
+                    t = this.parseDateTime(cols[dateIdx].trim());
                 } else if (timeIdx >= 0) {
                     // Time column only - check if it's an epoch timestamp
-                    const timeVal = cols[timeIdx];
+                    const timeVal = cols[timeIdx].trim();
                     if (/^\d+$/.test(timeVal)) {
                         // Numeric epoch timestamp
                         t = parseInt(timeVal, 10);
@@ -5373,8 +5376,8 @@ class Chart {
             // Update working data
             this.data = this.resampleData(this.rawData, this.currentTimeframe);
             
-            // Recalculate indicators with new data
-            if (typeof this.recalculateIndicators === 'function') {
+            // Recalculate indicators with new data (skip in backtest path — enterReplayMode handles it on the slice)
+            if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
                 this.recalculateIndicators();
             }
             
