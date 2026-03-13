@@ -315,10 +315,10 @@ class ScreenshotManager {
 
         const marginX = Math.max(14, Math.round(canvas.width * 0.012));
         const marginY = Math.max(14, Math.round(canvas.height * 0.018));
-        let drawHeight = Math.max(48, Math.round(canvas.height * 0.095));
+        let drawHeight = Math.max(20, Math.round(canvas.height * 0.045));
         let drawWidth = Math.round((bounds.width / bounds.height) * drawHeight);
 
-        const maxWidth = Math.max(300, Math.round(canvas.width * 0.42));
+        const maxWidth = Math.max(150, Math.round(canvas.width * 0.22));
         if (drawWidth > maxWidth) {
             drawWidth = maxWidth;
             drawHeight = Math.round((bounds.height / bounds.width) * drawWidth);
@@ -565,6 +565,33 @@ class ScreenshotManager {
     /**
      * Take a quick screenshot with default settings
      */
+    _hideUIOverlays() {
+        const hidden = [];
+        const selectors = [
+            '#settingsPanel',
+            '.settings-panel',
+            '.indicator-settings-panel',
+            '.context-menu',
+            '.dropdown-menu.open',
+            '.tooltip'
+        ];
+        for (const sel of selectors) {
+            document.querySelectorAll(sel).forEach(el => {
+                if (el.style.display !== 'none' && el.offsetParent !== null) {
+                    hidden.push({ el, display: el.style.display });
+                    el.style.display = 'none';
+                }
+            });
+        }
+        return hidden;
+    }
+
+    _restoreUIOverlays(hidden) {
+        for (const { el, display } of hidden) {
+            el.style.display = display;
+        }
+    }
+
     async takeQuickScreenshot(action = 'download') {
         this.flashCapture();
 
@@ -574,8 +601,10 @@ class ScreenshotManager {
             if (!targetElement) targetElement = document.querySelector('.chart-wrapper');
             if (!targetElement) targetElement = document.querySelector('.container');
             if (!targetElement) targetElement = document.body;
-            
+
+            const hidden = this._hideUIOverlays();
             const canvas = await this.captureCanvasDirect(targetElement, 2);
+            this._restoreUIOverlays(hidden);
             if (!canvas) throw new Error('Canvas capture returned null');
             
             // Add watermark
