@@ -664,20 +664,34 @@ class ScreenshotManager {
     }
     
     /**
-     * Copy image to clipboard
+     * Copy image to clipboard.
+     * Falls back to auto-download when the browser blocks clipboard write
+     * (clipboard image API requires HTTPS / secure context).
      */
     async copyToClipboard(canvas) {
-        try {
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-            if (!blob) throw new Error('Failed to create blob');
-            
-            const clipboardItem = new ClipboardItem({ 'image/png': blob });
-            await navigator.clipboard.write([clipboardItem]);
-            this.showNotification('Screenshot copied to clipboard!', 'success');
-        } catch (err) {
-            console.error('Clipboard error:', err);
-            this.showNotification('Failed to copy to clipboard', 'error');
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) { this.showNotification('Failed to create image', 'error'); return; }
+
+        // Try modern clipboard API (requires HTTPS)
+        if (window.isSecureContext && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+            try {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                this.showNotification('Screenshot copied to clipboard!', 'success');
+                return;
+            } catch (_) { /* fall through */ }
         }
+
+        // Fallback: download the image (HTTP context — clipboard write blocked by browser)
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        a.href = url;
+        a.download = `Talaria-Chart-${timestamp}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showNotification('Saved to downloads (clipboard requires HTTPS)', 'warning');
     }
     
     /**
