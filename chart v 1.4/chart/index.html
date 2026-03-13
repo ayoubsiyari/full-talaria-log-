@@ -21039,9 +21039,31 @@
                     if (toolId) {
                         const toolBtn = document.getElementById(toolId);
                         if (toolBtn) {
-                            isGroupButtonClick = true; // Set flag before programmatic click
-                            toolBtn.click();
-                            setTimeout(() => { isGroupButtonClick = false; }, 100); // Clear flag after
+                            // Derive tool name from button id (e.g. "trendlineTool" → "trendline")
+                            const toolName = (toolId.endsWith('Tool')) ? toolId.slice(0, -4) : null;
+                            const chart = window.chart || window.mainChart;
+                            
+                            // Directly activate through drawingManager — reliable, no flag dependency
+                            if (toolName && chart && chart.drawingManager) {
+                                chart.drawingManager.setTool(toolName);
+                            }
+                            
+                            // Update active states immediately
+                            document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
+                            document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
+                            toolBtn.classList.add('active');
+                            this.classList.add('active');
+                            
+                            // Update the group button icon/tooltip to match the selected tool
+                            const toolSvg = toolBtn.querySelector('svg:not(.dropdown-arrow)');
+                            const groupSvg = this.querySelector('svg:not(.dropdown-arrow)');
+                            if (toolSvg && groupSvg) {
+                                groupSvg.innerHTML = toolSvg.innerHTML;
+                                groupSvg.setAttribute('viewBox', toolSvg.getAttribute('viewBox') || '0 0 24 24');
+                                groupSvg.setAttribute('stroke-width', toolSvg.getAttribute('stroke-width') || '1.5');
+                            }
+                            const toolTooltip = toolBtn.getAttribute('data-tooltip');
+                            if (toolTooltip) this.setAttribute('data-tooltip', toolTooltip);
                         }
                     }
                 });
