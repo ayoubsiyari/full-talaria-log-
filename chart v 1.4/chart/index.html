@@ -21195,7 +21195,6 @@
                     
                     // Actually activate the drawing tool (only if not deselecting)
                     if (!isDeselecting && toolName) {
-                        const chart = window.chart || window.mainChart;
                         if (chart && chart.drawingManager) {
                             chart.drawingManager.setTool(toolName);
                         }
