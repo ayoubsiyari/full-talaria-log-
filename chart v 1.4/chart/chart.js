@@ -4531,8 +4531,8 @@ class Chart {
             <option value="">— Select Template —</option>
             ${customOptions}
             <optgroup label="Professional">
-                <option value="tradingview-dark">TradingView Dark</option>
-                <option value="tradingview-light">TradingView Light</option>
+                <option value="tradingview-dark">Dark</option>
+                <option value="tradingview-light">Light</option>
                 <option value="binance">Binance</option>
                 <option value="bloomberg">Bloomberg</option>
             </optgroup>
@@ -4659,7 +4659,7 @@ class Chart {
         return {
             /* ── PROFESSIONAL ── */
             'tradingview-dark': {
-                name: 'TradingView Dark',
+                name: 'Dark',
                 backgroundColor: '#1e222d',
                 gridColor: 'rgba(42, 46, 57, 0.6)',
                 bodyUpColor: '#089981', bodyDownColor: '#f23645',
@@ -4674,7 +4674,7 @@ class Chart {
                 settingsPanelSecondaryColor: '#7b61ff', settingsPanelTextColor: '#d1d4dc'
             },
             'tradingview-light': {
-                name: 'TradingView Light',
+                name: 'Light',
                 backgroundColor: '#ffffff',
                 gridColor: 'rgba(42, 46, 57, 0.1)',
                 bodyUpColor: '#089981', bodyDownColor: '#f23645',
