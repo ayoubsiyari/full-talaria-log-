@@ -603,6 +603,7 @@ class ScreenshotManager {
 
         this.flashCapture();
 
+        let hidden = [];
         try {
             // Get the chart container
             let targetElement = document.getElementById('chart-container');
@@ -610,9 +611,10 @@ class ScreenshotManager {
             if (!targetElement) targetElement = document.querySelector('.container');
             if (!targetElement) targetElement = document.body;
 
-            const hidden = this._hideUIOverlays();
+            hidden = this._hideUIOverlays();
             const canvas = await this.captureCanvasDirect(targetElement, 2);
             this._restoreUIOverlays(hidden);
+            hidden = []; // already restored — prevent double-restore in finally
             if (!canvas) throw new Error('Canvas capture returned null');
             
             // Add watermark
@@ -638,6 +640,9 @@ class ScreenshotManager {
         } catch (error) {
             console.error('Screenshot error:', error);
             this.showNotification('Failed to capture screenshot', 'error');
+        } finally {
+            // Always restore overlays in case capture threw before manual restore
+            this._restoreUIOverlays(hidden);
         }
     }
     
