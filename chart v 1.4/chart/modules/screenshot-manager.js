@@ -319,15 +319,15 @@ class ScreenshotManager {
         const marginX = Math.max(14, Math.round(canvas.width  * 0.012));
         const marginY = Math.max(14, Math.round(canvas.height * 0.018));
 
-        // Icon height ~4.5% of canvas height
-        const iconH  = Math.max(20, Math.round(canvas.height * 0.045));
+        // Icon height ~7% of canvas height — matches live chart bottom-left logo size
+        const iconH  = Math.max(32, Math.round(canvas.height * 0.07));
         const iconW  = symbolImg  ? Math.round((symbolImg.naturalWidth  / symbolImg.naturalHeight)  * iconH)  : 0;
 
-        // Wordmark height ~45% of icon height
-        const wmH    = Math.max(12, Math.round(iconH * 0.45));
+        // Wordmark height ~55% of icon height
+        const wmH    = Math.max(16, Math.round(iconH * 0.55));
         const wmW    = wordmarkImg ? Math.round((wordmarkImg.naturalWidth / wordmarkImg.naturalHeight) * wmH) : 0;
 
-        const gap    = Math.max(3, Math.round(iconH * 0.12));  // gap between icon and text
+        const gap    = Math.max(4, Math.round(iconH * 0.14));  // gap between icon and text
         const totalH = iconH + gap + wmH;
 
         const x = marginX;
@@ -374,44 +374,45 @@ class ScreenshotManager {
         if (!symbol && !openVal) return;
 
         const pad  = Math.round(10 * scale);
-        const lineH = Math.round(17 * scale);
-        const fs1  = Math.round(11 * scale);   // symbol line font size
-        const fs2  = Math.round(10 * scale);   // OHLC line font size
-        const fontFace = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        const lineH = Math.round(15 * scale);
+        const fs1  = Math.round(11 * scale);   // .ohlc-symbol-block: font-size 11px
+        const fs2  = Math.round(9  * scale);   // .ohlc-info base:     font-size 9px
+        const fontFace = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
         ctx.save();
         ctx.textBaseline = 'top';
 
         let y = pad;
 
-        // --- Symbol · Timeframe line ---
+        // --- Symbol · Timeframe line (matches .ohlc-symbol-block: font-size 11px, color #ffffff) ---
         if (symbol || timeframe) {
-            ctx.font = `600 ${fs1}px ${fontFace}`;
+            ctx.font = `400 ${fs1}px ${fontFace}`;
             const symbolText    = symbol || '';
-            const separatorText = symbol && timeframe ? '  ·  ' : '';
+            const separatorText = symbol && timeframe ? ' · ' : '';
             const tfText        = timeframe || '';
 
             let x = pad;
-            ctx.fillStyle = 'rgba(219, 232, 255, 0.92)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
             ctx.fillText(symbolText, x, y);
             x += ctx.measureText(symbolText).width;
 
             if (separatorText) {
-                ctx.fillStyle = 'rgba(120, 123, 134, 0.85)';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.60)';
                 ctx.fillText(separatorText, x, y);
                 x += ctx.measureText(separatorText).width;
             }
 
-            ctx.fillStyle = 'rgba(180, 190, 210, 0.85)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
             ctx.fillText(tfText, x, y);
             y += lineH;
         }
 
-        // --- O H L C  change line ---
+        // --- O H L C  change line (matches .ohlc-stats: font-weight 300, color #ffffff) ---
         if (openVal) {
-            ctx.font = `${fs2}px ${fontFace}`;
-            const labelColor  = 'rgba(120, 123, 134, 0.90)';
-            const valueColor  = 'rgba(209, 212, 220, 0.92)';
+            ctx.font = `300 ${fs2}px ${fontFace}`;
+            // Labels: opacity 0.6 (matches .ohlc-label opacity: 0.6), values: full white
+            const labelColor  = 'rgba(255, 255, 255, 0.60)';
+            const valueColor  = 'rgba(255, 255, 255, 0.95)';
             const parts = [
                 { label: 'O', value: openVal },
                 { label: 'H', value: highVal },
