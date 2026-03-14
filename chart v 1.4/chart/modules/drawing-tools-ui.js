@@ -806,6 +806,15 @@ class DrawingSettingsPanel {
     margin-left: auto;
 }
 
+.tv-text-controls .tv-select {
+    height: 28px;
+}
+
+.tv-text-controls .tv-style-btn {
+    width: 28px;
+    height: 28px;
+}
+
 .tv-text-input {
     width: 100%;
     min-height: 45px;
@@ -7078,7 +7087,7 @@ body.light-mode .template-save-dialog .dialog-title {
 	                        `<option value="${s}" ${(drawing.style.fontSize || 14) == s ? 'selected' : ''}>${s}</option>`
 	                    ).join('')}
 	                </select>
-	                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#FFFFFF'}; width: 28px; height: 28px;"></button>
+	                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#FFFFFF'}; width: 28px; height: 28px; flex-shrink: 0;"></button>
 	                <button class="tv-style-btn ${drawing.style.fontStyle && drawing.style.fontStyle.includes('italic') ? 'active' : ''}" data-prop="fontItalic"><i>I</i></button>
 	                <button class="tv-style-btn ${drawing.style.fontWeight && (drawing.style.fontWeight === 'bold' || drawing.style.fontWeight >= 600) ? 'active' : ''}" data-prop="fontBold"><b>B</b></button>
 	            </div>
@@ -7108,7 +7117,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         `<option value="${s}" ${(drawing.style.fontSize || 14) == s ? 'selected' : ''}>${s}</option>`
                     ).join('')}
                 </select>
-                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#FFFFFF'}; width: 28px; height: 28px;"></button>
+                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#FFFFFF'}; width: 28px; height: 28px; flex-shrink: 0;"></button>
                 <button class="tv-style-btn ${drawing.style.fontStyle && drawing.style.fontStyle.includes('italic') ? 'active' : ''}" data-prop="fontItalic"><i>I</i></button>
                 <button class="tv-style-btn ${drawing.style.fontWeight && (drawing.style.fontWeight === 'bold' || drawing.style.fontWeight >= 600) ? 'active' : ''}" data-prop="fontBold"><b>B</b></button>
             </div>
