@@ -988,6 +988,7 @@ class DrawingSettingsPanel {
     border-radius: 0;
     display: flex;
     flex-direction: column;
+    gap: 0;
     overflow: hidden;
 }
 
@@ -998,12 +999,14 @@ class DrawingSettingsPanel {
     outline: none;
     background: transparent;
     color: var(--sp-text, #d1d4dc);
-    flex: 1;
+    flex: 1 1 0;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     padding: 0;
+    margin: 0;
 }
 
 .tv-coords-stepper-btn:hover {
