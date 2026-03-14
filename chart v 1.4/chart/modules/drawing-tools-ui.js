@@ -969,7 +969,7 @@ class DrawingSettingsPanel {
     position: relative;
     display: inline-flex;
     overflow: hidden;
-    border-radius: 4px;
+    border-radius: 10px;
 }
 
 .tv-coords-number-wrap .tv-coords-input {
@@ -978,11 +978,10 @@ class DrawingSettingsPanel {
 
 .tv-coords-stepper {
     position: absolute;
-    top: 2px;
-    right: 2px;
-    bottom: 2px;
-    width: 20px;
-    height: auto;
+    top: 0;
+    right: 0;
+    width: 22px;
+    height: 100%;
     background: transparent;
     border: none;
     border-radius: 0;
@@ -1025,6 +1024,7 @@ class DrawingSettingsPanel {
 .tv-coords-input {
     width: 140px;
     height: 30px;
+    box-sizing: border-box;
     border: 2px solid var(--sp-input-border, rgba(120, 123, 134, 0.55));
     border-radius: 10px;
     background: var(--sp-bg, rgba(0,0,0,0.65));
