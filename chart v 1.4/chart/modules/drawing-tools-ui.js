@@ -2887,7 +2887,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (['trendline', 'arrow'].includes(drawing.type)) {
             const infoSection = document.createElement('div');
             infoSection.className = 'tv-info-section';
-            infoSection.style.cssText = 'margin-top: 12px;';
+            infoSection.style.cssText = 'margin-top: 6px;';
             
             const infoSettings = {
                 showInfo: false,
