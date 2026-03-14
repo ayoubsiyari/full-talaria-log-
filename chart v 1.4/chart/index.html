@@ -7902,7 +7902,7 @@
         }
 
         body.replay-tabs-collapsed .replay-toolbar button.replay-collapse-toggle .toggle-arrow {
-            transform: rotate(180deg);
+            transform: rotate(0deg);
         }
 
         .replay-toolbar button svg {
@@ -9033,7 +9033,7 @@
         .replay-collapse-toggle .toggle-arrow {
             display: inline-flex;
             transition: transform 0.3s ease;
-            transform: rotate(180deg); /* Default: chevron-down → pointing up = expanded */
+            transform: rotate(0deg); /* Default: chevron-down → pointing down = expanded */
         }
 
         .replay-tabs-container {
@@ -9079,7 +9079,7 @@
         }
 
         body.replay-tabs-collapsed .replay-collapse-toggle .toggle-arrow {
-            transform: rotate(0deg); /* Collapsed: chevron-down → pointing down = collapsed */
+            transform: rotate(180deg); /* Collapsed: chevron-down → pointing up = collapsed */
         }
 
         body.replay-tabs-collapsed .speed-slider-control {
