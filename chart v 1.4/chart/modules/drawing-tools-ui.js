@@ -542,8 +542,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-prop-row.brush-prop-row.trendline-controls-row > .tv-prop-controls {
-    width: 210px;
-    min-width: 210px;
+    width: 262px;
+    min-width: 262px;
 }
 
 /* Color Swatch Button */
@@ -2587,6 +2587,15 @@ body.light-mode .template-save-dialog .dialog-title {
                     </div>
                 `;
                 headerRow.style.cssText = 'display: flex; align-items: center; gap: 12px; margin-bottom: 6px;';
+            } else if (['trendline', 'curve', 'arrow'].includes(drawing.type)) {
+                headerRow.innerHTML = `
+                    <span style="min-width:0;width:50px;flex:0 0 50px;"></span>
+                    <div class="tv-controls-header-labels">
+                        <span style="flex:0 0 30px;min-width:30px;">Color</span>
+                        <span style="flex:0 0 80px;min-width:80px;">Type</span>
+                        <span style="flex:0 0 60px;min-width:60px;">Width</span>
+                    </div>
+                `;
             } else {
                 headerRow.innerHTML = `
                     <span></span>
@@ -2632,6 +2641,14 @@ body.light-mode .template-save-dialog .dialog-title {
                 brushLineRow.style.paddingBottom = '12px';
                 brushLineRow.style.marginBottom = '12px';
                 container.appendChild(brushLineRow);
+                if (['trendline', 'curve', 'arrow'].includes(drawing.type)) {
+                    const lineLabel = brushLineRow.querySelector('.tv-prop-label');
+                    if (lineLabel) { lineLabel.style.minWidth = '0'; lineLabel.style.width = '50px'; lineLabel.style.flex = '0 0 50px'; }
+                    const typeSelect = brushLineRow.querySelector('.tv-select[data-prop="lineType"]');
+                    if (typeSelect) { typeSelect.style.width = '80px'; typeSelect.style.minWidth = '80px'; }
+                    const widthSelect = brushLineRow.querySelector('.tv-select[data-prop="lineWidth"]');
+                    if (widthSelect) { widthSelect.style.width = '60px'; widthSelect.style.minWidth = '60px'; }
+                }
 	            if (drawing.type === 'rectangle') rectangleBorderRow = brushLineRow;
             } else {
                 if (isFibTool) {
