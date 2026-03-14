@@ -562,12 +562,12 @@ class DrawingToolbar {
                     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
-                    padding: 8px;
+                    padding: 5px;
                     display: none;
                     flex-direction: column;
-                    gap: 4px;
+                    gap: 2px;
                     z-index: 10001;
-                    min-width: 120px;
+                    min-width: 100px;
                 }
                 
                 body.light-mode .toolbar-dropdown {
@@ -581,12 +581,12 @@ class DrawingToolbar {
                 .toolbar-dropdown-item {
                     display: flex;
                     align-items: center;
-                    gap: 10px;
-                    padding: 8px 12px;
+                    gap: 8px;
+                    padding: 6px 10px;
                     border-radius: 4px;
                     cursor: default;
                     color: #d1d4dc;
-                    font-size: 13px;
+                    font-size: 12px;
                     transition: background 0.15s, color 0.15s;
                 }
                 
@@ -617,7 +617,7 @@ class DrawingToolbar {
                     flex-shrink: 0;
                 }
                 .toolbar-dropdown-wide {
-                    min-width: 220px;
+                    min-width: 170px;
                 }
                 .template-separator {
                     height: 1px;
@@ -631,11 +631,11 @@ class DrawingToolbar {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                     border-radius: 4px;
                     cursor: default;
                     color: #d1d4dc;
-                    font-size: 13px;
+                    font-size: 12px;
                     transition: background 0.15s, color 0.15s;
                 }
                 .template-item:hover {
