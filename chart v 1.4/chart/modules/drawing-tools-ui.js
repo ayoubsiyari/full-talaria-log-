@@ -427,8 +427,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-checkbox {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     border: 2px solid var(--sp-input-border, #363a45);
     border-radius: 3px;
     cursor: default;
@@ -451,8 +451,8 @@ class DrawingSettingsPanel {
 }
 
 .tv-checkbox svg {
-    width: 18px;
-    height: 18px;
+    width: 13px;
+    height: 13px;
     stroke: #fff;
     stroke-width: 1.5 !important;
     opacity: 0;
@@ -465,7 +465,7 @@ class DrawingSettingsPanel {
 
 .tv-checkbox-label {
     color: var(--sp-text, #d1d4dc);
-    font-size: 11px;
+    font-size: 13px;
     cursor: default;
     user-select: none;
     -webkit-user-select: none;
