@@ -6941,13 +6941,13 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Line type dropdown (not for highlighter or brush)
         const lineTypeDropdown = isHighlighterOrBrushNoLineType ? '' : `
-                <select class="tv-select" data-prop="${propKey}Type" style="width: 40px; min-width: 40px;">
+                <select class="tv-select" data-prop="${propKey}Type" style="width: auto; min-width: 60px;">
                     <option value="" ${values.lineType === '' ? 'selected' : ''}>───────</option>
                     <option value="10,6" ${(values.lineType === '10,6' || values.lineType === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
                     <option value="2,2" ${values.lineType === '2,2' ? 'selected' : ''}>··········</option>
                     <option value="8,4,2,4" ${values.lineType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
                 </select>`;
-        const lineWidthSelectWidth = isHighlighter || isBrush ? '70px' : '40px';
+        const lineWidthSelectWidth = isHighlighter || isBrush ? '70px' : 'auto';
         
         row.innerHTML = `
             <span class="tv-prop-label" style="cursor: default;">${label}</span>
