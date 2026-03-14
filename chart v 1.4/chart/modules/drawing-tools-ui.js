@@ -11382,8 +11382,8 @@ showTemplateDropdown(btn, drawing, modal) {
         border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));
         border-radius: 8px;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-        padding: 8px;
-        min-width: 220px;
+        padding: 5px;
+        min-width: 170px;
         z-index: 12550;
     `;
 
@@ -11407,20 +11407,20 @@ showTemplateDropdown(btn, drawing, modal) {
         <div class="template-dropdown-item" data-action="save-template" style="
             display: flex;
             align-items: center;
-            padding: 8px 12px;
+            padding: 6px 10px;
             border-radius: 4px;
             cursor: default;
             color: #d1d4dc;
-            font-size: 13px;
+            font-size: 12px;
         ">Save as</div>
         <div class="template-dropdown-item" data-action="apply-default" style="
             display: flex;
             align-items: center;
-            padding: 8px 12px;
+            padding: 6px 10px;
             border-radius: 4px;
             cursor: default;
             color: #d1d4dc;
-            font-size: 13px;
+            font-size: 12px;
         ">Apply Default</div>
         ${templates.length > 0 ? `
             <div style="height: 1px; background: var(--sp-ui-border, rgba(60,60,72,0.95)); margin: 4px 0;"></div>
@@ -11429,11 +11429,11 @@ showTemplateDropdown(btn, drawing, modal) {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                     border-radius: 4px;
                     cursor: default;
                     color: #d1d4dc;
-                    font-size: 13px;
+                    font-size: 12px;
                 ">
                     <span>${t.name}</span>
                     <span class="template-delete-btn" data-template-id="${t.id}">
