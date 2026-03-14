@@ -978,10 +978,11 @@ class DrawingSettingsPanel {
 
 .tv-coords-stepper {
     position: absolute;
-    top: 0;
-    right: 0;
-    width: 22px;
-    height: 100%;
+    top: 2px;
+    right: 2px;
+    bottom: 2px;
+    width: 20px;
+    height: auto;
     background: transparent;
     border: none;
     border-radius: 0;
