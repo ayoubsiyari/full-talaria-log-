@@ -2606,15 +2606,15 @@
         /* Left-edge collapse handle — visible when panel is open */
         .sp-edge-handle {
             position: absolute;
-            left: -19px;
+            left: 0;
             top: 50%;
             transform: translateY(-50%);
             width: 19px;
             height: 44px;
             background: var(--sp-bg, #050028);
             border: 1px solid var(--sp-ui-border, rgba(255,255,255,0.10));
-            border-right: none;
-            border-radius: 6px 0 0 6px;
+            border-left: none;
+            border-radius: 0 6px 6px 0;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -2622,7 +2622,7 @@
             z-index: 1;
             color: var(--sp-text-muted, #787b86);
             transition: background 0.15s, color 0.15s;
-            box-shadow: -3px 0 8px rgba(0,0,0,0.35);
+            box-shadow: 3px 0 8px rgba(0,0,0,0.35);
         }
         .sp-edge-handle:hover {
             background: rgba(255,255,255,0.08);
