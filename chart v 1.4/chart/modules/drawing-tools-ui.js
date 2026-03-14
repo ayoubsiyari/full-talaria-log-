@@ -2821,7 +2821,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (['trendline', 'curve', 'arrow'].includes(drawing.type)) {
             const extendSection = document.createElement('div');
             extendSection.className = 'tv-extend-section';
-            extendSection.style.cssText = 'margin-top: 16px;';
+            extendSection.style.cssText = 'margin-top: 12px;';
             
             const extendRow = document.createElement('div');
             extendRow.className = 'tv-prop-row tv-checkbox-stack-row';
@@ -2887,7 +2887,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (['trendline', 'arrow'].includes(drawing.type)) {
             const infoSection = document.createElement('div');
             infoSection.className = 'tv-info-section';
-            infoSection.style.cssText = 'margin-top: 16px;';
+            infoSection.style.cssText = 'margin-top: 12px;';
             
             const infoSettings = {
                 showInfo: false,
