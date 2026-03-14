@@ -296,11 +296,11 @@ class ScreenshotManager {
         if (!ctx) return false;
 
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
-        const useDarkBrand = this.isLightColor(backgroundColor);
+        const isDark = !this.isLightColor(backgroundColor);
 
-        // Load symbol icon and wordmark separately so we can stack them vertically
-        const symbolSrc   = this.resolveAssetUrl(useDarkBrand ? 'modules/logo-09.png' : 'modules/logo-08.png');
-        const wordmarkSrc = this.resolveAssetUrl(useDarkBrand ? 'modules/logo-14.png' : 'modules/logo-05.png');
+        // Same images the live chart HTML always uses
+        const iconSrc     = this.resolveAssetUrl('modules/logo-09.png');
+        const wordmarkSrc = this.resolveAssetUrl('modules/logo-14.png');
 
         const loadImg = (src) => new Promise((resolve) => {
             const img = new Image();
@@ -310,42 +310,56 @@ class ScreenshotManager {
             img.src = src;
         });
 
-        const [symbolImg, wordmarkImg] = await Promise.all([loadImg(symbolSrc), loadImg(wordmarkSrc)]);
-        if (!symbolImg && !wordmarkImg) {
+        const [iconImg, wordmarkImg] = await Promise.all([loadImg(iconSrc), loadImg(wordmarkSrc)]);
+        if (!iconImg && !wordmarkImg) {
             console.warn('📸 Logo stamp skipped: logo images could not be loaded');
             return false;
         }
 
-        const marginX = Math.max(14, Math.round(canvas.width  * 0.012));
-        const marginY = Math.max(14, Math.round(canvas.height * 0.018));
+        // Derive pixel scale from canvas vs. actual container size
+        const containerEl   = sourceElement || document.getElementById('chart-container');
+        const containerRect = containerEl?.getBoundingClientRect();
+        const s = (containerRect && containerRect.height > 0)
+            ? canvas.height / containerRect.height
+            : 2;
 
-        // Icon height ~7% of canvas height — matches live chart bottom-left logo size
-        const iconH  = Math.max(32, Math.round(canvas.height * 0.07));
-        const iconW  = symbolImg  ? Math.round((symbolImg.naturalWidth  / symbolImg.naturalHeight)  * iconH)  : 0;
+        // Exact CSS values from .chart-brand in index.html, scaled by s:
+        //   .logo-top   { height: 60px; transform: translateX(38px); }
+        //   .logo-bottom{ height: 70px; margin-top: -16px; transform: translateX(-2px); }
+        //   .chart-brand{ bottom: 18px; left: 0; }
+        const iconH      = Math.round(60 * s);
+        const iconOffX   = Math.round(38 * s);
+        const wmH        = Math.round(70 * s);
+        const wmOffX     = Math.round(-2 * s);   // translateX(-2px) on wordmark
+        const overlap    = Math.round(16 * s);   // margin-top: -16px
+        const bottomGap  = Math.round(18 * s);   // bottom: 18px
 
-        // Wordmark height ~55% of icon height
-        const wmH    = Math.max(16, Math.round(iconH * 0.55));
-        const wmW    = wordmarkImg ? Math.round((wordmarkImg.naturalWidth / wordmarkImg.naturalHeight) * wmH) : 0;
+        const iconW = iconImg     ? Math.round((iconImg.naturalWidth     / iconImg.naturalHeight)     * iconH) : 0;
+        const wmW   = wordmarkImg ? Math.round((wordmarkImg.naturalWidth / wordmarkImg.naturalHeight) * wmH)   : 0;
 
-        const gap    = Math.max(4, Math.round(iconH * 0.14));  // gap between icon and text
-        const totalH = iconH + gap + wmH;
-
-        const x = marginX;
-        const y = canvas.height - totalH - marginY;
+        // Total visual height = iconH + wmH - overlap
+        const totalH = iconH + wmH - overlap;
+        // Wordmark top y = canvas.height - bottomGap - totalH + iconH - overlap
+        const logoTop = canvas.height - bottomGap - totalH;
 
         ctx.save();
         ctx.globalAlpha = 0.98;
-        ctx.shadowColor    = useDarkBrand ? 'rgba(0,0,0,0.42)' : 'rgba(3,8,17,0.36)';
-        ctx.shadowBlur     = Math.max(4, Math.round(iconH * 0.16));
-        ctx.shadowOffsetY  = Math.max(1, Math.round(iconH * 0.06));
 
-        if (symbolImg && iconW > 0) {
-            ctx.drawImage(symbolImg, x, y, iconW, iconH);
+        // Dark theme: brightness(0) invert(1) turns colored pixels white
+        // (matches .chart-brand .logo-dark img { filter: brightness(0) invert(1) })
+        if (isDark) {
+            ctx.filter = 'brightness(0) invert(1)';
         }
+
+        // Draw wordmark first (visually behind icon)
         if (wordmarkImg && wmW > 0) {
-            ctx.shadowBlur = Math.max(3, Math.round(wmH * 0.16));
-            ctx.drawImage(wordmarkImg, x, y + iconH + gap, wmW, wmH);
+            ctx.drawImage(wordmarkImg, wmOffX, logoTop + iconH - overlap, wmW, wmH);
         }
+        // Draw icon on top, shifted right by iconOffX
+        if (iconImg && iconW > 0) {
+            ctx.drawImage(iconImg, iconOffX, logoTop, iconW, iconH);
+        }
+
         ctx.restore();
 
         canvas.__talariaLogoStamped = true;
