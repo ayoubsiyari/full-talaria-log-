@@ -495,8 +495,13 @@ class TrendlineTool extends BaseDrawing {
         const perpY = dx / lineLength;
         
         // Offset distance: half box height + margin to ensure clear separation from line
-        // Increased from 6 to 12 pixels to prevent box from touching the line
-        const offsetDistance = boxHeight / 2 + 12;
+        // If the trendline has a text label at 'top', push box further to clear it
+        const hasText = this.text && this.text.trim();
+        const textVAlignForBox = this.style.textVAlign || this.style.textPosition || 'top';
+        const textFontSizeForBox = this.style.fontSize || 14;
+        const offsetDistance = (hasText && textVAlignForBox === 'top')
+            ? LINE_LABEL_OFFSET + textFontSizeForBox + 10 + boxHeight / 2
+            : boxHeight / 2 + 12;
         
         // Choose which side to place the box (prefer above/left of line)
         // If perpendicular points upward (perpY < 0), use it; otherwise flip
