@@ -6543,9 +6543,8 @@
             gap: 18px;
             padding: 12px 32px 20px;
             box-shadow: 0 -18px 48px rgba(2, 5, 18, 0.45);
-            height: auto;
-            max-height: none;
-            transition: all 0.3s ease;
+            overflow: hidden;
+            transition: height 0.28s cubic-bezier(.4,0,.2,1);
         }
 
         .replay-toolbar::before {
@@ -7076,6 +7075,35 @@
 
         .replay-toolbar.visible {
             display: flex;
+        }
+
+        /* Drag-to-resize handle — top edge of bottom panel */
+        .replay-resize-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            cursor: ns-resize;
+            z-index: 10;
+            background: transparent;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        .replay-resize-handle:hover,
+        .replay-resize-handle.dragging {
+            background: rgba(41, 98, 255, 0.35);
+        }
+        .replay-resize-handle::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 36px;
+            height: 3px;
+            border-radius: 3px;
+            background: rgba(120,123,134,0.45);
         }
 
         .replay-toolbar-handle {
@@ -8978,38 +9006,13 @@
             padding: 12px 0;
         }
 
-        body.replay-tabs-collapsed .replay-tabs-container,
-        body.replay-tabs-collapsed .replay-tabs-container *,
-        body.replay-tabs-collapsed .replay-tabs-body,
-        body.replay-tabs-collapsed .replay-tabs-nav,
-        body.replay-tabs-collapsed .replay-tab-panel {
-            max-height: 0 !important;
-            min-height: 0 !important;
-            height: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            opacity: 0 !important;
-            overflow: hidden !important;
-            display: none !important;
-            border: none !important;
-        }
+        /* Collapsed: height clipping on toolbar hides tabs; keep opacity for fade */
+        body.replay-tabs-collapsed .replay-tabs-container { opacity: 0; pointer-events: none; }
+        .replay-tabs-container { transition: opacity 0.2s ease; }
 
         /* Collapsed state - compact single bar, no extra space */
         body.replay-tabs-collapsed .replay-toolbar {
-            background: #050028 !important;
-            border-top: 1px solid rgba(50, 50, 60, 0.9) !important;
-            box-shadow: none !important;
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            gap: 6px !important;
-            padding: 2px 8px !important;
             height: 48px !important;
-            min-height: 48px !important;
-            max-height: 50px !important;
-            bottom: 0 !important;
-            top: auto !important;
         }
 
         body.replay-tabs-collapsed .replay-toolbar-content {
@@ -18398,6 +18401,7 @@
 
         <!-- Floating Replay Toolbar -->
         <div id="replayToolbar" class="replay-toolbar" data-drag-handle="replayToolbarHandle">
+            <div id="replayResizeHandle" class="replay-resize-handle"></div>
             <div class="replay-toolbar-content">
                 <!-- Hidden handle for drag system -->
                 <div id="replayToolbarHandle" style="display:none;"></div>
@@ -23047,13 +23051,74 @@ function showIndicatorsMenu() {
                 });
             }
 
+            // ── Smooth collapse / expand ──
+            const PANEL_COLLAPSED_H = 48;
+            const PANEL_DEFAULT_H   = 230;
+            let panelExpanded = true;
+
+            function getPanelH() {
+                return parseInt(localStorage.getItem('replayPanelHeight') || PANEL_DEFAULT_H, 10);
+            }
+
+            function applyPanelHeight(h, animated) {
+                if (!animated) replayToolbar.style.transition = 'none';
+                replayToolbar.style.height = h + 'px';
+                if (!animated) requestAnimationFrame(() => { replayToolbar.style.transition = ''; });
+            }
+
+            function collapsePanel() {
+                panelExpanded = false;
+                document.body.classList.add('replay-tabs-collapsed');
+                applyPanelHeight(PANEL_COLLAPSED_H, true);
+                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
+            }
+
+            function expandPanel() {
+                panelExpanded = true;
+                document.body.classList.remove('replay-tabs-collapsed');
+                applyPanelHeight(getPanelH(), true);
+                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
+            }
+
+            // Init height without animation
+            applyPanelHeight(getPanelH(), false);
+            updateContainerBottom();
+
             if (collapseToggle) {
                 collapseToggle.addEventListener('click', () => {
-                    document.body.classList.toggle('replay-tabs-collapsed');
-                    // Update immediately and after transition
-                    updateContainerBottom();
-                    setTimeout(updateContainerBottom, 50);
-                    setTimeout(updateContainerBottom, 350);
+                    if (panelExpanded) { collapsePanel(); } else { expandPanel(); }
+                });
+            }
+
+            // ── Drag-to-resize ──
+            const resizeHandle = document.getElementById('replayResizeHandle');
+            if (resizeHandle && replayToolbar) {
+                let _ry0, _rh0;
+                resizeHandle.addEventListener('mousedown', (e) => {
+                    if (!panelExpanded) return;
+                    _ry0 = e.clientY;
+                    _rh0 = replayToolbar.getBoundingClientRect().height;
+                    replayToolbar.style.transition = 'none';
+                    document.body.style.userSelect = 'none';
+                    resizeHandle.classList.add('dragging');
+
+                    const onMove = (ev) => {
+                        const newH = Math.max(PANEL_COLLAPSED_H + 30, Math.min(window.innerHeight * 0.7, _rh0 + (_ry0 - ev.clientY)));
+                        replayToolbar.style.height = newH + 'px';
+                        updateContainerBottom();
+                    };
+                    const onUp = () => {
+                        replayToolbar.style.transition = '';
+                        document.body.style.userSelect = '';
+                        resizeHandle.classList.remove('dragging');
+                        localStorage.setItem('replayPanelHeight', Math.round(replayToolbar.getBoundingClientRect().height));
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                        if (window.chart && window.chart.resize) window.chart.resize();
+                    };
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                    e.preventDefault();
                 });
             }
 
