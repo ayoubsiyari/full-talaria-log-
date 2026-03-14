@@ -23105,18 +23105,27 @@ function showIndicatorsMenu() {
                     document.body.style.userSelect = 'none';
                     resizeHandle.classList.add('dragging');
 
+                    let _rafId = null;
                     const onMove = (ev) => {
                         const newH = Math.max(PANEL_COLLAPSED_H + 30, Math.min(window.innerHeight * 0.7, _rh0 + (_ry0 - ev.clientY)));
                         replayToolbar.style.height = newH + 'px';
-                        updateContainerBottom();
+                        if (container) container.style.bottom = newH + 'px';
+                        if (!_rafId && window.chart && window.chart.resize) {
+                            _rafId = requestAnimationFrame(() => {
+                                window.chart.resize();
+                                _rafId = null;
+                            });
+                        }
                     };
                     const onUp = () => {
                         replayToolbar.style.transition = '';
                         document.body.style.userSelect = '';
                         resizeHandle.classList.remove('dragging');
+                        if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
                         localStorage.setItem('replayPanelHeight', Math.round(replayToolbar.getBoundingClientRect().height));
                         document.removeEventListener('mousemove', onMove);
                         document.removeEventListener('mouseup', onUp);
+                        updateContainerBottom();
                         if (window.chart && window.chart.resize) window.chart.resize();
                     };
                     document.addEventListener('mousemove', onMove);
