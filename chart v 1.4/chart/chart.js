@@ -11052,6 +11052,9 @@ class Chart {
                 ? unifiedBarColor
                 : (isUp ? this.chartSettings.borderUpColor : this.chartSettings.borderDownColor);
 
+            // Snap candle center to an integer pixel — both wick and body derive from this.
+            const cx = Math.round(x);
+
             // Calculate wick width - always crisp
             const wickWidth = Math.max(1, Math.min(2, Math.ceil(this.candleWidth / 8)));
 
@@ -11061,16 +11064,18 @@ class Chart {
                 this.ctx.lineWidth = wickWidth;
                 this.ctx.lineCap = 'butt';
                 this.ctx.beginPath();
-                this.ctx.moveTo(Math.round(x), yh);
-                this.ctx.lineTo(Math.round(x), yl);
+                this.ctx.moveTo(cx, yh);
+                this.ctx.lineTo(cx, yl);
                 this.ctx.stroke();
             }
 
-            // Draw body with borders (use 60% width for spacing between candles, like overlay)
-            const bodyWidth = this.candleWidth * 0.6;
+            // Body geometry — always centered on the same cx as the wick.
+            // halfBodyPx is an integer so bodyLeft = cx - halfBodyPx is exactly centred.
+            const halfBodyPx = Math.max(1, Math.floor(this.candleWidth * 0.3));
+            const bodyWidthPx = halfBodyPx * 2;          // always even, symmetric around cx
+            const bodyLeft = cx - halfBodyPx;             // integer — no rounding needed
             const bodyHeight = Math.abs(yc - yo);
             const bodyTop = Math.min(yo, yc);
-            const bodyLeft = x - bodyWidth / 2;
             
             // Professional candle rendering
             if (bodyHeight < 1) {
@@ -11081,13 +11086,15 @@ class Chart {
                     this.ctx.lineCap = 'butt';
                     this.ctx.beginPath();
                     this.ctx.moveTo(bodyLeft, Math.round(yo));
-                    this.ctx.lineTo(bodyLeft + bodyWidth, Math.round(yo));
+                    this.ctx.lineTo(bodyLeft + bodyWidthPx, Math.round(yo));
                     this.ctx.stroke();
                 }
             } else {
                 // Regular candle
                 // For hollow candle mode, up candles are hollow, down candles are filled
                 const shouldBeHollow = isHollow && isUp;
+                const bTop = Math.round(bodyTop);
+                const bH   = Math.max(1, Math.round(bodyHeight));
                 
                 if (isUp) {
                     // Draw body fill (if enabled)
@@ -11095,57 +11102,32 @@ class Chart {
                         if (shouldBeHollow) {
                             // Hollow style - clear inside and draw border
                             this.ctx.fillStyle = this.chartSettings.backgroundColor;
-                            this.ctx.fillRect(
-                                Math.round(bodyLeft),
-                                Math.round(bodyTop),
-                                Math.round(bodyWidth),
-                                Math.round(bodyHeight)
-                            );
+                            this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                         } else {
                             // Filled with bodyUpColor
                             this.ctx.fillStyle = bodyColor;
-                            this.ctx.fillRect(
-                                Math.round(bodyLeft),
-                                Math.round(bodyTop),
-                                Math.round(bodyWidth),
-                                Math.round(bodyHeight)
-                            );
+                            this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                         }
                     }
                     
                     // Draw border on top (if enabled or hollow mode)
                     if (this.chartSettings.showCandleBorders !== false || shouldBeHollow) {
                         this.ctx.strokeStyle = borderColor;
-                        this.ctx.lineWidth = shouldBeHollow ? 2 : Math.max(1, Math.min(2, bodyWidth / 6));
-                        this.ctx.strokeRect(
-                            Math.round(bodyLeft) + 0.5,
-                            Math.round(bodyTop) + 0.5,
-                            Math.round(bodyWidth) - 1,
-                            Math.round(bodyHeight) - 1
-                        );
+                        this.ctx.lineWidth = shouldBeHollow ? 2 : Math.max(1, Math.min(2, bodyWidthPx / 6));
+                        this.ctx.strokeRect(bodyLeft + 0.5, bTop + 0.5, bodyWidthPx - 1, bH - 1);
                     }
                 } else {
                     // Down candle - filled with body color (if enabled)
                     if (this.chartSettings.showCandleBody !== false) {
                         this.ctx.fillStyle = bodyColor;
-                        this.ctx.fillRect(
-                            Math.round(bodyLeft),
-                            Math.round(bodyTop),
-                            Math.round(bodyWidth),
-                            Math.round(bodyHeight)
-                        );
+                        this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                     }
                     
                     // Add border for definition (if enabled)
-                    if (this.chartSettings.showCandleBorders !== false && bodyWidth >= 3) {
+                    if (this.chartSettings.showCandleBorders !== false && bodyWidthPx >= 3) {
                         this.ctx.strokeStyle = borderColor;
                         this.ctx.lineWidth = 1;
-                        this.ctx.strokeRect(
-                            Math.round(bodyLeft) + 0.5,
-                            Math.round(bodyTop) + 0.5,
-                            Math.round(bodyWidth) - 1,
-                            Math.round(bodyHeight) - 1
-                        );
+                        this.ctx.strokeRect(bodyLeft + 0.5, bTop + 0.5, bodyWidthPx - 1, bH - 1);
                     }
                 }
             }
