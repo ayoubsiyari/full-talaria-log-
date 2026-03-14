@@ -16154,12 +16154,15 @@ class DrawingContextMenu {
         const style = document.createElement('style');
         style.id = 'drawing-context-menu-styles';
         style.textContent = `
+            /* Base (dark / theme-aware) */
             .tv-context-menu {
                 position: fixed;
-                background: #ffffff;
+                background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg, #131722)));
+                border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.45));
                 border-radius: 8px;
-                border: 1px solid #e0e3eb;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
                 padding: 8px;
                 min-width: 220px;
                 z-index: 100000;
@@ -16168,37 +16171,39 @@ class DrawingContextMenu {
                 animation: tvMenuFadeIn 0.15s ease-out;
                 user-select: none;
             }
-            
+
             @keyframes tvMenuFadeIn {
                 from { opacity: 0; transform: translateY(-4px); }
                 to { opacity: 1; transform: translateY(0); }
             }
-            
+
             .tv-context-menu-item {
                 display: flex;
                 align-items: center;
                 padding: 10px 16px;
                 cursor: default;
-                color: #131722;
+                color: var(--sp-text-primary, #d1d4dc);
                 transition: all 0.15s ease;
                 gap: 10px;
                 font-size: 13px;
                 font-weight: 400;
+                border-radius: 4px;
             }
-            
+
             .tv-context-menu-item:hover {
-                background: rgba(41, 98, 255, 0.12);
-                color: #2962ff;
+                background: rgba(var(--sp-accent-rgb, 41, 98, 255), 0.15);
+                color: #ffffff;
             }
-            
+
             .tv-context-menu-item.danger {
                 color: #f23645;
             }
-            
+
             .tv-context-menu-item.danger:hover {
-                background: #ffebee;
+                background: rgba(242, 54, 69, 0.15);
+                color: #f23645;
             }
-            
+
             .tv-context-menu-icon {
                 width: 18px;
                 height: 18px;
@@ -16208,81 +16213,69 @@ class DrawingContextMenu {
                 color: #787b86;
                 flex-shrink: 0;
             }
-            
+
             .tv-context-menu-item:hover .tv-context-menu-icon {
-                color: #131722;
+                color: #d1d4dc;
             }
-            
+
             .tv-context-menu-item.danger .tv-context-menu-icon {
                 color: #f23645;
             }
-            
+
             .tv-context-menu-label {
                 flex: 1;
             }
-            
+
             .tv-context-menu-shortcut {
-                color: #b2b5be;
+                color: var(--sp-text-secondary, #6a6d78);
                 font-size: 12px;
                 margin-left: auto;
             }
-            
+
             .tv-context-menu-arrow {
-                color: #b2b5be;
+                color: var(--sp-text-secondary, #6a6d78);
                 margin-left: 8px;
             }
-            
+
             .tv-context-menu-divider {
                 height: 1px;
-                background: #e0e3eb;
+                background: var(--sp-ui-border, rgba(255, 255, 255, 0.08));
                 margin: 6px 0;
             }
-            
-            /* Dark mode */
-            body.dark-mode .tv-context-menu,
-            body:not(.light-mode) .tv-context-menu {
-                background: linear-gradient(180deg, #0b0b0d 0%, #000000 100%);
-                border: 1px solid rgba(50, 50, 60, 0.9);
-                border-radius: 8px;
-                padding: 8px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+            /* Light mode overrides */
+            body.light-mode .tv-context-menu {
+                background: #ffffff;
+                border-color: #e0e3eb;
+                box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
             }
-            
-            body.dark-mode .tv-context-menu-item,
-            body:not(.light-mode) .tv-context-menu-item {
-                color: #d1d4dc;
+
+            body.light-mode .tv-context-menu-item {
+                color: #131722;
             }
-            
-            body.dark-mode .tv-context-menu-item:hover,
-            body:not(.light-mode) .tv-context-menu-item:hover {
-                background: rgba(41, 98, 255, 0.15);
-                border-radius: 4px;
-                color: #ffffff;
+
+            body.light-mode .tv-context-menu-item:hover {
+                background: rgba(41, 98, 255, 0.10);
+                color: #2962ff;
             }
-            
-            body.dark-mode .tv-context-menu-item.danger:hover,
-            body:not(.light-mode) .tv-context-menu-item.danger:hover {
-                background: rgba(242, 54, 69, 0.15);
+
+            body.light-mode .tv-context-menu-item.danger:hover {
+                background: #ffebee;
             }
-            
-            body.dark-mode .tv-context-menu-icon,
-            body:not(.light-mode) .tv-context-menu-icon {
-                color: #787b86;
+
+            body.light-mode .tv-context-menu-item:hover .tv-context-menu-icon {
+                color: #131722;
             }
-            
-            body.dark-mode .tv-context-menu-item:hover .tv-context-menu-icon,
-            body:not(.light-mode) .tv-context-menu-item:hover .tv-context-menu-icon {
-                color: #d1d4dc;
+
+            body.light-mode .tv-context-menu-divider {
+                background: #e0e3eb;
             }
-            
-            body.dark-mode .tv-context-menu-divider,
-            body:not(.light-mode) .tv-context-menu-divider {
-                background: rgba(255, 255, 255, 0.08);
-            }
-            
-            body.dark-mode .tv-context-menu-shortcut,
-            body:not(.light-mode) .tv-context-menu-shortcut {
-                color: #6a6d78;
+
+            body.light-mode .tv-context-menu-shortcut,
+            body.light-mode .tv-context-menu-arrow {
+                color: #b2b5be;
             }
         `;
         document.head.appendChild(style);
