@@ -636,10 +636,11 @@ class DrawingToolbar {
                     cursor: default;
                     color: #d1d4dc;
                     font-size: 13px;
-                    transition: background 0.15s;
+                    transition: background 0.15s, color 0.15s;
                 }
                 .template-item:hover {
-                    background: #363a45;
+                    background: rgba(var(--sp-accent-rgb), 0.15);
+                    color: #ffffff;
                 }
                 .template-item-name {
                     display: flex;
