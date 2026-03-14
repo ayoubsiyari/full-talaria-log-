@@ -9623,6 +9623,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 queryAll('.tv-ending-dropdown-menu').forEach(m => {
                     if (m !== menu) m.style.display = 'none';
                 });
+                document.querySelector('.settings-info-dropdown')?.remove();
+                document.querySelector('.settings-template-dropdown')?.remove();
                 menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
             });
             
@@ -11162,6 +11164,9 @@ body.light-mode .template-save-dialog .dialog-title {
             setButtonOpenState(false);
             return;
         }
+        // Close other open dropdowns
+        document.querySelectorAll('.tv-ending-dropdown-menu').forEach(m => m.style.display = 'none');
+        document.querySelector('.settings-template-dropdown')?.remove();
 
         const infoOptions = this.getInfoDropdownOptions(drawing);
         const infoDefaults = drawing.type === 'date-price-range'
@@ -11338,6 +11343,9 @@ showTemplateDropdown(btn, drawing, modal) {
         existingDropdown.remove();
         return; // Toggle off if already open
     }
+    // Close other open dropdowns
+    document.querySelectorAll('.tv-ending-dropdown-menu').forEach(m => m.style.display = 'none');
+    document.querySelector('.settings-info-dropdown')?.remove();
     
     // Close floating toolbar template dropdown if open
     const floatingDropdown = document.querySelector('#template-dropdown');
