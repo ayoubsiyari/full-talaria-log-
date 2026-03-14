@@ -20113,6 +20113,38 @@
         });
     </script>
     
+    <!-- Deselect drawings when opening any menu / panel -->
+    <script>
+        window._deactivateDrawingTools = function() {
+            var c = window.chart || window.mainChart;
+            var dm = c && c.drawingManager;
+            if (!dm) return;
+            if (typeof dm.deselectAll === 'function') dm.deselectAll();
+            if (typeof dm.clearTool   === 'function') dm.clearTool();
+        };
+
+        document.addEventListener('mousedown', function(e) {
+            // Ignore clicks INSIDE the chart canvas/SVG area
+            var wrapper = document.getElementById('chartWrapper');
+            if (wrapper && wrapper.contains(e.target)) return;
+
+            // Ignore clicks inside the floating drawing toolbar
+            var dtb = document.querySelector('.drawing-toolbar');
+            if (dtb && dtb.contains(e.target)) return;
+
+            // Ignore clicks inside the drawing settings modal
+            var dsm = document.querySelector('.tv-settings-modal');
+            if (dsm && dsm.contains(e.target)) return;
+
+            // Ignore clicks inside drawing context menu
+            var dcm = document.querySelector('.drawing-context-menu');
+            if (dcm && dcm.contains(e.target)) return;
+
+            // Anything else (panels, dropdowns, toolbar buttons, replay tabs…) — deselect
+            window._deactivateDrawingTools();
+        }, true);
+    </script>
+
     <!-- Prevent Browser Drag on Chart -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
