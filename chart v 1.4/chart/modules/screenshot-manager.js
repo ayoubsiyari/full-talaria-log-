@@ -295,61 +295,150 @@ class ScreenshotManager {
         const ctx = canvas.getContext('2d');
         if (!ctx) return false;
 
-        const logoImage = await this.getBrandLogoImage();
-        if (!logoImage) {
-            console.warn('📸 Logo stamp skipped: logo image could not be loaded');
-            return false;
-        }
-
-        const bounds = this.getVisibleLogoBounds(logoImage);
-        if (!bounds || !bounds.width || !bounds.height) {
-            console.warn('📸 Logo stamp skipped: no visible logo bounds detected');
-            return false;
-        }
-
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
-        const useDarkShadow = this.isLightColor(backgroundColor);
-        const canvasIsDark = !useDarkShadow;
-        const logoAppearsDark = typeof bounds.averageLuma === 'number' && bounds.averageLuma < 118;
-        const logoAppearsLight = typeof bounds.averageLuma === 'number' && bounds.averageLuma > 190;
+        const useDarkBrand = this.isLightColor(backgroundColor);
 
-        const marginX = Math.max(14, Math.round(canvas.width * 0.012));
-        const marginY = Math.max(14, Math.round(canvas.height * 0.018));
-        let drawHeight = Math.max(20, Math.round(canvas.height * 0.045));
-        let drawWidth = Math.round((bounds.width / bounds.height) * drawHeight);
+        // Load symbol icon and wordmark separately so we can stack them vertically
+        const symbolSrc   = this.resolveAssetUrl(useDarkBrand ? 'modules/logo-09.png' : 'modules/logo-08.png');
+        const wordmarkSrc = this.resolveAssetUrl(useDarkBrand ? 'modules/logo-14.png' : 'modules/logo-05.png');
 
-        const maxWidth = Math.max(150, Math.round(canvas.width * 0.22));
-        if (drawWidth > maxWidth) {
-            drawWidth = maxWidth;
-            drawHeight = Math.round((bounds.height / bounds.width) * drawWidth);
+        const loadImg = (src) => new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload  = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = src;
+        });
+
+        const [symbolImg, wordmarkImg] = await Promise.all([loadImg(symbolSrc), loadImg(wordmarkSrc)]);
+        if (!symbolImg && !wordmarkImg) {
+            console.warn('📸 Logo stamp skipped: logo images could not be loaded');
+            return false;
         }
+
+        const marginX = Math.max(14, Math.round(canvas.width  * 0.012));
+        const marginY = Math.max(14, Math.round(canvas.height * 0.018));
+
+        // Icon height ~4.5% of canvas height
+        const iconH  = Math.max(20, Math.round(canvas.height * 0.045));
+        const iconW  = symbolImg  ? Math.round((symbolImg.naturalWidth  / symbolImg.naturalHeight)  * iconH)  : 0;
+
+        // Wordmark height ~45% of icon height
+        const wmH    = Math.max(12, Math.round(iconH * 0.45));
+        const wmW    = wordmarkImg ? Math.round((wordmarkImg.naturalWidth / wordmarkImg.naturalHeight) * wmH) : 0;
+
+        const gap    = Math.max(3, Math.round(iconH * 0.12));  // gap between icon and text
+        const totalH = iconH + gap + wmH;
 
         const x = marginX;
-        const y = canvas.height - drawHeight - marginY;
+        const y = canvas.height - totalH - marginY;
 
         ctx.save();
         ctx.globalAlpha = 0.98;
-        if ((canvasIsDark && logoAppearsDark) || (!canvasIsDark && logoAppearsLight)) {
-            ctx.filter = 'brightness(0) invert(1)';
+        ctx.shadowColor    = useDarkBrand ? 'rgba(0,0,0,0.42)' : 'rgba(3,8,17,0.36)';
+        ctx.shadowBlur     = Math.max(4, Math.round(iconH * 0.16));
+        ctx.shadowOffsetY  = Math.max(1, Math.round(iconH * 0.06));
+
+        if (symbolImg && iconW > 0) {
+            ctx.drawImage(symbolImg, x, y, iconW, iconH);
         }
-        ctx.shadowColor = useDarkShadow ? 'rgba(0, 0, 0, 0.42)' : 'rgba(3, 8, 17, 0.36)';
-        ctx.shadowBlur = Math.max(4, Math.round(drawHeight * 0.16));
-        ctx.shadowOffsetY = Math.max(1, Math.round(drawHeight * 0.06));
-        ctx.drawImage(
-            logoImage,
-            bounds.x,
-            bounds.y,
-            bounds.width,
-            bounds.height,
-            x,
-            y,
-            drawWidth,
-            drawHeight
-        );
+        if (wordmarkImg && wmW > 0) {
+            ctx.shadowBlur = Math.max(3, Math.round(wmH * 0.16));
+            ctx.drawImage(wordmarkImg, x, y + iconH + gap, wmW, wmH);
+        }
         ctx.restore();
 
         canvas.__talariaLogoStamped = true;
         return true;
+    }
+
+    /**
+     * Draw the OHLC info label (symbol, timeframe, O/H/L/C, change) onto the
+     * screenshot canvas. Reads values from the live DOM, so no separate data
+     * pipeline is needed.
+     */
+    addOHLCOverlay(canvas, scale = 2) {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const get = (id) => document.getElementById(id)?.textContent?.trim() || '';
+        const symbol    = get('chartSymbol');
+        const timeframe = get('chartTimeframe');
+        const openVal   = get('open');
+        const highVal   = get('high');
+        const lowVal    = get('low');
+        const closeVal  = get('close');
+        const change    = get('chartChange');
+
+        if (!symbol && !openVal) return;
+
+        const pad  = Math.round(10 * scale);
+        const lineH = Math.round(17 * scale);
+        const fs1  = Math.round(11 * scale);   // symbol line font size
+        const fs2  = Math.round(10 * scale);   // OHLC line font size
+        const fontFace = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+        ctx.save();
+        ctx.textBaseline = 'top';
+
+        let y = pad;
+
+        // --- Symbol · Timeframe line ---
+        if (symbol || timeframe) {
+            ctx.font = `600 ${fs1}px ${fontFace}`;
+            const symbolText    = symbol || '';
+            const separatorText = symbol && timeframe ? '  ·  ' : '';
+            const tfText        = timeframe || '';
+
+            let x = pad;
+            ctx.fillStyle = 'rgba(219, 232, 255, 0.92)';
+            ctx.fillText(symbolText, x, y);
+            x += ctx.measureText(symbolText).width;
+
+            if (separatorText) {
+                ctx.fillStyle = 'rgba(120, 123, 134, 0.85)';
+                ctx.fillText(separatorText, x, y);
+                x += ctx.measureText(separatorText).width;
+            }
+
+            ctx.fillStyle = 'rgba(180, 190, 210, 0.85)';
+            ctx.fillText(tfText, x, y);
+            y += lineH;
+        }
+
+        // --- O H L C  change line ---
+        if (openVal) {
+            ctx.font = `${fs2}px ${fontFace}`;
+            const labelColor  = 'rgba(120, 123, 134, 0.90)';
+            const valueColor  = 'rgba(209, 212, 220, 0.92)';
+            const parts = [
+                { label: 'O', value: openVal },
+                { label: 'H', value: highVal },
+                { label: 'L', value: lowVal  },
+                { label: 'C', value: closeVal },
+            ];
+            let x = pad;
+            const colGap = Math.round(8 * scale);
+
+            parts.forEach(({ label, value }) => {
+                if (!value || value === '—') return;
+                ctx.fillStyle = labelColor;
+                ctx.fillText(label, x, y);
+                x += ctx.measureText(label).width + Math.round(2 * scale);
+                ctx.fillStyle = valueColor;
+                ctx.fillText(value, x, y);
+                x += ctx.measureText(value).width + colGap;
+            });
+
+            if (change && change !== '—') {
+                const isPos = change.startsWith('+');
+                ctx.fillStyle = isPos ? 'rgba(8, 153, 129, 0.92)' : 'rgba(242, 54, 69, 0.92)';
+                ctx.fillText(change, x, y);
+            }
+        }
+
+        ctx.restore();
     }
 
     /**
@@ -616,7 +705,9 @@ class ScreenshotManager {
             this._restoreUIOverlays(hidden);
             hidden = []; // already restored — prevent double-restore in finally
             if (!canvas) throw new Error('Canvas capture returned null');
-            
+
+            // Overlay OHLC info (HTML element not captured by canvas compositor)
+            this.addOHLCOverlay(canvas, 2);
             // Add watermark
             this.addWatermark(canvas);
             await this.addBrandLogo(canvas, targetElement);
