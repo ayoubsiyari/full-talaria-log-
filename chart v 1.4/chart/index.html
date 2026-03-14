@@ -22842,18 +22842,17 @@ function showIndicatorsMenu() {
             const container = document.querySelector('.container');
             const chartWrapper = document.getElementById('chartWrapper');
 
-            // Simple function to update container bottom based on toolbar height
+            // Update container bottom and chart resize in sync (rAF-throttled)
+            let _ucbRaf = null;
             const updateContainerBottom = () => {
                 if (!replayToolbar || !container) return;
-                
                 const toolbarHeight = replayToolbar.getBoundingClientRect().height;
                 container.style.bottom = `${toolbarHeight}px`;
-                
-                // Single resize call after transition completes
-                if (window.chart && typeof window.chart.resize === 'function') {
-                    setTimeout(() => {
-                        window.chart.resize();
-                    }, 350);
+                if (!_ucbRaf && window.chart && typeof window.chart.resize === 'function') {
+                    _ucbRaf = requestAnimationFrame(() => {
+                        _ucbRaf = null;
+                        if (window.chart && window.chart.resize) window.chart.resize();
+                    });
                 }
             };
 
@@ -23123,7 +23122,6 @@ function showIndicatorsMenu() {
                 localStorage.setItem('replayPanelExpanded', 'false');
                 document.body.classList.add('replay-tabs-collapsed');
                 applyPanelHeight(PANEL_COLLAPSED_H, true);
-                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
             }
 
             function expandPanel() {
@@ -23131,7 +23129,6 @@ function showIndicatorsMenu() {
                 localStorage.setItem('replayPanelExpanded', 'true');
                 document.body.classList.remove('replay-tabs-collapsed');
                 applyPanelHeight(getPanelH(), true);
-                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
             }
 
             // Init height without animation — respect persisted collapsed state
@@ -23155,8 +23152,7 @@ function showIndicatorsMenu() {
                 if (!panelExpanded) expandPanel();
                 document.body.classList.add('replay-panel-maximized');
                 replayToolbar.style.transition = 'none';
-                requestAnimationFrame(() => { replayToolbar.style.transition = ''; });
-                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 50);
+                requestAnimationFrame(() => { replayToolbar.style.transition = ''; updateContainerBottom(); });
             }
 
             function restorePanel() {
@@ -23164,7 +23160,6 @@ function showIndicatorsMenu() {
                 localStorage.setItem('replayPanelMaximized', 'false');
                 document.body.classList.remove('replay-panel-maximized');
                 applyPanelHeight(getPanelH(), true);
-                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
             }
 
             if (maximizeBtn) {
