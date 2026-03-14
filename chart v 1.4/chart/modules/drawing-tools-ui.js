@@ -2589,7 +2589,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 headerRow.style.cssText = 'display: flex; align-items: center; gap: 12px; margin-bottom: 6px;';
             } else if (['trendline', 'curve', 'arrow'].includes(drawing.type)) {
                 headerRow.innerHTML = `
-                    <span style="min-width:0;width:50px;flex:0 0 50px;"></span>
+                    <span style="min-width:0;width:100px;flex:0 0 100px;"></span>
                     <div class="tv-controls-header-labels">
                         <span style="flex:0 0 30px;min-width:30px;">Color</span>
                         <span style="flex:0 0 80px;min-width:80px;">Type</span>
@@ -2643,7 +2643,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 container.appendChild(brushLineRow);
                 if (['trendline', 'curve', 'arrow'].includes(drawing.type)) {
                     const lineLabel = brushLineRow.querySelector('.tv-prop-label');
-                    if (lineLabel) { lineLabel.style.minWidth = '0'; lineLabel.style.width = '50px'; lineLabel.style.flex = '0 0 50px'; }
+                    if (lineLabel) { lineLabel.style.minWidth = '0'; lineLabel.style.width = '100px'; lineLabel.style.flex = '0 0 100px'; }
                     const typeSelect = brushLineRow.querySelector('.tv-select[data-prop="lineType"]');
                     if (typeSelect) { typeSelect.style.width = '80px'; typeSelect.style.minWidth = '80px'; }
                     const widthSelect = brushLineRow.querySelector('.tv-select[data-prop="lineWidth"]');
