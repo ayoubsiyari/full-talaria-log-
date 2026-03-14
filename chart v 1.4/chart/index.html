@@ -6582,7 +6582,8 @@
         .replay-toolbar:not(.floating-clone) .replay-timezone-selector,
         .replay-toolbar:not(.floating-clone) .replay-tz-menu,
         .replay-toolbar:not(.floating-clone) .interval-slider-wrapper,
-        .replay-toolbar:not(.floating-clone) .replay-playback-mode-settings {
+        .replay-toolbar:not(.floating-clone) .replay-playback-mode-settings,
+        .replay-toolbar:not(.floating-clone) .replay-resize-handle {
             pointer-events: auto;
         }
 
@@ -8988,12 +8989,10 @@
             transform: translateY(-1px);
         }
 
-        .replay-collapse-toggle .toggle-icon {
+        .replay-collapse-toggle .toggle-arrow {
             display: inline-flex;
-            margin-right: 6px;
-            font-size: 16px;
             transition: transform 0.3s ease;
-            transform: rotate(180deg); /* Default: arrow up (panels visible) */
+            transform: rotate(180deg); /* Default: chevron-down → pointing up = expanded */
         }
 
         .replay-tabs-container {
@@ -9037,8 +9036,8 @@
             font-size: 10px;
         }
 
-        body.replay-tabs-collapsed .replay-collapse-toggle .toggle-icon {
-            transform: rotate(0deg); /* Collapsed: arrow down (panels hidden) */
+        body.replay-tabs-collapsed .replay-collapse-toggle .toggle-arrow {
+            transform: rotate(0deg); /* Collapsed: chevron-down → pointing down = collapsed */
         }
 
         body.replay-tabs-collapsed .speed-slider-control {
@@ -23054,7 +23053,7 @@ function showIndicatorsMenu() {
             // ── Smooth collapse / expand ──
             const PANEL_COLLAPSED_H = 48;
             const PANEL_DEFAULT_H   = 230;
-            let panelExpanded = true;
+            let panelExpanded = localStorage.getItem('replayPanelExpanded') !== 'false';
 
             function getPanelH() {
                 return parseInt(localStorage.getItem('replayPanelHeight') || PANEL_DEFAULT_H, 10);
@@ -23068,6 +23067,7 @@ function showIndicatorsMenu() {
 
             function collapsePanel() {
                 panelExpanded = false;
+                localStorage.setItem('replayPanelExpanded', 'false');
                 document.body.classList.add('replay-tabs-collapsed');
                 applyPanelHeight(PANEL_COLLAPSED_H, true);
                 setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
@@ -23075,13 +23075,15 @@ function showIndicatorsMenu() {
 
             function expandPanel() {
                 panelExpanded = true;
+                localStorage.setItem('replayPanelExpanded', 'true');
                 document.body.classList.remove('replay-tabs-collapsed');
                 applyPanelHeight(getPanelH(), true);
                 setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
             }
 
-            // Init height without animation
-            applyPanelHeight(getPanelH(), false);
+            // Init height without animation — respect persisted collapsed state
+            if (!panelExpanded) document.body.classList.add('replay-tabs-collapsed');
+            applyPanelHeight(panelExpanded ? getPanelH() : PANEL_COLLAPSED_H, false);
             updateContainerBottom();
 
             if (collapseToggle) {
