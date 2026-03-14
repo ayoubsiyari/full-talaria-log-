@@ -475,7 +475,7 @@ class DrawingSettingsPanel {
 
 .tv-prop-label {
     color: var(--sp-text, #d1d4dc);
-    font-size: 11px;
+    font-size: 13px;
     cursor: default;
     user-select: none;
 }
@@ -2825,7 +2825,7 @@ body.light-mode .template-save-dialog .dialog-title {
             
             const extendRow = document.createElement('div');
             extendRow.className = 'tv-prop-row tv-checkbox-stack-row';
-            extendRow.style.cssText = 'margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start;';
+            extendRow.style.cssText = 'margin-bottom: 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start;';
             extendRow.innerHTML = `
                 <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
                     <div class="tv-checkbox ${drawing.style.extendLeft ? 'checked' : ''}" data-prop="extendLeft">
@@ -2852,7 +2852,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Price labels / Time labels checkboxes (for all tools with axis highlights)
         {
             const labelsSection = document.createElement('div');
-            labelsSection.style.cssText = 'margin-top: 12px; display: flex; flex-direction: column; gap: 6px;';
+            labelsSection.style.cssText = 'margin-top: 8px; display: flex; flex-direction: column; gap: 8px;';
 
             const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
                 ? drawing.isAxisLabelEnabled('price')
@@ -2887,7 +2887,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (['trendline', 'arrow'].includes(drawing.type)) {
             const infoSection = document.createElement('div');
             infoSection.className = 'tv-info-section';
-            infoSection.style.cssText = 'margin-top: 6px;';
+            infoSection.style.cssText = 'margin-top: 8px;';
             
             const infoSettings = {
                 showInfo: false,
@@ -2903,7 +2903,7 @@ body.light-mode .template-save-dialog .dialog-title {
             
             const infoRow = document.createElement('div');
             infoRow.className = 'tv-prop-row';
-            infoRow.style.cssText = 'margin-bottom: 12px;';
+            infoRow.style.cssText = 'margin-bottom: 0;';
             infoRow.innerHTML = `
                 <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
                     <div class="tv-checkbox ${infoSettings.showInfo ? 'checked' : ''}" data-prop="showInfo">
