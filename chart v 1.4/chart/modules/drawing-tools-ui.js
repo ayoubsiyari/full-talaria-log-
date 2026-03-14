@@ -6983,8 +6983,8 @@ body.light-mode .template-save-dialog .dialog-title {
                                     '<circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/><line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="4"/>'}
                             </svg>
                         </button>
-                        <div class="tv-ending-dropdown-menu" style="display: none; position: absolute; right: 0; background: #050028; border: 1px solid #2a2e39; border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                            <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #363a45;">
+                        <div class="tv-ending-dropdown-menu" style="display: none; position: absolute; right: 0; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                            <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
                                 <svg viewBox="0 0 100 100" width="24" height="24">
                                     <circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>
                                     <line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="4"/>
@@ -7008,8 +7008,8 @@ body.light-mode .template-save-dialog .dialog-title {
                                     '<line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/><circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>'}
                             </svg>
                         </button>
-                        <div class="tv-ending-dropdown-menu" style="display: none; position: absolute; right: 0; background: #050028; border: 1px solid #2a2e39; border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                            <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #363a45;">
+                        <div class="tv-ending-dropdown-menu" style="display: none; position: absolute; right: 0; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                            <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
                                 <svg viewBox="0 0 100 100" width="24" height="24">
                                     <line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/>
                                     <circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>
@@ -11201,8 +11201,8 @@ body.light-mode .template-save-dialog .dialog-title {
         dropdown.className = 'settings-info-dropdown';
         dropdown.style.cssText = `
             position: fixed;
-            background: #1e1f24;
-            border: 1px solid #2f323a;
+            background: var(--sp-bg, #050028);
+            border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));
             border-radius: 10px;
             box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
             padding: 8px 0;
@@ -11354,8 +11354,8 @@ showTemplateDropdown(btn, drawing, modal) {
     dropdown.className = 'settings-template-dropdown';
     dropdown.style.cssText = `
         position: fixed;
-        background: #050028;
-        border: 1px solid #2a2e39;
+        background: var(--sp-bg, #050028);
+        border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));
         border-radius: 8px;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
         padding: 8px;
@@ -11399,7 +11399,7 @@ showTemplateDropdown(btn, drawing, modal) {
             font-size: 13px;
         ">Apply Default</div>
         ${templates.length > 0 ? `
-            <div style="height: 1px; background: #363a45; margin: 4px 0;"></div>
+            <div style="height: 1px; background: var(--sp-ui-border, rgba(60,60,72,0.95)); margin: 4px 0;"></div>
             ${templates.map(t => `
                 <div class="template-dropdown-item template-saved-item" data-template-id="${t.id}" style="
                     display: flex;
