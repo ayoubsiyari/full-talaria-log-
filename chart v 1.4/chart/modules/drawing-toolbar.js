@@ -639,8 +639,12 @@ class DrawingToolbar {
                     transition: background 0.15s, color 0.15s;
                 }
                 .template-item:hover {
-                    background: rgba(var(--sp-accent-rgb), 0.15);
-                    color: #ffffff;
+                    background: var(--sp-hover-bg, rgba(255,255,255,0.08));
+                    color: var(--sp-text, #d1d4dc);
+                }
+                #template-dropdown .toolbar-dropdown-item:hover {
+                    background: var(--sp-hover-bg, rgba(255,255,255,0.08));
+                    color: var(--sp-text, #d1d4dc);
                 }
                 .template-item-name {
                     display: flex;
