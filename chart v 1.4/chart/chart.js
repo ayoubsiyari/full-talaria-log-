@@ -3570,6 +3570,11 @@ class Chart {
                     self.chartSettings[setting] = newColor;
                     // Apply to target chart (panel that opened settings)
                     self.applyChartSettings(setting, newColor);
+                    // Manual override: clear any pending template so OK does not re-apply it
+                    self._pendingTemplate = null;
+                    self._lastTemplateSelected = null;
+                    d3.selectAll('.template-selector').property('value', '');
+                    if (typeof self.saveSettings === 'function') self.saveSettings();
                     if (typeof self._updateThemePreview === 'function' && self._themePreviewChartSettings) {
                         self._updateThemePreview(self._themePreviewChartSettings);
                     }
@@ -4437,7 +4442,7 @@ class Chart {
         }
 
         return `
-            <option value="">— Select Template —</option>
+            <option value="">Custom</option>
             ${customOptions}
             <optgroup label="Professional">
                 <option value="tradingview-dark">Dark</option>
@@ -11070,8 +11075,9 @@ class Chart {
             }
 
             // Body geometry — always centered on the same cx as the wick.
-            // halfBodyPx is an integer so bodyLeft = cx - halfBodyPx is exactly centred.
-            const halfBodyPx = Math.max(1, Math.floor(this.candleWidth * 0.3));
+            // Use round + 0.42 so body fills ~80% of the slot at moderate zoom,
+            // keeping wicks visually thinner than the body (min 2px wide).
+            const halfBodyPx = Math.max(1, Math.round(this.candleWidth * 0.42));
             const bodyWidthPx = halfBodyPx * 2;          // always even, symmetric around cx
             const bodyLeft = cx - halfBodyPx;             // integer — no rounding needed
             const bodyHeight = Math.abs(yc - yo);
