@@ -11780,7 +11780,7 @@ class Chart {
                 // ─── Time Axis Drag Zoom ───
                 else if (this.drag.type === 'timeAxis') {
                     // Like price axis: dx controls horizontal zoom, anchored at right edge
-                    const sensitivity = 0.003;
+                    const sensitivity = 0.02;
                     const zoomFactor = 1 + dx * sensitivity;
                     const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                     const minWidth = widths[0];
@@ -11811,7 +11811,7 @@ class Chart {
                 }
                 // ─── Price Axis Drag Zoom ───
                 else if (this.drag.type === 'priceAxis' && this.yScale) {
-                    const sensitivity = 0.003;
+                    const sensitivity = 0.02;
                     const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
                     const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
                     
