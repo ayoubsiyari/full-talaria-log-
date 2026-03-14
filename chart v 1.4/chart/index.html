@@ -8444,6 +8444,44 @@
             margin-bottom: 4px;
         }
 
+        .replay-maximize-btn {
+            margin-left: auto;
+            margin-right: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: 1px solid rgba(71, 85, 105, 0.4);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--sp-text-muted, #787b86);
+            cursor: default;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+            flex-shrink: 0;
+        }
+        .replay-maximize-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+        .replay-maximize-btn .icon-restore { display: none; }
+        .replay-maximize-btn:hover {
+            background: rgba(var(--sp-accent-rgb), 0.12);
+            border-color: rgba(var(--sp-accent-rgb), 0.4);
+            color: var(--sp-accent, #a78bfa);
+        }
+        body.replay-panel-maximized .replay-maximize-btn .icon-maximize { display: none; }
+        body.replay-panel-maximized .replay-maximize-btn .icon-restore  { display: flex; }
+
+        /* Maximized: toolbar fills viewport minus the control bar height */
+        body.replay-panel-maximized .replay-toolbar {
+            height: calc(100vh - 48px) !important;
+        }
+        body.replay-panel-maximized .replay-tabs-body {
+            flex: 1;
+            height: 0;
+        }
+
         .replay-tab-btn {
             border: none;
             border-radius: 10px;
@@ -18687,6 +18725,20 @@
                         </svg>
                         Analytics
                     </button>
+                    <button id="replayMaximizeBtn" class="replay-maximize-btn" title="Maximize panel">
+                        <svg class="icon-maximize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <polyline points="9 21 3 21 3 15"></polyline>
+                            <line x1="21" y1="3" x2="14" y2="10"></line>
+                            <line x1="3" y1="21" x2="10" y2="14"></line>
+                        </svg>
+                        <svg class="icon-restore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 14 10 14 10 20"></polyline>
+                            <polyline points="20 10 14 10 14 4"></polyline>
+                            <line x1="10" y1="14" x2="3" y2="21"></line>
+                            <line x1="21" y1="3" x2="14" y2="10"></line>
+                        </svg>
+                    </button>
                 </div>
                 <div class="replay-tabs-body">
                     <!-- All Trades Tab -->
@@ -23093,12 +23145,44 @@ function showIndicatorsMenu() {
                 });
             }
 
+            // ── Maximize / restore panel ──
+            const maximizeBtn = document.getElementById('replayMaximizeBtn');
+            let panelMaximized = localStorage.getItem('replayPanelMaximized') === 'true';
+
+            function maximizePanel() {
+                panelMaximized = true;
+                localStorage.setItem('replayPanelMaximized', 'true');
+                if (!panelExpanded) expandPanel();
+                document.body.classList.add('replay-panel-maximized');
+                replayToolbar.style.transition = 'none';
+                requestAnimationFrame(() => { replayToolbar.style.transition = ''; });
+                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 50);
+            }
+
+            function restorePanel() {
+                panelMaximized = false;
+                localStorage.setItem('replayPanelMaximized', 'false');
+                document.body.classList.remove('replay-panel-maximized');
+                applyPanelHeight(getPanelH(), true);
+                setTimeout(() => { updateContainerBottom(); if (window.chart && window.chart.resize) window.chart.resize(); }, 300);
+            }
+
+            if (maximizeBtn) {
+                maximizeBtn.addEventListener('click', () => {
+                    if (panelMaximized) { restorePanel(); } else { maximizePanel(); }
+                });
+            }
+
+            if (panelMaximized && panelExpanded) {
+                document.body.classList.add('replay-panel-maximized');
+            }
+
             // ── Drag-to-resize ──
             const resizeHandle = document.getElementById('replayResizeHandle');
             if (resizeHandle && replayToolbar) {
                 let _ry0, _rh0;
                 resizeHandle.addEventListener('mousedown', (e) => {
-                    if (!panelExpanded) return;
+                    if (!panelExpanded || panelMaximized) return;
                     _ry0 = e.clientY;
                     _rh0 = replayToolbar.getBoundingClientRect().height;
                     replayToolbar.style.transition = 'none';
