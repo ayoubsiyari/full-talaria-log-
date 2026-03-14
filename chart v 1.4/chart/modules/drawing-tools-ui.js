@@ -507,7 +507,7 @@ class DrawingSettingsPanel {
 }
 
 .tv-controls-header-labels span {
-    text-align: left;
+    text-align: center;
     cursor: default;
     user-select: none;
     -webkit-user-select: none;
