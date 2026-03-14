@@ -968,6 +968,8 @@ class DrawingSettingsPanel {
 .tv-coords-number-wrap {
     position: relative;
     display: inline-flex;
+    overflow: hidden;
+    border-radius: 4px;
 }
 
 .tv-coords-number-wrap .tv-coords-input {
@@ -976,16 +978,16 @@ class DrawingSettingsPanel {
 
 .tv-coords-stepper {
     position: absolute;
-    top: 5px;
-    right: 5px;
+    top: 0;
+    right: 0;
     width: 22px;
-    height: calc(100% - 10px);
+    height: 100%;
     background: transparent;
     border: none;
     border-radius: 0;
     display: flex;
     flex-direction: column;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .tv-coords-stepper-btn {
