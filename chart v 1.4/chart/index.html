@@ -2590,6 +2590,7 @@
             top: 48px;
             right: -440px;
             width: 420px;
+            height: calc(100vh - 48px);
             background:
                 linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)),
                 var(--sp-bg);
@@ -2601,6 +2602,33 @@
             box-shadow: -8px 0 40px rgba(0,0,0,0.6);
         }
         .settings-panel.open { right: 0; }
+
+        /* Left-edge collapse handle — visible when panel is open */
+        .sp-edge-handle {
+            position: absolute;
+            left: -19px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 19px;
+            height: 44px;
+            background: var(--sp-bg, #050028);
+            border: 1px solid var(--sp-ui-border, rgba(255,255,255,0.10));
+            border-right: none;
+            border-radius: 6px 0 0 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 1;
+            color: var(--sp-text-muted, #787b86);
+            transition: background 0.15s, color 0.15s;
+            box-shadow: -3px 0 8px rgba(0,0,0,0.35);
+        }
+        .sp-edge-handle:hover {
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+        }
+        .sp-edge-handle svg { pointer-events: none; }
         .settings-panel.open ~ * *::before,
         .settings-panel.open ~ * *::after,
         body.settings-open *::before,
@@ -16670,6 +16698,10 @@
 
     <!-- Settings Panel -->
     <div class="settings-panel" id="settingsPanel">
+        <!-- Left-edge collapse handle -->
+        <div class="sp-edge-handle" id="settingsPanelHandle" title="Close settings" onclick="window._closeSidePanel('settingsPanel');event.stopPropagation();">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="10" height="10"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
         <!-- Sidebar nav -->
         <div class="sp-sidebar">
             <div class="sp-sidebar-header">
