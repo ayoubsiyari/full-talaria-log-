@@ -23177,7 +23177,7 @@ function showIndicatorsMenu() {
             if (resizeHandle && replayToolbar) {
                 let _ry0, _rh0;
                 resizeHandle.addEventListener('mousedown', (e) => {
-                    if (!panelExpanded || panelMaximized) return;
+                    if (panelMaximized) return;
                     _ry0 = e.clientY;
                     _rh0 = replayToolbar.getBoundingClientRect().height;
                     replayToolbar.style.transition = 'none';
@@ -23186,9 +23186,15 @@ function showIndicatorsMenu() {
 
                     let _rafId = null;
                     const onMove = (ev) => {
-                        const newH = Math.max(PANEL_COLLAPSED_H + 30, Math.min(window.innerHeight * 0.7, _rh0 + (_ry0 - ev.clientY)));
+                        const newH = Math.max(PANEL_COLLAPSED_H, Math.min(window.innerHeight * 0.7, _rh0 + (_ry0 - ev.clientY)));
                         replayToolbar.style.height = newH + 'px';
                         if (container) container.style.bottom = newH + 'px';
+                        // Auto-expand state when dragged above collapsed height
+                        if (newH > PANEL_COLLAPSED_H && !panelExpanded) {
+                            panelExpanded = true;
+                            localStorage.setItem('replayPanelExpanded', 'true');
+                            document.body.classList.remove('replay-tabs-collapsed');
+                        }
                         if (!_rafId && window.chart && window.chart.resize) {
                             _rafId = requestAnimationFrame(() => {
                                 window.chart.resize();
@@ -23201,7 +23207,13 @@ function showIndicatorsMenu() {
                         document.body.style.userSelect = '';
                         resizeHandle.classList.remove('dragging');
                         if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
-                        localStorage.setItem('replayPanelHeight', Math.round(replayToolbar.getBoundingClientRect().height));
+                        const finalH = replayToolbar.getBoundingClientRect().height;
+                        // If released near collapsed height, snap collapsed
+                        if (finalH <= PANEL_COLLAPSED_H + 10) {
+                            collapsePanel();
+                        } else {
+                            localStorage.setItem('replayPanelHeight', Math.round(finalH));
+                        }
                         document.removeEventListener('mousemove', onMove);
                         document.removeEventListener('mouseup', onUp);
                         updateContainerBottom();
