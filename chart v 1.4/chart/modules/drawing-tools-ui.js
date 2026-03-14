@@ -2503,7 +2503,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const self = this;
         // Check if brush/highlighter or line tools (skip description for these)
         const isBrushTool = drawing.type === 'brush' || drawing.type === 'highlighter';
-        const lineTools = ['trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray', 'extended-line', 'cross-line', 'path', 'curve', 'double-curve', 'parallel-channel', 'regression-trend', 'flat-top-bottom', 'disjoint-channel'];
+        const lineTools = ['trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray', 'extended-line', 'cross-line', 'path', 'curve', 'double-curve', 'parallel-channel', 'regression-trend', 'flat-top-bottom', 'disjoint-channel', 'arrow'];
         const isLineTool = lineTools.includes(drawing.type);
         const isPolyline = drawing.type === 'polyline';
         const shapeTools = ['rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle', 'arc'];
