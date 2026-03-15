@@ -11157,7 +11157,7 @@ body.light-mode .template-save-dialog .dialog-title {
             .filter(option => infoSettings[option.prop] === true)
             .map(option => option.label);
 
-        if (selectedLabels.length === 0) return 'Select';
+        if (selectedLabels.length === 0) return options.length > 0 ? options[0].label : 'Select';
         return selectedLabels[0];
     }
 
