@@ -497,8 +497,7 @@ class DrawingToolsManager {
             self.renderDrawing(drawing);
             self.persistPositionToolDefaults(drawing);
 
-            const isPersistentFreehandTool = drawing && (drawing.type === 'brush' || drawing.type === 'highlighter');
-            if (isPersistentFreehandTool) {
+            if (drawing) {
                 self.saveToolStyle(drawing.type, drawing.style || {});
             }
 
