@@ -2948,7 +2948,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
                 <div class="tv-prop-controls">
                     <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px;">
-                        <span>Select</span>
+                        <span>${this.getInfoSummaryText(drawing)}</span>
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M6 9l6 6 6-6"/>
                         </svg>
@@ -11158,8 +11158,7 @@ body.light-mode .template-save-dialog .dialog-title {
             .map(option => option.label);
 
         if (selectedLabels.length === 0) return 'Select';
-        if (selectedLabels.length === 1) return selectedLabels[0];
-        return `${selectedLabels[0]}, ...`;
+        return selectedLabels[0];
     }
 
     /**

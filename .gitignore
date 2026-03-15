@@ -40,3 +40,11 @@ chart\ v\ 1.4/mentroship-6d6e6ed5d4eb.json
 # Large data files
 download/eurusd-m1-bid-2022-03-19-2025-03-20.csv
 eurusd_data.csv
+download/
+
+# Large runtime directories
+chart\ v\ 1.4/chart/uploads/
+chart\ v\ 1.4/chart/homepage/
+chart\ v\ 1.4/chart/db/
+chart\ v\ 1.4/chart/venv/
+chart\ v\ 1.4/chart/__pycache__/

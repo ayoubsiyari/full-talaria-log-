@@ -1,0 +1,38 @@
+{
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/out": true,
+    "**/venv": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "chart v 1.4/chart/uploads": true,
+    "chart v 1.4/chart/homepage": true,
+    "chart v 1.4/chart/db": true,
+    "download": true,
+    "**/*.bin": true,
+    "**/*.parquet": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.next/**": true,
+    "**/out/**": true,
+    "**/venv/**": true,
+    "**/.venv/**": true,
+    "**/__pycache__/**": true,
+    "chart v 1.4/chart/uploads/**": true,
+    "chart v 1.4/chart/homepage/**": true,
+    "chart v 1.4/chart/db/**": true,
+    "download/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/venv": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "chart v 1.4/chart/uploads": true,
+    "chart v 1.4/chart/homepage": true,
+    "chart v 1.4/chart/db": true,
+    "download": true
+  }
+}
