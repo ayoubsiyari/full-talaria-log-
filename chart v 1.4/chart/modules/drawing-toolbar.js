@@ -1274,8 +1274,7 @@ class DrawingToolbar {
                 // Close any inline palettes if present
                 this.toolbar.querySelectorAll('.color-palette').forEach(p => p.classList.remove('active'));
 
-                if (typeof openColorPicker === 'function') {
-                    openColorPicker(primaryColor, (newColor) => {
+                const _strokePickerCallback = (newColor) => {
                         primaryColor = newColor;
                         this._strokeBaseColor = this.normalizeColor(newColor);
                         this._strokeOpacity = this.extractOpacity(newColor);
@@ -1300,7 +1299,12 @@ class DrawingToolbar {
                         if (this.onUpdate) {
                             this.onUpdate(drawing);
                         }
-                    }, strokePreview);
+                };
+                if (this.colorPicker) {
+                    const rect = strokePreview.getBoundingClientRect();
+                    this.colorPicker.show(rect.left, rect.bottom, primaryColor, _strokePickerCallback, strokePreview);
+                } else if (typeof openColorPicker === 'function') {
+                    openColorPicker(primaryColor, _strokePickerCallback, strokePreview);
                 }
             });
         }
@@ -1328,8 +1332,7 @@ class DrawingToolbar {
                 this.toolbar.querySelectorAll('.color-palette').forEach(p => p.classList.remove('active'));
 
                 const currentFillColor = getCurrentFillColor();
-                if (typeof openColorPicker === 'function') {
-                    openColorPicker(currentFillColor, (newColor) => {
+                const _fillPickerCallback = (newColor) => {
                         this._fillBaseColor = this.normalizeColor(newColor);
                         this._fillOpacity = this.extractOpacity(newColor);
 
@@ -1347,7 +1350,12 @@ class DrawingToolbar {
                         if (this.onUpdate) {
                             this.onUpdate(drawing);
                         }
-                    }, fillPreview);
+                };
+                if (this.colorPicker) {
+                    const rect = fillPreview.getBoundingClientRect();
+                    this.colorPicker.show(rect.left, rect.bottom, currentFillColor, _fillPickerCallback, fillPreview);
+                } else if (typeof openColorPicker === 'function') {
+                    openColorPicker(currentFillColor, _fillPickerCallback, fillPreview);
                 }
             });
         }
