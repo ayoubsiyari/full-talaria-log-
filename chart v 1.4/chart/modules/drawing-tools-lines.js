@@ -182,6 +182,11 @@ class TrendlineTool extends BaseDrawing {
                 x2 = 0;
                 y2 = leftPoint.y + deltaY;
             }
+        } else if (this.style.extendLeft && dx === 0) {
+            // Vertical line: extend the topmost point to chart top
+            const yRange = scales.yScale.range();
+            const topY = Math.min(yRange[0], yRange[1]);
+            if (origY1 < origY2) { y1 = topY; } else { y2 = topY; }
         }
         
         // Extend right: extend from the rightmost point to x = chartWidth
@@ -197,6 +202,11 @@ class TrendlineTool extends BaseDrawing {
                 x1 = chartWidth;
                 y1 = rightPoint.y + deltaY;
             }
+        } else if (this.style.extendRight && dx === 0) {
+            // Vertical line: extend the bottommost point to chart bottom
+            const yRange = scales.yScale.range();
+            const bottomY = Math.max(yRange[0], yRange[1]);
+            if (origY1 > origY2) { y1 = bottomY; } else { y2 = bottomY; }
         }
 
         // Create arrow markers if needed
