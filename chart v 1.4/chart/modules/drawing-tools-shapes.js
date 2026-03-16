@@ -1259,16 +1259,15 @@ class ArrowTool extends BaseDrawing {
         const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
         const boxHeight = rows.length * lineHeight + padY * 2;
 
-        // Always anchor to p2 (the end point)
-        let anchorX = x2;
-        let anchorY = y2;
-        const OFFSET = 10;
-
-        // Place box in the quadrant OPPOSITE to p1 — never overlaps the line
-        const dx = x1 - x2;
-        const dy = y1 - y2;
-        let boxX = (dx >= 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
-        let boxY = (dy >= 0) ? (anchorY - boxHeight - OFFSET) : (anchorY + OFFSET);
+        // Responsive placement: offset away from the line direction to avoid overlap
+        const OFFSET_X = 20;
+        const OFFSET_Y = 10;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        // Horizontal: place to the right of p2 if line comes from left, else to the left
+        let boxX = dx >= 0 ? x2 + OFFSET_X : x2 - boxWidth - OFFSET_X;
+        // Vertical: place above p2 if line goes down (dy>0), below if line goes up (dy<0)
+        let boxY = dy >= 0 ? y2 - boxHeight - OFFSET_Y : y2 + OFFSET_Y;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'arrow-info')
