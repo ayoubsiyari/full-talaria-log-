@@ -7084,20 +7084,20 @@ body.light-mode .template-save-dialog .dialog-title {
                                     '<circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/><line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="4"/>'}
                             </svg>
                         </button>
-                        <div class="tv-ending-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                            <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
-                                <svg viewBox="0 0 100 100" width="24" height="24">
+                        <div class="tv-ending-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); white-space: nowrap;">
+                            <div class="tv-ending-option" data-value="normal" style="padding: 6px 8px; cursor: default; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
+                                <svg viewBox="0 0 100 100" width="20" height="20">
                                     <circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>
                                     <line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="4"/>
                                 </svg>
-                                <span style="color: #d1d4dc; font-size: 12px;">Normal</span>
+                                <span style="color: #d1d4dc; font-size: 11px;">Normal</span>
                             </div>
-                            <div class="tv-ending-option" data-value="arrow" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px;">
-                                <svg viewBox="0 0 100 100" width="24" height="24">
+                            <div class="tv-ending-option" data-value="arrow" style="padding: 6px 8px; cursor: default; display: flex; align-items: center; gap: 6px;">
+                                <svg viewBox="0 0 100 100" width="20" height="20">
                                     <line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/>
                                     <path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>
                                 </svg>
-                                <span style="color: #d1d4dc; font-size: 12px;">Arrow</span>
+                                <span style="color: #d1d4dc; font-size: 11px;">Arrow</span>
                             </div>
                         </div>
                     </div>
@@ -7109,20 +7109,20 @@ body.light-mode .template-save-dialog .dialog-title {
                                     '<line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/><circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>'}
                             </svg>
                         </button>
-                        <div class="tv-ending-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                            <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
-                                <svg viewBox="0 0 100 100" width="24" height="24">
+                        <div class="tv-ending-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); white-space: nowrap;">
+                            <div class="tv-ending-option" data-value="normal" style="padding: 6px 8px; cursor: default; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
+                                <svg viewBox="0 0 100 100" width="20" height="20">
                                     <line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/>
                                     <circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>
                                 </svg>
-                                <span style="color: #d1d4dc; font-size: 12px;">Normal</span>
+                                <span style="color: #d1d4dc; font-size: 11px;">Normal</span>
                             </div>
-                            <div class="tv-ending-option" data-value="arrow" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px;">
-                                <svg viewBox="0 0 100 100" width="24" height="24">
+                            <div class="tv-ending-option" data-value="arrow" style="padding: 6px 8px; cursor: default; display: flex; align-items: center; gap: 6px;">
+                                <svg viewBox="0 0 100 100" width="20" height="20">
                                     <line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/>
                                     <path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>
                                 </svg>
-                                <span style="color: #d1d4dc; font-size: 12px;">Arrow</span>
+                                <span style="color: #d1d4dc; font-size: 11px;">Arrow</span>
                             </div>
                         </div>
                     </div>
@@ -9741,8 +9741,12 @@ body.light-mode .template-save-dialog .dialog-title {
                 const isOpen = menu.style.display !== 'none';
                 if (!isOpen) {
                     const rect = btn.getBoundingClientRect();
-                    menu.style.left = (rect.right - 120) + 'px';
+                    menu.style.display = 'block';
+                    menu.style.visibility = 'hidden';
+                    const menuW = menu.offsetWidth;
+                    menu.style.left = (rect.right - menuW) + 'px';
                     menu.style.top = (rect.bottom + 4) + 'px';
+                    menu.style.visibility = '';
                 }
                 menu.style.display = isOpen ? 'none' : 'block';
             });
