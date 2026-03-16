@@ -508,14 +508,13 @@ class TrendlineTool extends BaseDrawing {
         const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
         const boxHeight = rows.length * lineHeight + padY * 2;
 
-        // Anchor to the higher endpoint (smaller y = higher on screen)
-        const useP2 = y2 <= y1;
-        const anchorX = useP2 ? x2 : x1;
-        const anchorY = useP2 ? y2 : y1;
+        // Always anchor to p2 (the end point) — never switches side on rotation
+        const anchorX = x2;
+        const anchorY = y2;
         const OFFSET = 10;
 
         let boxX = anchorX + OFFSET;
-        let boxY = anchorY - boxHeight / 2;
+        let boxY = anchorY;
 
         // Clamp within SVG viewport
         const svgEl = this.group.node() && this.group.node().ownerSVGElement;
