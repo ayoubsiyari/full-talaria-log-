@@ -2726,6 +2726,10 @@ body.light-mode .template-save-dialog .dialog-title {
                     const widthDropdown = brushLineRow.querySelector('.tv-linewidth-dropdown[data-prop="lineWidth"]');
                     if (widthDropdown) { widthDropdown.style.width = '60px'; widthDropdown.style.minWidth = '60px'; widthDropdown.style.flex = '0 0 60px'; }
                 }
+                if (isBrushTool) {
+                    const widthDropdown = brushLineRow.querySelector('.tv-linewidth-dropdown[data-prop="lineWidth"]');
+                    if (widthDropdown) { widthDropdown.style.width = '70px'; widthDropdown.style.minWidth = '70px'; widthDropdown.style.flex = '0 0 70px'; }
+                }
 	            if (drawing.type === 'rectangle') rectangleBorderRow = brushLineRow;
             } else {
                 if (isFibTool) {
