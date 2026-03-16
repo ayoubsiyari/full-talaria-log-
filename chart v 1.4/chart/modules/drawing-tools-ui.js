@@ -4124,6 +4124,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const styleControls = document.createElement('div');
         styleControls.className = 'tv-prop-controls';
+        styleControls.style.cssText = 'width: auto; min-width: 0;';
 
         const styleOptions = [
             { value: 'original', label: 'Original' },
