@@ -1260,34 +1260,49 @@ class ArrowTool extends BaseDrawing {
         const boxHeight = rows.length * lineHeight + padY * 2;
 
         // Always anchor to p2 (the end point)
-        const anchorX = x2;
-        const anchorY = y2;
+        let anchorX = x2;
+        let anchorY = y2;
         const OFFSET = 10;
 
-        // Place box in the quadrant OPPOSITE to p1 on both axes — avoids overlap on all rotations
+        // Direction from p2 toward p1
         const dx = x1 - x2;
         const dy = y1 - y2;
-        let boxX = (dx > 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
-        let boxY = (dy > 0) ? (anchorY - boxHeight) : anchorY;
 
-        // Keep box near p2: flip to opposite side first, hard-clamp only as last resort
-        // Use scale ranges — same coordinate space as the drawing, no SVG dimension ambiguity
+        // Compute chart bounds and slide anchor to boundary intersection when p2 is off-screen
+        let chartLeft = 0, chartRight = 99999, chartTop = 0, chartBottom = 99999;
         if (scales && scales.xScale && scales.yScale) {
             const xRange = scales.xScale.range();
             const yRange = scales.yScale.range();
-            const chartLeft = xRange[0];
-            const chartRight = xRange[1];
-            const chartTop = Math.min(yRange[0], yRange[1]);
-            const chartBottom = Math.max(yRange[0], yRange[1]);
-            if (boxX + boxWidth > chartRight - 4) boxX = anchorX - boxWidth - OFFSET;
-            if (boxX < chartLeft + 4) boxX = anchorX + OFFSET;
-            if (boxX + boxWidth > chartRight - 4) boxX = chartRight - boxWidth - 4;
-            if (boxX < chartLeft + 4) boxX = chartLeft + 4;
-            if (boxY < chartTop + 4) boxY = anchorY;
-            if (boxY + boxHeight > chartBottom - 4) boxY = anchorY - boxHeight;
-            if (boxY < chartTop + 4) boxY = chartTop + 4;
-            if (boxY + boxHeight > chartBottom - 4) boxY = chartBottom - boxHeight - 4;
+            chartLeft   = xRange[0];
+            chartRight  = xRange[1];
+            chartTop    = Math.min(yRange[0], yRange[1]);
+            chartBottom = Math.max(yRange[0], yRange[1]);
+
+            if (x1 !== x2) {
+                if (anchorX > chartRight) {
+                    const t = (chartRight - x1) / (x2 - x1);
+                    anchorX = chartRight;
+                    anchorY = y1 + t * (y2 - y1);
+                } else if (anchorX < chartLeft) {
+                    const t = (chartLeft - x1) / (x2 - x1);
+                    anchorX = chartLeft;
+                    anchorY = y1 + t * (y2 - y1);
+                }
+            }
+            anchorY = Math.max(chartTop, Math.min(chartBottom, anchorY));
         }
+
+        let boxX = (dx > 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
+        let boxY = (dy > 0) ? (anchorY - boxHeight) : anchorY;
+
+        if (boxX + boxWidth > chartRight - 4) boxX = anchorX - boxWidth - OFFSET;
+        if (boxX < chartLeft + 4)             boxX = anchorX + OFFSET;
+        if (boxX + boxWidth > chartRight - 4) boxX = chartRight - boxWidth - 4;
+        if (boxX < chartLeft + 4)             boxX = chartLeft + 4;
+        if (boxY < chartTop + 4)              boxY = anchorY;
+        if (boxY + boxHeight > chartBottom - 4) boxY = anchorY - boxHeight;
+        if (boxY < chartTop + 4)              boxY = chartTop + 4;
+        if (boxY + boxHeight > chartBottom - 4) boxY = chartBottom - boxHeight - 4;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'arrow-info')
