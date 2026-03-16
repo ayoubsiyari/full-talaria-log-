@@ -1869,8 +1869,10 @@ class DrawingToolsManager {
         // Get the candle index (round to nearest candle)
         const candleIndex = Math.round(point.x);
         
-        // Clamp to valid range
-        const clampedIndex = Math.max(0, Math.min(data.length - 1, candleIndex));
+        // If cursor is outside data range, don't snap — allow free placement
+        if (candleIndex < 0 || candleIndex > data.length - 1) return point;
+        
+        const clampedIndex = candleIndex;
         const candle = data[clampedIndex];
         
         if (!candle) return point;
