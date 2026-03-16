@@ -3000,7 +3000,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     <span class="tv-checkbox-label" style="white-space: nowrap;">Show Info</span>
                 </div>
                 <div class="tv-prop-controls">
-                    <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                    <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 11px; display: flex; align-items: center; gap: 6px;">
                         <span>${this.getInfoSummaryText(drawing)}</span>
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M6 9l6 6 6-6"/>
