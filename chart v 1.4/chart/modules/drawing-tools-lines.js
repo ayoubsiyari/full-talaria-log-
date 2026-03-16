@@ -476,28 +476,47 @@ class TrendlineTool extends BaseDrawing {
         // Build rows with SVG icons - each stat on separate line
         const rows = [];
         
-        // Price change row with vertical arrow icon
-        const priceParts = [];
-        if (infoSettings.priceRange) priceParts.push(`${rawPriceChange.toFixed(decimals)}`);
-        if (infoSettings.percentChange) priceParts.push(`(${pct.toFixed(2)}%)`);
-        if (infoSettings.changeInPips) priceParts.push(`${Math.abs(pips).toLocaleString()}`);
-        if (priceParts.length > 0) {
+        // Price range row
+        if (infoSettings.priceRange) {
             rows.push({ 
                 svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v12M5 5l3-3 3 3M5 11l3 3 3-3" stroke="currentColor" fill="none" stroke-width="1.5"/>',
-                text: priceParts.join(' ') 
+                text: `${rawPriceChange.toFixed(decimals)}`
             });
         }
 
-        // Bars range row with horizontal arrow icon
+        // Percent change row
+        if (infoSettings.percentChange) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 13L13 3M5 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0M13 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                text: `(${pct.toFixed(2)}%)`
+            });
+        }
+
+        // Change in pips row
+        if (infoSettings.changeInPips) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="4" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="12" cy="8" r="1.5" fill="currentColor"/>',
+                text: `${Math.abs(pips).toLocaleString()}`
+            });
+        }
+
+        // Bars range row
         if (infoSettings.barsRange) {
-            const barsText = infoSettings.dateTimeRange && timeStr ? `${barsRange} bars, (${timeStr})` : `${barsRange} bars`;
             rows.push({ 
                 svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M11 5l3 3-3 3" stroke="currentColor" fill="none" stroke-width="1.5"/>',
-                text: barsText
+                text: `${barsRange} bars`
             });
         }
 
-        // Distance row with ruler/measure icon
+        // Date/time range row
+        if (infoSettings.dateTimeRange && timeStr) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6" stroke="currentColor" fill="none" stroke-width="1.5"/><path d="M8 4v4l3 2" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                text: `(${timeStr})`
+            });
+        }
+
+        // Distance row
         if (infoSettings.distance) {
             rows.push({ 
                 svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M4 6v4M8 6v4M12 6v4" stroke="currentColor" fill="none" stroke-width="1.5"/>',
@@ -505,7 +524,7 @@ class TrendlineTool extends BaseDrawing {
             });
         }
 
-        // Angle row with angle icon
+        // Angle row
         if (infoSettings.angle) {
             rows.push({ 
                 svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M12 4L4 12M12 4v5M12 4h-5" stroke="currentColor" fill="none" stroke-width="1.5"/><path d="M9 7a3 3 0 0 0 3-3" stroke="currentColor" fill="none" stroke-width="1"/>',
