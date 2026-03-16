@@ -1316,7 +1316,7 @@ class DrawingSettingsPanel {
 /* Dark mode button styling with !important to override inline styles */
 .tv-ending-dropdown-btn {
     background: var(--sp-bg, rgba(0,0,0,0.85)) !important;
-    border: none !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
 }
 
 .tv-ending-dropdown-btn:hover {
@@ -1325,7 +1325,7 @@ class DrawingSettingsPanel {
 
 .tv-info-dropdown-btn {
     background: var(--sp-bg, rgba(0,0,0,0.85)) !important;
-    border: none !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
 }
 
 .tv-info-dropdown-btn:hover {
