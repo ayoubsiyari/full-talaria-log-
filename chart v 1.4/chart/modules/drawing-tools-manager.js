@@ -3,20 +3,23 @@
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
  * 
- * @version 1.5.5
- * @updated 2026-01-14
+ * @version 1.5.6
+ * @updated 2026-03-16
  * @changelog
- *   - Fixed: Text dropdown live preview not working when typing
- *   - Fixed: Font size changes in text dropdown now update drawing in real-time
- *   - Changed text input handler to use queryAll for proper external dropdown support
- *   - Added findLinesAtPoint() for detecting lines (strokes only, not fills)
- *   - Added findStackedLines() to detect when >3 lines are stacked at a point
- *   - Added getStackedLinesAt(), getLinesAt(), getLastStackedLines() public API
- *   - Shift+Click on stacked lines selects all drawings
- *   - Fixed: Now detects ALL lines within same shape (Fib levels, channels, etc.)
- *   - Added lineIndex and Y-position sorting for stacked lines
- *   - STROKE-ONLY selection: Only click on lines/borders to select, fills are ignored
- *   - Fixed: Disabled pointer-events on all fill elements after rendering
+ *   - Fixed: Shapes behind Y-axis can no longer be detected/moved when mouse is over axis
+ *   - Added boundary check in findDrawingsAtPoint() to exclude axis regions from hit detection
+ *   - Previous fixes:
+ *     - Text dropdown live preview not working when typing
+ *     - Font size changes in text dropdown now update drawing in real-time
+ *     - Changed text input handler to use queryAll for proper external dropdown support
+ *     - Added findLinesAtPoint() for detecting lines (strokes only, not fills)
+ *     - Added findStackedLines() to detect when >3 lines are stacked at a point
+ *     - Added getStackedLinesAt(), getLinesAt(), getLastStackedLines() public API
+ *     - Shift+Click on stacked lines selects all drawings
+ *     - Now detects ALL lines within same shape (Fib levels, channels, etc.)
+ *     - Added lineIndex and Y-position sorting for stacked lines
+ *     - STROKE-ONLY selection: Only click on lines/borders to select, fills are ignored
+ *     - Disabled pointer-events on all fill elements after rendering
  */
 
 class DrawingToolsManager {
@@ -6125,6 +6128,24 @@ class DrawingToolsManager {
         const baseHitTolerance = 10; // pixels - how close to a line to consider it a hit
         const includeVolumeProfileBodyHit = !!options.includeVolumeProfileBodyHit;
         const hitsById = new Map(); // drawingId -> { drawing, distance, z }
+        
+        // Check if mouse is outside the chart's visible area (in axis regions)
+        // This prevents detecting shapes that are visually clipped behind the axes
+        const m = this.chart?.margin;
+        const w = this.chart?.w || this.chart?.canvas?.width || 800;
+        const h = this.chart?.h || this.chart?.canvas?.height || 600;
+        
+        if (m) {
+            const chartLeft = m.l;
+            const chartRight = w - m.r;
+            const chartTop = m.t;
+            const chartBottom = h - m.b;
+            
+            // If mouse is in the Y-axis area (left) or right axis area, return empty
+            if (mouseX < chartLeft || mouseX > chartRight || mouseY < chartTop || mouseY > chartBottom) {
+                return [];
+            }
+        }
         
         const point = this.svg.node().createSVGPoint();
         point.x = mouseX;
