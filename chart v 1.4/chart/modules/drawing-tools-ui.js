@@ -11421,15 +11421,15 @@ body.light-mode .template-save-dialog .dialog-title {
             position: fixed;
             background: var(--sp-bg, #050028);
             border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));
-            border-radius: 10px;
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-            padding: 8px 0;
-            min-width: 220px;
-            z-index: 12550;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            padding: 4px 0;
+            z-index: 100000;
+            white-space: nowrap;
         `;
 
         dropdown.innerHTML = infoOptions.map(option => `
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; border-radius: 0;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; border-radius: 0;">
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings[option.prop] ? 'checked' : ''}" data-info-prop="${option.prop}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                         <polyline points="20 6 9 17 4 12"/>
@@ -11577,11 +11577,11 @@ showTemplateDropdown(btn, drawing, modal) {
         position: fixed;
         background: var(--sp-bg, #050028);
         border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));
-        border-radius: 8px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-        padding: 5px;
-        min-width: 170px;
-        z-index: 12550;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        padding: 4px 0;
+        z-index: 100000;
+        white-space: nowrap;
     `;
 
     const templates = this.getSavedTemplates(drawing.type);
