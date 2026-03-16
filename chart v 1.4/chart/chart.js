@@ -11811,7 +11811,7 @@ class Chart {
                 }
                 // ─── Price Axis Drag Zoom ───
                 else if (this.drag.type === 'priceAxis' && this.yScale) {
-                    const sensitivity = 0.005;
+                    const sensitivity = 0.002;
                     const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
                     const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
                     

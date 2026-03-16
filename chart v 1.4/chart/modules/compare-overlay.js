@@ -1592,7 +1592,7 @@ class CompareOverlay {
                 // Only handle Y-axis zoom here (chart area movement is handled by combinedDrag)
                 if (dragState.dragType === 'zoom') {
                     // Drag from Y-axis: Zoom (same as overlay)
-                    const sensitivity = 0.005;
+                    const sensitivity = 0.002;
                     const zoomFactor = 1 + dy * sensitivity;
                     const newZoom = Math.max(0.5, Math.min(20, pane.priceZoom * zoomFactor));
                     
