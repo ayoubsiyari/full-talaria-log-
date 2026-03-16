@@ -1787,7 +1787,7 @@ class RayTool extends BaseDrawing {
         if (isFlipped) angle += 180;
 
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET;
+        const verticalOffset = 10;
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
@@ -1831,9 +1831,6 @@ class RayTool extends BaseDrawing {
         }
 
         const offsetX = this.style.textOffsetX || 0;
-        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-            ? 0 : this.style.textOffsetY;
-        const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
         // Clamp label to stay within chart area (don't overlap time or price axes)
         const chartBottomY = coords.chartBottomY;
@@ -1843,7 +1840,7 @@ class RayTool extends BaseDrawing {
 
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
-            y: baseY + offsetY,
+            y: baseY,
             anchor: elAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
