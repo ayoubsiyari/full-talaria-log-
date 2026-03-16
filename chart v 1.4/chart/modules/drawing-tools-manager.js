@@ -631,6 +631,12 @@ class DrawingToolsManager {
             .attr('y', m.t)
             .attr('width', w - m.l - m.r)
             .attr('height', h - m.t - m.b);
+
+        // Clip only the bottom (time axis area) so drawings/handles can still
+        // appear in the price-axis zone on the right side.
+        const bottomClip = `inset(0px 0px ${m.b}px 0px)`;
+        if (this.drawingsGroup) this.drawingsGroup.style('clip-path', bottomClip);
+        if (this.tempGroup) this.tempGroup.style('clip-path', bottomClip);
     }
 
     /**
