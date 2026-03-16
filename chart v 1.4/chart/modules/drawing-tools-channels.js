@@ -1047,7 +1047,7 @@ class RegressionTrendTool extends BaseDrawing {
         group.selectAll('.resize-handle-hit').remove();
         group.selectAll('.vertical-guide').remove();
         
-        if (!this.selected) return;
+        const showFull = this.selected;
         
         // Get chart data for regression calculation
         const chart = scales.chart || window.chart || this.chart;
@@ -1102,18 +1102,20 @@ class RegressionTrendTool extends BaseDrawing {
             const regressionValue = a + b * dataIndex;
             const cy = scales.yScale(regressionValue);
             
-            // Draw vertical guide line for this handle
-            group.append('line')
-                .attr('class', 'vertical-guide')
-                .attr('x1', cx)
-                .attr('y1', topY)
-                .attr('x2', cx)
-                .attr('y2', bottomY)
-                .attr('stroke', this.style.stroke || '#2962FF')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', '3,3')
-                .attr('opacity', 0.4)
-                .style('pointer-events', 'none');
+            // Draw vertical guide line for this handle (selected only)
+            if (showFull) {
+                group.append('line')
+                    .attr('class', 'vertical-guide')
+                    .attr('x1', cx)
+                    .attr('y1', topY)
+                    .attr('x2', cx)
+                    .attr('y2', bottomY)
+                    .attr('stroke', this.style.stroke || '#2962FF')
+                    .attr('stroke-width', 1)
+                    .attr('stroke-dasharray', '3,3')
+                    .attr('opacity', 0.4)
+                    .style('pointer-events', 'none');
+            }
             
             const handleGroup = group.append('g')
                 .attr('class', 'resize-handle-group')
@@ -1139,7 +1141,8 @@ class RegressionTrendTool extends BaseDrawing {
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', 'nwse-resize')
-                .style('pointer-events', 'all')
+                .style('pointer-events', showFull ? 'all' : 'none')
+                .style('opacity', showFull ? 1 : 0)
                 .attr('data-point-index', index);
             
             this.handles.push({ element: handle, point, index });
