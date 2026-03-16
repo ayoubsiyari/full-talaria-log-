@@ -412,8 +412,9 @@ class ArrowMarkUpTool extends BaseDrawing {
                 .text(this.text);
         }
 
-        // Don't create resize handles for arrow markers - they should only be movable
+        // Single-point marker: create handles but force move cursor (not resize)
         this.createHandles(this.group, scales);
+        this.group.selectAll('.resize-handle, .resize-handle-hit').style('cursor', 'move');
         return this.group;
     }
 
@@ -557,8 +558,9 @@ class ArrowMarkDownTool extends BaseDrawing {
                 .text(this.text);
         }
 
-        // Don't create resize handles for arrow markers - they should only be movable
+        // Single-point marker: create handles but force move cursor (not resize)
         this.createHandles(this.group, scales);
+        this.group.selectAll('.resize-handle, .resize-handle-hit').style('cursor', 'move');
         return this.group;
     }
 
