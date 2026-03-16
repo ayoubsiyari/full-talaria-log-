@@ -28136,8 +28136,10 @@ var closePanel = window.closePanel;
 window._openMode = function(section) {
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
-    // Close any open drawing-tool category dropdowns
+    // Close any open drawing-tool category dropdowns and reset arrow states
     document.querySelectorAll('.tool-dropdown.show').forEach(function(d) { d.classList.remove('show'); });
+    document.querySelectorAll('.tool-group-btn.dropdown-open').forEach(function(b) { b.classList.remove('dropdown-open'); });
+    document.querySelectorAll('.cursor-dropdown-arrow.dropdown-open, .dropdown-arrow.dropdown-open').forEach(function(a) { a.classList.remove('dropdown-open'); });
     var already = panel.classList.contains('open') && _spCurrentMode === (section || '');
     if (already) {
         closePanel();
