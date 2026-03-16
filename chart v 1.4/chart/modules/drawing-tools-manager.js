@@ -4451,18 +4451,18 @@ class DrawingToolsManager {
     }
 
     /**
-     * Toggle axis cursor zone pointer-events based on drawing selection / active tool state.
-     * When a drawing is selected or a tool is active the time-axis zone must not
-     * steal mouse events from the SVG layer underneath it.
+     * Toggle axis cursor zone z-index based on drawing selection / active tool state.
+     * When a drawing is selected or a tool is active, move the time-axis zone behind
+     * the SVG layer (z-index 1) so it doesn't steal mouse events from drawings.
      */
     _updateAxisZonePointerEvents() {
         const active = this.selectedDrawings.length > 0 || !!this.currentTool;
         const timeZone = document.getElementById('timeAxisZone') || document.querySelector('.time-axis-zone');
         if (timeZone) {
             if (active) {
-                timeZone.style.setProperty('pointer-events', 'none', 'important');
+                timeZone.style.zIndex = '1';
             } else {
-                timeZone.style.removeProperty('pointer-events');
+                timeZone.style.zIndex = '';
             }
         }
     }
