@@ -8663,6 +8663,13 @@ body.light-mode .template-save-dialog .dialog-title {
         // Store handler reference for cleanup
         modal._styleChangeHandler = styleChangeHandler;
         
+        // Close fixed dropdowns on scroll so they don't lag behind
+        modal.addEventListener('scroll', () => {
+            modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => m.style.display = 'none');
+            document.querySelector('.settings-info-dropdown')?.remove();
+            document.querySelector('.settings-template-dropdown')?.remove();
+        }, true);
+        
         // Tab switching (horizontal tabs)
         modal.querySelectorAll('.tv-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -11907,6 +11914,11 @@ applyTemplate(drawing, templateId, modal) {
 
             if (e.target === header || header.contains(e.target)) {
                 isDragging = true;
+                
+                // Close all fixed dropdowns
+                modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => m.style.display = 'none');
+                document.querySelector('.settings-info-dropdown')?.remove();
+                document.querySelector('.settings-template-dropdown')?.remove();
                 
                 // Get current position
                 const rect = modal.getBoundingClientRect();
