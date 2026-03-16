@@ -9951,12 +9951,16 @@ body.light-mode .template-save-dialog .dialog-title {
             });
         });
 
-        // Close dropdowns when clicking outside
-        document.addEventListener('click', () => {
+        // Close dropdowns when clicking outside (store reference for cleanup)
+        if (this._dropdownCloseHandler) {
+            document.removeEventListener('click', this._dropdownCloseHandler);
+        }
+        this._dropdownCloseHandler = () => {
             queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(menu => {
                 menu.style.display = 'none';
             });
-        });
+        };
+        document.addEventListener('click', this._dropdownCloseHandler);
         
 
         // Text input with live preview - use queryAll to find in both modal and external dropdowns
@@ -12252,6 +12256,17 @@ applyTemplate(drawing, templateId, modal) {
         this.originalStyle = JSON.parse(JSON.stringify(drawing.style));
         this.originalText = drawing.text || '';
         this.originalLevels = drawing.levels ? JSON.parse(JSON.stringify(drawing.levels)) : null;
+
+        // Clean up old click-outside handler to prevent stale closures
+        if (this.clickOutsideHandler) {
+            document.removeEventListener('mousedown', this.clickOutsideHandler, true);
+            this.clickOutsideHandler = null;
+        }
+        // Clean up old dropdown-close handler
+        if (this._dropdownCloseHandler) {
+            document.removeEventListener('click', this._dropdownCloseHandler);
+            this._dropdownCloseHandler = null;
+        }
 
         // Remove existing panel/modal and external dropdowns
         if (this.panel) {
@@ -15694,6 +15709,11 @@ applyTemplate(drawing, templateId, modal) {
         if (this.clickOutsideHandler) {
             document.removeEventListener('mousedown', this.clickOutsideHandler, true);
             this.clickOutsideHandler = null;
+        }
+        // Remove dropdown-close handler
+        if (this._dropdownCloseHandler) {
+            document.removeEventListener('click', this._dropdownCloseHandler);
+            this._dropdownCloseHandler = null;
         }
         
         // Remove TV modal if it exists
