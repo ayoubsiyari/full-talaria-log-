@@ -7320,9 +7320,9 @@ body.light-mode .template-save-dialog .dialog-title {
                     <div class="tv-align-buttons">
                         <button class="tv-align-btn ${currentHAlign === hVal[0] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[0]}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <line x1="4" y1="6" x2="20" y2="6"/>
+                                <line x1="4" y1="18" x2="20" y2="18"/>
                                 <line x1="4" y1="12" x2="14" y2="12"/>
-                                <line x1="4" y1="18" x2="18" y2="18"/>
+                                <line x1="4" y1="6" x2="18" y2="6"/>
                             </svg>
                         </button>
                         <button class="tv-align-btn ${currentHAlign === hVal[1] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[1]}">
@@ -7334,9 +7334,9 @@ body.light-mode .template-save-dialog .dialog-title {
                         </button>
                         <button class="tv-align-btn ${currentHAlign === hVal[2] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[2]}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <line x1="4" y1="6" x2="20" y2="6"/>
+                                <line x1="4" y1="18" x2="20" y2="18"/>
                                 <line x1="10" y1="12" x2="20" y2="12"/>
-                                <line x1="6" y1="18" x2="20" y2="18"/>
+                                <line x1="6" y1="6" x2="20" y2="6"/>
                             </svg>
                         </button>
                     </div>
