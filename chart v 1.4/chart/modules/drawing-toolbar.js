@@ -1136,8 +1136,12 @@ class DrawingToolbar {
             left = padding;
         }
         
+        // Check if settings panel is open and adjust maxLeft accordingly
+        const settingsPanel = document.querySelector('.settings-panel');
+        const settingsPanelWidth = settingsPanel && settingsPanel.classList.contains('open') ? 420 : 0;
+        
         // If toolbar would go off-screen on the right
-        const maxLeft = window.innerWidth - rect.width - padding;
+        const maxLeft = window.innerWidth - rect.width - padding - settingsPanelWidth;
         if (left > maxLeft) {
             left = maxLeft;
         }
@@ -1152,7 +1156,12 @@ class DrawingToolbar {
         if (left < padding) {
             left = padding;
         }
-        const maxLeft = window.innerWidth - rect.width - padding;
+        
+        // Check if settings panel is open and adjust maxLeft accordingly
+        const settingsPanel = document.querySelector('.settings-panel');
+        const settingsPanelWidth = settingsPanel && settingsPanel.classList.contains('open') ? 420 : 0;
+        
+        const maxLeft = window.innerWidth - rect.width - padding - settingsPanelWidth;
         if (left > maxLeft) {
             left = maxLeft;
         }
