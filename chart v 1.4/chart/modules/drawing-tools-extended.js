@@ -246,18 +246,17 @@ class ArrowMarkerTool extends BaseDrawing {
             const fontWeight = this.style.fontWeight || 'normal';
             const fontStyle = this.style.fontStyle || 'normal';
 
-            // Perpendicular direction (90° counter-clockwise from arrow) keeps text
-            // clear of the body. Use text-anchor:end so text always extends AWAY
-            // from the arrow — never back over it, regardless of text length.
-            const perpAngle = angle - Math.PI / 2;
-            const perpDist = startHalfWidth + Math.max(fontSize, 14) + 8;
-            const textX = x1 + perpDist * Math.cos(perpAngle) + (this.style.textOffsetX || 0);
-            const textY = y1 + perpDist * Math.sin(perpAngle) + (this.style.textOffsetY || 0);
+            // Place text BEHIND the tail (opposite to arrow direction) —
+            // no arrow body exists there so overlap is impossible at any angle.
+            const backAngle = angle + Math.PI;
+            const backDist = startHalfWidth + Math.max(fontSize, 14) + 10;
+            const textX = x1 + backDist * Math.cos(backAngle) + (this.style.textOffsetX || 0);
+            const textY = y1 + backDist * Math.sin(backAngle) + (this.style.textOffsetY || 0);
 
             this.group.append('text')
                 .attr('x', textX)
                 .attr('y', textY)
-                .attr('text-anchor', 'end')
+                .attr('text-anchor', 'middle')
                 .attr('dominant-baseline', 'middle')
                 .attr('fill', textColor)
                 .attr('font-size', fontSize)
