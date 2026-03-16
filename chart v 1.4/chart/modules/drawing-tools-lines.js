@@ -1088,7 +1088,7 @@ class HorizontalLineTool extends BaseDrawing {
                 baseX = (xRange[0] + xRange[1]) / 2;
         }
         
-        let offsetY = 5;
+        let offsetY = 0;
         if (textVAlign === 'top') {
             offsetY = -LINE_LABEL_OFFSET;
         } else if (textVAlign === 'bottom') {
@@ -1103,7 +1103,7 @@ class HorizontalLineTool extends BaseDrawing {
         }
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
-            y: y + offsetY + (this.style.textOffsetY || 0),
+            y: y + offsetY,
             anchor: hlAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize, 
@@ -2240,7 +2240,7 @@ class HorizontalRayTool extends BaseDrawing {
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
-            y: y + offsetY + (this.style.textOffsetY || 0),
+            y: y + offsetY,
             anchor: hrAnchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
