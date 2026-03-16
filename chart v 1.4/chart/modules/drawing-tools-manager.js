@@ -3914,9 +3914,11 @@ class DrawingToolsManager {
                         : (typeof drawing.onPointHandleDrag === 'function');
 
                     if (handleRole && hasCustomOverride) {
+                        self.resizingHandleRole = handleRole || null;
                         self.startCustomHandleDrag(drawing, handleRole, event, index);
                     } else if (!isNaN(index) && hasCustomOverride && !hasPointOverride) {
                         // Tools that rely on custom drag math but expose point-index handles.
+                        self.resizingHandleRole = handleRole || null;
                         self.startCustomHandleDrag(drawing, index, event, index);
                     } else {
                         self.resizingHandleRole = handleRole || null;
