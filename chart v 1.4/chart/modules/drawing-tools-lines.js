@@ -508,10 +508,10 @@ class TrendlineTool extends BaseDrawing {
         const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
         const boxHeight = rows.length * lineHeight + padY * 2;
 
-        // Place info box anchored to p2 (end point): to the right and below, like TradingView
+        // Place info box anchored below p2 (end point) so it clears the extended line
         const OFFSET = 15;
-        let boxX = x2 + OFFSET;
-        let boxY = y2 + OFFSET;
+        let boxX = x2 - boxWidth / 2;
+        let boxY = Math.max(y1, y2) + OFFSET;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
