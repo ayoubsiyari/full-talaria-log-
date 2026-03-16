@@ -1271,18 +1271,22 @@ class ArrowTool extends BaseDrawing {
         let boxY = (dy > 0) ? (anchorY - boxHeight) : anchorY;
 
         // Keep box near p2: flip to opposite side first, hard-clamp only as last resort
-        const svgEl = this.group.node() && this.group.node().ownerSVGElement;
-        if (svgEl) {
-            const svgW = svgEl.clientWidth || 800;
-            const svgH = svgEl.clientHeight || 600;
-            if (boxX + boxWidth > svgW - 4) boxX = anchorX - boxWidth - OFFSET;
-            if (boxX < 4) boxX = anchorX + OFFSET;
-            if (boxX + boxWidth > svgW - 4) boxX = svgW - boxWidth - 4;
-            if (boxX < 4) boxX = 4;
-            if (boxY < 4) boxY = anchorY;
-            if (boxY + boxHeight > svgH - 4) boxY = anchorY - boxHeight;
-            if (boxY < 4) boxY = 4;
-            if (boxY + boxHeight > svgH - 4) boxY = svgH - boxHeight - 4;
+        // Use scale ranges — same coordinate space as the drawing, no SVG dimension ambiguity
+        if (scales && scales.xScale && scales.yScale) {
+            const xRange = scales.xScale.range();
+            const yRange = scales.yScale.range();
+            const chartLeft = xRange[0];
+            const chartRight = xRange[1];
+            const chartTop = Math.min(yRange[0], yRange[1]);
+            const chartBottom = Math.max(yRange[0], yRange[1]);
+            if (boxX + boxWidth > chartRight - 4) boxX = anchorX - boxWidth - OFFSET;
+            if (boxX < chartLeft + 4) boxX = anchorX + OFFSET;
+            if (boxX + boxWidth > chartRight - 4) boxX = chartRight - boxWidth - 4;
+            if (boxX < chartLeft + 4) boxX = chartLeft + 4;
+            if (boxY < chartTop + 4) boxY = anchorY;
+            if (boxY + boxHeight > chartBottom - 4) boxY = anchorY - boxHeight;
+            if (boxY < chartTop + 4) boxY = chartTop + 4;
+            if (boxY + boxHeight > chartBottom - 4) boxY = chartBottom - boxHeight - 4;
         }
 
         const infoGroup = this.group.append('g')
