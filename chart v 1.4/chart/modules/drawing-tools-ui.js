@@ -4135,9 +4135,9 @@ body.light-mode .template-save-dialog .dialog-title {
         ddWrapper.dataset.prop = 'pitchforkStyle';
         ddWrapper.style.cssText = 'position: relative; width: 140px; min-width: 140px;';
         ddWrapper.innerHTML = `
-            <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 24px 0 10px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box;">
+            <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 30px; padding: 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 11px; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
                 <span>${currentLabel}</span>
-                <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 8px;"><path d="M6 9l6 6 6-6"/></svg>
+                <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" flex-shrink="0"><path d="M6 9l6 6 6-6"/></svg>
             </button>
             <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;">
                 ${styleOptions.map(s => `<div class="tv-fontsize-option" data-value="${s.value}" style="padding: 7px 14px; cursor: default; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s.label}</div>`).join('')}
