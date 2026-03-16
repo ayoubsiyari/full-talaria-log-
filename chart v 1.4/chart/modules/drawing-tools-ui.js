@@ -7034,7 +7034,7 @@ body.light-mode .template-save-dialog .dialog-title {
             return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
         };
         const chevronSvg = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
-        const menuStyle = `display: none; position: absolute; left: 0; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 80px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);`;
+        const menuStyle = `display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; min-width: 80px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);`;
         const optionBorder = `border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));`;
         const optionBase = `padding: 8px; cursor: default; display: flex; align-items: center; justify-content: center;`;
 
@@ -9794,7 +9794,14 @@ body.light-mode .template-save-dialog .dialog-title {
                 });
                 document.querySelector('.settings-info-dropdown')?.remove();
                 document.querySelector('.settings-template-dropdown')?.remove();
-                menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+                const isOpen = menu.style.display !== 'none';
+                if (!isOpen) {
+                    const rect = btn.getBoundingClientRect();
+                    menu.style.left = rect.left + 'px';
+                    menu.style.top = (rect.bottom + 4) + 'px';
+                    menu.style.minWidth = rect.width + 'px';
+                }
+                menu.style.display = isOpen ? 'none' : 'block';
             });
             menu.querySelectorAll('.tv-ending-option').forEach(option => {
                 option.addEventListener('click', () => {
@@ -9834,7 +9841,14 @@ body.light-mode .template-save-dialog .dialog-title {
                 });
                 document.querySelector('.settings-info-dropdown')?.remove();
                 document.querySelector('.settings-template-dropdown')?.remove();
-                menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+                const isOpen = menu.style.display !== 'none';
+                if (!isOpen) {
+                    const rect = btn.getBoundingClientRect();
+                    menu.style.left = rect.left + 'px';
+                    menu.style.top = (rect.bottom + 4) + 'px';
+                    menu.style.minWidth = rect.width + 'px';
+                }
+                menu.style.display = isOpen ? 'none' : 'block';
             });
             menu.querySelectorAll('.tv-ending-option').forEach(option => {
                 option.addEventListener('click', () => {
