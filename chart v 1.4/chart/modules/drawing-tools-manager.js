@@ -5880,7 +5880,8 @@ class DrawingToolsManager {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             box-shadow:
                 0 4px 12px rgba(0, 0, 0, 0.3),
-                0 0 0 1px rgba(${accentRgb}, 0.5);
+                0 0 8px rgba(${accentRgb}, 0.5),
+                0 0 20px rgba(${accentRgb}, 0.25);
             z-index: 10000;
             pointer-events: none;
             border: 1px solid rgba(${accentRgb}, 0.75);
