@@ -1270,13 +1270,17 @@ class ArrowTool extends BaseDrawing {
         let boxX = (dx > 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
         let boxY = (dy > 0) ? (anchorY - boxHeight) : anchorY;
 
-        // Clamp within SVG viewport
+        // Keep box near p2: flip to opposite side first, hard-clamp only as last resort
         const svgEl = this.group.node() && this.group.node().ownerSVGElement;
         if (svgEl) {
             const svgW = svgEl.clientWidth || 800;
             const svgH = svgEl.clientHeight || 600;
+            if (boxX + boxWidth > svgW - 4) boxX = anchorX - boxWidth - OFFSET;
+            if (boxX < 4) boxX = anchorX + OFFSET;
             if (boxX + boxWidth > svgW - 4) boxX = svgW - boxWidth - 4;
             if (boxX < 4) boxX = 4;
+            if (boxY < 4) boxY = anchorY;
+            if (boxY + boxHeight > svgH - 4) boxY = anchorY - boxHeight;
             if (boxY < 4) boxY = 4;
             if (boxY + boxHeight > svgH - 4) boxY = svgH - boxHeight - 4;
         }
