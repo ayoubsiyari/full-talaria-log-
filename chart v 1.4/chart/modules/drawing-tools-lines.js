@@ -1089,7 +1089,7 @@ class HorizontalLineTool extends BaseDrawing {
                 baseX = (xRange[0] + xRange[1]) / 2;
         }
         
-        const HL_LABEL_OFFSET = 2;
+        const HL_LABEL_OFFSET = 10;
         let offsetY = 0;
         if (textVAlign === 'top') {
             offsetY = -HL_LABEL_OFFSET;
@@ -2235,7 +2235,7 @@ class HorizontalRayTool extends BaseDrawing {
                 hrAnchor = 'middle';
         }
         
-        const HL_LABEL_OFFSET = 2;
+        const HL_LABEL_OFFSET = 10;
         let offsetY = 0;
         if (textVAlign === 'top') {
             offsetY = -HL_LABEL_OFFSET;
@@ -2781,13 +2781,15 @@ class CrossLineTool extends BaseDrawing {
                 case 'right': cl_baseX = cl_xRange[1] - CLEDGE; cl_anchor = 'end';   break;
                 default:      cl_baseX = (cl_xRange[0] + cl_xRange[1]) / 2; cl_anchor = 'middle';
             }
+            const CL_HL_OFFSET = 10;
             let cl_offsetY = 0;
-            if (cl_textVAlign === 'top')    cl_offsetY = -LINE_LABEL_OFFSET;
-            else if (cl_textVAlign === 'bottom') cl_offsetY =  LINE_LABEL_OFFSET;
+            if (cl_textVAlign === 'top')    cl_offsetY = -CL_HL_OFFSET;
+            else if (cl_textVAlign === 'bottom') cl_offsetY =  CL_HL_OFFSET;
             appendTextLabel(this.group, this.text, {
                 x: cl_baseX + (this.style.textOffsetX || 0),
-                y: yScreen + cl_offsetY + (this.style.textOffsetY || 0),
+                y: yScreen + cl_offsetY,
                 anchor: cl_anchor,
+                yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
