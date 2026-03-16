@@ -626,17 +626,13 @@ class DrawingToolsManager {
         const w = this.chart.w || this.chart.canvas?.width || 800;
         const h = this.chart.h || this.chart.canvas?.height || 600;
         
+        // Full width so handles in the price-axis zone are not clipped;
+        // clip only at the time-axis boundary (bottom).
         this.svg.select('.chart-clip-rect')
-            .attr('x', m.l)
-            .attr('y', m.t)
-            .attr('width', w - m.l - m.r)
-            .attr('height', h - m.t - m.b);
-
-        // Clip only the bottom (time axis area) so drawings/handles can still
-        // appear in the price-axis zone on the right side.
-        const bottomClip = `inset(0px 0px ${m.b}px 0px)`;
-        if (this.drawingsGroup) this.drawingsGroup.style('clip-path', bottomClip);
-        if (this.tempGroup) this.tempGroup.style('clip-path', bottomClip);
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', w)
+            .attr('height', h - m.b);
     }
 
     /**
