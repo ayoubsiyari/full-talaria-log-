@@ -7277,26 +7277,27 @@ body.light-mode .template-save-dialog .dialog-title {
             
             const vAlignSection = document.createElement('div');
             vAlignSection.className = 'tv-align-section';
-            const vIcons = isVerticalLine ? [
-                `<line x1="4" y1="12" x2="20" y2="12"/><polyline points="8 8 4 12 8 16"/>`,
-                `<line x1="12" y1="4" x2="12" y2="20"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
-                `<line x1="4" y1="12" x2="20" y2="12"/><polyline points="16 8 20 12 16 16"/>`
-            ] : [
-                `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 8 12 4 16 8"/>`,
-                `<line x1="4" y1="12" x2="20" y2="12"/><polyline points="8 8 12 12 8 16"/><polyline points="16 8 12 12 16 16"/>`,
-                `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 16 12 20 16 16"/>`
-            ];
             vAlignSection.innerHTML = `
                 <div class="tv-align-label">Vertical Alignment</div>
                 <div class="tv-align-buttons">
                     <button class="tv-align-btn ${currentVAlign === vVal[0] ? 'active' : ''}" data-prop="${vProp}" data-value="${vVal[0]}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${vIcons[0]}</svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="12" y1="4" x2="12" y2="20"/>
+                            <polyline points="8 8 12 4 16 8"/>
+                        </svg>
                     </button>
                     <button class="tv-align-btn ${currentVAlign === vVal[1] ? 'active' : ''}" data-prop="${vProp}" data-value="${vVal[1]}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${vIcons[1]}</svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="4" y1="12" x2="20" y2="12"/>
+                            <polyline points="8 8 12 12 8 16"/>
+                            <polyline points="16 8 12 12 16 16"/>
+                        </svg>
                     </button>
                     <button class="tv-align-btn ${currentVAlign === vVal[2] ? 'active' : ''}" data-prop="${vProp}" data-value="${vVal[2]}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${vIcons[2]}</svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="12" y1="4" x2="12" y2="20"/>
+                            <polyline points="8 16 12 20 16 16"/>
+                        </svg>
                     </button>
                 </div>
             `;
@@ -7314,26 +7315,29 @@ body.light-mode .template-save-dialog .dialog-title {
             const hAlignSection = document.createElement('div');
             hAlignSection.className = 'tv-align-section';
             hAlignSection.style.marginTop = '12px';
-            const hIcons = isVerticalLine ? [
-                `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 8 12 4 16 8"/>`,
-                `<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>`,
-                `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 16 12 20 16 16"/>`
-            ] : [
-                `<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/>`,
-                `<line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/>`,
-                `<line x1="4" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="6" y1="18" x2="20" y2="18"/>`
-            ];
             hAlignSection.innerHTML = `
                 <div class="tv-align-label">Horizontal Alignment</div>
                 <div class="tv-align-buttons">
                     <button class="tv-align-btn ${currentHAlign === hVal[0] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[0]}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${hIcons[0]}</svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="4" y1="6" x2="20" y2="6"/>
+                            <line x1="4" y1="12" x2="14" y2="12"/>
+                            <line x1="4" y1="18" x2="18" y2="18"/>
+                        </svg>
                     </button>
                     <button class="tv-align-btn ${currentHAlign === hVal[1] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[1]}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${hIcons[1]}</svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="4" y1="6" x2="20" y2="6"/>
+                            <line x1="7" y1="12" x2="17" y2="12"/>
+                            <line x1="5" y1="18" x2="19" y2="18"/>
+                        </svg>
                     </button>
                     <button class="tv-align-btn ${currentHAlign === hVal[2] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[2]}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${hIcons[2]}</svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="4" y1="6" x2="20" y2="6"/>
+                            <line x1="10" y1="12" x2="20" y2="12"/>
+                            <line x1="6" y1="18" x2="20" y2="18"/>
+                        </svg>
                     </button>
                 </div>
             `;
