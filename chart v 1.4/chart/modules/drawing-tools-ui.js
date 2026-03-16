@@ -2356,8 +2356,11 @@ body.light-mode .template-save-dialog .dialog-title {
             const savedPos = localStorage.getItem('drawingSettingsModalPosition');
             if (savedPos) {
                 const pos = JSON.parse(savedPos);
+                // Check if settings panel is open and adjust maxLeft accordingly
+                const settingsPanel = document.querySelector('.settings-panel');
+                const settingsPanelWidth = settingsPanel && settingsPanel.classList.contains('open') ? 420 : 0;
                 // Validate position is within viewport
-                const maxLeft = window.innerWidth - 100;
+                const maxLeft = window.innerWidth - 100 - settingsPanelWidth;
                 const maxTop = window.innerHeight - 100;
                 if (pos.left >= 0 && pos.left < maxLeft && pos.top >= 0 && pos.top < maxTop) {
                     modal.style.position = 'fixed';
@@ -12027,9 +12030,13 @@ applyTemplate(drawing, templateId, modal) {
                 let newLeft = e.clientX - startX;
                 let newTop = e.clientY - startY;
                 
+                // Check if settings panel is open and adjust maxLeft accordingly
+                const settingsPanel = document.querySelector('.settings-panel');
+                const settingsPanelWidth = settingsPanel && settingsPanel.classList.contains('open') ? 420 : 0;
+                
                 // Constrain to viewport bounds (keep at least 100px visible)
                 const minVisible = 100;
-                const maxLeft = window.innerWidth - minVisible;
+                const maxLeft = window.innerWidth - minVisible - settingsPanelWidth;
                 const maxTop = window.innerHeight - minVisible;
                 const minLeft = -(modalWidth - minVisible);
                 const minTop = 0; // Don't allow dragging above viewport
