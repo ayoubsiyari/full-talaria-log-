@@ -7084,7 +7084,7 @@ body.light-mode .template-save-dialog .dialog-title {
                                     '<circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/><line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="4"/>'}
                             </svg>
                         </button>
-                        <div class="tv-ending-dropdown-menu" style="display: none; position: absolute; right: 0; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <div class="tv-ending-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                             <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
                                 <svg viewBox="0 0 100 100" width="24" height="24">
                                     <circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>
@@ -7109,7 +7109,7 @@ body.light-mode .template-save-dialog .dialog-title {
                                     '<line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/><circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>'}
                             </svg>
                         </button>
-                        <div class="tv-ending-dropdown-menu" style="display: none; position: absolute; right: 0; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <div class="tv-ending-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                             <div class="tv-ending-option" data-value="normal" style="padding: 8px; cursor: default; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));">
                                 <svg viewBox="0 0 100 100" width="24" height="24">
                                     <line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/>
@@ -9738,7 +9738,13 @@ body.light-mode .template-save-dialog .dialog-title {
                 });
                 document.querySelector('.settings-info-dropdown')?.remove();
                 document.querySelector('.settings-template-dropdown')?.remove();
-                menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+                const isOpen = menu.style.display !== 'none';
+                if (!isOpen) {
+                    const rect = btn.getBoundingClientRect();
+                    menu.style.left = (rect.right - 120) + 'px';
+                    menu.style.top = (rect.bottom + 4) + 'px';
+                }
+                menu.style.display = isOpen ? 'none' : 'block';
             });
             
             // Handle option selection
