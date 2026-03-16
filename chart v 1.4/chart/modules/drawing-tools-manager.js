@@ -5857,6 +5857,11 @@ class DrawingToolsManager {
         // Remove existing tooltip if any
         this.hidePathTooltip();
         
+        // Read theme accent color from CSS variables
+        const root = document.documentElement;
+        const accentRgb = getComputedStyle(root).getPropertyValue('--sp-accent-rgb').trim() || '41, 98, 255';
+        const textColor = getComputedStyle(root).getPropertyValue('--sp-text').trim() || '#f3f6ff';
+
         // Create tooltip element
         const tooltip = document.createElement('div');
         tooltip.id = 'path-drawing-tooltip';
@@ -5865,8 +5870,8 @@ class DrawingToolsManager {
             bottom: 50px;
             left: 50%;
             transform: translateX(-50%);
-            background: linear-gradient(135deg, rgba(31, 37, 56, 0.96) 0%, rgba(43, 52, 78, 0.95) 100%);
-            color: #f3f6ff;
+            background: linear-gradient(135deg, rgba(${accentRgb}, 0.15) 0%, rgba(${accentRgb}, 0.10) 100%);
+            color: ${textColor};
             padding: 9px 18px;
             border-radius: 10px;
             font-size: 13px;
@@ -5875,15 +5880,15 @@ class DrawingToolsManager {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             box-shadow:
                 0 10px 24px rgba(0, 0, 0, 0.42),
-                0 0 0 1px rgba(103, 166, 255, 0.65),
-                0 0 22px rgba(79, 140, 255, 0.9),
-                0 0 44px rgba(79, 140, 255, 0.5);
+                0 0 0 1px rgba(${accentRgb}, 0.65),
+                0 0 22px rgba(${accentRgb}, 0.9),
+                0 0 44px rgba(${accentRgb}, 0.5);
             text-shadow:
-                0 0 12px rgba(165, 199, 255, 0.85),
-                0 0 4px rgba(165, 199, 255, 0.65);
+                0 0 12px rgba(${accentRgb}, 0.85),
+                0 0 4px rgba(${accentRgb}, 0.65);
             z-index: 10000;
             pointer-events: none;
-            border: 1px solid rgba(145, 189, 255, 0.75);
+            border: 1px solid rgba(${accentRgb}, 0.75);
         `;
         tooltip.textContent = 'Right click to end';
         
