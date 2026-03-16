@@ -4457,11 +4457,13 @@ class DrawingToolsManager {
      */
     _updateAxisZonePointerEvents() {
         const active = this.selectedDrawings.length > 0 || !!this.currentTool;
-        const timeZone = this.chart.canvas
-            ? this.chart.canvas.parentElement?.querySelector('.time-axis-zone')
-            : document.querySelector('.time-axis-zone');
+        const timeZone = document.getElementById('timeAxisZone') || document.querySelector('.time-axis-zone');
         if (timeZone) {
-            timeZone.style.pointerEvents = active ? 'none' : '';
+            if (active) {
+                timeZone.style.setProperty('pointer-events', 'none', 'important');
+            } else {
+                timeZone.style.removeProperty('pointer-events');
+            }
         }
     }
 
