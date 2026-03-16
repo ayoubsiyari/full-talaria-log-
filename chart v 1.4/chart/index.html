@@ -28136,6 +28136,8 @@ var closePanel = window.closePanel;
 window._openMode = function(section) {
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
+    // Close any open drawing-tool category dropdowns
+    document.querySelectorAll('.tool-dropdown.show').forEach(function(d) { d.classList.remove('show'); });
     var already = panel.classList.contains('open') && _spCurrentMode === (section || '');
     if (already) {
         closePanel();
