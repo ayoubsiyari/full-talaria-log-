@@ -4141,42 +4141,67 @@ body.light-mode .template-save-dialog .dialog-title {
         styleLabel.style.cssText = 'color: #787b86; font-size: 12px;';
         styleLabel.textContent = 'Style';
 
-        const styleDropdown = document.createElement('select');
-        styleDropdown.style.cssText = 'background: #1e222d; border: 1px solid #363a45; border-radius: 4px; color: #d1d4dc; padding: 6px 8px; font-size: 12px; cursor: pointer; min-width: 150px;';
-        
-        const styles = [
+        const styleOptions = [
             { value: 'original', label: 'Original' },
             { value: 'schiff', label: 'Schiff' },
             { value: 'modified-schiff', label: 'Modified Schiff' },
             { value: 'inside', label: 'Inside' }
         ];
+        const currentPFStyle = drawing.style.pitchforkStyle || 'original';
+        const currentLabel = (styleOptions.find(s => s.value === currentPFStyle) || styleOptions[0]).label;
 
-        styles.forEach(style => {
-            const option = document.createElement('option');
-            option.value = style.value;
-            option.textContent = style.label;
-            if (drawing.style.pitchforkStyle === style.value) {
-                option.selected = true;
-            }
-            styleDropdown.appendChild(option);
-        });
+        const ddWrapper = document.createElement('div');
+        ddWrapper.className = 'tv-fontsize-dropdown';
+        ddWrapper.dataset.prop = 'pitchforkStyle';
+        ddWrapper.style.cssText = 'position: relative; width: 140px; min-width: 140px;';
+        ddWrapper.innerHTML = `
+            <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 24px 0 10px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box;">
+                <span>${currentLabel}</span>
+                <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 8px;"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;">
+                ${styleOptions.map(s => `<div class="tv-fontsize-option" data-value="${s.value}" style="padding: 7px 14px; cursor: default; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s.label}</div>`).join('')}
+            </div>`;
 
-        styleDropdown.onchange = () => {
-            drawing.style.pitchforkStyle = styleDropdown.value;
-            
-            // Find and update the actual drawing in the manager
-            if (window.drawingManager) {
-                const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id);
-                if (actualDrawing) {
-                    actualDrawing.style.pitchforkStyle = styleDropdown.value;
-                    window.drawingManager.renderDrawing(actualDrawing);
-                    window.drawingManager.saveDrawings();
+        setTimeout(() => {
+            const btn = ddWrapper.querySelector('.tv-fontsize-dropdown-btn');
+            const menu = ddWrapper.querySelector('.tv-fontsize-dropdown-menu');
+            const label = btn.querySelector('span');
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.tv-fontsize-dropdown-menu').forEach(m => { if (m !== menu) m.style.display = 'none'; });
+                const isOpen = menu.style.display !== 'none';
+                if (!isOpen) {
+                    const rect = btn.getBoundingClientRect();
+                    menu.style.left = rect.left + 'px';
+                    menu.style.top = (rect.bottom + 2) + 'px';
+                    menu.style.minWidth = rect.width + 'px';
                 }
-            }
-        };
+                menu.style.display = isOpen ? 'none' : 'block';
+            });
+            menu.querySelectorAll('.tv-fontsize-option').forEach(opt => {
+                opt.addEventListener('mouseenter', () => { opt.style.background = '#363a45'; });
+                opt.addEventListener('mouseleave', () => { opt.style.background = 'transparent'; });
+                opt.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const val = opt.dataset.value;
+                    label.textContent = opt.textContent;
+                    menu.style.display = 'none';
+                    drawing.style.pitchforkStyle = val;
+                    if (window.drawingManager) {
+                        const actual = window.drawingManager.drawings.find(d => d.id === drawing.id);
+                        if (actual) {
+                            actual.style.pitchforkStyle = val;
+                            window.drawingManager.renderDrawing(actual);
+                            window.drawingManager.saveDrawings();
+                        }
+                    }
+                });
+            });
+        }, 0);
 
         styleRow.appendChild(styleLabel);
-        styleRow.appendChild(styleDropdown);
+        styleRow.appendChild(ddWrapper);
         section.appendChild(styleRow);
 
         container.appendChild(section);
@@ -4285,33 +4310,22 @@ body.light-mode .template-save-dialog .dialog-title {
             row.className = 'tv-prop-row';
             row.style.cssText = 'display: flex; align-items: center; gap: 6px;';
 
-            // Checkbox (styled like TradingView - same as parallel channel)
-            const checkboxWrapper = document.createElement('div');
-            checkboxWrapper.style.cssText = `
-                width: 22px; height: 22px; border: 2px solid #363a45; border-radius: 4px;
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; background: ${level.enabled ? '#2962ff' : 'transparent'};
-                transition: all 0.15s;
-            `;
-            checkboxWrapper.innerHTML = level.enabled ? 
-                '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>' : '';
-            checkboxWrapper.onclick = (e) => {
+            // Checkbox - standard tv-checkbox style matching other tools
+            const checkboxEl = document.createElement('div');
+            checkboxEl.className = `tv-checkbox${level.enabled ? ' checked' : ''}`;
+            checkboxEl.style.cssText = 'flex-shrink: 0;';
+            checkboxEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+            checkboxEl.addEventListener('click', (e) => {
                 e.stopPropagation();
                 level.enabled = !level.enabled;
-                checkboxWrapper.style.background = level.enabled ? '#2962ff' : 'transparent';
-                checkboxWrapper.innerHTML = level.enabled ? 
-                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>' : '';
-                
-                // Update the drawing's level data
+                checkboxEl.classList.toggle('checked', level.enabled);
                 if (drawing.levels && drawing.levels[idx]) {
                     drawing.levels[idx].enabled = level.enabled;
                 }
-                
-                // Save changes through the UI's applyChanges method (same as parallel channel)
                 self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
                 self.applyChanges(drawing);
-            };
-            row.appendChild(checkboxWrapper);
+            });
+            row.appendChild(checkboxEl);
 
             // Value input
             const input = document.createElement('input');
