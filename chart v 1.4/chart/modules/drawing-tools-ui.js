@@ -1,4 +1,4 @@
-/**
+3/**
  * Drawing Tools - UI Module
  * Implements: Settings Panel, Toolbar, Context Menu, Text Editor
  */
@@ -5889,9 +5889,15 @@ body.light-mode .template-save-dialog .dialog-title {
         const labelSize = parseInt(drawing.style.fontSize || drawing.style.labelFontSize || 11);
         const labelRow = createStyleRow('Label Text');
         labelRow.controls.innerHTML = `
-            <select class="tv-select" data-prop="fontSize" style="width: 92px; min-width: 92px;">
-                ${[8,9,10,11,12,14,16,18,20,24].map(s => `<option value="${s}" ${labelSize === s ? 'selected' : ''}>${s}</option>`).join('')}
-            </select>
+            <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; width: 92px; min-width: 92px;">
+                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                    <span>${labelSize}</span>
+                    <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
+                    ${[8,9,10,11,12,14,16,18,20,24].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
+                </div>
+            </div>
             <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || drawing.style.labelTextColor || '#ffffff'};"></button>
         `;
 
@@ -6054,9 +6060,15 @@ body.light-mode .template-save-dialog .dialog-title {
         labelRow.row.style.marginTop = '16px';
         labelRow.controls.innerHTML = `
             <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#ffffff'};"></button>
-            <select class="tv-select" data-prop="fontSize" style="${compactSelectStyle}">
-                ${[8,9,10,11,12,14,16,18,20,24,28,32].map(s => `<option value="${s}" ${parseInt(drawing.style.fontSize || 12, 10) === s ? 'selected' : ''}>${s}</option>`).join('')}
-            </select>
+            <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; width: 60px; min-width: 60px;">
+                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 30px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: #050028; color: #d1d4dc; cursor: default; font-size: 11px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                    <span>${parseInt(drawing.style.fontSize || 12, 10)}</span>
+                    <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
+                    ${[8,9,10,11,12,14,16,18,20,24,28,32].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
+                </div>
+            </div>
         `;
 
         const labelBgEnabled = drawing.style.showLabelBackground !== false;
@@ -6827,18 +6839,15 @@ body.light-mode .template-save-dialog .dialog-title {
         sizeRow.innerHTML = `
             <span class="tv-checkbox-label">Font Size</span>
             <div class="tv-prop-controls" style="margin-left: auto;">
-                <select class="tv-select" data-prop="fontSize" style="min-width: 80px;">
-                    <option value="10" ${drawing.style.fontSize == 10 ? 'selected' : ''}>10px</option>
-                    <option value="12" ${drawing.style.fontSize == 12 ? 'selected' : ''}>12px</option>
-                    <option value="14" ${drawing.style.fontSize == 14 ? 'selected' : ''}>14px</option>
-                    <option value="16" ${drawing.style.fontSize == 16 ? 'selected' : ''}>16px</option>
-                    <option value="18" ${drawing.style.fontSize == 18 ? 'selected' : ''}>18px</option>
-                    <option value="20" ${drawing.style.fontSize == 20 ? 'selected' : ''}>20px</option>
-                    <option value="24" ${drawing.style.fontSize == 24 ? 'selected' : ''}>24px</option>
-                    <option value="28" ${drawing.style.fontSize == 28 ? 'selected' : ''}>28px</option>
-                    <option value="32" ${drawing.style.fontSize == 32 ? 'selected' : ''}>32px</option>
-                    <option value="36" ${drawing.style.fontSize == 36 ? 'selected' : ''}>36px</option>
-                </select>
+                <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; min-width: 80px;">
+                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                        <span>${drawing.style.fontSize || 14}</span>
+                        <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
+                        ${[10,12,14,16,18,20,24,28,32,36].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
+                    </div>
+                </div>
             </div>
         `;
         container.appendChild(sizeRow);
@@ -7167,11 +7176,17 @@ body.light-mode .template-save-dialog .dialog-title {
 	            </div>
 	            <div class="tv-text-controls">
 	                <span style="color: #787b86; font-size: 12px;">Size</span>
-	                <select class="tv-select" data-prop="fontSize" style="min-width: 60px;">
-	                    ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map(s => 
-	                        `<option value="${s}" ${(drawing.style.fontSize || 14) == s ? 'selected' : ''}>${s}</option>`
-	                    ).join('')}
-	                </select>
+	                <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; min-width: 60px;">
+	                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+	                        <span>${drawing.style.fontSize || 14}</span>
+	                        <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
+	                    </button>
+	                    <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
+	                        ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map(s => 
+	                            `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`
+	                        ).join('')}
+	                    </div>
+	                </div>
 	                <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#FFFFFF'}; width: 28px; height: 28px; flex-shrink: 0;"></button>
 	                <button class="tv-style-btn ${drawing.style.fontStyle && drawing.style.fontStyle.includes('italic') ? 'active' : ''}" data-prop="fontItalic"><i>I</i></button>
 	                <button class="tv-style-btn ${drawing.style.fontWeight && (drawing.style.fontWeight === 'bold' || drawing.style.fontWeight >= 600) ? 'active' : ''}" data-prop="fontBold"><b>B</b></button>
@@ -7197,11 +7212,17 @@ body.light-mode .template-save-dialog .dialog-title {
             </div>
             <div class="tv-text-controls">
                 <span style="color: #787b86; font-size: 12px;">Size</span>
-                <select class="tv-select" data-prop="fontSize" style="min-width: 60px;">
-                    ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map(s => 
-                        `<option value="${s}" ${(drawing.style.fontSize || 14) == s ? 'selected' : ''}>${s}</option>`
-                    ).join('')}
-                </select>
+                <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; min-width: 60px;">
+                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                        <span>${drawing.style.fontSize || 14}</span>
+                        <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
+                        ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map(s => 
+                            `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`
+                        ).join('')}
+                    </div>
+                </div>
                 <button class="tv-color-btn" data-prop="textColor" style="background: ${drawing.style.textColor || '#FFFFFF'}; width: 28px; height: 28px; flex-shrink: 0;"></button>
                 <button class="tv-style-btn ${drawing.style.fontStyle && drawing.style.fontStyle.includes('italic') ? 'active' : ''}" data-prop="fontItalic"><i>I</i></button>
                 <button class="tv-style-btn ${drawing.style.fontWeight && (drawing.style.fontWeight === 'bold' || drawing.style.fontWeight >= 600) ? 'active' : ''}" data-prop="fontBold"><b>B</b></button>
@@ -8641,20 +8662,10 @@ body.light-mode .template-save-dialog .dialog-title {
                 const { property, value } = e.detail;
                 // Update font size selector
                 if (property === 'fontSize') {
-                    const updateFontSizeSelect = (select) => {
-                        // Check if exact value exists as option
-                        let exactOption = select.querySelector(`option[value="${value}"]`);
-                        if (!exactOption) {
-                            // Add the actual value as a new option
-                            exactOption = document.createElement('option');
-                            exactOption.value = value;
-                            exactOption.textContent = `${value}px`;
-                            select.appendChild(exactOption);
-                        }
-                        select.value = value;
-                    };
-                    
-                    modal.querySelectorAll('select[data-prop="fontSize"]').forEach(updateFontSizeSelect);
+                    // Update custom fontsize dropdown buttons
+                    modal.querySelectorAll('.tv-fontsize-dropdown[data-prop="fontSize"] .tv-fontsize-dropdown-btn span').forEach(span => {
+                        span.textContent = value;
+                    });
                 }
             }
         };
@@ -8665,7 +8676,7 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Close fixed dropdowns on scroll so they don't lag behind
         modal.addEventListener('scroll', () => {
-            modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => m.style.display = 'none');
+            modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => m.style.display = 'none');
             document.querySelector('.settings-info-dropdown')?.remove();
             document.querySelector('.settings-template-dropdown')?.remove();
         }, true);
@@ -9740,7 +9751,7 @@ body.light-mode .template-save-dialog .dialog-title {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 // Close other dropdowns
-                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => {
+                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => {
                     if (m !== menu) m.style.display = 'none';
                 });
                 document.querySelector('.settings-info-dropdown')?.remove();
@@ -9806,7 +9817,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const prop = dropdown.dataset.prop;
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => {
+                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => {
                     if (m !== menu) m.style.display = 'none';
                 });
                 document.querySelector('.settings-info-dropdown')?.remove();
@@ -9853,7 +9864,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const prop = dropdown.dataset.prop;
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => {
+                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => {
                     if (m !== menu) m.style.display = 'none';
                 });
                 document.querySelector('.settings-info-dropdown')?.remove();
@@ -9890,9 +9901,49 @@ body.light-mode .template-save-dialog .dialog-title {
             });
         });
 
+        // Font size custom dropdown handlers
+        queryAll('.tv-fontsize-dropdown').forEach(dropdown => {
+            const btn = dropdown.querySelector('.tv-fontsize-dropdown-btn');
+            const menu = dropdown.querySelector('.tv-fontsize-dropdown-menu');
+            const prop = dropdown.dataset.prop;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => {
+                    if (m !== menu) m.style.display = 'none';
+                });
+                document.querySelector('.settings-info-dropdown')?.remove();
+                document.querySelector('.settings-template-dropdown')?.remove();
+                const isOpen = menu.style.display !== 'none';
+                if (!isOpen) {
+                    const rect = btn.getBoundingClientRect();
+                    menu.style.left = rect.left + 'px';
+                    menu.style.top = (rect.bottom + 4) + 'px';
+                    menu.style.minWidth = rect.width + 'px';
+                }
+                menu.style.display = isOpen ? 'none' : 'block';
+            });
+            menu.querySelectorAll('.tv-fontsize-option').forEach(option => {
+                option.addEventListener('click', () => {
+                    const value = option.dataset.value;
+                    this.pendingChanges[prop] = value;
+                    drawing.style[prop] = parseInt(value);
+                    btn.querySelector('span').textContent = value;
+                    self.renderPreview(drawing);
+                    this.applyChangesImmediately(drawing);
+                    if (window.drawingManager) {
+                        window.drawingManager.renderDrawing(drawing);
+                        window.drawingManager.saveDrawings();
+                    }
+                    menu.style.display = 'none';
+                });
+                option.addEventListener('mouseenter', () => { option.style.background = '#363a45'; });
+                option.addEventListener('mouseleave', () => { option.style.background = 'transparent'; });
+            });
+        });
+
         // Close dropdowns when clicking outside
         document.addEventListener('click', () => {
-            queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(menu => {
+            queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(menu => {
                 menu.style.display = 'none';
             });
         });
@@ -11916,7 +11967,7 @@ applyTemplate(drawing, templateId, modal) {
                 isDragging = true;
                 
                 // Close all fixed dropdowns
-                modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => m.style.display = 'none');
+                modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => m.style.display = 'none');
                 document.querySelector('.settings-info-dropdown')?.remove();
                 document.querySelector('.settings-template-dropdown')?.remove();
                 
