@@ -7031,7 +7031,7 @@ body.light-mode .template-save-dialog .dialog-title {
                        (lt === '2,2' || lt === '3,3') ? '2,4' :
                        lt === '8,4,2,4' ? '10,4,2,4' : '';
             const dasharrayAttr = da ? `stroke-dasharray="${da}"` : '';
-            return `<svg viewBox="0 0 100 20" width="44" height="12" style="display:block;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
+            return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
         };
         const chevronSvg = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
         const menuStyle = `display: none; position: absolute; left: 0; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; margin-top: 4px; z-index: 1000; min-width: 80px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);`;
@@ -9807,7 +9807,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     const daMap = { '': '', '10,6': '12,7', '2,2': '2,4', '8,4,2,4': '10,4,2,4' };
                     const da = daMap[value] ?? '';
                     const dasharrayAttr = da ? `stroke-dasharray="${da}"` : '';
-                    const newSvg = `<svg viewBox="0 0 100 20" width="44" height="12" style="display:block;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
+                    const newSvg = `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
                     const currentSpan = btn.querySelector('.tv-linetype-current');
                     if (currentSpan) currentSpan.innerHTML = newSvg;
                     this.applyChangesImmediately(drawing);
