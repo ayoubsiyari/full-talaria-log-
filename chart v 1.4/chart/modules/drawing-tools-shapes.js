@@ -1264,7 +1264,9 @@ class ArrowTool extends BaseDrawing {
         const anchorY = y2;
         const OFFSET = 10;
 
-        let boxX = anchorX + OFFSET;
+        // Place box on the side AWAY from p1 to avoid overlapping the line
+        const lineComesFromLeft = x1 <= x2;
+        let boxX = lineComesFromLeft ? (anchorX + OFFSET) : (anchorX - boxWidth - OFFSET);
         let boxY = anchorY;
 
         // Clamp within SVG viewport
@@ -1273,7 +1275,7 @@ class ArrowTool extends BaseDrawing {
             const svgW = svgEl.clientWidth || 800;
             const svgH = svgEl.clientHeight || 600;
             if (boxX + boxWidth > svgW - 4) boxX = anchorX - boxWidth - OFFSET;
-            if (boxX < 4) boxX = 4;
+            if (boxX < 4) boxX = anchorX + OFFSET;
             if (boxY < 4) boxY = 4;
             if (boxY + boxHeight > svgH - 4) boxY = svgH - boxHeight - 4;
         }
