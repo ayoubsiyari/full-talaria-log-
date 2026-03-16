@@ -2339,13 +2339,6 @@ body.light-mode .template-save-dialog .dialog-title {
         // All shapes now use compact accordion-style modal
         modal.className = 'tv-settings-modal compact';
 
-        // Pitchfork: narrower modal since content is compact
-        if (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') {
-            modal.style.setProperty('--tv-prop-label-width', '110px');
-            modal.style.setProperty('--tv-prop-controls-width', '160px');
-            modal.style.minWidth = '340px';
-            modal.style.maxWidth = '400px';
-        }
         
         // Hide initially to prevent flash, position will be set before showing
         modal.style.opacity = '0';
