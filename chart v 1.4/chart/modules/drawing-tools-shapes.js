@@ -1192,117 +1192,121 @@ class ArrowTool extends BaseDrawing {
     renderInfoBox(x1, y1, x2, y2, scales) {
         const infoSettings = this.style.infoSettings || {};
         if (!infoSettings.showInfo) return;
-        
+
         const p1 = this.points[0];
         const p2 = this.points[1];
-        
-        // Calculate metrics
-        const priceChange = Math.abs(p2.y - p1.y);
-        const percentChange = ((p2.y - p1.y) / p1.y * 100).toFixed(2);
-        const pipsChange = (priceChange / 0.0001).toFixed(1);
-        const barsRange = Math.round(Math.abs(p2.x - p1.x));
-        const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)).toFixed(0);
-        const angle = (Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI).toFixed(1);
-        
-        // Build info text
-        const infoLines = [];
-        if (infoSettings.priceRange) infoLines.push(`Price: ${priceChange.toFixed(5)}`);
-        if (infoSettings.percentChange) infoLines.push(`${percentChange}%`);
-        if (infoSettings.changeInPips) infoLines.push(`${pipsChange} pips`);
-        if (infoSettings.barsRange) infoLines.push(`Bars: ${barsRange}`);
-        if (infoSettings.dateTimeRange) {
-            let timeStr;
-            const _chart = scales && scales.chart;
-            if (_chart && _chart.data && _chart.data.length > 0) {
-                const _data = _chart.data;
-                const _i1 = Math.max(0, Math.min(Math.round(p1.x), _data.length - 1));
-                const _i2 = Math.max(0, Math.min(Math.round(p2.x), _data.length - 1));
-                const _diffMs = Math.abs(_data[_i2].t - _data[_i1].t);
-                const _totalMins = Math.round(_diffMs / 60000);
-                const _days = Math.floor(_totalMins / 1440);
-                const _hours = Math.floor((_totalMins % 1440) / 60);
-                const _mins = _totalMins % 60;
-                if (_days > 0) timeStr = _hours > 0 ? `${_days}d ${_hours}h` : `${_days}d`;
-                else if (_hours > 0) timeStr = _mins > 0 ? `${_hours}h ${_mins}m` : `${_hours}h`;
-                else timeStr = `${_mins}m`;
-            } else {
-                timeStr = `${barsRange} bars`;
-            }
-            infoLines.push(`Time: ${timeStr}`);
-        }
-        if (infoSettings.distance) infoLines.push(`Dist: ${distance}px`);
-        if (infoSettings.angle) infoLines.push(`Angle: ${angle}°`);
-        
-        if (infoLines.length === 0) return;
-        
-        // Calculate box dimensions first to know offset needed
-        const padding = 4;
-        const lineHeight = 11;
-        const fontSize = 9;
         const fontFamily = 'system-ui, -apple-system, sans-serif';
 
-        // Measure actual max text width using a temporary SVG text element
+        // Metrics
+        const rawPriceChange = p2.y - p1.y;
+        const absPrice = Math.abs(rawPriceChange);
+        const pct = p1.y !== 0 ? (rawPriceChange / p1.y * 100) : 0;
+        const tickSize = (scales && scales.chart && scales.chart.tickSize) ? scales.chart.tickSize : 0.0001;
+        const pips = tickSize ? Math.round(rawPriceChange / tickSize) : 0;
+        const decimals = absPrice < 0.001 ? 5 : absPrice < 0.1 ? 4 : absPrice < 10 ? 3 : 2;
+        const barsRange = Math.round(Math.abs(p2.x - p1.x));
+        const pixelDist = Math.round(Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)));
+        const angleDeg = (Math.atan2(-(y2 - y1), x2 - x1) * 180 / Math.PI).toFixed(2);
+
+        let timeStr = '';
+        const _chart = scales && scales.chart;
+        if (_chart && _chart.data && _chart.data.length > 0) {
+            const _data = _chart.data;
+            const _i1 = Math.max(0, Math.min(Math.round(p1.x), _data.length - 1));
+            const _i2 = Math.max(0, Math.min(Math.round(p2.x), _data.length - 1));
+            const _diffMs = Math.abs(_data[_i2].t - _data[_i1].t);
+            const _totalMins = Math.round(_diffMs / 60000);
+            const _days = Math.floor(_totalMins / 1440);
+            const _hours = Math.floor((_totalMins % 1440) / 60);
+            const _mins = _totalMins % 60;
+            if (_days > 0) timeStr = _hours > 0 ? `${_days}d ${_hours}h` : `${_days}d`;
+            else if (_hours > 0) timeStr = _mins > 0 ? `${_hours}h ${_mins}m` : `${_hours}h`;
+            else timeStr = `${_totalMins}m`;
+        }
+
+        // Build grouped rows: { icon, text } — matching TradingView layout
+        const rows = [];
+        const priceParts = [];
+        if (infoSettings.priceRange) priceParts.push(`${rawPriceChange.toFixed(decimals)}`);
+        if (infoSettings.percentChange) priceParts.push(`(${pct.toFixed(2)}%)`);
+        if (infoSettings.changeInPips) priceParts.push(`${Math.abs(pips).toLocaleString()}`);
+        if (priceParts.length > 0) rows.push({ icon: '\u2195', text: priceParts.join(' ') });
+
+        const timeParts = [];
+        if (infoSettings.barsRange) timeParts.push(`${barsRange} bars`);
+        if (infoSettings.dateTimeRange && timeStr) timeParts.push(`(${timeStr})`);
+        if (infoSettings.distance) timeParts.push(`distance: ${pixelDist} px`);
+        if (timeParts.length > 0) rows.push({ icon: '\u2194', text: timeParts.join(', ') });
+
+        if (infoSettings.angle) rows.push({ icon: '\u2220', text: `${angleDeg}\u00b0` });
+
+        if (rows.length === 0) return;
+
+        // Layout constants
+        const padX = 10, padY = 8, lineHeight = 19, fontSize = 11;
+        const iconColW = 14, iconTextGap = 6;
+
+        // Measure max text width
         const tempG = this.group.append('g').style('visibility', 'hidden');
-        let maxTextWidth = 0;
-        infoLines.forEach(line => {
-            const t = tempG.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .text(line);
-            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : (line.length * fontSize * 0.6);
-            if (w > maxTextWidth) maxTextWidth = w;
+        let maxTW = 0;
+        rows.forEach(row => {
+            const t = tempG.append('text').attr('font-size', fontSize).attr('font-family', fontFamily).text(row.text);
+            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : row.text.length * fontSize * 0.6;
+            if (w > maxTW) maxTW = w;
         });
         tempG.remove();
 
-        const boxWidth = maxTextWidth + padding * 2;
-        const boxHeight = infoLines.length * lineHeight + padding * 2;
-        
-        // Position info box perpendicular to the line
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
-        
-        // Calculate perpendicular direction
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const lineLength = Math.sqrt(dx * dx + dy * dy);
-        
-        // Perpendicular unit vector
-        const perpX = -dy / lineLength;
-        const perpY = dx / lineLength;
-        
-        // Offset distance: half box height + margin to ensure clear separation from line
-        const offsetDistance = boxHeight / 2 + 12;
-        const sign = perpY <= 0 ? 1 : -1;
-        
-        const offsetX = midX + perpX * offsetDistance * sign;
-        const offsetY = midY + perpY * offsetDistance * sign - boxHeight / 2;
-        
-        // Create info box group
+        const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
+        const boxHeight = rows.length * lineHeight + padY * 2;
+
+        // Anchor to the higher endpoint (smaller y = higher on screen)
+        const useP2 = y2 <= y1;
+        const anchorX = useP2 ? x2 : x1;
+        const anchorY = useP2 ? y2 : y1;
+        const OFFSET = 10;
+
+        let boxX = anchorX + OFFSET;
+        let boxY = anchorY - boxHeight / 2;
+
+        // Clamp within SVG viewport
+        const svgEl = this.group.node() && this.group.node().ownerSVGElement;
+        if (svgEl) {
+            const svgW = svgEl.clientWidth || 800;
+            const svgH = svgEl.clientHeight || 600;
+            if (boxX + boxWidth > svgW - 4) boxX = anchorX - boxWidth - OFFSET;
+            if (boxX < 4) boxX = 4;
+            if (boxY < 4) boxY = 4;
+            if (boxY + boxHeight > svgH - 4) boxY = svgH - boxHeight - 4;
+        }
+
         const infoGroup = this.group.append('g')
             .attr('class', 'arrow-info')
-            .attr('transform', `translate(${offsetX}, ${offsetY})`);
-        
-        // Draw background rectangle sized to content
+            .attr('transform', `translate(${boxX}, ${boxY})`);
+
         infoGroup.append('rect')
-            .attr('x', -boxWidth / 2)
-            .attr('y', 0)
-            .attr('width', boxWidth)
-            .attr('height', boxHeight)
-            .attr('fill', 'rgba(42, 46, 57, 0.95)')
-            .attr('stroke', '#363a45')
+            .attr('x', 0).attr('y', 0)
+            .attr('width', boxWidth).attr('height', boxHeight)
+            .attr('fill', 'rgba(30, 34, 45, 0.97)')
+            .attr('stroke', 'rgba(80, 84, 100, 0.6)')
             .attr('stroke-width', 1)
             .attr('rx', 4);
-        
-        // Draw text lines
-        infoLines.forEach((line, i) => {
+
+        rows.forEach((row, i) => {
+            const rowY = padY + (i + 0.78) * lineHeight;
             infoGroup.append('text')
-                .attr('x', 0)
-                .attr('y', padding + (i + 0.7) * lineHeight)
-                .attr('text-anchor', 'middle')
+                .attr('x', padX)
+                .attr('y', rowY)
+                .attr('fill', '#787b86')
+                .attr('font-size', `${fontSize}px`)
+                .attr('font-family', fontFamily)
+                .text(row.icon);
+            infoGroup.append('text')
+                .attr('x', padX + iconColW + iconTextGap)
+                .attr('y', rowY)
                 .attr('fill', '#d1d4dc')
                 .attr('font-size', `${fontSize}px`)
                 .attr('font-family', fontFamily)
-                .text(line);
+                .text(row.text);
         });
     }
 
