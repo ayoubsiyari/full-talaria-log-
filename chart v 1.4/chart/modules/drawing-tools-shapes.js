@@ -1264,11 +1264,7 @@ class ArrowTool extends BaseDrawing {
         let anchorY = y2;
         const OFFSET = 10;
 
-        // Direction from p2 toward p1
-        const dx = x1 - x2;
-        const dy = y1 - y2;
-
-        // Compute chart bounds and slide anchor to boundary intersection when p2 is off-screen
+        // Compute chart bounds
         let chartLeft = 0, chartRight = 99999, chartTop = 0, chartBottom = 99999;
         if (scales && scales.xScale && scales.yScale) {
             const xRange = scales.xScale.range();
@@ -1278,6 +1274,7 @@ class ArrowTool extends BaseDrawing {
             chartTop    = Math.min(yRange[0], yRange[1]);
             chartBottom = Math.max(yRange[0], yRange[1]);
 
+            // Slide anchor to chart boundary when p2 is off-screen
             if (x1 !== x2) {
                 if (anchorX > chartRight) {
                     const t = (chartRight - x1) / (x2 - x1);
@@ -1292,17 +1289,14 @@ class ArrowTool extends BaseDrawing {
             anchorY = Math.max(chartTop, Math.min(chartBottom, anchorY));
         }
 
-        let boxX = (dx > 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
-        let boxY = (dy > 0) ? (anchorY - boxHeight) : anchorY;
+        // Default: place box to the right of anchor; flip left if too close to right edge
+        let boxX = anchorX + OFFSET;
+        let boxY = anchorY - boxHeight / 2;
 
         if (boxX + boxWidth > chartRight - 4) boxX = anchorX - boxWidth - OFFSET;
-        if (boxX < chartLeft + 4)             boxX = anchorX + OFFSET;
-        if (boxX + boxWidth > chartRight - 4) boxX = chartRight - boxWidth - 4;
-        if (boxX < chartLeft + 4)             boxX = chartLeft + 4;
-        if (boxY < chartTop + 4)              boxY = anchorY;
-        if (boxY + boxHeight > chartBottom - 4) boxY = anchorY - boxHeight;
-        if (boxY < chartTop + 4)              boxY = chartTop + 4;
         if (boxY + boxHeight > chartBottom - 4) boxY = chartBottom - boxHeight - 4;
+        if (boxY < chartTop + 4) boxY = chartTop + 4;
+        boxX = Math.max(chartLeft + 4, Math.min(chartRight - boxWidth - 4, boxX));
 
         const infoGroup = this.group.append('g')
             .attr('class', 'arrow-info')
