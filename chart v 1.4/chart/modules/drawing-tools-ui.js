@@ -11411,7 +11411,7 @@ body.light-mode .template-save-dialog .dialog-title {
                         <polyline points="20 6 9 17 4 12"/>
                     </svg>
                 </div>
-                <span style="color: #d1d4dc; font-size: 13px;">${option.label}</span>
+                <span style="color: #d1d4dc; font-size: 11px;">${option.label}</span>
             </label>
         `).join('');
 
