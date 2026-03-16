@@ -1264,9 +1264,11 @@ class ArrowTool extends BaseDrawing {
         let anchorY = y2;
         const OFFSET = 10;
 
-        // No edge clamping — box always follows p2 freely
-        let boxX = anchorX + OFFSET;
-        let boxY = anchorY + OFFSET;
+        // Place box in the quadrant OPPOSITE to p1 — never overlaps the line
+        const dx = x1 - x2;
+        const dy = y1 - y2;
+        let boxX = (dx >= 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
+        let boxY = (dy >= 0) ? (anchorY - boxHeight - OFFSET) : (anchorY + OFFSET);
 
         const infoGroup = this.group.append('g')
             .attr('class', 'arrow-info')
