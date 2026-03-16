@@ -11883,7 +11883,12 @@ applyTemplate(drawing, templateId, modal) {
 
             if (e.target === header || header.contains(e.target)) {
                 isDragging = true;
-                
+
+                // Close all open dropdowns immediately
+                document.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => m.style.display = 'none');
+                document.querySelector('.settings-info-dropdown')?.remove();
+                document.querySelector('.settings-template-dropdown')?.remove();
+
                 // Get current position
                 const rect = modal.getBoundingClientRect();
                 initialLeft = rect.left;
