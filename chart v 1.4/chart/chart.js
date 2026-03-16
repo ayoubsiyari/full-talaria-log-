@@ -12031,6 +12031,66 @@ class Chart {
                 }
             }
 
+            // Continue axis/pan drags even when mouse is outside the canvas
+            if (this.drag && this.drag.active && this.canvas) {
+                const rect = this.canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
+
+                if (isOutside) {
+                    const dx = e.clientX - this.drag.lastX;
+                    const dy = e.clientY - this.drag.lastY;
+
+                    if (this.drag.type === 'priceAxis' && this.yScale) {
+                        const sensitivity = 0.002;
+                        const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
+                        const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
+                        const m = this.margin;
+                        const priceAreaHeight = this.h - m.t - m.b;
+                        const cursorRatio = Math.max(0, Math.min(1, (my - m.t) / priceAreaHeight));
+                        const oldRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+                        const newRange = oldRange * (this.priceZoom / newZoom);
+                        const rangeChange = newRange - oldRange;
+                        this.priceOffset -= rangeChange * (0.5 - cursorRatio);
+                        this.priceZoom = newZoom;
+                        this.scheduleRender();
+                    } else if (this.drag.type === 'timeAxis') {
+                        const sensitivity = 0.001;
+                        const zoomFactor = 1 + dx * sensitivity;
+                        const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                        const newWidth = Math.max(widths[0], Math.min(widths[widths.length - 1], this.candleWidth * zoomFactor));
+                        const m = this.margin;
+                        const oldSpacing = this.getCandleSpacing();
+                        const rightEdge = this.w - m.r;
+                        const lastVisibleIdx = (rightEdge - m.l - this.offsetX) / oldSpacing;
+                        this.candleWidth = newWidth;
+                        const newSpacing = this.getCandleSpacing();
+                        this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
+                        this.constrainOffset();
+                        this.scheduleRender();
+                        this.dispatchScrollSync();
+                    } else if (this.drag.type === 'pan') {
+                        let effectiveDx = this.timeScale.locked ? 0 : dx;
+                        let effectiveDy = this.priceScale.locked ? 0 : dy;
+                        this.offsetX += effectiveDx;
+                        if (this.yScale && effectiveDy !== 0) {
+                            this.autoScale = false;
+                            this.priceScale.autoScale = false;
+                            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+                            const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
+                            this.priceOffset += effectiveDy * pricePerPixel;
+                        }
+                        this.constrainOffset();
+                        this.scheduleRender();
+                        this.dispatchScrollSync();
+                    }
+
+                    this.drag.lastX = e.clientX;
+                    this.drag.lastY = e.clientY;
+                }
+            }
+
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
         }, true);
         
