@@ -631,11 +631,6 @@ class DrawingToolsManager {
             .attr('y', m.t)
             .attr('width', w - m.l - m.r)
             .attr('height', h - m.t - m.b);
-
-        // CSS inset clip as robust backup for SVG clip-path
-        const inset = `inset(${m.t}px ${m.r}px ${m.b}px ${m.l}px)`;
-        if (this.drawingsGroup) this.drawingsGroup.style('clip-path', inset);
-        if (this.tempGroup) this.tempGroup.style('clip-path', inset);
     }
 
     /**
@@ -1138,6 +1133,7 @@ class DrawingToolsManager {
         if (this.favoritesManager && typeof this.favoritesManager.syncActiveState === 'function') {
             this.favoritesManager.syncActiveState(toolName);
         }
+        this._updateAxisZonePointerEvents();
         
         // [debug removed]
     }
@@ -1211,6 +1207,7 @@ class DrawingToolsManager {
             const cursorStyle = this.chart.getCurrentCursorStyle ? this.chart.getCurrentCursorStyle() : 'default';
             this.chart.canvas.style.cursor = cursorStyle;
         }
+        this._updateAxisZonePointerEvents();
     }
     
     /**
@@ -4448,6 +4445,22 @@ class DrawingToolsManager {
         if (this.objectTreeManager) {
             this.objectTreeManager.refresh();
         }
+        this._updateAxisZonePointerEvents();
+    }
+
+    /**
+     * Toggle axis cursor zone pointer-events based on drawing selection / active tool state.
+     * When a drawing is selected or a tool is active the time-axis zone must not
+     * steal mouse events from the SVG layer underneath it.
+     */
+    _updateAxisZonePointerEvents() {
+        const active = this.selectedDrawings.length > 0 || !!this.currentTool;
+        const timeZone = this.chart.canvas
+            ? this.chart.canvas.parentElement?.querySelector('.time-axis-zone')
+            : document.querySelector('.time-axis-zone');
+        if (timeZone) {
+            timeZone.style.pointerEvents = active ? 'none' : '';
+        }
     }
 
     /**
@@ -4482,6 +4495,7 @@ class DrawingToolsManager {
         this.selectedDrawings = [];
         this.toolbar.hide(); // Hide toolbar
         this.redrawAll();
+        this._updateAxisZonePointerEvents();
     }
 
     /**
