@@ -2766,8 +2766,9 @@ body.light-mode .template-save-dialog .dialog-title {
                         : true;
                     const lineRow = this.createPropertyRow(lineLabel, lineEnabled, lineValues, drawing, 'line');
                     lineRow.style.borderBottom = 'none';
-                    lineRow.style.paddingBottom = '4px';
-                    lineRow.style.marginBottom = '4px';
+                    lineRow.style.paddingBottom = '2px';
+                    lineRow.style.marginBottom = '2px';
+                    lineRow.style.minHeight = '30px';
                     container.appendChild(lineRow);
                 }
             }
@@ -2842,44 +2843,15 @@ body.light-mode .template-save-dialog .dialog-title {
         }
         // For pitchfork: show background with checkbox and opacity slider
         else if (drawing.type === 'pitchfork') {
-            const bgRow = document.createElement('div');
-            bgRow.className = 'tv-prop-row';
-            bgRow.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 4px 0;';
-            
             const bgEnabled = drawing.style?.backgroundEnabled !== false;
-            const bgOpacity = drawing.style?.backgroundOpacity ?? 0.2;
-
-            const bgLabel = document.createElement('span');
-            bgLabel.className = 'tv-prop-label';
-            bgLabel.style.cssText = 'display: flex; align-items: center; gap: 8px; min-width: 140px;';
-            bgLabel.innerHTML = `
+            const bgRow = document.createElement('div');
+            bgRow.className = 'tv-checkbox-wrapper';
+            bgRow.style.cssText = 'min-width:0; margin:0; display:flex; align-items:center; gap:8px; padding: 2px 0;';
+            bgRow.innerHTML = `
                 <div class="tv-checkbox ${bgEnabled ? 'checked' : ''}" data-prop="backgroundEnabled">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
-                Background
-            `;
-            bgRow.appendChild(bgLabel);
-            
-            // Opacity slider
-            const bgSlider = document.createElement('input');
-            bgSlider.type = 'range';
-            bgSlider.min = '0';
-            bgSlider.max = '1';
-            bgSlider.step = '0.05';
-            bgSlider.value = bgOpacity;
-            bgSlider.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: linear-gradient(to right, #2962ff ' + (bgOpacity * 100) + '%, #363a45 ' + (bgOpacity * 100) + '%); border-radius: 3px; cursor: pointer; outline: none;';
-            bgSlider.oninput = () => {
-                const val = parseFloat(bgSlider.value);
-                bgSlider.style.background = 'linear-gradient(to right, #2962ff ' + (val * 100) + '%, #363a45 ' + (val * 100) + '%)';
-                if (!drawing.style) drawing.style = {};
-                drawing.style.backgroundOpacity = val;
-                this.pendingChanges.backgroundOpacity = val;
-                this.applyChanges(drawing);
-            };
-            bgRow.appendChild(bgSlider);
-            
+                <span class="tv-checkbox-label" style="white-space:nowrap;">Background</span>`;
             container.appendChild(bgRow);
         }
         // For other tools: show background with checkbox
@@ -4303,12 +4275,12 @@ body.light-mode .template-save-dialog .dialog-title {
         };
 
         const list = document.createElement('div');
-        list.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px;';
+        list.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 4px;';
 
         drawing.levels.forEach((level, idx) => {
             const row = document.createElement('div');
             row.className = 'tv-prop-row';
-            row.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+            row.style.cssText = 'display: flex; align-items: center; gap: 4px; min-height: 26px;';
 
             // Checkbox - standard tv-checkbox style matching other tools
             const checkboxEl = document.createElement('div');
