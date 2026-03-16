@@ -2494,7 +2494,8 @@ class DrawingToolsManager {
         const keyHeld = event && (event.metaKey || event.ctrlKey);
         const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
-        const isSideHandle = this.isResizing && this.resizingHandleRole && this.resizingHandleRole.startsWith('side-');
+        const activeRole = this.resizingHandleRole || (typeof this.customHandleRole === 'string' ? this.customHandleRole : null);
+        const isSideHandle = (this.isResizing || this.isCustomHandleDrag) && activeRole && activeRole.startsWith('side-');
         if (!isContinuousTool && !isSideHandle && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
