@@ -631,6 +631,11 @@ class DrawingToolsManager {
             .attr('y', m.t)
             .attr('width', w - m.l - m.r)
             .attr('height', h - m.t - m.b);
+
+        // CSS inset clip as robust backup for SVG clip-path
+        const inset = `inset(${m.t}px ${m.r}px ${m.b}px ${m.l}px)`;
+        if (this.drawingsGroup) this.drawingsGroup.style('clip-path', inset);
+        if (this.tempGroup) this.tempGroup.style('clip-path', inset);
     }
 
     /**
