@@ -1230,7 +1230,7 @@ class ArrowTool extends BaseDrawing {
         // Price range row
         if (infoSettings.priceRange) {
             rows.push({ 
-                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v12M5 5l3-3 3 3M5 11l3 3 3-3" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v12M5 5l3-3 3 3M5 11l3 3 3-3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
                 text: `${rawPriceChange.toFixed(decimals)}`
             });
         }
@@ -1238,7 +1238,7 @@ class ArrowTool extends BaseDrawing {
         // Percent change row
         if (infoSettings.percentChange) {
             rows.push({ 
-                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 13L13 3M5 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0M13 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 13L13 3M5 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0M13 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0" stroke="currentColor" fill="none" stroke-width="0.5"/>',
                 text: `(${pct.toFixed(2)}%)`
             });
         }
@@ -1254,7 +1254,7 @@ class ArrowTool extends BaseDrawing {
         // Bars range row
         if (infoSettings.barsRange) {
             rows.push({ 
-                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M11 5l3 3-3 3" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M11 5l3 3-3 3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
                 text: `${barsRange} bars`
             });
         }
@@ -1262,7 +1262,7 @@ class ArrowTool extends BaseDrawing {
         // Date/time range row
         if (infoSettings.dateTimeRange && timeStr) {
             rows.push({ 
-                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6" stroke="currentColor" fill="none" stroke-width="1.5"/><path d="M8 4v4l3 2" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6" stroke="currentColor" fill="none" stroke-width="0.5"/><path d="M8 4v4l3 2" stroke="currentColor" fill="none" stroke-width="0.5"/>',
                 text: `(${timeStr})`
             });
         }
@@ -1270,7 +1270,7 @@ class ArrowTool extends BaseDrawing {
         // Distance row
         if (infoSettings.distance) {
             rows.push({ 
-                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M4 6v4M8 6v4M12 6v4" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M4 6v4M8 6v4M12 6v4" stroke="currentColor" fill="none" stroke-width="0.5"/>',
                 text: `distance: ${pixelDist} px`
             });
         }
@@ -1278,7 +1278,7 @@ class ArrowTool extends BaseDrawing {
         // Angle row
         if (infoSettings.angle) {
             rows.push({ 
-                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M12 4L4 12M12 4v5M12 4h-5" stroke="currentColor" fill="none" stroke-width="1.5"/><path d="M9 7a3 3 0 0 0 3-3" stroke="currentColor" fill="none" stroke-width="1"/>',
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M12 4L4 12M12 4v5M12 4h-5" stroke="currentColor" fill="none" stroke-width="0.5"/><path d="M9 7a3 3 0 0 0 3-3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
                 text: `${angleDeg}°`
             });
         }
