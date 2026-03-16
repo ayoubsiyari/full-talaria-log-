@@ -7320,21 +7320,23 @@ body.light-mode .template-save-dialog .dialog-title {
                     <div class="tv-align-buttons">
                         <button class="tv-align-btn ${currentHAlign === hVal[0] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[0]}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <line x1="12" y1="4" x2="12" y2="20"/>
-                                <polyline points="8 8 12 4 16 8"/>
+                                <line x1="18" y1="4" x2="18" y2="20"/>
+                                <line x1="12" y1="10" x2="12" y2="20"/>
+                                <line x1="6" y1="6" x2="6" y2="20"/>
                             </svg>
                         </button>
                         <button class="tv-align-btn ${currentHAlign === hVal[1] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[1]}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <line x1="4" y1="12" x2="20" y2="12"/>
-                                <polyline points="8 8 12 12 8 16"/>
-                                <polyline points="16 8 12 12 16 16"/>
+                                <line x1="18" y1="4" x2="18" y2="20"/>
+                                <line x1="12" y1="7" x2="12" y2="17"/>
+                                <line x1="6" y1="5" x2="6" y2="19"/>
                             </svg>
                         </button>
                         <button class="tv-align-btn ${currentHAlign === hVal[2] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[2]}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <line x1="12" y1="4" x2="12" y2="20"/>
-                                <polyline points="8 16 12 20 16 16"/>
+                                <line x1="18" y1="4" x2="18" y2="18"/>
+                                <line x1="12" y1="4" x2="12" y2="14"/>
+                                <line x1="6" y1="4" x2="6" y2="20"/>
                             </svg>
                         </button>
                     </div>
