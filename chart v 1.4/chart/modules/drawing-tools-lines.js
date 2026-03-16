@@ -513,40 +513,20 @@ class TrendlineTool extends BaseDrawing {
         let anchorY = y2;
         const OFFSET = 10;
 
-        // Compute chart bounds
-        let chartLeft = 0, chartRight = 99999, chartTop = 0, chartBottom = 99999;
-        if (scales && scales.xScale && scales.yScale) {
-            const xRange = scales.xScale.range();
-            const yRange = scales.yScale.range();
-            chartLeft   = xRange[0];
-            chartRight  = xRange[1];
-            chartTop    = Math.min(yRange[0], yRange[1]);
-            chartBottom = Math.max(yRange[0], yRange[1]);
+        // Get full SVG dimensions (includes price scale area) so box can follow p2 freely
+        const svgNode = this.group.node() && this.group.node().ownerSVGElement;
+        const svgRect = svgNode ? svgNode.getBoundingClientRect() : null;
+        const svgW = (svgRect && svgRect.width) || (svgNode && svgNode.width && svgNode.width.baseVal ? svgNode.width.baseVal.value : 0) || 2000;
+        const svgH = (svgRect && svgRect.height) || (svgNode && svgNode.height && svgNode.height.baseVal ? svgNode.height.baseVal.value : 0) || 1200;
 
-            // Slide anchor to chart boundary when p2 is off-screen
-            if (x1 !== x2) {
-                if (anchorX > chartRight) {
-                    const t = (chartRight - x1) / (x2 - x1);
-                    anchorX = chartRight;
-                    anchorY = y1 + t * (y2 - y1);
-                } else if (anchorX < chartLeft) {
-                    const t = (chartLeft - x1) / (x2 - x1);
-                    anchorX = chartLeft;
-                    anchorY = y1 + t * (y2 - y1);
-                }
-            }
-            anchorY = Math.max(chartTop, Math.min(chartBottom, anchorY));
-        }
-
-        // Default: place box to the right of anchor; flip left if too close to right edge
+        // Place box to the right of anchor; flip left only if it would overflow the full SVG
         let boxX = anchorX + OFFSET;
-        let boxY = anchorY - boxHeight / 2;
+        let boxY = anchorY + OFFSET;
 
-        if (boxX + boxWidth > chartRight - 4) boxX = anchorX - boxWidth - OFFSET;
-        if (boxY + boxHeight > chartBottom - 4) boxY = chartBottom - boxHeight - 4;
-        if (boxY < chartTop + 4) boxY = chartTop + 4;
-        // Hard clamp as absolute last resort
-        boxX = Math.max(chartLeft + 4, Math.min(chartRight - boxWidth - 4, boxX));
+        if (boxX + boxWidth > svgW - 4) boxX = anchorX - boxWidth - OFFSET;
+        if (boxY + boxHeight > svgH - 4) boxY = anchorY - boxHeight - OFFSET;
+        if (boxX < 4) boxX = 4;
+        if (boxY < 4) boxY = 4;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
