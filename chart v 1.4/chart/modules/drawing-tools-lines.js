@@ -1096,6 +1096,7 @@ class HorizontalLineTool extends BaseDrawing {
         } else if (textVAlign === 'bottom') {
             offsetY = HL_LABEL_OFFSET;
         }
+        console.log('[HL] vAlign:', textVAlign, 'offsetY:', offsetY, 'y:', y, 'final:', y + offsetY, 'style.textVAlign:', this.style.textVAlign, 'style.textPosition:', this.style.textPosition);
 
         let hlAnchor;
         switch (textHAlign) {
@@ -2242,6 +2243,7 @@ class HorizontalRayTool extends BaseDrawing {
         } else if (textVAlign === 'bottom') {
             offsetY = HL_LABEL_OFFSET;
         }
+        console.log('[HR] vAlign:', textVAlign, 'offsetY:', offsetY, 'y:', y, 'final:', y + offsetY, 'style.textVAlign:', this.style.textVAlign, 'style.textPosition:', this.style.textPosition);
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
