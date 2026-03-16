@@ -1089,7 +1089,7 @@ class HorizontalLineTool extends BaseDrawing {
                 baseX = (xRange[0] + xRange[1]) / 2;
         }
         
-        const HL_LABEL_OFFSET = 10; // tighter than LINE_LABEL_OFFSET for horizontal tools
+        const HL_LABEL_OFFSET = 2;
         let offsetY = 0;
         if (textVAlign === 'top') {
             offsetY = -HL_LABEL_OFFSET;
@@ -2235,7 +2235,7 @@ class HorizontalRayTool extends BaseDrawing {
                 hrAnchor = 'middle';
         }
         
-        const HL_LABEL_OFFSET = 10; // tighter than LINE_LABEL_OFFSET for horizontal tools
+        const HL_LABEL_OFFSET = 2;
         let offsetY = 0;
         if (textVAlign === 'top') {
             offsetY = -HL_LABEL_OFFSET;
