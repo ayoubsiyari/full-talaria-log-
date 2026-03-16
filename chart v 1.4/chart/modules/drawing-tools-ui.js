@@ -4115,10 +4115,10 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Style dropdown row
         const styleRow = document.createElement('div');
-        styleRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+        styleRow.style.cssText = 'display: flex; align-items: center; margin-bottom: 8px;';
 
         const styleLabel = document.createElement('span');
-        styleLabel.style.cssText = 'color: #787b86; font-size: 12px;';
+        styleLabel.style.cssText = 'color: #787b86; font-size: 12px; flex: 1;';
         styleLabel.textContent = 'Style';
 
         const styleOptions = [
