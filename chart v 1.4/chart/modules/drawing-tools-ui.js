@@ -4337,9 +4337,10 @@ body.light-mode .template-save-dialog .dialog-title {
             };
             row.appendChild(input);
 
-            // Controls wrapper (same as parallel channel)
+            // Controls wrapper — constrain to color btn size inside grid cells
             const controlsWrapper = document.createElement('div');
             controlsWrapper.className = 'tv-prop-controls';
+            controlsWrapper.style.cssText = 'width: 30px; min-width: 30px; min-height: 0; margin-left: 0;';
 
             // Color button - use tv-color-btn class for consistent hover style
             const colorBtn = document.createElement('button');
