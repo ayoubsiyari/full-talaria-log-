@@ -4140,7 +4140,7 @@ body.light-mode .template-save-dialog .dialog-title {
         ddWrapper.dataset.prop = 'pitchforkStyle';
         ddWrapper.style.cssText = 'position: relative; width: 130px;';
         ddWrapper.innerHTML = `
-            <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 26px; padding: 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
+            <button class="tv-fontsize-dropdown-btn tv-ending-dropdown-btn" style="width: 100%; height: 26px; padding: 0 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
                 <span>${currentLabel}</span>
                 <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink: 0;"><path d="M6 9l6 6 6-6"/></svg>
             </button>
