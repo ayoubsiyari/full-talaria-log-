@@ -508,16 +508,13 @@ class TrendlineTool extends BaseDrawing {
         const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
         const boxHeight = rows.length * lineHeight + padY * 2;
 
-        // Always anchor to p2 (the end point)
-        let anchorX = x2;
-        let anchorY = y2;
-        const OFFSET = 10;
-
-        // Place box in the quadrant OPPOSITE to p1 — never overlaps the line
-        const dx = x1 - x2;
-        const dy = y1 - y2;
-        let boxX = (dx >= 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
-        let boxY = (dy >= 0) ? (anchorY - boxHeight - OFFSET) : (anchorY + OFFSET);
+        // Place info box at the bottom-right of the chart area so it never overlaps the line
+        const svgEl = this.group.node().ownerSVGElement || this.group.node();
+        const chartW = svgEl ? (svgEl.clientWidth || svgEl.width?.baseVal?.value || 900) : 900;
+        const chartH = svgEl ? (svgEl.clientHeight || svgEl.height?.baseVal?.value || 500) : 500;
+        const MARGIN = 10;
+        let boxX = chartW - boxWidth - MARGIN - 60;
+        let boxY = chartH - boxHeight - MARGIN - 30;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
