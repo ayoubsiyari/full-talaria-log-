@@ -2718,7 +2718,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 brushLineRow.style.paddingBottom = '12px';
                 brushLineRow.style.marginBottom = '12px';
                 container.appendChild(brushLineRow);
-                if (['trendline', 'curve', 'arrow'].includes(drawing.type)) {
+                if (['trendline', 'curve', 'arrow', 'pitchfork', 'pitchfan'].includes(drawing.type)) {
                     const lineLabel = brushLineRow.querySelector('.tv-prop-label');
                     if (lineLabel) { lineLabel.style.minWidth = '0'; lineLabel.style.width = '100px'; lineLabel.style.flex = '0 0 100px'; }
                     const typeDropdown = brushLineRow.querySelector('.tv-linetype-dropdown[data-prop="lineType"]');
