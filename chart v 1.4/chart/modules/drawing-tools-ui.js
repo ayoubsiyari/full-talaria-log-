@@ -4147,49 +4147,6 @@ body.light-mode .template-save-dialog .dialog-title {
                 ${styleOptions.map(s => `<div class="tv-fontsize-option" data-value="${s.value}" style="padding: 7px 14px; cursor: default; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s.label}</div>`).join('')}
             </div>`;
 
-        setTimeout(() => {
-            const btn = ddWrapper.querySelector('.tv-fontsize-dropdown-btn');
-            const menu = ddWrapper.querySelector('.tv-fontsize-dropdown-menu');
-            const label = btn.querySelector('span');
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                document.querySelectorAll('.tv-fontsize-dropdown-menu').forEach(m => { if (m !== menu) m.style.display = 'none'; });
-                const isOpen = menu.style.display !== 'none';
-                if (!isOpen) {
-                    const rect = btn.getBoundingClientRect();
-                    menu.style.left = rect.left + 'px';
-                    menu.style.top = (rect.bottom + 2) + 'px';
-                    menu.style.minWidth = rect.width + 'px';
-                }
-                menu.style.display = isOpen ? 'none' : 'block';
-            });
-            menu.querySelectorAll('.tv-fontsize-option').forEach(opt => {
-                opt.addEventListener('mouseenter', () => { opt.style.background = '#363a45'; });
-                opt.addEventListener('mouseleave', () => { opt.style.background = 'transparent'; });
-                opt.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const val = opt.dataset.value;
-                    label.textContent = opt.textContent;
-                    menu.style.display = 'none';
-                    drawing.style.pitchforkStyle = val;
-                    if (window.drawingManager) {
-                        const actual = window.drawingManager.drawings.find(d => d.id === drawing.id);
-                        if (actual) {
-                            actual.style.pitchforkStyle = val;
-                            window.drawingManager.renderDrawing(actual);
-                            window.drawingManager.saveDrawings();
-                        }
-                    }
-                });
-            });
-            // Close on click outside
-            document.addEventListener('click', (e) => {
-                if (!ddWrapper.contains(e.target)) {
-                    menu.style.display = 'none';
-                }
-            });
-        }, 0);
-
         styleControls.appendChild(ddWrapper);
         styleRow.appendChild(styleLabel);
         styleRow.appendChild(styleControls);
@@ -9975,7 +9932,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     const value = option.dataset.value;
                     this.pendingChanges[prop] = value;
                     drawing.style[prop] = isNaN(parseInt(value, 10)) ? value : parseInt(value, 10);
-                    btn.querySelector('span').textContent = value;
+                    btn.querySelector('span').textContent = option.textContent;
                     self.renderPreview(drawing);
                     this.applyChangesImmediately(drawing);
                     if (window.drawingManager) {
