@@ -513,20 +513,9 @@ class TrendlineTool extends BaseDrawing {
         let anchorY = y2;
         const OFFSET = 10;
 
-        // Get full SVG dimensions (includes price scale area) so box can follow p2 freely
-        const svgNode = this.group.node() && this.group.node().ownerSVGElement;
-        const svgRect = svgNode ? svgNode.getBoundingClientRect() : null;
-        const svgW = (svgRect && svgRect.width) || (svgNode && svgNode.width && svgNode.width.baseVal ? svgNode.width.baseVal.value : 0) || 2000;
-        const svgH = (svgRect && svgRect.height) || (svgNode && svgNode.height && svgNode.height.baseVal ? svgNode.height.baseVal.value : 0) || 1200;
-
-        // Place box to the right of anchor; flip left only if it would overflow the full SVG
+        // No edge clamping — box always follows p2 freely
         let boxX = anchorX + OFFSET;
         let boxY = anchorY + OFFSET;
-
-        if (boxX + boxWidth > svgW - 4) boxX = anchorX - boxWidth - OFFSET;
-        if (boxY + boxHeight > svgH - 4) boxY = anchorY - boxHeight - OFFSET;
-        if (boxX < 4) boxX = 4;
-        if (boxY < 4) boxY = 4;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
