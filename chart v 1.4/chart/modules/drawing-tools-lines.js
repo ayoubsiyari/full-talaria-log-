@@ -2405,8 +2405,13 @@ class ExtendedLineTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            // Fixed 30px along line direction from visual endpoint (leftX/rightX already visual L/R)
-            const EL_EDGE = 30;
+            // Use original data point screen coordinates for text/gap positioning
+            // so text stays anchored to the actual data points regardless of line angle
+            const origLX = x1Screen <= x2Screen ? x1Screen : x2Screen;
+            const origLY = x1Screen <= x2Screen ? y1Screen : y2Screen;
+            const origRX = x1Screen <= x2Screen ? x2Screen : x1Screen;
+            const origRY = x1Screen <= x2Screen ? y2Screen : y1Screen;
+
             const el_lineLength = Math.sqrt((rightX - leftX) ** 2 + (rightY - leftY) ** 2);
             const el_ux = el_lineLength > 0 ? (rightX - leftX) / el_lineLength : 1;
             const el_uy = el_lineLength > 0 ? (rightY - leftY) / el_lineLength : 0;
@@ -2414,16 +2419,16 @@ class ExtendedLineTool extends BaseDrawing {
             let rawTextX_el, rawTextY_el;
             switch (textHAlign) {
                 case 'left':
-                    rawTextX_el = leftX + el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY_el = leftY + el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX_el = origLX + el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY_el = origLY + el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 case 'right':
-                    rawTextX_el = rightX - el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY_el = rightY - el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX_el = origRX - el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY_el = origRY - el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 default:
-                    rawTextX_el = (leftX + rightX) / 2;
-                    rawTextY_el = (leftY + rightY) / 2;
+                    rawTextX_el = (origLX + origRX) / 2;
+                    rawTextY_el = (origLY + origRY) / 2;
             }
             const t_el = el_lineLength > 0 ? Math.sqrt((rawTextX_el-leftX)**2+(rawTextY_el-leftY)**2) / el_lineLength : 0.5;
             const split1T_el = Math.max(0, t_el - halfGapT_el);
@@ -2519,10 +2524,10 @@ class ExtendedLineTool extends BaseDrawing {
         }
 
         this.renderTextLabel({
-            x1: leftX,
-            y1: leftY,
-            x2: rightX,
-            y2: rightY,
+            x1: x1Screen,
+            y1: y1Screen,
+            x2: x2Screen,
+            y2: y2Screen,
             chartBottomY: yRange[0],
             chartTopY: yRange[1]
         });
@@ -2562,10 +2567,16 @@ class ExtendedLineTool extends BaseDrawing {
         }
 
         const { x1, y1, x2, y2 } = coords;
+
+        // Sort by x to get left/right data points
+        const lx = x1 <= x2 ? x1 : x2;
+        const ly = x1 <= x2 ? y1 : y2;
+        const rx = x1 <= x2 ? x2 : x1;
+        const ry = x1 <= x2 ? y2 : y1;
         
         // Calculate angle of the line for text rotation
-        let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-        const originalAngleRad = Math.atan2(y2 - y1, x2 - x1);
+        let angle = Math.atan2(ry - ly, rx - lx) * (180 / Math.PI);
+        const originalAngleRad = Math.atan2(ry - ly, rx - lx);
         
         // Keep text readable by flipping it if upside down
         const isFlipped = angle > 90 || angle < -90;
@@ -2580,27 +2591,25 @@ class ExtendedLineTool extends BaseDrawing {
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        // x1/y1 = leftX/leftY, x2/y2 = rightX/rightY (already visual L/R from render)
-        // Fixed 30px along line direction from visual endpoint
-        const EL_MAIN_EDGE = 30;
-        const el_main_len = Math.sqrt((x2-x1)**2 + (y2-y1)**2) || 1;
-        const el_main_ux = (x2 - x1) / el_main_len;
-        const el_main_uy = (y2 - y1) / el_main_len;
+        // Use original data point screen coords for text positioning
+        const origLen = Math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2) || 1;
+        const ux = (rx - lx) / origLen;
+        const uy = (ry - ly) / origLen;
         let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + TEXT_EDGE_PADDING;
-                baseY = y1 + el_main_uy * TEXT_EDGE_PADDING;
+                baseX = lx + ux * TEXT_EDGE_PADDING;
+                baseY = ly + uy * TEXT_EDGE_PADDING;
                 elAnchor = 'start';
                 break;
             case 'right':
-                baseX = x2 - TEXT_EDGE_PADDING;
-                baseY = y2 - el_main_uy * TEXT_EDGE_PADDING;
+                baseX = rx - ux * TEXT_EDGE_PADDING;
+                baseY = ry - uy * TEXT_EDGE_PADDING;
                 elAnchor = 'end';
                 break;
             default:
-                baseX = (x1 + x2) / 2;
-                baseY = (y1 + y2) / 2;
+                baseX = (lx + rx) / 2;
+                baseY = (ly + ry) / 2;
                 elAnchor = 'middle';
         }
 
