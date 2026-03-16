@@ -2766,8 +2766,8 @@ body.light-mode .template-save-dialog .dialog-title {
                         : true;
                     const lineRow = this.createPropertyRow(lineLabel, lineEnabled, lineValues, drawing, 'line');
                     lineRow.style.borderBottom = 'none';
-                    lineRow.style.paddingBottom = '12px';
-                    lineRow.style.marginBottom = '12px';
+                    lineRow.style.paddingBottom = '4px';
+                    lineRow.style.marginBottom = '4px';
                     container.appendChild(lineRow);
                 }
             }
@@ -2844,7 +2844,7 @@ body.light-mode .template-save-dialog .dialog-title {
         else if (drawing.type === 'pitchfork') {
             const bgRow = document.createElement('div');
             bgRow.className = 'tv-prop-row';
-            bgRow.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+            bgRow.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 4px 0;';
             
             const bgEnabled = drawing.style?.backgroundEnabled !== false;
             const bgOpacity = drawing.style?.backgroundOpacity ?? 0.2;
@@ -2938,7 +2938,7 @@ body.light-mode .template-save-dialog .dialog-title {
         // Price labels / Time labels checkboxes (for all tools with axis highlights)
         {
             const labelsSection = document.createElement('div');
-            labelsSection.style.cssText = 'margin-top: 8px; display: flex; flex-direction: column; gap: 8px;';
+            labelsSection.style.cssText = 'margin-top: 4px; display: flex; flex-direction: column; gap: 6px;';
 
             const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
                 ? drawing.isAxisLabelEnabled('price')
@@ -4131,7 +4131,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const self = this;
         const section = document.createElement('div');
         section.className = 'tv-style-section';
-        section.style.cssText = 'margin-top: 16px; padding-top: 12px; border-top: 1px solid #363a45;';
+        section.style.cssText = 'margin-top: 8px; padding-top: 8px; border-top: 1px solid #363a45;';
 
         // Style dropdown row
         const styleRow = document.createElement('div');
@@ -4214,10 +4214,10 @@ body.light-mode .template-save-dialog .dialog-title {
         const self = this;
         const section = document.createElement('div');
         section.className = 'tv-levels-section';
-        section.style.cssText = 'margin-top: 16px; padding-top: 12px; border-top: 1px solid #363a45;';
+        section.style.cssText = 'margin-top: 8px; padding-top: 8px; border-top: 1px solid #363a45;';
 
         const header = document.createElement('div');
-        header.style.cssText = 'color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;';
+        header.style.cssText = 'color: #787b86; font-size: 11px; margin-bottom: 6px; text-transform: uppercase;';
         header.textContent = 'Pitchfork Levels';
         section.appendChild(header);
 
