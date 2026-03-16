@@ -7042,7 +7042,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const lineTypeDropdown = isHighlighterOrBrushNoLineType ? '' : `
                 <div class="tv-linetype-dropdown" data-prop="${propKey}Type" style="position: relative; flex: 1 1 0; min-width: 40px;">
                     <button class="tv-ending-dropdown-btn" style="width: 100%; height: 30px; padding: 0 6px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
-                        <span class="tv-linetype-current">${getLineTypeSvg(values.lineType)}</span>
+                        <span class="tv-linetype-current" style="flex:1; display:flex; align-items:center; min-width:0;">${getLineTypeSvg(values.lineType)}</span>
                         ${chevronSvg}
                     </button>
                     <div class="tv-linetype-dropdown-menu" style="${menuStyle}">
@@ -9809,7 +9809,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     const dasharrayAttr = da ? `stroke-dasharray="${da}"` : '';
                     const newSvg = `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
                     const currentSpan = btn.querySelector('.tv-linetype-current');
-                    if (currentSpan) currentSpan.innerHTML = newSvg;
+                    if (currentSpan) { currentSpan.style.flex = '1'; currentSpan.style.display = 'flex'; currentSpan.style.alignItems = 'center'; currentSpan.style.minWidth = '0'; currentSpan.innerHTML = newSvg; }
                     this.applyChangesImmediately(drawing);
                     if (window.drawingManager) {
                         window.drawingManager.renderDrawing(drawing);
