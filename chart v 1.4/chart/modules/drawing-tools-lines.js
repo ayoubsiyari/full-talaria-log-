@@ -1089,11 +1089,12 @@ class HorizontalLineTool extends BaseDrawing {
                 baseX = (xRange[0] + xRange[1]) / 2;
         }
         
+        const HL_LABEL_OFFSET = 10; // tighter than LINE_LABEL_OFFSET for horizontal tools
         let offsetY = 0;
         if (textVAlign === 'top') {
-            offsetY = -LINE_LABEL_OFFSET;
+            offsetY = -HL_LABEL_OFFSET;
         } else if (textVAlign === 'bottom') {
-            offsetY = LINE_LABEL_OFFSET;
+            offsetY = HL_LABEL_OFFSET;
         }
 
         let hlAnchor;
@@ -2234,11 +2235,12 @@ class HorizontalRayTool extends BaseDrawing {
                 hrAnchor = 'middle';
         }
         
+        const HL_LABEL_OFFSET = 10; // tighter than LINE_LABEL_OFFSET for horizontal tools
         let offsetY = 0;
         if (textVAlign === 'top') {
-            offsetY = -LINE_LABEL_OFFSET;
+            offsetY = -HL_LABEL_OFFSET;
         } else if (textVAlign === 'bottom') {
-            offsetY = LINE_LABEL_OFFSET;
+            offsetY = HL_LABEL_OFFSET;
         }
 
         appendTextLabel(this.group, label, {
