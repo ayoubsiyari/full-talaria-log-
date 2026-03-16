@@ -7279,7 +7279,7 @@ body.light-mode .template-save-dialog .dialog-title {
             vAlignSection.className = 'tv-align-section';
             const vIcons = isVerticalLine ? [
                 `<line x1="4" y1="12" x2="20" y2="12"/><polyline points="8 8 4 12 8 16"/>`,
-                `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="5 9 9 12 5 15"/><polyline points="19 9 15 12 19 15"/>`,
+                `<line x1="12" y1="4" x2="12" y2="20"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
                 `<line x1="4" y1="12" x2="20" y2="12"/><polyline points="16 8 20 12 16 16"/>`
             ] : [
                 `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 8 12 4 16 8"/>`,
@@ -7316,7 +7316,7 @@ body.light-mode .template-save-dialog .dialog-title {
             hAlignSection.style.marginTop = '12px';
             const hIcons = isVerticalLine ? [
                 `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 8 12 4 16 8"/>`,
-                `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 8 4 12 8 16"/><polyline points="16 16 12 12 16 8"/>`,
+                `<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>`,
                 `<line x1="12" y1="4" x2="12" y2="20"/><polyline points="8 16 12 20 16 16"/>`
             ] : [
                 `<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/>`,
