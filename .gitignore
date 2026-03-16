@@ -1,0 +1,50 @@
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+secrets/
+
+# Node / Next.js
+node_modules/
+homepage/node_modules/
+.next/
+homepage/.next/
+out/
+homepage/out/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.envrc
+
+# Docker
+*.pid
+
+# Accidental nested clone
+mentorship/
+
+# Sensitive credentials
+mentroship-6d6e6ed5d4eb.json
+chart\ v\ 1.4/mentroship-6d6e6ed5d4eb.json
+
+# Large data files
+download/eurusd-m1-bid-2022-03-19-2025-03-20.csv
+eurusd_data.csv
+download/
+
+# Large runtime directories
+chart\ v\ 1.4/chart/uploads/
+chart\ v\ 1.4/chart/homepage/
+chart\ v\ 1.4/chart/db/
+chart\ v\ 1.4/chart/venv/
+chart\ v\ 1.4/chart/__pycache__/

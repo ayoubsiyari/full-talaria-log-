@@ -1,0 +1,74 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs
+*.egg-info
+.installed.cfg
+*.egg
+venv
+.venv
+venv*
+.venv*
+env
+.env.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.docker
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+test_*.csv
+*.test.js
+
+# Temporary files
+*.log
+*.tmp
+tmp/
+
+# Backup files
+*-backup.*
+*-old.*
+*-clean.*
+
+# Node modules (if any)
+node_modules
+**/node_modules
+
+# Next.js / frontend build cache
+.next
+**/.next
+out
+**/out
+.turbo
+**/.turbo
+.cache
+**/.cache
+
+# Build artifacts
+dist
+build
+*.map

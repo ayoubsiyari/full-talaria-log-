@@ -1,0 +1,1365 @@
+// Full Chart Indicators Module with all basic indicators
+(function(global) {
+    'use strict';
+    
+    console.log('📊 Full Indicators Module Loading...');
+    
+    // Wait for Chart class to be defined
+    if (typeof global.Chart === 'undefined') {
+        setTimeout(arguments.callee, 100);
+        return;
+    }
+    
+    // ===== Calculation Functions =====
+    
+    // Simple Moving Average
+    function calculateSMA(data, period, field) {
+        field = field || 'c';
+        const result = [];
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                result.push(null);
+            } else {
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += data[i - j][field];
+                }
+                result.push(sum / period);
+            }
+        }
+        return result;
+    }
+    
+    // Exponential Moving Average
+    function calculateEMA(data, period, field) {
+        field = field || 'c';
+        const result = [];
+        const multiplier = 2 / (period + 1);
+        let ema = null;
+        
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                result.push(null);
+            } else if (i === period - 1) {
+                // First EMA is SMA
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += data[i - j][field];
+                }
+                ema = sum / period;
+                result.push(ema);
+            } else {
+                ema = (data[i][field] - ema) * multiplier + ema;
+                result.push(ema);
+            }
+        }
+        return result;
+    }
+    
+    // Weighted Moving Average
+    function calculateWMA(data, period, field) {
+        field = field || 'c';
+        const result = [];
+        const denominator = (period * (period + 1)) / 2;
+        
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                result.push(null);
+            } else {
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += data[i - j][field] * (period - j);
+                }
+                result.push(sum / denominator);
+            }
+        }
+        return result;
+    }
+    
+    // Bollinger Bands
+    function calculateBollingerBands(data, period, stdDev) {
+        const middle = calculateSMA(data, period, 'c');
+        const upper = [];
+        const lower = [];
+        
+        for (let i = 0; i < data.length; i++) {
+            if (middle[i] === null) {
+                upper.push(null);
+                lower.push(null);
+            } else {
+                // Calculate standard deviation
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    const diff = data[i - j].c - middle[i];
+                    sum += diff * diff;
+                }
+                const std = Math.sqrt(sum / period);
+                upper.push(middle[i] + (stdDev * std));
+                lower.push(middle[i] - (stdDev * std));
+            }
+        }
+        
+        return { upper: upper, middle: middle, lower: lower };
+    }
+    
+    // RSI (Relative Strength Index)
+    function calculateRSI(data, period) {
+        const result = [];
+        const gains = [];
+        const losses = [];
+        
+        // Calculate price changes
+        for (let i = 1; i < data.length; i++) {
+            const change = data[i].c - data[i - 1].c;
+            gains.push(change > 0 ? change : 0);
+            losses.push(change < 0 ? Math.abs(change) : 0);
+        }
+        
+        result.push(null); // First candle has no RSI
+        
+        // Calculate initial average gain/loss
+        let avgGain = 0, avgLoss = 0;
+        for (let i = 0; i < period && i < gains.length; i++) {
+            avgGain += gains[i];
+            avgLoss += losses[i];
+        }
+        avgGain /= period;
+        avgLoss /= period;
+        
+        // Calculate RSI
+        for (let i = 0; i < gains.length; i++) {
+            if (i < period) {
+                result.push(null);
+            } else {
+                avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
+                avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
+                const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                const rsi = 100 - (100 / (1 + rs));
+                result.push(rsi);
+            }
+        }
+        
+        return result;
+    }
+    
+    // MACD
+    function calculateMACD(data, fast, slow, signal) {
+        const fastEMA = calculateEMA(data, fast, 'c');
+        const slowEMA = calculateEMA(data, slow, 'c');
+        const macd = [];
+        
+        for (let i = 0; i < data.length; i++) {
+            if (fastEMA[i] !== null && slowEMA[i] !== null) {
+                macd.push(fastEMA[i] - slowEMA[i]);
+            } else {
+                macd.push(null);
+            }
+        }
+        
+        // Signal line is EMA of MACD
+        const signalLine = [];
+        const multiplier = 2 / (signal + 1);
+        let ema = null;
+        
+        for (let i = 0; i < macd.length; i++) {
+            if (macd[i] === null) {
+                signalLine.push(null);
+            } else if (ema === null) {
+                ema = macd[i];
+                signalLine.push(ema);
+            } else {
+                ema = (macd[i] - ema) * multiplier + ema;
+                signalLine.push(ema);
+            }
+        }
+        
+        // Histogram
+        const histogram = [];
+        for (let i = 0; i < macd.length; i++) {
+            if (macd[i] !== null && signalLine[i] !== null) {
+                histogram.push(macd[i] - signalLine[i]);
+            } else {
+                histogram.push(null);
+            }
+        }
+        
+        return { macd: macd, signal: signalLine, histogram: histogram };
+    }
+    
+    // VWAP (Volume Weighted Average Price)
+    function calculateVWAP(data) {
+        const result = [];
+        let cumulativeTPV = 0; // Typical Price * Volume
+        let cumulativeVolume = 0;
+        
+        for (let i = 0; i < data.length; i++) {
+            const typicalPrice = (data[i].h + data[i].l + data[i].c) / 3;
+            const tpv = typicalPrice * data[i].v;
+            
+            cumulativeTPV += tpv;
+            cumulativeVolume += data[i].v;
+            
+            if (cumulativeVolume === 0) {
+                result.push(null);
+            } else {
+                result.push(cumulativeTPV / cumulativeVolume);
+            }
+        }
+        
+        return result;
+    }
+    
+    // Stochastic Oscillator
+    function calculateStochastic(data, period, smoothK, smoothD) {
+        const k = [];
+        const d = [];
+        
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                k.push(null);
+            } else {
+                let highest = data[i].h;
+                let lowest = data[i].l;
+                
+                for (let j = 1; j < period; j++) {
+                    highest = Math.max(highest, data[i - j].h);
+                    lowest = Math.min(lowest, data[i - j].l);
+                }
+                
+                const kValue = ((data[i].c - lowest) / (highest - lowest)) * 100;
+                k.push(kValue);
+            }
+        }
+        
+        // Smooth %K to get %D
+        const smoothedK = calculateSMA(k.map(v => ({c: v || 0})), smoothK, 'c');
+        const smoothedD = calculateSMA(smoothedK.map(v => ({c: v || 0})), smoothD, 'c');
+        
+        return { k: smoothedK, d: smoothedD };
+    }
+    
+    // ATR (Average True Range)
+    function calculateATR(data, period) {
+        const trs = [];
+        const atr = [];
+        
+        // Calculate True Range (TR)
+        for (let i = 0; i < data.length; i++) {
+            let tr;
+            if (i === 0) {
+                tr = data[i].h - data[i].l;
+            } else {
+                const highLow = data[i].h - data[i].l;
+                const highPrevClose = Math.abs(data[i].h - data[i - 1].c);
+                const lowPrevClose = Math.abs(data[i].l - data[i - 1].c);
+                tr = Math.max(highLow, highPrevClose, lowPrevClose);
+            }
+            trs.push(tr);
+        }
+        
+        // Calculate ATR (Smoothed Moving Average of TR)
+        let currentATR = 0;
+        const multiplier = 1 / period;
+        
+        for (let i = 0; i < trs.length; i++) {
+            if (i < period - 1) {
+                atr.push(null);
+            } else if (i === period - 1) {
+                // Initial ATR is the simple average of the first 'period' TRs
+                let sumTR = 0;
+                for (let j = 0; j < period; j++) {
+                    sumTR += trs[j];
+                }
+                currentATR = sumTR / period;
+                atr.push(currentATR);
+            } else {
+                // Smoothed ATR
+                currentATR = ((currentATR * (period - 1)) + trs[i]) / period;
+                atr.push(currentATR);
+            }
+        }
+        
+        return atr;
+    }
+    
+    // ADX (Average Directional Index)
+    function calculateADX(data, period) {
+        const trs = [];
+        const plusDM = [];
+        const minusDM = [];
+        
+        // Calculate True Range (TR), +DM, and -DM
+        for (let i = 0; i < data.length; i++) {
+            let tr;
+            if (i === 0) {
+                tr = data[i].h - data[i].l;
+                plusDM.push(0);
+                minusDM.push(0);
+            } else {
+                const highLow = data[i].h - data[i].l;
+                const highPrevClose = Math.abs(data[i].h - data[i - 1].c);
+                const lowPrevClose = Math.abs(data[i].l - data[i - 1].c);
+                tr = Math.max(highLow, highPrevClose, lowPrevClose);
+                
+                const upMove = data[i].h - data[i - 1].h;
+                const downMove = data[i - 1].l - data[i].l;
+                
+                let pDM = 0;
+                let mDM = 0;
+                
+                if (upMove > downMove && upMove > 0) {
+                    pDM = upMove;
+                }
+                if (downMove > upMove && downMove > 0) {
+                    mDM = downMove;
+                }
+                
+                plusDM.push(pDM);
+                minusDM.push(mDM);
+            }
+            trs.push(tr);
+        }
+        
+        // Calculate Smoothed TR, +DM, and -DM (using Wilders Smoothing)
+        const wildersSmoothing = (arr, period) => {
+            const smoothed = [];
+            let currentAvg = 0;
+            
+            for (let i = 0; i < arr.length; i++) {
+                if (i < period - 1) {
+                    smoothed.push(null);
+                } else if (i === period - 1) {
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) {
+                        sum += arr[j];
+                    }
+                    currentAvg = sum / period;
+                    smoothed.push(currentAvg);
+                } else {
+                    currentAvg = (currentAvg * (period - 1) + arr[i]) / period;
+                    smoothed.push(currentAvg);
+                }
+            }
+            return smoothed;
+        };
+        
+        const smoothedTR = wildersSmoothing(trs, period);
+        const smoothedPlusDM = wildersSmoothing(plusDM, period);
+        const smoothedMinusDM = wildersSmoothing(minusDM, period);
+        
+        const plusDI = [];
+        const minusDI = [];
+        const DX = [];
+        const ADX = [];
+        
+        let currentADX = 0;
+        
+        for (let i = 0; i < data.length; i++) {
+            if (smoothedTR[i] === null || smoothedTR[i] === 0) {
+                plusDI.push(null);
+                minusDI.push(null);
+                DX.push(null);
+                ADX.push(null);
+            } else {
+                const pDI = (smoothedPlusDM[i] / smoothedTR[i]) * 100;
+                const mDI = (smoothedMinusDM[i] / smoothedTR[i]) * 100;
+                plusDI.push(pDI);
+                minusDI.push(mDI);
+                
+                const DXValue = (Math.abs(pDI - mDI) / (pDI + mDI)) * 100;
+                DX.push(DXValue);
+                
+                // Calculate ADX (Wilders Smoothing of DX)
+                if (i < (period * 2) - 2) { // ADX needs 2 * period - 1 data points to start
+                    ADX.push(null);
+                } else if (i === (period * 2) - 2) {
+                    let sumDX = 0;
+                    for (let j = period - 1; j < (period * 2) - 1; j++) {
+                        sumDX += DX[j];
+                    }
+                    currentADX = sumDX / period;
+                    ADX.push(currentADX);
+                } else {
+                    currentADX = (currentADX * (period - 1) + DX[i]) / period;
+                    ADX.push(currentADX);
+                }
+            }
+        }
+        
+        return { plusDI: plusDI, minusDI: minusDI, adx: ADX };
+    }
+    
+    // CCI (Commodity Channel Index)
+    function calculateCCI(data, period) {
+        const result = [];
+        const constant = 0.015;
+        
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                result.push(null);
+            } else {
+                const tp = (data[i].h + data[i].l + data[i].c) / 3;
+                
+                // Calculate SMA of Typical Price (TP)
+                let sumTP = 0;
+                for (let j = 0; j < period; j++) {
+                    sumTP += (data[i - j].h + data[i - j].l + data[i - j].c) / 3;
+                }
+                const smaTP = sumTP / period;
+                
+                // Calculate Mean Deviation (MD)
+                let sumMD = 0;
+                for (let j = 0; j < period; j++) {
+                    const prevTP = (data[i - j].h + data[i - j].l + data[i - j].c) / 3;
+                    sumMD += Math.abs(prevTP - smaTP);
+                }
+                const meanDeviation = sumMD / period;
+                
+                if (meanDeviation === 0) {
+                    result.push(0); // Avoid division by zero
+                } else {
+                    const cci = (tp - smaTP) / (constant * meanDeviation);
+                    result.push(cci);
+                }
+            }
+        }
+        
+        return result;
+    }
+
+    // ===== Chart Integration =====
+    function calculateStochastic(data, period, smoothK, smoothD) {
+        const k = [];
+        const d = [];
+        
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                k.push(null);
+            } else {
+                let highest = data[i].h;
+                let lowest = data[i].l;
+                
+                for (let j = 1; j < period; j++) {
+                    highest = Math.max(highest, data[i - j].h);
+                    lowest = Math.min(lowest, data[i - j].l);
+                }
+                
+                const kValue = ((data[i].c - lowest) / (highest - lowest)) * 100;
+                k.push(kValue);
+            }
+        }
+        
+        // Smooth %K to get %D
+        const smoothedK = calculateSMA(k.map(v => ({c: v || 0})), smoothK, 'c');
+        const smoothedD = calculateSMA(smoothedK.map(v => ({c: v || 0})), smoothD, 'c');
+        
+        return { k: smoothedK, d: smoothedD };
+    }
+    
+    // ===== Chart Integration =====
+    
+    Chart.prototype.initIndicators = function() {
+        this.indicators = {
+            active: [],
+            data: {}
+        };
+        console.log('✅ Indicators system initialized');
+    };
+    
+    Chart.prototype.addIndicator = function(type, params) {
+    params = params || {};
+    
+    if (!this.data || this.data.length === 0) {
+        console.warn('⚠️ No data loaded');
+        return;
+    }
+        
+        
+        const indicator = {
+        id: 'ind_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        type: type.toLowerCase(),
+        params: {},
+        style: {},
+        visible: true,
+        name: ''
+    };
+        
+        // Configure indicator based on type
+        switch (indicator.type) {
+            case 'sma':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#2962ff';
+                indicator.style.lineWidth = 2;
+                indicator.name = 'SMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period);
+                break;
+                
+            case 'ema':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#f23645';
+                indicator.style.lineWidth = 2;
+                indicator.name = 'EMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period);
+                break;
+                
+            case 'wma':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#ff9800';
+                indicator.style.lineWidth = 2;
+                indicator.name = 'WMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period);
+                break;
+                
+            case 'bb':
+            case 'bollinger':
+                indicator.params.period = params.period || 20;
+                indicator.params.stdDev = params.stdDev || 2;
+                indicator.style.upperColor = params.upperColor || '#2962ff';
+                indicator.style.middleColor = params.middleColor || '#787b86';
+                indicator.style.lowerColor = params.lowerColor || '#2962ff';
+                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
+                indicator.style.lineWidth = 1;
+                indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
+                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                break;
+                
+            case 'vwap':
+                indicator.style.color = params.color || '#9c27b0';
+                indicator.style.lineWidth = 2;
+                indicator.name = 'VWAP';
+                this.indicators.data[indicator.id] = calculateVWAP(this.data);
+                break;
+                
+            case 'atr':
+                indicator.params.period = params.period || 14;
+                indicator.style.color = params.color || '#ff6d00';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'ATR(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
+                break;
+
+            case 'cci':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#00e676';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'CCI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
+                break;
+
+            case 'adx':
+                indicator.params.period = params.period || 14;
+                indicator.style.adxColor = params.adxColor || '#ff00ff';
+                indicator.style.plusDIColor = params.plusDIColor || '#00e676';
+                indicator.style.minusDIColor = params.minusDIColor || '#f23645';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'ADX(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
+                break;
+
+            case 'rsi':
+                indicator.params.period = params.period || 14;
+                indicator.style.color = params.color || '#9c27b0';
+                indicator.style.lineWidth = 2;
+                indicator.name = 'RSI(' + indicator.params.period + ')';
+                indicator.overlay = false; // RSI should be in separate panel
+                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period);
+                break;
+                
+            case 'macd':
+                indicator.params.fast = params.fast || 12;
+                indicator.params.slow = params.slow || 26;
+                indicator.params.signal = params.signal || 9;
+                indicator.style.macdColor = params.macdColor || '#2962ff';
+                indicator.style.signalColor = params.signalColor || '#f23645';
+                indicator.style.histogramColor = params.histogramColor || '#787b86';
+                indicator.name = 'MACD(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
+                indicator.overlay = false; // MACD should be in separate panel
+                this.indicators.data[indicator.id] = calculateMACD(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                break;
+                
+            case 'stochastic':
+                indicator.params.period = params.period || 14;
+                indicator.params.smoothK = params.smoothK || 3;
+                indicator.params.smoothD = params.smoothD || 3;
+                indicator.style.kColor = params.kColor || '#2962ff';
+                indicator.style.dColor = params.dColor || '#f23645';
+                indicator.style.lineWidth = 2;
+                indicator.name = 'Stoch(' + indicator.params.period + ')';
+                indicator.overlay = false;
+                this.indicators.data[indicator.id] = calculateStochastic(this.data, indicator.params.period, indicator.params.smoothK, indicator.params.smoothD);
+                break;
+                
+            default:
+                console.error('Unknown indicator type:', type);
+                return;
+        }
+        
+        this.indicators.active.push(indicator);
+        console.log('✅ Added indicator:', indicator.name);
+        
+        if (typeof this.render === 'function') {
+            this.render();
+        }
+        
+        this.updateOHLCIndicators();
+        
+        return indicator;
+    };
+    
+    Chart.prototype.updateIndicator = function(id, newParams) {
+        const indicator = this.indicators.active.find(function(ind) {
+            return ind.id === id;
+        });
+        
+        if (!indicator) {
+            console.warn('⚠️ Indicator not found:', id);
+            return;
+        }
+        
+        // Update parameters
+        if (newParams.period !== undefined) indicator.params.period = newParams.period;
+        if (newParams.stdDev !== undefined) indicator.params.stdDev = newParams.stdDev;
+        if (newParams.fast !== undefined) indicator.params.fast = newParams.fast;
+        if (newParams.slow !== undefined) indicator.params.slow = newParams.slow;
+        if (newParams.signal !== undefined) indicator.params.signal = newParams.signal;
+        if (newParams.smoothK !== undefined) indicator.params.smoothK = newParams.smoothK;
+        if (newParams.smoothD !== undefined) indicator.params.smoothD = newParams.smoothD;
+        
+        // Update colors
+        if (newParams.color !== undefined) indicator.style.color = newParams.color;
+        if (newParams.upperColor !== undefined) indicator.style.upperColor = newParams.upperColor;
+        if (newParams.middleColor !== undefined) indicator.style.middleColor = newParams.middleColor;
+        if (newParams.lowerColor !== undefined) indicator.style.lowerColor = newParams.lowerColor;
+        if (newParams.fillColor !== undefined) indicator.style.fillColor = newParams.fillColor;
+        if (newParams.macdColor !== undefined) indicator.style.macdColor = newParams.macdColor;
+        if (newParams.signalColor !== undefined) indicator.style.signalColor = newParams.signalColor;
+        if (newParams.histogramColor !== undefined) indicator.style.histogramColor = newParams.histogramColor;
+        if (newParams.kColor !== undefined) indicator.style.kColor = newParams.kColor;
+        if (newParams.dColor !== undefined) indicator.style.dColor = newParams.dColor;
+        
+        // Recalculate data
+        switch (indicator.type) {
+            case 'sma':
+                indicator.name = 'SMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period);
+                break;
+            case 'ema':
+                indicator.name = 'EMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period);
+                break;
+            case 'wma':
+                indicator.name = 'WMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period);
+                break;
+            case 'bb':
+            case 'bollinger':
+                indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
+                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                break;
+            case 'vwap':
+                this.indicators.data[indicator.id] = calculateVWAP(this.data);
+                break;
+            case 'atr':
+                indicator.params.period = params.period || 14;
+                indicator.style.color = params.color || '#ff6d00';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'ATR(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
+                break;
+
+            case 'cci':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#00e676';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'CCI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
+                break;
+
+            case 'adx':
+                indicator.params.period = params.period || 14;
+                indicator.style.adxColor = params.adxColor || '#ff00ff';
+                indicator.style.plusDIColor = params.plusDIColor || '#00e676';
+                indicator.style.minusDIColor = params.minusDIColor || '#f23645';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'ADX(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
+                break;
+
+            case 'rsi':
+                indicator.name = 'RSI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period);
+                break;
+            case 'macd':
+                indicator.name = 'MACD(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
+                this.indicators.data[indicator.id] = calculateMACD(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                break;
+            case 'stochastic':
+                indicator.name = 'Stoch(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateStochastic(this.data, indicator.params.period, indicator.params.smoothK, indicator.params.smoothD);
+                break;
+        }
+        
+        console.log('✅ Updated indicator:', indicator.name);
+        
+        if (typeof this.render === 'function') {
+            this.render();
+        }
+        
+        this.updateOHLCIndicators();
+        
+        return indicator;
+    };
+    
+    Chart.prototype.recalculateIndicators = function() {
+        if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
+            return;
+        }
+        
+        console.log('🔄 Recalculating indicators for new timeframe...');
+        
+        this.indicators.active.forEach(function(indicator) {
+            switch (indicator.type) {
+                case 'sma':
+                    this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period);
+                    break;
+                case 'ema':
+                    this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period);
+                    break;
+                case 'wma':
+                    this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period);
+                    break;
+                case 'bb':
+                case 'bollinger':
+                    this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                    break;
+                case 'vwap':
+                    this.indicators.data[indicator.id] = calculateVWAP(this.data);
+                    break;
+                case 'atr':
+                indicator.params.period = params.period || 14;
+                indicator.style.color = params.color || '#ff6d00';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'ATR(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
+                break;
+
+            case 'cci':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#00e676';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'CCI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
+                break;
+
+            case 'adx':
+                indicator.params.period = params.period || 14;
+                indicator.style.adxColor = params.adxColor || '#ff00ff';
+                indicator.style.plusDIColor = params.plusDIColor || '#00e676';
+                indicator.style.minusDIColor = params.minusDIColor || '#f23645';
+                indicator.style.lineWidth = 2;
+                indicator.overlay = false;
+                indicator.name = 'ADX(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
+                break;
+
+            case 'rsi':
+                    this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period);
+                    break;
+                case 'macd':
+                    this.indicators.data[indicator.id] = calculateMACD(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                    break;
+                case 'stochastic':
+                    this.indicators.data[indicator.id] = calculateStochastic(this.data, indicator.params.period, indicator.params.smoothK, indicator.params.smoothD);
+                    break;
+            }
+        }, this);
+        
+        console.log('✅ Indicators recalculated');
+    };
+    
+    Chart.prototype.removeIndicator = function(id) {
+        const index = this.indicators.active.findIndex(function(ind) {
+            return ind.id === id;
+        });
+        
+        if (index >= 0) {
+            const indicator = this.indicators.active[index];
+            this.indicators.active.splice(index, 1);
+            delete this.indicators.data[id];
+            
+            console.log('🗑️ Removed indicator:', indicator.name);
+            
+            if (typeof this.render === 'function') {
+                this.render();
+            }
+            
+            this.updateOHLCIndicators();
+        }
+    };
+    
+    Chart.prototype.clearIndicators = function({ confirmPrompt = true } = {}) {
+        if (!this.indicators || !Array.isArray(this.indicators.active) || this.indicators.active.length === 0) {
+            return false;
+        }
+
+        const count = this.indicators.active.length;
+
+        if (confirmPrompt) {
+            const confirmed = window.confirm(`Remove ${count} indicator${count === 1 ? '' : 's'}?`);
+            if (!confirmed) {
+                return false;
+            }
+        }
+
+        this.indicators.active = [];
+        this.indicators.data = {};
+
+        if (typeof this.render === 'function') {
+            this.render();
+        }
+
+        if (typeof this.updateOHLCIndicators === 'function') {
+            this.updateOHLCIndicators();
+        }
+
+        console.log('🗑️ All indicators cleared');
+        return true;
+    };
+    
+    Chart.prototype.drawIndicators = function() {
+        if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
+            return;
+        }
+        
+        const ctx = this.ctx;
+        const m = this.margin;
+        
+        ctx.save();
+        
+        // Clip to chart area
+        ctx.beginPath();
+        ctx.rect(m.l, m.t, this.w - m.l - m.r, this.h - m.t - m.b);
+        ctx.clip();
+        
+        // Draw each indicator
+        for (let i = 0; i < this.indicators.active.length; i++) {
+            const indicator = this.indicators.active[i];
+            
+            // Skip non-overlay indicators
+            if (indicator.overlay === false) continue;
+            
+            if (!indicator.visible) continue;
+            
+            const data = this.indicators.data[indicator.id];
+            if (!data) continue;
+            
+            // Draw based on type
+            if (indicator.type === 'bb' || indicator.type === 'bollinger') {
+                this.drawBollingerBands(data, indicator.style);
+            } else {
+                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth);
+            }
+        }
+        
+        ctx.restore();
+    };
+    
+    Chart.prototype.drawLineIndicator = function(data, color, lineWidth) {
+        const ctx = this.ctx;
+        const m = this.margin;
+        
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        
+        let started = false;
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] === null || data[i] === undefined) continue;
+            
+            const x = this.dataIndexToPixel(i);
+            const y = this.yScale(data[i]);
+            
+            // Skip if outside visible area
+            if (x < m.l - 50 || x > this.w - m.r + 50) continue;
+            
+            if (!started) {
+                ctx.moveTo(x, y);
+                started = true;
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        
+        if (started) {
+            ctx.stroke();
+        }
+    };
+    
+    Chart.prototype.drawBollingerBands = function(bands, style) {
+        const ctx = this.ctx;
+        const m = this.margin;
+        
+        // Draw fill first
+        if (style.fillColor) {
+            ctx.fillStyle = style.fillColor;
+            ctx.beginPath();
+            
+            // Upper band
+            let started = false;
+            for (let i = 0; i < bands.upper.length; i++) {
+                if (bands.upper[i] === null) continue;
+                
+                const x = this.dataIndexToPixel(i);
+                const y = this.yScale(bands.upper[i]);
+                
+                if (x < m.l - 50 || x > this.w - m.r + 50) continue;
+                
+                if (!started) {
+                    ctx.moveTo(x, y);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            // Lower band (reverse)
+            for (let i = bands.lower.length - 1; i >= 0; i--) {
+                if (bands.lower[i] === null) continue;
+                
+                const x = this.dataIndexToPixel(i);
+                const y = this.yScale(bands.lower[i]);
+                
+                if (x < m.l - 50 || x > this.w - m.r + 50) continue;
+                
+                ctx.lineTo(x, y);
+            }
+            
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        // Draw lines
+        this.drawLineIndicator(bands.upper, style.upperColor, style.lineWidth);
+        this.drawLineIndicator(bands.middle, style.middleColor, style.lineWidth);
+        this.drawLineIndicator(bands.lower, style.lowerColor, style.lineWidth);
+    };
+    
+    Chart.prototype.updateOHLCIndicators = function() {
+        const idSuffix = (this.panelIndex !== undefined) ? this.panelIndex : '';
+        const div = document.getElementById('ohlcIndicators' + idSuffix);
+        
+        if (!div) return;
+        
+        // Don't update if modal is open (prevents destroying DOM while editing)
+        if (document.getElementById('indicator-settings-modal')) {
+            console.log('⚠️ Skipping indicator update - modal is open');
+            return;
+        }
+        
+        div.innerHTML = '';
+        
+        if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
+            return;
+        }
+        
+        // Only show overlay indicators in OHLC panel
+        const overlayIndicators = this.indicators.active.filter(function(ind) {
+            return ind.overlay !== false;
+        });
+        
+        console.log('📊 Creating indicator items for:', overlayIndicators.length, 'indicators');
+        
+        for (let i = 0; i < overlayIndicators.length; i++) {
+            const indicator = overlayIndicators[i];
+            console.log('Creating UI for indicator:', indicator.name);
+            const item = document.createElement('div');
+            item.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; margin-right: 8px; margin-bottom: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s; pointer-events: auto;';
+            
+            // Hover effect for the container
+            item.onmouseenter = function() {
+                item.style.background = 'rgba(255,255,255,0.1)';
+            };
+            item.onmouseleave = function() {
+                item.style.background = 'rgba(255,255,255,0.05)';
+            };
+            
+            // Color indicator
+            const colorBox = document.createElement('span');
+            const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
+            colorBox.style.cssText = 'width: 12px; height: 2px; background: ' + displayColor + '; border-radius: 1px; flex-shrink: 0;';
+            item.appendChild(colorBox);
+            
+            // Name (NOT clickable - use Edit link to edit)
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = indicator.name;
+            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 12px; font-weight: 500; user-select: none; pointer-events: auto;';
+            nameSpan.title = indicator.name;
+            
+            item.appendChild(nameSpan);
+            
+            // Settings button (three dots menu) - Always visible
+            const settingsBtn = document.createElement('span');
+            settingsBtn.textContent = '•••';
+            settingsBtn.style.cssText = 'cursor: pointer; color: #787b86; margin-left: 6px; font-size: 14px; font-weight: bold; padding: 0 4px; border-radius: 3px; transition: all 0.2s; display: inline-block; line-height: 1;';
+            settingsBtn.title = 'Click to edit settings';
+            settingsBtn.onmouseenter = function() {
+                settingsBtn.style.color = '#ffffff';
+                settingsBtn.style.background = '#2962ff';
+                settingsBtn.style.transform = 'scale(1.1)';
+            };
+            settingsBtn.onmouseleave = function() {
+                settingsBtn.style.color = '#787b86';
+                settingsBtn.style.background = 'transparent';
+                settingsBtn.style.transform = 'scale(1)';
+            };
+            item.appendChild(settingsBtn);
+            console.log('Settings button added:', settingsBtn.textContent);
+            
+            // Remove button (X icon)
+            const removeBtn = document.createElement('span');
+            removeBtn.innerHTML = '×';
+            removeBtn.style.cssText = 'cursor: pointer; opacity: 0.6; font-size: 18px; font-weight: bold; color: #f23645; margin-left: 4px; transition: all 0.2s; line-height: 1; display: flex; align-items: center; padding: 0 2px; pointer-events: auto;';
+            removeBtn.title = 'Remove indicator';
+            removeBtn.onmouseenter = function() {
+                removeBtn.style.opacity = '1';
+                removeBtn.style.transform = 'scale(1.2)';
+            };
+            removeBtn.onmouseleave = function() {
+                removeBtn.style.opacity = '0.6';
+                removeBtn.style.transform = 'scale(1)';
+            };
+            item.appendChild(removeBtn);
+            
+            // Click handlers
+            const self = this;
+            const id = indicator.id;
+            
+            // Only the settings button is clickable for editing
+            settingsBtn.onclick = function(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                
+                console.log(`⚙️ Settings button clicked for "${indicator.name}"`);
+                
+                // Call the settings function directly without flags
+                self.showIndicatorSettings(id);
+                
+                return false;
+            };
+            removeBtn.onclick = function(e) {
+                e.stopPropagation();
+                console.log(`❌ Remove button clicked for "${indicator.name}"`);
+                self.removeIndicator(id);
+            };
+            
+            div.appendChild(item);
+            console.log('Final item HTML:', item.innerHTML);
+            console.log('Item children count:', item.children.length);
+        }
+    };
+    
+    Chart.prototype.showIndicatorSettings = function(id) {
+        try {
+            console.log('🔧 Opening settings for indicator:', id);
+            
+            // First, let's test with a simple alert to make sure the function is called
+            const indicator = this.indicators.active.find(function(ind) {
+                return ind.id === id;
+            });
+            
+            if (!indicator) {
+                console.error('❌ Indicator not found:', id);
+                alert('Error: Indicator not found');
+                return;
+            }
+            
+            console.log('📊 Found indicator:', indicator);
+            console.log('📊 Opening edit panel for:', indicator.name);
+        
+        // Check if modal already exists
+        const existingModal = document.getElementById('indicator-settings-modal');
+        if (existingModal) {
+            console.log('⚠️ Removing existing modal');
+            existingModal.remove();
+        }
+        
+        // Create a VERY simple modal for testing
+        const modal = document.createElement('div');
+        modal.id = 'indicator-settings-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        modal.style.zIndex = '2147483647'; // Maximum z-index
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        
+        const dialog = document.createElement('div');
+        dialog.style.backgroundColor = 'white';
+        dialog.style.color = 'black';
+        dialog.style.padding = '30px';
+        dialog.style.borderRadius = '10px';
+        dialog.style.minWidth = '400px';
+        dialog.style.maxWidth = '500px';
+        dialog.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
+        dialog.style.border = '1px solid #ddd';
+        
+        // Title with close button
+        const header = document.createElement('div');
+        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;';
+        
+        const title = document.createElement('h3');
+        title.textContent = indicator.name + ' Settings';
+        title.style.margin = '0';
+        title.style.color = '#333';
+        title.style.fontSize = '18px';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.cssText = 'background: none; border: none; font-size: 24px; color: #666; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;';
+        closeBtn.onclick = function() {
+            console.log('🔒 Close button clicked');
+            modal.remove();
+        };
+        closeBtn.onmouseenter = function() { closeBtn.style.color = '#000'; };
+        closeBtn.onmouseleave = function() { closeBtn.style.color = '#666'; };
+        
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        dialog.appendChild(header);
+        
+        const form = document.createElement('div');
+        form.style.cssText = 'display: flex; flex-direction: column; gap: 15px;';
+        
+        // Helper function to create input groups
+        function createInputGroup(label, value, type) {
+            const container = document.createElement('div');
+            container.style.cssText = 'display: flex; flex-direction: column; gap: 5px;';
+            
+            const labelEl = document.createElement('label');
+            labelEl.textContent = label;
+            labelEl.style.cssText = 'color: #333; font-size: 13px; font-weight: 500;';
+            
+            const input = document.createElement('input');
+            input.type = type;
+            input.value = value;
+            input.style.cssText = 'background: white; border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; color: #333; font-size: 14px;';
+            
+            if (type === 'number') {
+                input.min = '1';
+                input.step = label.includes('Std') ? '0.1' : '1';
+            }
+            
+            container.appendChild(labelEl);
+            container.appendChild(input);
+            
+            return { container: container, input: input };
+        }
+        
+        // Add inputs based on indicator type
+        const inputs = {};
+        
+        if (indicator.params.period !== undefined) {
+            const group = createInputGroup('Period', indicator.params.period, 'number');
+            form.appendChild(group.container);
+            inputs.period = group.input;
+        }
+        
+        if (indicator.params.stdDev !== undefined) {
+            const group = createInputGroup('Std Dev', indicator.params.stdDev, 'number');
+            form.appendChild(group.container);
+            inputs.stdDev = group.input;
+        }
+        
+        if (indicator.params.fast !== undefined) {
+            const group = createInputGroup('Fast', indicator.params.fast, 'number');
+            form.appendChild(group.container);
+            inputs.fast = group.input;
+        }
+        
+        if (indicator.params.slow !== undefined) {
+            const group = createInputGroup('Slow', indicator.params.slow, 'number');
+            form.appendChild(group.container);
+            inputs.slow = group.input;
+        }
+        
+        if (indicator.params.signal !== undefined) {
+            const group = createInputGroup('Signal', indicator.params.signal, 'number');
+            form.appendChild(group.container);
+            inputs.signal = group.input;
+        }
+        
+        if (indicator.params.smoothK !== undefined) {
+            const group = createInputGroup('Smooth K', indicator.params.smoothK, 'number');
+            form.appendChild(group.container);
+            inputs.smoothK = group.input;
+        }
+        
+        if (indicator.params.smoothD !== undefined) {
+            const group = createInputGroup('Smooth D', indicator.params.smoothD, 'number');
+            form.appendChild(group.container);
+            inputs.smoothD = group.input;
+        }
+        
+        // Color inputs
+        if (indicator.style.color !== undefined) {
+            const group = createInputGroup('Color', indicator.style.color, 'color');
+            form.appendChild(group.container);
+            inputs.color = group.input;
+        }
+        
+        if (indicator.style.upperColor !== undefined) {
+            const group = createInputGroup('Upper Color', indicator.style.upperColor, 'color');
+            form.appendChild(group.container);
+            inputs.upperColor = group.input;
+        }
+        
+        if (indicator.style.middleColor !== undefined) {
+            const group = createInputGroup('Middle Color', indicator.style.middleColor, 'color');
+            form.appendChild(group.container);
+            inputs.middleColor = group.input;
+        }
+        
+        if (indicator.style.lowerColor !== undefined) {
+            const group = createInputGroup('Lower Color', indicator.style.lowerColor, 'color');
+            form.appendChild(group.container);
+            inputs.lowerColor = group.input;
+        }
+        
+        if (indicator.style.macdColor !== undefined) {
+            const group = createInputGroup('MACD Color', indicator.style.macdColor, 'color');
+            form.appendChild(group.container);
+            inputs.macdColor = group.input;
+        }
+        
+        if (indicator.style.signalColor !== undefined) {
+            const group = createInputGroup('Signal Color', indicator.style.signalColor, 'color');
+            form.appendChild(group.container);
+            inputs.signalColor = group.input;
+        }
+        
+        if (indicator.style.histogramColor !== undefined) {
+            const group = createInputGroup('Histogram Color', indicator.style.histogramColor, 'color');
+            form.appendChild(group.container);
+            inputs.histogramColor = group.input;
+        }
+        
+        if (indicator.style.kColor !== undefined) {
+            const group = createInputGroup('%K Color', indicator.style.kColor, 'color');
+            form.appendChild(group.container);
+            inputs.kColor = group.input;
+        }
+        
+        if (indicator.style.dColor !== undefined) {
+            const group = createInputGroup('%D Color', indicator.style.dColor, 'color');
+            form.appendChild(group.container);
+            inputs.dColor = group.input;
+        }
+        
+        dialog.appendChild(form);
+        
+        // Buttons
+        const buttons = document.createElement('div');
+        buttons.style.cssText = 'display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;';
+        
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.cssText = 'padding: 10px 20px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; color: #333; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s;';
+        cancelBtn.onmouseenter = function() { 
+            cancelBtn.style.background = '#e0e0e0'; 
+            cancelBtn.style.borderColor = '#999';
+        };
+        cancelBtn.onmouseleave = function() { 
+            cancelBtn.style.background = '#f0f0f0'; 
+            cancelBtn.style.borderColor = '#ccc';
+        };
+        cancelBtn.onclick = function() {
+            console.log('❌ Cancel button clicked');
+            modal.remove();
+        };
+        
+        const applyBtn = document.createElement('button');
+        applyBtn.textContent = 'Apply Changes';
+        applyBtn.style.cssText = 'padding: 10px 20px; background: #2962ff; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;';
+        applyBtn.onmouseenter = function() { applyBtn.style.background = '#1e53e5'; };
+        applyBtn.onmouseleave = function() { applyBtn.style.background = '#2962ff'; };
+        
+        const self = this;
+        applyBtn.onclick = function() {
+            const newParams = {};
+            
+            if (inputs.period) newParams.period = parseInt(inputs.period.value);
+            if (inputs.stdDev) newParams.stdDev = parseFloat(inputs.stdDev.value);
+            if (inputs.fast) newParams.fast = parseInt(inputs.fast.value);
+            if (inputs.slow) newParams.slow = parseInt(inputs.slow.value);
+            if (inputs.signal) newParams.signal = parseInt(inputs.signal.value);
+            if (inputs.smoothK) newParams.smoothK = parseInt(inputs.smoothK.value);
+            if (inputs.smoothD) newParams.smoothD = parseInt(inputs.smoothD.value);
+            if (inputs.color) newParams.color = inputs.color.value;
+            if (inputs.upperColor) newParams.upperColor = inputs.upperColor.value;
+            if (inputs.middleColor) newParams.middleColor = inputs.middleColor.value;
+            if (inputs.lowerColor) newParams.lowerColor = inputs.lowerColor.value;
+            if (inputs.macdColor) newParams.macdColor = inputs.macdColor.value;
+            if (inputs.signalColor) newParams.signalColor = inputs.signalColor.value;
+            if (inputs.histogramColor) newParams.histogramColor = inputs.histogramColor.value;
+            if (inputs.kColor) newParams.kColor = inputs.kColor.value;
+            if (inputs.dColor) newParams.dColor = inputs.dColor.value;
+            
+            console.log('✅ Applying changes:', newParams);
+            self.updateIndicator(id, newParams);
+            modal.remove();
+        };
+        
+        buttons.appendChild(cancelBtn);
+        buttons.appendChild(applyBtn);
+        dialog.appendChild(buttons);
+        
+        modal.appendChild(dialog);
+        document.body.appendChild(modal);
+        
+        console.log('✅ Modal added to document body');
+        console.log('Modal element:', modal);
+        console.log('Dialog element:', dialog);
+        
+        // Verify modal is visible
+        const modalRect = modal.getBoundingClientRect();
+        const dialogRect = dialog.getBoundingClientRect();
+        console.log('Modal dimensions:', modalRect.width, 'x', modalRect.height);
+        console.log('Dialog dimensions:', dialogRect.width, 'x', dialogRect.height);
+        console.log('Modal computed style display:', window.getComputedStyle(modal).display);
+        console.log('Dialog computed style display:', window.getComputedStyle(dialog).display);
+        
+        // Force focus to the modal
+        modal.focus();
+        
+        // Close on background click
+        modal.onclick = function(e) {
+            if (e.target === modal) {
+                console.log('🔒 Background clicked, closing modal');
+                modal.remove();
+            }
+        };
+        } catch (error) {
+            console.error('❌ Error showing indicator settings:', error);
+            alert('Error opening indicator settings: ' + error.message);
+        }
+    };
+    
+    // Mark as loaded
+    window.INDICATORS_MODULE_LOADED = true;
+    console.log('✅ Full Indicators Module Loaded Successfully');
+    
+})(window);

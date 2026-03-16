@@ -1,0 +1,216 @@
+//@version=5
+//@Shanxia
+// NOTE: Only works on 1HR and below and exchange timezones differ so change the session times accordingly.
+//
+indicator("ICT Session Killzone Boxes & Deviations", "ICT KZs", true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+
+// INPUTS
+i_time              = input.session     ('0000-0001:1234567', "New York", tooltip="Different exchanges will have difference time zones so change accordingly.")
+i_maxtf             = input.int         (15, "Max TF", 1, 240, inline="in00")
+i_kzmid             = input.bool        (true, "Session Mid", inline="in00")
+i_vline             = input.bool        (true, "VLine", inline="in3")
+i_vcol              = input.color       (#dfdfdf, "", inline="in3")
+i_vstyle            = input.string      ("Solid", "", options=["Solid", "Dotted", "Dashed"], inline="in3")
+i_txtcol            = input.color       (#5c71af, " Text Col", inline="in3")
+
+
+i_hline             = input.bool        (true, "HLine", inline="in1")
+i_linecol           = input.color       (#2d62b6, "", inline="in1")
+i_linestyle         = input.string      ("Dotted", "", options=["Solid", "Dotted", "Dashed"], inline="in1")
+i_ex                = input.string      ("None", "", options=["None", "+1 Day", "Right", "Both"], inline="in1")
+
+i_shf               = input.bool        (true, "Upcoming Sessions", inline="in4")
+i_lonstyle          = input.string      ("Dotted", " ", options=["Solid", "Dotted", "Dashed"], inline="in4")
+
+
+i_rshow             = input.bool        (true, title='Boxes', inline='x1')
+i_dev               = input.bool        (false, 'Deviations', inline='x1')
+i_devno             = input.int         (2 , "", minval=1, inline='x1')
+
+i_pips              = input.bool        (true, "Box Info | ", inline='x1a')
+i_d4                = input.string      (   "GMT+10", "DOW Timezone", options=["GMT+0", "GMT+1", "GMT+2", "GMT+3","GMT+4","GMT+5","GMT+6","GMT+7","GMT+8","GMT+9","GMT+10","GMT+11","GMT+12","GMT-1", "GMT-2", "GMT-3","GMT-4","GMT-5","GMT-6","GMT-7","GMT-8","GMT-9","GMT-10","GMT-11","GMT-12"], inline='x1a', tooltip='Time Zone for day of week')
+
+
+i_bool0             = input.string      ("America/New_York", "Time Zone", inline='x7', group="Sessions")
+i_btc               = input.bool        (true, "Box Text", inline="x7", group="Sessions")
+i_tcb               = input.color       (color.new(color.white, 80), "", inline="x7", group="Sessions")
+i_transp1           = input.int         (85, "Transparency", 0, 100, 1, inline="x7b", group="Sessions"  )
+i_transp2           = input.int         (90, "", 0, 100, 1, inline="x7b", group="Sessions")
+i_bool1             = input.bool        (true, "", inline='x2', group="Sessions")
+i_bool2             = input.bool        (true, "", inline='x3', group="Sessions")
+i_bool3             = input.bool        (true, "", inline='x4', group="Sessions")
+i_bool4             = input.bool        (true, "", inline='x5', group="Sessions")
+i_bool5             = input.bool        (true, "", inline='x6', group="Sessions")
+
+
+cbdr                = input.session     ('1400-2000', "" ,   inline='x2', tooltip="CBDR", group="Sessions")
+asia                = input.session     ('2000-0000', "",    inline='x3', tooltip="Asia", group="Sessions")
+london              = input.session     ('0200-0500', "",    inline='x4', tooltip="London", group="Sessions")
+nysesh              = input.session     ('0700-1000', "",    inline='x5', tooltip="New York", group="Sessions")
+lcsesh              = input.session     ('1000-1200', "",    inline='x6', tooltip="London Close", group="Sessions")
+i_vcbdr             = input.color       (color.new(#0064ff, 0),     "", inline='x2', group="Sessions")
+i_vasia             = input.color       (color.new(#7622ff, 0),     "", inline='x3', group="Sessions")
+i_vlon              = input.color       (color.new(#e90000, 0),     "", inline='x4', group="Sessions")
+i_vny               = input.color       (color.new(#00acb8, 0),     "", inline='x5', group="Sessions")
+i_lc                = input.color       (color.new(#434651, 0),     "", inline='x6', group="Sessions")
+
+
+
+//INPUTS END
+
+// MISC
+nymid               = time              ("1", i_time, i_bool0)
+linestyle           = i_linestyle ==    "Solid" ? line.style_solid : i_linestyle == "Dotted" ? line.style_dotted : line.style_dashed
+lonstyle            = i_lonstyle  ==    "Solid" ? line.style_solid : i_lonstyle == "Dotted" ? line.style_dotted : line.style_dashed
+vstyle              = i_vstyle    ==    "Solid" ? line.style_solid : i_vstyle == "Dotted" ? line.style_dotted : line.style_dashed
+ex                  = i_ex        ==    "None" ? extend.none : i_ex == "+1 Day" ? extend.none : i_ex == "Right" ? extend.right : extend.both  
+htime               = i_ex        ==    "+1 Day" ? 172800000 : 86400000
+dow                 = dayofweek   ==    dayofweek.friday ? 259200000 : 86400000
+dow2                = dayofweek   ==    dayofweek.friday ? 172800000 : 86400000 //this is for asia coming out of weekend
+dow3                = dayofweek   ==    dayofweek.friday ? 172800000  : 0
+
+
+disp                = timeframe.isintraday and timeframe.multiplier <= i_maxtf
+// CALC
+var openprice       = 0.0
+if not na(nymid)
+    if na(nymid[1])
+        openprice := open
+    else
+        openprice := math.max(open, openprice)
+
+
+
+// FUNCTIONS
+
+in_session(sess) =>
+    not na(time(timeframe.period, sess, i_bool0))
+
+start_time(sess) =>
+    int startTime = na
+    startTime := in_session(sess) and not in_session(sess)[1] ? time : startTime[1]
+    startTime
+
+is_new_session(res, sess) =>
+    t = time(res, sess, i_bool0)
+    na(t[1]) and not na(t) or t[1] < t
+
+BarInSession(sess) =>
+    time(timeframe.period, sess, i_bool0) != 0
+    
+_hline(StartTime, EndTime, Price, Color, Style, Width) =>
+    return_1 = line.new(StartTime, Price, EndTime, Price, xloc=xloc.bar_time, extend=extend.none, color=Color, style=Style, width=Width)
+
+
+pip(x) => 
+    forex = syminfo.type == "forex" ? syminfo.mintick * 10 : na
+    x / forex
+    
+forex = syminfo.type == "forex"
+
+// OBJECTS
+var label lb = na
+if openprice != openprice[1] and i_hline and disp
+    var line lne = na
+    line.set_x2(lne, nymid)
+    line.set_extend(lne, extend.none)
+    lne := line.new(nymid, openprice, nymid + htime + dow3, openprice, xloc.bar_time, ex, i_linecol, linestyle, 2)
+    lb  := label.new(nymid + htime + dow3, openprice, "NY Midnight Open | " + str.tostring(math.round_to_mintick(openprice)), xloc.bar_time, yloc.price, na, label.style_none, i_txtcol)
+    label.delete(lb[1])
+
+
+f_vline(a, b, d, e, sess) => 
+    var line fl1 = na
+    var line fl2 = na
+    var linefill lf1 = na
+    st_vl = timestamp(i_bool0, year, month, sess, a, 00, 00)
+    en_vl = timestamp(i_bool0, year, month, sess, b, e, 00)
+    fl1 := line.new(st_vl, high, st_vl, low, xloc.bar_time, extend.both, color.new(color.white,100), lonstyle, 1)
+    line.delete(fl1[1])
+    fl2 := line.new(en_vl, high, en_vl, low, xloc.bar_time, extend.both, color.new(color.white,100), lonstyle, 1)
+    line.delete(fl2[1])
+    lf1 := linefill.new(fl1, fl2, color.new(d, i_transp2))
+    linefill.delete(lf1[1])
+    for i = 0 to 100
+        if time > line.get_x1(fl2[i])
+            line.delete(fl2[i])
+            line.delete(fl1[i])
+
+if i_shf and disp
+    f_vline(02, 05, i_vlon, 00, dayofmonth)
+    f_vline(07, 10, i_vny, 00, dayofmonth)
+    f_vline(10, 12, i_lc, 00, dayofmonth)
+    f_vline(14, 20, i_vcbdr, 00, dayofmonth)
+    f_vline(20, 24, i_vasia, 00, dayofmonth)
+    f_vline(02, 05, i_vlon, 00, dayofmonth + 1)
+    f_vline(07, 10, i_vny, 00, dayofmonth + 1)
+    f_vline(10, 12, i_lc, 00, dayofmonth + 1)
+    f_vline(14, 20, i_vcbdr, 00, dayofmonth + 1)
+    f_vline(20, 24, i_vasia, 00, dayofmonth + 1)
+
+//BOXES 
+
+isnewday = time("D") != time("D")[1]
+ictbox(kz, bdcol,txt, x)=>
+    sesh = is_new_session('1440', kz)
+    var kzlow = 0.0
+    var kzhigh = 0.0
+    kzbox = box(na)
+    bline = line(na)
+    bline2 = line(na)
+    bline3 = line(na)
+    _lbl = label(na)
+    kzstart = start_time(kz)
+    dow4 = dayofweek(kzstart, i_d4)
+    if in_session(kz) and not in_session(kz)[1]
+        kzlow := low
+        kzhigh := high
+    devdiff = kzhigh[1] - kzlow[1]
+    tgdist = kzhigh - kzlow
+    dol = (time - kzstart) / 2
+    
+
+    if in_session(kz)
+        if in_session(kz)[1]
+            box.delete(kzbox[1])
+            line.delete(bline[1])
+            line.delete(bline2[1])
+            line.delete(bline3[1])
+            label.delete(_lbl[1])
+        if low < kzlow
+            kzlow := low
+            kzlow
+        if high > kzhigh
+            kzhigh := high
+            kzhigh
+
+        if x
+            kzbox := box.new(kzstart, kzhigh, time, kzlow, color.new(bdcol, 50), 0, line.style_solid, extend.none, xloc.bar_time, color.new(bdcol,i_transp1), i_btc ? txt : na, size.auto, i_tcb, text_wrap=text.wrap_auto)
+            bline := line.new(kzstart, kzhigh, time, kzhigh, xloc.bar_time, extend.none, bdcol, line.style_solid, 1)
+            bline2 := line.new(kzstart, kzlow, time, kzlow, xloc.bar_time, extend.none, bdcol, line.style_solid, 1)
+            dtext = dow4 == 1 ? "Sun • " : dow4 == 2 ? "Mon • " : dow4 == 3 ? "Tue • " : dow4 == 4 ? "Wed • " : dow4 == 5 ? "Thu • " : dow4 == 6 ? "Fri • " : dow4 == 7 ? "Sat • " : na
+            rtext = dtext + str.tostring(forex ? math.round(pip(tgdist)) : math.round_to_mintick(tgdist)) + (forex ? " pips" : " pts") 
+            if i_pips
+                _lbl := label.new(kzstart + dol, kzhigh, rtext, xloc.bar_time, yloc.price, na, textcolor = i_txtcol, size = size.normal,textalign = text.align_right, style=label.style_none)
+            if i_kzmid
+                bline3 := line.new(kzstart, math.avg(kzhigh,kzlow), time, math.avg(kzhigh,kzlow), xloc.bar_time, extend.none, bdcol, line.style_dashed, 1)
+
+    tz = time - time[1]
+    if i_dev and not in_session(kz) and in_session(kz)[1] and x
+        for s = 1 to i_devno by 1
+            _hline(kzstart, time - 1 * tz, kzhigh[1] + devdiff * s, bdcol, line.style_solid, 1)
+            _hline(kzstart, time - 1 * tz, kzlow[1] - devdiff * s, bdcol, line.style_solid, 1)
+
+if disp and i_rshow
+    ictbox(asia, i_vasia, "Asia", i_bool2)
+    ictbox(cbdr, i_vcbdr, "CBDR", i_bool1)
+    ictbox(london, i_vlon, "London", i_bool3)
+    ictbox(nysesh, i_vny, "NY", i_bool4)
+    ictbox(lcsesh, i_lc, "London \n Close", i_bool5)
+
+if i_vline and nymid == nymid and disp
+    line.new(nymid + dow, high, nymid + dow, low, xloc.bar_time, extend.both, i_vcol, vstyle, 1)
+
+
+//END
+

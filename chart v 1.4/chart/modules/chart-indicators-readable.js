@@ -1,0 +1,325 @@
+(function(){
+console.log('Indicators loading');
+if(typeof Chart==='undefined'){
+setTimeout(arguments.callee,100);
+return;
+
+}
+Chart.prototype.initIndicators=function(){
+this.indicators={
+active:[],data:{
+
+}
+
+}
+;
+console.log('Indicators initialized');
+
+}
+;
+Chart.prototype.addIndicator=function(t,p){
+if(!this.data||!this.data.length)return;
+p=p||{
+
+}
+;
+var ind={
+id:'i'+Date.now()+'_'+Math.random().toString(36).substr(2,5),type:t.toLowerCase(),params:{
+
+}
+,style:{
+
+}
+,name:'',data:null
+}
+;
+switch(ind.type){
+case'sma':ind.params.period=p.period||20;
+ind.style.color=p.color||'#2962ff';
+ind.style.lineWidth=2;
+ind.name='SMA('+ind.params.period+')';
+var sma=[];
+for(var i=0;
+i<this.data.length;
+i++){
+if(i<ind.params.period-1){
+sma.push(null);
+
+}
+else{
+var s=0;
+for(var j=0;
+j<ind.params.period;
+j++)s+=this.data[i-j].c;
+sma.push(s/ind.params.period);
+
+}
+
+}
+ind.data=sma;
+break;
+case'ema':ind.params.period=p.period||20;
+ind.style.color=p.color||'#f23645';
+ind.style.lineWidth=2;
+ind.name='EMA('+ind.params.period+')';
+var ema=[],mult=2/(ind.params.period+1),e=null;
+for(var i=0;
+i<this.data.length;
+i++){
+if(i<ind.params.period-1){
+ema.push(null);
+
+}
+else if(i===ind.params.period-1){
+var s=0;
+for(var j=0;
+j<ind.params.period;
+j++)s+=this.data[i-j].c;
+e=s/ind.params.period;
+ema.push(e);
+
+}
+else{
+e=(this.data[i].c-e)*mult+e;
+ema.push(e);
+
+}
+
+}
+ind.data=ema;
+break;
+case'wma':ind.params.period=p.period||20;
+ind.style.color=p.color||'#ff9800';
+ind.style.lineWidth=2;
+ind.name='WMA('+ind.params.period+')';
+var wma=[],denom=(ind.params.period*(ind.params.period+1))/2;
+for(var i=0;
+i<this.data.length;
+i++){
+if(i<ind.params.period-1){
+wma.push(null);
+
+}
+else{
+var s=0;
+for(var j=0;
+j<ind.params.period;
+j++)s+=this.data[i-j].c*(ind.params.period-j);
+wma.push(s/denom);
+
+}
+
+}
+ind.data=wma;
+break;
+case'bb':ind.params.period=p.period||20;
+ind.params.stdDev=p.stdDev||2;
+ind.style.upperColor='#2962ff';
+ind.style.middleColor='#787b86';
+ind.style.lowerColor='#2962ff';
+ind.style.fillColor='rgba(41,98,255,0.1)';
+ind.style.lineWidth=1;
+ind.name='BB('+ind.params.period+','+ind.params.stdDev+')';
+var middle=[],upper=[],lower=[];
+for(var i=0;
+i<this.data.length;
+i++){
+if(i<ind.params.period-1){
+middle.push(null);
+upper.push(null);
+lower.push(null);
+
+}
+else{
+var s=0;
+for(var j=0;
+j<ind.params.period;
+j++)s+=this.data[i-j].c;
+var m=s/ind.params.period;
+middle.push(m);
+var sd=0;
+for(var j=0;
+j<ind.params.period;
+j++){
+var d=this.data[i-j].c-m;
+sd+=d*d;
+
+}
+sd=Math.sqrt(sd/ind.params.period);
+upper.push(m+ind.params.stdDev*sd);
+lower.push(m-ind.params.stdDev*sd);
+
+}
+
+}
+ind.data={
+upper:upper,middle:middle,lower:lower
+}
+;
+break;
+case'vwap':ind.style.color=p.color||'#9c27b0';
+ind.style.lineWidth=2;
+ind.name='VWAP';
+var vwap=[],ctpv=0,cv=0;
+for(var i=0;
+i<this.data.length;
+i++){
+var tp=(this.data[i].h+this.data[i].l+this.data[i].c)/3;
+var tpv=tp*this.data[i].v;
+ctpv+=tpv;
+cv+=this.data[i].v;
+vwap.push(cv===0?null:ctpv/cv);
+
+}
+ind.data=vwap;
+break;
+default:console.log('Unknown indicator:',ind.type);
+return;
+
+}
+this.indicators.data[ind.id]=ind.data;
+this.indicators.active.push(ind);
+console.log('Added',ind.name);
+this.render();
+this.updateOHLCIndicators();
+return ind;
+
+}
+;
+Chart.prototype.removeIndicator=function(id){
+var i=this.indicators.active.findIndex(function(x){
+return x.id===id;
+
+}
+);
+if(i>=0){
+this.indicators.active.splice(i,1);
+delete this.indicators.data[id];
+this.render();
+this.updateOHLCIndicators();
+
+}
+
+}
+;
+Chart.prototype.drawIndicators=function(){
+if(!this.indicators||!this.indicators.active.length)return;
+var ctx=this.ctx,m=this.margin;
+ctx.save();
+ctx.beginPath();
+ctx.rect(m.l,m.t,this.w-m.l-m.r,this.h-m.t-m.b);
+ctx.clip();
+for(var k=0;
+k<this.indicators.active.length;
+k++){
+var ind=this.indicators.active[k];
+var d=this.indicators.data[ind.id];
+if(!d)continue;
+if(ind.type==='bb'&&d.upper){
+ctx.fillStyle=ind.style.fillColor;
+ctx.beginPath();
+var started=false;
+for(var i=0;
+i<d.upper.length;
+i++){
+if(d.upper[i]===null)continue;
+var x=this.dataIndexToPixel(i),y=this.yScale(d.upper[i]);
+if(!started){
+ctx.moveTo(x,y);
+started=true;
+
+}
+else ctx.lineTo(x,y);
+
+}
+for(var i=d.lower.length-1;
+i>=0;
+i--){
+if(d.lower[i]===null)continue;
+var x=this.dataIndexToPixel(i),y=this.yScale(d.lower[i]);
+ctx.lineTo(x,y);
+
+}
+ctx.closePath();
+ctx.fill();
+this.drawLine(d.upper,ind.style.upperColor,ind.style.lineWidth);
+this.drawLine(d.middle,ind.style.middleColor,ind.style.lineWidth);
+this.drawLine(d.lower,ind.style.lowerColor,ind.style.lineWidth);
+
+}
+else if(Array.isArray(d)){
+this.drawLine(d,ind.style.color,ind.style.lineWidth);
+
+}
+
+}
+ctx.restore();
+
+}
+;
+Chart.prototype.drawLine=function(d,c,w){
+var ctx=this.ctx;
+ctx.strokeStyle=c;
+ctx.lineWidth=w;
+ctx.beginPath();
+var started=false;
+for(var i=0;
+i<d.length;
+i++){
+if(d[i]===null)continue;
+var x=this.dataIndexToPixel(i),y=this.yScale(d[i]);
+if(!started){
+ctx.moveTo(x,y);
+started=true;
+
+}
+else ctx.lineTo(x,y);
+
+}
+ctx.stroke();
+
+}
+;
+Chart.prototype.updateOHLCIndicators=function(){
+var div=document.getElementById('ohlcIndicators'+(this.panelIndex||''));
+if(!div||!this.indicators)return;
+div.innerHTML='';
+for(var i=0;
+i<this.indicators.active.length;
+i++){
+var ind=this.indicators.active[i],el=document.createElement('div');
+el.style.cssText='display:inline-flex;
+align-items:center;
+gap:6px;
+cursor:pointer;
+padding:2px 6px;
+margin-right:8px;
+';
+var col=ind.style.color||ind.style.middleColor||'#2962ff';
+el.innerHTML='<span style="width:12px;
+height:2px;
+background:'+col+';
+"></span><span style="color:#787b86;
+font-size:12px;
+">'+ind.name+'</span>';
+(function(self,id){
+el.onclick=function(){
+self.removeIndicator(id);
+
+}
+;
+
+}
+)(this,ind.id);
+div.appendChild(el);
+
+}
+
+}
+;
+window.INDICATORS_MODULE_LOADED=true;
+console.log('Indicators ready');
+
+}
+)();
+

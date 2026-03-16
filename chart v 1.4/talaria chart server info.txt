@@ -1,0 +1,75 @@
+# ============================================
+# COMPLETE DEPLOYMENT GUIDE: GitHub to VPS
+# ============================================
+
+# --------------------------------------------
+# STEP 1: Initialize Git & Push to GitHub
+# --------------------------------------------
+cd "/Users/hades/Desktop/talaria prop v2/chart v 1.4/chart"
+git init
+git branch -M main
+git remote add origin https://github.com/ayoubsiyari/talaria-chart.git
+git add .
+git commit -m "Initial commit: Trading Chart application with Docker support"
+git push -u origin main
+
+# --------------------------------------------
+# STEP 2: Connect to VPS
+# --------------------------------------------
+ssh root@178.16.131.52
+# Password: taylorAB@0633225527
+
+# --------------------------------------------
+# STEP 3: Install Docker Compose (on VPS)
+# --------------------------------------------
+curl -L 'https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64' -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+docker-compose --version
+
+# --------------------------------------------
+# STEP 4: Upload Files to VPS (from local)
+# --------------------------------------------
+ssh root@178.16.131.52 "mkdir -p /root/talaria-chart"
+
+rsync -avz --exclude='.git' --exclude='venv' --exclude='__pycache__' --exclude='*.db' --exclude='node_modules' --exclude='*.csv' --exclude='uploads/*' -e ssh . root@178.16.131.52:/root/talaria-chart/
+
+# --------------------------------------------
+# STEP 5: Build & Start Docker (on VPS)
+# --------------------------------------------
+ssh root@178.16.131.52 "cd /root/talaria-chart && docker-compose up -d --build"
+
+# --------------------------------------------
+# STEP 6: Verify Deployment
+# --------------------------------------------
+ssh root@178.16.131.52 "docker ps"
+ssh root@178.16.131.52 "curl -s http://localhost:8000/api/status"
+
+# ============================================
+# QUICK REDEPLOY (one command after changes)
+# ============================================
+rsync -avz --exclude='.git' --exclude='venv' --exclude='__pycache__' --exclude='*.db' --exclude='node_modules' --exclude='*.csv' --exclude='uploads/*' -e ssh . root@178.16.131.52:/root/talaria-chart/ && ssh root@178.16.131.52 "cd /root/talaria-chart && docker-compose up -d --build"
+
+# ============================================
+# USEFUL VPS COMMANDS
+# ============================================
+# View logs
+docker logs -f trading-chart-app
+
+# Restart container
+docker restart trading-chart-app
+
+# Stop
+cd /root/talaria-chart && docker-compose down
+
+# Start
+cd /root/talaria-chart && docker-compose up -d
+
+# Rebuild after changes
+cd /root/talaria-chart && docker-compose up -d --build
+
+# ============================================
+# ACCESS URLS
+# ============================================
+# Sessions Page:  http://178.16.131.52:8000
+# Chart App:      http://178.16.131.52:8000/index.html
+# API Docs:       http://178.16.131.52:8000/docs

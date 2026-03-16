@@ -1,0 +1,60 @@
+{
+  "files.maxMemoryForLargeFilesMB": 64,
+  "editor.largeFileOptimizations": true,
+  "editor.maxTokenizationLineLength": 400,
+
+  "javascript.validate.enable": false,
+  "javascript.suggest.enabled": false,
+  "javascript.referencesCodeLens.enabled": false,
+  "javascript.implementationsCodeLens.enabled": false,
+  "typescript.validate.enable": false,
+  "typescript.suggest.enabled": false,
+  "typescript.referencesCodeLens.enabled": false,
+  "typescript.implementationsCodeLens.enabled": false,
+  "typescript.disableAutomaticTypeAcquisition": true,
+  "typescript.tsserver.maxTsServerMemory": 512,
+
+  "html.validate.scripts": false,
+  "html.validate.styles": false,
+  "css.validate": false,
+
+  "editor.codeLens": false,
+  "editor.inlayHints.enabled": "off",
+
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/out": true,
+    "**/venv": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "chart v 1.4/chart/uploads": true,
+    "chart v 1.4/chart/homepage": true,
+    "chart v 1.4/chart/db": true,
+    "download": true,
+    "**/*.bin": true,
+    "**/*.parquet": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.next/**": true,
+    "**/out/**": true,
+    "**/venv/**": true,
+    "**/.venv/**": true,
+    "**/__pycache__/**": true,
+    "chart v 1.4/chart/uploads/**": true,
+    "chart v 1.4/chart/homepage/**": true,
+    "chart v 1.4/chart/db/**": true,
+    "download/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/venv": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "chart v 1.4/chart/uploads": true,
+    "chart v 1.4/chart/homepage": true,
+    "chart v 1.4/chart/db": true,
+    "download": true
+  }
+}
