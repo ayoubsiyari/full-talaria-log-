@@ -5870,7 +5870,7 @@ class DrawingToolsManager {
             bottom: 50px;
             left: 50%;
             transform: translateX(-50%);
-            background: linear-gradient(135deg, rgba(${accentRgb}, 0.15) 0%, rgba(${accentRgb}, 0.10) 100%);
+            background: var(--sp-bg, #131722);
             color: ${textColor};
             padding: 9px 18px;
             border-radius: 10px;
@@ -5879,13 +5879,8 @@ class DrawingToolsManager {
             letter-spacing: 0.01em;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             box-shadow:
-                0 10px 24px rgba(0, 0, 0, 0.42),
-                0 0 0 1px rgba(${accentRgb}, 0.65),
-                0 0 22px rgba(${accentRgb}, 0.9),
-                0 0 44px rgba(${accentRgb}, 0.5);
-            text-shadow:
-                0 0 12px rgba(${accentRgb}, 0.85),
-                0 0 4px rgba(${accentRgb}, 0.65);
+                0 4px 12px rgba(0, 0, 0, 0.3),
+                0 0 0 1px rgba(${accentRgb}, 0.5);
             z-index: 10000;
             pointer-events: none;
             border: 1px solid rgba(${accentRgb}, 0.75);
