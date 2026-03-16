@@ -7908,7 +7908,7 @@ body.light-mode .template-save-dialog .dialog-title {
         sourceRow.innerHTML = `
             <span class="tv-prop-label">Source</span>
             <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; width: 72px; min-width: 72px;">
-                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box; text-transform: capitalize;">
+                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box; text-transform: capitalize;">
                     <span>${currentSource}</span>
                     <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
@@ -7917,40 +7917,6 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
             </div>`;
         container.appendChild(sourceRow);
-
-        // Wire up source dropdown click
-        setTimeout(() => {
-            const dd = sourceRow.querySelector('.tv-fontsize-dropdown');
-            if (!dd) return;
-            const btn = dd.querySelector('.tv-fontsize-dropdown-btn');
-            const menu = dd.querySelector('.tv-fontsize-dropdown-menu');
-            const label = btn.querySelector('span');
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const allMenus = document.querySelectorAll('.tv-fontsize-dropdown-menu');
-                allMenus.forEach(m => { if (m !== menu) m.style.display = 'none'; });
-                const isOpen = menu.style.display !== 'none';
-                if (!isOpen) {
-                    const rect = btn.getBoundingClientRect();
-                    menu.style.left = rect.left + 'px';
-                    menu.style.top = (rect.bottom + 2) + 'px';
-                    menu.style.width = rect.width + 'px';
-                }
-                menu.style.display = isOpen ? 'none' : 'block';
-            });
-            menu.querySelectorAll('.tv-fontsize-option').forEach(opt => {
-                opt.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const val = opt.dataset.value;
-                    label.textContent = val;
-                    menu.style.display = 'none';
-                    drawing.style.source = val;
-                    self.pendingChanges = self.pendingChanges || {};
-                    self.pendingChanges.source = val;
-                    self.renderPreview(drawing);
-                });
-            });
-        }, 0);
     }
 
     /**
@@ -10002,7 +9968,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 option.addEventListener('click', () => {
                     const value = option.dataset.value;
                     this.pendingChanges[prop] = value;
-                    drawing.style[prop] = parseInt(value);
+                    drawing.style[prop] = isNaN(parseInt(value, 10)) ? value : parseInt(value, 10);
                     btn.querySelector('span').textContent = value;
                     self.renderPreview(drawing);
                     this.applyChangesImmediately(drawing);
