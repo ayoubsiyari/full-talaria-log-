@@ -2494,7 +2494,8 @@ class DrawingToolsManager {
         const keyHeld = event && (event.metaKey || event.ctrlKey);
         const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
-        if (!isContinuousTool && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
+        const isSideHandle = this.isResizing && this.resizingHandleRole && this.resizingHandleRole.startsWith('side-');
+        if (!isContinuousTool && !isSideHandle && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
@@ -3918,6 +3919,7 @@ class DrawingToolsManager {
                         // Tools that rely on custom drag math but expose point-index handles.
                         self.startCustomHandleDrag(drawing, index, event, index);
                     } else {
+                        self.resizingHandleRole = handleRole || null;
                         self.startHandleDrag(drawing, index, event);
                     }
                     d3.select(this).style('cursor', 'ew-resize');
@@ -4055,6 +4057,7 @@ class DrawingToolsManager {
         this.isResizing = false;
         this.resizingDrawing = null;
         this.resizingPointIndex = null;
+        this.resizingHandleRole = null;
         this.resizeBeforeState = null;
 
         const canvas = document.getElementById('chartCanvas');
