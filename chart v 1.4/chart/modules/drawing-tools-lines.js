@@ -2773,20 +2773,6 @@ class CrossLineTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'move');
 
-        // Add price label if enabled
-        if (typeof this.isAxisLabelEnabled === 'function' ? this.isAxisLabelEnabled('price') : this.style.showPriceLabel !== false) {
-            const priceText = p.y.toFixed(2);
-            this.group.append('text')
-                .attr('x', xRange[1] - 5)
-                .attr('y', yScreen - 5)
-                .attr('text-anchor', 'end')
-                .attr('fill', this.style.stroke)
-                .attr('font-size', '12px')
-                .attr('font-weight', 'bold')
-                .style('pointer-events', 'none')
-                .text(priceText);
-        }
-
         // Render text label if exists
         if (this.text && this.text.trim()) {
             const cl_textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
