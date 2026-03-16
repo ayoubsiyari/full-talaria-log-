@@ -1074,19 +1074,25 @@ class HorizontalLineTool extends BaseDrawing {
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         
-        const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
-        let baseX = (xRange[0] + xRange[1]) / 2;
+        const chartLeftX = (scales.chart && scales.chart.margin && typeof scales.chart.margin.l === 'number')
+            ? scales.chart.margin.l : xRange[0];
+        const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
+            ? (scales.chart.w - scales.chart.margin.r) : xRange[1];
 
-        const HL_EDGE = 20; // fixed px from endpoint
+        let baseX;
+        let hlAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = xRange[0] + HL_EDGE;
+                baseX = chartLeftX + TEXT_EDGE_PADDING;
+                hlAnchor = 'start';
                 break;
             case 'right':
-                baseX = xRange[1] - HL_EDGE;
+                baseX = chartRightX - TEXT_EDGE_PADDING;
+                hlAnchor = 'end';
                 break;
             default:
-                baseX = (xRange[0] + xRange[1]) / 2;
+                baseX = (chartLeftX + chartRightX) / 2;
+                hlAnchor = 'middle';
         }
         
         const HL_LABEL_OFFSET = 7;
@@ -1095,13 +1101,6 @@ class HorizontalLineTool extends BaseDrawing {
             offsetY = -HL_LABEL_OFFSET;
         } else if (textVAlign === 'bottom') {
             offsetY = HL_LABEL_OFFSET;
-        }
-
-        let hlAnchor;
-        switch (textHAlign) {
-            case 'left':  hlAnchor = 'start'; break;
-            case 'right': hlAnchor = 'end';   break;
-            default:      hlAnchor = 'middle';
         }
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
