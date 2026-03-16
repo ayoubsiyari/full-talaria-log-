@@ -473,21 +473,45 @@ class TrendlineTool extends BaseDrawing {
             else timeStr = `${_totalMins}m`;
         }
 
-        // Build grouped rows: { icon, text } — matching TradingView layout
+        // Build rows with SVG icons - each stat on separate line
         const rows = [];
+        
+        // Price change row with vertical arrow icon
         const priceParts = [];
         if (infoSettings.priceRange) priceParts.push(`${rawPriceChange.toFixed(decimals)}`);
         if (infoSettings.percentChange) priceParts.push(`(${pct.toFixed(2)}%)`);
         if (infoSettings.changeInPips) priceParts.push(`${Math.abs(pips).toLocaleString()}`);
-        if (priceParts.length > 0) rows.push({ icon: '\u2195', text: priceParts.join(' ') });
+        if (priceParts.length > 0) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v12M5 5l3-3 3 3M5 11l3 3 3-3" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                text: priceParts.join(' ') 
+            });
+        }
 
-        const timeParts = [];
-        if (infoSettings.barsRange) timeParts.push(`${barsRange} bars`);
-        if (infoSettings.dateTimeRange && timeStr) timeParts.push(`(${timeStr})`);
-        if (infoSettings.distance) timeParts.push(`distance: ${pixelDist} px`);
-        if (timeParts.length > 0) rows.push({ icon: '\u2194', text: timeParts.join(', ') });
+        // Bars range row with horizontal arrow icon
+        if (infoSettings.barsRange) {
+            const barsText = infoSettings.dateTimeRange && timeStr ? `${barsRange} bars, (${timeStr})` : `${barsRange} bars`;
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M11 5l3 3-3 3" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                text: barsText
+            });
+        }
 
-        if (infoSettings.angle) rows.push({ icon: '\u2220', text: `${angleDeg}\u00b0` });
+        // Distance row with ruler/measure icon
+        if (infoSettings.distance) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M4 6v4M8 6v4M12 6v4" stroke="currentColor" fill="none" stroke-width="1.5"/>',
+                text: `distance: ${pixelDist} px`
+            });
+        }
+
+        // Angle row with angle icon
+        if (infoSettings.angle) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M12 4L4 12M12 4v5M12 4h-5" stroke="currentColor" fill="none" stroke-width="1.5"/><path d="M9 7a3 3 0 0 0 3-3" stroke="currentColor" fill="none" stroke-width="1"/>',
+                text: `${angleDeg}°`
+            });
+        }
 
         if (rows.length === 0) return;
 
@@ -532,13 +556,18 @@ class TrendlineTool extends BaseDrawing {
 
         rows.forEach((row, i) => {
             const rowY = padY + (i + 0.78) * lineHeight;
-            infoGroup.append('text')
-                .attr('x', padX)
-                .attr('y', rowY)
-                .attr('fill', '#787b86')
-                .attr('font-size', `${fontSize}px`)
-                .attr('font-family', fontFamily)
-                .text(row.icon);
+            
+            // Render SVG icon if available
+            if (row.svgIcon) {
+                const iconG = infoGroup.append('g')
+                    .attr('transform', `translate(${padX}, ${rowY - 9})`);
+                iconG.html(row.svgIcon);
+                iconG.select('svg')
+                    .attr('stroke', '#787b86')
+                    .style('overflow', 'visible');
+            }
+            
+            // Render text
             infoGroup.append('text')
                 .attr('x', padX + iconColW + iconTextGap)
                 .attr('y', rowY)
