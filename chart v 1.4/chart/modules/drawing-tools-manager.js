@@ -626,13 +626,11 @@ class DrawingToolsManager {
         const w = this.chart.w || this.chart.canvas?.width || 800;
         const h = this.chart.h || this.chart.canvas?.height || 600;
         
-        // Full width so handles in the price-axis zone are not clipped;
-        // clip only at the time-axis boundary (bottom).
         this.svg.select('.chart-clip-rect')
-            .attr('x', 0)
-            .attr('y', 0)
-            .attr('width', w)
-            .attr('height', h - m.b);
+            .attr('x', m.l)
+            .attr('y', m.t)
+            .attr('width', w - m.l - m.r)
+            .attr('height', h - m.t - m.b);
     }
 
     /**
@@ -4451,18 +4449,17 @@ class DrawingToolsManager {
     }
 
     /**
-     * Toggle axis cursor zone z-index based on drawing selection / active tool state.
-     * When a drawing is selected or a tool is active, move the time-axis zone behind
-     * the SVG layer (z-index 1) so it doesn't steal mouse events from drawings.
+     * Toggle SVG z-index based on drawing selection / active tool state.
+     * When a drawing is selected or a tool is active, increase SVG z-index to 11
+     * (above time-axis-zone z-index 10) so drawings can receive mouse events.
      */
     _updateAxisZonePointerEvents() {
         const active = this.selectedDrawings.length > 0 || !!this.currentTool;
-        const timeZone = document.getElementById('timeAxisZone') || document.querySelector('.time-axis-zone');
-        if (timeZone) {
+        if (this.svg) {
             if (active) {
-                timeZone.style.zIndex = '1';
+                this.svg.style('z-index', '11');
             } else {
-                timeZone.style.zIndex = '';
+                this.svg.style('z-index', '');
             }
         }
     }
