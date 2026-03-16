@@ -567,7 +567,7 @@ class DrawingToolbar {
                     flex-direction: column;
                     gap: 2px;
                     z-index: 10001;
-                    min-width: 100px;
+                    min-width: 130px;
                 }
                 
                 body.light-mode .toolbar-dropdown {
