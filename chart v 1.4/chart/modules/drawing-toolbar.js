@@ -81,7 +81,7 @@ class DrawingToolbar {
                 border-radius: 8px;
                 padding: 0 12px 0 0;
                 height: 48px;
-                z-index: 10000;
+                z-index: 1000011;
                 gap: 4px;
                 align-items: center;
                 flex-wrap: nowrap;
@@ -167,7 +167,7 @@ class DrawingToolbar {
             .drawing-toolbar.dragging {
                 box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
                 opacity: 0.95;
-                z-index: 10001;
+                z-index: 1000012;
             }
             
             body.light-mode .drawing-toolbar .toolbar-btn {
