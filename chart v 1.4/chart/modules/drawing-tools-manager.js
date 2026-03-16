@@ -2052,7 +2052,6 @@ class DrawingToolsManager {
                 this.resizingDrawing.points[this.resizingPointIndex] = currentPoint;
                 this.resizingDrawing.meta.updatedAt = Date.now();
             }
-            this.clampDrawingToVisiblePriceRange(this.resizingDrawing);
 
             this.scheduleRenderDrawing(this.resizingDrawing);
             return;
@@ -2082,7 +2081,6 @@ class DrawingToolsManager {
                     context
                 );
                 if (handled) {
-                    this.clampDrawingToVisiblePriceRange(this.customHandleDraggingDrawing);
                     this.scheduleRenderDrawing(this.customHandleDraggingDrawing);
                 }
             }
@@ -2568,18 +2566,6 @@ class DrawingToolsManager {
         drawing.points = drawing.points.map(point => this.clampPointToCandleRange(point, drawing.type));
     }
 
-    clampDrawingToVisiblePriceRange(drawing) {
-        if (!drawing || !Array.isArray(drawing.points) || drawing.points.length === 0) return;
-        if (!this.chart || !this.chart.yScale) return;
-        const domain = this.chart.yScale.domain();
-        if (!domain || domain.length < 2) return;
-        const minPrice = Math.min(domain[0], domain[1]);
-        const maxPrice = Math.max(domain[0], domain[1]);
-        drawing.points = drawing.points.map(pt => ({
-            ...pt,
-            y: Math.max(minPrice, Math.min(maxPrice, pt.y))
-        }));
-    }
 
     normalizeRangeMode(mode) {
         const value = String(mode || '').toLowerCase().trim();
@@ -3686,7 +3672,6 @@ class DrawingToolsManager {
                                 y: p.y + constrainedDy
                             }));
                             self.clampDrawingPointsToCandleRange(item.drawing);
-                            self.clampDrawingToVisiblePriceRange(item.drawing);
                             self.renderDrawing(item.drawing);
                             
                             // Update axis highlights if drawing is selected
@@ -3702,7 +3687,6 @@ class DrawingToolsManager {
                             y: p.y + constrainedDy
                         }));
                         self.clampDrawingPointsToCandleRange(drawing);
-                        self.clampDrawingToVisiblePriceRange(drawing);
                         
                         // Re-render
                         self.renderDrawing(drawing);
@@ -3845,7 +3829,6 @@ class DrawingToolsManager {
                     y: pt.y + constrainedDy
                 }));
                 this.clampDrawingPointsToCandleRange(item.drawing);
-                this.clampDrawingToVisiblePriceRange(item.drawing);
 
                 this.renderDrawing(item.drawing);
 
@@ -3902,7 +3885,6 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
-                    self.clampDrawingToVisiblePriceRange(drawing);
                     self._skipHandleSetup = true;
                     this.renderDrawing(drawing);
                     self._skipHandleSetup = false;
@@ -4049,7 +4031,6 @@ class DrawingToolsManager {
         
         // Update point
         drawing.points[index] = point;
-        this.clampDrawingToVisiblePriceRange(drawing);
         
         // Re-render without recreating handles during active drag
         this._skipHandleSetup = true;
@@ -4147,7 +4128,6 @@ class DrawingToolsManager {
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
         }
-        this.clampDrawingToVisiblePriceRange(drawing);
 
         // Always re-render during drag
         this.scheduleRenderDrawing(drawing);
