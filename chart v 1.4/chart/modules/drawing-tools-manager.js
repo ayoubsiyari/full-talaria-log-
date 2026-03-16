@@ -4449,17 +4449,19 @@ class DrawingToolsManager {
     }
 
     /**
-     * Toggle SVG z-index based on drawing selection / active tool state.
+     * Toggle SVG z-index and pointer-events based on drawing selection / active tool state.
      * When a drawing is selected or a tool is active, increase SVG z-index to 11
-     * (above time-axis-zone z-index 10) so drawings can receive mouse events.
+     * (above time-axis-zone z-index 10) and enable pointer-events so drawings can receive mouse events.
      */
     _updateAxisZonePointerEvents() {
         const active = this.selectedDrawings.length > 0 || !!this.currentTool;
         if (this.svg) {
             if (active) {
                 this.svg.style('z-index', '11');
+                this.svg.style('pointer-events', 'auto');
             } else {
                 this.svg.style('z-index', '');
+                this.svg.style('pointer-events', '');
             }
         }
     }
