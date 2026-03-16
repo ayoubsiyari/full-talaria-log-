@@ -2080,7 +2080,7 @@ class PathTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, isPreview = false) {
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -2198,7 +2198,7 @@ class PathTool extends BaseDrawing {
                 .attr('class', 'resize-handle')
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
-                .style('opacity', this.selected ? 1 : 0);
+                .style('opacity', (this.selected || isPreview) ? 1 : 0);
         });
 
         return this.group;
@@ -2369,7 +2369,7 @@ class PolylineTool extends BaseDrawing {
         this.style.fill = style.fill || 'none';
     }
 
-    render(container, scales) {
+    render(container, scales, isPreview = false) {
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -2487,7 +2487,7 @@ class PolylineTool extends BaseDrawing {
                 .attr('class', 'resize-handle')
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
-                .style('opacity', this.selected ? 1 : 0);
+                .style('opacity', (this.selected || isPreview) ? 1 : 0);
         });
 
         return this.group;
