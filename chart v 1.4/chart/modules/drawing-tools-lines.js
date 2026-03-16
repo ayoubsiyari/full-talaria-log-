@@ -508,13 +508,10 @@ class TrendlineTool extends BaseDrawing {
         const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
         const boxHeight = rows.length * lineHeight + padY * 2;
 
-        // Place info box at the bottom-right of the chart area so it never overlaps the line
-        const svgEl = this.group.node().ownerSVGElement || this.group.node();
-        const chartW = svgEl ? (svgEl.clientWidth || svgEl.width?.baseVal?.value || 900) : 900;
-        const chartH = svgEl ? (svgEl.clientHeight || svgEl.height?.baseVal?.value || 500) : 500;
-        const MARGIN = 10;
-        let boxX = chartW - boxWidth - MARGIN - 60;
-        let boxY = chartH - boxHeight - MARGIN - 30;
+        // Place info box anchored to p2 (end point): to the right and below, like TradingView
+        const OFFSET = 15;
+        let boxX = x2 + OFFSET;
+        let boxY = y2 + OFFSET;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
