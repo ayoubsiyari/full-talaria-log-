@@ -9733,7 +9733,7 @@ body.light-mode .template-save-dialog .dialog-title {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 // Close other dropdowns
-                queryAll('.tv-ending-dropdown-menu').forEach(m => {
+                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu').forEach(m => {
                     if (m !== menu) m.style.display = 'none';
                 });
                 document.querySelector('.settings-info-dropdown')?.remove();
