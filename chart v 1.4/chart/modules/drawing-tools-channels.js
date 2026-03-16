@@ -1128,7 +1128,7 @@ class RegressionTrendTool extends BaseDrawing {
                 .attr('r', hitRadius)
                 .attr('fill', 'transparent')
                 .attr('stroke', 'none')
-                .style('cursor', 'nwse-resize')
+                .style('cursor', 'ew-resize')
                 .style('pointer-events', 'all')
                 .attr('data-point-index', index);
             
@@ -1140,7 +1140,7 @@ class RegressionTrendTool extends BaseDrawing {
                 .attr('fill', handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'nwse-resize')
+                .style('cursor', 'ew-resize')
                 .style('pointer-events', showFull ? 'all' : 'none')
                 .style('opacity', showFull ? 1 : 0)
                 .attr('data-point-index', index);
