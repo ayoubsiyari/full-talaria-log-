@@ -7812,124 +7812,145 @@ body.light-mode .template-save-dialog .dialog-title {
      */
     buildRegressionInputsTab(container, drawing) {
         const self = this;
-        
-        // Upper Deviation with checkbox on same row
+        const rowStyle = 'display: flex; justify-content: space-between; align-items: center; min-height: 36px; padding: 0;';
+        const cbWrapStyle = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+        const svgCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+        // Upper Deviation
         const upperDevRow = document.createElement('div');
         upperDevRow.className = 'tv-prop-row';
-        upperDevRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;';
+        upperDevRow.style.cssText = rowStyle;
         upperDevRow.innerHTML = `
-            <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${drawing.style.useUpperDeviation !== false ? 'checked' : ''}" data-prop="useUpperDeviation">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                Upper Deviation
-            </span>
+            <div class="tv-checkbox-wrapper" style="${cbWrapStyle}">
+                <div class="tv-checkbox ${drawing.style.useUpperDeviation !== false ? 'checked' : ''}" data-prop="useUpperDeviation">${svgCheck}</div>
+                <span class="tv-checkbox-label" style="white-space: nowrap;">Upper Deviation</span>
+            </div>
             <div class="number-input-wrapper">
-                <input type="number" class="tv-number-input" data-prop="upperDeviation" 
-                       value="${drawing.style.upperDeviation || 2}" 
-                       step="0.1" 
-                       style="color: #d1d4dc; font-size: 13px; text-align: center;">
+                <input type="number" class="tv-number-input" data-prop="upperDeviation"
+                       value="${drawing.style.upperDeviation !== undefined ? drawing.style.upperDeviation : 2}"
+                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center;">
                 <div class="custom-spinner" data-target="upperDeviation">
                     <div class="custom-spinner-btn" data-action="up"><svg viewBox="0 0 10 10"><polyline points="2,7 5,3 8,7"></polyline></svg></div>
                     <div class="custom-spinner-btn" data-action="down"><svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg></div>
                 </div>
-            </div>
-        `;
+            </div>`;
         container.appendChild(upperDevRow);
-        
-        // Lower Deviation with checkbox on same row
+
+        // Lower Deviation
         const lowerDevRow = document.createElement('div');
         lowerDevRow.className = 'tv-prop-row';
-        lowerDevRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;';
+        lowerDevRow.style.cssText = rowStyle;
         lowerDevRow.innerHTML = `
-            <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${drawing.style.useLowerDeviation !== false ? 'checked' : ''}" data-prop="useLowerDeviation">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                Lower Deviation
-            </span>
+            <div class="tv-checkbox-wrapper" style="${cbWrapStyle}">
+                <div class="tv-checkbox ${drawing.style.useLowerDeviation !== false ? 'checked' : ''}" data-prop="useLowerDeviation">${svgCheck}</div>
+                <span class="tv-checkbox-label" style="white-space: nowrap;">Lower Deviation</span>
+            </div>
             <div class="number-input-wrapper">
-                <input type="number" class="tv-number-input" data-prop="lowerDeviation" 
-                       value="${drawing.style.lowerDeviation || -2}" 
-                       step="0.1" 
-                       style="color: #d1d4dc; font-size: 13px; text-align: center;">
+                <input type="number" class="tv-number-input" data-prop="lowerDeviation"
+                       value="${drawing.style.lowerDeviation !== undefined ? drawing.style.lowerDeviation : -2}"
+                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center;">
                 <div class="custom-spinner" data-target="lowerDeviation">
                     <div class="custom-spinner-btn" data-action="up"><svg viewBox="0 0 10 10"><polyline points="2,7 5,3 8,7"></polyline></svg></div>
                     <div class="custom-spinner-btn" data-action="down"><svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg></div>
                 </div>
-            </div>
-        `;
+            </div>`;
         container.appendChild(lowerDevRow);
-        
-        // Divider above extend options
-        const dividerTop = document.createElement('div');
-        dividerTop.style.cssText = 'height: 1px; background: rgba(255, 255, 255, 0.1); margin: 12px 0;';
-        container.appendChild(dividerTop);
-        
-        // Extend Left/Right on one line
-        const extendRow = document.createElement('div');
-        extendRow.className = 'tv-prop-row';
-        extendRow.style.cssText = 'margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start;';
-        extendRow.innerHTML = `
-            <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${drawing.style.extendLeft ? 'checked' : ''}" data-prop="extendLeft">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
+
+        // Thin divider
+        const divider = document.createElement('div');
+        divider.style.cssText = 'height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;';
+        container.appendChild(divider);
+
+        // Extend Left
+        const extendLeftRow = document.createElement('div');
+        extendLeftRow.className = 'tv-prop-row';
+        extendLeftRow.style.cssText = rowStyle;
+        extendLeftRow.innerHTML = `
+            <div class="tv-checkbox-wrapper" style="${cbWrapStyle}">
+                <div class="tv-checkbox ${drawing.style.extendLeft ? 'checked' : ''}" data-prop="extendLeft">${svgCheck}</div>
                 <span class="tv-checkbox-label" style="white-space: nowrap;">Extend Left</span>
-            </div>
-            <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${drawing.style.extendRight ? 'checked' : ''}" data-prop="extendRight">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
+            </div>`;
+        container.appendChild(extendLeftRow);
+
+        // Extend Right
+        const extendRightRow = document.createElement('div');
+        extendRightRow.className = 'tv-prop-row';
+        extendRightRow.style.cssText = rowStyle;
+        extendRightRow.innerHTML = `
+            <div class="tv-checkbox-wrapper" style="${cbWrapStyle}">
+                <div class="tv-checkbox ${drawing.style.extendRight ? 'checked' : ''}" data-prop="extendRight">${svgCheck}</div>
                 <span class="tv-checkbox-label" style="white-space: nowrap;">Extend Right</span>
-            </div>
-        `;
-        container.appendChild(extendRow);
-        
-        // Divider below extend options
-        const dividerBottom = document.createElement('div');
-        dividerBottom.style.cssText = 'height: 1px; background: rgba(255, 255, 255, 0.1); margin: 12px 0;';
-        container.appendChild(dividerBottom);
-        
-        // Pearson's R checkbox
+            </div>`;
+        container.appendChild(extendRightRow);
+
+        // Pearson's R
         const pearsonsRRow = document.createElement('div');
         pearsonsRRow.className = 'tv-prop-row';
-        pearsonsRRow.style.cssText = 'margin-bottom: 12px;';
+        pearsonsRRow.style.cssText = rowStyle;
         pearsonsRRow.innerHTML = `
-            <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                <div class="tv-checkbox ${drawing.style.showPearsonsR ? 'checked' : ''}" data-prop="showPearsonsR">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-                Pearson's R
-            </span>
-        `;
+            <div class="tv-checkbox-wrapper" style="${cbWrapStyle}">
+                <div class="tv-checkbox ${drawing.style.showPearsonsR ? 'checked' : ''}" data-prop="showPearsonsR">${svgCheck}</div>
+                <span class="tv-checkbox-label" style="white-space: nowrap;">Pearson's R</span>
+            </div>`;
         container.appendChild(pearsonsRRow);
-        
-        // Source dropdown
+
+        // Thin divider
+        const divider2 = document.createElement('div');
+        divider2.style.cssText = 'height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;';
+        container.appendChild(divider2);
+
+        // Source — custom dropdown matching other tool controls
+        const sourceOptions = ['close', 'open', 'high', 'low'];
+        const currentSource = drawing.style.source || 'close';
         const sourceRow = document.createElement('div');
         sourceRow.className = 'tv-prop-row';
-        sourceRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;';
-        const currentSource = drawing.style.source || 'close';
+        sourceRow.style.cssText = rowStyle;
         sourceRow.innerHTML = `
             <span class="tv-prop-label">Source</span>
-            <select class="tv-select" data-prop="source" style="width: 62px; padding: 4px 6px; font-size: 12px; background: #000; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;">
-                <option value="close" ${currentSource === 'close' ? 'selected' : ''}>Close</option>
-                <option value="open" ${currentSource === 'open' ? 'selected' : ''}>Open</option>
-                <option value="high" ${currentSource === 'high' ? 'selected' : ''}>High</option>
-                <option value="low" ${currentSource === 'low' ? 'selected' : ''}>Low</option>
-            </select>
-        `;
+            <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; width: 72px; min-width: 72px;">
+                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box; text-transform: capitalize;">
+                    <span>${currentSource}</span>
+                    <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); min-width: 72px; overflow-y: auto;">
+                    ${sourceOptions.map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap; text-transform: capitalize;">${s}</div>`).join('')}
+                </div>
+            </div>`;
         container.appendChild(sourceRow);
+
+        // Wire up source dropdown click
+        setTimeout(() => {
+            const dd = sourceRow.querySelector('.tv-fontsize-dropdown');
+            if (!dd) return;
+            const btn = dd.querySelector('.tv-fontsize-dropdown-btn');
+            const menu = dd.querySelector('.tv-fontsize-dropdown-menu');
+            const label = btn.querySelector('span');
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const allMenus = document.querySelectorAll('.tv-fontsize-dropdown-menu');
+                allMenus.forEach(m => { if (m !== menu) m.style.display = 'none'; });
+                const isOpen = menu.style.display !== 'none';
+                if (!isOpen) {
+                    const rect = btn.getBoundingClientRect();
+                    menu.style.left = rect.left + 'px';
+                    menu.style.top = (rect.bottom + 2) + 'px';
+                    menu.style.width = rect.width + 'px';
+                }
+                menu.style.display = isOpen ? 'none' : 'block';
+            });
+            menu.querySelectorAll('.tv-fontsize-option').forEach(opt => {
+                opt.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const val = opt.dataset.value;
+                    label.textContent = val;
+                    menu.style.display = 'none';
+                    drawing.style.source = val;
+                    self.pendingChanges = self.pendingChanges || {};
+                    self.pendingChanges.source = val;
+                    self.renderPreview(drawing);
+                });
+            });
+        }, 0);
     }
 
     /**
