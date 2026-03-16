@@ -1424,7 +1424,7 @@ class VerticalLineTool extends BaseDrawing {
         const rightX = Math.max(xRange[0], xRange[1]);
 
         // Horizontal offset from line
-        const horizontalOffset = 8;
+        const horizontalOffset = 10;
         
         // Get Y range bounds
         const topY = Math.min(yRange[0], yRange[1]);
