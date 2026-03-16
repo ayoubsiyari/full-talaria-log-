@@ -1259,23 +1259,24 @@ class ArrowTool extends BaseDrawing {
         const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
         const boxHeight = rows.length * lineHeight + padY * 2;
 
-        // Always anchor to p2 (the end point) — never switches side on rotation
+        // Always anchor to p2 (the end point)
         const anchorX = x2;
         const anchorY = y2;
         const OFFSET = 10;
 
-        // Place box on the side AWAY from p1 to avoid overlapping the line
-        const lineComesFromLeft = x1 <= x2;
-        let boxX = lineComesFromLeft ? (anchorX + OFFSET) : (anchorX - boxWidth - OFFSET);
-        let boxY = anchorY;
+        // Place box in the quadrant OPPOSITE to p1 on both axes — avoids overlap on all rotations
+        const dx = x1 - x2;
+        const dy = y1 - y2;
+        let boxX = (dx > 0) ? (anchorX - boxWidth - OFFSET) : (anchorX + OFFSET);
+        let boxY = (dy > 0) ? (anchorY - boxHeight) : anchorY;
 
         // Clamp within SVG viewport
         const svgEl = this.group.node() && this.group.node().ownerSVGElement;
         if (svgEl) {
             const svgW = svgEl.clientWidth || 800;
             const svgH = svgEl.clientHeight || 600;
-            if (boxX + boxWidth > svgW - 4) boxX = anchorX - boxWidth - OFFSET;
-            if (boxX < 4) boxX = anchorX + OFFSET;
+            if (boxX + boxWidth > svgW - 4) boxX = svgW - boxWidth - 4;
+            if (boxX < 4) boxX = 4;
             if (boxY < 4) boxY = 4;
             if (boxY + boxHeight > svgH - 4) boxY = svgH - boxHeight - 4;
         }
