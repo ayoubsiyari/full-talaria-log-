@@ -81,17 +81,43 @@ window._spPanels = {};
     }
 
     function loadSection(type) {
-        var tabMap = {
-            'general': 'appearance',
-            'chart': 'chart',
-            'symbol': 'chart',
-            'statusline': 'chart',
-            'canvas': 'appearance',
-            'template': 'templates',
-            'trading': 'trading'
-        };
-        var tab = tabMap[type] || 'appearance';
-        loadTab(tab);
+        console.log('[SP] loadSection:', type, '| panel registered:', !!window._spPanels[type], '| contEl:', !!contEl);
+        currentType = type;
+        var titles = { general:'General Settings', chart:'Chart Settings', alerts:'Alerts', help:'Help', profile:'Profile' };
+        if (titleEl) titleEl.textContent = titles[type] || type;
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){
+            n.classList.toggle('active', n.dataset.settings === type);
+        });
+        
+        // Show/hide tabs navigation based on section type
+        var tabsNav = document.getElementById('spTabsNav');
+        if (type === 'general' || type === 'chart') {
+            if (tabsNav) tabsNav.style.display = 'flex';
+            // Load the appropriate tab
+            var tabMap = {
+                'general': 'appearance',
+                'chart': 'chart'
+            };
+            var tab = tabMap[type] || 'appearance';
+            loadTab(tab);
+        } else {
+            if (tabsNav) tabsNav.style.display = 'none';
+            // Load the section content directly
+            var el = document.getElementById('settingsPanelContent');
+            if (!el) { console.warn('[SP] settingsPanelContent not found'); return; }
+            try {
+                var p = window._spPanels[type];
+                el.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
+                console.log('[SP] content set, length:', el.innerHTML.length);
+            } catch(e) {
+                el.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
+                console.error('[SP] build error:', e);
+            }
+            try {
+                var p2 = window._spPanels[type];
+                if (p2 && p2.wire) p2.wire();
+            } catch(e) { console.error('[SP] wire error:', e); }
+        }
     }
 
     function openSub(type){ loadSection(type); }
