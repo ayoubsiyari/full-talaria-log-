@@ -2378,7 +2378,10 @@ class DrawingToolsManager {
             const drawing = this.drawings.find(d => d.id === drawingId);
             
             if (drawing) {
-                // [debug removed]
+                // Deselect drawing first (TradingView style), then show context menu
+                if (this.selectedDrawings.includes(drawing)) {
+                    this.deselectAll();
+                }
                 this.showContextMenu(drawing, event.pageX, event.pageY);
             }
         }
@@ -3373,7 +3376,7 @@ class DrawingToolsManager {
             // Hide any existing chart context menus
             d3.selectAll('.chart-context-menu').style('visibility', 'hidden');
             // Deselect drawing first (TradingView style), then show context menu
-            if (drawing.selected) {
+            if (self.selectedDrawings.includes(drawing)) {
                 self.deselectAll();
             } else if (!drawing.locked) {
                 self.selectDrawing(drawing);
