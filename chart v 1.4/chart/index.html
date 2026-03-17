@@ -29048,6 +29048,50 @@ setTimeout(function(){
         };
     })();
     </script>
-    
+
+    <script>
+    /* ── Panel layout enforcer – runs on every load to bypass CSS cache ── */
+    document.addEventListener('DOMContentLoaded', function() {
+        // Settings panel: horizontal top tab bar
+        var sp = document.getElementById('settingsPanel');
+        if (sp) {
+            sp.style.flexDirection = 'column';
+            var sb = document.getElementById('settingsSidebar');
+            if (sb) {
+                sb.style.cssText = (sb.getAttribute('style') || '') +
+                    ';width:100%;min-width:unset;flex-direction:row;border-right:none;' +
+                    'border-bottom:1px solid rgba(255,255,255,0.06);align-items:stretch;' +
+                    'overflow-x:auto;overflow-y:unset;flex-shrink:0;';
+                var hdr = sb.querySelector('.sp-sidebar-header');
+                if (hdr) hdr.style.display = 'none';
+                var nav = sb.querySelector('.sp-nav');
+                if (nav) {
+                    nav.style.cssText = 'display:flex;flex-direction:row;padding:0 8px;' +
+                        'gap:0;align-items:stretch;flex:1;overflow-x:auto;';
+                }
+            }
+        }
+        // Help & Profile panels: restore vertical sidebar
+        ['helpPanel', 'profilePanel'].forEach(function(id) {
+            var panel = document.getElementById(id);
+            if (!panel) return;
+            var sidebar = panel.querySelector('.sp-sidebar');
+            if (sidebar) {
+                sidebar.style.cssText = 'width:130px;min-width:130px;flex-direction:column;' +
+                    'overflow-y:auto;overflow-x:unset;border-right:1px solid rgba(255,255,255,0.06);' +
+                    'border-bottom:none;align-items:unset;flex-shrink:unset;';
+                var nav = sidebar.querySelector('.sp-nav');
+                if (nav) {
+                    nav.style.cssText = 'display:flex;flex-direction:column;padding:10px 8px;gap:2px;';
+                }
+                panel.querySelectorAll('.sp-nav-item').forEach(function(item) {
+                    item.style.cssText = 'height:auto;border-bottom:none;padding:9px 12px;' +
+                        'border-radius:8px;white-space:normal;';
+                });
+            }
+        });
+    });
+    </script>
+
     </body>
 </html>
