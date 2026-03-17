@@ -2385,13 +2385,13 @@ class DrawingToolsManager {
                 this.showContextMenu(drawing, event.pageX, event.pageY);
             }
         } else {
-            // Right-click on empty canvas: deselect all selected drawings then show canvas menu
+            // Right-click on empty canvas: deselect all selected drawings then show chart menu
             if (this.selectedDrawings.length > 0) {
                 this.deselectAll();
             }
-            this.contextMenu.showCanvas(event.pageX, event.pageY, {
-                paste: this.clipboardDrawing ? () => this.pasteDrawing() : null
-            });
+            if (this.chart && typeof this.chart.showChartContextMenu === 'function') {
+                this.chart.showChartContextMenu(event.clientX, event.clientY, event.offsetX, event.offsetY);
+            }
         }
     }
 
