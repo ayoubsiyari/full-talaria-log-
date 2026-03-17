@@ -4152,7 +4152,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const self = this;
         const section = document.createElement('div');
         section.className = 'tv-style-section';
-        section.style.cssText = 'margin-top: 8px; padding-top: 8px; border-top: 1px solid #363a45;';
+        section.style.cssText = 'margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #363a45;';
 
         // Style dropdown row — uses tv-prop-row for alignment with Middle Line row
         const styleRow = document.createElement('div');
