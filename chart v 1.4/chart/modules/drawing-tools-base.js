@@ -329,6 +329,19 @@ class BaseDrawing {
         const chartWidth = this.chart.w || this.chart.canvas?.width || 800;
         const chartHeight = this.chart.h || this.chart.canvas?.height || 600;
         
+        // Compute price decimals matching the chart's current precision setting
+        let priceDecimals;
+        const _precisionSetting = this.chart.chartSettings?.precision;
+        if (_precisionSetting && _precisionSetting !== 'Default') {
+            priceDecimals = Math.max(0, Math.min(8, parseInt(_precisionSetting, 10) || 5));
+        } else if (typeof this.chart.getPriceDecimals === 'function' && yScale) {
+            const _d = yScale.domain();
+            const _range = Math.abs((Array.isArray(_d) && _d.length === 2) ? (_d[1] - _d[0]) : 0);
+            priceDecimals = this.chart.getPriceDecimals(_range);
+        } else {
+            priceDecimals = this.chart.priceDecimals || 5;
+        }
+        
         // Create highlight group for SVG labels only (zones are drawn on canvas)
         this.axisHighlightGroup = svg.append('g')
             .attr('class', 'axis-highlight-group')
@@ -587,7 +600,7 @@ class BaseDrawing {
             // Price highlight on Y-axis (right side)
             const yPos = yScale(price);
             if (showPriceLabels && yPos >= margin.t && yPos <= chartHeight - margin.b) {
-                const priceText = price.toFixed(this.chart.priceDecimals || 5);
+                const priceText = price.toFixed(priceDecimals);
                 const boxWidth = 58;
                 const boxHeight = 20;
                 
