@@ -3,9 +3,10 @@
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
  * 
- * @version 1.5.6
- * @updated 2026-03-16
+ * @version 1.5.7
+ * @updated 2026-03-17
  * @changelog
+ *   - Fixed: Magnet mode now disabled when resizing shapes - allows free resizing outside chart area
  *   - Fixed: Shapes behind Y-axis can no longer be detected/moved when mouse is over axis
  *   - Added boundary check in findDrawingsAtPoint() to exclude axis regions from hit detection
  *   - Previous fixes:
@@ -2501,9 +2502,10 @@ class DrawingToolsManager {
         
         const activeRole = this.resizingHandleRole || (typeof this.customHandleRole === 'string' ? this.customHandleRole : null);
         const isSideHandle = (this.isResizing || this.isCustomHandleDrag) && activeRole && activeRole.startsWith('side-');
-        // Disable magnet when dragging existing shapes - allow free movement
+        // Disable magnet when dragging or resizing existing shapes - allow free movement
         const isDraggingShape = this.isDragging && this.draggingDrawing;
-        if (!isContinuousTool && !isSideHandle && !isDraggingShape && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
+        const isResizingShape = this.isResizing && this.resizingDrawing;
+        if (!isContinuousTool && !isSideHandle && !isDraggingShape && !isResizingShape && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
