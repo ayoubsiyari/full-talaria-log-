@@ -3,10 +3,9 @@
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
  * 
- * @version 1.5.7
- * @updated 2026-03-17
+ * @version 1.5.6
+ * @updated 2026-03-16
  * @changelog
- *   - Fixed: Magnet mode now disabled when resizing shapes - allows free resizing outside chart area
  *   - Fixed: Shapes behind Y-axis can no longer be detected/moved when mouse is over axis
  *   - Added boundary check in findDrawingsAtPoint() to exclude axis regions from hit detection
  *   - Previous fixes:
@@ -2501,13 +2500,10 @@ class DrawingToolsManager {
         const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
         const activeRole = this.resizingHandleRole || (typeof this.customHandleRole === 'string' ? this.customHandleRole : null);
-        const isAnyResizeHandle = this.isCustomHandleDrag && activeRole && (activeRole.startsWith('side-') || activeRole.startsWith('corner-'));
+        const isSideHandle = (this.isResizing || this.isCustomHandleDrag) && activeRole && activeRole.startsWith('side-');
         // Disable magnet when dragging existing shapes - allow free movement
         const isDraggingShape = this.isDragging && this.draggingDrawing;
-        // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
-        const dataLen = this.chart && this.chart.data ? this.chart.data.length : 0;
-        const isOverCandleData = dataLen > 0 && point.x >= 0 && point.x <= dataLen - 1;
-        if (!isContinuousTool && !isAnyResizeHandle && !isDraggingShape && isOverCandleData && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
+        if (!isContinuousTool && !isSideHandle && !isDraggingShape && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
@@ -4892,9 +4888,6 @@ class DrawingToolsManager {
             }
             if (this.chart?.clearAxisHighlightZones) {
                 this.chart.clearAxisHighlightZones();
-                if (this.chart.scheduleRender) {
-                    this.chart.scheduleRender();
-                }
             }
             
             this.saveDrawings();
