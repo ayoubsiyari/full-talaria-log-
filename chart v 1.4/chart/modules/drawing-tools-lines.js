@@ -1434,10 +1434,10 @@ class VerticalLineTool extends BaseDrawing {
         let baseY;
         switch (textVAlign) {
             case 'top':
-                baseY = topY + TEXT_EDGE_PADDING;
+                baseY = topY + LINE_LABEL_OFFSET;
                 break;
             case 'bottom':
-                baseY = bottomY - TEXT_EDGE_PADDING;
+                baseY = bottomY - LINE_LABEL_OFFSET;
                 break;
             default: // middle
                 baseY = (topY + bottomY) / 2;
@@ -1449,7 +1449,7 @@ class VerticalLineTool extends BaseDrawing {
         let baseX;
         let anchor;
 
-        const clampPad = 2;
+        const clampPad = 10;
 
         if (textVAlign === 'middle') {
             if (textHAlign === 'left') {
@@ -1514,12 +1514,11 @@ class VerticalLineTool extends BaseDrawing {
         // Clamp only Y to avoid pushing the label out of the visible plot vertically.
         baseY = Math.max(topY + halfY + clampPad, Math.min(bottomY - halfY - clampPad, baseY));
 
-        const isCenteredOnLine = textVAlign === 'middle' && textHAlign === 'center' && rotation === 0;
         appendTextLabel(this.group, label, {
             x: baseX,
             y: baseY,
             anchor: anchor,
-            yAnchor: isCenteredOnLine ? 'middle' : undefined,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: fontFamily,
