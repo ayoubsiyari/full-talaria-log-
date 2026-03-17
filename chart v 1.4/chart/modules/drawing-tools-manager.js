@@ -3372,11 +3372,10 @@ class DrawingToolsManager {
             event.stopPropagation();
             // Hide any existing chart context menus
             d3.selectAll('.chart-context-menu').style('visibility', 'hidden');
+            // Deselect drawing first (TradingView style), then show context menu
             if (drawing.selected) {
                 self.deselectAll();
-                return;
-            }
-            if (!drawing.locked) {
+            } else if (!drawing.locked) {
                 self.selectDrawing(drawing);
             }
             self.showContextMenu(drawing, event.pageX, event.pageY);
