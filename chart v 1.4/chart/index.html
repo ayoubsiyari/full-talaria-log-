@@ -16840,7 +16840,7 @@
                     <span>Changelog</span>
                 </div>
             </nav>
-            <div class="side-panel-footer" style="margin-top:auto;">v1.4.9</div>
+            <div class="side-panel-footer" style="margin-top:auto;">v1.5.0</div>
         </div>
         <div class="sp-content-wrap">
             <div class="sp-content-header">
@@ -19934,8 +19934,8 @@
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <!-- Drawing Tools Modules (load in order) -->
     <script defer src="modules/drawing-tools-base.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="modules/drawing-tools-lines.js?v=20260316_TF_PIN_V83"></script>
-    <script defer src="modules/drawing-tools-shapes.js?v=20260316_TF_PIN_V75"></script>
+    <script defer src="modules/drawing-tools-lines.js?v=20260316_TF_PIN_V63"></script>
+    <script defer src="modules/drawing-tools-shapes.js?v=20260316_TF_PIN_V63"></script>
     <script defer src="modules/drawing-tools-fibonacci.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-text.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-emoji.js?v=20260312_TF_PIN_V58"></script>
@@ -19947,14 +19947,14 @@
     <script defer src="modules/drawing-tools-extended.js?v=20260316_TF_PIN_V63"></script>
     <script defer src="modules/drawing-tools-patterns.js?v=20260312_TF_PIN_V101"></script>
     <script defer src="modules/drawing-tools-fib-gann.js?v=20260312_TF_PIN_V60"></script>
-    <script defer src="modules/drawing-tools-channels.js?v=20260316_TF_PIN_V59"></script>
-    <script defer src="modules/drawing-tools-ui.js?v=20260316_TF_PIN_V145"></script>
+    <script defer src="modules/drawing-tools-channels.js?v=20260316_TF_PIN_V60"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260316_TF_PIN_V168"></script>
     <script defer src="modules/color-picker.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="modules/drawing-toolbar.js?v=20260315_TF_PIN_V65"></script>
+    <script defer src="modules/drawing-toolbar.js?v=20260316_TF_PIN_V69"></script>
     <script defer src="modules/undo-redo-manager.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/preferences-sync.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/preferences-init.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="modules/drawing-tools-manager.js?v=20260316_TF_PIN_V138"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260316_TF_PIN_V150"></script>
     <script defer src="modules/favorites-manager.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/keyboard-shortcuts.js?v=20260312_TF_PIN_V59"></script>
     <script defer src="modules/panel-manager.js?v=20260312_TF_PIN_V58"></script>
@@ -19962,7 +19962,7 @@
     <script defer src="modules/propfirm-tracker.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/compare-overlay.js?v=20260316_TF_PIN_V59"></script>
     <script defer src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="chart.js?v=20260316_TF_PIN_V111"></script>
+    <script defer src="chart.js?v=20260316_TF_PIN_V112"></script>
     <script defer src="modules/replay-system.js?v=20260313_TF_PIN_V63"></script>
     <script defer src="modules/order-manager.js?v=20260312_TF_PIN_V92"></script>
     <script defer src="modules/screenshot-manager.js?v=20260314_TF_PIN_V77"></script>
@@ -27835,7 +27835,7 @@ P['help']={
         }).join('');
         return '<div class="sp-embedded" id="spHelpLayout" style="display:flex;height:100%;">'
             +'<div style="'+_sbar+'"><nav class="sp-nav" id="spHelpNav">'+nav+'</nav>'
-            +'<div class="side-panel-footer" style="margin-top:auto;">v1.4.9</div></div>'
+            +'<div class="side-panel-footer" style="margin-top:auto;">v1.5.0</div></div>'
             +'<div id="spHelpContent" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'
             +'</div>';
     },
@@ -28136,6 +28136,10 @@ var closePanel = window.closePanel;
 window._openMode = function(section) {
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
+    // Close any open drawing-tool category dropdowns and reset arrow states
+    document.querySelectorAll('.tool-dropdown.show').forEach(function(d) { d.classList.remove('show'); });
+    document.querySelectorAll('.tool-group-btn.dropdown-open').forEach(function(b) { b.classList.remove('dropdown-open'); });
+    document.querySelectorAll('.cursor-dropdown-arrow.dropdown-open, .dropdown-arrow.dropdown-open').forEach(function(a) { a.classList.remove('dropdown-open'); });
     var already = panel.classList.contains('open') && _spCurrentMode === (section || '');
     if (already) {
         closePanel();

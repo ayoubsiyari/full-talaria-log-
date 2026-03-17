@@ -1276,7 +1276,7 @@ class Chart {
     }
     
     setupChartSettingsMenu() {
-        // Settings modal overlay — dark theme
+        // Create full-screen settings modal
         this.settingsModal = d3.select('body').append('div')
             .attr('class', 'chart-settings-modal')
             .style('position', 'fixed')
@@ -1284,175 +1284,207 @@ class Chart {
             .style('left', '0')
             .style('width', '100%')
             .style('height', '100%')
-            .style('background', 'rgba(0, 0, 0, 0.65)')
+            .style('background', 'rgba(0, 0, 0, 0.7)')
             .style('z-index', '9999')
             .style('display', 'none')
             .style('align-items', 'center')
             .style('justify-content', 'center');
-
-        this.settingsModal.on('click', (event) => {
-            if (event.target === this.settingsModal.node()) this.hideSettingsMenu();
-        });
-
-        // Settings container — narrow dark modal
+        
+        // Settings container
         const container = this.settingsModal.append('div')
             .attr('class', 'settings-container')
-            .style('width', '460px')
-            .style('max-height', '86vh')
-            .style('background', '#131722')
+            .style('width', '90%')
+            .style('max-width', '1000px')
+            .style('height', '80vh')
+            .style('background', '#ffffff')
             .style('border-radius', '12px')
             .style('display', 'flex')
             .style('flex-direction', 'column')
             .style('overflow', 'hidden')
-            .style('box-shadow', '0 24px 64px rgba(0, 0, 0, 0.75)')
-            .style('border', '1px solid #2a2e39');
-
+            .style('box-shadow', '0 20px 60px rgba(0, 0, 0, 0.5)');
+        
         // Header
         const header = container.append('div')
             .attr('class', 'settings-header')
-            .style('padding', '18px 20px')
+            .style('padding', '20px 24px')
+            .style('border-bottom', '1px solid #e8e8e8')
             .style('display', 'flex')
             .style('justify-content', 'space-between')
             .style('align-items', 'center')
-            .style('background', '#131722')
-            .style('flex-shrink', '0');
-
+            .style('background', '#ffffff');
+        
         header.append('h2')
             .style('margin', '0')
-            .style('font-size', '18px')
-            .style('font-weight', '700')
-            .style('color', '#ffffff')
+            .style('font-size', '24px')
+            .style('font-weight', '600')
+            .style('color', '#131722')
             .text('Settings');
-
+        
         const closeBtn = header.append('button')
             .attr('class', 'settings-close-btn')
-            .style('background', '#1e2535')
-            .style('border', '1px solid #2a2e39')
+            .style('background', 'none')
+            .style('border', 'none')
+            .style('font-size', '28px')
             .style('cursor', 'default')
-            .style('color', '#787b86')
+            .style('color', '#131722')
             .style('padding', '0')
-            .style('width', '28px')
-            .style('height', '28px')
-            .style('border-radius', '6px')
+            .style('width', '32px')
+            .style('height', '32px')
             .style('display', 'flex')
             .style('align-items', 'center')
             .style('justify-content', 'center')
-            .style('font-size', '14px')
             .style('transition', 'all 0.2s ease')
-            .style('flex-shrink', '0')
             .html('✕')
             .on('click', () => this.hideSettingsMenu());
-
+        
         closeBtn.on('mouseenter', function() {
-            d3.select(this).style('background', '#363a45').style('color', '#d1d4dc');
+            d3.select(this).style('background', '#f0f0f0').style('border-radius', '6px');
         }).on('mouseleave', function() {
-            d3.select(this).style('background', '#1e2535').style('color', '#787b86');
+            d3.select(this).style('background', 'none');
         });
-
-        // Body — vertical stack: tab bar + scrollable content + footer
+        
+        // Body
         const body = container.append('div')
             .attr('class', 'settings-body')
             .style('display', 'flex')
-            .style('flex-direction', 'column')
             .style('flex', '1')
-            .style('overflow', 'hidden')
-            .style('min-height', '0');
-
-        // Horizontal tab bar (replaces left sidebar)
+            .style('overflow', 'hidden');
+        
+        // Sidebar
         this.settingsSidebar = body.append('div')
-            .attr('class', 'settings-sidebar settings-tab-bar')
-            .style('display', 'flex')
-            .style('padding', '0 20px')
-            .style('background', '#131722')
-            .style('border-bottom', '1px solid #2a2e39')
-            .style('flex-shrink', '0')
-            .style('gap', '4px');
-
-        // Scrollable content area
+            .attr('class', 'settings-sidebar')
+            .style('width', '280px')
+            .style('background', '#f7f7f7')
+            .style('border-right', '1px solid #e8e8e8')
+            .style('overflow-y', 'auto');
+        
+        // Content area
         this.settingsContent = body.append('div')
             .attr('class', 'settings-content')
             .style('flex', '1')
-            .style('padding', '24px 20px')
+            .style('padding', '24px')
             .style('overflow-y', 'auto')
-            .style('background', '#131722');
-
-        // Dark scrollbar + tab button styles (injected once)
-        if (!document.getElementById('settings-dark-styles')) {
-            const s = document.createElement('style');
-            s.id = 'settings-dark-styles';
-            s.textContent = [
-                '.settings-content::-webkit-scrollbar{width:6px}',
-                '.settings-content::-webkit-scrollbar-track{background:#131722}',
-                '.settings-content::-webkit-scrollbar-thumb{background:#2a2e39;border-radius:3px}',
-                '.settings-content::-webkit-scrollbar-thumb:hover{background:#363a45}',
-                '.settings-tab-btn{padding:11px 14px;background:transparent;border:none;border-bottom:3px solid transparent;color:#787b86;font-size:13px;font-weight:500;cursor:default;transition:color 0.15s,border-bottom-color 0.15s;margin-bottom:-1px;white-space:nowrap}',
-                '.settings-tab-btn:hover{color:#d1d4dc}',
-                '.settings-tab-btn.active{color:#ffffff;border-bottom-color:#f0b90b;font-weight:600}'
-            ].join('');
-            document.head.appendChild(s);
-        }
-
-        // Footer with action buttons
-        const footer = body.append('div')
+            .style('background', '#ffffff');
+        
+        // Footer
+        const footer = container.append('div')
+            .attr('class', 'settings-footer')
+            .style('padding', '16px 24px')
+            .style('border-top', '1px solid #e8e8e8')
             .style('display', 'flex')
-            .style('justify-content', 'flex-end')
-            .style('gap', '8px')
-            .style('padding', '14px 20px')
-            .style('background', '#131722')
-            .style('border-top', '1px solid #2a2e39')
-            .style('flex-shrink', '0');
-
-        footer.append('button')
-            .attr('class', 'settings-btn-cancel')
-            .style('padding', '8px 20px')
-            .style('border', '1px solid #2a2e39')
+            .style('justify-content', 'space-between')
+            .style('align-items', 'center')
+            .style('background', '#ffffff');
+        
+        // Template dropdown with preview
+        const templateWrapper = footer.append('div')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('gap', '12px');
+        
+        const templateSelect = templateWrapper.append('select')
+            .attr('class', 'template-selector')
+            .style('padding', '8px 32px 8px 12px')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
-            .style('background', 'transparent')
-            .style('color', '#787b86')
-            .style('font-size', '13px')
-            .style('font-weight', '500')
+            .style('background', '#ffffff')
+            .style('font-size', '14px')
             .style('cursor', 'default')
-            .style('transition', 'all 0.15s ease')
+            .html(this.getTemplateSelectorOptionsHtml());
+
+        if (this._lastTemplateSelected) {
+            templateSelect.property('value', this._lastTemplateSelected);
+        }
+        
+        const chartInstance = this;
+        
+        // Template change - update preview and store for OK button
+        templateSelect.on('change', () => {
+            const templateName = templateSelect.property('value');
+            if (templateName) {
+                this._pendingTemplate = templateName;
+                // Update the preview in Candles section if it exists
+                if (this._updateThemePreview) {
+                    const templates = this.getChartTemplates();
+                    const template = templates[templateName];
+                    if (template) {
+                        this._updateThemePreview(template);
+                    }
+                }
+            } else {
+                this._pendingTemplate = null;
+                // Reset preview to current settings
+                if (this._updateThemePreview && this._themePreviewChartSettings) {
+                    this._updateThemePreview(this._themePreviewChartSettings);
+                }
+            }
+        });
+        
+        // Action buttons
+        const actions = footer.append('div')
+            .style('display', 'flex')
+            .style('gap', '12px');
+        
+        actions.append('button')
+            .attr('class', 'settings-btn-cancel')
+            .style('padding', '10px 24px')
+            .style('border', '1px solid #e0e0e0')
+            .style('border-radius', '6px')
+            .style('background', '#ffffff')
+            .style('color', '#131722')
+            .style('font-size', '14px')
+            .style('font-weight', '600')
+            .style('cursor', 'default')
+            .style('transition', 'all 0.2s ease')
             .text('Cancel')
             .on('click', () => this.hideSettingsMenu())
             .on('mouseenter', function() {
-                d3.select(this).style('border-color', '#363a45').style('color', '#d1d4dc');
+                d3.select(this).style('background', '#f0f0f0');
             })
             .on('mouseleave', function() {
-                d3.select(this).style('border-color', '#2a2e39').style('color', '#787b86');
+                d3.select(this).style('background', '#ffffff');
             });
-
-        footer.append('button')
+        
+        actions.append('button')
             .attr('class', 'settings-btn-ok')
-            .style('padding', '8px 20px')
+            .style('padding', '10px 24px')
             .style('border', 'none')
             .style('border-radius', '6px')
-            .style('background', '#f0b90b')
-            .style('color', '#000000')
-            .style('font-size', '13px')
+            .style('background', '#2962ff')
+            .style('color', '#ffffff')
+            .style('font-size', '14px')
             .style('font-weight', '600')
             .style('cursor', 'default')
-            .style('transition', 'all 0.15s ease')
-            .text('Save')
+            .style('transition', 'all 0.2s ease')
+            .text('Ok')
             .on('click', () => {
+                // Apply pending template if one was selected
                 if (this._pendingTemplate) {
                     this.applyTemplate(this._pendingTemplate);
                     this._pendingTemplate = null;
                 }
+                
                 this.saveSettings();
                 this.hideSettingsMenu();
                 this.showNotification('Settings saved successfully! ✓');
+                
+                // Only sync to all panels if settings were opened from main chart
+                // If opened from a panel, don't sync - already applied to that panel
                 const sourceChart = this._settingsSourceChart || this;
                 if (!sourceChart.isPanel && window.syncAllPanelSettings && typeof window.syncAllPanelSettings === 'function') {
-                    setTimeout(() => { window.syncAllPanelSettings(); }, 100);
+                    setTimeout(() => {
+                        window.syncAllPanelSettings();
+                    }, 100);
                 }
+                
+                // Clear the source chart reference
                 this._settingsSourceChart = null;
             })
             .on('mouseenter', function() {
-                d3.select(this).style('background', '#f5c842');
+                d3.select(this).style('background', '#1e53e5');
             })
             .on('mouseleave', function() {
-                d3.select(this).style('background', '#f0b90b');
+                d3.select(this).style('background', '#2962ff');
             });
         
         // Build sidebar navigation
@@ -2611,29 +2643,58 @@ class Chart {
     
     buildSettingsSidebar() {
         const categories = [
-            { id: 'symbol', label: 'Symbol' },
-            { id: 'candles', label: 'Candles' },
-            { id: 'scales', label: 'Scales' },
-            { id: 'canvas', label: 'Canvas' }
+            { id: 'symbol', icon: '', label: 'Symbol' },
+            { id: 'candles', icon: '', label: 'Candles' },
+            { id: 'scales', icon: '', label: 'Scales and lines' },
+            { id: 'canvas', icon: '', label: 'Canvas' }
         ];
-
+        
         categories.forEach(cat => {
-            this.settingsSidebar.append('button')
-                .attr('class', 'settings-nav-item settings-tab-btn')
+            const item = this.settingsSidebar.append('div')
+                .attr('class', 'settings-nav-item')
                 .attr('data-category', cat.id)
-                .text(cat.label)
-                .on('click', () => this.showSettingsCategory(cat.id));
+                .style('padding', '16px 20px')
+                .style('cursor', 'default')
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('gap', '12px')
+                .style('font-size', '15px')
+                .style('color', '#131722')
+                .style('transition', 'all 0.2s ease')
+                .style('border-left', '3px solid transparent')
+                .on('click', () => this.showSettingsCategory(cat.id))
+                .on('mouseenter', function() {
+                    if (!d3.select(this).classed('active')) {
+                        d3.select(this).style('background', '#eeeeee');
+                    }
+                })
+                .on('mouseleave', function() {
+                    if (!d3.select(this).classed('active')) {
+                        d3.select(this).style('background', 'transparent');
+                    }
+                });
+            
+            item.append('span')
+                .style('font-size', '20px')
+                .text(cat.icon);
+            
+            item.append('span')
+                .text(cat.label);
         });
     }
     
     showSettingsCategory(categoryId) {
-        // Update tab active state
+        // Update sidebar selection
         this.settingsSidebar.selectAll('.settings-nav-item')
-            .classed('active', false);
-
+            .classed('active', false)
+            .style('background', 'transparent')
+            .style('border-left-color', 'transparent');
+        
         this.settingsSidebar.select(`[data-category="${categoryId}"]`)
-            .classed('active', true);
-
+            .classed('active', true)
+            .style('background', '#ffffff')
+            .style('border-left-color', '#2962ff');
+        
         this.currentSettingsCategory = categoryId;
         
         // Clear and rebuild content
@@ -2698,7 +2759,7 @@ class Chart {
         const symbolColorRow = this.addSettingRow(section);
         symbolColorRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Text color');
         this.addColorPreview(symbolColorRow, this.chartSettings.symbolTextColor, 'symbolTextColor');
@@ -2806,7 +2867,7 @@ class Chart {
         
         const previewContainer = section.append('div')
             .style('background', '#050028')
-            .style('border', '1px solid #2a2e39')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '8px')
             .style('padding', '12px')
             .style('margin-bottom', '24px');
@@ -3003,7 +3064,7 @@ class Chart {
         const panelAccentRow = this.addSettingRow(section);
         panelAccentRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Accent');
         const panelAccentPreview = this.addColorPreview(panelAccentRow, this.chartSettings.settingsPanelAccentColor, 'settingsPanelAccentColor');
@@ -3011,7 +3072,7 @@ class Chart {
         const panelBgRow = this.addSettingRow(section);
         panelBgRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Panel background');
         const panelBgPreview = this.addColorPreview(panelBgRow, this.chartSettings.settingsPanelBgColor, 'settingsPanelBgColor');
@@ -3024,20 +3085,20 @@ class Chart {
         panelThemeActionsRow.append('button')
             .attr('type', 'button')
             .style('padding', '7px 12px')
-            .style('border', '1px solid #2a2e39')
+            .style('border', '1px solid #d0d5df')
             .style('border-radius', '6px')
-            .style('background', '#1e2535')
-            .style('color', '#787b86')
+            .style('background', '#ffffff')
+            .style('color', '#131722')
             .style('font-size', '12px')
             .style('font-weight', '600')
             .style('cursor', 'default')
             .style('transition', 'all 0.15s ease')
             .text('Reset theme')
             .on('mouseenter', function() {
-                d3.select(this).style('border-color', '#f0b90b').style('color', '#f0b90b');
+                d3.select(this).style('border-color', '#2962ff').style('color', '#2962ff');
             })
             .on('mouseleave', function() {
-                d3.select(this).style('border-color', '#2a2e39').style('color', '#787b86');
+                d3.select(this).style('border-color', '#d0d5df').style('color', '#131722');
             })
             .on('click', () => {
                 const defaultAccent = (this._defaultChartSettings && this._defaultChartSettings.settingsPanelAccentColor)
@@ -3074,7 +3135,7 @@ class Chart {
         const sessionRow = this.addSettingRow(section);
         sessionRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Session');
         const sessionDropdown = this.addDropdown(sessionRow, ['Extended trading hours', 'Regular trading hours'], this.chartSettings.sessionType);
@@ -3087,7 +3148,7 @@ class Chart {
         const precisionRow = this.addSettingRow(section);
         precisionRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Precision');
         const precisionDropdown = this.addDropdown(precisionRow, ['Default', '0', '1', '2', '3', '4', '5'], this.chartSettings.precision);
@@ -3100,7 +3161,7 @@ class Chart {
         const timezoneRow = this.addSettingRow(section);
         timezoneRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Timezone');
         const timezoneDropdown = this.addDropdown(timezoneRow, ['(UTC-5) Toronto', '(UTC-8) Los Angeles', '(UTC) London', '(UTC+1) Paris'], this.chartSettings.timezone);
@@ -3142,7 +3203,7 @@ class Chart {
         const scaleModesRow = this.addSettingRow(section);
         scaleModesRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '200px')
             .text('Scale modes (A and L)');
         const scaleModesDropdown = this.addDropdown(scaleModesRow, ['Visible on mouse over', 'Always visible', 'Always invisible'], this.chartSettings.scaleModes);
@@ -3167,7 +3228,7 @@ class Chart {
         const placementRow = this.addSettingRow(section);
         placementRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '200px')
             .text('Scales placement');
         const placementDropdown = this.addDropdown(placementRow, ['Auto', 'Left', 'Right'], this.chartSettings.scalesPlacement);
@@ -3214,7 +3275,7 @@ class Chart {
         const symbolRow = this.addSettingRow(section);
         symbolRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '200px')
             .text('Symbol');
         const symbolDisplayDropdown = this.addDropdown(symbolRow, ['Value, line', 'Value only', 'Line only'], this.chartSettings.symbolLabelDisplay);
@@ -3237,7 +3298,7 @@ class Chart {
         const prevDayRow = this.addSettingRow(section);
         prevDayRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '200px')
             .text('Previous day close');
         const prevDayDropdown = this.addDropdown(prevDayRow, ['Hidden', 'Value, line', 'Value only', 'Line only'], this.chartSettings.prevDayCloseDisplay);
@@ -3251,7 +3312,7 @@ class Chart {
         const indicatorsRow = this.addSettingRow(section);
         indicatorsRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '200px')
             .text('Indicators and financials');
         const indicatorsDropdown = this.addDropdown(indicatorsRow, ['Value', 'Value and name', 'Name only'], this.chartSettings.indicatorsDisplay);
@@ -3300,12 +3361,11 @@ class Chart {
 
         const inlineTemplateSelect = templateRow.append('select')
             .attr('class', 'template-selector')
-            .style('padding', '7px 10px')
-            .style('border', '1px solid #2a2e39')
+            .style('padding', '8px 32px 8px 12px')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
-            .style('background', '#1e2535')
-            .style('color', '#d1d4dc')
-            .style('font-size', '13px')
+            .style('background', '#ffffff')
+            .style('font-size', '14px')
             .style('cursor', 'default')
             .html(this.getTemplateSelectorOptionsHtml());
 
@@ -3458,7 +3518,7 @@ class Chart {
         const navRow = this.addSettingRow(section);
         navRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Navigation');
         const navDropdown = this.addDropdown(navRow, ['Visible on mouse over', 'Always visible', 'Always invisible'], this.chartSettings.navigationButtonsVisibility);
@@ -3471,7 +3531,7 @@ class Chart {
         const paneRow = this.addSettingRow(section);
         paneRow.append('span')
             .style('font-size', '15px')
-            .style('color', '#d1d4dc')
+            .style('color', '#131722')
             .style('min-width', '150px')
             .text('Pane');
         const paneDropdown = this.addDropdown(paneRow, ['Visible on mouse over', 'Always visible', 'Always invisible'], this.chartSettings.paneButtonsVisibility);
@@ -3486,19 +3546,19 @@ class Chart {
         const preview = container.append('div')
             .attr('class', 'settings-color-preview')
             .attr('data-setting', setting)
-            .style('width', '32px')
-            .style('height', '32px')
+            .style('width', '40px')
+            .style('height', '40px')
             .style('background', color)
-            .style('border', '2px solid #2a2e39')
+            .style('border', '2px solid #e0e0e0')
             .style('border-radius', '6px')
             .style('cursor', 'default')
             .style('transition', 'all 0.2s ease')
             .style('flex-shrink', '0')
             .on('mouseenter', function() {
-                d3.select(this).style('border-color', '#f0b90b');
+                d3.select(this).style('border-color', '#2962ff');
             })
             .on('mouseleave', function() {
-                d3.select(this).style('border-color', '#2a2e39');
+                d3.select(this).style('border-color', '#e0e0e0');
             })
             .on('click', function(event) {
                 event.stopPropagation();
@@ -3791,7 +3851,7 @@ class Chart {
             .style('align-items', 'center')
             .style('justify-content', 'space-between')
             .style('padding', '12px 0')
-            .style('border-bottom', '1px solid #2a2e39')
+            .style('border-bottom', '1px solid #f0f0f0')
             .style('gap', '12px');
     }
     
@@ -3807,10 +3867,11 @@ class Chart {
             .property('checked', checked);  // Use .property() instead of .attr() for dynamic updates
         
         wrapper.append('span')
-            .style('font-size', '14px')
-            .style('color', '#d1d4dc')
+            .style('font-size', '15px')
+            .style('color', '#131722')
             .text(label);
-
+        
+        // Return both wrapper and input for flexibility
         return { wrapper, input };
     }
     
@@ -3821,14 +3882,14 @@ class Chart {
     
     addDropdown(container, options, selected) {
         const select = container.append('select')
-            .style('padding', '7px 10px')
-            .style('border', '1px solid #2a2e39')
+            .style('padding', '8px 32px 8px 12px')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
-            .style('background', '#1e2535')
-            .style('color', '#d1d4dc')
-            .style('font-size', '13px')
+            .style('background', '#ffffff')
+            .style('color', '#131722')
+            .style('font-size', '14px')
             .style('cursor', 'default')
-            .style('min-width', '160px')
+            .style('min-width', '200px')
             .style('outline', 'none');
         
         options.forEach(opt => {
@@ -3845,13 +3906,13 @@ class Chart {
         return container.append('input')
             .attr('type', 'text')
             .attr('value', value)
-            .style('padding', '7px 10px')
-            .style('border', '1px solid #2a2e39')
+            .style('padding', '8px 12px')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
-            .style('background', '#1e2535')
-            .style('color', '#d1d4dc')
-            .style('font-size', '13px')
-            .style('width', '160px')
+            .style('background', '#f7f7f7')
+            .style('color', '#888')
+            .style('font-size', '14px')
+            .style('width', '200px')
             .style('outline', 'none');
     }
     
@@ -3873,7 +3934,7 @@ class Chart {
             .style('border-radius', '3px')
             .style('outline', 'none')
             .style('cursor', 'default')
-            .style('background', 'linear-gradient(to right, #2a2e39 0%, #2a2e39 50%, #f0b90b 50%, #f0b90b 100%)');
+            .style('background', 'linear-gradient(to right, #e0e0e0 0%, #e0e0e0 50%, #2962ff 50%, #2962ff 100%)');
         
         return slider;
     }
@@ -3894,17 +3955,17 @@ class Chart {
             .style('display', 'flex')
             .style('align-items', 'center')
             .style('gap', '8px')
-            .style('padding', '7px 10px')
-            .style('border', '1px solid #2a2e39')
+            .style('padding', '8px 12px')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
-            .style('background', '#1e2535')
+            .style('background', '#ffffff')
             .style('cursor', 'default')
             .style('transition', 'all 0.2s ease')
             .on('mouseenter', function() {
-                d3.select(this).style('border-color', '#f0b90b');
+                d3.select(this).style('border-color', '#2962ff');
             })
             .on('mouseleave', function() {
-                d3.select(this).style('border-color', '#2a2e39');
+                d3.select(this).style('border-color', '#e0e0e0');
             });
         
         const colorPreview = wrapper.append('div')
@@ -3916,7 +3977,7 @@ class Chart {
         if (widthSetting) {
             const lineStyle = wrapper.append('div')
                 .style('width', '34px')
-                .style('background', '#f0b90b')
+                .style('background', '#888')
                 .style('border-radius', '2px')
                 .style('cursor', 'default');
 
@@ -3984,18 +4045,18 @@ class Chart {
         const currentPattern = patterns.find(p => p.value === currentValue) || patterns[0];
         
         const picker = container.append('div')
-            .style('width', '36px')
-            .style('height', '36px')
-            .style('border', '1px solid #2a2e39')
+            .style('width', '40px')
+            .style('height', '40px')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
             .style('background', currentPattern.style)
             .style('cursor', 'default')
             .style('transition', 'all 0.2s ease')
             .on('mouseenter', function() {
-                d3.select(this).style('border-color', '#f0b90b');
+                d3.select(this).style('border-color', '#2962ff');
             })
             .on('mouseleave', function() {
-                d3.select(this).style('border-color', '#2a2e39');
+                d3.select(this).style('border-color', '#e0e0e0');
             });
         
         // Add click handler to cycle through patterns
@@ -4018,19 +4079,19 @@ class Chart {
         let width = widths.includes(Number(currentValue)) ? Number(currentValue) : 2;
 
         const picker = container.append('div')
-            .style('width', '36px')
-            .style('height', '36px')
-            .style('border', '1px solid #2a2e39')
+            .style('width', '40px')
+            .style('height', '40px')
+            .style('border', '1px solid #e0e0e0')
             .style('border-radius', '6px')
-            .style('background', '#1e2535')
+            .style('background', '#ffffff')
             .style('cursor', 'default')
             .style('transition', 'all 0.2s ease')
             .style('position', 'relative')
             .on('mouseenter', function() {
-                d3.select(this).style('border-color', '#f0b90b');
+                d3.select(this).style('border-color', '#2962ff');
             })
             .on('mouseleave', function() {
-                d3.select(this).style('border-color', '#2a2e39');
+                d3.select(this).style('border-color', '#e0e0e0');
             });
 
         const linePreview = picker.append('div')
@@ -4039,7 +4100,7 @@ class Chart {
             .style('right', '7px')
             .style('top', '50%')
             .style('transform', 'translateY(-50%)')
-            .style('background', '#f0b90b')
+            .style('background', '#2962ff')
             .style('border-radius', '2px');
 
         const valueTag = picker.append('span')
@@ -4048,7 +4109,7 @@ class Chart {
             .style('bottom', '2px')
             .style('font-size', '9px')
             .style('line-height', '1')
-            .style('color', '#787b86')
+            .style('color', '#667085')
             .style('font-weight', '600');
 
         const render = () => {
