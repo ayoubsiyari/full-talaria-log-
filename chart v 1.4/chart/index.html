@@ -2634,45 +2634,77 @@
         body.settings-open *::before,
         body.settings-open *::after { opacity: 0 !important; pointer-events: none !important; }
 
-        /* Top nav tab bar */
+        /* Sidebar nav – default vertical layout (helpPanel, profilePanel) */
         .sp-sidebar {
+            width: 130px;
+            min-width: 130px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.08)),
+                var(--sp-ui-sidebar-bg, var(--sp-sidebar-bg));
+            border-right: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .sp-sidebar-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 20px 16px 16px;
+            color: var(--sp-text, #e0e3ea);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            border-bottom: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
+        }
+        .sp-sidebar-header svg { color: var(--sp-accent); flex-shrink: 0; }
+        .sp-nav { padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+        .sp-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--sp-text-muted, #787b86);
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.15s, color 0.15s;
+            user-select: none;
+        }
+        .sp-nav-item:hover { background: var(--sp-hover-bg, rgba(255,255,255,0.05)); color: var(--sp-text, #d1d5db); }
+        .sp-nav-item.active { background: rgba(var(--sp-accent-rgb),0.18); color: var(--sp-text-active, #fff); }
+        .sp-nav-item.active svg { color: var(--sp-accent); }
+        .sp-nav-item svg { flex-shrink: 0; color: var(--sp-nav-icon-color, #555a6e); transition: color 0.15s; }
+
+        /* Settings panel – horizontal top tab bar */
+        #settingsPanel .sp-sidebar {
             width: 100%;
             min-width: unset;
             background: var(--sp-ui-sidebar-bg, var(--sp-sidebar-bg));
             border-right: none;
             border-bottom: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
-            display: flex;
             flex-direction: row;
             align-items: stretch;
             overflow-y: unset;
             overflow-x: auto;
             flex-shrink: 0;
         }
-        .sp-sidebar-header { display: none; }
-        .sp-sidebar-header svg { color: var(--sp-accent); flex-shrink: 0; }
-
-        .sp-nav { padding: 0 8px; display: flex; flex-direction: row; gap: 0; align-items: stretch; flex: 1; overflow-x: auto; }
-        .sp-nav-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+        #settingsPanel .sp-sidebar-header { display: none; }
+        #settingsPanel .sp-nav { padding: 0 8px; flex-direction: row; gap: 0; align-items: stretch; flex: 1; overflow-x: auto; }
+        #settingsPanel .sp-nav-item {
             padding: 0 16px;
             border-radius: 0;
-            cursor: pointer;
-            color: var(--sp-text-muted, #787b86);
-            font-size: 13px;
-            font-weight: 500;
-            transition: background 0.15s, color 0.15s, border-color 0.15s;
-            user-select: none;
             white-space: nowrap;
             border-bottom: 2px solid transparent;
             height: 44px;
             flex-shrink: 0;
+            gap: 6px;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
         }
-        .sp-nav-item:hover { background: rgba(255,255,255,0.04); color: var(--sp-text, #d1d5db); border-bottom-color: rgba(var(--sp-accent-rgb),0.4); }
-        .sp-nav-item.active { background: transparent; border-bottom: 2px solid var(--sp-accent, #2962ff); color: var(--sp-text-active, #fff); }
-        .sp-nav-item.active svg { color: var(--sp-accent); }
-        .sp-nav-item svg { display: none; }
+        #settingsPanel .sp-nav-item:hover { background: rgba(255,255,255,0.04); border-bottom-color: rgba(var(--sp-accent-rgb),0.4); }
+        #settingsPanel .sp-nav-item.active { background: transparent; border-bottom: 2px solid var(--sp-accent, #2962ff); color: var(--sp-text-active, #fff); }
+        #settingsPanel .sp-nav-item svg { display: none; }
 
         /* Settings mode: hide items that have dedicated toolbar buttons */
         #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="alerts"],
