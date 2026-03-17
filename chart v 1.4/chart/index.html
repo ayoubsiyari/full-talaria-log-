@@ -2603,6 +2603,37 @@
         }
         .settings-panel.open { right: 0; }
 
+        /* Left-edge collapse handle — visible when panel is open */
+        .sp-edge-handle {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 19px;
+            height: 44px;
+            background: var(--sp-bg, #050028);
+            border: 1px solid var(--sp-ui-border, rgba(255,255,255,0.10));
+            border-left: none;
+            border-radius: 0 6px 6px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 1;
+            color: var(--sp-text-muted, #787b86);
+            transition: background 0.15s, color 0.15s;
+            box-shadow: 3px 0 8px rgba(0,0,0,0.35);
+        }
+        .sp-edge-handle:hover {
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+        }
+        .sp-edge-handle svg { pointer-events: none; }
+        .settings-panel.open ~ * *::before,
+        .settings-panel.open ~ * *::after,
+        body.settings-open *::before,
+        body.settings-open *::after { opacity: 0 !important; pointer-events: none !important; }
+
         /* Left nav sidebar */
         .sp-sidebar {
             width: 130px;
@@ -2646,7 +2677,17 @@
         .sp-nav-item.active { background: rgba(var(--sp-accent-rgb),0.18); color: var(--sp-text-active, #fff); }
         .sp-nav-item.active svg { color: var(--sp-accent); }
         .sp-nav-item svg { flex-shrink: 0; color: var(--sp-nav-icon-color, #555a6e); transition: color 0.15s; }
-        .sp-nav-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 8px 0; }
+
+        /* Settings mode: hide items that have dedicated toolbar buttons */
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="alerts"],
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="news"],
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="watchlist"],
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="help"],
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="profile"] { display: none; }
+        #settingsPanel:not(.sp-mode) .sp-nav-divider { display: none; }
+
+        /* Any dedicated-button mode: hide the entire sidebar nav (only show content) */
+        #settingsPanel.sp-mode .sp-sidebar { display: none; }
 
         /* Right content area */
         .sp-content-wrap {
@@ -2677,56 +2718,6 @@
             transition: background 0.15s, color 0.15s;
         }
         .sp-close-btn:hover { background: var(--sp-hover-bg, rgba(255,255,255,0.07)); color: var(--sp-text-active, #fff); }
-
-        /* Tabbed Navigation (only shown for General/Chart settings) */
-        .sp-tabs-nav {
-            display: flex;
-            gap: 0;
-            padding: 0 20px;
-            background: var(--sp-bg);
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            flex-shrink: 0;
-        }
-        
-        .sp-tab-btn {
-            position: relative;
-            padding: 14px 16px;
-            background: transparent;
-            border: none;
-            color: #787b86;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-radius: 0;
-            white-space: nowrap;
-        }
-        
-        .sp-tab-btn:hover {
-            color: #d1d5db;
-            background: rgba(255,255,255,0.03);
-        }
-        
-        .sp-tab-btn.active {
-            color: var(--sp-accent, #f0b90b);
-            background: rgba(var(--sp-accent-rgb, 240, 185, 11), 0.08);
-        }
-        
-        .sp-tab-btn.active::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--sp-accent, #f0b90b);
-        }
-
-        .sp-content-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px 24px;
-        }
 
         .sp-content-body {
             flex: 1;
@@ -16751,6 +16742,10 @@
 
     <!-- Settings Panel -->
     <div class="settings-panel" id="settingsPanel">
+        <!-- Left-edge collapse handle -->
+        <div class="sp-edge-handle" id="settingsPanelHandle" title="Close settings" onclick="window.closePanel();event.stopPropagation();">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="10" height="10"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
         <!-- Sidebar nav -->
         <div class="sp-sidebar">
             <div class="sp-sidebar-header">
@@ -16758,13 +16753,33 @@
                 <span>Settings</span>
             </div>
             <nav class="sp-nav">
-                <div class="sp-nav-item active" data-settings="general" onclick="event.stopPropagation();window._spLoad&&window._spLoad('general',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    <span>General</span>
+                <div class="sp-nav-item active" data-settings="symbol" onclick="event.stopPropagation();window._spLoad&&window._spLoad('symbol',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M18 3H6a1 1 0 0 0-1 1v4l-2 4 2 4v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4l2-4-2-4V4a1 1 0 0 0-1-1z"/></svg>
+                    <span>Symbol</span>
                 </div>
-                <div class="sp-nav-item" data-settings="chart" onclick="event.stopPropagation();window._spLoad&&window._spLoad('chart',this);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                    <span>Chart</span>
+                <div class="sp-nav-item" data-settings="statusline" onclick="event.stopPropagation();window._spLoad&&window._spLoad('statusline',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                    <span>Status line</span>
+                </div>
+                <div class="sp-nav-item" data-settings="canvas" onclick="event.stopPropagation();window._spLoad&&window._spLoad('canvas',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                    <span>Canvas</span>
+                </div>
+                <div class="sp-nav-item" data-settings="template" onclick="event.stopPropagation();window._spLoad&&window._spLoad('template',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    <span>Template</span>
+                </div>
+                <div class="sp-nav-item" data-settings="trading" onclick="event.stopPropagation();window._spLoad&&window._spLoad('trading',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                    <span>Trading</span>
+                </div>
+                <div class="sp-nav-item" data-settings="watchlist" onclick="event.stopPropagation();window._spLoad&&window._spLoad('watchlist',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+                    <span>Watchlist</span>
+                </div>
+                <div class="sp-nav-item" data-settings="news" onclick="event.stopPropagation();window._spLoad&&window._spLoad('news',this);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+                    <span>News</span>
                 </div>
                 <div class="sp-nav-divider"></div>
                 <div class="sp-nav-item" data-settings="alerts" onclick="event.stopPropagation();window._spLoad&&window._spLoad('alerts',this);">
@@ -16787,21 +16802,6 @@
                 <span id="spContentTitle">General Settings</span>
                 <button class="sp-close-btn" id="settingsPanelClose">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-            </div>
-            <!-- Tabbed Navigation (only shown for General and Chart) -->
-            <div class="sp-tabs-nav" id="spTabsNav" style="display:none;">
-                <button class="sp-tab-btn active" data-tab="appearance" onclick="event.stopPropagation();window._spLoadTab&&window._spLoadTab('appearance',this);">
-                    Appearance
-                </button>
-                <button class="sp-tab-btn" data-tab="chart" onclick="event.stopPropagation();window._spLoadTab&&window._spLoadTab('chart',this);">
-                    Chart
-                </button>
-                <button class="sp-tab-btn" data-tab="trading" onclick="event.stopPropagation();window._spLoadTab&&window._spLoadTab('trading',this);">
-                    Trading
-                </button>
-                <button class="sp-tab-btn" data-tab="templates" onclick="event.stopPropagation();window._spLoadTab&&window._spLoadTab('templates',this);">
-                    Templates
                 </button>
             </div>
             <div class="sp-content-body" id="settingsPanelContent">
@@ -16840,7 +16840,7 @@
                     <span>Changelog</span>
                 </div>
             </nav>
-            <div class="side-panel-footer" style="margin-top:auto;">v1.5.0</div>
+            <div class="side-panel-footer" style="margin-top:auto;">v1.4.9</div>
         </div>
         <div class="sp-content-wrap">
             <div class="sp-content-header">
@@ -19934,8 +19934,8 @@
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <!-- Drawing Tools Modules (load in order) -->
     <script defer src="modules/drawing-tools-base.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="modules/drawing-tools-lines.js?v=20260316_TF_PIN_V63"></script>
-    <script defer src="modules/drawing-tools-shapes.js?v=20260316_TF_PIN_V63"></script>
+    <script defer src="modules/drawing-tools-lines.js?v=20260316_TF_PIN_V83"></script>
+    <script defer src="modules/drawing-tools-shapes.js?v=20260316_TF_PIN_V75"></script>
     <script defer src="modules/drawing-tools-fibonacci.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-text.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/drawing-tools-emoji.js?v=20260312_TF_PIN_V58"></script>
@@ -19947,14 +19947,14 @@
     <script defer src="modules/drawing-tools-extended.js?v=20260316_TF_PIN_V63"></script>
     <script defer src="modules/drawing-tools-patterns.js?v=20260312_TF_PIN_V101"></script>
     <script defer src="modules/drawing-tools-fib-gann.js?v=20260312_TF_PIN_V60"></script>
-    <script defer src="modules/drawing-tools-channels.js?v=20260316_TF_PIN_V60"></script>
-    <script defer src="modules/drawing-tools-ui.js?v=20260316_TF_PIN_V168"></script>
+    <script defer src="modules/drawing-tools-channels.js?v=20260316_TF_PIN_V59"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260316_TF_PIN_V145"></script>
     <script defer src="modules/color-picker.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="modules/drawing-toolbar.js?v=20260316_TF_PIN_V69"></script>
+    <script defer src="modules/drawing-toolbar.js?v=20260315_TF_PIN_V65"></script>
     <script defer src="modules/undo-redo-manager.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/preferences-sync.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/preferences-init.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="modules/drawing-tools-manager.js?v=20260316_TF_PIN_V150"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260316_TF_PIN_V138"></script>
     <script defer src="modules/favorites-manager.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/keyboard-shortcuts.js?v=20260312_TF_PIN_V59"></script>
     <script defer src="modules/panel-manager.js?v=20260312_TF_PIN_V58"></script>
@@ -19962,12 +19962,11 @@
     <script defer src="modules/propfirm-tracker.js?v=20260312_TF_PIN_V58"></script>
     <script defer src="modules/compare-overlay.js?v=20260316_TF_PIN_V59"></script>
     <script defer src="modules/timezone-manager.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="chart.js?v=20260317_TF_PIN_V113"></script>
+    <script defer src="chart.js?v=20260316_TF_PIN_V111"></script>
     <script defer src="modules/replay-system.js?v=20260313_TF_PIN_V63"></script>
     <script defer src="modules/order-manager.js?v=20260312_TF_PIN_V92"></script>
     <script defer src="modules/screenshot-manager.js?v=20260314_TF_PIN_V77"></script>
     <script defer src="modules/alert-system.js?v=20260312_TF_PIN_V58"></script>
-    <script defer src="settings-panel.js?v=20260317_TABBED_V1"></script>
     
     <!-- Force Screenshot Manager Initialization -->
     <script>
@@ -27836,7 +27835,7 @@ P['help']={
         }).join('');
         return '<div class="sp-embedded" id="spHelpLayout" style="display:flex;height:100%;">'
             +'<div style="'+_sbar+'"><nav class="sp-nav" id="spHelpNav">'+nav+'</nav>'
-            +'<div class="side-panel-footer" style="margin-top:auto;">v1.5.0</div></div>'
+            +'<div class="side-panel-footer" style="margin-top:auto;">v1.4.9</div></div>'
             +'<div id="spHelpContent" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'
             +'</div>';
     },
@@ -28137,10 +28136,6 @@ var closePanel = window.closePanel;
 window._openMode = function(section) {
     if (!panel) panel = document.getElementById('settingsPanel');
     if (!panel) return;
-    // Close any open drawing-tool category dropdowns and reset arrow states
-    document.querySelectorAll('.tool-dropdown.show').forEach(function(d) { d.classList.remove('show'); });
-    document.querySelectorAll('.tool-group-btn.dropdown-open').forEach(function(b) { b.classList.remove('dropdown-open'); });
-    document.querySelectorAll('.cursor-dropdown-arrow.dropdown-open, .dropdown-arrow.dropdown-open').forEach(function(a) { a.classList.remove('dropdown-open'); });
     var already = panel.classList.contains('open') && _spCurrentMode === (section || '');
     if (already) {
         closePanel();

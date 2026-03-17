@@ -23,11 +23,11 @@ window._spPanels = {};
     var titleEl= document.getElementById('spContentTitle');
     if (!panel) { console.warn('[SP] settingsPanel not found'); return; }
 
-    var currentType = 'appearance';
+    var currentType = 'general';
 
     function openPanel() {
         panel.classList.add('open');
-        loadTab(currentType);
+        loadSection(currentType);
         var c = ch();
         if (c) { c.priceAxisLeft = true; c.margin.l = 60; c.margin.r = 0; if (c.scheduleRender) c.scheduleRender(); }
     }
@@ -37,89 +37,52 @@ window._spPanels = {};
         if (c) { c.priceAxisLeft = false; c.margin.l = 0; c.margin.r = 60; if (c.scheduleRender) c.scheduleRender(); }
     }
 
-    window._spLoadTab = function(tab, el) {
-        panel.querySelectorAll('.sp-tab-btn').forEach(function(n){ n.classList.remove('active'); });
-        if (el) el.classList.add('active');
-        loadTab(tab);
-    };
-
     window._spLoad = function(type, el) {
-        var tabMap = {
-            'general': 'appearance',
-            'chart': 'chart',
-            'symbol': 'chart',
-            'statusline': 'chart',
-            'canvas': 'appearance',
-            'template': 'templates',
-            'trading': 'trading'
-        };
-        var tab = tabMap[type] || 'appearance';
-        loadTab(tab);
+        /* update active state */
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
+        if (el) el.classList.add('active');
+        loadSection(type);
     };
 
     if (closeB) closeB.addEventListener('click', function(e){ e.stopPropagation(); if(window.closePanel)window.closePanel(); else panel.classList.remove('open'); });
 
-    function loadTab(tab) {
-        console.log('[SP] loadTab:', tab);
-        currentType = tab;
-        panel.querySelectorAll('.sp-tab-btn').forEach(function(n){
-            n.classList.toggle('active', n.dataset.tab === tab);
+    /* nav item clicks */
+    panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(item){
+        item.addEventListener('click', function(e){
+            e.stopPropagation();
+            var type = this.dataset.settings;
+            panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
+            this.classList.add('active');
+            loadSection(type);
         });
+    });
+
+    function loadSection(type) {
+        console.log('[SP] loadSection:', type, '| panel registered:', !!window._spPanels[type], '| contEl:', !!contEl);
+        currentType = type;
+        var titles = { general:'General Settings', chart:'Chart Settings', project:'Project Settings', leverage:'Leverage', symbol:'Symbol Properties', commissions:'Commissions' };
+        if (titleEl) titleEl.textContent = titles[type] || type;
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){
+            n.classList.toggle('active', n.dataset.settings === type);
+        });
+        /* re-query contEl in case DOM changed */
         var el = document.getElementById('settingsPanelContent');
         if (!el) { console.warn('[SP] settingsPanelContent not found'); return; }
         try {
-            var p = window._spPanels[tab];
-            el.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+tab+'</b></p>';
+            var p = window._spPanels[type];
+            el.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
+            console.log('[SP] content set, length:', el.innerHTML.length);
         } catch(e) {
             el.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
             console.error('[SP] build error:', e);
         }
         try {
-            var p2 = window._spPanels[tab];
+            var p2 = window._spPanels[type];
             if (p2 && p2.wire) p2.wire();
         } catch(e) { console.error('[SP] wire error:', e); }
     }
 
-    function loadSection(type) {
-        console.log('[SP] loadSection:', type, '| panel registered:', !!window._spPanels[type], '| contEl:', !!contEl);
-        currentType = type;
-        var titles = { general:'General Settings', chart:'Chart Settings', alerts:'Alerts', help:'Help', profile:'Profile' };
-        if (titleEl) titleEl.textContent = titles[type] || type;
-        panel.querySelectorAll('.sp-nav-item').forEach(function(n){
-            n.classList.toggle('active', n.dataset.settings === type);
-        });
-        
-        // Show/hide tabs navigation based on section type
-        var tabsNav = document.getElementById('spTabsNav');
-        if (type === 'general' || type === 'chart') {
-            if (tabsNav) tabsNav.style.display = 'flex';
-            // Load the appropriate tab
-            var tabMap = {
-                'general': 'appearance',
-                'chart': 'chart'
-            };
-            var tab = tabMap[type] || 'appearance';
-            loadTab(tab);
-        } else {
-            if (tabsNav) tabsNav.style.display = 'none';
-            // Load the section content directly
-            var el = document.getElementById('settingsPanelContent');
-            if (!el) { console.warn('[SP] settingsPanelContent not found'); return; }
-            try {
-                var p = window._spPanels[type];
-                el.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
-                console.log('[SP] content set, length:', el.innerHTML.length);
-            } catch(e) {
-                el.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
-                console.error('[SP] build error:', e);
-            }
-            try {
-                var p2 = window._spPanels[type];
-                if (p2 && p2.wire) p2.wire();
-            } catch(e) { console.error('[SP] wire error:', e); }
-        }
-    }
-
+    /* keep openSub alias for any legacy calls */
     function openSub(type){ loadSection(type); }
 
     /* ── HTML builders (exposed for Part 2) ── */
@@ -166,43 +129,7 @@ window._spPanels = {};
     function wireSub(type) { var p=window._spPanels[type]; if(p&&p.wire) p.wire(); }
 
     /* ════════════════════════════════════════════
-       APPEARANCE TAB
-    ════════════════════════════════════════════ */
-    window._spPanels['appearance'] = {
-        title: 'Appearance',
-        build: function(){
-            var c=ch(), cs=(c&&c.chartSettings)||{};
-            var g=gLoad();
-            return sec(st('THEME')+
-                '<div style="margin-bottom:16px;">' +
-                '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
-                '<button style="flex:1;padding:12px;background:rgba(var(--sp-accent-rgb),0.15);border:2px solid var(--sp-accent);border-radius:8px;color:#fff;font-weight:600;cursor:pointer;">Custom</button>' +
-                '</div>' +
-                '<div style="font-size:12px;color:#787b86;margin-bottom:8px;">Full theme preset</div>' +
-                '</div>')+
-            sec(st('CANVAS')+
-                clr('Background','bg',cs.backgroundColor||'#050028')+
-                clr('Grid lines','gridClr',cs.gridColor||'rgba(42,46,57,0.6)')+
-                clr('Crosshair','crossClr',cs.crosshairColor||'rgba(120,123,134,0.4)'))+
-            sec(st('SCALES')+
-                clr('Scale text','scaleText',cs.scaleTextColor||'#ffffff')+
-                irow('Scale text','scaleFont',g.scaleFontSize||12,10,20,1)+
-                clr('Scale lines','scaleLines',cs.gridColor||'rgba(42,46,57,0.6)')+
-                irow('Right margin (bars)','rightOff',(c&&c.timeScale)?(c.timeScale.rightOffset||50):50,0,500));
-        },
-        wire: function(){
-            wClr('bg', function(v){ var c=ch(); if(!c)return; c.chartSettings.backgroundColor=v; if(c.canvas)c.canvas.style.backgroundColor=v; var el=document.querySelector('.chart-container'); if(el)el.style.backgroundColor=v; apply(); });
-            wClr('gridClr', function(v){ set('gridColor',v); });
-            wClr('crossClr', function(v){ set('crosshairColor',v); });
-            wClr('scaleText', function(v){ set('scaleTextColor',v); set('symbolTextColor',v); });
-            wNum('scaleFont',function(v){ gSave({scaleFontSize:v}); set('scaleFontSize',v); set('scaleAxisFontSize',v); });
-            wClr('scaleLines', function(v){ set('gridColor',v); });
-            wNum('rightOff', function(v){ var c=ch(); if(!c)return; c.timeScale=c.timeScale||{}; c.timeScale.rightOffset=v; apply(); });
-        }
-    };
-
-    /* ════════════════════════════════════════════
-       GENERAL SETTINGS (Legacy support)
+       GENERAL SETTINGS
     ════════════════════════════════════════════ */
     window._spPanels['general'] = {
         title: 'General Settings',
@@ -252,260 +179,9 @@ window._spPanels = {};
     };
 
     /* ════════════════════════════════════════════
-       CHART TAB
+       CHART SETTINGS
     ════════════════════════════════════════════ */
     window._spPanels['chart'] = {
-        title: 'Chart',
-        build: function(){
-            var c=ch(), cs=(c&&c.chartSettings)||{};
-            var pm=(c&&c.priceScale)?(c.priceScale.mode||'linear'):'linear';
-            return sec(st('CHART TYPE')+
-                '<div style="margin-bottom:12px;">' +
-                '<select id="sl_chartType" class="settings-select" style="width:100%;padding:10px;background:#1e222d;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e0e3ea;font-size:13px;">' +
-                '<option value="candles"'+(cs.chartType==='candles'?' selected':'')+'>Candlestick</option>' +
-                '<option value="hollow"'+(cs.chartType==='hollow'?' selected':'')+'>Hollow Candles</option>' +
-                '<option value="heikinashi"'+(cs.chartType==='heikinashi'?' selected':'')+'>Heikin Ashi</option>' +
-                '<option value="bars"'+(cs.chartType==='bars'?' selected':'')+'>Bar</option>' +
-                '<option value="line"'+(cs.chartType==='line'?' selected':'')+'>Line</option>' +
-                '<option value="area"'+(cs.chartType==='area'?' selected':'')+'>Area</option>' +
-                '<option value="baseline"'+(cs.chartType==='baseline'?' selected':'')+'>Baseline</option>' +
-                '</select>' +
-                '</div>'+
-                irow('Precision','precision',cs.precision||0.00,0,8,0.01)+
-                '<div style="margin-bottom:12px;">' +
-                '<div style="font-size:12px;color:#787b86;margin-bottom:8px;">Timezone</div>' +
-                '<select id="sl_timezone" class="settings-select" style="width:100%;padding:10px;background:#1e222d;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e0e3ea;font-size:13px;">' +
-                '<option value="UTC" selected>UTC</option>' +
-                '</select>' +
-                '</div>')+
-            sec(st('CANDLE COLORS')+
-                '<div style="background:#1e222d;border-radius:8px;padding:16px;margin-bottom:12px;">' +
-                '<div style="color:#26a69a;font-size:11px;font-weight:700;margin-bottom:12px;letter-spacing:0.5px;">BULLISH</div>' +
-                clr('Body','bodyUp',cs.bodyUpColor||'#089981')+
-                clr('Border','bdrUp',cs.borderUpColor||'#089981')+
-                clr('Wick','wickUp',cs.wickUpColor||'#089981')+
-                '</div>'+
-                '<div style="background:#1e222d;border-radius:8px;padding:16px;margin-bottom:12px;">' +
-                '<div style="color:#ef5350;font-size:11px;font-weight:700;margin-bottom:12px;letter-spacing:0.5px;">BEARISH</div>' +
-                clr('Body','bodyDown',cs.bodyDownColor||'#f23645')+
-                clr('Border','bdrDown',cs.borderDownColor||'#f23645')+
-                clr('Wick','wickDown',cs.wickDownColor||'#f23645')+
-                '</div>'+
-                '<div style="display:flex;align-items:center;gap:12px;">' +
-                '<span style="flex:1;font-size:13px;color:#e0e3ea;">Unified bar color</span>' +
-                clr('','unifiedBar',cs.unifiedBarColor||'#2962ff')+
-                '</div>')+
-            sec(st('STATUS LINE')+
-                '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
-                '<span style="font-size:13px;color:#e0e3ea;">Show OHLC values</span>' +
-                '<label style="position:relative;display:inline-block;width:44px;height:24px;">' +
-                '<input type="checkbox" id="ck_showOHLC" checked style="opacity:0;width:0;height:0;">' +
-                '<span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#2962ff;border-radius:24px;transition:0.2s;"></span>' +
-                '</label>' +
-                '</div>'+
-                '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
-                '<span style="font-size:13px;color:#e0e3ea;">Show bar change %</span>' +
-                '<label style="position:relative;display:inline-block;width:44px;height:24px;">' +
-                '<input type="checkbox" id="ck_showBarChange" checked style="opacity:0;width:0;height:0;">' +
-                '<span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#2962ff;border-radius:24px;transition:0.2s;"></span>' +
-                '</label>' +
-                '</div>'+
-                '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
-                '<span style="font-size:13px;color:#e0e3ea;">Show symbol name</span>' +
-                '<label style="position:relative;display:inline-block;width:44px;height:24px;">' +
-                '<input type="checkbox" id="ck_showSymbol" checked style="opacity:0;width:0;height:0;">' +
-                '<span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#2962ff;border-radius:24px;transition:0.2s;"></span>' +
-                '</label>' +
-                '</div>'+
-                '<div style="margin-top:12px;">' +
-                '<div style="font-size:12px;color:#787b86;margin-bottom:8px;">Label format</div>' +
-                '<select id="sl_labelFormat" class="settings-select" style="width:100%;padding:10px;background:#1e222d;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e0e3ea;font-size:13px;">' +
-                '<option value="description" selected>Description</option>' +
-                '</select>' +
-                '</div>'+
-                clr('Label color','labelColor',cs.labelColor||'#f0b90b')+
-                '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
-                '<span style="font-size:13px;color:#e0e3ea;">Show price line</span>' +
-                '<label style="position:relative;display:inline-block;width:44px;height:24px;">' +
-                '<input type="checkbox" id="ck_showPriceLine" checked style="opacity:0;width:0;height:0;">' +
-                '<span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#2962ff;border-radius:24px;transition:0.2s;"></span>' +
-                '</label>' +
-                '</div>');
-        },
-        wire: function(){
-            wSel('chartType', function(v){ set('chartType',v); if(window._syncChartTypeUI) window._syncChartTypeUI(v); });
-            wClr('bodyUp', function(v){ set('bodyUpColor',v); set('candleUpColor',v); });
-            wClr('bodyDown', function(v){ set('bodyDownColor',v); set('candleDownColor',v); });
-            wClr('bdrUp', function(v){ set('borderUpColor',v); });
-            wClr('bdrDown', function(v){ set('borderDownColor',v); });
-            wClr('wickUp', function(v){ set('wickUpColor',v); });
-            wClr('wickDown', function(v){ set('wickDownColor',v); });
-            wClr('unifiedBar', function(v){ set('unifiedBarColor',v); });
-            wClr('labelColor', function(v){ set('labelColor',v); });
-        }
-    };
-
-    /* ════════════════════════════════════════════
-       TRADING TAB
-    ════════════════════════════════════════════ */
-    window._spPanels['trading'] = {
-        title: 'Trading',
-        build: function(){
-            var g=gLoad(), mode=g.orderPlacementMode||'instant';
-            return sec(st('ORDER PLACEMENT')+
-                '<div style="display:flex;gap:12px;margin-bottom:16px;">' +
-                '<div id="rad_instant" style="flex:1;padding:16px;background:'+(mode==='instant'?'rgba(var(--sp-accent-rgb),0.15)':'#1e222d')+';border:2px solid '+(mode==='instant'?'var(--sp-accent)':'rgba(255,255,255,0.1)')+';border-radius:8px;cursor:pointer;">' +
-                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
-                '<div style="width:16px;height:16px;border-radius:50%;border:2px solid '+(mode==='instant'?'var(--sp-accent)':'#787b86')+';display:flex;align-items:center;justify-content:center;">' +
-                (mode==='instant'?'<div style="width:8px;height:8px;border-radius:50%;background:var(--sp-accent);"></div>':'')+
-                '</div>' +
-                '<span style="font-weight:600;color:#e0e3ea;font-size:14px;">Instant</span>' +
-                '</div>' +
-                '<p style="margin:0;font-size:12px;color:#787b86;">Execute at market</p>' +
-                '</div>' +
-                '<div id="rad_confirm" style="flex:1;padding:16px;background:'+(mode==='confirmation'?'rgba(var(--sp-accent-rgb),0.15)':'#1e222d')+';border:2px solid '+(mode==='confirmation'?'var(--sp-accent)':'rgba(255,255,255,0.1)')+';border-radius:8px;cursor:pointer;">' +
-                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
-                '<div style="width:16px;height:16px;border-radius:50%;border:2px solid '+(mode==='confirmation'?'var(--sp-accent)':'#787b86')+';display:flex;align-items:center;justify-content:center;">' +
-                (mode==='confirmation'?'<div style="width:8px;height:8px;border-radius:50%;background:var(--sp-accent);"></div>':'')+
-                '</div>' +
-                '<span style="font-weight:600;color:#e0e3ea;font-size:14px;">Confirm</span>' +
-                '</div>' +
-                '<p style="margin:0;font-size:12px;color:#787b86;">Show modal first</p>' +
-                '</div>' +
-                '</div>')+
-            sec(st('CHART OVERLAYS')+
-                '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
-                '<span style="font-size:13px;color:#e0e3ea;">Show order history</span>' +
-                '<label style="position:relative;display:inline-block;width:44px;height:24px;">' +
-                '<input type="checkbox" id="ck_orderHist" '+(g.showOrderHistory!==false?'checked':'')+' style="opacity:0;width:0;height:0;">' +
-                '<span class="toggle-slider" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(g.showOrderHistory!==false?'var(--sp-accent)':'#787b86')+';border-radius:24px;transition:0.2s;"></span>' +
-                '</label>' +
-                '</div>'+
-                '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
-                '<span style="font-size:13px;color:#e0e3ea;">Show open orders</span>' +
-                '<label style="position:relative;display:inline-block;width:44px;height:24px;">' +
-                '<input type="checkbox" id="ck_openOrders" '+(g.showOpenOrders!==false?'checked':'')+' style="opacity:0;width:0;height:0;">' +
-                '<span class="toggle-slider" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(g.showOpenOrders!==false?'var(--sp-accent)':'#787b86')+';border-radius:24px;transition:0.2s;"></span>' +
-                '</label>' +
-                '</div>')+
-            sec(st('LEVERAGE')+
-                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-                '<span style="font-size:13px;color:#e0e3ea;">Leverage (1:X)</span>' +
-                '<span style="color:var(--sp-accent);font-size:14px;font-weight:600;" id="rv_leverage">100</span>' +
-                '</div>'+
-                '<input type="range" class="settings-slider" id="rng_leverage" min="1" max="500" value="100" style="width:100%;">' +
-                '<div style="display:flex;justify-content:space-between;font-size:11px;color:#787b86;margin-top:5px;">' +
-                '<span>1</span><span>500</span>' +
-                '</div>')+
-            sec(st('COMMISSIONS')+
-                irow('Avg spread (pips)','avgSpread',0,0,100,0.1)+
-                irow('Slippage (pips)','slippage',0,0,100,0.1)+
-                '<div style="margin-top:12px;">' +
-                '<div style="font-size:12px;color:#787b86;margin-bottom:8px;">Commission type</div>' +
-                '<select id="sl_commType" class="settings-select" style="width:100%;padding:10px;background:#1e222d;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e0e3ea;font-size:13px;">' +
-                '<option value="none" selected>None</option>' +
-                '</select>' +
-                '</div>'+
-                irow('Commission value','commValue',0,0,1000,0.01))+
-            '<button id="btn_saveTradingSettings" style="width:100%;padding:12px;background:var(--sp-accent);color:#131722;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">Save Trading Settings</button>';
-        },
-        wire: function(){
-            ['instant','confirm'].forEach(function(v){
-                var el=document.getElementById('rad_'+v); if(!el) return;
-                el.addEventListener('click',function(){
-                    var mode=v==='instant'?'instant':'confirmation';
-                    gSave({orderPlacementMode:mode}); window.orderPlacementMode=mode;
-                    var c=ch(); if(c&&c.orderManager) c.orderManager.placementMode=mode;
-                    loadTab('trading');
-                });
-            });
-            var orderHistCk = document.getElementById('ck_orderHist');
-            if(orderHistCk) {
-                orderHistCk.addEventListener('change', function(){
-                    var v = this.checked;
-                    gSave({showOrderHistory:v}); set('showOrderHistory',v);
-                    var slider = this.nextElementSibling;
-                    if(slider) slider.style.background = v ? 'var(--sp-accent)' : '#787b86';
-                });
-            }
-            var openOrdersCk = document.getElementById('ck_openOrders');
-            if(openOrdersCk) {
-                openOrdersCk.addEventListener('change', function(){
-                    var v = this.checked;
-                    gSave({showOpenOrders:v}); set('showOpenOrders',v);
-                    var slider = this.nextElementSibling;
-                    if(slider) slider.style.background = v ? 'var(--sp-accent)' : '#787b86';
-                });
-            }
-            wRng('leverage', function(v){ var s=sess(); s.leverage=v; saveSess(s); });
-            wNum('avgSpread', function(v){ var s=sess(); s.avgSpread=v; saveSess(s); });
-            wNum('slippage', function(v){ var s=sess(); s.slippage=v; saveSess(s); });
-            wNum('commValue', function(v){ var s=sess(); s.commissionValue=v; saveSess(s); });
-            var saveBtn = document.getElementById('btn_saveTradingSettings');
-            if(saveBtn) saveBtn.addEventListener('click', function(){ alert('Trading settings saved!'); });
-        }
-    };
-
-    /* ════════════════════════════════════════════
-       TEMPLATES TAB
-    ════════════════════════════════════════════ */
-    window._spPanels['templates'] = {
-        title: 'Templates',
-        build: function(){
-            return sec(st('APPLY A TEMPLATE')+
-                '<p style="font-size:12px;color:#787b86;margin-bottom:16px;">Choose a preset to quickly update colors.</p>'+
-                '<div style="display:flex;flex-direction:column;gap:12px;">' +
-                '<div style="display:flex;align-items:center;gap:12px;padding:16px;background:#1e222d;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;" id="tpl_chartColors">' +
-                '<div style="width:40px;height:40px;background:#2962ff;border-radius:8px;display:flex;align-items:center;justify-content:center;">' +
-                '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="20" height="20"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' +
-                '</div>' +
-                '<div style="flex:1;">' +
-                '<div style="font-weight:600;color:#e0e3ea;margin-bottom:4px;">Chart Colors</div>' +
-                '<div style="font-size:12px;color:#787b86;">Candles, grid, crosshair only</div>' +
-                '</div>' +
-                '<button style="padding:6px 16px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#787b86;font-size:12px;cursor:pointer;">— Select —</button>' +
-                '</div>' +
-                '<div style="display:flex;align-items:center;gap:12px;padding:16px;background:#1e222d;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;" id="tpl_fullTheme">' +
-                '<div style="width:40px;height:40px;background:var(--sp-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;">' +
-                '<svg viewBox="0 0 24 24" fill="none" stroke="#131722" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/></svg>' +
-                '</div>' +
-                '<div style="flex:1;">' +
-                '<div style="font-weight:600;color:#e0e3ea;margin-bottom:4px;">Talaria Full Theme</div>' +
-                '<div style="font-size:12px;color:#787b86;">Chart + panel + sidebar</div>' +
-                '</div>' +
-                '<button style="padding:6px 16px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#787b86;font-size:12px;cursor:pointer;">— Select —</button>' +
-                '</div>' +
-                '<div style="display:flex;align-items:center;gap:12px;padding:16px;background:#1e222d;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;" id="tpl_panelSidebar">' +
-                '<div style="width:40px;height:40px;background:#9c27b0;border-radius:8px;display:flex;align-items:center;justify-content:center;">' +
-                '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>' +
-                '</div>' +
-                '<div style="flex:1;">' +
-                '<div style="font-weight:600;color:#e0e3ea;margin-bottom:4px;">Panel & Sidebar</div>' +
-                '<div style="font-size:12px;color:#787b86;">UI chrome only, chart untouched</div>' +
-                '</div>' +
-                '<button style="padding:6px 16px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#787b86;font-size:12px;cursor:pointer;">— Select —</button>' +
-                '</div>' +
-                '</div>')+
-            '<div style="text-align:center;margin-top:24px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.06);">' +
-            '<div style="font-size:12px;color:#787b86;margin-bottom:8px;">OR</div>' +
-            '</div>'+
-            sec(st('RESET')+
-                '<button id="btn_resetTheme" style="width:100%;padding:12px;background:#1e222d;color:#e0e3ea;border:1px solid rgba(255,255,255,0.1);border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;">Reset to Default Theme</button>');
-        },
-        wire: function(){
-            var resetBtn = document.getElementById('btn_resetTheme');
-            if(resetBtn) resetBtn.addEventListener('click', function(){ 
-                if(confirm('Reset all theme settings to default?')) {
-                    alert('Theme reset to defaults!');
-                }
-            });
-        }
-    };
-
-    /* ════════════════════════════════════════════
-       OLD CHART SETTINGS (Legacy support)
-    ════════════════════════════════════════════ */
-    window._spPanels['chartOld'] = {
         title: 'Chart Settings',
         build: function(){
             var c=ch(), cs=(c&&c.chartSettings)||{};
