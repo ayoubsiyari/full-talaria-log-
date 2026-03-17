@@ -985,6 +985,7 @@ class ArrowTool extends BaseDrawing {
         
         // Store original coordinates for text positioning and arrowhead placement
         const origX1 = x1, origY1 = y1, origX2 = x2, origY2 = y2;
+        const arrowAngle = Math.atan2(y2 - y1, x2 - x1);
         
         // Extend line if needed
         if (this.style.extendLeft || this.style.extendRight) {
@@ -1151,7 +1152,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
 
-            line2.attr('marker-end', `url(#${markerId})`);
+            // arrowhead rendered separately at origX2 — see below
         } else {
             this.group.append('line')
                 .attr('x1', x1)
@@ -1164,7 +1165,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            const line = this.group.append('line')
+            this.group.append('line')
                 .attr('x1', x1)
                 .attr('y1', y1)
                 .attr('x2', x2)
@@ -1172,11 +1173,22 @@ class ArrowTool extends BaseDrawing {
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('opacity', this.style.opacity)
-                .attr('marker-end', `url(#${markerId})`)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
         }
+
+        // Arrowhead always anchored at origX2/origY2 regardless of extending
+        this.group.append('line')
+            .attr('x1', origX2 - 0.5 * Math.cos(arrowAngle))
+            .attr('y1', origY2 - 0.5 * Math.sin(arrowAngle))
+            .attr('x2', origX2)
+            .attr('y2', origY2)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', scaledStrokeWidth)
+            .attr('opacity', this.style.opacity)
+            .attr('marker-end', `url(#${markerId})`)
+            .style('pointer-events', 'none');
 
         this.renderTextLabel({ x1, y1, x2, y2, scales });
 
