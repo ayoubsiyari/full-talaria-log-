@@ -246,17 +246,21 @@ class ArrowMarkerTool extends BaseDrawing {
             const fontWeight = this.style.fontWeight || 'normal';
             const fontStyle = this.style.fontStyle || 'normal';
 
-            // Place text BEHIND the tail (opposite to arrow direction) —
-            // no arrow body exists there so overlap is impossible at any angle.
+            // Place text BEHIND the tail (opposite to arrow direction).
+            // Anchor the edge of the text that faces the arrow so all text
+            // extends away from the body — no overlap at any angle or width.
             const backAngle = angle + Math.PI;
-            const backDist = startHalfWidth + Math.max(fontSize, 14) + 10;
+            const backDist = startHalfWidth + 6;
             const textX = x1 + backDist * Math.cos(backAngle) + (this.style.textOffsetX || 0);
             const textY = y1 + backDist * Math.sin(backAngle) + (this.style.textOffsetY || 0);
+            // If the back-anchor is to the left of the tail, use 'end' so text
+            // extends left; if to the right, use 'start' so it extends right.
+            const textAnchor = Math.cos(backAngle) >= 0 ? 'start' : 'end';
 
             this.group.append('text')
                 .attr('x', textX)
                 .attr('y', textY)
-                .attr('text-anchor', 'middle')
+                .attr('text-anchor', textAnchor)
                 .attr('dominant-baseline', 'middle')
                 .attr('fill', textColor)
                 .attr('font-size', fontSize)
