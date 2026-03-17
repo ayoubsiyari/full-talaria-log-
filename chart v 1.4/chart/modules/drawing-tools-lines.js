@@ -671,7 +671,8 @@ class TrendlineTool extends BaseDrawing {
             angle += 180;
         }
 
-        const verticalOffset = LINE_LABEL_OFFSET;
+        const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
         const edgePadding = TEXT_EDGE_PADDING;
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
 
@@ -1842,7 +1843,7 @@ class RayTool extends BaseDrawing {
 
         // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET;
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
 
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
@@ -2641,7 +2642,7 @@ class ExtendedLineTool extends BaseDrawing {
         
         // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET;
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
         
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
