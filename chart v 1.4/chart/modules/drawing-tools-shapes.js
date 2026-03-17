@@ -983,13 +983,13 @@ class ArrowTool extends BaseDrawing {
         let y1 = scales.yScale(p1.y);
         let y2 = scales.yScale(p2.y);
         
-        // Store original coordinates for text positioning
+        // Store original coordinates for text positioning and arrowhead placement
         const origX1 = x1, origY1 = y1, origX2 = x2, origY2 = y2;
         
-        // Extend line if needed
+        // Extend line if needed — for Arrow tool, only extend the tail (x1) never the head (x2)
         if (this.style.extendLeft || this.style.extendRight) {
-            const dx = x2 - x1;
-            const dy = y2 - y1;
+            const dx = origX2 - origX1;
+            const dy = origY2 - origY1;
             const length = Math.sqrt(dx * dx + dy * dy);
             
             if (length > 0) {
@@ -998,13 +998,15 @@ class ArrowTool extends BaseDrawing {
                 const extendLength = 10000;
                 
                 if (this.style.extendLeft) {
-                    x1 = x1 - dirX * extendLength;
-                    y1 = y1 - dirY * extendLength;
+                    x1 = origX1 - dirX * extendLength;
+                    y1 = origY1 - dirY * extendLength;
                 }
+                // extendRight extends the tail backward (opposite direction) so head stays fixed
                 if (this.style.extendRight) {
-                    x2 = x2 + dirX * extendLength;
-                    y2 = y2 + dirY * extendLength;
+                    x1 = origX1 - dirX * extendLength;
+                    y1 = origY1 - dirY * extendLength;
                 }
+                // x2/y2 (the head) are never modified — arrowhead stays at origX2/origY2
             }
         }
 

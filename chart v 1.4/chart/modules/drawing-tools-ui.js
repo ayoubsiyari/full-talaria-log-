@@ -6997,7 +6997,7 @@ body.light-mode .template-save-dialog .dialog-title {
         row.className = 'tv-prop-row brush-prop-row';
         
         // Check if this is a trendline or similar tool to add arrow buttons
-        const isTrendline = drawing && ['trendline', 'curve', 'arrow', 'path'].includes(drawing.type);
+        const isTrendline = drawing && ['trendline', 'curve', 'path'].includes(drawing.type);
         if (isTrendline) {
             row.classList.add('trendline-controls-row');
         }
