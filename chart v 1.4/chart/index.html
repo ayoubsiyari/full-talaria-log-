@@ -27160,37 +27160,38 @@ P['symbol']={title:'Symbol',build:function(){
     var uniClr=cs.unifiedBarColor||bU;
     var plC=cs.priceLineColor||'#2962ff';
     var isCandleType=['candles','hollow','heikinashi'].indexOf(type)!==-1;
+    function cbtn(id,val){var s=String(val||'#000000');return '<button id="sw_'+id+'" data-color="'+s+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+s+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button>';}
     var candleColorsHTML='';
     if(isCandleType){
         candleColorsHTML=st('CANDLE COLORS')+
             '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin-bottom:10px;">'+
             '<div style="color:#26a69a;font-size:11px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">BULLISH</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Body</span>'+clr('','bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Border</span>'+clr('','bdrUp',brU)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Wick</span>'+clr('','wkUp',wU)+'</div>'+
+            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Body</span>'+cbtn('bodyUp',bU)+'</div>'+
+            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Border</span>'+cbtn('bdrUp',brU)+'</div>'+
+            '<div class="settings-input-row"><span class="settings-input-label">Wick</span>'+cbtn('wkUp',wU)+'</div>'+
             '</div>'+
             '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin-bottom:10px;">'+
             '<div style="color:#f23645;font-size:11px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">BEARISH</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Body</span>'+clr('','bodyDn',bD)+'</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Border</span>'+clr('','bdrDn',brD)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Wick</span>'+clr('','wkDn',wD)+'</div>'+
+            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Body</span>'+cbtn('bodyDn',bD)+'</div>'+
+            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Border</span>'+cbtn('bdrDn',brD)+'</div>'+
+            '<div class="settings-input-row"><span class="settings-input-label">Wick</span>'+cbtn('wkDn',wD)+'</div>'+
             '</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Unified bar color</span><div style="display:flex;align-items:center;gap:8px;">'+clr('','uniClr',uniClr)+'<label class="settings-toggle"><input type="checkbox" id="ck_uniOn"'+(cs.unifiedBarColorEnabled?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
+            '<div class="settings-input-row"><span class="settings-input-label">Unified bar color</span><div style="display:flex;align-items:center;gap:8px;">'+cbtn('uniClr',uniClr)+'<label class="settings-toggle"><input type="checkbox" id="ck_uniOn"'+(cs.unifiedBarColorEnabled?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
     } else if(type==='bars'){
         candleColorsHTML=st('CANDLE COLORS')+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Up bar</span>'+clr('','bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row" style="margin-bottom:10px;"><span class="settings-input-label">Down bar</span>'+clr('','bodyDn',bD)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Unified bar color</span><div style="display:flex;align-items:center;gap:8px;">'+clr('','uniClr',uniClr)+'<label class="settings-toggle"><input type="checkbox" id="ck_uniOn"'+(cs.unifiedBarColorEnabled?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
+            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Up bar</span>'+cbtn('bodyUp',bU)+'</div>'+
+            '<div class="settings-input-row" style="margin-bottom:10px;"><span class="settings-input-label">Down bar</span>'+cbtn('bodyDn',bD)+'</div>'+
+            '<div class="settings-input-row"><span class="settings-input-label">Unified bar color</span><div style="display:flex;align-items:center;gap:8px;">'+cbtn('uniClr',uniClr)+'<label class="settings-toggle"><input type="checkbox" id="ck_uniOn"'+(cs.unifiedBarColorEnabled?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
     } else if(type==='line'){
-        candleColorsHTML=st('CANDLE COLORS')+'<div class="settings-input-row"><span class="settings-input-label">Line color</span>'+clr('','bodyUp',bU)+'</div>';
+        candleColorsHTML=st('CANDLE COLORS')+'<div class="settings-input-row"><span class="settings-input-label">Line color</span>'+cbtn('bodyUp',bU)+'</div>';
     } else if(type==='area'){
         candleColorsHTML=st('CANDLE COLORS')+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Line color</span>'+clr('','bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Fill color</span>'+clr('','areaFill',cs.areaFillColor||'rgba(8,153,129,0.28)')+'</div>';
+            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Line color</span>'+cbtn('bodyUp',bU)+'</div>'+
+            '<div class="settings-input-row"><span class="settings-input-label">Fill color</span>'+cbtn('areaFill',cs.areaFillColor||'rgba(8,153,129,0.28)')+'</div>';
     } else if(type==='baseline'){
         candleColorsHTML=st('CANDLE COLORS')+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Upper color</span>'+clr('','bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Lower color</span>'+clr('','bodyDn',bD)+'</div>';
+            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Upper color</span>'+cbtn('bodyUp',bU)+'</div>'+
+            '<div class="settings-input-row"><span class="settings-input-label">Lower color</span>'+cbtn('bodyDn',bD)+'</div>';
     }
     return st('CHART TYPE')+
         sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
@@ -27202,8 +27203,8 @@ P['symbol']={title:'Symbol',build:function(){
         '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Show bar change %</span><label class="settings-toggle"><input type="checkbox" id="ck_showBar"'+(cs.showBarChangeValues!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div>'+
         '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Show symbol name</span><label class="settings-toggle"><input type="checkbox" id="ck_symTitle"'+(cs.symbolTitle!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div>'+
         sel('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+
-        '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Label color</span>'+clr('','symClr',cs.symbolTextColor||'#d1d4dc')+'</div>'+
-        '<div class="settings-input-row"><span class="settings-input-label">Show price line</span><div style="display:flex;align-items:center;gap:8px;">'+clr('','plClr',plC)+'<label class="settings-toggle"><input type="checkbox" id="ck_showPL"'+(cs.showPriceLine!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
+        '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Label color</span>'+cbtn('symClr',cs.symbolTextColor||'#d1d4dc')+'</div>'+
+        '<div class="settings-input-row"><span class="settings-input-label">Show price line</span><div style="display:flex;align-items:center;gap:8px;">'+cbtn('plClr',plC)+'<label class="settings-toggle"><input type="checkbox" id="ck_showPL"'+(cs.showPriceLine!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
 },wire:function(){
     wChk('showBody',function(v){set('showCandleBody',v);});
     wChk('showBdr',function(v){set('showCandleBorders',v);});
