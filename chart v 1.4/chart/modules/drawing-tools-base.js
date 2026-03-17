@@ -321,8 +321,8 @@ class BaseDrawing {
         const svg = this.chart.svg;
         if (!svg) return;
         
-        const yScale = this.chart.scales?.yScale;
-        const xScale = this.chart.scales?.xScale;
+        const yScale = this.chart.yScale || this.chart.scales?.yScale;
+        const xScale = this.chart.xScale || this.chart.scales?.xScale;
         if (!yScale || !xScale) return;
         
         const margin = this.chart.margin || { t: 5, r: 60, b: 30, l: 0 };
