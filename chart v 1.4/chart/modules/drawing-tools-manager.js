@@ -3372,6 +3372,10 @@ class DrawingToolsManager {
             event.stopPropagation();
             // Hide any existing chart context menus
             d3.selectAll('.chart-context-menu').style('visibility', 'hidden');
+            if (drawing.selected) {
+                self.deselectAll();
+                return;
+            }
             if (!drawing.locked) {
                 self.selectDrawing(drawing);
             }
