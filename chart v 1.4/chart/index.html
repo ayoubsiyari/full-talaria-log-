@@ -20853,6 +20853,24 @@
             let currentOpenDropdown = null;
             let isDeselecting = false; // Flag to prevent re-activation during deselection
 
+            // Expose dropdown-close so chart canvas clicks can call it
+            window.closeAllToolDropdowns = function() {
+                document.querySelectorAll('.tool-dropdown').forEach(dd => dd.classList.remove('show'));
+                document.querySelectorAll('.tool-group-btn[data-group]').forEach(btn => btn.classList.remove('dropdown-open'));
+                document.querySelectorAll('.cursor-dropdown-arrow, .dropdown-arrow').forEach(arr => arr.classList.remove('dropdown-open'));
+                currentOpenDropdown = null;
+            };
+
+            // Close tool dropdown when user clicks anywhere on the chart area
+            const chartWrapperEl = document.getElementById('chartWrapper');
+            if (chartWrapperEl) {
+                chartWrapperEl.addEventListener('mousedown', function() {
+                    if (currentOpenDropdown) {
+                        window.closeAllToolDropdowns();
+                    }
+                }, true);
+            }
+
             // Close any open Visibility menu(s) (supports multi-panel setups)
             window.closeVisibilityMenus = function() {
                 const candidates = [];
