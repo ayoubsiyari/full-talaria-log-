@@ -1826,47 +1826,52 @@ class RayTool extends BaseDrawing {
 
         const { x1, y1, x2, y2 } = coords;
 
-        // Calculate angle from original ray direction; flip detection keeps text readable
-        let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-        const originalAngleRad = Math.atan2(y2 - y1, x2 - x1);
+        // Sort by x to get left/right data points
+        const lx = x1 <= x2 ? x1 : x2;
+        const ly = x1 <= x2 ? y1 : y2;
+        const rx = x1 <= x2 ? x2 : x1;
+        const ry = x1 <= x2 ? y2 : y1;
+
+        // Calculate angle of the line for text rotation
+        let angle = Math.atan2(ry - ly, rx - lx) * (180 / Math.PI);
+        const originalAngleRad = Math.atan2(ry - ly, rx - lx);
+
+        // Keep text readable by flipping it if upside down
         const isFlipped = angle > 90 || angle < -90;
         if (isFlipped) angle += 180;
 
+        // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = 10;
+        const verticalOffset = LINE_LABEL_OFFSET;
+
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        const el_len = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) || 1;
-        const el_ux = (x2 - x1) / el_len;
-        const el_uy = (y2 - y1) / el_len;
-
-        // Visual left/right endpoints (for left/right text alignment)
-        const lvX = x1 <= x2 ? x1 : x2;
-        const lvY = x1 <= x2 ? y1 : y2;
-        const rvX = x1 <= x2 ? x2 : x1;
-        const rvY = x1 <= x2 ? y2 : y1;
-
+        // Use original data point screen coords for text positioning
+        const origLen = Math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2) || 1;
+        const ux = (rx - lx) / origLen;
+        const uy = (ry - ly) / origLen;
         let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = lvX + TEXT_EDGE_PADDING;
-                baseY = lvY + Math.abs(el_uy) * TEXT_EDGE_PADDING * Math.sign(el_uy || 1);
+                baseX = lx + ux * TEXT_EDGE_PADDING;
+                baseY = ly + uy * TEXT_EDGE_PADDING;
                 elAnchor = 'start';
                 break;
             case 'right':
-                baseX = rvX - TEXT_EDGE_PADDING;
-                baseY = rvY - Math.abs(el_uy) * TEXT_EDGE_PADDING * Math.sign(el_uy || 1);
+                baseX = rx - ux * TEXT_EDGE_PADDING;
+                baseY = ry - uy * TEXT_EDGE_PADDING;
                 elAnchor = 'end';
                 break;
             default:
-                baseX = (x1 + x2) / 2;
-                baseY = (y1 + y2) / 2;
+                baseX = (lx + rx) / 2;
+                baseY = (ly + ry) / 2;
                 elAnchor = 'middle';
         }
 
         const perpX = -Math.sin(originalAngleRad);
         const perpY = Math.cos(originalAngleRad);
+
         const signUp = perpY <= 0 ? 1 : -1;
         if (textVAlign === 'top') {
             baseX += perpX * verticalOffset * signUp;
@@ -1877,6 +1882,10 @@ class RayTool extends BaseDrawing {
         }
 
         const offsetX = this.style.textOffsetX || 0;
+        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+            ? 0
+            : this.style.textOffsetY;
+        const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
         // Clamp label to stay within chart area (don't overlap time or price axes)
         const chartBottomY = coords.chartBottomY;
@@ -1886,7 +1895,7 @@ class RayTool extends BaseDrawing {
 
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
-            y: baseY,
+            y: baseY + offsetY,
             anchor: elAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
