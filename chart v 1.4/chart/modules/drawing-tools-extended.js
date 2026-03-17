@@ -1237,15 +1237,6 @@ class ArcTool extends BaseDrawing {
             .attr('opacity', this.style.opacity)
             .attr('stroke-linecap', 'round')
             .attr('data-original-width', this.style.strokeWidth)
-            .style('pointer-events', 'none')
-            .style('cursor', 'move');
-
-        this.group.append('path')
-            .attr('d', pathData)
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(12, this.style.strokeWidth * 4))
-            .attr('fill', 'none')
-            .attr('stroke-linecap', 'round')
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 

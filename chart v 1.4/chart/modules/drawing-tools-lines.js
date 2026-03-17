@@ -1434,10 +1434,10 @@ class VerticalLineTool extends BaseDrawing {
         let baseY;
         switch (textVAlign) {
             case 'top':
-                baseY = topY + LINE_LABEL_OFFSET;
+                baseY = topY + TEXT_EDGE_PADDING;
                 break;
             case 'bottom':
-                baseY = bottomY - LINE_LABEL_OFFSET;
+                baseY = bottomY - TEXT_EDGE_PADDING;
                 break;
             default: // middle
                 baseY = (topY + bottomY) / 2;
@@ -1449,7 +1449,7 @@ class VerticalLineTool extends BaseDrawing {
         let baseX;
         let anchor;
 
-        const clampPad = 10;
+        const clampPad = 2;
 
         if (textVAlign === 'middle') {
             if (textHAlign === 'left') {

@@ -2793,79 +2793,47 @@ body.light-mode .template-save-dialog .dialog-title {
         const shapeTypes = ['rectangle', 'ellipse', 'circle', 'rotated-rectangle'];
         if (shapeTypes.includes(drawing.type)) {
             const middleLineEnabled = drawing.style.showMiddleLine || false;
-            const mlColor = drawing.style.middleLineColor || '#2962FF';
-            const mlType = drawing.style.middleLineDash || '';
-            const mlWidth = drawing.style.middleLineWidth || 1;
-            const _mlChevron = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
-            const _mlMenu = `display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; min-width: 80px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);`;
-            const _mlOptB = `border-bottom: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95));`;
-            const _mlOpt = `padding: 8px; cursor: default; display: flex; align-items: center; justify-content: center;`;
-            const _mlDaMap = { '': '', '10,6': '12,7', '2,2': '2,4', '8,4,2,4': '10,4,2,4' };
-            const _mlDa = _mlDaMap[mlType] ?? '';
-            const _mlDaAttr = _mlDa ? `stroke-dasharray="${_mlDa}"` : '';
-            const _mlInitSvg = `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${_mlDaAttr}/></svg>`;
-            const middleRow = document.createElement('div');
-            middleRow.className = 'tv-prop-row';
-            middleRow.innerHTML = `
-                <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
-                    <div class="tv-checkbox ${middleLineEnabled ? 'checked' : ''}" data-prop="middleLineEnabled">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-                    Middle line
-                </span>
-                <div class="tv-prop-controls">
-                    <button class="tv-color-btn" data-prop="middleLineColor" style="background: ${mlColor};"></button>
-                    <div class="tv-linetype-dropdown" data-prop="middleLineType" style="position: relative; flex: 1 1 0; min-width: 40px;">
-                        <button class="tv-ending-dropdown-btn" style="width: 100%; height: 30px; padding: 0 6px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
-                            <span class="tv-linetype-current" style="flex:1; display:flex; align-items:center; min-width:0;">${_mlInitSvg}</span>
-                            ${_mlChevron}
-                        </button>
-                        <div class="tv-linetype-dropdown-menu" style="${_mlMenu}">
-                            <div class="tv-ending-option" data-value="" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
-                            <div class="tv-ending-option" data-value="10,6" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
-                            <div class="tv-ending-option" data-value="2,2" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
-                            <div class="tv-ending-option" data-value="8,4,2,4" style="${_mlOpt}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
-                        </div>
-                    </div>
-                    <div class="tv-linewidth-dropdown" data-prop="middleLineWidth" style="position: relative; flex: 1 1 0; min-width: 40px;">
-                        <button class="tv-ending-dropdown-btn" style="width: 100%; height: 30px; padding: 0 6px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
-                            <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${mlWidth}px</span>
-                            ${_mlChevron}
-                        </button>
-                        <div class="tv-linewidth-dropdown-menu" style="${_mlMenu}">
-                            <div class="tv-ending-option" data-value="1" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:#d1d4dc;font-size:11px;">1px</span></div>
-                            <div class="tv-ending-option" data-value="2" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:#d1d4dc;font-size:11px;">2px</span></div>
-                            <div class="tv-ending-option" data-value="3" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:#d1d4dc;font-size:11px;">3px</span></div>
-                            <div class="tv-ending-option" data-value="4" style="${_mlOpt} padding: 6px 12px;"><span style="color:#d1d4dc;font-size:11px;">4px</span></div>
-                        </div>
-                    </div>
-                </div>
-            `;
+            const middleRow = this.createPropertyRow('Middle line', middleLineEnabled, {
+                color: drawing.style.middleLineColor || '#2962FF',
+                lineType: drawing.style.middleLineDash || '',
+                lineWidth: drawing.style.middleLineWidth || 1
+            }, drawing, 'middleLine');
             container.appendChild(middleRow);
         }
         
         // Extend Left/Right (for rectangle only, flat-top-bottom has it in its own section below)
         if (drawing.type === 'rectangle') {
             const extendLeftEnabled = drawing.style.extendLeft || false;
-            const extendRightEnabled = drawing.style.extendRight || false;
-            const extendRow = document.createElement('div');
-            extendRow.className = 'tv-prop-row tv-checkbox-stack-row';
-            extendRow.style.cssText = 'display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-height: auto; padding: 6px 0;';
-            extendRow.innerHTML = `
-                <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
+            const extendLeftRow = document.createElement('div');
+            extendLeftRow.className = 'tv-prop-row';
+            extendLeftRow.innerHTML = `
+                <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
                     <div class="tv-checkbox ${extendLeftEnabled ? 'checked' : ''}" data-prop="extendLeftEnabled">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
                     </div>
-                    <span class="tv-checkbox-label">Extend left</span>
-                </div>
-                <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <div class="tv-checkbox ${extendRightEnabled ? 'checked' : ''}" data-prop="extendRightEnabled">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-                    <span class="tv-checkbox-label">Extend right</span>
-                </div>
+                    Extend left
+                </span>
+                <div class="tv-prop-controls"></div>
             `;
-            container.appendChild(extendRow);
+            container.appendChild(extendLeftRow);
+            
+            const extendRightEnabled = drawing.style.extendRight || false;
+            const extendRightRow = document.createElement('div');
+            extendRightRow.className = 'tv-prop-row';
+            extendRightRow.innerHTML = `
+                <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
+                    <div class="tv-checkbox ${extendRightEnabled ? 'checked' : ''}" data-prop="extendRightEnabled">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    Extend right
+                </span>
+                <div class="tv-prop-controls"></div>
+            `;
+            container.appendChild(extendRightRow);
         }
         
         // Background Row
@@ -9883,12 +9851,9 @@ body.light-mode .template-save-dialog .dialog-title {
                 option.addEventListener('click', () => {
                     const value = option.dataset.value;
                     this.pendingChanges[prop] = value;
-                    if (prop === 'middleLineType') {
-                        drawing.style.middleLineDash = value;
-                        if (drawing.group) drawing.group.selectAll('.middle-line').attr('stroke-dasharray', value || null);
-                    } else {
-                        drawing.style.strokeDasharray = value;
-                        if (drawing.group) drawing.group.selectAll('path, line').attr('stroke-dasharray', value || null);
+                    drawing.style.strokeDasharray = value;
+                    if (drawing.group) {
+                        drawing.group.selectAll('path, line').attr('stroke-dasharray', value || null);
                     }
                     const daMap = { '': '', '10,6': '12,7', '2,2': '2,4', '8,4,2,4': '10,4,2,4' };
                     const da = daMap[value] ?? '';
@@ -9934,12 +9899,9 @@ body.light-mode .template-save-dialog .dialog-title {
                     const value = option.dataset.value;
                     const intVal = parseInt(value);
                     this.pendingChanges[prop] = value;
-                    if (prop === 'middleLineWidth') {
-                        drawing.style.middleLineWidth = intVal;
-                        if (drawing.group) drawing.group.selectAll('.middle-line').attr('stroke-width', intVal);
-                    } else {
-                        drawing.style.strokeWidth = intVal;
-                        if (drawing.group) drawing.group.selectAll('path, line').attr('stroke-width', intVal);
+                    drawing.style.strokeWidth = intVal;
+                    if (drawing.group) {
+                        drawing.group.selectAll('path, line').attr('stroke-width', intVal);
                     }
                     const currentSpan = btn.querySelector('.tv-linewidth-current');
                     if (currentSpan) currentSpan.textContent = `${value}px`;
