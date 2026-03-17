@@ -2501,10 +2501,13 @@ class DrawingToolsManager {
         const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
         const activeRole = this.resizingHandleRole || (typeof this.customHandleRole === 'string' ? this.customHandleRole : null);
-        const isAnyResizeHandle = (this.isResizing || this.isCustomHandleDrag) && activeRole && (activeRole.startsWith('side-') || activeRole.startsWith('corner-'));
+        const isAnyResizeHandle = this.isCustomHandleDrag && activeRole && (activeRole.startsWith('side-') || activeRole.startsWith('corner-'));
         // Disable magnet when dragging existing shapes - allow free movement
         const isDraggingShape = this.isDragging && this.draggingDrawing;
-        if (!isContinuousTool && !isAnyResizeHandle && !isDraggingShape && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
+        // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
+        const dataLen = this.chart && this.chart.data ? this.chart.data.length : 0;
+        const isOverCandleData = dataLen > 0 && point.x >= 0 && point.x <= dataLen - 1;
+        if (!isContinuousTool && !isAnyResizeHandle && !isDraggingShape && isOverCandleData && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
