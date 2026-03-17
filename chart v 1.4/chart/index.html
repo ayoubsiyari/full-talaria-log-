@@ -27082,17 +27082,27 @@ P['template']={title:'Template',build:function(){
             +'</div>'
             +'</div>';
     }
-    var chartTplHtml=sec(st('CHART TEMPLATES')
-        +'<p style="color:#787b86;font-size:11px;margin:0 0 10px;line-height:1.5;">Changes chart colors only \u2014 panel and sidebar colors stay unchanged.</p>'
-        +mkdd('tl_chart_dd',swList,c._lastChartOnlyTemplate||null));
-    var talariaTplHtml=sec(st('TALARIA TEMPLATES')
-        +'<p style="color:#787b86;font-size:11px;margin:0 0 10px;line-height:1.5;">Full theme \u2014 updates chart colors AND panel/sidebar accent colors.</p>'
-        +mkdd('tl_talaria_dd',swList,c._lastTemplateSelected||null));
     var panelSwList=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():swList;
-    var panelTplHtml=sec(st('PANEL TEMPLATES')
-        +'<p style="color:#787b86;font-size:11px;margin:0 0 10px;line-height:1.5;">Changes panel &amp; sidebar colors only \u2014 chart colors stay unchanged.</p>'
-        +mkdd('tl_panel_dd',panelSwList,c._lastPanelOnlyTemplate||null));
-    return chartTplHtml+talariaTplHtml+panelTplHtml;
+    function card(icon,title,desc,ddId,list,selId){
+        return '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);">'
+            +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'
+            +icon
+            +'<div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">'+title+'</div>'
+            +'<div style="font-size:11px;color:#787b86;margin-top:2px;">'+desc+'</div></div>'
+            +'</div>'
+            +mkdd(ddId,list,selId)
+            +'</div>';
+    }
+    var applyHtml=sec(st('APPLY A TEMPLATE')
+        +'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Choose a preset to quickly update colors.</p>'
+        +card('<span style="width:28px;height:28px;border-radius:50%;background:#2962ff;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>','Chart Colors','Candles, grid, crosshair only','tl_chart_dd',swList,c._lastChartOnlyTemplate||null)
+        +card('<span style="width:28px;height:28px;border-radius:50%;background:#e8a838;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></span>','Talaria Full Theme','Chart + panel + sidebar','tl_talaria_dd',swList,c._lastTemplateSelected||null)
+        +card('<span style="width:28px;height:28px;border-radius:8px;background:#f23645;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span>','Panel &amp; Sidebar','UI chrome only, chart untouched','tl_panel_dd',panelSwList,c._lastPanelOnlyTemplate||null));
+    var resetHtml=sec(st('RESET')
+        +'<div style="text-align:center;padding:8px 0;">'
+        +'<button id="btn_tpl_reset" type="button" style="padding:9px 20px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.18));border-radius:8px;background:transparent;color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;cursor:pointer;transition:background 0.15s;">Reset to Default Theme</button>'
+        +'</div>');
+    return applyHtml+resetHtml;
 },wire:function(){
     var c=ch();
     var swList=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];
@@ -27149,6 +27159,15 @@ P['template']={title:'Template',build:function(){
     document.addEventListener('click',function(){
         document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
     });
+    var resetBtn=document.getElementById('btn_tpl_reset');
+    if(resetBtn){resetBtn.addEventListener('click',function(){
+        var cv=ch();if(!cv)return;
+        if(typeof cv.applyTemplate==='function'){
+            var defTpl=(swList.find(function(t){return t.id==='talaria-dark';})||swList[0]);
+            if(defTpl)cv.applyTemplate(defTpl.id);
+        }
+        loadSection('template');
+    });}
 }};
 
 /* ── SYMBOL ── */
@@ -27163,10 +27182,15 @@ P['symbol']={title:'Symbol',build:function(){
     var colorSec='';
     var templateSec='';
     if(isCandleType){
-        colorSec=sec(st('CANDLES')+
-            '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+'<div class="tv-colors">'+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div></div>'+
-            '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+'<div class="tv-colors">'+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div></div>'+
-            '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+'<div class="tv-colors">'+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div></div>'+
+        colorSec=sec(st('CANDLE COLORS')+
+            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;margin-bottom:10px;">'+
+                '<div style="margin-bottom:8px;"><span style="background:#089981;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bullish</span></div>'+
+                clr('Body','bodyUp',bU)+clr('Border','bdrUp',brU)+clr('Wick','wkUp',wU)+
+            '</div>'+
+            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;margin-bottom:10px;">'+
+                '<div style="margin-bottom:8px;"><span style="background:#f23645;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bearish</span></div>'+
+                clr('Body','bodyDn',bD)+clr('Border','bdrDn',brD)+clr('Wick','wkDn',wD)+
+            '</div>'+
             '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+'<div class="tv-colors tv-colors--single">'+clr('','uniClr',cs.unifiedBarColor||bU)+'</div></div>');
     } else if(type==='bars'){
         colorSec=sec(st('BARS')+
@@ -27189,11 +27213,17 @@ P['symbol']={title:'Symbol',build:function(){
         '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>');
     var areaSec=(type==='area')?sec(st('AREA COLORS')+clr('Line color','areaLC',aLC)+clr('Fill color','areaFC',aFC)):'';
     var baselineSec=(type==='baseline')?sec(st('BASELINE COLOR')+clr('Baseline color','blClr',blC)):'';
-    return sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type))+
-    colorSec+baselineSec+priceLineSec+extraSec+
-    sec((st('DATA')+
-        sel('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
-        sel('Timezone','sym_tz',[['UTC','UTC'],['Pacific/Midway','(UTC-11) Midway Island'],['Pacific/Honolulu','(UTC-10) Honolulu'],['America/Anchorage','(UTC-9) Anchorage'],['America/Los_Angeles','(UTC-8) Los Angeles'],['America/Vancouver','(UTC-8) Vancouver'],['America/Denver','(UTC-7) Denver'],['America/Phoenix','(UTC-7) Phoenix'],['America/Chicago','(UTC-6) Chicago'],['America/Mexico_City','(UTC-6) Mexico City'],['America/New_York','(UTC-5) New York'],['America/Toronto','(UTC-5) Toronto'],['America/Bogota','(UTC-5) Bogota'],['America/Lima','(UTC-5) Lima'],['America/Caracas','(UTC-4) Caracas'],['America/Halifax','(UTC-4) Halifax'],['America/Santiago','(UTC-4) Santiago'],['America/Sao_Paulo','(UTC-3) São Paulo'],['America/Argentina/Buenos_Aires','(UTC-3) Buenos Aires'],['America/Montevideo','(UTC-3) Montevideo'],['Atlantic/South_Georgia','(UTC-2) South Georgia'],['Atlantic/Azores','(UTC-1) Azores'],['Atlantic/Cape_Verde','(UTC-1) Cape Verde'],['Europe/London','(UTC+0) London'],['Europe/Lisbon','(UTC+0) Lisbon'],['Africa/Casablanca','(UTC+0) Casablanca'],['Europe/Paris','(UTC+1) Paris'],['Europe/Berlin','(UTC+1) Berlin'],['Europe/Amsterdam','(UTC+1) Amsterdam'],['Europe/Madrid','(UTC+1) Madrid'],['Europe/Rome','(UTC+1) Rome'],['Europe/Zurich','(UTC+1) Zurich'],['Africa/Lagos','(UTC+1) Lagos'],['Europe/Athens','(UTC+2) Athens'],['Europe/Helsinki','(UTC+2) Helsinki'],['Europe/Bucharest','(UTC+2) Bucharest'],['Africa/Cairo','(UTC+2) Cairo'],['Africa/Johannesburg','(UTC+2) Johannesburg'],['Europe/Moscow','(UTC+3) Moscow'],['Europe/Istanbul','(UTC+3) Istanbul'],['Asia/Riyadh','(UTC+3) Riyadh'],['Asia/Baghdad','(UTC+3) Baghdad'],['Africa/Nairobi','(UTC+3) Nairobi'],['Asia/Tehran','(UTC+3:30) Tehran'],['Asia/Dubai','(UTC+4) Dubai'],['Asia/Baku','(UTC+4) Baku'],['Asia/Tbilisi','(UTC+4) Tbilisi'],['Asia/Kabul','(UTC+4:30) Kabul'],['Asia/Karachi','(UTC+5) Karachi'],['Asia/Tashkent','(UTC+5) Tashkent'],['Asia/Kolkata','(UTC+5:30) Mumbai / Kolkata'],['Asia/Kathmandu','(UTC+5:45) Kathmandu'],['Asia/Dhaka','(UTC+6) Dhaka'],['Asia/Almaty','(UTC+6) Almaty'],['Asia/Yangon','(UTC+6:30) Yangon'],['Asia/Bangkok','(UTC+7) Bangkok'],['Asia/Jakarta','(UTC+7) Jakarta'],['Asia/Ho_Chi_Minh','(UTC+7) Ho Chi Minh'],['Asia/Shanghai','(UTC+8) Shanghai'],['Asia/Hong_Kong','(UTC+8) Hong Kong'],['Asia/Singapore','(UTC+8) Singapore'],['Asia/Perth','(UTC+8) Perth'],['Asia/Tokyo','(UTC+9) Tokyo'],['Asia/Seoul','(UTC+9) Seoul'],['Australia/Darwin','(UTC+9:30) Darwin'],['Australia/Adelaide','(UTC+9:30) Adelaide'],['Australia/Sydney','(UTC+10) Sydney'],['Australia/Brisbane','(UTC+10) Brisbane'],['Australia/Canberra','(UTC+10) Canberra'],['Australia/Hobart','(UTC+10) Hobart'],['Pacific/Guam','(UTC+10) Guam'],['Asia/Vladivostok','(UTC+10) Vladivostok'],['Pacific/Noumea','(UTC+11) Noumea'],['Pacific/Fiji','(UTC+12) Fiji'],['Pacific/Auckland','(UTC+12) Auckland'],['Pacific/Tongatapu','(UTC+13) Tonga'],['Pacific/Kiritimati','(UTC+wz3edsqa2w14) Kiritimati']],(window.timezoneManager&&window.timezoneManager.getCurrentTimezone?window.timezoneManager.getCurrentTimezone():(cs.timezone||sess().timezone||'UTC')))));
+    return sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
+    sel('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
+    sel('Timezone','sym_tz',[['UTC','UTC'],['Pacific/Midway','(UTC-11) Midway Island'],['Pacific/Honolulu','(UTC-10) Honolulu'],['America/Anchorage','(UTC-9) Anchorage'],['America/Los_Angeles','(UTC-8) Los Angeles'],['America/Vancouver','(UTC-8) Vancouver'],['America/Denver','(UTC-7) Denver'],['America/Phoenix','(UTC-7) Phoenix'],['America/Chicago','(UTC-6) Chicago'],['America/Mexico_City','(UTC-6) Mexico City'],['America/New_York','(UTC-5) New York'],['America/Toronto','(UTC-5) Toronto'],['America/Bogota','(UTC-5) Bogota'],['America/Lima','(UTC-5) Lima'],['America/Caracas','(UTC-4) Caracas'],['America/Halifax','(UTC-4) Halifax'],['America/Santiago','(UTC-4) Santiago'],['America/Sao_Paulo','(UTC-3) São Paulo'],['America/Argentina/Buenos_Aires','(UTC-3) Buenos Aires'],['America/Montevideo','(UTC-3) Montevideo'],['Atlantic/South_Georgia','(UTC-2) South Georgia'],['Atlantic/Azores','(UTC-1) Azores'],['Atlantic/Cape_Verde','(UTC-1) Cape Verde'],['Europe/London','(UTC+0) London'],['Europe/Lisbon','(UTC+0) Lisbon'],['Africa/Casablanca','(UTC+0) Casablanca'],['Europe/Paris','(UTC+1) Paris'],['Europe/Berlin','(UTC+1) Berlin'],['Europe/Amsterdam','(UTC+1) Amsterdam'],['Europe/Madrid','(UTC+1) Madrid'],['Europe/Rome','(UTC+1) Rome'],['Europe/Zurich','(UTC+1) Zurich'],['Africa/Lagos','(UTC+1) Lagos'],['Europe/Athens','(UTC+2) Athens'],['Europe/Helsinki','(UTC+2) Helsinki'],['Europe/Bucharest','(UTC+2) Bucharest'],['Africa/Cairo','(UTC+2) Cairo'],['Africa/Johannesburg','(UTC+2) Johannesburg'],['Europe/Moscow','(UTC+3) Moscow'],['Europe/Istanbul','(UTC+3) Istanbul'],['Asia/Riyadh','(UTC+3) Riyadh'],['Asia/Baghdad','(UTC+3) Baghdad'],['Africa/Nairobi','(UTC+3) Nairobi'],['Asia/Tehran','(UTC+3:30) Tehran'],['Asia/Dubai','(UTC+4) Dubai'],['Asia/Baku','(UTC+4) Baku'],['Asia/Tbilisi','(UTC+4) Tbilisi'],['Asia/Kabul','(UTC+4:30) Kabul'],['Asia/Karachi','(UTC+5) Karachi'],['Asia/Tashkent','(UTC+5) Tashkent'],['Asia/Kolkata','(UTC+5:30) Mumbai / Kolkata'],['Asia/Kathmandu','(UTC+5:45) Kathmandu'],['Asia/Dhaka','(UTC+6) Dhaka'],['Asia/Almaty','(UTC+6) Almaty'],['Asia/Yangon','(UTC+6:30) Yangon'],['Asia/Bangkok','(UTC+7) Bangkok'],['Asia/Jakarta','(UTC+7) Jakarta'],['Asia/Ho_Chi_Minh','(UTC+7) Ho Chi Minh'],['Asia/Shanghai','(UTC+8) Shanghai'],['Asia/Hong_Kong','(UTC+8) Hong Kong'],['Asia/Singapore','(UTC+8) Singapore'],['Asia/Perth','(UTC+8) Perth'],['Asia/Tokyo','(UTC+9) Tokyo'],['Asia/Seoul','(UTC+9) Seoul'],['Australia/Darwin','(UTC+9:30) Darwin'],['Australia/Adelaide','(UTC+9:30) Adelaide'],['Australia/Sydney','(UTC+10) Sydney'],['Australia/Brisbane','(UTC+10) Brisbane'],['Australia/Canberra','(UTC+10) Canberra'],['Australia/Hobart','(UTC+10) Hobart'],['Pacific/Guam','(UTC+10) Guam'],['Asia/Vladivostok','(UTC+10) Vladivostok'],['Pacific/Noumea','(UTC+11) Noumea'],['Pacific/Fiji','(UTC+12) Fiji'],['Pacific/Auckland','(UTC+12) Auckland'],['Pacific/Tongatapu','(UTC+13) Tonga'],['Pacific/Kiritimati','(UTC+14) Kiritimati']],(window.timezoneManager&&window.timezoneManager.getCurrentTimezone?window.timezoneManager.getCurrentTimezone():(cs.timezone||sess().timezone||'UTC'))))+
+    colorSec+baselineSec+
+    sec(st('STATUS LINE')+
+        chk('Show OHLC values','showVals',cs.showChartValues!==false)+
+        chk('Show bar change %','showBar',cs.showBarChangeValues!==false)+
+        chk('Show symbol name','symTitle',cs.symbolTitle!==false)+
+        sel('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+
+        clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc')+
+        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>')+extraSec;
 },wire:function(){
     wChk('showBody',function(v){set('showCandleBody',v);});
     wChk('showBdr',function(v){set('showCandleBorders',v);});
@@ -27226,6 +27256,8 @@ P['symbol']={title:'Symbol',build:function(){
         if(c.saveSettings)c.saveSettings();
     });
     wSel('sym_tz',function(v){set('timezone',v);var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
+    wChk('showVals',function(v){set('showChartValues',v);});wChk('showBar',function(v){set('showBarChangeValues',v);});
+    wChk('symTitle',function(v){set('symbolTitle',v);});wSel('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symClr',function(v){set('symbolTextColor',v);});
 }};
 
 /* ── STATUS LINE ── */
@@ -27278,20 +27310,7 @@ P['canvas']={title:'Canvas',build:function(){
     var slW=Math.max(1,parseInt(cs.scaleLineWidth,10)||2);
     var slDash=({solid:'none',dashed:'8 4',dotted:'2 4'})[cs.scaleLinePattern||'solid']||'none';
     var scaleLinesBtn='<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:0 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+slCol+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+slW+'" stroke-dasharray="'+slDash+'" stroke-linecap="round"/></svg></button>';
-    return sec(st('CHART BASIC STYLES')+
-        row('Background', sw('cv_bg', cs.backgroundColor||'#050028'))+
-        row('Grid lines', '<div style="display:flex;align-items:center;gap:6px;">'+gridSel+sw('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)')+'</div>')+
-        row('Crosshair', crosshairBtn))+
-    sec(st('SCALES')+
-        row('Text', '<div style="display:flex;align-items:center;gap:6px;">'+sw('cv_scaleText', cs.scaleTextColor||'#ffffff')+fontSel+'</div>')+
-        row('Lines', scaleLinesBtn))+
-    sec(st('MARGINS')+
-        irow('Right (bars)','cv_marginRight',ro,0,300))+
-    sec(st('SETTINGS PANEL THEME')+
-        clr('Primary (accent)','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
-        clr('Secondary','sp_sec',cs.settingsPanelSecondaryColor||'#7b61ff')+
-        clr('Text color','sp_text',cs.settingsPanelTextColor||'#e0e3ea')+
-        clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
+    return sec(st('THEME')+
         '<div class="settings-input-row" style="padding-top:4px;">'+
             '<span class="settings-input-label">Full theme preset</span>'+
             '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:152px;">'+
@@ -27306,9 +27325,18 @@ P['canvas']={title:'Canvas',build:function(){
                 '<option value="carbon">Carbon</option>'+
             '</select>'+
         '</div>'+
-        '<div class="settings-input-row" style="justify-content:flex-end; padding-top:4px;">'+
-            '<button id="btn_sp_reset_theme" type="button" style="padding:7px 12px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.18));border-radius:6px;background:transparent;color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;cursor:pointer;">Reset theme</button>'+
-        '</div>');
+        clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
+        clr('Primary accent','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
+        clr('Secondary accent','sp_sec',cs.settingsPanelSecondaryColor||'#7b61ff')+
+        clr('Text color','sp_text',cs.settingsPanelTextColor||'#e0e3ea'))+
+    sec(st('CANVAS')+
+        row('Background', sw('cv_bg', cs.backgroundColor||'#050028'))+
+        row('Grid lines', '<div style="display:flex;align-items:center;gap:6px;">'+sw('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)')+gridSel+'</div>')+
+        row('Crosshair', crosshairBtn))+
+    sec(st('SCALES')+
+        row('Scale text', '<div style="display:flex;align-items:center;gap:6px;">'+fontSel+sw('cv_scaleText', cs.scaleTextColor||'#ffffff')+'</div>')+
+        row('Scale lines', scaleLinesBtn)+
+        irow('Right margin (bars)','cv_marginRight',ro,0,300));
 },wire:function(){
     wClr('cv_bg',function(v){
         var c=ch();if(!c)return;
@@ -27421,18 +27449,18 @@ P['trading']={title:'Trading',build:function(){
         '<div class="settings-radio-item'+(mode==='confirmation'?' selected':'')+'" id="rad_confirm" style="cursor:pointer;"><div class="settings-radio-circle"></div><div class="settings-radio-content"><h4>Confirmation</h4><p>Show a modal before each order is placed</p></div></div>'+
         '</div>')+
     sec(st('CHART OVERLAYS')+chk('Show order history on chart','tr_orderHist',g.showOrderHistory!==false)+chk('Show open orders on chart','tr_openOrders',g.showOpenOrders!==false))+
-    sec(st('LEVERAGE')+rng('Leverage (1:x)','tr_lev',lev,1,500)+irow('Enter value','tr_levVal',lev,1,500))+
+    sec(st('LEVERAGE')+rng('Leverage (1:x)','tr_lev',lev,1,500))+
     sec(st('COMMISSIONS')+irow('Average spread (pips)','tr_spread',s.averageSpread||0,0,100,0.1)+irow('Slippage (pips)','tr_slip',s.slippage||0,0,100,0.1)+sel('Commission type','tr_commType',[['none','None'],['per_trade','Per trade (fixed)'],['per_lot','Per lot'],['percent','% of value']],s.commissionType||'none')+irow('Commission value','tr_commVal',s.commissionValue||0,0,1000,0.01))+
     savebtn('tr_save','Save Trading Settings');
 },wire:function(){
     ['instant','confirm'].forEach(function(v){var el=document.getElementById('rad_'+v);if(!el)return;el.addEventListener('click',function(){document.querySelectorAll('.settings-radio-item').forEach(function(r){r.classList.remove('selected');});this.classList.add('selected');var m=v==='instant'?'instant':'confirmation';gSave({orderPlacementMode:m});window.orderPlacementMode=m;var c=ch();if(c&&c.orderManager)c.orderManager.placementMode=m;});});
     wChk('tr_orderHist',function(v){gSave({showOrderHistory:v});set('showOrderHistory',v);});
     wChk('tr_openOrders',function(v){gSave({showOpenOrders:v});set('showOpenOrders',v);});
-    var rnEl=document.getElementById('rng_tr_lev'),nmEl=document.getElementById('nr_tr_levVal');
-    if(rnEl&&nmEl){rnEl.addEventListener('input',function(){nmEl.value=this.value;var rv=document.getElementById('rv_tr_lev');if(rv)rv.textContent=this.value;});nmEl.addEventListener('change',function(){var v=Math.max(1,Math.min(500,parseInt(this.value)||1));rnEl.value=v;var rv=document.getElementById('rv_tr_lev');if(rv)rv.textContent=v;});}
+    var rnEl=document.getElementById('rng_tr_lev');
+    if(rnEl){rnEl.addEventListener('input',function(){var rv=document.getElementById('rv_tr_lev');if(rv)rv.textContent=this.value;});}
     var sb=document.getElementById('tr_save');
     if(sb)sb.addEventListener('click',function(){
-        var lv=parseInt((nmEl?nmEl.value:100))||100;
+        var lv=parseInt((rnEl?rnEl.value:100))||100;
         function nv(id){var el=document.getElementById('nr_'+id);return el?parseFloat(el.value)||0:0;}
         function sv(id){var el=document.getElementById('sl_'+id);return el?el.value:'none';}
         var s=sess();s.leverage=lv;s.averageSpread=nv('tr_spread');s.slippage=nv('tr_slip');s.commissionType=sv('tr_commType');s.commissionValue=nv('tr_commVal');saveSess(s);
