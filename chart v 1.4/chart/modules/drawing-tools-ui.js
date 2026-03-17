@@ -2641,6 +2641,11 @@ body.light-mode .template-save-dialog .dialog-title {
             return;
         }
         
+        // Pitchfork Style dropdown at the very top
+        if (drawing.type === 'pitchfork') {
+            this.buildPitchforkStyleSection(container, drawing);
+        }
+
         // Controls Header - hide for arrow-marker tools, hide Type for brush/highlighter
         const isArrowMarker = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
         const isFibTool = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension';
@@ -3039,9 +3044,6 @@ body.light-mode .template-save-dialog .dialog-title {
         // Pitchfork tools levels section
         const pitchforkTools = ['pitchfork', 'pitchfan'];
         if (pitchforkTools.includes(drawing.type)) {
-            if (drawing.type === 'pitchfork') {
-                this.buildPitchforkStyleSection(container, drawing);
-            }
             this.buildPitchforkLevelsSection(container, drawing);
         }
 
