@@ -54,11 +54,11 @@ class ColorPicker {
         this.picker.style.cssText = `
             position: fixed;
             display: none;
-            background: #000000;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 10px;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
-            padding: 14px;
+            background: var(--sp-bg, #131722);
+            border: 1px solid var(--sp-ui-border, #2a2e39);
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            padding: 12px;
             z-index: 1000020;
             user-select: none;
             width: max-content;
@@ -167,56 +167,42 @@ class ColorPicker {
         this.picker.appendChild(grid);
         
         const divider = document.createElement('div');
-        divider.style.cssText = 'height: 1px; background: rgba(255, 255, 255, 0.10); margin: 14px 0;';
+        divider.style.cssText = 'height: 1px; background: var(--sp-ui-border, #363a45); margin: 12px 0 0 0;';
         this.picker.appendChild(divider);
         
-        // Opacity section
+        // Opacity section — matches settings panel style
         const opacitySection = document.createElement('div');
-        opacitySection.style.cssText = 'margin-top: 12px;';
-        
-        const opacityLabel = document.createElement('div');
-        opacityLabel.style.cssText = 'color: #8a8e99; font-size: 12px; margin-bottom: 10px;';
+        opacitySection.className = 'tv-opacity-section';
+
+        const opacityRow = document.createElement('div');
+        opacityRow.className = 'tv-opacity-row';
+
+        const opacityLabel = document.createElement('span');
+        opacityLabel.className = 'tv-opacity-label';
         opacityLabel.textContent = 'Opacity';
-        opacitySection.appendChild(opacityLabel);
-        
-        const opacityControl = document.createElement('div');
-        opacityControl.style.cssText = 'display: flex; align-items: center; gap: 12px;';
-        
+        opacityRow.appendChild(opacityLabel);
+
         this.opacitySlider = document.createElement('input');
         this.opacitySlider.type = 'range';
+        this.opacitySlider.className = 'tv-opacity-slider';
         this.opacitySlider.min = '0';
         this.opacitySlider.max = '100';
         this.opacitySlider.value = '100';
-        this.opacitySlider.style.cssText = 'flex: 1;';
         this.opacitySlider.addEventListener('input', (e) => {
             e.stopPropagation();
             this.opacity = parseInt(this.opacitySlider.value) / 100;
             this.applyColor();
         });
         this.opacitySlider.addEventListener('click', (e) => e.stopPropagation());
-        opacityControl.appendChild(this.opacitySlider);
-
-        const opacityInputWrapper = document.createElement('div');
-        opacityInputWrapper.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+        opacityRow.appendChild(this.opacitySlider);
 
         this.opacityInput = document.createElement('input');
         this.opacityInput.type = 'number';
+        this.opacityInput.className = 'tv-opacity-input';
         this.opacityInput.min = '0';
         this.opacityInput.max = '100';
         this.opacityInput.step = '1';
         this.opacityInput.value = '100';
-        this.opacityInput.style.cssText = `
-            width: 64px;
-            background: rgba(19, 23, 34, 0.9);
-            border: 1px solid #3a3e49;
-            border-radius: 6px;
-            color: #ffffff;
-            padding: 8px 10px;
-            font-size: 14px;
-            font-weight: 600;
-            outline: none;
-            text-align: center;
-        `;
         this.opacityInput.addEventListener('click', (e) => e.stopPropagation());
         this.opacityInput.addEventListener('input', (e) => {
             e.stopPropagation();
@@ -236,16 +222,14 @@ class ColorPicker {
                 this.hide();
             }
         });
+        opacityRow.appendChild(this.opacityInput);
 
         const opacityPercent = document.createElement('span');
-        opacityPercent.style.cssText = 'color: #d1d4dc; font-size: 14px; font-weight: 600;';
+        opacityPercent.className = 'tv-opacity-percent';
         opacityPercent.textContent = '%';
+        opacityRow.appendChild(opacityPercent);
 
-        opacityInputWrapper.appendChild(this.opacityInput);
-        opacityInputWrapper.appendChild(opacityPercent);
-        opacityControl.appendChild(opacityInputWrapper);
-        
-        opacitySection.appendChild(opacityControl);
+        opacitySection.appendChild(opacityRow);
         this.picker.appendChild(opacitySection);
     }
     
