@@ -452,25 +452,11 @@ class ParallelChannelTool extends BaseDrawing {
                 .attr('data-handle-role', isStringIndex ? pos.index : null);
             
             if (pos.type === 'middle') {
-                handleGroup.append('rect')
-                    .attr('class', 'resize-handle-bg')
-                    .attr('x', pos.cx - middleHandleBgSize / 2)
-                    .attr('y', pos.cy - middleHandleBgSize / 2)
-                    .attr('width', middleHandleBgSize)
-                    .attr('height', middleHandleBgSize)
-                    .attr('rx', middleHandleCornerRadius)
-                    .attr('ry', middleHandleCornerRadius)
-                    .style('pointer-events', 'none')
-                    .style('opacity', this.selected ? 1 : 0);
-
-                handleGroup.append('rect')
+                handleGroup.append('circle')
                     .attr('class', 'resize-handle')
-                    .attr('x', pos.cx - middleHandleSize / 2)
-                    .attr('y', pos.cy - middleHandleSize / 2)
-                    .attr('width', middleHandleSize)
-                    .attr('height', middleHandleSize)
-                    .attr('rx', middleHandleCornerRadius)
-                    .attr('ry', middleHandleCornerRadius)
+                    .attr('cx', pos.cx)
+                    .attr('cy', pos.cy)
+                    .attr('r', handleRadius)
                     .attr('fill', handleFill)
                     .attr('stroke', handleStroke)
                     .attr('stroke-width', handleStrokeWidth)
