@@ -1514,12 +1514,11 @@ class VerticalLineTool extends BaseDrawing {
         // Clamp only Y to avoid pushing the label out of the visible plot vertically.
         baseY = Math.max(topY + halfY + clampPad, Math.min(bottomY - halfY - clampPad, baseY));
 
-        const isCenteredOnLine = textVAlign === 'middle' && textHAlign === 'center' && rotation === 0;
         appendTextLabel(this.group, label, {
             x: baseX,
             y: baseY,
             anchor: anchor,
-            yAnchor: isCenteredOnLine ? 'middle' : undefined,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: fontFamily,
