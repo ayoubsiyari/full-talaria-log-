@@ -1264,7 +1264,7 @@ class VerticalLineTool extends BaseDrawing {
             const gapMeasure = textOrientation === 'vertical' ? textBBox.width : textBBox.height;
             tempText.remove();
             
-            const padding = 10;
+            const padding = 10 + Math.max(0, fontSize / 2 - 6);
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = gapMeasure + (padding * 2) + (capPad * 2);
 
@@ -1425,8 +1425,8 @@ class VerticalLineTool extends BaseDrawing {
         const leftX = Math.min(xRange[0], xRange[1]);
         const rightX = Math.max(xRange[0], xRange[1]);
 
-        // Horizontal offset from line — scales with font size
-        const horizontalOffset = 10 + Math.max(0, fontSize / 2 - 6);
+        // Horizontal offset from line
+        const horizontalOffset = 10;
         
         // Get Y range bounds
         const topY = Math.min(yRange[0], yRange[1]);
