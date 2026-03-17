@@ -2501,7 +2501,9 @@ class DrawingToolsManager {
         
         const activeRole = this.resizingHandleRole || (typeof this.customHandleRole === 'string' ? this.customHandleRole : null);
         const isSideHandle = (this.isResizing || this.isCustomHandleDrag) && activeRole && activeRole.startsWith('side-');
-        if (!isContinuousTool && !isSideHandle && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
+        // Disable magnet when dragging existing shapes - allow free movement
+        const isDraggingShape = this.isDragging && this.draggingDrawing;
+        if (!isContinuousTool && !isSideHandle && !isDraggingShape && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
