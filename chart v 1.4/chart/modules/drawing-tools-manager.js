@@ -2385,10 +2385,13 @@ class DrawingToolsManager {
                 this.showContextMenu(drawing, event.pageX, event.pageY);
             }
         } else {
-            // Right-click on empty canvas: deselect all selected drawings
+            // Right-click on empty canvas: deselect all selected drawings then show canvas menu
             if (this.selectedDrawings.length > 0) {
                 this.deselectAll();
             }
+            this.contextMenu.showCanvas(event.pageX, event.pageY, {
+                paste: this.clipboardDrawing ? () => this.pasteDrawing() : null
+            });
         }
     }
 

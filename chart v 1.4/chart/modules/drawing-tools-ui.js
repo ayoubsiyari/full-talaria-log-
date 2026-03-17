@@ -16871,6 +16871,50 @@ class DrawingContextMenu {
     }
 
     /**
+     * Show context menu for empty canvas (no drawing selected)
+     */
+    showCanvas(x, y, actions) {
+        this.hide();
+
+        const templateDropdown = document.querySelector('.settings-template-dropdown');
+        if (templateDropdown) templateDropdown.remove();
+        const floatingDropdown = document.querySelector('#template-dropdown');
+        if (floatingDropdown) floatingDropdown.classList.remove('active');
+        document.querySelectorAll('.toolbar-dropdown.active').forEach(d => d.classList.remove('active'));
+
+        this.menu = document.createElement('div');
+        this.menu.className = 'tv-context-menu';
+
+        if (actions.paste) {
+            this.addMenuItem(this.getIcon('copy'), 'Paste', () => {
+                actions.paste();
+                this.hide();
+            });
+            this.addDivider();
+        }
+
+        this.addMenuItem(this.getIcon('tree'), 'Object Tree...', () => {
+            if (typeof window._openMode === 'function') window._openMode('objecttree');
+            this.hide();
+        });
+
+        document.body.appendChild(this.menu);
+
+        const menuRect = this.menu.getBoundingClientRect();
+        let menuX = x;
+        let menuY = y;
+        if (x + menuRect.width > window.innerWidth) menuX = window.innerWidth - menuRect.width - 10;
+        if (y + menuRect.height > window.innerHeight) menuY = window.innerHeight - menuRect.height - 10;
+        this.menu.style.left = `${menuX}px`;
+        this.menu.style.top = `${menuY}px`;
+
+        document.addEventListener('mousedown', this.handleOutsideClick, true);
+        document.addEventListener('contextmenu', this.handleOutsideClick, true);
+
+        return this.menu;
+    }
+
+    /**
      * Hide context menu
      */
     hide() {
