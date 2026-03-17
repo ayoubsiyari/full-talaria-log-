@@ -1287,6 +1287,11 @@ class VerticalLineTool extends BaseDrawing {
             const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
             labelY = labelY + offsetY;
 
+            // Clamp gap center to same bounds renderTextLabel uses, so gap & text always align
+            const halfGap = gapMeasure / 2;
+            const clampPad = 10;
+            labelY = Math.max(topY + halfGap + clampPad, Math.min(bottomY - halfGap - clampPad, labelY));
+
             const split1Y = labelY - (gapSize / 2);
             const split2Y = labelY + (gapSize / 2);
 
