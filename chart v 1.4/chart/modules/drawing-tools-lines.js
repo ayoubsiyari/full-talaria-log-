@@ -1143,7 +1143,8 @@ class HorizontalLineTool extends BaseDrawing {
                 hlAnchor = 'middle';
         }
         
-        const HL_LABEL_OFFSET = 10;
+        const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
+        const HL_LABEL_OFFSET = 10 + Math.max(0, fontSize / 2 - 6);
         let offsetY = 0;
         if (textVAlign === 'top') {
             offsetY = -HL_LABEL_OFFSET;
