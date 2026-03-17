@@ -4477,11 +4477,16 @@ class DrawingToolsManager {
      * (above time-axis-zone z-index 10) and enable pointer-events so drawings can receive mouse events.
      */
     _updateAxisZonePointerEvents() {
-        const active = this.selectedDrawings.length > 0 || !!this.currentTool;
+        const toolActive = !!this.currentTool;
+        const drawingSelected = this.selectedDrawings.length > 0;
         if (this.svg) {
-            if (active) {
+            if (toolActive || drawingSelected) {
                 this.svg.style('z-index', '11');
-                this.svg.style('pointer-events', 'auto');
+                // Only give the SVG itself pointer-events when a tool is active (drawing mode).
+                // When drawings are merely selected, keep pointer-events: none on the SVG so
+                // empty-area drags pass through to the chart canvas for panning.
+                // Individual drawing elements manage their own pointer-events independently.
+                this.svg.style('pointer-events', toolActive ? 'auto' : 'none');
             } else {
                 this.svg.style('z-index', '');
                 this.svg.style('pointer-events', '');
