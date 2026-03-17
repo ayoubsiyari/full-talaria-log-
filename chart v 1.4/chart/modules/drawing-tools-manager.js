@@ -4892,6 +4892,9 @@ class DrawingToolsManager {
             }
             if (this.chart?.clearAxisHighlightZones) {
                 this.chart.clearAxisHighlightZones();
+                if (this.chart.scheduleRender) {
+                    this.chart.scheduleRender();
+                }
             }
             
             this.saveDrawings();
