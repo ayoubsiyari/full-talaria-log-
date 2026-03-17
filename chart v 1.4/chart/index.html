@@ -27157,54 +27157,43 @@ P['symbol']={title:'Symbol',build:function(){
     var type=cs.chartType||'candles';
     var bU=cs.bodyUpColor||cs.candleUpColor||'#089981',bD=cs.bodyDownColor||cs.candleDownColor||'#f23645';
     var brU=cs.borderUpColor||bU,brD=cs.borderDownColor||bD,wU=cs.wickUpColor||bU,wD=cs.wickDownColor||bD;
-    var uniClr=cs.unifiedBarColor||bU;
-    var plC=cs.priceLineColor||'#2962ff';
+    var lC=cs.lineColor||bU;
+    var aL=cs.areaLineColor||bU,aF=cs.areaFillColor||'rgba(8,153,129,0.28)';
     var isCandleType=['candles','hollow','heikinashi'].indexOf(type)!==-1;
-    function cbtn(id,val){var s=String(val||'#000000');return '<button id="sw_'+id+'" data-color="'+s+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+s+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button>';}
-    var candleColorsHTML='';
+    var colorSec='';
+    var templateSec='';
     if(isCandleType){
-        candleColorsHTML=st('CANDLE COLORS')+
-            '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin-bottom:10px;">'+
-            '<div style="color:#26a69a;font-size:11px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">BULLISH</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Body</span>'+cbtn('bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Border</span>'+cbtn('bdrUp',brU)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Wick</span>'+cbtn('wkUp',wU)+'</div>'+
-            '</div>'+
-            '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin-bottom:10px;">'+
-            '<div style="color:#f23645;font-size:11px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">BEARISH</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Body</span>'+cbtn('bodyDn',bD)+'</div>'+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Border</span>'+cbtn('bdrDn',brD)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Wick</span>'+cbtn('wkDn',wD)+'</div>'+
-            '</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Unified bar color</span><div style="display:flex;align-items:center;gap:8px;">'+cbtn('uniClr',uniClr)+'<label class="settings-toggle"><input type="checkbox" id="ck_uniOn"'+(cs.unifiedBarColorEnabled?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
+        colorSec=sec(st('CANDLES')+
+            '<div class="tv-row">'+chk('Body','showBody',cs.showCandleBody!==false)+'<div class="tv-colors">'+clr('','bodyUp',bU)+clr('','bodyDn',bD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Borders','showBdr',cs.showCandleBorders!==false)+'<div class="tv-colors">'+clr('','bdrUp',brU)+clr('','bdrDn',brD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Wick','showWick',cs.showCandleWick!==false)+'<div class="tv-colors">'+clr('','wkUp',wU)+clr('','wkDn',wD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+'<div class="tv-colors tv-colors--single">'+clr('','uniClr',cs.unifiedBarColor||bU)+'</div></div>');
     } else if(type==='bars'){
-        candleColorsHTML=st('CANDLE COLORS')+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Up bar</span>'+cbtn('bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row" style="margin-bottom:10px;"><span class="settings-input-label">Down bar</span>'+cbtn('bodyDn',bD)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Unified bar color</span><div style="display:flex;align-items:center;gap:8px;">'+cbtn('uniClr',uniClr)+'<label class="settings-toggle"><input type="checkbox" id="ck_uniOn"'+(cs.unifiedBarColorEnabled?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
+        colorSec=sec(st('BARS')+
+            '<div class="tv-row">'+chk('Up bar','showBody',cs.showCandleBody!==false)+'<div class="tv-colors tv-colors--single">'+clr('','bodyUp',bU)+'</div></div>'+
+            '<div class="tv-row">'+chk('Down bar','showBdr',true)+'<div class="tv-colors tv-colors--single">'+clr('','bodyDn',bD)+'</div></div>'+
+            '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+'<div class="tv-colors tv-colors--single">'+clr('','uniClr',cs.unifiedBarColor||bU)+'</div></div>');
     } else if(type==='line'){
-        candleColorsHTML=st('CANDLE COLORS')+'<div class="settings-input-row"><span class="settings-input-label">Line color</span>'+cbtn('bodyUp',bU)+'</div>';
+        colorSec=sec(st('LINE')+clr('Line color','bodyUp',lC));
     } else if(type==='area'){
-        candleColorsHTML=st('CANDLE COLORS')+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Line color</span>'+cbtn('bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Fill color</span>'+cbtn('areaFill',cs.areaFillColor||'rgba(8,153,129,0.28)')+'</div>';
+        colorSec=sec(st('AREA')+clr('Line color','bodyUp',aL)+clr('Fill color','areaFill',aF));
     } else if(type==='baseline'){
-        candleColorsHTML=st('CANDLE COLORS')+
-            '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Upper color</span>'+cbtn('bodyUp',bU)+'</div>'+
-            '<div class="settings-input-row"><span class="settings-input-label">Lower color</span>'+cbtn('bodyDn',bD)+'</div>';
+        colorSec=sec(st('BASELINE')+clr('Upper color','bodyUp',bU)+clr('Lower color','bodyDn',bD));
     }
-    return st('CHART TYPE')+
-        sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
+    var vU=cs.volumeUpColor||'rgba(8,153,129,0.5)',vD=cs.volumeDownColor||'rgba(242,54,69,0.5)';
+    var plC=cs.priceLineColor||'#2962ff';
+    var aLC=cs.areaLineColor||cs.bodyUpColor||'#089981',aFC=cs.areaFillColor||'rgba(8,153,129,0.28)';
+    var blC=cs.baselineColor||'#787b86';
+    var extraSec='';
+    var priceLineSec=sec(st('PRICE LINE')+
+        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>');
+    var areaSec=(type==='area')?sec(st('AREA COLORS')+clr('Line color','areaLC',aLC)+clr('Fill color','areaFC',aFC)):'';
+    var baselineSec=(type==='baseline')?sec(st('BASELINE COLOR')+clr('Baseline color','blClr',blC)):'';
+    return sec(st('CHART TYPE')+sel('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type))+
+    colorSec+baselineSec+priceLineSec+extraSec+
+    sec((st('DATA')+
         sel('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
-        sel('Timezone','sym_tz',[['UTC','UTC'],['Pacific/Midway','(UTC-11) Midway Island'],['Pacific/Honolulu','(UTC-10) Honolulu'],['America/Anchorage','(UTC-9) Anchorage'],['America/Los_Angeles','(UTC-8) Los Angeles'],['America/Vancouver','(UTC-8) Vancouver'],['America/Denver','(UTC-7) Denver'],['America/Phoenix','(UTC-7) Phoenix'],['America/Chicago','(UTC-6) Chicago'],['America/Mexico_City','(UTC-6) Mexico City'],['America/New_York','(UTC-5) New York'],['America/Toronto','(UTC-5) Toronto'],['America/Bogota','(UTC-5) Bogota'],['America/Lima','(UTC-5) Lima'],['America/Caracas','(UTC-4) Caracas'],['America/Halifax','(UTC-4) Halifax'],['America/Santiago','(UTC-4) Santiago'],['America/Sao_Paulo','(UTC-3) São Paulo'],['America/Argentina/Buenos_Aires','(UTC-3) Buenos Aires'],['America/Montevideo','(UTC-3) Montevideo'],['Atlantic/South_Georgia','(UTC-2) South Georgia'],['Atlantic/Azores','(UTC-1) Azores'],['Atlantic/Cape_Verde','(UTC-1) Cape Verde'],['Europe/London','(UTC+0) London'],['Europe/Lisbon','(UTC+0) Lisbon'],['Africa/Casablanca','(UTC+0) Casablanca'],['Europe/Paris','(UTC+1) Paris'],['Europe/Berlin','(UTC+1) Berlin'],['Europe/Amsterdam','(UTC+1) Amsterdam'],['Europe/Madrid','(UTC+1) Madrid'],['Europe/Rome','(UTC+1) Rome'],['Europe/Zurich','(UTC+1) Zurich'],['Africa/Lagos','(UTC+1) Lagos'],['Europe/Athens','(UTC+2) Athens'],['Europe/Helsinki','(UTC+2) Helsinki'],['Europe/Bucharest','(UTC+2) Bucharest'],['Africa/Cairo','(UTC+2) Cairo'],['Africa/Johannesburg','(UTC+2) Johannesburg'],['Europe/Moscow','(UTC+3) Moscow'],['Europe/Istanbul','(UTC+3) Istanbul'],['Asia/Riyadh','(UTC+3) Riyadh'],['Asia/Baghdad','(UTC+3) Baghdad'],['Africa/Nairobi','(UTC+3) Nairobi'],['Asia/Tehran','(UTC+3:30) Tehran'],['Asia/Dubai','(UTC+4) Dubai'],['Asia/Baku','(UTC+4) Baku'],['Asia/Tbilisi','(UTC+4) Tbilisi'],['Asia/Kabul','(UTC+4:30) Kabul'],['Asia/Karachi','(UTC+5) Karachi'],['Asia/Tashkent','(UTC+5) Tashkent'],['Asia/Kolkata','(UTC+5:30) Mumbai / Kolkata'],['Asia/Kathmandu','(UTC+5:45) Kathmandu'],['Asia/Dhaka','(UTC+6) Dhaka'],['Asia/Yangon','(UTC+6:30) Yangon'],['Asia/Bangkok','(UTC+7) Bangkok'],['Asia/Hong_Kong','(UTC+8) Hong Kong'],['Asia/Singapore','(UTC+8) Singapore'],['Asia/Shanghai','(UTC+8) Shanghai'],['Asia/Taipei','(UTC+8) Taipei'],['Australia/Perth','(UTC+8) Perth'],['Asia/Tokyo','(UTC+9) Tokyo'],['Asia/Seoul','(UTC+9) Seoul'],['Australia/Adelaide','(UTC+9:30) Adelaide'],['Australia/Sydney','(UTC+10) Sydney'],['Australia/Brisbane','(UTC+10) Brisbane'],['Pacific/Guam','(UTC+10) Guam'],['Pacific/Noumea','(UTC+11) Noumea'],['Pacific/Auckland','(UTC+12) Auckland'],['Pacific/Fiji','(UTC+12) Fiji'],['Pacific/Tongatapu','(UTC+13) Nuku\'alofa']],cs.timezone||'UTC')+
-        candleColorsHTML+
-        st('STATUS LINE')+
-        '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Show OHLC values</span><label class="settings-toggle"><input type="checkbox" id="ck_showVals"'+(cs.showChartValues!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div>'+
-        '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Show bar change %</span><label class="settings-toggle"><input type="checkbox" id="ck_showBar"'+(cs.showBarChangeValues!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div>'+
-        '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Show symbol name</span><label class="settings-toggle"><input type="checkbox" id="ck_symTitle"'+(cs.symbolTitle!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div>'+
-        sel('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+
-        '<div class="settings-input-row" style="margin-bottom:6px;"><span class="settings-input-label">Label color</span>'+cbtn('symClr',cs.symbolTextColor||'#d1d4dc')+'</div>'+
-        '<div class="settings-input-row"><span class="settings-input-label">Show price line</span><div style="display:flex;align-items:center;gap:8px;">'+cbtn('plClr',plC)+'<label class="settings-toggle"><input type="checkbox" id="ck_showPL"'+(cs.showPriceLine!==false?' checked':'')+'><span class="settings-toggle-slider"></span></label></div></div>';
+        sel('Timezone','sym_tz',[['UTC','UTC'],['Pacific/Midway','(UTC-11) Midway Island'],['Pacific/Honolulu','(UTC-10) Honolulu'],['America/Anchorage','(UTC-9) Anchorage'],['America/Los_Angeles','(UTC-8) Los Angeles'],['America/Vancouver','(UTC-8) Vancouver'],['America/Denver','(UTC-7) Denver'],['America/Phoenix','(UTC-7) Phoenix'],['America/Chicago','(UTC-6) Chicago'],['America/Mexico_City','(UTC-6) Mexico City'],['America/New_York','(UTC-5) New York'],['America/Toronto','(UTC-5) Toronto'],['America/Bogota','(UTC-5) Bogota'],['America/Lima','(UTC-5) Lima'],['America/Caracas','(UTC-4) Caracas'],['America/Halifax','(UTC-4) Halifax'],['America/Santiago','(UTC-4) Santiago'],['America/Sao_Paulo','(UTC-3) São Paulo'],['America/Argentina/Buenos_Aires','(UTC-3) Buenos Aires'],['America/Montevideo','(UTC-3) Montevideo'],['Atlantic/South_Georgia','(UTC-2) South Georgia'],['Atlantic/Azores','(UTC-1) Azores'],['Atlantic/Cape_Verde','(UTC-1) Cape Verde'],['Europe/London','(UTC+0) London'],['Europe/Lisbon','(UTC+0) Lisbon'],['Africa/Casablanca','(UTC+0) Casablanca'],['Europe/Paris','(UTC+1) Paris'],['Europe/Berlin','(UTC+1) Berlin'],['Europe/Amsterdam','(UTC+1) Amsterdam'],['Europe/Madrid','(UTC+1) Madrid'],['Europe/Rome','(UTC+1) Rome'],['Europe/Zurich','(UTC+1) Zurich'],['Africa/Lagos','(UTC+1) Lagos'],['Europe/Athens','(UTC+2) Athens'],['Europe/Helsinki','(UTC+2) Helsinki'],['Europe/Bucharest','(UTC+2) Bucharest'],['Africa/Cairo','(UTC+2) Cairo'],['Africa/Johannesburg','(UTC+2) Johannesburg'],['Europe/Moscow','(UTC+3) Moscow'],['Europe/Istanbul','(UTC+3) Istanbul'],['Asia/Riyadh','(UTC+3) Riyadh'],['Asia/Baghdad','(UTC+3) Baghdad'],['Africa/Nairobi','(UTC+3) Nairobi'],['Asia/Tehran','(UTC+3:30) Tehran'],['Asia/Dubai','(UTC+4) Dubai'],['Asia/Baku','(UTC+4) Baku'],['Asia/Tbilisi','(UTC+4) Tbilisi'],['Asia/Kabul','(UTC+4:30) Kabul'],['Asia/Karachi','(UTC+5) Karachi'],['Asia/Tashkent','(UTC+5) Tashkent'],['Asia/Kolkata','(UTC+5:30) Mumbai / Kolkata'],['Asia/Kathmandu','(UTC+5:45) Kathmandu'],['Asia/Dhaka','(UTC+6) Dhaka'],['Asia/Almaty','(UTC+6) Almaty'],['Asia/Yangon','(UTC+6:30) Yangon'],['Asia/Bangkok','(UTC+7) Bangkok'],['Asia/Jakarta','(UTC+7) Jakarta'],['Asia/Ho_Chi_Minh','(UTC+7) Ho Chi Minh'],['Asia/Shanghai','(UTC+8) Shanghai'],['Asia/Hong_Kong','(UTC+8) Hong Kong'],['Asia/Singapore','(UTC+8) Singapore'],['Asia/Perth','(UTC+8) Perth'],['Asia/Tokyo','(UTC+9) Tokyo'],['Asia/Seoul','(UTC+9) Seoul'],['Australia/Darwin','(UTC+9:30) Darwin'],['Australia/Adelaide','(UTC+9:30) Adelaide'],['Australia/Sydney','(UTC+10) Sydney'],['Australia/Brisbane','(UTC+10) Brisbane'],['Australia/Canberra','(UTC+10) Canberra'],['Australia/Hobart','(UTC+10) Hobart'],['Pacific/Guam','(UTC+10) Guam'],['Asia/Vladivostok','(UTC+10) Vladivostok'],['Pacific/Noumea','(UTC+11) Noumea'],['Pacific/Fiji','(UTC+12) Fiji'],['Pacific/Auckland','(UTC+12) Auckland'],['Pacific/Tongatapu','(UTC+13) Tonga'],['Pacific/Kiritimati','(UTC+wz3edsqa2w14) Kiritimati']],(window.timezoneManager&&window.timezoneManager.getCurrentTimezone?window.timezoneManager.getCurrentTimezone():(cs.timezone||sess().timezone||'UTC')))));
 },wire:function(){
     wChk('showBody',function(v){set('showCandleBody',v);});
     wChk('showBdr',function(v){set('showCandleBorders',v);});
@@ -27237,11 +27226,6 @@ P['symbol']={title:'Symbol',build:function(){
         if(c.saveSettings)c.saveSettings();
     });
     wSel('sym_tz',function(v){set('timezone',v);var s=sess();s.timezone=v;saveSess(s);if(window.timezoneManager&&window.timezoneManager.setTimezone)window.timezoneManager.setTimezone(v);});
-    wChk('showVals',function(v){set('showChartValues',v);});
-    wChk('showBar',function(v){set('showBarChangeValues',v);});
-    wChk('symTitle',function(v){set('symbolTitle',v);});
-    wSel('symFmt',function(v){set('symbolTitleFormat',v);});
-    wClr('symClr',function(v){set('symbolTextColor',v);});
 }};
 
 /* ── STATUS LINE ── */
@@ -27294,8 +27278,21 @@ P['canvas']={title:'Canvas',build:function(){
     var slW=Math.max(1,parseInt(cs.scaleLineWidth,10)||2);
     var slDash=({solid:'none',dashed:'8 4',dotted:'2 4'})[cs.scaleLinePattern||'solid']||'none';
     var scaleLinesBtn='<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:0 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+slCol+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+slW+'" stroke-dasharray="'+slDash+'" stroke-linecap="round"/></svg></button>';
-    return st('THEME')+
-        '<div class="settings-input-row" style="margin-bottom:6px;">'+
+    return sec(st('CHART BASIC STYLES')+
+        row('Background', sw('cv_bg', cs.backgroundColor||'#050028'))+
+        row('Grid lines', '<div style="display:flex;align-items:center;gap:6px;">'+gridSel+sw('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)')+'</div>')+
+        row('Crosshair', crosshairBtn))+
+    sec(st('SCALES')+
+        row('Text', '<div style="display:flex;align-items:center;gap:6px;">'+sw('cv_scaleText', cs.scaleTextColor||'#ffffff')+fontSel+'</div>')+
+        row('Lines', scaleLinesBtn))+
+    sec(st('MARGINS')+
+        irow('Right (bars)','cv_marginRight',ro,0,300))+
+    sec(st('SETTINGS PANEL THEME')+
+        clr('Primary (accent)','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
+        clr('Secondary','sp_sec',cs.settingsPanelSecondaryColor||'#7b61ff')+
+        clr('Text color','sp_text',cs.settingsPanelTextColor||'#e0e3ea')+
+        clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
+        '<div class="settings-input-row" style="padding-top:4px;">'+
             '<span class="settings-input-label">Full theme preset</span>'+
             '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:152px;">'+
                 '<option value="">Custom</option>'+
@@ -27309,18 +27306,9 @@ P['canvas']={title:'Canvas',build:function(){
                 '<option value="carbon">Carbon</option>'+
             '</select>'+
         '</div>'+
-        clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
-        clr('Primary accent','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
-        clr('Secondary accent','sp_sec',cs.settingsPanelSecondaryColor||'#7b61ff')+
-        clr('Text color','sp_text',cs.settingsPanelTextColor||'#e0e3ea')+
-        st('CANVAS')+
-        row('Background', sw('cv_bg', cs.backgroundColor||'#050028'))+
-        row('Grid lines', '<div style="display:flex;align-items:center;gap:6px;'>'+gridSel+sw('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)')+'</div>')+
-        row('Crosshair', crosshairBtn)+
-        st('SCALES')+
-        row('Scale text', '<div style="display:flex;align-items:center;gap:6px;">'+fontSel+sw('cv_scaleText', cs.scaleTextColor||'#ffffff')+'</div>')+
-        row('Scale lines', scaleLinesBtn)+
-        irow('Right margin (bars)','cv_marginRight',ro,0,300);
+        '<div class="settings-input-row" style="justify-content:flex-end; padding-top:4px;">'+
+            '<button id="btn_sp_reset_theme" type="button" style="padding:7px 12px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.18));border-radius:6px;background:transparent;color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;cursor:pointer;">Reset theme</button>'+
+        '</div>');
 },wire:function(){
     wClr('cv_bg',function(v){
         var c=ch();if(!c)return;
