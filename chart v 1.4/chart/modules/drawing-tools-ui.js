@@ -466,7 +466,7 @@ class DrawingSettingsPanel {
 .tv-checkbox-label {
     color: var(--sp-text, #d1d4dc);
     font-size: 13px;
-    cursor: default;
+    cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
@@ -8995,6 +8995,16 @@ body.light-mode .template-save-dialog .dialog-title {
         
         // Checkbox toggles - handle both real checkboxes and custom div checkboxes
         setTimeout(() => {
+            // Clicking the label text also toggles the adjacent checkbox
+            queryAll('.tv-checkbox-label').forEach(lbl => {
+                lbl.addEventListener('click', () => {
+                    const cb = lbl.previousElementSibling?.classList?.contains('tv-checkbox')
+                        ? lbl.previousElementSibling
+                        : lbl.parentElement?.querySelector('.tv-checkbox');
+                    if (cb) cb.click();
+                });
+            });
+
             // [debug removed]
             queryAll('.tv-checkbox').forEach(cb => {
                 const isRealCheckbox = cb.tagName === 'INPUT' && cb.type === 'checkbox';
