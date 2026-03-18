@@ -2823,6 +2823,15 @@ class DrawingToolsManager {
         } 
         else {
             this.addDrawing(drawing);
+            // Auto-open inline text editor immediately after placing these tools
+            const autoEditTools = ['note', 'pin', 'callout', 'comment', 'signpost-2'];
+            if (autoEditTools.includes(this.currentTool)) {
+                requestAnimationFrame(() => {
+                    this.selectDrawing(drawing);
+                    if (this.chart) this.chart.render();
+                    requestAnimationFrame(() => this._triggerAutoInlineEdit(drawing));
+                });
+            }
         }
         
         // Clear temp drawing
@@ -4545,6 +4554,86 @@ class DrawingToolsManager {
         this.toolbar.hide(); // Hide toolbar
         this.redrawAll();
         this._updateAxisZonePointerEvents();
+    }
+
+    /**
+     * Auto-trigger inline text editor after a drawing is placed.
+     * Finds the .inline-editable-text element in the drawing group and
+     * shows the editor overlaid on it. Falls back to the anchor point position.
+     */
+    _triggerAutoInlineEdit(drawing) {
+        if (!drawing || !drawing.group) return;
+
+        const onSave = (text) => {
+            const normalized = (text || '').replace(/\r\n/g, '\n');
+            if (!normalized.trim()) {
+                this.deleteDrawing(drawing);
+                return;
+            }
+            drawing.setText(normalized);
+            if (this.chart) this.chart.render();
+        };
+
+        const inlineOpts = {
+            inline: true,
+            fontSize: `${drawing.style.fontSize || 13}px`,
+            fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
+            fontWeight: drawing.style.fontWeight || 'normal',
+            color: drawing.style.textColor || '#FFFFFF',
+            textAlign: drawing.style.textAlign || 'left',
+            hideSelector: `.drawing[data-id="${drawing.id}"] text`
+        };
+
+        // Prefer the SVG <text> element for pixel-perfect inline positioning
+        let editableNode = drawing.group.select('text.inline-editable-text').node();
+        // Fall back to any inline-editable-text element (rect/path background shapes)
+        if (!editableNode) {
+            editableNode = drawing.group.select('.inline-editable-text').node();
+        }
+
+        if (editableNode) {
+            const rect = editableNode.getBoundingClientRect();
+            if (rect.width > 0 || rect.height > 0) {
+                this.textEditor.show(
+                    rect.left + window.scrollX,
+                    rect.top + window.scrollY,
+                    '',
+                    onSave,
+                    'Enter text\u2026',
+                    inlineOpts
+                );
+                return;
+            }
+        }
+
+        // Fallback: no rendered text element yet (e.g. pin placed with empty initial text)
+        if (drawing.points && drawing.points.length > 0) {
+            const p = drawing.points[0];
+            const svgNode = this.svg && typeof this.svg.node === 'function' ? this.svg.node() : this.svg;
+            let fallbackX = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p.x) : this.chart.xScale(p.x);
+            let fallbackY = this.chart.yScale(p.y);
+            try {
+                if (svgNode && typeof svgNode.createSVGPoint === 'function' && typeof svgNode.getScreenCTM === 'function') {
+                    const ctm = svgNode.getScreenCTM();
+                    if (ctm) {
+                        const pt = svgNode.createSVGPoint();
+                        pt.x = fallbackX;
+                        pt.y = fallbackY;
+                        const screenPt = pt.matrixTransform(ctm);
+                        fallbackX = screenPt.x + window.scrollX;
+                        fallbackY = screenPt.y + window.scrollY;
+                    }
+                }
+            } catch (e) {}
+            this.textEditor.show(
+                fallbackX - 60,
+                fallbackY - 80,
+                '',
+                onSave,
+                'Enter text\u2026',
+                inlineOpts
+            );
+        }
     }
 
     /**

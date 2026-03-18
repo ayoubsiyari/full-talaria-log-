@@ -3035,7 +3035,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('stroke', hasTextBorder ? textBorderColor : 'none')
             .attr('stroke-width', hasTextBorder ? 1 : 0)
             .attr('rx', cornerRadius)
-            .attr('class', 'shape-fill')
+            .attr('class', 'shape-fill inline-editable-text')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
@@ -3054,6 +3054,7 @@ class Signpost2Tool extends BaseDrawing {
 
         // Text
         const textElement = this.group.append('text')
+            .attr('class', 'inline-editable-text')
             .attr('x', x1)
             .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
             .attr('fill', this.style.textColor)
