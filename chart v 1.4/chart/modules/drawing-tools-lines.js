@@ -563,19 +563,29 @@ class TrendlineTool extends BaseDrawing {
         // Two perpendicular unit vectors (CCW and CW 90°)
         const pAx = -uy, pAy = ux;
         const pBx =  uy, pBy = -ux;
-        // upward perp = smaller y; downward = opposite
-        const upPerp   = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
-        const downPerp = (pAy <= pBy) ? { x: pBx, y: pBy } : { x: pAx, y: pAy };
-        // If a text label is present it occupies the above-line side at the midpoint;
-        // send the info box to the below-line side at p2 to avoid overlap at any font size.
-        const hasTextLabel = !!(this.text && this.text.trim());
-        const perp = hasTextLabel ? downPerp : upPerp;
+        // Prefer the direction that points more upward (smaller y in screen space)
+        const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
         // Gap = rectangle support function in perp direction + clearance
         // This ensures no corner of the axis-aligned box touches the line at any angle
         const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
-        // Anchor at p2 (endpoint), offset perpendicular — same pattern as arrow tool label
-        let boxX = x2 + perp.x * gap - boxWidth / 2;
-        let boxY = y2 + perp.y * gap - boxHeight / 2;
+        const hasTextLabel = !!(this.text && this.text.trim());
+        let boxX, boxY;
+        if (hasTextLabel) {
+            // Text occupies the line area; place box horizontally past p2
+            // (to the right of p2 for right-going lines, left for left-going lines)
+            // so it can never collide with the text regardless of font size or alignment.
+            const pastP2 = 12;
+            if (x2 >= x1) {
+                boxX = x2 + pastP2;
+            } else {
+                boxX = x2 - boxWidth - pastP2;
+            }
+            boxY = y2 - boxHeight / 2;
+        } else {
+            // No text: sit above the line at p2 with perpendicular offset
+            boxX = x2 + perp.x * gap - boxWidth / 2;
+            boxY = y2 + perp.y * gap - boxHeight / 2;
+        }
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
