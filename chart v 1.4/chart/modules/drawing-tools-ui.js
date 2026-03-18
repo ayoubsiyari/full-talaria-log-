@@ -16431,6 +16431,7 @@ class InlineTextEditor {
         const fontWeight = typeof opts.fontWeight === 'string' ? opts.fontWeight : 'normal';
         const color = typeof opts.color === 'string' ? opts.color : '#d1d4dc';
         const textAlign = typeof opts.textAlign === 'string' ? opts.textAlign : 'left';
+        const maxWidth = Number.isFinite(opts.maxWidth) ? opts.maxWidth : 320;
 
         // Remove existing editor
         if (this.editor) {
@@ -16486,9 +16487,10 @@ class InlineTextEditor {
                 .attr('contenteditable', 'true')
                 .attr('spellcheck', 'false')
                 .style('min-width', '4px')
-                .style('max-width', '800px')
+                .style('max-width', `${maxWidth}px`)
                 .style('outline', 'none')
-                .style('white-space', 'pre')
+                .style('white-space', 'pre-wrap')
+                .style('word-break', 'break-word')
                 .style('color', color)
                 .style('font-size', fontSize)
                 .style('font-family', fontFamily)

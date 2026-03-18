@@ -1129,20 +1129,56 @@ class NoteTool extends BaseDrawing {
 
         // Text box at end point (p2)
         const padding = 6;
-        const tempText = container.append('text')
-            .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .text(this.text || 'Add text');
-        let textBbox;
-        try {
-            textBbox = tempText.node().getBBox();
-        } catch(e) {
-            textBbox = { width: 60, height: scaledFontSize * 1.2 };
-        }
-        tempText.remove();
+        const noteMaxWidth = this.style.maxWidth || 260;
 
-        const boxWidth = Math.max(textBbox.width + padding * 2, 60);
-        const boxHeight = textBbox.height + padding * 2;
+        // Helper: measure single-line text width
+        const measureWidth = (str) => {
+            const t = container.append('text')
+                .attr('font-size', `${scaledFontSize}px`)
+                .attr('font-family', this.style.fontFamily)
+                .text(str);
+            let w = 60;
+            try { w = t.node().getBBox().width; } catch(e) {}
+            t.remove();
+            return w;
+        };
+
+        // Word-wrap: split text into lines that fit within noteMaxWidth - padding*2
+        const wrapText = (rawText, innerWidth) => {
+            const result = [];
+            const rawLines = (rawText || 'Add text').split('\n');
+            rawLines.forEach(rawLine => {
+                if (rawLine === '') { result.push(''); return; }
+                const words = rawLine.split(' ');
+                let current = '';
+                words.forEach(word => {
+                    const test = current ? current + ' ' + word : word;
+                    if (measureWidth(test) > innerWidth && current !== '') {
+                        result.push(current);
+                        current = word;
+                    } else {
+                        current = test;
+                    }
+                });
+                if (current) result.push(current);
+            });
+            return result.length ? result : [''];
+        };
+
+        const innerWidth = noteMaxWidth - padding * 2;
+        const wrappedLines = wrapText(this.text, innerWidth);
+        const lineHeight = scaledFontSize * 1.3;
+        const totalTextHeight = wrappedLines.length * lineHeight;
+
+        // Measure actual max line width
+        let maxLineWidth = 60;
+        wrappedLines.forEach(line => {
+            const w = measureWidth(line || ' ');
+            if (w > maxLineWidth) maxLineWidth = w;
+        });
+
+        const boxWidth = Math.min(Math.max(maxLineWidth + padding * 2, 60), noteMaxWidth);
+        const boxHeight = totalTextHeight + padding * 2;
 
         // Position box to the right of endpoint
         const boxX = x2 + 5;
@@ -1162,17 +1198,23 @@ class NoteTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        // Text
+        // Text with wrapped lines
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
-            .attr('y', y2 + scaledFontSize / 3)
+            .attr('y', boxY + padding + scaledFontSize)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .style('pointer-events', 'all')
-            .style('cursor', 'move')
-            .text(this.text || 'Add text');
+            .style('cursor', 'move');
+
+        wrappedLines.forEach((line, i) => {
+            textElement.append('tspan')
+                .attr('x', boxX + padding)
+                .attr('dy', i === 0 ? 0 : lineHeight)
+                .text(line || '\u00A0');
+        });
 
         // Add double-click to edit text inline using native addEventListener (won't be overwritten)
         const self = this;
@@ -1211,6 +1253,7 @@ class NoteTool extends BaseDrawing {
                         fontWeight: self.style.fontWeight || 'normal',
                         color: self.style.textColor,
                         textAlign: 'left',
+                        maxWidth: self.style.maxWidth || 260,
                         hideSelector: `.drawing[data-id="${self.id}"] text`
                     }
                 );
