@@ -1144,6 +1144,17 @@ class NoteTool extends BaseDrawing {
         };
 
         // Word-wrap: split text into lines that fit within noteMaxWidth - padding*2
+        const breakLongWord = (word, innerWidth) => {
+            const parts = [];
+            let chunk = '';
+            for (let i = 0; i < word.length; i++) {
+                const test = chunk + word[i];
+                if (measureWidth(test) > innerWidth && chunk) { parts.push(chunk); chunk = word[i]; }
+                else { chunk = test; }
+            }
+            if (chunk) parts.push(chunk);
+            return parts.length ? parts : [word];
+        };
         const wrapText = (rawText, innerWidth) => {
             const result = [];
             const rawLines = (rawText || 'Add text').split('\n');
@@ -1152,6 +1163,15 @@ class NoteTool extends BaseDrawing {
                 const words = rawLine.split(' ');
                 let current = '';
                 words.forEach(word => {
+                    if (measureWidth(word) > innerWidth) {
+                        if (current) { result.push(current); current = ''; }
+                        const parts = breakLongWord(word, innerWidth);
+                        parts.forEach((part, i) => {
+                            if (i < parts.length - 1) result.push(part);
+                            else current = part;
+                        });
+                        return;
+                    }
                     const test = current ? current + ' ' + word : word;
                     if (measureWidth(test) > innerWidth && current !== '') {
                         result.push(current);
@@ -2145,6 +2165,17 @@ class CalloutTool extends BaseDrawing {
 
         // Word-wrap text to fit within maxBubbleWidth - padding*2
         const innerW = maxBubbleWidth - padding * 2;
+        const breakWord = (word) => {
+            const chars = [];
+            let chunk = '';
+            for (let i = 0; i < word.length; i++) {
+                const test = chunk + word[i];
+                if (measureW(test) > innerW && chunk) { chars.push(chunk); chunk = word[i]; }
+                else { chunk = test; }
+            }
+            if (chunk) chars.push(chunk);
+            return chars.length ? chars : [word];
+        };
         const calloutWrapLines = (rawText) => {
             const result = [];
             (rawText || 'Add text').split('\n').forEach(rawLine => {
@@ -2152,6 +2183,15 @@ class CalloutTool extends BaseDrawing {
                 const words = rawLine.split(' ');
                 let cur = '';
                 words.forEach(word => {
+                    if (measureW(word) > innerW) {
+                        if (cur) { result.push(cur); cur = ''; }
+                        const broken = breakWord(word);
+                        broken.forEach((part, i) => {
+                            if (i < broken.length - 1) result.push(part);
+                            else cur = part;
+                        });
+                        return;
+                    }
                     const test = cur ? cur + ' ' + word : word;
                     if (measureW(test) > innerW && cur) { result.push(cur); cur = word; }
                     else { cur = test; }
