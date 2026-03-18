@@ -2568,6 +2568,37 @@ class CommentTool extends BaseDrawing {
         });
 
         const self = this;
+
+        // In-place live updater — avoids full re-render, updates paths + tspans directly
+        self._updateCommentBubble = () => {
+            const lNew = (self.text || 'text').split('\n');
+            let mLW = minWidth - padding * 2;
+            lNew.forEach(l => { const lw = measureW(l || ' '); if (lw > mLW) mLW = lw; });
+            const wN = Math.max(mLW + padding * 2, minWidth);
+            const hN = Math.max(lNew.length * lineHeight + padding * 2, minHeight);
+            const bX = centerX - wN / 2;
+            const bY = centerY - hN / 2;
+            const np = `M ${bX+r} ${bY} L ${bX+wN-r} ${bY} Q ${bX+wN} ${bY} ${bX+wN} ${bY+r} L ${bX+wN} ${bY+hN-r} Q ${bX+wN} ${bY+hN} ${bX+wN-r} ${bY+hN} L ${bX+r} ${bY+hN} L ${bX} ${bY+hN} L ${bX} ${bY+r} Q ${bX} ${bY} ${bX+r} ${bY} Z`;
+            self.group.selectAll('path').attr('d', np);
+            let tXN = bX + wN / 2, tAN = 'middle';
+            if (self.style.textAlign === 'left')  { tXN = bX + padding;       tAN = 'start'; }
+            if (self.style.textAlign === 'right') { tXN = bX + wN - padding;  tAN = 'end'; }
+            const tEl = self.group.select('text.inline-editable-text');
+            tEl.attr('x', tXN).attr('y', bY + padding + _cFontSize).attr('text-anchor', tAN);
+            tEl.selectAll('tspan').remove();
+            lNew.forEach((line, i) => {
+                tEl.append('tspan').attr('x', tXN).attr('dy', i === 0 ? 0 : lineHeight).text(line || '\u00A0');
+            });
+            // Sync inline editor position to new text element location
+            const edDiv = document.querySelector('.inline-text-editor--inline');
+            if (edDiv && tEl.node()) {
+                const nr = tEl.node().getBoundingClientRect();
+                if (nr.left || nr.top) {
+                    edDiv.style.left = (nr.left + window.scrollX) + 'px';
+                    edDiv.style.top  = (nr.top  + window.scrollY) + 'px';
+                }
+            }
+        };
         const CLICK_DELAY = 250;
         let clickTimer = null;
         let downPos = null;
@@ -2645,19 +2676,8 @@ class CommentTool extends BaseDrawing {
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        if (self._lastContainer && self._lastScales) {
-                            self.render(self._lastContainer, self._lastScales);
-                            // Re-sync editor position: bubble is center-anchored so its
-                            // left edge shifts as it grows — follow the new text element
-                            if (self.group) {
-                                const newTE = self.group.select('text.inline-editable-text').node();
-                                const edDiv = document.querySelector('.inline-text-editor--inline');
-                                if (newTE && edDiv) {
-                                    const nr = newTE.getBoundingClientRect();
-                                    edDiv.style.left = (nr.left + window.scrollX) + 'px';
-                                    edDiv.style.top  = (nr.top  + window.scrollY) + 'px';
-                                }
-                            }
+                        if (typeof self._updateCommentBubble === 'function') {
+                            self._updateCommentBubble();
                         }
                     }
                 }
