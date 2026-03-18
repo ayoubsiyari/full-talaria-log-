@@ -1434,8 +1434,14 @@ class VerticalLineTool extends BaseDrawing {
         const leftX = Math.min(xRange[0], xRange[1]);
         const rightX = Math.max(xRange[0], xRange[1]);
 
-        // Horizontal offset from line
-        const horizontalOffset = 10;
+        // Horizontal offset from line.
+        // When text is rotated 90° its rendered height (lineHeight) becomes its
+        // horizontal extent, so the offset must be at least lineHeight/2 + padding
+        // to keep the text clear of the vertical line for any font size.
+        const textLineHeight = fontSize * 1.2;
+        const horizontalOffset = rotation !== 0
+            ? Math.ceil(textLineHeight / 2) + 6
+            : 10;
         
         // Get Y range bounds
         const topY = Math.min(yRange[0], yRange[1]);
