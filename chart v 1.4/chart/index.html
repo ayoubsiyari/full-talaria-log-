@@ -27903,34 +27903,39 @@ P['alerts']={
 /* ── Help ── */
 P['help']={
     build:function(){
-        var _sbar='width:130px;min-width:130px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;overflow-y:auto;';
         var navDefs=[
-            {k:'contact',lbl:'Contact',svg:'<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>'},
-            {k:'shortcuts',lbl:'Shortcuts',svg:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/>'},
-            {k:'faq',lbl:'FAQ',svg:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/>'},
-            {k:'education',lbl:'Education',svg:'<path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/>'},
+            {k:'contact',lbl:'Contact'},
+            {k:'shortcuts',lbl:'Shortcuts'},
+            {k:'faq',lbl:'FAQ'},
+            {k:'education',lbl:'Education'},
             null,
-            {k:'changelog',lbl:'Changelog',svg:'<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'}
+            {k:'changelog',lbl:'Changelog'}
         ];
+        var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         var nav=navDefs.map(function(d,i){
-            if(!d)return'<div class="sp-nav-divider"></div>';
-            return'<div class="sp-nav-item'+(i===0?' active':'')+'" data-sp-help="'+d.k+'" style="cursor:pointer;">'
-                +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">'+d.svg+'</svg>'
-                +'<span>'+d.lbl+'</span></div>';
+            if(!d)return'<div style="width:1px;height:18px;background:rgba(255,255,255,0.08);flex-shrink:0;align-self:center;margin:0 4px;"></div>';
+            return'<div class="sp-nav-item'+(i===0?' active':'')+'" data-sp-help="'+d.k+'"><span>'+d.lbl+'</span></div>';
         }).join('');
-        return '<div class="sp-embedded" id="spHelpLayout" style="display:flex;height:100%;">'
-            +'<div style="'+_sbar+'"><nav class="sp-nav" id="spHelpNav">'+nav+'</nav>'
-            +'<div class="side-panel-footer" style="margin-top:auto;">v1.5.0</div></div>'
+        return '<div class="sp-embedded" id="spHelpLayout" style="display:flex;flex-direction:column;height:100%;">'
+            +'<div style="display:flex;align-items:stretch;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<nav id="spHelpNav" style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'+nav+'</nav>'
+            +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
+            +'<span style="font-size:11px;color:#787b86;">v1.5.0</span>'
+            +'<button id="spHelpClose" class="sp-close-btn">'+closeIcon+'</button>'
+            +'</div></div>'
             +'<div id="spHelpContent" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'
             +'</div>';
     },
     wire:function(){
         var layout=document.getElementById('spHelpLayout'); if(!layout)return;
         var content=document.getElementById('spHelpContent'); if(!content)return;
+        var hdr=document.querySelector('#settingsPanel .sp-content-header');
+        if(hdr)hdr.style.display='none';
+        var closeBtn=document.getElementById('spHelpClose');
+        if(closeBtn)closeBtn.addEventListener('click',function(e){e.stopPropagation();if(typeof closePanel==='function')closePanel();});
         function hLoad(key){
-            if(typeof _helpLoad==='function'&&typeof _helpSections!=='undefined'){
+            if(typeof _helpSections!=='undefined'){
                 var s=_helpSections[key]; if(!s)return;
-                var titleEl=document.getElementById('spContentTitle'); if(titleEl)titleEl.textContent=s.title;
                 content.innerHTML=s.html;
                 if(key==='shortcuts'){var tb=content.querySelector('#kbShortcutsBody');if(tb){var rows=[['Ctrl/Cmd + Z','Undo'],['Ctrl/Cmd + Y','Redo'],['Ctrl/Cmd + S','Save'],['Alt + T','Toggle theme'],['F','Fit to view'],['R','Replay mode'],['Delete','Remove selected'],['Esc','Cancel / deselect'],['+ / -','Zoom in / out']];tb.innerHTML=rows.map(function(r){return'<tr><td style="padding:8px 12px;color:#d1d4dc;border-bottom:1px solid rgba(255,255,255,0.05);"><kbd style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:2px 7px;font-size:11px;font-family:monospace;">'+r[0]+'</kbd></td><td style="padding:8px 12px;color:#787b86;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05);">'+r[1]+'</td></tr>';}).join('');}}
                 if(key==='faq'){var fb=content.querySelector('#helpFaqBody');if(fb){var faqs=[['What file formats are supported?','CSV files with OHLCV data. Columns: timestamp, open, high, low, close, volume.'],['How do I take a screenshot?','Click the camera icon in the toolbar.'],['Can I use custom indicators?','Yes — open the Indicators panel and add from the list.'],['How do I save my drawings?','Drawings are saved automatically and synced to your account.']];fb.innerHTML=faqs.map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');}}
@@ -28123,6 +28128,7 @@ P['profile']={
 
 /* ── DOM wiring ── */
 function loadSection(type){
+    var _hdr=document.querySelector('#settingsPanel .sp-content-header');if(_hdr)_hdr.style.display='';
     var titles={template:'Templates',symbol:'Chart',statusline:'Status line',scales:'Scales and lines',canvas:'Appearance',trading:'Trading',general:'Symbol',chart:'Scales and lines',project:'Trading',leverage:'Trading',commissions:'Trading',alerts:'Alerts',help:'Help',profile:'Profile',globalmarket:'Global Markets',objecttree:'Object Tree',panellayout:'Panel Layouts'};
     var titleEl=document.getElementById('spContentTitle');
     if(titleEl)titleEl.textContent=titles[type]||type;
