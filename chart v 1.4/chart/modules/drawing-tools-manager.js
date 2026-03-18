@@ -3,7 +3,7 @@
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
  * 
- * @version 1.5.8
+ * @version 1.5.9
  * @updated 2026-03-18
  * @changelog
  *   - Fixed: Magnet mode now disabled when resizing shapes - allows free resizing outside chart area
