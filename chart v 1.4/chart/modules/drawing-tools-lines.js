@@ -563,8 +563,13 @@ class TrendlineTool extends BaseDrawing {
         // Two perpendicular unit vectors (CCW and CW 90°)
         const pAx = -uy, pAy = ux;
         const pBx =  uy, pBy = -ux;
-        // Prefer the direction that points more upward (smaller y in screen space)
-        const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
+        // upward perp = smaller y; downward = opposite
+        const upPerp   = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
+        const downPerp = (pAy <= pBy) ? { x: pBx, y: pBy } : { x: pAx, y: pAy };
+        // If a text label is present it occupies the above-line side at the midpoint;
+        // send the info box to the below-line side at p2 to avoid overlap at any font size.
+        const hasTextLabel = !!(this.text && this.text.trim());
+        const perp = hasTextLabel ? downPerp : upPerp;
         // Gap = rectangle support function in perp direction + clearance
         // This ensures no corner of the axis-aligned box touches the line at any angle
         const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
