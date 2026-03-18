@@ -2707,15 +2707,17 @@
         #settingsPanel .sp-nav-item svg { display: none; }
 
         /* Help panel – horizontal top tab bar (same pattern as settingsPanel) */
-        #helpPanel .sp-sidebar { width: auto; min-width: auto; border-right: none; border-bottom: 1px solid var(--sp-border); flex-direction: row; align-items: stretch; }
+        #helpPanel { flex-direction: column; }
+        #helpPanel .sp-sidebar { width: 100%; min-width: unset; height: auto; border-right: none; border-bottom: 1px solid var(--sp-border, rgba(255,255,255,0.08)); flex-direction: row; align-items: stretch; flex-shrink: 0; }
         #helpPanel .sp-sidebar-header { display: none; }
         #helpPanel .sp-nav { padding: 0 8px; flex-direction: row; gap: 0; align-items: stretch; flex: 1; overflow-x: auto; }
         #helpPanel .sp-nav-item { padding: 0 16px; border-radius: 0; white-space: nowrap; border-bottom: 2px solid transparent; min-height: 42px; font-size: 13px; gap: 6px; transition: background 0.15s, color 0.15s, border-color 0.15s; }
         #helpPanel .sp-nav-item:hover { background: rgba(255,255,255,0.04); border-bottom-color: rgba(var(--sp-accent-rgb),0.4); }
         #helpPanel .sp-nav-item.active { background: transparent; border-bottom: 2px solid var(--sp-accent, #2962ff); color: var(--sp-text-active, #fff); }
         #helpPanel .sp-nav-item svg { display: none; }
+        #helpPanel .sp-content-wrap { flex: 1; min-height: 0; }
         #helpPanel .sp-content-header { display: none; }
-        #helpPanel .sp-content-body { padding-top: 20px; }
+        #helpPanel .sp-content-body { padding: 20px 24px; }
 
         /* Settings mode: hide items that have dedicated toolbar buttons */
         #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="alerts"],
