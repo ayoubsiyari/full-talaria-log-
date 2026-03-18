@@ -565,8 +565,9 @@ class TrendlineTool extends BaseDrawing {
         const pBx =  uy, pBy = -ux;
         // Prefer the direction that points more upward (smaller y in screen space)
         const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
-        // Gap = half box height + 4px clearance from line
-        const gap = boxHeight / 2 + 4;
+        // Gap = rectangle support function in perp direction + clearance
+        // This ensures no corner of the axis-aligned box touches the line at any angle
+        const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
         const midX = (x1 + x2) / 2;
         const midY = (y1 + y2) / 2;
         let boxX = midX + perp.x * gap - boxWidth / 2;
