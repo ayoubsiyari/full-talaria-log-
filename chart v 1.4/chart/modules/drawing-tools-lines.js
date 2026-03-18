@@ -1680,7 +1680,12 @@ class RayTool extends BaseDrawing {
             const textWidth = textBBox.width;
             tempText.remove();
 
-            // Use left→right ordered coords for angle (same as ExtendedLineTool leftX/rightX)
+            // Use original data point screen coords for text anchor (same as ExtendedLineTool)
+            const origLX = x1Screen <= x2Screen ? x1Screen : x2Screen;
+            const origLY = x1Screen <= x2Screen ? y1Screen : y2Screen;
+            const origRX = x1Screen <= x2Screen ? x2Screen : x1Screen;
+            const origRY = x1Screen <= x2Screen ? y2Screen : y1Screen;
+            // Keep visible coords for angle computation (direction of rendered segment)
             const slvX = visX1 <= visX2 ? visX1 : visX2;
             const slvY = visX1 <= visX2 ? visY1 : visY2;
             const srvX = visX1 <= visX2 ? visX2 : visX1;
@@ -1703,16 +1708,16 @@ class RayTool extends BaseDrawing {
             let rawTextX, rawTextY;
             switch (textHAlign) {
                 case 'left':
-                    rawTextX = slvX + vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = slvY + vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = origLX + vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = origLY + vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 case 'right':
-                    rawTextX = srvX - vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = srvY - vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = origRX - vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = origRY - vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 default:
-                    rawTextX = (slvX + srvX) / 2;
-                    rawTextY = (slvY + srvY) / 2;
+                    rawTextX = (origLX + origRX) / 2;
+                    rawTextY = (origLY + origRY) / 2;
             }
             // Compute gap in the FULL line's parametric space (x1Screen→extendedX)
             // so the drawn segments align with the gap position
@@ -1785,17 +1790,12 @@ class RayTool extends BaseDrawing {
                 .style('pointer-events', 'none').style('cursor', 'move');
         }
 
-        // Pass in visual left→right order (same as ExtendedLineTool leftX/rightX)
-        // so the flip/perp logic in renderTextLabel works correctly
-        const rl_x1 = visX1 <= visX2 ? visX1 : visX2;
-        const rl_y1 = visX1 <= visX2 ? visY1 : visY2;
-        const rl_x2 = visX1 <= visX2 ? visX2 : visX1;
-        const rl_y2 = visX1 <= visX2 ? visY2 : visY1;
+        // Pass original data point screen coords (same as ExtendedLineTool)
         this.renderTextLabel({
-            x1: rl_x1,
-            y1: rl_y1,
-            x2: rl_x2,
-            y2: rl_y2,
+            x1: x1Screen,
+            y1: y1Screen,
+            x2: x2Screen,
+            y2: y2Screen,
             chartBottomY: yRange[0],
             chartTopY: yRange[1]
         });
