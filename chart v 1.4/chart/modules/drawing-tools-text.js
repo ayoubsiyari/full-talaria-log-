@@ -1144,50 +1144,8 @@ class NoteTool extends BaseDrawing {
             catch(e) { return (str || '').length * scaledFontSize * 0.6; }
         };
 
-        // Word-wrap: split text into lines that fit within noteMaxWidth - padding*2
-        const breakLongWord = (word, innerWidth) => {
-            const parts = [];
-            let chunk = '';
-            for (let i = 0; i < word.length; i++) {
-                const test = chunk + word[i];
-                if (measureWidth(test) > innerWidth && chunk) { parts.push(chunk); chunk = word[i]; }
-                else { chunk = test; }
-            }
-            if (chunk) parts.push(chunk);
-            return parts.length ? parts : [word];
-        };
-        const wrapText = (rawText, innerWidth) => {
-            const result = [];
-            const rawLines = (rawText || 'Add text').split('\n');
-            rawLines.forEach(rawLine => {
-                if (rawLine === '') { result.push(''); return; }
-                const words = rawLine.split(' ');
-                let current = '';
-                words.forEach(word => {
-                    if (measureWidth(word) > innerWidth) {
-                        if (current) { result.push(current); current = ''; }
-                        const parts = breakLongWord(word, innerWidth);
-                        parts.forEach((part, i) => {
-                            if (i < parts.length - 1) result.push(part);
-                            else current = part;
-                        });
-                        return;
-                    }
-                    const test = current ? current + ' ' + word : word;
-                    if (measureWidth(test) > innerWidth && current !== '') {
-                        result.push(current);
-                        current = word;
-                    } else {
-                        current = test;
-                    }
-                });
-                if (current) result.push(current);
-            });
-            return result.length ? result : [''];
-        };
-
-        const innerWidth = noteMaxWidth - padding * 2;
-        const wrappedLines = wrapText(this.text, innerWidth);
+        // Split only on explicit newlines — no auto word-wrap
+        const wrappedLines = (this.text || 'Add text').split('\n');
         const lineHeight = scaledFontSize * 1.3;
         const totalTextHeight = wrappedLines.length * lineHeight;
 
@@ -1198,7 +1156,7 @@ class NoteTool extends BaseDrawing {
             if (w > maxLineWidth) maxLineWidth = w;
         });
 
-        const boxWidth = Math.min(Math.max(maxLineWidth + padding * 2, 60), noteMaxWidth);
+        const boxWidth = Math.max(maxLineWidth + padding * 2, 60);
         const boxHeight = totalTextHeight + padding * 2;
 
         // Position box to the right of endpoint
@@ -1274,7 +1232,7 @@ class NoteTool extends BaseDrawing {
                         fontWeight: self.style.fontWeight || 'normal',
                         color: self.style.textColor,
                         textAlign: 'left',
-                        maxWidth: self.style.maxWidth || 260,
+                        noWrap: true,
                         hideSelector: `.drawing[data-id="${self.id}"] text`,
                         onInput: (newText) => {
                             self.setText((newText || '').replace(/\r\n/g, '\n'));
@@ -2179,52 +2137,20 @@ class CalloutTool extends BaseDrawing {
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
         };
 
-        // Word-wrap text to fit within maxBubbleWidth - padding*2
-        const innerW = maxBubbleWidth - padding * 2;
-        const breakWord = (word) => {
-            const chars = [];
-            let chunk = '';
-            for (let i = 0; i < word.length; i++) {
-                const test = chunk + word[i];
-                if (measureW(test) > innerW && chunk) { chars.push(chunk); chunk = word[i]; }
-                else { chunk = test; }
-            }
-            if (chunk) chars.push(chunk);
-            return chars.length ? chars : [word];
-        };
+        // Split only on explicit newlines — no auto word-wrap
         const calloutWrapLines = (rawText) => {
-            const result = [];
-            (rawText || 'Add text').split('\n').forEach(rawLine => {
-                if (!rawLine) { result.push(''); return; }
-                const words = rawLine.split(' ');
-                let cur = '';
-                words.forEach(word => {
-                    if (measureW(word) > innerW) {
-                        if (cur) { result.push(cur); cur = ''; }
-                        const broken = breakWord(word);
-                        broken.forEach((part, i) => {
-                            if (i < broken.length - 1) result.push(part);
-                            else cur = part;
-                        });
-                        return;
-                    }
-                    const test = cur ? cur + ' ' + word : word;
-                    if (measureW(test) > innerW && cur) { result.push(cur); cur = word; }
-                    else { cur = test; }
-                });
-                if (cur) result.push(cur);
-            });
-            return result.length ? result : [''];
+            const lines = (rawText || 'Add text').split('\n');
+            return lines.length ? lines : [''];
         };
 
         const wrappedLines = calloutWrapLines(this.text);
         const lineHeight = this.style.fontSize * 1.3;
 
-        // Measure actual max line width (capped)
+        // Measure actual max line width (no cap — box grows with text)
         let maxLineW = 40;
         wrappedLines.forEach(l => { const w = measureW(l || ' '); if (w > maxLineW) maxLineW = w; });
 
-        const bubbleWidth = Math.min(Math.max(maxLineW + padding * 2, minWidth), maxBubbleWidth);
+        const bubbleWidth = Math.max(maxLineW + padding * 2, minWidth);
         const bubbleHeight = Math.max(wrappedLines.length * lineHeight + padding * 2, minHeight);
 
         // Bubble positioned at second point (left-aligned, vertically centered)
@@ -2395,6 +2321,7 @@ class CalloutTool extends BaseDrawing {
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
+                    noWrap: true,
                     maxWidth: self.style.maxWidth || 280,
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {
@@ -2692,6 +2619,7 @@ class CommentTool extends BaseDrawing {
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
+                    noWrap: true,
                     maxWidth: self.style.maxWidth || 280,
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {

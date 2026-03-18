@@ -16483,15 +16483,16 @@ class InlineTextEditor {
                 .style('margin', '0')
                 .style('box-shadow', 'none');
 
+            const _noWrap = opts.noWrap === true;
             const contentEl = this.editor.append('div')
                 .attr('contenteditable', 'true')
                 .attr('spellcheck', 'false')
                 .style('min-width', '4px')
-                .style('max-width', `${maxWidth}px`)
+                .style('max-width', _noWrap ? 'none' : `${maxWidth}px`)
                 .style('outline', 'none')
-                .style('white-space', 'pre-wrap')
-                .style('word-break', 'break-word')
-                .style('overflow-wrap', 'break-word')
+                .style('white-space', _noWrap ? 'pre' : 'pre-wrap')
+                .style('word-break', _noWrap ? 'normal' : 'break-word')
+                .style('overflow-wrap', _noWrap ? 'normal' : 'break-word')
                 .style('color', color)
                 .style('font-size', fontSize)
                 .style('font-family', fontFamily)
