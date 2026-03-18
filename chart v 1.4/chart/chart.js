@@ -1640,6 +1640,16 @@ class Chart {
     }
     
     async loadSavedSettings() {
+        // Restore active template selections from dedicated key (fastest, most reliable path)
+        try {
+            const _tplSel = JSON.parse(localStorage.getItem('chart_active_tpl') || 'null');
+            if (_tplSel) {
+                if (_tplSel.full)      { this._lastTemplateSelected   = _tplSel.full;      this.chartSettings.activeFullTemplate       = _tplSel.full; }
+                if (_tplSel.chartOnly) { this._lastChartOnlyTemplate  = _tplSel.chartOnly; this.chartSettings.activeChartOnlyTemplate  = _tplSel.chartOnly; }
+                if (_tplSel.panelOnly) { this._lastPanelOnlyTemplate  = _tplSel.panelOnly; this.chartSettings.activePanelOnlyTemplate  = _tplSel.panelOnly; }
+            }
+        } catch(e) {}
+
         // Apply localStorage settings immediately (non-blocking) so the chart
         // renders on the first frame without waiting for the API network call.
         try {
@@ -3586,6 +3596,7 @@ class Chart {
                     self.chartSettings.activeFullTemplate = null;
                     self.chartSettings.activeChartOnlyTemplate = null;
                     self.chartSettings.activePanelOnlyTemplate = null;
+                    try { localStorage.removeItem('chart_active_tpl'); } catch(e) {}
                     d3.selectAll('.template-selector').property('value', '');
                     if (typeof self.saveSettings === 'function') self.saveSettings();
                     if (typeof self._updateThemePreview === 'function' && self._themePreviewChartSettings) {
@@ -4048,6 +4059,7 @@ class Chart {
                     this.chartSettings.activeFullTemplate = null;
                     this.chartSettings.activeChartOnlyTemplate = null;
                     this.chartSettings.activePanelOnlyTemplate = null;
+                    try { localStorage.removeItem('chart_active_tpl'); } catch(e) {}
                 });
             });
         }
@@ -5051,6 +5063,7 @@ class Chart {
 
         this._lastTemplateSelected = resolvedName;
         this.chartSettings.activeFullTemplate = resolvedName;
+        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: resolvedName, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
 
         // Apply all template settings to chartSettings
         Object.keys(template).forEach(key => {
@@ -5088,6 +5101,7 @@ class Chart {
         if (!template) return;
         this._lastChartOnlyTemplate = templateName;
         this.chartSettings.activeChartOnlyTemplate = templateName;
+        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || null, chartOnly: templateName, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
         Object.keys(template).forEach(key => {
             if (key !== 'name' && !PANEL_KEYS.has(key)) {
                 this.chartSettings[key] = template[key];
@@ -5115,6 +5129,7 @@ class Chart {
         if (!template) return;
         this._lastPanelOnlyTemplate = templateName;
         this.chartSettings.activePanelOnlyTemplate = templateName;
+        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
         PANEL_KEYS.forEach(key => {
             if (template[key] !== undefined) {
                 this.chartSettings[key] = template[key];
@@ -5157,6 +5172,7 @@ class Chart {
         this._lastTemplateSelected = null;
         this._lastChartOnlyTemplate = null;
         this._lastPanelOnlyTemplate = null;
+        try { localStorage.removeItem('chart_active_tpl'); } catch(e) {}
         try {
             localStorage.removeItem('chartSettings');
         } catch (e) {
