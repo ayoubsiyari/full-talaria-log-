@@ -563,19 +563,14 @@ class TrendlineTool extends BaseDrawing {
         // Two perpendicular unit vectors (CCW and CW 90°)
         const pAx = -uy, pAy = ux;
         const pBx =  uy, pBy = -ux;
-        // If a text label is also shown, send the info box to the opposite side (below)
-        // so the text keeps its natural position above the line without overlap.
-        const hasTextLabel = !!(this.text && this.text.trim());
-        const upPerp   = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
-        const downPerp = (pAy <= pBy) ? { x: pBx, y: pBy } : { x: pAx, y: pAy };
-        const perp = hasTextLabel ? downPerp : upPerp;
+        // Prefer the direction that points more upward (smaller y in screen space)
+        const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
         // Gap = rectangle support function in perp direction + clearance
         // This ensures no corner of the axis-aligned box touches the line at any angle
         const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
-        let boxX = midX + perp.x * gap - boxWidth / 2;
-        let boxY = midY + perp.y * gap - boxHeight / 2;
+        // Anchor at p2 (endpoint), offset perpendicular — same pattern as arrow tool label
+        let boxX = x2 + perp.x * gap - boxWidth / 2;
+        let boxY = y2 + perp.y * gap - boxHeight / 2;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
