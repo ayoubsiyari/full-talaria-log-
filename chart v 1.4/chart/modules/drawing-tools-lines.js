@@ -750,12 +750,16 @@ class TrendlineTool extends BaseDrawing {
         const perpY = Math.cos(angleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
+        // When the info box is active it occupies the "above-line" side;
+        // push the text label to the opposite side to prevent overlap.
+        const infoBoxActive = !!(this.style.infoSettings && this.style.infoSettings.showInfo);
+        const infoFlip = infoBoxActive ? -1 : 1;
         if (textVAlign === 'top') {
-            baseX += perpX * verticalOffset * signUp;
-            baseY += perpY * verticalOffset * signUp;
+            baseX += perpX * verticalOffset * signUp * infoFlip;
+            baseY += perpY * verticalOffset * signUp * infoFlip;
         } else if (textVAlign === 'bottom') {
-            baseX -= perpX * verticalOffset * signUp;
-            baseY -= perpY * verticalOffset * signUp;
+            baseX -= perpX * verticalOffset * signUp * infoFlip;
+            baseY -= perpY * verticalOffset * signUp * infoFlip;
         }
 
         // Don't render if text position is outside the visible chart area
