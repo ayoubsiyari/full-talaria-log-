@@ -1131,16 +1131,13 @@ class NoteTool extends BaseDrawing {
         const padding = 6;
         const noteMaxWidth = this.style.maxWidth || 260;
 
-        // Helper: measure single-line text width
+        // Helper: measure single-line text width via canvas (reliable, no DOM dependency)
+        const _nCanvas = document.createElement('canvas');
+        const _nCtx = _nCanvas.getContext('2d');
+        _nCtx.font = `${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Arial, sans-serif'}`;
         const measureWidth = (str) => {
-            const t = container.append('text')
-                .attr('font-size', `${scaledFontSize}px`)
-                .attr('font-family', this.style.fontFamily)
-                .text(str);
-            let w = 60;
-            try { w = t.node().getBBox().width; } catch(e) {}
-            t.remove();
-            return w;
+            try { return _nCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
+            catch(e) { return (str || '').length * scaledFontSize * 0.6; }
         };
 
         // Word-wrap: split text into lines that fit within noteMaxWidth - padding*2
@@ -2156,11 +2153,16 @@ class CalloutTool extends BaseDrawing {
         const cornerRadius = 8;
         const maxBubbleWidth = this.style.maxWidth || 280;
 
-        // Helper: measure single line width
+        // Helper: measure single line width via canvas (reliable, no DOM dependency)
+        const _cFontSize = this.style.fontSize || 14;
+        const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
+        const _cFontWeight = this.style.fontWeight || 'normal';
+        const _measCanvas = document.createElement('canvas');
+        const _measCtx = _measCanvas.getContext('2d');
+        _measCtx.font = `${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
         const measureW = (str) => {
-            const t = container.append('text').attr('font-size', `${this.style.fontSize}px`).text(str);
-            let w = 40; try { w = t.node().getBBox().width; } catch(e) {}
-            t.remove(); return w;
+            try { return _measCtx.measureText(str || '').width || (str.length * _cFontSize * 0.6); }
+            catch(e) { return (str || '').length * _cFontSize * 0.6; }
         };
 
         // Word-wrap text to fit within maxBubbleWidth - padding*2
