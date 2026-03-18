@@ -4581,7 +4581,16 @@ class DrawingToolsManager {
             fontWeight: drawing.style.fontWeight || 'normal',
             color: drawing.style.textColor || '#FFFFFF',
             textAlign: drawing.style.textAlign || 'left',
-            hideSelector: `.drawing[data-id="${drawing.id}"] text`
+            noWrap: true,
+            hideSelector: `.drawing[data-id="${drawing.id}"] text`,
+            onInput: (newText) => {
+                drawing.setText((newText || '').replace(/\r\n/g, '\n'));
+                if (typeof drawing._updateCommentBubble === 'function') {
+                    drawing._updateCommentBubble();
+                } else if (drawing._lastContainer && drawing._lastScales) {
+                    drawing.render(drawing._lastContainer, drawing._lastScales);
+                }
+            }
         };
 
         // Prefer the SVG <text> element for pixel-perfect inline positioning
