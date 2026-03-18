@@ -2691,19 +2691,23 @@
             flex-shrink: 0;
         }
         #settingsPanel .sp-sidebar-header { display: none; }
-        #settingsPanel .sp-nav { padding: 0 8px; flex-direction: row; gap: 0; align-items: stretch; flex: 1; overflow-x: auto; }
+        #settingsPanel .sp-nav { padding: 8px; flex-direction: row; gap: 6px; align-items: center; flex: 1; overflow-x: auto; }
         #settingsPanel .sp-nav-item {
-            padding: 0 16px;
-            border-radius: 0;
+            padding: 0 14px;
+            border-radius: 8px;
             white-space: nowrap;
-            border-bottom: 2px solid transparent;
-            height: 44px;
+            height: 28px;
             flex-shrink: 0;
-            gap: 6px;
-            transition: background 0.15s, color 0.15s, border-color 0.15s;
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(209,212,220,0.65);
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer;
+            transition: all 0.18s ease;
         }
-        #settingsPanel .sp-nav-item:hover { background: rgba(255,255,255,0.04); border-bottom-color: rgba(var(--sp-accent-rgb),0.4); }
-        #settingsPanel .sp-nav-item.active { background: transparent; border-bottom: 2px solid var(--sp-accent, #2962ff); color: var(--sp-text-active, #fff); }
+        #settingsPanel .sp-nav-item:hover { color: #d1d4dc; border-color: rgba(var(--sp-accent-rgb,41,98,255),0.9); background: rgba(var(--sp-accent-rgb,41,98,255),0.18); box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb,41,98,255),0.14); }
+        #settingsPanel .sp-nav-item.active { background: linear-gradient(135deg,rgba(var(--sp-accent-rgb,41,98,255),0.55),rgba(var(--sp-accent-rgb,41,98,255),0.30)); border-color: rgba(var(--sp-accent-rgb,41,98,255),0.9); color: #fff; box-shadow: 0 6px 14px rgba(var(--sp-accent-rgb,41,98,255),0.14); }
         #settingsPanel .sp-nav-item svg { display: none; }
 
         /* Embedded panel pill-button tabs (help, profile, objecttree, globalmarket) */
