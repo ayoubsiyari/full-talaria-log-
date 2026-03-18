@@ -563,8 +563,12 @@ class TrendlineTool extends BaseDrawing {
         // Two perpendicular unit vectors (CCW and CW 90°)
         const pAx = -uy, pAy = ux;
         const pBx =  uy, pBy = -ux;
-        // Prefer the direction that points more upward (smaller y in screen space)
-        const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
+        // If a text label is also shown, send the info box to the opposite side (below)
+        // so the text keeps its natural position above the line without overlap.
+        const hasTextLabel = !!(this.text && this.text.trim());
+        const upPerp   = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
+        const downPerp = (pAy <= pBy) ? { x: pBx, y: pBy } : { x: pAx, y: pAy };
+        const perp = hasTextLabel ? downPerp : upPerp;
         // Gap = rectangle support function in perp direction + clearance
         // This ensures no corner of the axis-aligned box touches the line at any angle
         const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
@@ -750,16 +754,12 @@ class TrendlineTool extends BaseDrawing {
         const perpY = Math.cos(angleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
-        // When the info box is active it occupies the "above-line" side;
-        // push the text label to the opposite side to prevent overlap.
-        const infoBoxActive = !!(this.style.infoSettings && this.style.infoSettings.showInfo);
-        const infoFlip = infoBoxActive ? -1 : 1;
         if (textVAlign === 'top') {
-            baseX += perpX * verticalOffset * signUp * infoFlip;
-            baseY += perpY * verticalOffset * signUp * infoFlip;
+            baseX += perpX * verticalOffset * signUp;
+            baseY += perpY * verticalOffset * signUp;
         } else if (textVAlign === 'bottom') {
-            baseX -= perpX * verticalOffset * signUp * infoFlip;
-            baseY -= perpY * verticalOffset * signUp * infoFlip;
+            baseX -= perpX * verticalOffset * signUp;
+            baseY -= perpY * verticalOffset * signUp;
         }
 
         // Don't render if text position is outside the visible chart area
