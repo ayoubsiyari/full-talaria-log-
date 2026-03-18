@@ -2738,7 +2738,7 @@
         #helpPanel { flex-direction: column; }
         #helpPanel .sp-sidebar { width: 100%; min-width: unset; height: auto; border-right: none; border-bottom: 1px solid var(--sp-border, rgba(255,255,255,0.08)); flex-direction: row; align-items: stretch; flex-shrink: 0; }
         #helpPanel .sp-sidebar-header { display: none; }
-        #helpPanel .sp-nav { padding: 0 8px; flex-direction: row; gap: 0; align-items: stretch; flex: 1; overflow-x: auto; }
+        #helpPanel .sp-nav { padding: 0 8px; flex-direction: row; gap: 0; align-items: stretch; justify-content: center; flex: 1; overflow-x: auto; }
         #helpPanel .sp-nav-item { padding: 0 16px; border-radius: 0; white-space: nowrap; border-bottom: 2px solid transparent; min-height: 42px; font-size: 13px; gap: 6px; transition: background 0.15s, color 0.15s, border-color 0.15s; }
         #helpPanel .sp-nav-item:hover { background: rgba(255,255,255,0.04); border-bottom-color: rgba(var(--sp-accent-rgb),0.4); }
         #helpPanel .sp-nav-item.active { background: transparent; border-bottom: 2px solid var(--sp-accent, #2962ff); color: var(--sp-text-active, #fff); }
@@ -27696,7 +27696,7 @@ P['objecttree']={
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         return '<div class="sp-embedded" style="display:flex;flex-direction:column;height:100%;">'
             +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;">'
+            +'<nav style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;justify-content:center;">'
             +'<div class="sp-panel-tab active" id="ot_nav_drawings" style="cursor:pointer;"><span>Drawings</span></div>'
             +'<div class="sp-panel-tab" id="ot_nav_indicators" style="cursor:pointer;"><span>Indicators</span></div>'
             +'<div class="sp-panel-tab" id="ot_nav_orders" style="cursor:pointer;"><span>Orders</span></div>'
@@ -27889,7 +27889,7 @@ P['globalmarket']={
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         return '<div class="sp-embedded" style="display:flex;flex-direction:column;height:100%;">'
             +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;">'
+            +'<nav style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;justify-content:center;">'
             +'<div class="sp-panel-tab active" id="gm_nav_watchlist" style="cursor:pointer;"><span>Watchlist</span></div>'
             +'<div class="sp-panel-tab" id="gm_nav_news" style="cursor:pointer;"><span>News</span></div>'
             +'</nav>'
@@ -27978,7 +27978,7 @@ P['help']={
         }).join('');
         return '<div class="sp-embedded" id="spHelpLayout" style="display:flex;flex-direction:column;height:100%;">'
             +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav id="spHelpNav" style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;">'+nav+'</nav>'
+            +'<nav id="spHelpNav" style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;justify-content:center;">'+nav+'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
             +'<button id="spHelpClose" class="sp-close-btn">'+closeIcon+'</button>'
             +'</div></div>'
@@ -28028,7 +28028,7 @@ P['profile']={
         }).join('');
         return '<div class="sp-embedded" id="spProfileLayout" style="display:flex;flex-direction:column;height:100%;">'
             +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav id="spProfileNavInner" style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;">'+nav+'</nav>'
+            +'<nav id="spProfileNavInner" style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;justify-content:center;">'+nav+'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
             +'<button id="spProfileClose" class="sp-close-btn">'+closeIcon+'</button>'
             +'</div></div>'

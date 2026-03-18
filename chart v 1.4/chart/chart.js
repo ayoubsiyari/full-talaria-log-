@@ -1793,38 +1793,45 @@ class Chart {
     }
     
     showNotification(message) {
-        // Create notification element
-        const notification = d3.select('body').append('div')
-            .attr('class', 'chart-notification')
-            .style('position', 'fixed')
-            .style('top', '20px')
-            .style('right', '20px')
-            .style('background', 'rgba(41, 98, 255, 0.95)')
-            .style('color', 'white')
-            .style('padding', '12px 20px')
-            .style('border-radius', '6px')
-            .style('font-size', '14px')
-            .style('font-weight', '600')
-            .style('box-shadow', '0 4px 12px rgba(0, 0, 0, 0.3)')
-            .style('z-index', '3000')
-            .style('opacity', '0')
-            .style('transform', 'translateY(-10px)')
-            .style('transition', 'all 0.3s ease')
-            .text(message);
-        
-        // Animate in
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+        const el = document.createElement('div');
+        el.className = 'chart-notification';
+        el.style.cssText = [
+            'position:fixed',
+            'top:18px',
+            'right:22px',
+            'display:flex',
+            'align-items:center',
+            'gap:10px',
+            'padding:11px 18px',
+            'border-radius:10px',
+            'font-size:13px',
+            'font-weight:600',
+            'color:#fff',
+            'background:' + accent,
+            'box-shadow:0 8px 28px rgba(0,0,0,0.45),0 0 0 1px rgba(255,255,255,0.10)',
+            'backdrop-filter:blur(8px)',
+            '-webkit-backdrop-filter:blur(8px)',
+            'z-index:2147483647',
+            'opacity:0',
+            'transform:translateY(-8px) scale(0.97)',
+            'transition:opacity 0.22s ease,transform 0.22s ease',
+            'pointer-events:none',
+            'max-width:340px',
+            'white-space:nowrap',
+            'overflow:hidden',
+            'text-overflow:ellipsis'
+        ].join(';');
+        el.textContent = message;
+        document.body.appendChild(el);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0) scale(1)';
+        }));
         setTimeout(() => {
-            notification
-                .style('opacity', '1')
-                .style('transform', 'translateY(0)');
-        }, 10);
-        
-        // Remove after 3 seconds
-        setTimeout(() => {
-            notification
-                .style('opacity', '0')
-                .style('transform', 'translateY(-10px)');
-            setTimeout(() => notification.remove(), 300);
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(-8px) scale(0.97)';
+            setTimeout(() => el.remove(), 260);
         }, 3000);
     }
     

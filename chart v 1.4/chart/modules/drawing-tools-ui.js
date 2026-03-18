@@ -12329,23 +12329,45 @@ applyTemplate(drawing, templateId, modal) {
     }
 
     showNotification(message) {
-        const notification = document.createElement('div');
-        notification.style.cssText = `
-            position: fixed;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #2a2e39;
-            color: #d1d4dc;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-size: 13px;
-            z-index: 10010;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        `;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-        setTimeout(() => notification.remove(), 2000);
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+        const el = document.createElement('div');
+        el.style.cssText = [
+            'position:fixed',
+            'top:18px',
+            'right:22px',
+            'display:flex',
+            'align-items:center',
+            'gap:10px',
+            'padding:11px 18px',
+            'border-radius:10px',
+            'font-size:13px',
+            'font-weight:600',
+            'color:#fff',
+            'background:' + accent,
+            'box-shadow:0 8px 28px rgba(0,0,0,0.45),0 0 0 1px rgba(255,255,255,0.10)',
+            'backdrop-filter:blur(8px)',
+            '-webkit-backdrop-filter:blur(8px)',
+            'z-index:2147483647',
+            'opacity:0',
+            'transform:translateY(-8px) scale(0.97)',
+            'transition:opacity 0.22s ease,transform 0.22s ease',
+            'pointer-events:none',
+            'max-width:340px',
+            'white-space:nowrap',
+            'overflow:hidden',
+            'text-overflow:ellipsis'
+        ].join(';');
+        el.textContent = message;
+        document.body.appendChild(el);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0) scale(1)';
+        }));
+        setTimeout(() => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(-8px) scale(0.97)';
+            setTimeout(() => el.remove(), 260);
+        }, 2500);
     }
 
     /**
