@@ -59,43 +59,51 @@ class ImageTool extends BaseDrawing {
         }
 
         const point = this.points[0];
-        const x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
-            ? scales.chart.dataIndexToPixel(point.x)
-            : scales.xScale(point.x);
-        const y = scales.yScale(point.y);
+        const isPlaceholder = !this.style.imageUrl;
+
+        let x, y;
+        let width = this.style.width || 100;
+        let height = this.style.height || 100;
+
+        if (isPlaceholder) {
+            // Fixed size, always centered on the visible chart area — ignores zoom/pan
+            const xRange = scales.xScale && scales.xScale.range ? scales.xScale.range() : [0, 800];
+            const yRange = scales.yScale && scales.yScale.range ? scales.yScale.range() : [600, 0];
+            x = (xRange[0] + xRange[1]) / 2;
+            y = (Math.min(yRange[0], yRange[1]) + Math.max(yRange[0], yRange[1])) / 2;
+            width = 200;
+            height = 150;
+            // Do NOT initialise widthInDataUnits here — let the image render do it after upload
+        } else {
+            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            y = scales.yScale(point.y);
+
+            // Initialize size in data units on first render
+            if (!this.style.widthInDataUnits && scales.xScale && scales.yScale) {
+                const xDataAtOffset = scales.chart && scales.chart.pixelToDataIndex ?
+                    scales.chart.pixelToDataIndex(x + width) : scales.xScale.invert(x + width);
+                const yDataAtOffset = scales.yScale.invert(y + height);
+                this.style.widthInDataUnits = Math.abs(point.x - xDataAtOffset);
+                this.style.heightInDataUnits = Math.abs(point.y - yDataAtOffset);
+            }
+
+            // Calculate size from data units (scales with chart zoom)
+            if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
+                const x2 = point.x + this.style.widthInDataUnits;
+                const y2 = point.y - this.style.heightInDataUnits;
+                const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ?
+                    scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
+                const y2Pixel = scales.yScale(y2);
+                width = Math.max(10, Math.min(1500, Math.abs(x2Pixel - x)));
+                height = Math.max(10, Math.min(1500, Math.abs(y2Pixel - y)));
+            }
+        }
 
         this._screenX = x;
         this._screenY = y;
         this._scales = scales;
-
-        let width = this.style.width || 100;
-        let height = this.style.height || 100;
-        
-        // Initialize size in data units on first render
-        if (!this.style.widthInDataUnits && scales.xScale && scales.yScale) {
-            const xPixel = x;
-            const yPixel = y;
-            const xDataAtOffset = scales.chart && scales.chart.pixelToDataIndex ? 
-                scales.chart.pixelToDataIndex(xPixel + width) : scales.xScale.invert(xPixel + width);
-            const yDataAtOffset = scales.yScale.invert(yPixel + height);
-            this.style.widthInDataUnits = Math.abs(point.x - xDataAtOffset);
-            this.style.heightInDataUnits = Math.abs(point.y - yDataAtOffset);
-        }
-        
-        // Calculate size from data units (scales with chart zoom)
-        if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
-            const x1Pixel = x;
-            const y1Pixel = y;
-            const x2 = point.x + this.style.widthInDataUnits;
-            const y2 = point.y - this.style.heightInDataUnits;
-            const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
-            const y2Pixel = scales.yScale(y2);
-            width = Math.abs(x2Pixel - x1Pixel);
-            height = Math.abs(y2Pixel - y1Pixel);
-            width = Math.max(10, Math.min(1500, width));
-            height = Math.max(10, Math.min(1500, height));
-        }
 
         this.group = container.append('g')
             .attr('class', 'drawing image-tool')
@@ -264,7 +272,9 @@ class ImageTool extends BaseDrawing {
         this._borderWidth = borderWidth;
         this._borderHeight = borderHeight;
 
-        this.createBoxHandles(this.group, scales);
+        if (!isPlaceholder) {
+            this.createBoxHandles(this.group, scales);
+        }
 
         return this.group;
     }
