@@ -2464,6 +2464,10 @@ class CommentTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
+        // Store for live-update during inline editing
+        this._lastContainer = container;
+        this._lastScales = scales;
+
         const p = this.points[0];
         const centerX = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const centerY = scales.yScale(p.y);
@@ -2473,16 +2477,26 @@ class CommentTool extends BaseDrawing {
         const minHeight = 30;
         const r = 16; // Larger radius for more rounded corners
         
-        const tempText = container.append('text')
-            .attr('font-size', `${this.style.fontSize}px`)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
-            .text(this.text);
-        const bbox = tempText.node().getBBox();
-        tempText.remove();
+        // Canvas-based measurement (reliable, no DOM dependency)
+        const _cFontSize = this.style.fontSize || 14;
+        const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
+        const _cFontWeight = this.style.fontWeight || 'normal';
+        const _measCanvas = document.createElement('canvas');
+        const _measCtx = _measCanvas.getContext('2d');
+        _measCtx.font = `${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
+        const measureW = (str) => {
+            try { return _measCtx.measureText(str || '').width || ((str || '').length * _cFontSize * 0.6); }
+            catch(e) { return (str || '').length * _cFontSize * 0.6; }
+        };
 
-        const w = Math.max(bbox.width + padding * 2, minWidth);
-        const h = Math.max(bbox.height + padding * 2, minHeight);
+        // Split on explicit newlines only
+        const lines = (this.text || 'text').split('\n');
+        const lineHeight = _cFontSize * 1.3;
+        let maxLineW = minWidth - padding * 2;
+        lines.forEach(l => { const lw = measureW(l || ' '); if (lw > maxLineW) maxLineW = lw; });
+
+        const w = Math.max(maxLineW + padding * 2, minWidth);
+        const h = Math.max(lines.length * lineHeight + padding * 2, minHeight);
 
         // Center the bubble on the point
         const bubbleX = centerX - w / 2;
@@ -2533,18 +2547,25 @@ class CommentTool extends BaseDrawing {
             textAnchor = 'end';
         }
 
+        const textStartY = bubbleY + padding + _cFontSize;
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', textX)
-            .attr('y', bubbleY + h / 2 + bbox.height / 4)
+            .attr('y', textStartY)
             .attr('text-anchor', textAnchor)
             .attr('fill', this.style.textColor)
-            .attr('font-size', `${this.style.fontSize}px`)
+            .attr('font-size', `${_cFontSize}px`)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'all')
-            .style('cursor', 'move')
-            .text(this.text);
+            .style('cursor', 'move');
+
+        lines.forEach((line, i) => {
+            textElement.append('tspan')
+                .attr('x', textX)
+                .attr('dy', i === 0 ? 0 : lineHeight)
+                .text(line || '\u00A0');
+        });
 
         const self = this;
         const CLICK_DELAY = 250;
