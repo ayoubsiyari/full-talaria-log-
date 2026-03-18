@@ -222,13 +222,22 @@ class ImageTool extends BaseDrawing {
                 .html(`<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Upload Image</span>`);
 
             const btnNode = btnDiv.node();
-            btnNode.addEventListener('click', (e) => {
+            // Use mousedown to trigger upload — the SVG manager intercepts mousedown
+            // and calls preventDefault which kills the subsequent click event.
+            // Stopping propagation here prevents the manager from ever seeing it.
+            let btnDownTime = 0;
+            btnNode.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                if (!self._uploadDialogOpen) {
+                btnDownTime = Date.now();
+            }, true);
+            btnNode.addEventListener('mouseup', (e) => {
+                e.stopPropagation();
+                const elapsed = Date.now() - btnDownTime;
+                if (elapsed < 300 && !self._uploadDialogOpen) {
                     self.triggerImageUpload();
                 }
-            });
+            }, true);
             btnNode.addEventListener('dblclick', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
