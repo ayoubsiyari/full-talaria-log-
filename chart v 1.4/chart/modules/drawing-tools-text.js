@@ -1096,6 +1096,10 @@ class NoteTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
+        // Store for live-update during inline editing
+        this._lastContainer = container;
+        this._lastScales = scales;
+
         const p1 = this.points[0];
         const p2 = this.points[1];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
@@ -1271,7 +1275,13 @@ class NoteTool extends BaseDrawing {
                         color: self.style.textColor,
                         textAlign: 'left',
                         maxWidth: self.style.maxWidth || 260,
-                        hideSelector: `.drawing[data-id="${self.id}"] text`
+                        hideSelector: `.drawing[data-id="${self.id}"] text`,
+                        onInput: (newText) => {
+                            self.setText((newText || '').replace(/\r\n/g, '\n'));
+                            if (self._lastContainer && self._lastScales) {
+                                self.render(self._lastContainer, self._lastScales);
+                            }
+                        }
                     }
                 );
 
@@ -2139,6 +2149,10 @@ class CalloutTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
+        // Store for live-update during inline editing
+        this._lastContainer = container;
+        this._lastScales = scales;
+
         // Point 1: anchor/tip point, Point 2: bubble position
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -2382,7 +2396,13 @@ class CalloutTool extends BaseDrawing {
                     color: self.style.textColor,
                     textAlign: 'left',
                     maxWidth: self.style.maxWidth || 280,
-                    hideSelector: `.drawing[data-id="${self.id}"] text`
+                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    onInput: (newText) => {
+                        self.setText((newText || '').replace(/\r\n/g, '\n'));
+                        if (self._lastContainer && self._lastScales) {
+                            self.render(self._lastContainer, self._lastScales);
+                        }
+                    }
                 }
             );
         };
@@ -2673,7 +2693,13 @@ class CommentTool extends BaseDrawing {
                     color: self.style.textColor,
                     textAlign: 'left',
                     maxWidth: self.style.maxWidth || 280,
-                    hideSelector: `.drawing[data-id="${self.id}"] text`
+                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    onInput: (newText) => {
+                        self.setText((newText || '').replace(/\r\n/g, '\n'));
+                        if (self._lastContainer && self._lastScales) {
+                            self.render(self._lastContainer, self._lastScales);
+                        }
+                    }
                 }
             );
         };

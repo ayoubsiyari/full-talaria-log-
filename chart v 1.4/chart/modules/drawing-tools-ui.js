@@ -16508,6 +16508,14 @@ class InlineTextEditor {
                 contentEl.node().textContent = initialText;
             }
 
+            const _onInputCb = typeof opts.onInput === 'function' ? opts.onInput : null;
+            if (_onInputCb) {
+                contentEl.node().addEventListener('input', () => {
+                    const txt = (contentEl.node().innerText || '').replace(/\n$/, '');
+                    _onInputCb(txt);
+                });
+            }
+
             contentEl.on('keydown', (event) => {
                 event.stopPropagation();
                 if (event.key === 'Enter' && !event.shiftKey) {
