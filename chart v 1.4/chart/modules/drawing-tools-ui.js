@@ -16358,6 +16358,93 @@ class InlineTextEditor {
             document.head.appendChild(this.hideStyleEl);
         }
 
+        // Inline transparent mode (TradingView style — type directly on chart)
+        if (opts.inline === true) {
+            this.editor = d3.select('body')
+                .append('div')
+                .attr('class', 'inline-text-editor inline-text-editor--inline')
+                .style('position', 'absolute')
+                .style('left', `${x}px`)
+                .style('top', `${y}px`)
+                .style('z-index', '2000')
+                .style('background', 'transparent')
+                .style('border', 'none')
+                .style('padding', '0')
+                .style('margin', '0')
+                .style('box-shadow', 'none');
+
+            const contentEl = this.editor.append('div')
+                .attr('contenteditable', 'true')
+                .attr('spellcheck', 'false')
+                .style('min-width', '4px')
+                .style('max-width', '800px')
+                .style('outline', 'none')
+                .style('white-space', 'pre')
+                .style('color', color)
+                .style('font-size', fontSize)
+                .style('font-family', fontFamily)
+                .style('font-weight', fontWeight)
+                .style('text-align', textAlign)
+                .style('line-height', '1.2')
+                .style('caret-color', color)
+                .style('padding', '0')
+                .style('margin', '0')
+                .style('border', 'none')
+                .style('cursor', 'text');
+
+            if (initialText) {
+                contentEl.node().textContent = initialText;
+            }
+
+            contentEl.on('keydown', (event) => {
+                event.stopPropagation();
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    this.save();
+                    event.preventDefault();
+                } else if (event.key === 'Escape') {
+                    this.hide();
+                    event.preventDefault();
+                } else if (event.key === 'Enter' && event.shiftKey) {
+                    event.preventDefault();
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount) {
+                        const range = sel.getRangeAt(0);
+                        range.deleteContents();
+                        const br = document.createElement('br');
+                        range.insertNode(br);
+                        const newRange = document.createRange();
+                        newRange.setStartAfter(br);
+                        newRange.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(newRange);
+                    }
+                    contentEl.style('white-space', 'pre-wrap');
+                }
+            });
+
+            const node = contentEl.node();
+            node.focus();
+            if (initialText) {
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(node);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+
+            this.clickOutsideHandler = (event) => {
+                if (this.editor && !this.editor.node().contains(event.target)) {
+                    this.save();
+                }
+            };
+            setTimeout(() => {
+                document.addEventListener('mousedown', this.clickOutsideHandler);
+            }, 100);
+
+            return this.editor;
+        }
+
         // Create editor - simple textarea only
         this.editor = d3.select('body')
             .append('div')
@@ -16449,8 +16536,13 @@ class InlineTextEditor {
      */
     save() {
         if (this.editor && this.onSave) {
-            const textarea = this.editor.select('textarea');
-            const text = textarea.property('value');
+            const contentNode = this.editor.select('[contenteditable]').node();
+            let text;
+            if (contentNode) {
+                text = (contentNode.innerText || '').replace(/\n$/, '');
+            } else {
+                text = this.editor.select('textarea').property('value');
+            }
             this.onSave(text);
         }
         this.hide();

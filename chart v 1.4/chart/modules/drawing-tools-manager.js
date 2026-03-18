@@ -2793,13 +2793,31 @@ class DrawingToolsManager {
             const existingText = drawing.text && drawing.text !== defaultText ? drawing.text : '';
             const placeholder = isNoteBox ? 'Enter note text…' : 'Enter text…';
 
-            this.textEditor.show(editX, editY, existingText, (text) => {
+            const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
+            const fontSize = savedStyle.fontSize || (isNoteBox ? 12 : 14);
+            const fontFamily = savedStyle.fontFamily || 'Roboto, sans-serif';
+            const fontWeight = savedStyle.fontWeight || 'normal';
+            const textColor = savedStyle.textColor || '#FFFFFF';
+            const textAlign = savedStyle.textAlign || 'left';
+
+            // For text tool: adjust y up by ~fontSize so editor top aligns with SVG text top
+            const editorY = isNoteBox ? editY : editY - fontSize;
+
+            this.textEditor.show(editX, editorY, existingText, (text) => {
                 const normalized = (text || '').replace(/\r\n/g, '\n');
                 if (normalized && normalized.trim()) {
                     drawing.setText(normalized);
                     this.addDrawing(drawing);
                 }
-            }, placeholder, {
+            }, placeholder, isNoteBox ? {
+                hideSelector: '.temp-drawing text'
+            } : {
+                inline: true,
+                fontSize: `${fontSize}px`,
+                fontFamily,
+                fontWeight,
+                color: textColor,
+                textAlign,
                 hideSelector: '.temp-drawing text'
             });
         } 
