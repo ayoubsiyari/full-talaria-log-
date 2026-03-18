@@ -409,6 +409,7 @@ body {
     display: none;
     white-space: nowrap;
     z-index: 20;
+    border: 1px solid rgba(0, 0, 0, 0.35);
 }
 
 .price-label {
