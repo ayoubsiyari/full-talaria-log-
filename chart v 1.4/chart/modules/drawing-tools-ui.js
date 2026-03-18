@@ -5750,88 +5750,126 @@ body.light-mode .template-save-dialog .dialog-title {
             colorBtn.onmouseleave = () => { colorBtn.style.borderColor = 'rgba(50, 50, 60, 0.9)'; colorBtn.style.transform = 'scale(1)'; };
             controlsWrapper.appendChild(colorBtn);
 
-            // Line Type dropdown (styled like main Line type with visual icons)
-            const typeSelect = document.createElement('select');
-            typeSelect.className = 'tv-select';
-            typeSelect.dataset.prop = `level${idx}Type`;
-            typeSelect.style.width = '40px';
-            typeSelect.innerHTML = `
-                <option value="">───────</option>
-                <option value="10,6">─ ─ ─ ─</option>
-                <option value="2,2">··········</option>
-                <option value="8,4,2,4">─·─·─·─</option>
-            `;
-            typeSelect.value = (level.lineType === '5,5' ? '10,6' : (level.lineType || ''));
-            typeSelect.onfocus = () => { typeSelect.style.borderColor = '#2962ff'; };
-            typeSelect.onblur = () => { typeSelect.style.borderColor = '#2a2e39'; };
-            typeSelect.onchange = () => {
-                level.lineType = typeSelect.value;
-                if (drawing.levels && drawing.levels[idx]) {
-                    drawing.levels[idx].lineType = typeSelect.value;
-                }
-                
-                // Direct SVG update for immediate visual feedback
-                if (drawing.group) {
-                    drawing.group.selectAll('line').each(function() {
-                        const el = d3.select(this);
-                        const lineLevel = el.attr('data-level');
-                        if (lineLevel && parseFloat(lineLevel) === level.value) {
-                            el.attr('stroke-dasharray', typeSelect.value || 'none');
-                        }
-                    });
-                }
-                
-                // Save changes
-                self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
-                self.applyChanges(drawing);
+            // ── helpers shared by both custom dropdowns ──────────────────────
+            const _ltSvg = (lt) => {
+                const da = (lt === '10,6' || lt === '5,5') ? '12,7' :
+                           (lt === '2,2' || lt === '3,3') ? '2,4' :
+                           lt === '8,4,2,4' ? '10,4,2,4' : '';
+                const dAttr = da ? `stroke-dasharray="${da}"` : '';
+                return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dAttr}/></svg>`;
             };
-            controlsWrapper.appendChild(typeSelect);
+            const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+            const _menuCss = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:80px;box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
+            const _optB = `border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));`;
+            const _optBase = `padding:8px;cursor:default;display:flex;align-items:center;justify-content:center;`;
+            const _btnCss = `width:100%;height:30px;padding:0 6px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;`;
+            const _closeOthers = (keep) => document.querySelectorAll('.tv-ending-dropdown-menu,.tv-linetype-dropdown-menu,.tv-linewidth-dropdown-menu,.tv-fontsize-dropdown-menu').forEach(m => { if (m !== keep) m.style.display = 'none'; });
 
-            // Line Width dropdown (styled like main Line width)
-            const widthSelect = document.createElement('select');
-            widthSelect.className = 'tv-select';
-            widthSelect.dataset.prop = `level${idx}Width`;
-            widthSelect.style.width = '40px';
-            widthSelect.innerHTML = `
-                <option value="1">1px</option>
-                <option value="2">2px</option>
-                <option value="3">3px</option>
-                <option value="4">4px</option>
-                <option value="5">5px</option>
-                <option value="6">6px</option>
-                <option value="7">7px</option>
-                <option value="8">8px</option>
-                <option value="9">9px</option>
-                <option value="10">10px</option>
-            `;
-            widthSelect.value = level.lineWidth || drawing.style.strokeWidth || 2;
-            widthSelect.onfocus = () => { widthSelect.style.borderColor = '#2962ff'; };
-            widthSelect.onblur = () => { widthSelect.style.borderColor = '#2a2e39'; };
-            widthSelect.onchange = () => {
-                const width = parseInt(widthSelect.value);
-                if (!isNaN(width) && width >= 1 && width <= 10) {
-                    level.lineWidth = width;
-                    if (drawing.levels && drawing.levels[idx]) {
-                        drawing.levels[idx].lineWidth = width;
-                    }
-                    
-                    // Direct SVG update for immediate visual feedback
+            // ── Line Type custom dropdown ────────────────────────────────────
+            const currentLt = (level.lineType === '5,5' ? '10,6' : (level.lineType || ''));
+            const typeDropdownEl = document.createElement('div');
+            typeDropdownEl.className = 'tv-linetype-dropdown';
+            typeDropdownEl.dataset.prop = `level${idx}Type`;
+            typeDropdownEl.style.cssText = 'position:relative;flex:1 1 0;min-width:40px;';
+            typeDropdownEl.innerHTML = `
+                <button class="tv-ending-dropdown-btn" style="${_btnCss}">
+                    <span class="tv-linetype-current" style="flex:1;display:flex;align-items:center;min-width:0;">${_ltSvg(currentLt)}</span>
+                    ${_chev}
+                </button>
+                <div class="tv-linetype-dropdown-menu" style="${_menuCss}">
+                    <div class="tv-ending-option" data-value=""     style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
+                    <div class="tv-ending-option" data-value="10,6" style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
+                    <div class="tv-ending-option" data-value="2,2"  style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
+                    <div class="tv-ending-option" data-value="8,4,2,4" style="${_optBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
+                </div>`;
+            const typeBtn  = typeDropdownEl.querySelector('.tv-ending-dropdown-btn');
+            const typeMenu = typeDropdownEl.querySelector('.tv-linetype-dropdown-menu');
+            typeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _closeOthers(typeMenu);
+                const isOpen = typeMenu.style.display !== 'none';
+                if (!isOpen) {
+                    const r = typeBtn.getBoundingClientRect();
+                    typeMenu.style.left = r.left + 'px';
+                    typeMenu.style.top  = (r.bottom + 4) + 'px';
+                    typeMenu.style.minWidth = r.width + 'px';
+                }
+                typeMenu.style.display = isOpen ? 'none' : 'block';
+            });
+            typeMenu.querySelectorAll('.tv-ending-option').forEach(opt => {
+                opt.addEventListener('click', () => {
+                    const value = opt.dataset.value;
+                    level.lineType = value;
+                    if (drawing.levels && drawing.levels[idx]) drawing.levels[idx].lineType = value;
+                    const cur = typeBtn.querySelector('.tv-linetype-current');
+                    if (cur) cur.innerHTML = _ltSvg(value);
                     if (drawing.group) {
                         drawing.group.selectAll('line').each(function() {
                             const el = d3.select(this);
-                            const lineLevel = el.attr('data-level');
-                            if (lineLevel && parseFloat(lineLevel) === level.value) {
-                                el.attr('stroke-width', width);
-                            }
+                            if (el.attr('data-level') && parseFloat(el.attr('data-level')) === level.value)
+                                el.attr('stroke-dasharray', value || null);
                         });
                     }
-                    
-                    // Save changes
                     self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
                     self.applyChanges(drawing);
+                    typeMenu.style.display = 'none';
+                });
+                opt.addEventListener('mouseenter', () => { opt.style.background = '#363a45'; });
+                opt.addEventListener('mouseleave', () => { opt.style.background = 'transparent'; });
+            });
+            controlsWrapper.appendChild(typeDropdownEl);
+
+            // ── Line Width custom dropdown ───────────────────────────────────
+            const currentW = level.lineWidth || drawing.style.strokeWidth || 2;
+            const widthDropdownEl = document.createElement('div');
+            widthDropdownEl.className = 'tv-linewidth-dropdown';
+            widthDropdownEl.dataset.prop = `level${idx}Width`;
+            widthDropdownEl.style.cssText = 'position:relative;flex:1 1 0;min-width:40px;';
+            const _wItems = [1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_optBase}padding:6px 12px;${s!==4?_optB:''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('');
+            widthDropdownEl.innerHTML = `
+                <button class="tv-ending-dropdown-btn" style="${_btnCss}">
+                    <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${currentW}px</span>
+                    ${_chev}
+                </button>
+                <div class="tv-linewidth-dropdown-menu" style="${_menuCss}">${_wItems}</div>`;
+            const widthBtn  = widthDropdownEl.querySelector('.tv-ending-dropdown-btn');
+            const widthMenu = widthDropdownEl.querySelector('.tv-linewidth-dropdown-menu');
+            widthBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _closeOthers(widthMenu);
+                const isOpen = widthMenu.style.display !== 'none';
+                if (!isOpen) {
+                    const r = widthBtn.getBoundingClientRect();
+                    widthMenu.style.left = r.left + 'px';
+                    widthMenu.style.top  = (r.bottom + 4) + 'px';
+                    widthMenu.style.minWidth = r.width + 'px';
                 }
-            };
-            controlsWrapper.appendChild(widthSelect);
+                widthMenu.style.display = isOpen ? 'none' : 'block';
+            });
+            widthMenu.querySelectorAll('.tv-ending-option').forEach(opt => {
+                opt.addEventListener('click', () => {
+                    const width = parseInt(opt.dataset.value);
+                    if (!isNaN(width) && width >= 1) {
+                        level.lineWidth = width;
+                        if (drawing.levels && drawing.levels[idx]) drawing.levels[idx].lineWidth = width;
+                        const cur = widthBtn.querySelector('.tv-linewidth-current');
+                        if (cur) cur.textContent = `${width}px`;
+                        if (drawing.group) {
+                            drawing.group.selectAll('line').each(function() {
+                                const el = d3.select(this);
+                                if (el.attr('data-level') && parseFloat(el.attr('data-level')) === level.value)
+                                    el.attr('stroke-width', width);
+                            });
+                        }
+                        self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
+                        self.applyChanges(drawing);
+                    }
+                    widthMenu.style.display = 'none';
+                });
+                opt.addEventListener('mouseenter', () => { opt.style.background = '#363a45'; });
+                opt.addEventListener('mouseleave', () => { opt.style.background = 'transparent'; });
+            });
+            controlsWrapper.appendChild(widthDropdownEl);
             
             row.appendChild(controlsWrapper);
 
