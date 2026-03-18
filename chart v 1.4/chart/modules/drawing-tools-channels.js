@@ -64,14 +64,15 @@ class ParallelChannelTool extends BaseDrawing {
             const perpX = -baseY / baseLen;
             const perpY = baseX / baseLen;
 
-            const offsetX = p2.x - p0.x;
-            const offsetY = p2.y - p0.y;
+            // Use vertical-only (price-space) offset so channel sides are always vertical
+            const channelHeight = p2.y - p0.y;
+            const offsetX = 0;
+            const offsetY = channelHeight;
 
             const moveP0PreserveOffset = (newP0) => {
-                const dx = newP0.x - p0.x;
                 const dy = newP0.y - p0.y;
                 this.points[0] = { x: newP0.x, y: newP0.y };
-                this.points[2] = { x: p2.x + dx, y: p2.y + dy };
+                this.points[2] = { x: newP0.x, y: p2.y + dy };
                 this.meta.updatedAt = Date.now();
                 return true;
             };
@@ -83,31 +84,21 @@ class ParallelChannelTool extends BaseDrawing {
             };
             
             if (handleRole === 'top-mid') {
-                // Middle of top line - move both p0 and p1 perpendicular
-                const midX = (p0.x + p1.x) / 2;
+                // Move top line vertically; preserve channel height
                 const midY = (p0.y + p1.y) / 2;
-                const toMouseX = dataPoint.x - midX;
-                const toMouseY = dataPoint.y - midY;
-                const perpDist = toMouseX * perpX + toMouseY * perpY;
-                
-                this.points[0] = { x: p0.x + perpX * perpDist, y: p0.y + perpY * perpDist };
-                this.points[1] = { x: p1.x + perpX * perpDist, y: p1.y + perpY * perpDist };
+                const deltaY = dataPoint.y - midY;
+                this.points[0] = { x: p0.x, y: p0.y + deltaY };
+                this.points[1] = { x: p1.x, y: p1.y + deltaY };
+                this.points[2] = { x: p0.x, y: p2.y + deltaY };
                 this.meta.updatedAt = Date.now();
                 return true;
             }
             
             if (handleRole === 'bottom-mid') {
-                // Middle of bottom line - adjust channel width (move p2)
-                const bottomMidX = (p0.x + p1.x) / 2 + offsetX;
-                const bottomMidY = (p0.y + p1.y) / 2 + offsetY;
-                
-                const toMouseX = dataPoint.x - bottomMidX;
-                const toMouseY = dataPoint.y - bottomMidY;
-                const perpDist = toMouseX * perpX + toMouseY * perpY;
-                this.points[2] = {
-                    x: p2.x + perpX * perpDist,
-                    y: p2.y + perpY * perpDist
-                };
+                // Adjust channel height vertically
+                const topMidY = (p0.y + p1.y) / 2;
+                const newHeight = dataPoint.y - topMidY;
+                this.points[2] = { x: p0.x, y: p0.y + newHeight };
                 this.meta.updatedAt = Date.now();
                 return true;
             }
@@ -151,30 +142,9 @@ class ParallelChannelTool extends BaseDrawing {
             return true;
         }
         
-        // Point 2 (parallel line handle) - constrain to perpendicular movement
+        // Point 2 (parallel line handle) - vertical movement only (price-space offset)
         if (index === 2 && this.points.length >= 3) {
-            const p0 = this.points[0];
-            const p1 = this.points[1];
-            
-            const baseX = p1.x - p0.x;
-            const baseY = p1.y - p0.y;
-            const baseLen = Math.sqrt(baseX * baseX + baseY * baseY);
-            
-            if (baseLen === 0) {
-                this.points[2] = { x: p0.x, y: dataPoint.y };
-            } else {
-                const perpX = -baseY / baseLen;
-                const perpY = baseX / baseLen;
-                const toMouseX = dataPoint.x - p0.x;
-                const toMouseY = dataPoint.y - p0.y;
-                const perpDist = toMouseX * perpX + toMouseY * perpY;
-                
-                this.points[2] = {
-                    x: p0.x + perpX * perpDist,
-                    y: p0.y + perpY * perpDist
-                };
-            }
-            
+            this.points[2] = { x: this.points[0].x, y: dataPoint.y };
             this.meta.updatedAt = Date.now();
             return true;
         }
@@ -219,12 +189,14 @@ class ParallelChannelTool extends BaseDrawing {
 
             const dx = x2 - x1;
             const dy = y2 - y1;
-            const offsetX = x3 - x1;
-            const offsetY = y3 - y1;
+            // Vertical-only offset: measure Y distance from baseline at P3's x, use 0 for X
+            const slope = dx !== 0 ? dy / dx : 0;
+            const yBaselineAtP3 = y1 + slope * (x3 - x1);
+            const offsetX = 0;
+            const offsetY = y3 - yBaselineAtP3;
 
             // Get chart boundaries from scale range
             const xRange = scales.xScale.range();
-            const slope = dx !== 0 ? dy / dx : 0;
 
             // Helper to calculate line endpoints with extension
             const getLineEndpoints = (baseStartX, baseStartY, baseEndX, baseEndY) => {
@@ -418,8 +390,13 @@ class ParallelChannelTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p3.x) : scales.xScale(p3.x);
         const y3 = scales.yScale(p3.y);
         
-        const offsetX = x3 - x1;
-        const offsetY = y3 - y1;
+        // Vertical-only offset for handle positions
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const slope = dx !== 0 ? dy / dx : 0;
+        const yBaselineAtP3 = y1 + slope * (x3 - x1);
+        const offsetX = 0;
+        const offsetY = y3 - yBaselineAtP3;
         
         // Handle positions: corners + middle points on top and bottom lines
         const handlePositions = [
