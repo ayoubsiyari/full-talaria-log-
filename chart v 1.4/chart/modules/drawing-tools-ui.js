@@ -6785,7 +6785,20 @@ body.light-mode .template-save-dialog .dialog-title {
                 container.appendChild(labelColorRow);
             }
 
-            // For tools that support background/border controls, keep them at the top
+            // Preserve Text tool defaults (TextTool defaults to left alignment)
+            if (drawing.type === 'text') {
+                if (!drawing.style.textHAlign && !drawing.style.textAlign) {
+                    drawing.style.textHAlign = drawing.style.textAlign || 'left';
+                    drawing.style.textAlign = drawing.style.textHAlign;
+                }
+            }
+
+            // Price tools show auto price; don't show a free text editor
+            const isAutoText = drawing.type === 'price-note' || drawing.type === 'price-label' || drawing.type === 'price-label-2';
+            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note';
+            this.buildTextTab(container, drawing, { hideVerticalAlign: true, hideHorizontalAlign, hideTextInput: isAutoText });
+
+            // Background and Border controls — placed below the text section
             const supportsBackgroundBorder = ['text', 'notebox', 'note', 'callout', 'comment', 'anchored-text', 'pin', 'price-note', 'signpost-2'].includes(drawing.type);
             if (supportsBackgroundBorder) {
                 const bgRow = document.createElement('div');
@@ -6830,19 +6843,6 @@ body.light-mode .template-save-dialog .dialog-title {
                 `;
                 container.appendChild(borderRow);
             }
-
-            // Preserve Text tool defaults (TextTool defaults to left alignment)
-            if (drawing.type === 'text') {
-                if (!drawing.style.textHAlign && !drawing.style.textAlign) {
-                    drawing.style.textHAlign = drawing.style.textAlign || 'left';
-                    drawing.style.textAlign = drawing.style.textHAlign;
-                }
-            }
-
-            // Price tools show auto price; don't show a free text editor
-            const isAutoText = drawing.type === 'price-note' || drawing.type === 'price-label' || drawing.type === 'price-label-2';
-            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note';
-            this.buildTextTab(container, drawing, { hideVerticalAlign: true, hideHorizontalAlign, hideTextInput: isAutoText });
             return;
         }
 
