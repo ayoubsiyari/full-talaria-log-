@@ -27338,6 +27338,15 @@ P['canvas']={title:'Canvas',build:function(){
         row('Scale lines', scaleLinesBtn)+
         irow('Right margin (bars)','cv_marginRight',ro,0,300));
 },wire:function(){
+    function clearActiveTplSelection(){
+        var c=ch();
+        if(c){
+            c._lastTemplateSelected=null;c._lastChartOnlyTemplate=null;c._lastPanelOnlyTemplate=null;
+            if(c.chartSettings){c.chartSettings.activeFullTemplate=null;c.chartSettings.activeChartOnlyTemplate=null;c.chartSettings.activePanelOnlyTemplate=null;}
+        }
+        try{localStorage.removeItem('chart_active_tpl');}catch(e){}
+        var tplSel=document.getElementById('sl_sp_theme_preset');if(tplSel)tplSel.value='';
+    }
     wClr('cv_bg',function(v){
         var c=ch();if(!c)return;
         c.chartSettings.backgroundColor=v;
@@ -27345,6 +27354,7 @@ P['canvas']={title:'Canvas',build:function(){
         var el=document.querySelector('.chart-container');if(el)el.style.backgroundColor=v;
         if(c.scheduleRender)c.scheduleRender();
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+        clearActiveTplSelection();
     });
     wSel('cv_grid',function(v){
         var c=ch();if(!c)return;
@@ -27353,13 +27363,14 @@ P['canvas']={title:'Canvas',build:function(){
         if(c.scheduleRender)c.scheduleRender();
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
-    wClr('cv_gridClr',function(v){set('gridColor',v);});
+    wClr('cv_gridClr',function(v){set('gridColor',v);clearActiveTplSelection();});
     wClr('cv_scaleText',function(v){
         var c=ch();if(!c)return;
         c.chartSettings.scaleTextColor=v;
         if(c.applyChartSettings)c.applyChartSettings();
         if(c.scheduleRender)c.scheduleRender();
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+        clearActiveTplSelection();
     });
     wSel('cv_scaleFont',function(v){
         var n=parseInt(v);
@@ -27369,9 +27380,9 @@ P['canvas']={title:'Canvas',build:function(){
         if(c.scheduleRender)c.scheduleRender();
         try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
     });
-    wClr('sp_acc',function(v){set('settingsPanelAccentColor',v);});
-    wClr('sp_sec',function(v){set('settingsPanelSecondaryColor',v);});
-    wClr('sp_text',function(v){set('settingsPanelTextColor',v);});
+    wClr('sp_acc',function(v){set('settingsPanelAccentColor',v);clearActiveTplSelection();});
+    wClr('sp_sec',function(v){set('settingsPanelSecondaryColor',v);clearActiveTplSelection();});
+    wClr('sp_text',function(v){set('settingsPanelTextColor',v);clearActiveTplSelection();});
 
     // Full theme presets
     var UI_THEMES={
@@ -27410,6 +27421,7 @@ P['canvas']={title:'Canvas',build:function(){
         c.chartSettings.settingsPanelBgColor=v;
         c.chartSettings.settingsPanelSidebarBgColor=v;
         apply();
+        clearActiveTplSelection();
     });
 
     var resetThemeBtn=document.getElementById('btn_sp_reset_theme');
