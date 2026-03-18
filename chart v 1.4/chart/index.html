@@ -2706,6 +2706,17 @@
         #settingsPanel .sp-nav-item.active { background: transparent; border-bottom: 2px solid var(--sp-accent, #2962ff); color: var(--sp-text-active, #fff); }
         #settingsPanel .sp-nav-item svg { display: none; }
 
+        /* Help panel – horizontal top tab bar (same pattern as settingsPanel) */
+        #helpPanel .sp-sidebar { width: auto; min-width: auto; border-right: none; border-bottom: 1px solid var(--sp-border); flex-direction: row; align-items: stretch; }
+        #helpPanel .sp-sidebar-header { display: none; }
+        #helpPanel .sp-nav { padding: 0 8px; flex-direction: row; gap: 0; align-items: stretch; flex: 1; overflow-x: auto; }
+        #helpPanel .sp-nav-item { padding: 0 16px; border-radius: 0; white-space: nowrap; border-bottom: 2px solid transparent; min-height: 42px; font-size: 13px; gap: 6px; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+        #helpPanel .sp-nav-item:hover { background: rgba(255,255,255,0.04); border-bottom-color: rgba(var(--sp-accent-rgb),0.4); }
+        #helpPanel .sp-nav-item.active { background: transparent; border-bottom: 2px solid var(--sp-accent, #2962ff); color: var(--sp-text-active, #fff); }
+        #helpPanel .sp-nav-item svg { display: none; }
+        #helpPanel .sp-content-header { display: none; }
+        #helpPanel .sp-content-body { padding-top: 20px; }
+
         /* Settings mode: hide items that have dedicated toolbar buttons */
         #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="alerts"],
         #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="news"],
@@ -16847,37 +16858,22 @@
                 <span>Help</span>
             </div>
             <nav class="sp-nav" id="helpNav">
-                <div class="sp-nav-item active" data-hp="contact">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
-                    <span>Contact</span>
-                </div>
-                <div class="sp-nav-item" data-hp="shortcuts">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
-                    <span>Shortcuts</span>
-                </div>
-                <div class="sp-nav-item" data-hp="faq">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
-                    <span>FAQ</span>
-                </div>
-                <div class="sp-nav-item" data-hp="education">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg>
-                    <span>Education</span>
-                </div>
+                <div class="sp-nav-item active" data-hp="contact"><span>Contact</span></div>
+                <div class="sp-nav-item" data-hp="shortcuts"><span>Shortcuts</span></div>
+                <div class="sp-nav-item" data-hp="faq"><span>FAQ</span></div>
+                <div class="sp-nav-item" data-hp="education"><span>Education</span></div>
                 <div class="sp-nav-divider"></div>
-                <div class="sp-nav-item" data-hp="changelog">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                    <span>Changelog</span>
-                </div>
+                <div class="sp-nav-item" data-hp="changelog"><span>Changelog</span></div>
             </nav>
-            <div class="side-panel-footer" style="margin-top:auto;">v1.5.0</div>
-        </div>
-        <div class="sp-content-wrap">
-            <div class="sp-content-header">
-                <span id="helpContentTitle">Contact Support</span>
+            <div style="display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;">
+                <span style="font-size:11px;color:var(--sp-text-muted,#787b86);">v1.5.0</span>
                 <button class="sp-close-btn" onclick="event.stopPropagation();window._closeSidePanel('helpPanel');">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
                 </button>
             </div>
+        </div>
+        <div class="sp-content-wrap">
+            <span id="helpContentTitle" style="display:none;"></span>
             <div class="sp-content-body" id="helpPanelContent"></div>
         </div>
     </div>
