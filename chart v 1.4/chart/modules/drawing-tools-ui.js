@@ -16491,6 +16491,7 @@ class InlineTextEditor {
                 .style('outline', 'none')
                 .style('white-space', 'pre-wrap')
                 .style('word-break', 'break-word')
+                .style('overflow-wrap', 'break-word')
                 .style('color', color)
                 .style('font-size', fontSize)
                 .style('font-family', fontFamily)

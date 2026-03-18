@@ -262,12 +262,12 @@ class TextTool extends BaseDrawing {
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
+        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
 
         if (bodyHitArea && bodyHitArea.node()) {
             bodyHitArea.node().addEventListener('mousedown', handleMouseDown, true);
             bodyHitArea.node().addEventListener('click', handleInlineEdit, true);
-            bodyHitArea.node().addEventListener('dblclick', handleOpenSettings, true);
+            bodyHitArea.node().addEventListener('dblclick', handleInlineEdit, true);
         }
 
         return this.group;
@@ -705,7 +705,7 @@ class NoteBoxTool extends BaseDrawing {
 
         box.node().addEventListener('mousedown', handleMouseDown, true);
         box.node().addEventListener('click', handleInlineEdit, true);
-        box.node().addEventListener('dblclick', handleOpenSettings, true);
+        box.node().addEventListener('dblclick', handleInlineEdit, true);
 
         return this.group;
     }
@@ -1050,7 +1050,7 @@ class AnchoredTextTool extends BaseDrawing {
         [background.node(), textElement.node()].forEach((n) => {
             n.addEventListener('mousedown', handleMouseDown, true);
             n.addEventListener('click', handleInlineEdit, true);
-            n.addEventListener('dblclick', handleOpenSettings, true);
+            n.addEventListener('dblclick', handleInlineEdit, true);
         });
 
         return this.group;
@@ -1406,8 +1406,8 @@ class NoteTool extends BaseDrawing {
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textBox.node().addEventListener('click', handleInlineEdit, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
-        textBox.node().addEventListener('dblclick', handleOpenSettings, true);
-        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
+        textBox.node().addEventListener('dblclick', handleInlineEdit, true);
+        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
 
         // Create handles at both endpoints
         this.createHandles(this.group, scales);
@@ -1864,7 +1864,7 @@ class PinTool extends BaseDrawing {
             [boxPathEl.node(), boxTextEl.node()].forEach((n) => {
                 n.addEventListener('mousedown', handleMouseDown, true);
                 n.addEventListener('click', handleInlineEdit, true);
-                n.addEventListener('dblclick', handleOpenSettings, true);
+                n.addEventListener('dblclick', handleInlineEdit, true);
             });
         }
 
@@ -2385,7 +2385,7 @@ class CalloutTool extends BaseDrawing {
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
+        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
 
         // Resize handles
         const handleRadius = 4;
@@ -2676,7 +2676,7 @@ class CommentTool extends BaseDrawing {
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
+        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
 
         return this.group;
     }
@@ -3236,7 +3236,7 @@ class Signpost2Tool extends BaseDrawing {
         // Use native listeners so D3 manager handlers don't override these
         textBox.node().addEventListener('mousedown', handleMouseDown, true);
         textBox.node().addEventListener('click', handleInlineEdit, true);
-        textBox.node().addEventListener('dblclick', handleOpenSettings, true);
+        textBox.node().addEventListener('dblclick', handleInlineEdit, true);
 
         // Small circle at the anchor point
         this.group.append('circle')
