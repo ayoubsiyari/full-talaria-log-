@@ -2647,6 +2647,17 @@ class CommentTool extends BaseDrawing {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         if (self._lastContainer && self._lastScales) {
                             self.render(self._lastContainer, self._lastScales);
+                            // Re-sync editor position: bubble is center-anchored so its
+                            // left edge shifts as it grows — follow the new text element
+                            if (self.group) {
+                                const newTE = self.group.select('text.inline-editable-text').node();
+                                const edDiv = document.querySelector('.inline-text-editor--inline');
+                                if (newTE && edDiv) {
+                                    const nr = newTE.getBoundingClientRect();
+                                    edDiv.style.left = (nr.left + window.scrollX) + 'px';
+                                    edDiv.style.top  = (nr.top  + window.scrollY) + 'px';
+                                }
+                            }
                         }
                     }
                 }
