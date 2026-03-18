@@ -499,6 +499,8 @@ class BaseDrawing {
                         .attr('width', boxWidth)
                         .attr('height', boxHeight)
                         .attr('fill', timeHighlightColor)
+                        .attr('stroke', 'rgba(0,0,0,0.35)')
+                        .attr('stroke-width', 1)
                         .attr('rx', 3);
                     
                     this.axisHighlightGroup.append('text')
@@ -554,6 +556,8 @@ class BaseDrawing {
                         .attr('width', boxWidth)
                         .attr('height', boxHeight)
                         .attr('fill', timeHighlightColor)
+                        .attr('stroke', 'rgba(0,0,0,0.35)')
+                        .attr('stroke-width', 1)
                         .attr('rx', 3);
                     
                     this.axisHighlightGroup.append('text')
@@ -612,6 +616,8 @@ class BaseDrawing {
                     .attr('width', boxWidth)
                     .attr('height', boxHeight)
                     .attr('fill', priceColor)
+                    .attr('stroke', 'rgba(0,0,0,0.35)')
+                    .attr('stroke-width', 1)
                     .attr('rx', 3);
                 
                 // Price text - determine text color based on price background
@@ -673,6 +679,8 @@ class BaseDrawing {
                             .attr('width', boxWidth)
                             .attr('height', boxHeight)
                             .attr('fill', timeHighlightColor)
+                            .attr('stroke', 'rgba(0,0,0,0.35)')
+                            .attr('stroke-width', 1)
                             .attr('rx', 3);
                         
                         // Time text
