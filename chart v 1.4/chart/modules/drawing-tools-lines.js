@@ -555,15 +555,22 @@ class TrendlineTool extends BaseDrawing {
         const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
         const boxHeight = rows.length * lineHeight + padY * 2;
 
-        // Responsive placement: offset away from the line direction to avoid overlap
-        const OFFSET_X = 20;
-        const OFFSET_Y = 10;
+        // Place box at line midpoint, offset perpendicular to the line — closest possible without overlap
         const dx = x2 - x1;
         const dy = y2 - y1;
-        // Horizontal: place to the right of p2 if line comes from left, else to the left
-        let boxX = dx >= 0 ? x2 + OFFSET_X : x2 - boxWidth - OFFSET_X;
-        // Vertical: place above p2 if line goes down (dy>0), below if line goes up (dy<0)
-        let boxY = dy >= 0 ? y2 - boxHeight - OFFSET_Y : y2 + OFFSET_Y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ux = dx / len, uy = dy / len;
+        // Two perpendicular unit vectors (CCW and CW 90°)
+        const pAx = -uy, pAy = ux;
+        const pBx =  uy, pBy = -ux;
+        // Prefer the direction that points more upward (smaller y in screen space)
+        const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
+        // Gap = half box height + 4px clearance from line
+        const gap = boxHeight / 2 + 4;
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        let boxX = midX + perp.x * gap - boxWidth / 2;
+        let boxY = midY + perp.y * gap - boxHeight / 2;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
