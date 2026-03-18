@@ -14126,6 +14126,7 @@ class Chart {
     }
     
     updateTooltip(e) {
+        return; // Candle info tooltip disabled
         // Skip for panel instances
         if (this.isPanel) return;
         
