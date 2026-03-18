@@ -27631,11 +27631,11 @@ P['objecttree']={
     build:function(){
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         return '<div class="sp-embedded" style="display:flex;flex-direction:column;height:100%;">'
-            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'
-            +'<div class="sp-nav-item active" id="ot_nav_drawings"><span>Drawings</span></div>'
-            +'<div class="sp-nav-item" id="ot_nav_indicators"><span>Indicators</span></div>'
-            +'<div class="sp-nav-item" id="ot_nav_orders"><span>Orders</span></div>'
+            +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<nav class="tv-collapsible-tabs-top" style="display:flex;padding:8px;gap:6px;flex:1;overflow-x:auto;align-items:center;">'
+            +'<div class="tv-collapsible-tab-btn active" id="ot_nav_drawings" style="cursor:pointer;"><span>Drawings</span></div>'
+            +'<div class="tv-collapsible-tab-btn" id="ot_nav_indicators" style="cursor:pointer;"><span>Indicators</span></div>'
+            +'<div class="tv-collapsible-tab-btn" id="ot_nav_orders" style="cursor:pointer;"><span>Orders</span></div>'
             +'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
             +'<button id="otClose" class="sp-close-btn">'+closeIcon+'</button>'
@@ -27824,10 +27824,10 @@ P['globalmarket']={
     build:function(){
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         return '<div class="sp-embedded" style="display:flex;flex-direction:column;height:100%;">'
-            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'
-            +'<div class="sp-nav-item active" id="gm_nav_watchlist"><span>Watchlist</span></div>'
-            +'<div class="sp-nav-item" id="gm_nav_news"><span>News</span></div>'
+            +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<nav class="tv-collapsible-tabs-top" style="display:flex;padding:8px;gap:6px;flex:1;overflow-x:auto;align-items:center;">'
+            +'<div class="tv-collapsible-tab-btn active" id="gm_nav_watchlist" style="cursor:pointer;"><span>Watchlist</span></div>'
+            +'<div class="tv-collapsible-tab-btn" id="gm_nav_news" style="cursor:pointer;"><span>News</span></div>'
             +'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
             +'<button id="gmClose" class="sp-close-btn">'+closeIcon+'</button>'
@@ -27910,11 +27910,11 @@ P['help']={
         ];
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         var nav=navDefs.map(function(d,i){
-            return'<div class="sp-nav-item'+(i===0?' active':'')+' " data-sp-help="'+d.k+'"><span>'+d.lbl+'</span></div>';
+            return'<div class="tv-collapsible-tab-btn'+(i===0?' active':'')+' " data-sp-help="'+d.k+'" style="cursor:pointer;"><span>'+d.lbl+'</span></div>';
         }).join('');
         return '<div class="sp-embedded" id="spHelpLayout" style="display:flex;flex-direction:column;height:100%;">'
-            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav id="spHelpNav" style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'+nav+'</nav>'
+            +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<nav id="spHelpNav" class="tv-collapsible-tabs-top" style="display:flex;padding:8px;gap:6px;flex:1;overflow-x:auto;align-items:center;">'+nav+'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
             +'<button id="spHelpClose" class="sp-close-btn">'+closeIcon+'</button>'
             +'</div></div>'
@@ -27936,10 +27936,10 @@ P['help']={
                 if(key==='faq'){var fb=content.querySelector('#helpFaqBody');if(fb){var faqs=[['What file formats are supported?','CSV files with OHLCV data. Columns: timestamp, open, high, low, close, volume.'],['How do I take a screenshot?','Click the camera icon in the toolbar.'],['Can I use custom indicators?','Yes — open the Indicators panel and add from the list.'],['How do I save my drawings?','Drawings are saved automatically and synced to your account.']];fb.innerHTML=faqs.map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');}}
             }
         }
-        layout.querySelectorAll('.sp-nav-item[data-sp-help]').forEach(function(item){
+        layout.querySelectorAll('.tv-collapsible-tab-btn[data-sp-help]').forEach(function(item){
             item.addEventListener('click',function(e){
                 e.stopPropagation();
-                layout.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});
+                layout.querySelectorAll('.tv-collapsible-tab-btn').forEach(function(n){n.classList.remove('active');});
                 item.classList.add('active');
                 hLoad(item.dataset.spHelp);
             });
@@ -27961,12 +27961,12 @@ P['profile']={
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         var nav=navDefs.map(function(d,i){
             if(!d)return'<div style="width:1px;height:18px;background:rgba(255,255,255,0.08);flex-shrink:0;align-self:center;margin:0 4px;"></div>';
-            var col=d.danger?' style="color:#f23645;"':'';
-            return'<div class="sp-nav-item'+(i===0?' active':'')+'" data-sp-profile="'+d.k+'"'+col+'><span>'+d.lbl+'</span></div>';
+            var col=d.danger?' style="color:#f23645;cursor:pointer;"':' style="cursor:pointer;"';
+            return'<div class="tv-collapsible-tab-btn'+(i===0?' active':'')+' " data-sp-profile="'+d.k+'"'+col+'><span>'+d.lbl+'</span></div>';
         }).join('');
         return '<div class="sp-embedded" id="spProfileLayout" style="display:flex;flex-direction:column;height:100%;">'
-            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
-            +'<nav id="spProfileNavInner" style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'+nav+'</nav>'
+            +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<nav id="spProfileNavInner" class="tv-collapsible-tabs-top" style="display:flex;padding:8px;gap:6px;flex:1;overflow-x:auto;align-items:center;">'+nav+'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
             +'<button id="spProfileClose" class="sp-close-btn">'+closeIcon+'</button>'
             +'</div></div>'
@@ -28114,10 +28114,10 @@ P['profile']={
             }
             if(key==='logout'){var btn=content.querySelector('button');if(btn){btn.removeAttribute('onclick');btn.addEventListener('click',function(){window.location.href='/logout';});}}
         }
-        layout.querySelectorAll('.sp-nav-item[data-sp-profile]').forEach(function(item){
+        layout.querySelectorAll('.tv-collapsible-tab-btn[data-sp-profile]').forEach(function(item){
             item.addEventListener('click',function(e){
                 e.stopPropagation();
-                layout.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});
+                layout.querySelectorAll('.tv-collapsible-tab-btn').forEach(function(n){n.classList.remove('active');});
                 item.classList.add('active');
                 ppLoad(item.dataset.spProfile);
             });
