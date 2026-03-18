@@ -2134,16 +2134,42 @@ class CalloutTool extends BaseDrawing {
         const minWidth = 80;
         const minHeight = 32;
         const cornerRadius = 8;
-        
-        // Measure text
-        const tempText = container.append('text')
-            .attr('font-size', `${this.style.fontSize}px`)
-            .text(this.text);
-        const bbox = tempText.node().getBBox();
-        tempText.remove();
+        const maxBubbleWidth = this.style.maxWidth || 280;
 
-        const bubbleWidth = Math.max(bbox.width + padding * 2, minWidth);
-        const bubbleHeight = Math.max(bbox.height + padding * 2, minHeight);
+        // Helper: measure single line width
+        const measureW = (str) => {
+            const t = container.append('text').attr('font-size', `${this.style.fontSize}px`).text(str);
+            let w = 40; try { w = t.node().getBBox().width; } catch(e) {}
+            t.remove(); return w;
+        };
+
+        // Word-wrap text to fit within maxBubbleWidth - padding*2
+        const innerW = maxBubbleWidth - padding * 2;
+        const calloutWrapLines = (rawText) => {
+            const result = [];
+            (rawText || 'Add text').split('\n').forEach(rawLine => {
+                if (!rawLine) { result.push(''); return; }
+                const words = rawLine.split(' ');
+                let cur = '';
+                words.forEach(word => {
+                    const test = cur ? cur + ' ' + word : word;
+                    if (measureW(test) > innerW && cur) { result.push(cur); cur = word; }
+                    else { cur = test; }
+                });
+                if (cur) result.push(cur);
+            });
+            return result.length ? result : [''];
+        };
+
+        const wrappedLines = calloutWrapLines(this.text);
+        const lineHeight = this.style.fontSize * 1.3;
+
+        // Measure actual max line width (capped)
+        let maxLineW = 40;
+        wrappedLines.forEach(l => { const w = measureW(l || ' '); if (w > maxLineW) maxLineW = w; });
+
+        const bubbleWidth = Math.min(Math.max(maxLineW + padding * 2, minWidth), maxBubbleWidth);
+        const bubbleHeight = Math.max(wrappedLines.length * lineHeight + padding * 2, minHeight);
 
         // Bubble positioned at second point (left-aligned, vertically centered)
         const bubbleX = bubbleCenterX;
@@ -2221,17 +2247,24 @@ class CalloutTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Text (left-aligned with padding)
+        // Text with wrapped lines
+        const textStartY = bubbleY + padding + this.style.fontSize;
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', bubbleX + padding)
-            .attr('y', bubbleCenterY + bbox.height / 4)
+            .attr('y', textStartY)
             .attr('text-anchor', 'start')
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .style('pointer-events', 'all')
-            .style('cursor', 'move')
-            .text(this.text);
+            .style('cursor', 'move');
+
+        wrappedLines.forEach((line, i) => {
+            textElement.append('tspan')
+                .attr('x', bubbleX + padding)
+                .attr('dy', i === 0 ? 0 : lineHeight)
+                .text(line || '\u00A0');
+        });
 
         const self = this;
         const CLICK_DELAY = 250;
@@ -2306,6 +2339,7 @@ class CalloutTool extends BaseDrawing {
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
+                    maxWidth: self.style.maxWidth || 280,
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -2595,7 +2629,8 @@ class CommentTool extends BaseDrawing {
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
-                    textAlign: self.style.textAlign || 'center',
+                    textAlign: 'left',
+                    maxWidth: self.style.maxWidth || 280,
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
