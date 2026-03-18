@@ -27629,23 +27629,19 @@ P['panellayout']={
 P['objecttree']={
     _active:'drawings',
     build:function(){
-        return '<div class="sp-embedded" style="display:flex;height:100%;">'+
-            '<div style="width:130px;min-width:130px;background:var(--sp-sidebar-bg);border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;padding:10px 8px;gap:2px;overflow-y:auto;">'+
-                '<div class="sp-nav-item active" id="ot_nav_drawings" style="cursor:pointer;">'+
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>'+
-                    '<span>Drawings</span>'+
-                '</div>'+
-                '<div class="sp-nav-item" id="ot_nav_indicators" style="cursor:pointer;">'+
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'+
-                    '<span>Indicators</span>'+
-                '</div>'+
-                '<div class="sp-nav-item" id="ot_nav_orders" style="cursor:pointer;">'+
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'+
-                    '<span>Orders</span>'+
-                '</div>'+
-            '</div>'+
-            '<div id="ot_content" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'+
-        '</div>';
+        var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+        return '<div class="sp-embedded" style="display:flex;flex-direction:column;height:100%;">'
+            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<nav style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'
+            +'<div class="sp-nav-item active" id="ot_nav_drawings"><span>Drawings</span></div>'
+            +'<div class="sp-nav-item" id="ot_nav_indicators"><span>Indicators</span></div>'
+            +'<div class="sp-nav-item" id="ot_nav_orders"><span>Orders</span></div>'
+            +'</nav>'
+            +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
+            +'<button id="otClose" class="sp-close-btn">'+closeIcon+'</button>'
+            +'</div></div>'
+            +'<div id="ot_content" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'
+            +'</div>';
     },
     _tabs:['drawings','indicators','orders'],
     _loadTab:function(tab){
@@ -27802,6 +27798,8 @@ P['objecttree']={
     },
     wire:function(){
         var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var hdr=document.querySelector('#settingsPanel .sp-content-header');if(hdr)hdr.style.display='none';
+        var otClose=document.getElementById('otClose');if(otClose)otClose.addEventListener('click',function(e){e.stopPropagation();if(typeof closePanel==='function')closePanel();});
         var self=P['objecttree'];
         self._tabs.forEach(function(t){
             var nav=ctx.querySelector('#ot_nav_'+t);
@@ -27824,19 +27822,18 @@ P['objecttree']={
 P['globalmarket']={
     _active:'watchlist',
     build:function(){
-        return '<div class="sp-embedded" style="display:flex;height:100%;">'+
-            '<div style="width:130px;min-width:130px;background:var(--sp-sidebar-bg);border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;padding:10px 8px;gap:2px;overflow-y:auto;">'+
-                '<div class="sp-nav-item active" id="gm_nav_watchlist" style="cursor:pointer;">'+
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'+
-                    '<span>Watchlist</span>'+
-                '</div>'+
-                '<div class="sp-nav-item" id="gm_nav_news" style="cursor:pointer;">'+
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="7" x2="18" y2="7"/><line x1="10" y1="11" x2="18" y2="11"/><line x1="10" y1="15" x2="14" y2="15"/></svg>'+
-                    '<span>News</span>'+
-                '</div>'+
-            '</div>'+
-            '<div id="gm_content" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'+
-        '</div>';
+        var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+        return '<div class="sp-embedded" style="display:flex;flex-direction:column;height:100%;">'
+            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<nav style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'
+            +'<div class="sp-nav-item active" id="gm_nav_watchlist"><span>Watchlist</span></div>'
+            +'<div class="sp-nav-item" id="gm_nav_news"><span>News</span></div>'
+            +'</nav>'
+            +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
+            +'<button id="gmClose" class="sp-close-btn">'+closeIcon+'</button>'
+            +'</div></div>'
+            +'<div id="gm_content" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'
+            +'</div>';
     },
     _loadTab:function(tab){
         var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
@@ -27865,6 +27862,8 @@ P['globalmarket']={
     },
     wire:function(){
         var ctx=document.getElementById('settingsPanelContent'); if(!ctx)return;
+        var hdr=document.querySelector('#settingsPanel .sp-content-header');if(hdr)hdr.style.display='none';
+        var gmClose=document.getElementById('gmClose');if(gmClose)gmClose.addEventListener('click',function(e){e.stopPropagation();if(typeof closePanel==='function')closePanel();});
         var self=P['globalmarket'];
         var wNav=ctx.querySelector('#gm_nav_watchlist');
         var nNav=ctx.querySelector('#gm_nav_news');
