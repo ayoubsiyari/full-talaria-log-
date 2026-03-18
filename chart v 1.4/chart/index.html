@@ -27907,20 +27907,16 @@ P['help']={
             {k:'contact',lbl:'Contact'},
             {k:'shortcuts',lbl:'Shortcuts'},
             {k:'faq',lbl:'FAQ'},
-            {k:'education',lbl:'Education'},
-            null,
-            {k:'changelog',lbl:'Changelog'}
+            {k:'education',lbl:'Education'}
         ];
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         var nav=navDefs.map(function(d,i){
-            if(!d)return'<div style="width:1px;height:18px;background:rgba(255,255,255,0.08);flex-shrink:0;align-self:center;margin:0 4px;"></div>';
-            return'<div class="sp-nav-item'+(i===0?' active':'')+'" data-sp-help="'+d.k+'"><span>'+d.lbl+'</span></div>';
+            return'<div class="sp-nav-item'+(i===0?' active':'')+' " data-sp-help="'+d.k+'"><span>'+d.lbl+'</span></div>';
         }).join('');
         return '<div class="sp-embedded" id="spHelpLayout" style="display:flex;flex-direction:column;height:100%;">'
-            +'<div style="display:flex;align-items:stretch;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
             +'<nav id="spHelpNav" style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'+nav+'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
-            +'<span style="font-size:11px;color:#787b86;">v1.5.0</span>'
             +'<button id="spHelpClose" class="sp-close-btn">'+closeIcon+'</button>'
             +'</div></div>'
             +'<div id="spHelpContent" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'
@@ -27970,7 +27966,7 @@ P['profile']={
             return'<div class="sp-nav-item'+(i===0?' active':'')+'" data-sp-profile="'+d.k+'"'+col+'><span>'+d.lbl+'</span></div>';
         }).join('');
         return '<div class="sp-embedded" id="spProfileLayout" style="display:flex;flex-direction:column;height:100%;">'
-            +'<div style="display:flex;align-items:stretch;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+            +'<div style="display:flex;align-items:stretch;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
             +'<nav id="spProfileNavInner" style="display:flex;padding:0 8px;flex:1;overflow-x:auto;align-items:stretch;">'+nav+'</nav>'
             +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
             +'<button id="spProfileClose" class="sp-close-btn">'+closeIcon+'</button>'
@@ -28388,7 +28384,7 @@ window._applyLanguage=function(lang){
 var _helpSections={
     contact:{title:'Contact Support',html:'<div style="padding:8px 0;"><p style="color:#d1d4dc;font-size:13px;line-height:1.6;margin:0 0 20px;">Have a question or issue? Our support team is here to help.</p><a href="mailto:support@talaria.com" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,0.05);border-radius:8px;color:var(--sp-accent,#2962ff);text-decoration:none;font-size:13px;font-weight:500;" onmouseenter="this.style.background=\'rgba(255,255,255,0.09)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.05)\'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>support@talaria.com</a></div>'},
     shortcuts:{title:'Keyboard Shortcuts',html:'<div style="padding:4px 0;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody id="kbShortcutsBody"></tbody></table></div>'},
-    faq:{title:'FAQ',html:'<div style="padding:4px 0;" id="helpFaqBody"></div>'},
+    faq:{title:'FAQ',html:'<div style="padding:4px 0;" id="helpFaqBody"></div><div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><span style="background:var(--sp-accent,#2962ff);color:#fff;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">NEW</span><span style="color:#d1d4dc;font-size:13px;font-weight:600;">Version 1.4.9</span><span style="margin-left:auto;font-size:11px;color:#555a6e;">v1.5.0</span></div><div style="color:#d1d4dc;font-size:12px;line-height:1.7;"><p style="margin:0 0 8px;font-weight:600;color:#fff;">What\'s new</p><ul style="margin:0;padding-left:18px;color:#787b86;"><li>Two-column Help &amp; Profile panels</li><li>Performance improvements (render loop, RAF binding)</li><li>Template and color settings caching</li><li>Screenshot latency improvements</li></ul></div></div>'},
     education:{title:'Education',html:'<div style="padding:8px 0;"><p style="color:#787b86;font-size:12px;margin:0 0 16px;">Learn how to use Talaria Chart effectively.</p><div class="side-panel-item" style="border-radius:6px;cursor:pointer;" onmouseenter="this.style.background=\'rgba(255,255,255,0.07)\'" onmouseleave="this.style.background=\'transparent\'" onclick="window.open(\'https://docs.talaria.com\',\'_blank\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg><span>Documentation</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="margin-left:auto;color:#555a6e;"><polyline points="9 18 15 12 9 6"/></svg></div><div class="side-panel-item" style="border-radius:6px;cursor:pointer;" onmouseenter="this.style.background=\'rgba(255,255,255,0.07)\'" onmouseleave="this.style.background=\'transparent\'" onclick="window.open(\'https://youtube.com\',\'_blank\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Video Tutorials</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="margin-left:auto;color:#555a6e;"><polyline points="9 18 15 12 9 6"/></svg></div></div>'},
     changelog:{title:'Changelog',html:'<div style="padding:4px 0;"><div style="display:flex;align-items:center;gap:10px;padding:10px 0 14px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:14px;"><span style="background:var(--sp-accent,#2962ff);color:#fff;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">NEW</span><span style="color:#d1d4dc;font-size:13px;font-weight:600;">Version 1.4.9</span></div><div style="color:#d1d4dc;font-size:12px;line-height:1.7;"><p style="margin:0 0 8px;font-weight:600;color:#fff;">What\'s new</p><ul style="margin:0;padding-left:18px;color:#787b86;"><li>Two-column Help &amp; Profile panels</li><li>Performance improvements (render loop, RAF binding)</li><li>Template and color settings caching</li><li>Screenshot latency improvements</li></ul></div></div>'}
 };
