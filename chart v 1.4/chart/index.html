@@ -2691,7 +2691,7 @@
             flex-shrink: 0;
         }
         #settingsPanel .sp-sidebar-header { display: none; }
-        #settingsPanel .sp-nav { padding: 8px; flex-direction: row; gap: 8px; align-items: center; flex: 1; overflow-x: auto; }
+        #settingsPanel .sp-nav { padding: 8px !important; flex-direction: row !important; gap: 8px !important; align-items: center !important; flex: 1; overflow-x: auto; }
         #settingsPanel .sp-nav-item {
             padding: 0 14px;
             border-radius: 8px;
@@ -27982,9 +27982,7 @@ P['profile']={
         var navDefs=[
             {k:'language',lbl:'Language'},
             {k:'timezone',lbl:'Timezone'},
-            null,
-            {k:'account',lbl:'Account'},
-            {k:'logout',lbl:'Log Out',danger:true}
+            {k:'account',lbl:'Account'}
         ];
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
         var nav=navDefs.map(function(d,i){
@@ -28139,8 +28137,17 @@ P['profile']={
                         _acctFill(d.user.name||'',d.user.email||'',_acctPlanLabel(d.user));
                     })
                     .catch(function(){});
+                var _logoutDiv=document.createElement('div');
+                _logoutDiv.style.cssText='margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);';
+                var _logoutBtn=document.createElement('button');
+                _logoutBtn.textContent='Log Out';
+                _logoutBtn.style.cssText='width:100%;padding:9px 16px;background:rgba(242,54,69,0.10);border:1px solid rgba(242,54,69,0.28);border-radius:8px;color:#f23645;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:all 0.15s;';
+                _logoutBtn.addEventListener('mouseenter',function(){this.style.background='rgba(242,54,69,0.20)';});
+                _logoutBtn.addEventListener('mouseleave',function(){this.style.background='rgba(242,54,69,0.10)';});
+                _logoutBtn.addEventListener('click',function(){window.location.href='/logout';});
+                _logoutDiv.appendChild(_logoutBtn);
+                content.appendChild(_logoutDiv);
             }
-            if(key==='logout'){var btn=content.querySelector('button');if(btn){btn.removeAttribute('onclick');btn.addEventListener('click',function(){window.location.href='/logout';});}}
         }
         layout.querySelectorAll('.sp-panel-tab[data-sp-profile]').forEach(function(item){
             item.addEventListener('click',function(e){
