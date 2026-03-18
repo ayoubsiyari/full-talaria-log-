@@ -164,7 +164,7 @@ class ImageTool extends BaseDrawing {
                 .style('cursor', 'move');
         } else {
             // Placeholder when no image is set
-            this.group.append('rect')
+            const placeholderRect = this.group.append('rect')
                 .attr('class', 'image-placeholder')
                 .attr('x', -width / 2)
                 .attr('y', -height / 2)
@@ -177,8 +177,24 @@ class ImageTool extends BaseDrawing {
                 .style('pointer-events', 'all')
                 .style('cursor', 'pointer');
 
-            // Small upload button centered in the placeholder
-            const btnW = 136, btnH = 34;
+            // Double-click on placeholder opens settings
+            const self = this;
+            placeholderRect.node().addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function') {
+                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
+                    manager.editDrawing(self, e.pageX, e.pageY);
+                }
+            });
+
+            // Upload button — adaptive to box dimensions
+            const btnW = Math.max(90, Math.min(width * 0.6, 150));
+            const btnH = Math.max(26, Math.min(height * 0.22, 38));
+            const btnFontSize = Math.max(10, Math.min(13, btnW * 0.09));
+            const iconSize = Math.max(10, Math.min(15, btnFontSize + 2));
+
             const fo = this.group.append('foreignObject')
                 .attr('x', -btnW / 2)
                 .attr('y', -btnH / 2)
@@ -193,25 +209,33 @@ class ImageTool extends BaseDrawing {
                 .style('display', 'flex')
                 .style('align-items', 'center')
                 .style('justify-content', 'center')
-                .style('gap', '6px')
+                .style('gap', '5px')
                 .style('background', 'rgba(41,98,255,0.15)')
                 .style('border', '1px solid rgba(41,98,255,0.5)')
                 .style('border-radius', '4px')
                 .style('color', '#6b8fff')
-                .style('font-size', '12px')
+                .style('font-size', `${btnFontSize}px`)
                 .style('font-family', 'Roboto, sans-serif')
                 .style('cursor', 'pointer')
                 .style('user-select', 'none')
                 .style('box-sizing', 'border-box')
-                .html(`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Upload Image</span>`);
+                .html(`<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Upload Image</span>`);
 
-            const self = this;
             const btnNode = btnDiv.node();
             btnNode.addEventListener('click', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 if (!self._uploadDialogOpen) {
                     self.triggerImageUpload();
+                }
+            });
+            btnNode.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function') {
+                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
+                    manager.editDrawing(self, e.pageX, e.pageY);
                 }
             });
             btnNode.addEventListener('mouseenter', function() {
