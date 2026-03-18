@@ -5046,6 +5046,77 @@ class Chart {
                 crosshairColor: 'rgba(51, 51, 51, 0.3)',
                 cursorLabelTextColor: '#f5f5f5', cursorLabelBgColor: '#333333',
                 volumeUpColor: 'rgba(77, 77, 77, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)'
+            },
+            /* ── PANEL & SIDEBAR SOFT THEMES ── */
+            'panel-lavender': {
+                name: 'Lavender',
+                settingsPanelBgColor: '#1a1628',
+                settingsPanelAccentColor: '#a78bfa',
+                settingsPanelSecondaryColor: '#c4b5fd',
+                settingsPanelTextColor: '#ede9fe'
+            },
+            'panel-rose-gold': {
+                name: 'Rose Gold',
+                settingsPanelBgColor: '#1f1318',
+                settingsPanelAccentColor: '#f472b6',
+                settingsPanelSecondaryColor: '#fb923c',
+                settingsPanelTextColor: '#fce7f3'
+            },
+            'panel-sage': {
+                name: 'Sage',
+                settingsPanelBgColor: '#111a18',
+                settingsPanelAccentColor: '#4ade80',
+                settingsPanelSecondaryColor: '#34d399',
+                settingsPanelTextColor: '#d1fae5'
+            },
+            'panel-sky': {
+                name: 'Sky',
+                settingsPanelBgColor: '#0d1929',
+                settingsPanelAccentColor: '#38bdf8',
+                settingsPanelSecondaryColor: '#818cf8',
+                settingsPanelTextColor: '#e0f2fe'
+            },
+            'panel-mocha': {
+                name: 'Mocha',
+                settingsPanelBgColor: '#1c1410',
+                settingsPanelAccentColor: '#d97706',
+                settingsPanelSecondaryColor: '#f59e0b',
+                settingsPanelTextColor: '#fef3c7'
+            },
+            'panel-mint': {
+                name: 'Mint Frost',
+                settingsPanelBgColor: '#0c1e1c',
+                settingsPanelAccentColor: '#2dd4bf',
+                settingsPanelSecondaryColor: '#5eead4',
+                settingsPanelTextColor: '#ccfbf1'
+            },
+            'panel-dusk': {
+                name: 'Dusk',
+                settingsPanelBgColor: '#160d24',
+                settingsPanelAccentColor: '#e879f9',
+                settingsPanelSecondaryColor: '#a78bfa',
+                settingsPanelTextColor: '#fae8ff'
+            },
+            'panel-slate': {
+                name: 'Slate',
+                settingsPanelBgColor: '#0d1520',
+                settingsPanelAccentColor: '#64748b',
+                settingsPanelSecondaryColor: '#94a3b8',
+                settingsPanelTextColor: '#e2e8f0'
+            },
+            'panel-peach': {
+                name: 'Peach Blossom',
+                settingsPanelBgColor: '#1e1318',
+                settingsPanelAccentColor: '#fb7185',
+                settingsPanelSecondaryColor: '#fda4af',
+                settingsPanelTextColor: '#ffe4e6'
+            },
+            'panel-ocean-mist': {
+                name: 'Ocean Mist',
+                settingsPanelBgColor: '#0e1d2a',
+                settingsPanelAccentColor: '#0ea5e9',
+                settingsPanelSecondaryColor: '#22d3ee',
+                settingsPanelTextColor: '#cffafe'
             }
         };
     }
@@ -5158,7 +5229,7 @@ class Chart {
                 bg: t.settingsPanelBgColor || t.backgroundColor || '#1e222d',
                 accent: t.settingsPanelAccentColor || '#2962ff',
                 up: t.settingsPanelSecondaryColor || t.bodyUpColor || '#089981',
-                down: t.bodyDownColor || '#f23645'
+                down: t.bodyDownColor || t.settingsPanelTextColor || '#f23645'
             }));
     }
 
