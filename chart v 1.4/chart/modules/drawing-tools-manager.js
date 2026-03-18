@@ -7566,6 +7566,14 @@ class DrawingToolsManager {
                     drawing.style[key] = savedStyle[key];
                 }
             });
+            // Sync stroke from color: when stroke is still the default grey but color carries a
+            // distinct template value, propagate it to stroke so the line renders in that color too.
+            const _dfltStroke = '#787b86';
+            const _sc = drawing.style.color;
+            if ((!drawing.style.stroke || drawing.style.stroke === _dfltStroke) &&
+                _sc && _sc !== 'none' && _sc !== _dfltStroke) {
+                drawing.style.stroke = _sc;
+            }
             // [debug removed]
         }
 

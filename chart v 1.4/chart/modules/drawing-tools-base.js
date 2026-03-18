@@ -348,7 +348,7 @@ class BaseDrawing {
             .attr('data-drawing-id', this.id);
         
         // Use the shape's color for time highlights (like TradingView)
-        const timeHighlightColor = this.style?.stroke || this.style?.lineColor || this.style?.color || '#2962ff';
+        const timeHighlightColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';
         
         // Helper function to determine if color is light (needs dark text)
         const isLightColor = (color) => {
@@ -590,7 +590,7 @@ class BaseDrawing {
             const index = point.x;
             
             // Determine color based on point type for position tools
-            let priceColor = this.style?.stroke || this.style?.lineColor || this.style?.color || '#2962ff';
+            let priceColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';
             if (this.type === 'long-position' || this.type === 'short-position') {
                 if (idx === 0) priceColor = '#2196f3'; // Entry - blue
                 else if (idx === 1) priceColor = '#f44336'; // Stop - red
