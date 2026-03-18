@@ -2990,7 +2990,9 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
             `;
 
-            container.appendChild(labelsSection);
+            if (drawing.type !== 'regression-trend') {
+                container.appendChild(labelsSection);
+            }
         }
 
         // Info section with checkboxes (only for trendline and arrow, not curve)
@@ -3168,7 +3170,12 @@ body.light-mode .template-save-dialog .dialog-title {
         if (drawing.type === 'regression-trend') {
             const regressionSection = document.createElement('div');
             regressionSection.className = 'tv-regression-section';
-            regressionSection.style.cssText = 'margin-top: 16px;';
+            regressionSection.style.cssText = 'margin-top: 0;';
+
+            // ── Upper section separator + rows ───────────────────────────────
+            const upperSep = document.createElement('div');
+            upperSep.style.cssText = 'border-top: 1px solid #2a2e39; margin-bottom: 12px; margin-top: 4px;';
+            regressionSection.appendChild(upperSep);
 
             // Upper line row
             const upperLineRow = this.createBrushPropertyRow('Upper Line', {
@@ -3176,12 +3183,15 @@ body.light-mode .template-save-dialog .dialog-title {
                 lineType: drawing.style.upperStrokeDasharray || '0',
                 lineWidth: drawing.style.upperStrokeWidth || 2
             }, 'upperLine', drawing);
+            upperLineRow.style.borderBottom = 'none';
+            upperLineRow.style.paddingBottom = '8px';
+            upperLineRow.style.marginBottom = '0';
             regressionSection.appendChild(upperLineRow);
 
             // Upper background row
             const upperBgRow = document.createElement('div');
             upperBgRow.className = 'tv-prop-row';
-            upperBgRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0; margin-bottom: 8px;';
+            upperBgRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0; margin-bottom: 0;';
             upperBgRow.innerHTML = `
                 <span class="tv-prop-label">Upper Background</span>
                 <div class="tv-prop-controls" style="width: 180px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
@@ -3190,21 +3200,26 @@ body.light-mode .template-save-dialog .dialog-title {
             `;
             regressionSection.appendChild(upperBgRow);
 
+            // ── Lower section separator + rows ───────────────────────────────
+            const lowerSep = document.createElement('div');
+            lowerSep.style.cssText = 'border-top: 1px solid #2a2e39; margin-bottom: 12px; margin-top: 12px;';
+            regressionSection.appendChild(lowerSep);
+
             // Lower line row
             const lowerLineRow = this.createBrushPropertyRow('Lower Line', {
                 color: drawing.style.lowerStroke || '#9c27b0',
                 lineType: drawing.style.lowerStrokeDasharray || '0',
                 lineWidth: drawing.style.lowerStrokeWidth || 2
             }, 'lowerLine', drawing);
-            lowerLineRow.style.borderTop = '1px solid #2a2e39';
-            lowerLineRow.style.paddingTop = '12px';
-            lowerLineRow.style.marginTop = '12px';
+            lowerLineRow.style.borderBottom = 'none';
+            lowerLineRow.style.paddingBottom = '8px';
+            lowerLineRow.style.marginBottom = '0';
             regressionSection.appendChild(lowerLineRow);
 
             // Lower background row
             const lowerBgRow = document.createElement('div');
             lowerBgRow.className = 'tv-prop-row';
-            lowerBgRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0;';
+            lowerBgRow.style.cssText = 'display: flex; align-items: center; gap: 16px; min-height: 46px; padding: 0; margin-bottom: 0;';
             lowerBgRow.innerHTML = `
                 <span class="tv-prop-label">Lower Background</span>
                 <div class="tv-prop-controls" style="width: 180px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
@@ -3212,6 +3227,40 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
             `;
             regressionSection.appendChild(lowerBgRow);
+
+            // ── Labels section at the bottom ─────────────────────────────────
+            const labelsSep = document.createElement('div');
+            labelsSep.style.cssText = 'border-top: 1px solid #2a2e39; margin-top: 12px; margin-bottom: 10px;';
+            regressionSection.appendChild(labelsSep);
+
+            const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
+                ? drawing.isAxisLabelEnabled('price')
+                : drawing.style.showPriceLabel !== false;
+            const timeLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
+                ? drawing.isAxisLabelEnabled('time')
+                : drawing.style.showTimeLabel !== false;
+
+            const labelsAtBottom = document.createElement('div');
+            labelsAtBottom.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px;';
+            labelsAtBottom.innerHTML = `
+                <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
+                    <div class="tv-checkbox ${priceLabelChecked ? 'checked' : ''}" data-prop="showPriceLabel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    <span class="tv-checkbox-label" style="white-space:nowrap;">Price labels</span>
+                </div>
+                <div class="tv-checkbox-wrapper" style="min-width:0;margin:0;display:flex;align-items:center;gap:8px;">
+                    <div class="tv-checkbox ${timeLabelChecked ? 'checked' : ''}" data-prop="showTimeLabel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    <span class="tv-checkbox-label" style="white-space:nowrap;">Time labels</span>
+                </div>
+            `;
+            regressionSection.appendChild(labelsAtBottom);
 
             container.appendChild(regressionSection);
         }
