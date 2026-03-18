@@ -66,14 +66,28 @@ class ImageTool extends BaseDrawing {
         let height = this.style.height || 100;
 
         if (isPlaceholder) {
-            // Fixed size, always centered on the visible chart area — ignores zoom/pan
-            const xRange = scales.xScale && scales.xScale.range ? scales.xScale.range() : [0, 800];
-            const yRange = scales.yScale && scales.yScale.range ? scales.yScale.range() : [600, 0];
-            x = (xRange[0] + xRange[1]) / 2;
-            y = (Math.min(yRange[0], yRange[1]) + Math.max(yRange[0], yRange[1])) / 2;
+            // On very first render, snap anchor point to screen centre so the
+            // placeholder appears centred and, after upload, the image stays there.
+            if (!this._initialCenterSet) {
+                this._initialCenterSet = true;
+                const xRange = scales.xScale && scales.xScale.range ? scales.xScale.range() : [0, 800];
+                const yRange = scales.yScale && scales.yScale.range ? scales.yScale.range() : [600, 0];
+                const cx = (xRange[0] + xRange[1]) / 2;
+                const cy = (Math.min(yRange[0], yRange[1]) + Math.max(yRange[0], yRange[1])) / 2;
+                point.x = scales.chart && scales.chart.pixelToDataIndex
+                    ? scales.chart.pixelToDataIndex(cx)
+                    : (scales.xScale.invert ? scales.xScale.invert(cx) : point.x);
+                point.y = scales.yScale.invert ? scales.yScale.invert(cy) : point.y;
+            }
+            // Position from anchor (movable via drag, no jump on upload)
+            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            y = scales.yScale(point.y);
+            // Fixed pixel size — does not scale with zoom
             width = 200;
             height = 150;
-            // Do NOT initialise widthInDataUnits here — let the image render do it after upload
+            // Do NOT set widthInDataUnits — image render will initialise it after upload
         } else {
             x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
                 ? scales.chart.dataIndexToPixel(point.x)
