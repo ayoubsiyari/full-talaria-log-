@@ -1647,6 +1647,10 @@ class Chart {
             if (saved) {
                 const settings = JSON.parse(saved);
                 this.chartSettings = { ...this.chartSettings, ...settings };
+                // Restore persisted template selections so dropdowns show correct state on reload
+                if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
+                if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
+                if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
             } else {
                 // Only apply dark theme defaults if no saved settings exist
                 this.chartSettings.backgroundColor = '#050028';
@@ -1668,6 +1672,10 @@ class Chart {
             try {
                 if (apiSettings && Object.keys(apiSettings).length > 0) {
                     this.chartSettings = { ...this.chartSettings, ...apiSettings };
+                    // Restore persisted template selections from cloud settings
+                    if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
+                    if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
+                    if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
                     this._applyChartSettingsImmediate(null, null);
                 }
             } catch (e) {
@@ -3570,9 +3578,14 @@ class Chart {
                     self.chartSettings[setting] = newColor;
                     // Apply to target chart (panel that opened settings)
                     self.applyChartSettings(setting, newColor);
-                    // Manual override: clear any pending template so OK does not re-apply it
+                    // Manual override: mark all template slots as Custom (user changed colors)
                     self._pendingTemplate = null;
                     self._lastTemplateSelected = null;
+                    self._lastChartOnlyTemplate = null;
+                    self._lastPanelOnlyTemplate = null;
+                    self.chartSettings.activeFullTemplate = null;
+                    self.chartSettings.activeChartOnlyTemplate = null;
+                    self.chartSettings.activePanelOnlyTemplate = null;
                     d3.selectAll('.template-selector').property('value', '');
                     if (typeof self.saveSettings === 'function') self.saveSettings();
                     if (typeof self._updateThemePreview === 'function' && self._themePreviewChartSettings) {
@@ -4028,6 +4041,13 @@ class Chart {
                     colorPreview.style('background', newColor);
                     this.chartSettings[setting] = newColor;
                     this.applyChartSettings(setting, newColor);
+                    // Manual color change — mark as Custom
+                    this._lastTemplateSelected = null;
+                    this._lastChartOnlyTemplate = null;
+                    this._lastPanelOnlyTemplate = null;
+                    this.chartSettings.activeFullTemplate = null;
+                    this.chartSettings.activeChartOnlyTemplate = null;
+                    this.chartSettings.activePanelOnlyTemplate = null;
                 });
             });
         }
@@ -5030,6 +5050,7 @@ class Chart {
         }
 
         this._lastTemplateSelected = resolvedName;
+        this.chartSettings.activeFullTemplate = resolvedName;
 
         // Apply all template settings to chartSettings
         Object.keys(template).forEach(key => {
@@ -5066,6 +5087,7 @@ class Chart {
         }
         if (!template) return;
         this._lastChartOnlyTemplate = templateName;
+        this.chartSettings.activeChartOnlyTemplate = templateName;
         Object.keys(template).forEach(key => {
             if (key !== 'name' && !PANEL_KEYS.has(key)) {
                 this.chartSettings[key] = template[key];
@@ -5092,6 +5114,7 @@ class Chart {
         }
         if (!template) return;
         this._lastPanelOnlyTemplate = templateName;
+        this.chartSettings.activePanelOnlyTemplate = templateName;
         PANEL_KEYS.forEach(key => {
             if (template[key] !== undefined) {
                 this.chartSettings[key] = template[key];
@@ -5131,6 +5154,9 @@ class Chart {
 
     resetChartSettingsToDefault() {
         this.chartSettings = JSON.parse(JSON.stringify(this._defaultChartSettings || {}));
+        this._lastTemplateSelected = null;
+        this._lastChartOnlyTemplate = null;
+        this._lastPanelOnlyTemplate = null;
         try {
             localStorage.removeItem('chartSettings');
         } catch (e) {
