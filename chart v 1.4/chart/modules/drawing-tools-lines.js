@@ -569,18 +569,18 @@ class TrendlineTool extends BaseDrawing {
         // This ensures no corner of the axis-aligned box touches the line at any angle
         const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
         const hasTextLabel = !!(this.text && this.text.trim());
+        // downPerp is opposite to the "above line" direction used by the text label
+        const downPerp = (pAy <= pBy) ? { x: pBx, y: pBy } : { x: pAx, y: pAy };
         let boxX, boxY;
         if (hasTextLabel) {
-            // Text occupies the line area; place box horizontally past p2
-            // (to the right of p2 for right-going lines, left for left-going lines)
-            // so it can never collide with the text regardless of font size or alignment.
-            const pastP2 = 12;
-            if (x2 >= x1) {
-                boxX = x2 + pastP2;
-            } else {
-                boxX = x2 - boxWidth - pastP2;
-            }
-            boxY = y2 - boxHeight;
+            // Text is on the upPerp (above) side along the segment.
+            // Place box on the downPerp (below) side, slightly past p2 along the line,
+            // so text can never reach it regardless of font size or line angle.
+            const overshoot = 10;
+            const anchorX = x2 + ux * overshoot;
+            const anchorY = y2 + uy * overshoot;
+            boxX = anchorX + downPerp.x * gap - boxWidth / 2;
+            boxY = anchorY + downPerp.y * gap - boxHeight / 2;
         } else {
             // No text: sit above the line at p2 with perpendicular offset
             boxX = x2 + perp.x * gap - boxWidth / 2;
