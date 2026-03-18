@@ -5768,7 +5768,7 @@ body.light-mode .template-save-dialog .dialog-title {
             // ── Line Type custom dropdown ────────────────────────────────────
             const currentLt = (level.lineType === '5,5' ? '10,6' : (level.lineType || ''));
             const typeDropdownEl = document.createElement('div');
-            typeDropdownEl.className = 'tv-linetype-dropdown';
+            typeDropdownEl.className = 'tv-level-linetype-dropdown';
             typeDropdownEl.dataset.prop = `level${idx}Type`;
             typeDropdownEl.style.cssText = 'position:relative;flex:1 1 0;min-width:40px;';
             typeDropdownEl.innerHTML = `
@@ -5822,7 +5822,7 @@ body.light-mode .template-save-dialog .dialog-title {
             // ── Line Width custom dropdown ───────────────────────────────────
             const currentW = level.lineWidth || drawing.style.strokeWidth || 2;
             const widthDropdownEl = document.createElement('div');
-            widthDropdownEl.className = 'tv-linewidth-dropdown';
+            widthDropdownEl.className = 'tv-level-linewidth-dropdown';
             widthDropdownEl.dataset.prop = `level${idx}Width`;
             widthDropdownEl.style.cssText = 'position:relative;flex:1 1 0;min-width:40px;';
             const _wItems = [1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_optBase}padding:6px 12px;${s!==4?_optB:''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('');
