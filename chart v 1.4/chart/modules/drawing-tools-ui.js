@@ -16478,8 +16478,8 @@ class InlineTextEditor {
                 .style('top', `${y}px`)
                 .style('z-index', '2000')
                 .style('background', 'transparent')
-                .style('border', 'none')
-                .style('padding', '0')
+                .style('border', '1px solid #2962FF')
+                .style('padding', '3px 5px')
                 .style('margin', '0')
                 .style('box-shadow', 'none');
 
@@ -16575,11 +16575,11 @@ class InlineTextEditor {
             .style('top', `${y}px`)
             .style('z-index', '2000')
             .style('background', 'transparent')
-            .style('border', 'none')
+            .style('border', '1px solid #2962FF')
             .style('backdrop-filter', 'none')
             .style('-webkit-backdrop-filter', 'none')
             .style('border-radius', '0')
-            .style('padding', '0')
+            .style('padding', '3px 5px')
             .style('box-shadow', 'none');
 
         const textarea = this.editor.append('textarea')
