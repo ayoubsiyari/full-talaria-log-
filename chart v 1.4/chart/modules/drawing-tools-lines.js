@@ -580,7 +580,7 @@ class TrendlineTool extends BaseDrawing {
             } else {
                 boxX = x2 - boxWidth - pastP2;
             }
-            boxY = y2 - boxHeight / 2;
+            boxY = y2 - boxHeight;
         } else {
             // No text: sit above the line at p2 with perpendicular offset
             boxX = x2 + perp.x * gap - boxWidth / 2;
