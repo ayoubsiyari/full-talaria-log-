@@ -1831,17 +1831,18 @@ class RayTool extends BaseDrawing {
             return;
         }
 
-        const { x1, y1, x2, y2 } = coords;
+        // p1 = anchor/start of ray, p2 = direction point (End)
+        const p1x = coords.x1, p1y = coords.y1;
+        const p2x = coords.x2, p2y = coords.y2;
 
-        // Sort by x to get left/right data points
-        const lx = x1 <= x2 ? x1 : x2;
-        const ly = x1 <= x2 ? y1 : y2;
-        const rx = x1 <= x2 ? x2 : x1;
-        const ry = x1 <= x2 ? y2 : y1;
+        // Ray direction vector (p1 → p2) for angle and unit vector
+        const rdx = p2x - p1x, rdy = p2y - p1y;
+        const rlen = Math.sqrt(rdx * rdx + rdy * rdy) || 1;
+        const rux = rdx / rlen, ruy = rdy / rlen;
 
-        // Calculate angle of the line for text rotation
-        let angle = Math.atan2(ry - ly, rx - lx) * (180 / Math.PI);
-        const originalAngleRad = Math.atan2(ry - ly, rx - lx);
+        // Calculate angle for text rotation from ray direction
+        let angle = Math.atan2(rdy, rdx) * (180 / Math.PI);
+        const originalAngleRad = Math.atan2(rdy, rdx);
 
         // Keep text readable by flipping it if upside down
         const isFlipped = angle > 90 || angle < -90;
@@ -1854,25 +1855,22 @@ class RayTool extends BaseDrawing {
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        // Use original data point screen coords for text positioning
-        const origLen = Math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2) || 1;
-        const ux = (rx - lx) / origLen;
-        const uy = (ry - ly) / origLen;
+        // 'left' = Start (p1), 'right' = End (p2) — semantic, not geometric sort
         let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = lx + ux * TEXT_EDGE_PADDING;
-                baseY = ly + uy * TEXT_EDGE_PADDING;
-                elAnchor = 'start';
+                baseX = p1x + rux * TEXT_EDGE_PADDING;
+                baseY = p1y + ruy * TEXT_EDGE_PADDING;
+                elAnchor = rdx >= 0 ? 'start' : 'end';
                 break;
             case 'right':
-                baseX = rx - ux * TEXT_EDGE_PADDING;
-                baseY = ry - uy * TEXT_EDGE_PADDING;
-                elAnchor = 'end';
+                baseX = p2x - rux * TEXT_EDGE_PADDING;
+                baseY = p2y - ruy * TEXT_EDGE_PADDING;
+                elAnchor = rdx >= 0 ? 'end' : 'start';
                 break;
             default:
-                baseX = (lx + rx) / 2;
-                baseY = (ly + ry) / 2;
+                baseX = (p1x + p2x) / 2;
+                baseY = (p1y + p2y) / 2;
                 elAnchor = 'middle';
         }
 
