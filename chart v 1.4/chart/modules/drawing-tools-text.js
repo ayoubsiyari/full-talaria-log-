@@ -211,15 +211,12 @@ class TextTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    width: rect.width,
-                    height: rect.height,
-                    padding: '0px',
+                    inline: true,
                     fontSize: `${scaledFontSize}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight,
                     color: self.style.textColor,
                     textAlign: self.style.textAlign || 'left',
-                    hideTargets: [textElement.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -632,7 +629,7 @@ class NoteBoxTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            const rect = box.node().getBoundingClientRect();
+            const rect = textElement.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -657,15 +654,12 @@ class NoteBoxTool extends BaseDrawing {
                 },
                 'Enter note text…',
                 {
-                    width: rect.width,
-                    height: rect.height,
-                    padding: `${self.style.padding || 6}px`,
+                    inline: true,
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
-                    hideTargets: [textElement.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -979,7 +973,7 @@ class AnchoredTextTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            const rect = background.node().getBoundingClientRect();
+            const rect = textElement.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -1004,15 +998,12 @@ class AnchoredTextTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    width: rect.width,
-                    height: rect.height,
-                    padding: '0px',
+                    inline: true,
                     fontSize: `${self.style.fontSize || 12}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'center',
-                    hideTargets: [textElement.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -1189,7 +1180,7 @@ class NoteTool extends BaseDrawing {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (editor && typeof editor.show === 'function') {
-                const bbox = textBox.node().getBoundingClientRect();
+                const bbox = textElement.node().getBoundingClientRect();
                 const editX = bbox.left + window.scrollX;
                 const editY = bbox.top + window.scrollY;
 
@@ -1214,15 +1205,12 @@ class NoteTool extends BaseDrawing {
                     },
                     'Add text',
                     {
-                        width: bbox.width,
-                        height: bbox.height,
-                        padding: `${padding}px`,
+                        inline: true,
                         fontSize: `${scaledFontSize}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
                         color: self.style.textColor,
                         textAlign: 'left',
-                        hideTargets: [textElement.node()],
                         hideSelector: `.drawing[data-id="${self.id}"] text`
                     }
                 );
@@ -1756,7 +1744,7 @@ class PinTool extends BaseDrawing {
                 const editor = manager && manager.textEditor;
                 if (!editor || typeof editor.show !== 'function') return;
 
-                const rect = boxPathEl.node().getBoundingClientRect();
+                const rect = boxTextEl.node().getBoundingClientRect();
                 const editX = rect.left + window.scrollX;
                 const editY = rect.top + window.scrollY;
 
@@ -1781,15 +1769,12 @@ class PinTool extends BaseDrawing {
                     },
                     'Enter text…',
                     {
-                        width: rect.width,
-                        height: rect.height,
-                        padding: '0px',
+                        inline: true,
                         fontSize: `${self.style.fontSize || 12}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
                         color: self.style.textColor,
                         textAlign: 'center',
-                        hideTargets: [boxTextEl.node()],
                         hideSelector: `.drawing[data-id="${self.id}"] text`
                     }
                 );
@@ -2272,15 +2257,12 @@ class CalloutTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    width: rect.width,
-                    height: rect.height,
-                    padding: '0px',
+                    inline: true,
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
-                    hideTargets: [textElement.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -2565,15 +2547,12 @@ class CommentTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    width: rect.width,
-                    height: rect.height,
-                    padding: '0px',
+                    inline: true,
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: self.style.textAlign || 'center',
-                    hideTargets: [textElement.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -2627,7 +2606,7 @@ class CommentTool extends BaseDrawing {
     setText(newText) { this.text = newText; }
     toJSON() { return { ...super.toJSON(), text: this.text }; }
     static fromJSON(data, chart) {
-        const tool = new CommentTool(data.points, data.style, data.text);
+        const tool = new CalloutTool(data.points, data.style, data.text);
         tool.id = data.id; tool.visible = data.visible; tool.meta = data.meta; tool.chart = chart;
         return tool;
     }
@@ -3107,7 +3086,7 @@ class Signpost2Tool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            const bbox = textBox.node().getBoundingClientRect();
+            const bbox = textElement.node().getBoundingClientRect();
             const x = bbox.left + window.scrollX;
             const y = bbox.top + window.scrollY;
 
@@ -3132,15 +3111,12 @@ class Signpost2Tool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    width: bbox.width,
-                    height: bbox.height,
-                    padding: '0px',
+                    inline: true,
                     fontSize: `${self.style.fontSize || 12}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'center',
-                    hideTargets: [textBox.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
