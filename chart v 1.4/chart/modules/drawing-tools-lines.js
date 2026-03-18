@@ -209,23 +209,8 @@ class TrendlineTool extends BaseDrawing {
             if (origY1 > origY2) { y1 = bottomY; } else { y2 = bottomY; }
         }
 
-        // Create arrow markers if needed
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';
-        
-        if (startStyle === 'arrow' || endStyle === 'arrow') {
-            const svg = d3.select(container.node().ownerSVGElement);
-            
-            if (startStyle === 'arrow') {
-                const startMarkerId = `arrow-start-${this.id}`;
-                SVGHelpers.createArrowMarker(svg, startMarkerId, this.style.stroke);
-            }
-            
-            if (endStyle === 'arrow') {
-                const endMarkerId = `arrow-end-${this.id}`;
-                SVGHelpers.createArrowMarker(svg, endMarkerId, this.style.stroke);
-            }
-        }
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
@@ -385,13 +370,7 @@ class TrendlineTool extends BaseDrawing {
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
             
-            // Apply arrow markers
-            if (startStyle === 'arrow') {
-                line1.attr('marker-start', `url(#arrow-start-${this.id})`);
-            }
-            if (endStyle === 'arrow') {
-                line2.attr('marker-end', `url(#arrow-end-${this.id})`);
-            }
+            // Arrow polygons are drawn below at original anchor points
         } else {
             // Draw invisible wider stroke for easier clicking
             this.group.append('line')
@@ -418,12 +397,37 @@ class TrendlineTool extends BaseDrawing {
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
             
-            // Apply arrow markers
+            // Arrow polygons are drawn below at original anchor points
+        }
+
+        // Draw arrowheads fixed at the original anchor points (not at extended ends)
+        if (startStyle === 'arrow' || endStyle === 'arrow') {
+            const adx = origX2 - origX1;
+            const ady = origY2 - origY1;
+            const alen = Math.sqrt(adx * adx + ady * ady) || 1;
+            const ux = adx / alen;
+            const uy = ady / alen;
+            const aLen = Math.max(8, scaledStrokeWidth * 5);
+            const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+
             if (startStyle === 'arrow') {
-                line.attr('marker-start', `url(#arrow-start-${this.id})`);
+                // Tip at p1, base points towards p2
+                const bx = origX1 + ux * aLen;
+                const by = origY1 + uy * aLen;
+                this.group.append('polygon')
+                    .attr('points', `${origX1},${origY1} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`)
+                    .attr('fill', this.style.stroke)
+                    .style('pointer-events', 'none');
             }
+
             if (endStyle === 'arrow') {
-                line.attr('marker-end', `url(#arrow-end-${this.id})`);
+                // Tip at p2, base points towards p1
+                const bx = origX2 - ux * aLen;
+                const by = origY2 - uy * aLen;
+                this.group.append('polygon')
+                    .attr('points', `${origX2},${origY2} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`)
+                    .attr('fill', this.style.stroke)
+                    .style('pointer-events', 'none');
             }
         }
 
