@@ -2691,7 +2691,7 @@
             flex-shrink: 0;
         }
         #settingsPanel .sp-sidebar-header { display: none; }
-        #settingsPanel .sp-nav { padding: 8px !important; flex-direction: row !important; gap: 8px !important; align-items: center !important; flex: 1; overflow-x: auto; }
+        #settingsPanel .sp-nav { padding: 8px !important; flex-direction: row !important; gap: 8px !important; align-items: center !important; justify-content: center !important; flex: 1; overflow-x: auto; }
         #settingsPanel .sp-nav-item {
             padding: 0 14px;
             border-radius: 8px;
@@ -3415,6 +3415,15 @@
             outline: none;
             border-color: var(--sp-accent);
             box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.15);
+        }
+        .sp-cdd-opt:hover {
+            background: rgba(255, 255, 255, 0.08) !important;
+        }
+        .sp-cdd-opt.sp-cdd-sel:hover {
+            background: var(--sp-accent, #2962ff) !important;
+        }
+        .sp-cdd-trig:hover {
+            border-color: rgba(255, 255, 255, 0.25) !important;
         }
 
         /* Dark dropdown options */
