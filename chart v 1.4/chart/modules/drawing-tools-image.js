@@ -170,22 +170,60 @@ class ImageTool extends BaseDrawing {
                 .attr('y', -height / 2)
                 .attr('width', width)
                 .attr('height', height)
-                .attr('fill', 'rgba(120, 123, 134, 0.1)')
+                .attr('fill', 'rgba(120, 123, 134, 0.05)')
                 .attr('stroke', '#787b86')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', '4,4')
                 .style('pointer-events', 'all')
-                .style('cursor', 'move');
+                .style('cursor', 'pointer');
 
-            this.group.append('text')
-                .attr('x', 0)
-                .attr('y', 0)
-                .attr('text-anchor', 'middle')
-                .attr('dominant-baseline', 'middle')
-                .attr('fill', '#787b86')
-                .attr('font-size', '14px')
-                .style('pointer-events', 'none')
-                .text('Upload image from settings');
+            // Small upload button centered in the placeholder
+            const btnW = 136, btnH = 34;
+            const fo = this.group.append('foreignObject')
+                .attr('x', -btnW / 2)
+                .attr('y', -btnH / 2)
+                .attr('width', btnW)
+                .attr('height', btnH)
+                .style('pointer-events', 'all')
+                .style('overflow', 'visible');
+
+            const btnDiv = fo.append('xhtml:div')
+                .style('width', `${btnW}px`)
+                .style('height', `${btnH}px`)
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('justify-content', 'center')
+                .style('gap', '6px')
+                .style('background', 'rgba(41,98,255,0.15)')
+                .style('border', '1px solid rgba(41,98,255,0.5)')
+                .style('border-radius', '4px')
+                .style('color', '#6b8fff')
+                .style('font-size', '12px')
+                .style('font-family', 'Roboto, sans-serif')
+                .style('cursor', 'pointer')
+                .style('user-select', 'none')
+                .style('box-sizing', 'border-box')
+                .html(`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Upload Image</span>`);
+
+            const self = this;
+            const btnNode = btnDiv.node();
+            btnNode.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (!self._uploadDialogOpen) {
+                    self.triggerImageUpload();
+                }
+            });
+            btnNode.addEventListener('mouseenter', function() {
+                this.style.background = 'rgba(41,98,255,0.3)';
+                this.style.borderColor = 'rgba(41,98,255,0.8)';
+                this.style.color = '#fff';
+            });
+            btnNode.addEventListener('mouseleave', function() {
+                this.style.background = 'rgba(41,98,255,0.15)';
+                this.style.borderColor = 'rgba(41,98,255,0.5)';
+                this.style.color = '#6b8fff';
+            });
         }
 
         this._currentWidth = width;
