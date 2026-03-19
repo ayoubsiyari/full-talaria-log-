@@ -1781,9 +1781,22 @@ class PinTool extends BaseDrawing {
 
             const boxWidth = Math.max(textBbox.width + padding * 2, 80);
             const boxHeight = textBbox.height + padding;
-            const boxX = x - boxWidth / 2;
-            const boxY = y - pinHeight - boxGap - boxHeight - 8;
             const arrowSize = 8;
+            const edgeMargin = 4;
+
+            // Clamp horizontal so bubble stays within the SVG container
+            const svgEl = container.node().ownerSVGElement || container.node();
+            const svgWidth = svgEl ? (svgEl.clientWidth || 800) : 800;
+            const rawBoxX = x - boxWidth / 2;
+            const boxX = Math.max(edgeMargin, Math.min(rawBoxX, svgWidth - boxWidth - edgeMargin));
+
+            // Flip below pin when bubble would go above the container top
+            const boxY_above = y - pinHeight - boxGap - boxHeight - 8;
+            const renderBelow = boxY_above < edgeMargin;
+            const boxY = renderBelow ? (y + 8) : boxY_above;
+
+            // Clamp arrow tip X so it stays within the box
+            const tipX = Math.max(boxX + arrowSize + 8, Math.min(x, boxX + boxWidth - arrowSize - 8));
 
             // Create text box group - hidden by default, visible when selected
             const isSelected = this.selected || false;
@@ -1794,21 +1807,42 @@ class PinTool extends BaseDrawing {
                 .style('transition', 'opacity 0.15s ease');
 
             // Text box background with pointer arrow
-            const boxPath = `
-                M ${boxX + 8} ${boxY}
-                L ${boxX + boxWidth - 8} ${boxY}
-                Q ${boxX + boxWidth} ${boxY}, ${boxX + boxWidth} ${boxY + 8}
-                L ${boxX + boxWidth} ${boxY + boxHeight - 8}
-                Q ${boxX + boxWidth} ${boxY + boxHeight}, ${boxX + boxWidth - 8} ${boxY + boxHeight}
-                L ${x + arrowSize} ${boxY + boxHeight}
-                L ${x} ${boxY + boxHeight + arrowSize}
-                L ${x - arrowSize} ${boxY + boxHeight}
-                L ${boxX + 8} ${boxY + boxHeight}
-                Q ${boxX} ${boxY + boxHeight}, ${boxX} ${boxY + boxHeight - 8}
-                L ${boxX} ${boxY + 8}
-                Q ${boxX} ${boxY}, ${boxX + 8} ${boxY}
-                Z
-            `;
+            let boxPath;
+            if (renderBelow) {
+                // Arrow points up from top of box
+                boxPath = `
+                    M ${boxX + 8} ${boxY + arrowSize}
+                    L ${tipX - arrowSize} ${boxY + arrowSize}
+                    L ${tipX} ${boxY}
+                    L ${tipX + arrowSize} ${boxY + arrowSize}
+                    L ${boxX + boxWidth - 8} ${boxY + arrowSize}
+                    Q ${boxX + boxWidth} ${boxY + arrowSize}, ${boxX + boxWidth} ${boxY + arrowSize + 8}
+                    L ${boxX + boxWidth} ${boxY + boxHeight + arrowSize - 8}
+                    Q ${boxX + boxWidth} ${boxY + boxHeight + arrowSize}, ${boxX + boxWidth - 8} ${boxY + boxHeight + arrowSize}
+                    L ${boxX + 8} ${boxY + boxHeight + arrowSize}
+                    Q ${boxX} ${boxY + boxHeight + arrowSize}, ${boxX} ${boxY + boxHeight + arrowSize - 8}
+                    L ${boxX} ${boxY + arrowSize + 8}
+                    Q ${boxX} ${boxY + arrowSize}, ${boxX + 8} ${boxY + arrowSize}
+                    Z
+                `;
+            } else {
+                // Arrow points down from bottom of box (default: above pin)
+                boxPath = `
+                    M ${boxX + 8} ${boxY}
+                    L ${boxX + boxWidth - 8} ${boxY}
+                    Q ${boxX + boxWidth} ${boxY}, ${boxX + boxWidth} ${boxY + 8}
+                    L ${boxX + boxWidth} ${boxY + boxHeight - 8}
+                    Q ${boxX + boxWidth} ${boxY + boxHeight}, ${boxX + boxWidth - 8} ${boxY + boxHeight}
+                    L ${tipX + arrowSize} ${boxY + boxHeight}
+                    L ${tipX} ${boxY + boxHeight + arrowSize}
+                    L ${tipX - arrowSize} ${boxY + boxHeight}
+                    L ${boxX + 8} ${boxY + boxHeight}
+                    Q ${boxX} ${boxY + boxHeight}, ${boxX} ${boxY + boxHeight - 8}
+                    L ${boxX} ${boxY + 8}
+                    Q ${boxX} ${boxY}, ${boxX + 8} ${boxY}
+                    Z
+                `;
+            }
 
             const hasBorder = this.style.borderColor && this.style.borderColor !== 'transparent' && this.style.borderColor !== 'none';
             const boxPathEl = textBoxGroup.append('path')
@@ -1820,11 +1854,12 @@ class PinTool extends BaseDrawing {
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
 
-            // Text
+            // Text (center within body; for below-render the body starts at boxY + arrowSize)
+            const textBodyTop = renderBelow ? boxY + arrowSize : boxY;
             const boxTextEl = textBoxGroup.append('text')
                 .attr('class', 'inline-editable-text')
-                .attr('x', x)
-                .attr('y', boxY + boxHeight / 2 + scaledFontSize * 0.35)
+                .attr('x', boxX + boxWidth / 2)
+                .attr('y', textBodyTop + boxHeight / 2 + scaledFontSize * 0.35)
                 .attr('fill', this.style.textColor)
                 .attr('font-size', `${scaledFontSize}px`)
                 .attr('font-family', this.style.fontFamily)
