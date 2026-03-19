@@ -2827,7 +2827,7 @@ class DrawingToolsManager {
         else {
             this.addDrawing(drawing);
             // Auto-open inline text editor immediately after placing these tools
-            const autoEditTools = ['note', 'pin', 'callout', 'comment', 'signpost-2'];
+            const autoEditTools = ['note', 'callout', 'comment', 'signpost-2'];
             if (autoEditTools.includes(this.currentTool)) {
                 requestAnimationFrame(() => {
                     this.selectDrawing(drawing);
