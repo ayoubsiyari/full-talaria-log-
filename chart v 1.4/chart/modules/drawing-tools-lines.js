@@ -648,18 +648,6 @@ class TrendlineTool extends BaseDrawing {
                 default:      siTextX = (sRawLX + sRawRX) / 2;  siTextY = (sRawLY + sRawRY) / 2;  siAnchor = 'middle';
             }
 
-            // When info box is active, push text to below-line side to avoid overlap
-            if (this.style.infoSettings && this.style.infoSettings.showInfo) {
-                const angleRadSI = Math.atan2(sRawDY, sRawDX);
-                const perpXsi = -Math.sin(angleRadSI);
-                const perpYsi =  Math.cos(angleRadSI);
-                const signUpSI = perpYsi <= 0 ? 1 : -1;
-                const fSz = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-                const vOff = LINE_LABEL_OFFSET + Math.max(0, fSz / 2 - 6);
-                siTextX -= perpXsi * vOff * signUpSI;
-                siTextY -= perpYsi * vOff * signUpSI;
-            }
-
             appendTextLabel(this.group, label, {
                 x: siTextX + offsetX,
                 y: siTextY + offsetY,
@@ -761,12 +749,9 @@ class TrendlineTool extends BaseDrawing {
         const perpY = Math.cos(angleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
-        // When info box is active, flip 'top' text to the below-line side to avoid overlap
-        const infoActive = !!(this.style.infoSettings && this.style.infoSettings.showInfo);
         if (textVAlign === 'top') {
-            const side = infoActive ? -1 : 1;
-            baseX += perpX * verticalOffset * signUp * side;
-            baseY += perpY * verticalOffset * signUp * side;
+            baseX += perpX * verticalOffset * signUp;
+            baseY += perpY * verticalOffset * signUp;
         } else if (textVAlign === 'bottom') {
             baseX -= perpX * verticalOffset * signUp;
             baseY -= perpY * verticalOffset * signUp;
