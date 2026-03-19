@@ -2960,8 +2960,9 @@ body.light-mode .template-save-dialog .dialog-title {
         }
         
         // Price labels / Time labels checkboxes (for all tools with axis highlights)
+        let labelsSection;
         {
-            const labelsSection = document.createElement('div');
+            labelsSection = document.createElement('div');
             labelsSection.style.cssText = 'margin-top: 4px; display: flex; flex-direction: column; gap: 6px;';
 
             const priceLabelChecked = typeof drawing.isAxisLabelEnabled === 'function'
@@ -2993,7 +2994,7 @@ body.light-mode .template-save-dialog .dialog-title {
             if (drawing.type !== 'regression-trend' && !this.isFibonacciInputTabTool(drawing.type)) {
                 container.appendChild(labelsSection);
             }
-        }
+        } // end labelsSection block
 
         // Info section with checkboxes (only for trendline and arrow, not curve)
         if (['trendline', 'arrow'].includes(drawing.type)) {
