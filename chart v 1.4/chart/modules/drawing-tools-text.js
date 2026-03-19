@@ -127,6 +127,10 @@ class TextTool extends BaseDrawing {
         // Store bbox for handle creation
         this.bbox = bbox;
 
+        // Store for live-update during inline editing
+        this._lastContainer = container;
+        this._lastScales = scales;
+
         const bodyHitArea = this.group.insert('rect', 'text')
             .attr('class', 'shape-border-hit text-body-hit')
             .attr('x', bbox.x)
@@ -186,7 +190,13 @@ class TextTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            const rect = textElement.node().getBoundingClientRect();
+            // Resolve live element — selectDrawing re-renders so captured node may be detached
+            const liveNode = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('text.inline-editable-text').node()
+                : null;
+            const targetNode = (liveNode && document.contains(liveNode))
+                ? liveNode : textElement.node();
+            const rect = targetNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -217,12 +227,18 @@ class TextTool extends BaseDrawing {
                     fontWeight: self.style.fontWeight,
                     color: self.style.textColor,
                     textAlign: self.style.textAlign || 'left',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`
+                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    onInput: (newText) => {
+                        self.setText((newText || '').replace(/\r\n/g, '\n'));
+                        if (self._lastContainer && self._lastScales) {
+                            self.render(self._lastContainer, self._lastScales);
+                        }
+                    }
                 }
             );
         };
 
-        const handleInlineEdit = (event) => {
+        const handleSingleClick = function(event) {
             event.stopPropagation();
             event.preventDefault();
 
@@ -236,21 +252,46 @@ class TextTool extends BaseDrawing {
                 clickTimer = null;
             }
 
+            // Double-click detection via timestamps stored on instance (survives re-renders)
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
+                // Double-click → open settings
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
+                    if (typeof manager.selectDrawing === 'function') {
+                        manager.selectDrawing(self);
+                    }
+                    manager.editDrawing(self, event.pageX, event.pageY);
+                }
+                return;
+            }
+
+            // 1st click on unselected → select only
+            if (!self.selected) {
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                }
+                return;
+            }
+
+            // Already selected → open inline editor after delay
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 startInlineEdit();
             }, CLICK_DELAY);
         };
 
-        const handleOpenSettings = (event) => {
+        const handleDblClick = function(event) {
             event.stopPropagation();
             event.preventDefault();
-
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
-
             const manager = self.chart && self.chart.drawingManager;
             if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
                 if (typeof manager.selectDrawing === 'function') {
@@ -261,13 +302,13 @@ class TextTool extends BaseDrawing {
         };
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
+        textElement.node().addEventListener('click', handleSingleClick, true);
+        textElement.node().addEventListener('dblclick', handleDblClick, true);
 
         if (bodyHitArea && bodyHitArea.node()) {
             bodyHitArea.node().addEventListener('mousedown', handleMouseDown, true);
-            bodyHitArea.node().addEventListener('click', handleInlineEdit, true);
-            bodyHitArea.node().addEventListener('dblclick', handleInlineEdit, true);
+            bodyHitArea.node().addEventListener('click', handleSingleClick, true);
+            bodyHitArea.node().addEventListener('dblclick', handleDblClick, true);
         }
 
         return this.group;
