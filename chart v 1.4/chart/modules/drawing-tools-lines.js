@@ -649,7 +649,7 @@ class TrendlineTool extends BaseDrawing {
             }
 
             // When info box is active, push text to below-line side to avoid overlap
-            if (this.style.showInfo) {
+            if (this.style.infoSettings && this.style.infoSettings.showInfo) {
                 const angleRadSI = Math.atan2(sRawDY, sRawDX);
                 const perpXsi = -Math.sin(angleRadSI);
                 const perpYsi =  Math.cos(angleRadSI);
@@ -762,7 +762,7 @@ class TrendlineTool extends BaseDrawing {
 
         const signUp = perpY <= 0 ? 1 : -1;
         // When info box is active, flip 'top' text to the below-line side to avoid overlap
-        const infoActive = !!(this.style.showInfo);
+        const infoActive = !!(this.style.infoSettings && this.style.infoSettings.showInfo);
         if (textVAlign === 'top') {
             const side = infoActive ? -1 : 1;
             baseX += perpX * verticalOffset * signUp * side;
