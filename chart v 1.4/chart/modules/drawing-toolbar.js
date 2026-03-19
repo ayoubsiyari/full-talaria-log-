@@ -1298,11 +1298,12 @@ class DrawingToolbar {
                         } else {
                             drawing.style.stroke = newColor;
                             drawing.style.color = newColor;
-                            // For fib tools, apply color to all individual levels
+                            // For fib tools, apply color to all individual levels and the trend line
                             const _isFib = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
                             if (_isFib) {
                                 const lvls = drawing.levels || (drawing.style && drawing.style.levels);
                                 if (Array.isArray(lvls)) lvls.forEach(lvl => { if (lvl) lvl.color = newColor; });
+                                drawing.style.trendLineColor = newColor;
                             }
                         }
 
@@ -1461,6 +1462,14 @@ class DrawingToolbar {
                 if (item) {
                     const width = parseInt(item.dataset.width);
                     drawing.style.strokeWidth = width;
+                    // For fib tools, apply width to all individual levels and the trend line
+                    const _isFibW = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
+                    if (_isFibW) {
+                        const lvls = drawing.levels || (drawing.style && drawing.style.levels);
+                        if (Array.isArray(lvls)) lvls.forEach(lvl => { if (lvl) lvl.lineWidth = width; });
+                        drawing.style.levelsLineWidth = width;
+                        drawing.style.trendLineWidth = width;
+                    }
                     
                     // Update button text
                     widthBtn.innerHTML = `<span class="toolbar-width-text">${width}px</span>`;
