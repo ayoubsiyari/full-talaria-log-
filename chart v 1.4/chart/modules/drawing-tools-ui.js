@@ -8878,18 +8878,12 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return [
 
-                    { value: 0, label: '0', color: '#787b86', visible: true },
-
+                    { value: 0, label: '0', color: '#787b86', visible: true, locked: true },
                     { value: 0.618, label: '0.618', color: '#4caf50', visible: true },
-
-                    { value: 1, label: '1', color: '#787b86', visible: true },
-
+                    { value: 1, label: '1', color: '#787b86', visible: true, locked: true },
                     { value: 1.272, label: '1.272', color: '#2196f3', visible: true },
-
                     { value: 1.618, label: '1.618', color: '#9c27b0', visible: true },
-
                     { value: 2.618, label: '2.618', color: '#e91e63', visible: true },
-
                     { value: 4.236, label: '4.236', color: '#f44336', visible: true }
 
                 ];
@@ -8899,47 +8893,13 @@ body.light-mode .template-save-dialog .dialog-title {
             if (drawing.type === 'trend-fib-extension') {
 
                 return [
-
-                    { value: -0.618, label: '-0.618', color: '#9c27b0', enabled: false },
-
-                    { value: -0.5, label: '-0.5', color: '#673ab7', enabled: false },
-
-                    { value: -0.382, label: '-0.382', color: '#2196f3', enabled: false },
-
-                    { value: -0.236, label: '-0.236', color: '#00bcd4', enabled: false },
-
-                    { value: 0, label: '0', color: '#787b86', enabled: true },
-
+                    { value: 0, label: '0', color: '#787b86', enabled: true, locked: true },
                     { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
-
                     { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
-
                     { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
-
                     { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
-
                     { value: 0.786, label: '0.786', color: '#2196f3', enabled: true },
-
-                    { value: 1, label: '1', color: '#787b86', enabled: true },
-
-                    { value: 1.272, label: '1.272', color: '#00bcd4', enabled: false },
-
-                    { value: 1.414, label: '1.414', color: '#4caf50', enabled: false },
-
-                    { value: 1.618, label: '1.618', color: '#9c27b0', enabled: false },
-
-                    { value: 2, label: '2', color: '#e91e63', enabled: false },
-
-                    { value: 2.272, label: '2.272', color: '#ff9800', enabled: false },
-
-                    { value: 2.618, label: '2.618', color: '#f44336', enabled: false },
-
-                    { value: 3.618, label: '3.618', color: '#b71c1c', enabled: false },
-
-                    { value: 4.236, label: '4.236', color: '#607d8b', enabled: false },
-
-                    { value: 5, label: '5', color: '#3f51b5', enabled: false }
-
+                    { value: 1, label: '1', color: '#787b86', enabled: true, locked: true },
                 ];
 
             }
@@ -8948,29 +8908,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return [
 
-                    { value: 0, color: '#787b86', enabled: true },
-
-                    { value: 1, color: '#f23645', enabled: true },
-
+                    { value: 0, color: '#787b86', enabled: true, locked: true },
+                    { value: 1, color: '#f23645', enabled: true, locked: true },
                     { value: 2, color: '#ff9800', enabled: true },
-
                     { value: 3, color: '#ffeb3b', enabled: true },
-
                     { value: 5, color: '#4caf50', enabled: true },
-
                     { value: 8, color: '#00bcd4', enabled: true },
-
-                    { value: 13, color: '#2962ff', enabled: true },
-
-                    { value: 21, color: '#9c27b0', enabled: true },
-
-                    { value: 34, color: '#e91e63', enabled: true },
-
-                    { value: 55, color: '#673ab7', enabled: false },
-
-                    { value: 89, color: '#3f51b5', enabled: false },
-
-                    { value: 144, color: '#607d8b', enabled: false }
+                    { value: 13, color: '#2962ff', enabled: true }
 
                 ];
 
@@ -8980,19 +8924,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return [
 
-                    { value: 1, color: '#2962ff', enabled: true },
-
+                    { value: 1, color: '#2962ff', enabled: true, locked: true },
                     { value: 0.75, color: '#00bcd4', enabled: true },
-
                     { value: 0.618, color: '#4caf50', enabled: true },
-
                     { value: 0.5, color: '#ffeb3b', enabled: true },
-
                     { value: 0.382, color: '#ff9800', enabled: true },
-
                     { value: 0.25, color: '#f23645', enabled: true },
-
-                    { value: 0, color: '#787b86', enabled: true }
+                    { value: 0, color: '#787b86', enabled: true, locked: true }
 
                 ];
 
@@ -9002,45 +8940,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return [
 
-                    { value: -0.618, label: '-0.618', color: '#9c27b0', visible: false },
-
-                    { value: -0.5, label: '-0.5', color: '#673ab7', visible: false },
-
-                    { value: -0.382, label: '-0.382', color: '#2196f3', visible: false },
-
-                    { value: -0.236, label: '-0.236', color: '#00bcd4', visible: false },
-
-                    { value: 0, label: '0', color: '#787b86', visible: true },
-
+                    { value: 0, label: '0', color: '#787b86', visible: true, locked: true },
                     { value: 0.236, label: '0.236', color: '#f23645', visible: true },
-
                     { value: 0.382, label: '0.382', color: '#ff9800', visible: true },
-
                     { value: 0.5, label: '0.5', color: '#ffeb3b', visible: true },
-
                     { value: 0.618, label: '0.618', color: '#4caf50', visible: true },
-
                     { value: 0.786, label: '0.786', color: '#2196f3', visible: true },
-
-                    { value: 1, label: '1', color: '#787b86', visible: true },
-
-                    { value: 1.272, label: '1.272', color: '#00bcd4', visible: false },
-
-                    { value: 1.414, label: '1.414', color: '#4caf50', visible: false },
-
-                    { value: 1.618, label: '1.618', color: '#9c27b0', visible: false },
-
-                    { value: 2, label: '2', color: '#e91e63', visible: false },
-
-                    { value: 2.272, label: '2.272', color: '#ff9800', visible: false },
-
-                    { value: 2.618, label: '2.618', color: '#f44336', visible: false },
-
-                    { value: 3.618, label: '3.618', color: '#b71c1c', visible: false },
-
-                    { value: 4.236, label: '4.236', color: '#607d8b', visible: false },
-
-                    { value: 5, label: '5', color: '#3f51b5', visible: false }
+                    { value: 1, label: '1', color: '#787b86', visible: true, locked: true }
 
                 ];
 
@@ -9049,47 +8955,13 @@ body.light-mode .template-save-dialog .dialog-title {
             if (drawing.type === 'fib-channel') {
 
                 return [
-
-                    { value: -0.618, label: '-0.618', color: '#9c27b0', enabled: false },
-
-                    { value: -0.5, label: '-0.5', color: '#673ab7', enabled: false },
-
-                    { value: -0.382, label: '-0.382', color: '#2196f3', enabled: false },
-
-                    { value: -0.236, label: '-0.236', color: '#00bcd4', enabled: false },
-
-                    { value: 0, label: '0', color: '#787b86', enabled: true },
-
+                    { value: 0, label: '0', color: '#787b86', enabled: true, locked: true },
                     { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
-
                     { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
-
                     { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
-
                     { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
-
                     { value: 0.786, label: '0.786', color: '#2196f3', enabled: true },
-
-                    { value: 1, label: '1', color: '#787b86', enabled: true },
-
-                    { value: 1.272, label: '1.272', color: '#00bcd4', enabled: false },
-
-                    { value: 1.414, label: '1.414', color: '#4caf50', enabled: false },
-
-                    { value: 1.618, label: '1.618', color: '#9c27b0', enabled: false },
-
-                    { value: 2, label: '2', color: '#e91e63', enabled: false },
-
-                    { value: 2.272, label: '2.272', color: '#ff9800', enabled: false },
-
-                    { value: 2.618, label: '2.618', color: '#f44336', enabled: false },
-
-                    { value: 3.618, label: '3.618', color: '#b71c1c', enabled: false },
-
-                    { value: 4.236, label: '4.236', color: '#607d8b', enabled: false },
-
-                    { value: 5, label: '5', color: '#3f51b5', enabled: false }
-
+                    { value: 1, label: '1', color: '#787b86', enabled: true, locked: true },
                 ];
 
             }
@@ -9097,21 +8969,13 @@ body.light-mode .template-save-dialog .dialog-title {
             // Default Fibonacci levels (retracement and generic)
 
             return [
-
-                { value: 0, label: '0', color: '#787b86', visible: true },
-
+                { value: 0, label: '0', color: '#787b86', visible: true, locked: true },
                 { value: 0.236, label: '0.236', color: '#f23645', visible: true },
-
                 { value: 0.382, label: '0.382', color: '#ff9800', visible: true },
-
                 { value: 0.5, label: '0.5', color: '#ffeb3b', visible: true },
-
                 { value: 0.618, label: '0.618', color: '#4caf50', visible: true },
-
                 { value: 0.786, label: '0.786', color: '#2196f3', visible: true },
-
-                { value: 1, label: '1', color: '#787b86', visible: true }
-
+                { value: 1, label: '1', color: '#787b86', visible: true, locked: true },
             ];
 
         };
@@ -9175,6 +9039,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         const levelsRef = ensureLevelsArray();
+        levelsRef.forEach(l => { if (l && typeof l === 'object' && (parseFloat(l.value) === 0 || parseFloat(l.value) === 1)) l.locked = true; });
 
 
 
@@ -10385,7 +10250,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            if (!lockFixedLevelCount) {
+            if (!lockFixedLevelCount && !level.locked) {
 
                 const deleteBtn = document.createElement('button');
 
