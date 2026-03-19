@@ -7847,23 +7847,43 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const levelsRow = makeRow('Levels');
         levelsRow.cb.classList.toggle('checked', !!drawing.style.levelsEnabled);
-        const levelsSelect = document.createElement('select');
-        levelsSelect.className = 'tv-select';
-        levelsSelect.style.cssText = `width: ${levelsModeSelectWidth}px; min-width: ${levelsModeSelectWidth}px;`;
-        levelsSelect.innerHTML = `
-            <option value="values" ${drawing.style.levelsLabelMode === 'values' ? 'selected' : ''}>Values</option>
-            <option value="percent" ${drawing.style.levelsLabelMode === 'percent' ? 'selected' : ''}>Percent</option>
-        `;
-        levelsRow.controls.appendChild(levelsSelect);
+        const _chevron = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+        const _lvlMode = drawing.style.levelsLabelMode === 'percent' ? 'Percent' : 'Values';
+        const levelsDropWrap = document.createElement('div');
+        levelsDropWrap.style.cssText = `position:relative;width:${levelsModeSelectWidth}px;min-width:${levelsModeSelectWidth}px;`;
+        levelsDropWrap.innerHTML = `
+            <button class="tv-fontsize-dropdown-btn" style="width:100%;height:26px;padding:0 20px 0 10px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;">${_lvlMode}${_chevron}</button>
+            <div class="tv-fontsize-dropdown-menu" style="display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);min-width:${levelsModeSelectWidth}px;overflow:hidden;">
+                <div class="tv-fontsize-option" data-value="values" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Values</div>
+                <div class="tv-fontsize-option" data-value="percent" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Percent</div>
+            </div>`;
+        const _lvlBtn = levelsDropWrap.querySelector('.tv-fontsize-dropdown-btn');
+        const _lvlMenu = levelsDropWrap.querySelector('.tv-fontsize-dropdown-menu');
+        _lvlBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = _lvlMenu.style.display !== 'none';
+            _lvlMenu.style.display = isOpen ? 'none' : 'block';
+            if (!isOpen) {
+                const r = _lvlBtn.getBoundingClientRect();
+                _lvlMenu.style.top = r.bottom + 2 + 'px';
+                _lvlMenu.style.left = r.left + 'px';
+            }
+        });
+        _lvlMenu.addEventListener('click', (e) => {
+            const opt = e.target.closest('.tv-fontsize-option');
+            if (!opt) return;
+            drawing.style.levelsLabelMode = opt.dataset.value;
+            _lvlBtn.childNodes[0].textContent = opt.textContent;
+            _lvlMenu.style.display = 'none';
+            applyChanges();
+        });
+        document.addEventListener('click', () => { _lvlMenu.style.display = 'none'; }, { capture: false });
+        levelsRow.controls.appendChild(levelsDropWrap);
         levelsRow.cb.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopImmediatePropagation();
             drawing.style.levelsEnabled = !drawing.style.levelsEnabled;
             levelsRow.cb.classList.toggle('checked', !!drawing.style.levelsEnabled);
-            applyChanges();
-        });
-        levelsSelect.addEventListener('change', () => {
-            drawing.style.levelsLabelMode = levelsSelect.value;
             applyChanges();
         });
         controlsWrap.appendChild(levelsRow.row);
