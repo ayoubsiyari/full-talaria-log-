@@ -1700,8 +1700,11 @@ class PriceNoteTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .text(priceText);
 
-        // Create handles at both endpoints
+        // Create handles at both endpoints, then move p2 handle to label box center
         this.createHandles(this.group, scales);
+        this.group.selectAll('[data-point-index="1"]')
+            .attr('cx', labelX)
+            .attr('cy', labelY);
 
         return this.group;
     }
