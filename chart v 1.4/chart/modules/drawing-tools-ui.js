@@ -5173,7 +5173,7 @@ body.light-mode .template-save-dialog .dialog-title {
             input.dataset.prop = valueProp;
             input.value = level.value;
             input.step = isTimeZone ? '1' : '0.001';
-            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; min-width: 0;';
+            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; min-width: 0; flex: 1;';
 
             const updateLevelFromInput = () => {
                 const parsed = parseFloat(input.value);
