@@ -1140,6 +1140,12 @@ body {
     width: 0%;
 }
 
+/* Force text cursor while inline text editor is active */
+body.text-editing,
+body.text-editing * {
+    cursor: text !important;
+}
+
 /* Inline text editor — TradingView-style selection highlight */
 .inline-text-editor--inline [contenteditable]::selection,
 .inline-text-editor--inline [contenteditable] *::selection {

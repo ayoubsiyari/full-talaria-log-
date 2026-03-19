@@ -16484,6 +16484,8 @@ class InlineTextEditor {
                 .style('margin', '0')
                 .style('box-shadow', 'none');
 
+            document.body.classList.add('text-editing');
+
             const _noWrap = opts.noWrap === true;
             const contentEl = this.editor.append('div')
                 .attr('contenteditable', 'true')
@@ -16724,6 +16726,7 @@ class InlineTextEditor {
      * Hide the editor
      */
     hide() {
+        document.body.classList.remove('text-editing');
         // Remove click outside listener
         if (this.clickOutsideHandler) {
             document.removeEventListener('mousedown', this.clickOutsideHandler);
