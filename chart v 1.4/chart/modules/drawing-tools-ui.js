@@ -4434,7 +4434,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const isTimeZone = drawing.type === 'fib-timezone';
         const usesVisible = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension';
-        const lockFixedLevelCount = drawing.type === 'fibonacci-retracement' || drawing.type === 'fib-channel' || drawing.type === 'trend-fib-extension';
+        const lockFixedLevelCount = drawing.type === 'fib-channel' || drawing.type === 'trend-fib-extension';
         const fixedLevelCount = 20;
 
         const getDefaultLevelsForType = () => {
@@ -4502,10 +4502,6 @@ body.light-mode .template-save-dialog .dialog-title {
             }
             if (drawing.type === 'fibonacci-retracement') {
                 return [
-                    { value: -0.618, label: '-0.618', color: '#9c27b0', visible: false },
-                    { value: -0.5, label: '-0.5', color: '#673ab7', visible: false },
-                    { value: -0.382, label: '-0.382', color: '#2196f3', visible: false },
-                    { value: -0.236, label: '-0.236', color: '#00bcd4', visible: false },
                     { value: 0, label: '0', color: '#787b86', visible: true },
                     { value: 0.236, label: '0.236', color: '#f23645', visible: true },
                     { value: 0.382, label: '0.382', color: '#ff9800', visible: true },
@@ -4514,14 +4510,8 @@ body.light-mode .template-save-dialog .dialog-title {
                     { value: 0.786, label: '0.786', color: '#2196f3', visible: true },
                     { value: 1, label: '1', color: '#787b86', visible: true },
                     { value: 1.272, label: '1.272', color: '#00bcd4', visible: false },
-                    { value: 1.414, label: '1.414', color: '#4caf50', visible: false },
                     { value: 1.618, label: '1.618', color: '#9c27b0', visible: false },
-                    { value: 2, label: '2', color: '#e91e63', visible: false },
-                    { value: 2.272, label: '2.272', color: '#ff9800', visible: false },
-                    { value: 2.618, label: '2.618', color: '#f44336', visible: false },
-                    { value: 3.618, label: '3.618', color: '#b71c1c', visible: false },
-                    { value: 4.236, label: '4.236', color: '#607d8b', visible: false },
-                    { value: 5, label: '5', color: '#3f51b5', visible: false }
+                    { value: 2.618, label: '2.618', color: '#f44336', visible: false }
                 ];
             }
             if (drawing.type === 'fib-channel') {
