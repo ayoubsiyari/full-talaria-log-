@@ -4603,13 +4603,15 @@ class DrawingToolsManager {
             editableNode = drawing.group.select('.inline-editable-text').node();
         }
 
+        const initialText = drawing.text && drawing.text !== 'Add text' ? drawing.text : '';
+
         if (editableNode) {
             const rect = editableNode.getBoundingClientRect();
             if (rect.width > 0 || rect.height > 0) {
                 this.textEditor.show(
                     rect.left + window.scrollX,
                     rect.top + window.scrollY,
-                    '',
+                    initialText,
                     onSave,
                     'Enter text\u2026',
                     inlineOpts
@@ -4640,7 +4642,7 @@ class DrawingToolsManager {
             this.textEditor.show(
                 fallbackX - 60,
                 fallbackY - 80,
-                '',
+                initialText,
                 onSave,
                 'Enter text\u2026',
                 inlineOpts
