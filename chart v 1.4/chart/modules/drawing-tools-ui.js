@@ -10227,9 +10227,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
             row.style.cssText = lockFixedLevelCount
 
-                ? 'display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;'
+                ? 'display: grid; grid-template-columns: 20px 80px 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;'
 
-                : 'display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
+                : 'display: grid; grid-template-columns: 20px 80px 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
 
 
 
@@ -10271,7 +10271,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             valueWrapper.className = 'number-input-wrapper';
 
-            valueWrapper.style.width = '100%';
+            valueWrapper.style.cssText = 'width: 80px; min-width: 0;';
 
 
 
