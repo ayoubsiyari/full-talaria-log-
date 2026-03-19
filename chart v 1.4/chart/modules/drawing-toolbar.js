@@ -1298,6 +1298,12 @@ class DrawingToolbar {
                         } else {
                             drawing.style.stroke = newColor;
                             drawing.style.color = newColor;
+                            // For fib tools, apply color to all individual levels
+                            const _isFib = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
+                            if (_isFib) {
+                                const lvls = drawing.levels || (drawing.style && drawing.style.levels);
+                                if (Array.isArray(lvls)) lvls.forEach(lvl => { if (lvl) lvl.color = newColor; });
+                            }
                         }
 
                         this.updateColorPreview(strokePreview, newColor);
