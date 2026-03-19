@@ -7877,6 +7877,8 @@ body.light-mode .template-save-dialog .dialog-title {
             _lvlMenu.style.display = 'none';
             applyChanges();
         });
+        _lvlMenu.addEventListener('mouseover', (e) => { const o = e.target.closest('.tv-fontsize-option'); if (o) o.style.background = 'rgba(255,255,255,0.08)'; });
+        _lvlMenu.addEventListener('mouseout',  (e) => { const o = e.target.closest('.tv-fontsize-option'); if (o) o.style.background = ''; });
         document.addEventListener('click', () => { _lvlMenu.style.display = 'none'; }, { capture: false });
         levelsRow.controls.appendChild(levelsDropWrap);
         levelsRow.cb.addEventListener('click', (e) => {
