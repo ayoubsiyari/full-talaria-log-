@@ -1762,9 +1762,9 @@ class PinTool extends BaseDrawing {
         const displayText = this.text || '';
         let textBoxGroup = null;
         
+        const boxGap = 8;
         if (displayText) {
             const padding = 14;
-            const boxGap = 8;
             
             // Measure text
             const tempText = container.append('text')
