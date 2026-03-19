@@ -1349,7 +1349,7 @@ class NoteTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const handleInlineEdit = function(event) {
+        const handleSingleClick = function(event) {
             event.stopPropagation();
             event.preventDefault();
 
@@ -1363,10 +1363,29 @@ class NoteTool extends BaseDrawing {
                 clickTimer = null;
             }
 
+            // 1st click → select only; 2nd click (already selected) → open editor
+            if (!self.selected) {
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                }
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 startInlineEdit();
             }, CLICK_DELAY);
+        };
+
+        const handleDblClick = function(event) {
+            event.stopPropagation();
+            event.preventDefault();
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            startInlineEdit();
         };
 
         const handleOpenSettings = function(event) {
@@ -1388,13 +1407,13 @@ class NoteTool extends BaseDrawing {
         };
         
         // Use native addEventListener with capture phase - won't be overwritten by d3
-        // Single click to edit text, double-click on border opens settings
+        // 1st click = select, 2nd click = edit, dblclick = edit immediately, drag = move
         textBox.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textBox.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('click', handleInlineEdit, true);
-        textBox.node().addEventListener('dblclick', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
+        textBox.node().addEventListener('click', handleSingleClick, true);
+        textElement.node().addEventListener('click', handleSingleClick, true);
+        textBox.node().addEventListener('dblclick', handleDblClick, true);
+        textElement.node().addEventListener('dblclick', handleDblClick, true);
 
         // Create handles at both endpoints
         this.createHandles(this.group, scales);
