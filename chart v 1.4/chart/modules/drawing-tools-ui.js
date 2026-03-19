@@ -2776,8 +2776,8 @@ body.light-mode .template-save-dialog .dialog-title {
                         trendControls.style.justifyContent = 'flex-start';
                     }
 
-                    trendRow.style.paddingBottom = '12px';
-                    trendRow.style.marginBottom = '12px';
+                    trendRow.style.paddingBottom = '4px';
+                    trendRow.style.marginBottom = '4px';
                     container.appendChild(trendRow);
                 } else {
                     const lineLabel = (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') ? 'Middle Line' : 'Line';
@@ -2990,7 +2990,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 </div>
             `;
 
-            if (drawing.type !== 'regression-trend') {
+            if (drawing.type !== 'regression-trend' && !this.isFibonacciInputTabTool(drawing.type)) {
                 container.appendChild(labelsSection);
             }
         }
@@ -3098,6 +3098,7 @@ body.light-mode .template-save-dialog .dialog-title {
         if (fibonacciToolsWithLevels.includes(drawing.type)) {
             if (showFibLevelsInInputsTab) {
                 this.buildFibonacciStyleControlsSection(container, drawing);
+                container.appendChild(labelsSection);
             } else {
                 this.buildFibonacciLevelsSection(container, drawing);
             }
@@ -7750,15 +7751,15 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const section = document.createElement('div');
         section.className = 'tv-levels-section';
-        section.style.cssText = 'margin-top: 16px;';
+        section.style.cssText = 'margin-top: 8px;';
 
         const header = document.createElement('div');
-        header.style.cssText = 'color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;';
+        header.style.cssText = 'color: #787b86; font-size: 12px; margin-bottom: 6px; text-transform: uppercase;';
         header.textContent = 'Fibonacci Style';
         section.appendChild(header);
 
         const controlsWrap = document.createElement('div');
-        controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; padding-bottom: 12px;';
+        controlsWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; padding-bottom: 6px;';
 
         const fibControlsColumnWidth = 180;
         const levelsModeSelectWidth = 96;
@@ -7766,7 +7767,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const makeRow = (labelText) => {
             const row = document.createElement('div');
             row.className = 'tv-prop-row';
-            row.style.cssText = 'display: flex; align-items: center; gap: 12px; min-height: 30px;';
+            row.style.cssText = 'display: flex; align-items: center; gap: 12px; min-height: 26px;';
 
             const left = document.createElement('div');
             left.className = 'tv-checkbox-wrapper';
@@ -7869,7 +7870,7 @@ body.light-mode .template-save-dialog .dialog-title {
         section.appendChild(controlsWrap);
 
         const optionsRow = document.createElement('div');
-        optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 12px; padding-bottom: 8px;';
+        optionsRow.style.cssText = 'display: flex; gap: 16px; margin-bottom: 6px; padding-bottom: 4px;';
 
         const extendWrap = document.createElement('div');
         extendWrap.className = 'tv-checkbox-wrapper';
