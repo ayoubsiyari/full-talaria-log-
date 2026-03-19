@@ -1139,3 +1139,15 @@ body {
     transition: width 0.1s ease-out;
     width: 0%;
 }
+
+/* Inline text editor — TradingView-style selection highlight */
+.inline-text-editor--inline [contenteditable]::selection,
+.inline-text-editor--inline [contenteditable] *::selection {
+    background: rgba(41, 98, 255, 0.45);
+    color: inherit;
+}
+.inline-text-editor--inline [contenteditable]::-moz-selection,
+.inline-text-editor--inline [contenteditable] *::-moz-selection {
+    background: rgba(41, 98, 255, 0.45);
+    color: inherit;
+}

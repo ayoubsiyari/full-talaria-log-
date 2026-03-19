@@ -2797,6 +2797,7 @@ class DrawingToolsManager {
             const fontSize = savedStyle.fontSize || (isNoteBox ? 12 : 14);
             const fontFamily = savedStyle.fontFamily || 'Roboto, sans-serif';
             const fontWeight = savedStyle.fontWeight || 'normal';
+            const fontStyle = savedStyle.fontStyle || 'normal';
             const textColor = savedStyle.textColor || '#FFFFFF';
             const textAlign = savedStyle.textAlign || 'left';
 
@@ -2816,6 +2817,7 @@ class DrawingToolsManager {
                 fontSize: `${fontSize}px`,
                 fontFamily,
                 fontWeight,
+                fontStyle,
                 color: textColor,
                 textAlign,
                 hideSelector: '.temp-drawing text'

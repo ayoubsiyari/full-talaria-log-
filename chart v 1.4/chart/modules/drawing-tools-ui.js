@@ -16429,6 +16429,7 @@ class InlineTextEditor {
         const fontSize = typeof opts.fontSize === 'string' ? opts.fontSize : '14px';
         const fontFamily = typeof opts.fontFamily === 'string' ? opts.fontFamily : 'inherit';
         const fontWeight = typeof opts.fontWeight === 'string' ? opts.fontWeight : 'normal';
+        const fontStyle = typeof opts.fontStyle === 'string' ? opts.fontStyle : 'normal';
         const color = typeof opts.color === 'string' ? opts.color : '#d1d4dc';
         const textAlign = typeof opts.textAlign === 'string' ? opts.textAlign : 'left';
         const maxWidth = Number.isFinite(opts.maxWidth) ? opts.maxWidth : 320;
@@ -16497,6 +16498,7 @@ class InlineTextEditor {
                 .style('font-size', fontSize)
                 .style('font-family', fontFamily)
                 .style('font-weight', fontWeight)
+                .style('font-style', fontStyle)
                 .style('text-align', textAlign)
                 .style('line-height', '1.2')
                 .style('caret-color', color)
@@ -16506,7 +16508,14 @@ class InlineTextEditor {
                 .style('cursor', 'text');
 
             if (initialText) {
-                contentEl.node().textContent = initialText;
+                if (initialText.includes('\n')) {
+                    const html = initialText.split('\n').map(l =>
+                        (l || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    ).join('<br>');
+                    contentEl.node().innerHTML = html;
+                } else {
+                    contentEl.node().textContent = initialText;
+                }
             }
 
             const _onInputCb = typeof opts.onInput === 'function' ? opts.onInput : null;
@@ -16540,16 +16549,38 @@ class InlineTextEditor {
                         sel.addRange(newRange);
                     }
                     contentEl.style('white-space', 'pre-wrap');
+                } else if (event.key === 'Tab') {
+                    event.preventDefault();
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount) {
+                        const range = sel.getRangeAt(0);
+                        range.deleteContents();
+                        const spaces = document.createTextNode('    ');
+                        range.insertNode(spaces);
+                        range.setStartAfter(spaces);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+                    event.preventDefault();
+                    const sel = window.getSelection();
+                    if (sel) {
+                        const range = document.createRange();
+                        range.selectNodeContents(contentEl.node());
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
                 }
             });
 
             const node = contentEl.node();
             node.focus();
             if (initialText) {
+                // Select all existing text when re-editing (TradingView style — type to replace)
                 const range = document.createRange();
                 const sel = window.getSelection();
                 range.selectNodeContents(node);
-                range.collapse(false);
                 sel.removeAllRanges();
                 sel.addRange(range);
             }
@@ -16660,13 +16691,33 @@ class InlineTextEditor {
             const contentNode = this.editor.select('[contenteditable]').node();
             let text;
             if (contentNode) {
-                text = (contentNode.innerText || '').replace(/\n$/, '');
+                text = this._extractEditableText(contentNode);
             } else {
                 text = this.editor.select('textarea').property('value');
             }
             this.onSave(text);
         }
         this.hide();
+    }
+
+    _extractEditableText(node) {
+        let result = '';
+        const walk = (el) => {
+            for (const child of el.childNodes) {
+                if (child.nodeType === 3) {
+                    result += child.textContent;
+                } else if (child.nodeName === 'BR') {
+                    result += '\n';
+                } else if (child.nodeName === 'DIV' || child.nodeName === 'P') {
+                    if (result.length > 0 && !result.endsWith('\n')) result += '\n';
+                    walk(child);
+                } else {
+                    walk(child);
+                }
+            }
+        };
+        walk(node);
+        return result.replace(/\n$/, '');
     }
 
     /**

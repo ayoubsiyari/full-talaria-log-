@@ -1230,6 +1230,7 @@ class NoteTool extends BaseDrawing {
                         fontSize: `${scaledFontSize}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
+                        fontStyle: self.style.fontStyle || 'normal',
                         color: self.style.textColor,
                         textAlign: 'left',
                         noWrap: true,
