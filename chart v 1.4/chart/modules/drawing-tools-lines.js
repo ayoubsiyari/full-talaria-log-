@@ -568,24 +568,9 @@ class TrendlineTool extends BaseDrawing {
         // Gap = rectangle support function in perp direction + clearance
         // This ensures no corner of the axis-aligned box touches the line at any angle
         const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
-        const hasTextLabel = !!(this.text && this.text.trim());
-        // downPerp is opposite to the "above line" direction used by the text label
-        const downPerp = (pAy <= pBy) ? { x: pBx, y: pBy } : { x: pAx, y: pAy };
-        let boxX, boxY;
-        if (hasTextLabel) {
-            // Text is on the upPerp (above) side along the segment.
-            // Place box on the downPerp (below) side, slightly past p2 along the line,
-            // so text can never reach it regardless of font size or line angle.
-            const overshoot = 10;
-            const anchorX = x2 + ux * overshoot;
-            const anchorY = y2 + uy * overshoot;
-            boxX = anchorX + downPerp.x * gap - boxWidth / 2;
-            boxY = anchorY + downPerp.y * gap - boxHeight / 2;
-        } else {
-            // No text: sit above the line at p2 with perpendicular offset
-            boxX = x2 + perp.x * gap - boxWidth / 2;
-            boxY = y2 + perp.y * gap - boxHeight / 2;
-        }
+        // Anchor at p2, offset above the line (upPerp direction)
+        let boxX = x2 + perp.x * gap - boxWidth / 2;
+        let boxY = y2 + perp.y * gap - boxHeight / 2;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
@@ -661,6 +646,18 @@ class TrendlineTool extends BaseDrawing {
                 case 'left':  siTextX = sRawLX + sUx * SI_EDGE; siTextY = sRawLY + sUy * SI_EDGE; siAnchor = 'start'; break;
                 case 'right': siTextX = sRawRX - sUx * SI_EDGE; siTextY = sRawRY - sUy * SI_EDGE; siAnchor = 'end';   break;
                 default:      siTextX = (sRawLX + sRawRX) / 2;  siTextY = (sRawLY + sRawRY) / 2;  siAnchor = 'middle';
+            }
+
+            // When info box is active, push text to below-line side to avoid overlap
+            if (this.style.showInfo) {
+                const angleRadSI = Math.atan2(sRawDY, sRawDX);
+                const perpXsi = -Math.sin(angleRadSI);
+                const perpYsi =  Math.cos(angleRadSI);
+                const signUpSI = perpYsi <= 0 ? 1 : -1;
+                const fSz = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
+                const vOff = LINE_LABEL_OFFSET + Math.max(0, fSz / 2 - 6);
+                siTextX -= perpXsi * vOff * signUpSI;
+                siTextY -= perpYsi * vOff * signUpSI;
             }
 
             appendTextLabel(this.group, label, {
@@ -764,9 +761,12 @@ class TrendlineTool extends BaseDrawing {
         const perpY = Math.cos(angleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
+        // When info box is active, flip 'top' text to the below-line side to avoid overlap
+        const infoActive = !!(this.style.showInfo);
         if (textVAlign === 'top') {
-            baseX += perpX * verticalOffset * signUp;
-            baseY += perpY * verticalOffset * signUp;
+            const side = infoActive ? -1 : 1;
+            baseX += perpX * verticalOffset * signUp * side;
+            baseY += perpY * verticalOffset * signUp * side;
         } else if (textVAlign === 'bottom') {
             baseX -= perpX * verticalOffset * signUp;
             baseY -= perpY * verticalOffset * signUp;
