@@ -774,7 +774,8 @@ class DrawingToolbar {
             </div>
             ` : ''}
             
-            <!-- Line Width Dropdown -->
+            <!-- Line Width Dropdown (hidden for text tool) -->
+            ${!isTextTool ? `
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-width-btn" title="Line Width">
                     <span class="toolbar-width-text">${style.strokeWidth || 2}px</span>
@@ -787,7 +788,8 @@ class DrawingToolbar {
                     `).join('')}
                 </div>
             </div>
-            
+            ` : ''}
+
             <!-- Font Size Dropdown (text tool only) -->
             ${isTextTool ? `
             <div class="toolbar-item toolbar-dropdown-wrapper">

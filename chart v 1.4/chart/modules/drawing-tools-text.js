@@ -145,9 +145,6 @@ class TextTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', this.selected ? 'text' : 'move');
 
-        // Create resize handles like rectangles (4 corners + 4 sides)
-        this.createTextHandles(this.group, bbox);
-
         const self = this;
         const CLICK_DELAY = 250;
         let clickTimer = null;
