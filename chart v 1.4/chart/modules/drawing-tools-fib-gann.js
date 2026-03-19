@@ -17,28 +17,15 @@ class FibChannelTool extends BaseDrawing {
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         if (this.style.backgroundOpacity === undefined || this.style.backgroundOpacity === null || isNaN(parseFloat(this.style.backgroundOpacity))) this.style.backgroundOpacity = 0.08;
-        // TradingView-like default Fibonacci levels (fixed 20 like Fib Retracement)
+        // Core 7 Fibonacci levels
         const defaultLevels = [
-            { value: -0.618, label: '-0.618', color: '#9c27b0', enabled: false },
-            { value: -0.5, label: '-0.5', color: '#673ab7', enabled: false },
-            { value: -0.382, label: '-0.382', color: '#2196f3', enabled: false },
-            { value: -0.236, label: '-0.236', color: '#00bcd4', enabled: false },
             { value: 0, label: '0', color: '#787b86', enabled: true },
             { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
             { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
             { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
             { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
             { value: 0.786, label: '0.786', color: '#2196f3', enabled: true },
-            { value: 1, label: '1', color: '#787b86', enabled: true },
-            { value: 1.272, label: '1.272', color: '#00bcd4', enabled: false },
-            { value: 1.414, label: '1.414', color: '#4caf50', enabled: false },
-            { value: 1.618, label: '1.618', color: '#9c27b0', enabled: false },
-            { value: 2, label: '2', color: '#e91e63', enabled: false },
-            { value: 2.272, label: '2.272', color: '#ff9800', enabled: false },
-            { value: 2.618, label: '2.618', color: '#f44336', enabled: false },
-            { value: 3.618, label: '3.618', color: '#b71c1c', enabled: false },
-            { value: 4.236, label: '4.236', color: '#607d8b', enabled: false },
-            { value: 5, label: '5', color: '#3f51b5', enabled: false }
+            { value: 1, label: '1', color: '#787b86', enabled: true }
         ];
         this.levels = (Array.isArray(style.levels) && style.levels.length)
             ? style.levels

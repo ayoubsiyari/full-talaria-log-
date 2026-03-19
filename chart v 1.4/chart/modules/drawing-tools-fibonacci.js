@@ -25,10 +25,7 @@ class FibonacciRetracementTool extends BaseDrawing {
             { value: 0.5, label: '0.5', color: style.color50 || '#ffeb3b', visible: true },
             { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
             { value: 0.786, label: '0.786', color: style.color786 || '#2196f3', visible: true },
-            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
-            { value: 1.272, label: '1.272', color: style.color1272 || '#00bcd4', visible: false },
-            { value: 1.618, label: '1.618', color: style.color1618 || '#9c27b0', visible: false },
-            { value: 2.618, label: '2.618', color: style.color2618 || '#f44336', visible: false }
+            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true }
         ];
 
         const providedLevels = Array.isArray(style.levels) ? style.levels : defaultLevels;
