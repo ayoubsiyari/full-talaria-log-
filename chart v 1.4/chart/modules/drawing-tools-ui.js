@@ -10673,6 +10673,14 @@ body.light-mode .template-save-dialog .dialog-title {
                     actualDrawing.style.stroke = finalColor;
                     actualDrawing.style.color = finalColor; // Also update color for axis highlights
                     drawing.style.stroke = finalColor;
+                    // For fib tools, propagate new color to all individual levels
+                    const _isFibLC = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
+                    if (_isFibLC) {
+                        [actualDrawing, drawing].forEach(d => {
+                            const lvls = d.levels || (d.style && d.style.levels);
+                            if (Array.isArray(lvls)) lvls.forEach(lvl => { if (lvl) lvl.color = finalColor; });
+                        });
+                    }
                 }
 
                 // Range tools: keep border color in sync with line color
@@ -10714,6 +10722,11 @@ body.light-mode .template-save-dialog .dialog-title {
                 // Update axis highlights with new color
                 if (actualDrawing.showAxisHighlights) {
                     actualDrawing.showAxisHighlights();
+                }
+                // For fib tools, do a full re-render so text label colors update too
+                if ((drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-')) && drawingManager) {
+                    drawingManager.renderDrawing(actualDrawing);
+                    drawingManager.saveDrawings();
                 }
             } else if (prop === 'middleLineColor') {
                 actualDrawing.style.middleLineColor = finalColor;
