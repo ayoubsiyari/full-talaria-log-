@@ -32799,7 +32799,7 @@ class InlineTextEditor {
 
                 if (event.key === 'Enter' && !event.shiftKey) {
 
-                    this.save();
+                    this.save(true);
 
                     event.preventDefault();
 
@@ -33113,7 +33113,7 @@ class InlineTextEditor {
 
      */
 
-    save() {
+    save(confirmed = false) {
 
         if (this.editor && this.onSave) {
 
@@ -33131,7 +33131,7 @@ class InlineTextEditor {
 
             }
 
-            this.onSave(text);
+            this.onSave(text, confirmed);
 
         }
 

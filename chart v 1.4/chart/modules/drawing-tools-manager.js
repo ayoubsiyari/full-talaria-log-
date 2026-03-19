@@ -4567,11 +4567,14 @@ class DrawingToolsManager {
     _triggerAutoInlineEdit(drawing) {
         if (!drawing || !drawing.group) return;
 
-        const onSave = (text) => {
+        const onSave = (text, confirmed = false) => {
             const normalized = (text || '').replace(/\r\n/g, '\n');
             if (!normalized.trim()) {
-                // User dismissed without typing — keep the drawing with its existing text.
-                // The drawing can be deleted manually via the context menu or delete key.
+                if (confirmed) {
+                    // User explicitly pressed Enter with empty text — delete the drawing.
+                    this.deleteDrawing(drawing);
+                }
+                // Clicked away without typing — keep the drawing as-is.
                 if (this.chart) this.chart.render();
                 return;
             }
