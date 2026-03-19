@@ -16480,7 +16480,7 @@ class InlineTextEditor {
                 .style('z-index', '2000')
                 .style('background', 'transparent')
                 .style('border', opts.showBorder ? '1px solid #2962FF' : 'none')
-                .style('padding', '3px 5px')
+                .style('padding', opts.showBorder ? '3px 5px' : '0')
                 .style('margin', '0')
                 .style('box-shadow', 'none');
 
