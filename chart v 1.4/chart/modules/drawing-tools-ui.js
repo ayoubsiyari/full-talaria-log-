@@ -10606,65 +10606,30 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        const levelsTypeSelect = document.createElement('select');
-
-        levelsTypeSelect.className = 'tv-select';
-
-        levelsTypeSelect.style.width = '40px';
-
+        const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+        const _ddBtnStyle = 'height:26px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
+        const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
+        const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
+        const _gannMenus = [];
+        const _makeDD = (wrap, btn, menu, onSelect) => {
+            _gannMenus.push(menu);
+            btn.addEventListener('click', e => { e.stopPropagation(); const open = menu.style.display !== 'none'; _gannMenus.forEach(m => { m.style.display = 'none'; }); if (!open) { menu.style.display = 'block'; const r = btn.getBoundingClientRect(); menu.style.top = r.bottom + 2 + 'px'; menu.style.left = r.left + 'px'; menu.style.minWidth = r.width + 'px'; } });
+            menu.addEventListener('click', e => { const o = e.target.closest('[data-value]'); if (!o) return; menu.style.display = 'none'; onSelect(o.dataset.value, o.textContent, btn); });
+            menu.addEventListener('mouseover', e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = 'rgba(255,255,255,0.08)'; });
+            menu.addEventListener('mouseout',  e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = ''; });
+            document.addEventListener('click', () => { menu.style.display = 'none'; });
+        };
         const currentLevelsType = drawing.style.levelsLineDasharray ?? '';
-
-        levelsTypeSelect.innerHTML = `
-
-            <option value="" ${currentLevelsType === '' ? 'selected' : ''}>───────</option>
-
-            <option value="5,5" ${currentLevelsType === '5,5' ? 'selected' : ''}>─ ─ ─ ─</option>
-
-            <option value="2,2" ${currentLevelsType === '2,2' ? 'selected' : ''}>··········</option>
-
-            <option value="8,4,2,4" ${currentLevelsType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
-
-        `;
-
-        levelsTypeSelect.onchange = () => {
-
-            drawing.style.levelsLineDasharray = levelsTypeSelect.value;
-
-            normalizeLevelsStyle();
-
-            applyChanges();
-
-        };
-
-        levelsControls.appendChild(levelsTypeSelect);
-
-
-
-        const levelsWidthSelect = document.createElement('select');
-
-        levelsWidthSelect.className = 'tv-select';
-
-        levelsWidthSelect.style.width = '48px';
-
-        const widths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
+        const _typeLabels = { '': '───────', '5,5': '─ ─ ─ ─', '2,2': '··········', '8,4,2,4': '─·─·─·─' };
+        const _typeWrap = document.createElement('div'); _typeWrap.style.cssText = 'position:relative;width:76px;min-width:76px;';
+        _typeWrap.innerHTML = `<button style="${_ddBtnStyle}width:100%;">${_typeLabels[currentLevelsType] ?? '───────'}${_chev}</button><div style="${_ddMenuStyle}"><div data-value="" style="${_ddOptStyle}">───────</div><div data-value="5,5" style="${_ddOptStyle}">─ ─ ─ ─</div><div data-value="2,2" style="${_ddOptStyle}">··········</div><div data-value="8,4,2,4" style="${_ddOptStyle}">─·─·─·─</div></div>`;
+        _makeDD(_typeWrap, _typeWrap.querySelector('button'), _typeWrap.querySelector('div'), (val) => { drawing.style.levelsLineDasharray = val; normalizeLevelsStyle(); applyChanges(); });
+        levelsControls.appendChild(_typeWrap);
         const currentLevelsWidth = parseInt(drawing.style.levelsLineWidth) || 2;
-
-        levelsWidthSelect.innerHTML = widths.map(w => `<option value="${w}" ${currentLevelsWidth === w ? 'selected' : ''}>${w}px</option>`).join('');
-
-        levelsWidthSelect.onchange = () => {
-
-            const w = parseInt(levelsWidthSelect.value);
-
-            drawing.style.levelsLineWidth = (!isNaN(w) && w > 0) ? w : 2;
-
-            normalizeLevelsStyle();
-
-            applyChanges();
-
-        };
-
-        levelsControls.appendChild(levelsWidthSelect);
+        const _widthWrap = document.createElement('div'); _widthWrap.style.cssText = 'position:relative;width:58px;min-width:58px;';
+        _widthWrap.innerHTML = `<button style="${_ddBtnStyle}width:100%;">${currentLevelsWidth}px${_chev}</button><div style="${_ddMenuStyle}">${[1,2,3,4,5,6,7,8,9,10].map(w=>`<div data-value="${w}" style="${_ddOptStyle}">${w}px</div>`).join('')}</div>`;
+        _makeDD(_widthWrap, _widthWrap.querySelector('button'), _widthWrap.querySelector('div'), (val, text, btn) => { const w = parseInt(val); drawing.style.levelsLineWidth = (!isNaN(w) && w > 0) ? w : 2; normalizeLevelsStyle(); applyChanges(); btn.childNodes[0].textContent = text; });
+        levelsControls.appendChild(_widthWrap);
 
 
 
@@ -10828,7 +10793,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 row.className = 'tv-prop-row fib-level-row';
 
-                row.style.cssText = 'display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; padding: 4px 0;';
+                row.style.cssText = 'display: grid; grid-template-columns: 20px 80px 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
 
 
 
@@ -10872,7 +10837,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 valueWrapper.className = 'number-input-wrapper';
 
-                valueWrapper.style.width = '100%';
+                valueWrapper.style.cssText = 'width: 80px; min-width: 0;';
 
 
 
@@ -10892,7 +10857,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 input.step = '0.001';
 
-                input.style.cssText = 'color: #d1d4dc; font-size: 13px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+                input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
 
 
 
