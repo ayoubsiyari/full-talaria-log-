@@ -1118,7 +1118,7 @@ class AnchoredTextTool extends BaseDrawing {
 // Note Tool - Line with text box at end point (like TradingView callout)
 // ============================================================================
 class NoteTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'Add text') {
+    constructor(points = [], style = {}, text = '') {
         super('note', points, style);
         this.requiredPoints = 2;
         this.text = text;
@@ -1194,7 +1194,7 @@ class NoteTool extends BaseDrawing {
         };
 
         // Split only on explicit newlines — no auto word-wrap
-        const wrappedLines = (this.text || 'Add text').split('\n');
+        const wrappedLines = (this.text || '').split('\n');
         const lineHeight = scaledFontSize * 1.3;
         const totalTextHeight = wrappedLines.length * lineHeight;
 
@@ -1345,7 +1345,7 @@ class NoteTool extends BaseDrawing {
             
             // Save function
             const saveAndClose = () => {
-                const newText = inputNode.value.trim() || 'Add text';
+                const newText = inputNode.value.trim() || '';
                 self.setText(newText);
                 editorEl.remove();
                 if (self.chart) self.chart.render();

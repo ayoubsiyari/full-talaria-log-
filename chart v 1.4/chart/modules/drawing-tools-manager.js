@@ -4608,7 +4608,7 @@ class DrawingToolsManager {
             editableNode = drawing.group.select('.inline-editable-text').node();
         }
 
-        const initialText = drawing.text && drawing.text !== 'Add text' ? drawing.text : '';
+        const initialText = drawing.text ? drawing.text : '';
 
         if (editableNode) {
             const rect = editableNode.getBoundingClientRect();

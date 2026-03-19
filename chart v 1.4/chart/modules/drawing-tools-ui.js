@@ -26751,11 +26751,11 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            const noteDisplayText = (drawing.text === 'Add text' || !drawing.text) ? '' : drawing.text;
+            const noteDisplayText = drawing.text || '';
 
             this.addTextInput(styleSection, 'Note Text', noteDisplayText, (value) => {
 
-                drawing.setText(value || 'Add text');
+                drawing.setText(value || '');
 
             }, { multiline: true, placeholder: 'Add text' });
 
