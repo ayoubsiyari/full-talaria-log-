@@ -56,7 +56,7 @@ class TextTool extends BaseDrawing {
                                this.style.textAlign === 'right' ? 'end' : 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
-            .style('cursor', 'text')
+            .style('cursor', this.selected ? 'text' : 'move')
             .style('user-select', 'none');
 
         const lineHeight = scaledFontSize * 1.2;
@@ -143,7 +143,7 @@ class TextTool extends BaseDrawing {
             .attr('rx', 4)
             .attr('ry', 4)
             .style('pointer-events', 'all')
-            .style('cursor', 'text');
+            .style('cursor', this.selected ? 'text' : 'move');
 
         // Create resize handles like rectangles (4 corners + 4 sides)
         this.createTextHandles(this.group, bbox);

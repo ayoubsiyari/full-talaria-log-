@@ -788,6 +788,22 @@ class DrawingToolbar {
                 </div>
             </div>
             
+            <!-- Font Size Dropdown (text tool only) -->
+            ${isTextTool ? `
+            <div class="toolbar-item toolbar-dropdown-wrapper">
+                <button class="toolbar-btn toolbar-dropdown-btn" id="tb-fontsize-btn" title="Font Size">
+                    <span class="toolbar-width-text">${fontSize}px</span>
+                </button>
+                <div class="toolbar-dropdown" id="fontsize-dropdown">
+                    ${[8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72].map(s => `
+                        <div class="toolbar-dropdown-item ${(style.fontSize || 14) == s ? 'active' : ''}" data-size="${s}">
+                            <span>${s}px</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+
             <!-- Lock -->
             <div class="toolbar-item">
                 <button class="toolbar-btn ${drawing.locked ? 'active' : ''}" id="tb-lock" title="${drawing.locked ? 'Unlock' : 'Lock'}">
@@ -1441,6 +1457,35 @@ class DrawingToolbar {
             });
         }
         
+        // Font Size Dropdown (text tool in brush layout)
+        const fontsizeBtn = this.toolbar.querySelector('#tb-fontsize-btn');
+        const fontsizeDropdown = this.toolbar.querySelector('#fontsize-dropdown');
+        if (fontsizeBtn && fontsizeDropdown) {
+            fontsizeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeColorPickerPopups();
+                this.toolbar.querySelectorAll('.toolbar-dropdown').forEach(d => {
+                    if (d !== fontsizeDropdown) d.classList.remove('active');
+                });
+                this.toolbar.querySelectorAll('.color-palette').forEach(p => p.classList.remove('active'));
+                fontsizeDropdown.classList.toggle('active');
+            });
+            fontsizeDropdown.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const item = e.target.closest('.toolbar-dropdown-item');
+                if (item) {
+                    const size = parseInt(item.dataset.size);
+                    drawing.style.fontSize = size;
+                    fontsizeBtn.innerHTML = `<span class="toolbar-width-text">${size}px</span>`;
+                    fontsizeDropdown.querySelectorAll('.toolbar-dropdown-item').forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+                    fontsizeDropdown.classList.remove('active');
+                    if (this.onBeforeUpdate) this.onBeforeUpdate(drawing);
+                    if (this.onUpdate) this.onUpdate(drawing);
+                }
+            });
+        }
+
         // Line Width Dropdown
         const widthBtn = this.toolbar.querySelector('#tb-width-btn');
         const widthDropdown = this.toolbar.querySelector('#line-width-dropdown');
