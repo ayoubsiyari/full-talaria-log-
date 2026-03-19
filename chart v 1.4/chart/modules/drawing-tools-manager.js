@@ -4570,7 +4570,9 @@ class DrawingToolsManager {
         const onSave = (text) => {
             const normalized = (text || '').replace(/\r\n/g, '\n');
             if (!normalized.trim()) {
-                this.deleteDrawing(drawing);
+                // User dismissed without typing — keep the drawing with its existing text.
+                // The drawing can be deleted manually via the context menu or delete key.
+                if (this.chart) this.chart.render();
                 return;
             }
             drawing.setText(normalized);
