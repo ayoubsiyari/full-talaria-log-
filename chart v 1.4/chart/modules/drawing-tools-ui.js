@@ -4434,7 +4434,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const isTimeZone = drawing.type === 'fib-timezone';
         const usesVisible = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension';
-        const lockFixedLevelCount = drawing.type === 'fib-channel' || drawing.type === 'trend-fib-extension';
+        const lockFixedLevelCount = false;
         const fixedLevelCount = 20;
 
         const getDefaultLevelsForType = () => {
