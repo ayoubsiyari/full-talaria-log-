@@ -1201,7 +1201,14 @@ class NoteTool extends BaseDrawing {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (editor && typeof editor.show === 'function') {
-                const bbox = textElement.node().getBoundingClientRect();
+                // Always resolve a live element — selectDrawing re-renders so the
+                // captured textElement may be detached (getBoundingClientRect → 0,0).
+                const liveNode = (self.group && typeof self.group.select === 'function')
+                    ? self.group.select('text.inline-editable-text').node()
+                    : null;
+                const targetNode = (liveNode && document.contains(liveNode))
+                    ? liveNode : textElement.node();
+                const bbox = targetNode.getBoundingClientRect();
                 const editX = bbox.left + window.scrollX;
                 const editY = bbox.top + window.scrollY;
 
