@@ -1989,6 +1989,23 @@ class PinTool extends BaseDrawing {
                 n.addEventListener('click', handleInlineEdit, true);
                 n.addEventListener('dblclick', handleInlineEdit, true);
             });
+        } else {
+            // No text yet — render an invisible anchor so _triggerAutoInlineEdit
+            // can find a real DOM element with the correct screen position.
+            const anchorW = 100;
+            const anchorH = 28;
+            const anchorX = x - anchorW / 2;
+            const anchorY = Math.max(4, y - pinHeight - boxGap - anchorH - 8);
+            this.group.append('rect')
+                .attr('class', 'pin-text-anchor inline-editable-text')
+                .attr('x', anchorX)
+                .attr('y', anchorY)
+                .attr('width', anchorW)
+                .attr('height', anchorH)
+                .attr('fill', 'none')
+                .attr('stroke', 'none')
+                .style('pointer-events', 'none')
+                .style('opacity', 0);
         }
 
         // Map pin marker - classic location pin with round bulb and sharp point
