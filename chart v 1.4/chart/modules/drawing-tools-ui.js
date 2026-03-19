@@ -5090,8 +5090,10 @@ body.light-mode .template-save-dialog .dialog-title {
             const _ddBtnStyle = 'height:26px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
             const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
             const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
+            const _allMenus = [];
             const _makeCustomDD = (wrap, btn, menu, opts, onSelect) => {
-                btn.addEventListener('click', e => { e.stopPropagation(); const open = menu.style.display !== 'none'; menu.style.display = open ? 'none' : 'block'; if (!open) { const r = btn.getBoundingClientRect(); menu.style.top = r.bottom + 2 + 'px'; menu.style.left = r.left + 'px'; menu.style.minWidth = r.width + 'px'; } });
+                _allMenus.push(menu);
+                btn.addEventListener('click', e => { e.stopPropagation(); const open = menu.style.display !== 'none'; _allMenus.forEach(m => { m.style.display = 'none'; }); if (!open) { menu.style.display = 'block'; const r = btn.getBoundingClientRect(); menu.style.top = r.bottom + 2 + 'px'; menu.style.left = r.left + 'px'; menu.style.minWidth = r.width + 'px'; } });
                 menu.addEventListener('click', e => { const o = e.target.closest('[data-value]'); if (!o) return; menu.style.display = 'none'; onSelect(o.dataset.value, o.textContent, btn); });
                 menu.addEventListener('mouseover', e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = 'rgba(255,255,255,0.08)'; });
                 menu.addEventListener('mouseout',  e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = ''; });
