@@ -52,8 +52,7 @@ class TextTool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight)
-            .attr('text-anchor', this.style.textAlign === 'center' ? 'middle' : 
-                               this.style.textAlign === 'right' ? 'end' : 'start')
+            .attr('text-anchor', 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
             .style('cursor', this.selected ? 'text' : 'move')
@@ -63,16 +62,22 @@ class TextTool extends BaseDrawing {
         const lines = (this.text || '').split('\n');
         lines.forEach((line, index) => {
             const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
-            const tspan = textElement.append('tspan')
+            textElement.append('tspan')
                 .attr('x', x)
                 .attr('dy', index === 0 ? 0 : lineHeight)
                 .text(sanitizedLine);
-            if (this.style.textAlign === 'center') {
-                tspan.attr('text-anchor', 'middle');
-            } else if (this.style.textAlign === 'right') {
-                tspan.attr('text-anchor', 'end');
-            }
         });
+
+        // Keep the left edge of the text fixed at x regardless of alignment.
+        // Measure width first (with text-anchor:start), then shift the anchor.
+        if (this.style.textAlign === 'center' || this.style.textAlign === 'right') {
+            let textWidth = 0;
+            try { textWidth = textElement.node().getBBox().width; } catch (e) {}
+            const anchorX = this.style.textAlign === 'center' ? x + textWidth / 2 : x + textWidth;
+            const textAnchor = this.style.textAlign === 'center' ? 'middle' : 'end';
+            textElement.attr('x', anchorX).attr('text-anchor', textAnchor);
+            textElement.selectAll('tspan').attr('x', anchorX);
+        }
 
         // Add optional text shadow for better readability (disabled by default)
         if (this.style.textShadow === true) {
