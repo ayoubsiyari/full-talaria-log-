@@ -1370,7 +1370,26 @@ class NoteTool extends BaseDrawing {
                 clickTimer = null;
             }
 
-            // 1st click → select only; 2nd click (already selected) → open editor
+            // Double-click detection via timestamps stored on the instance so it
+            // survives re-renders (selectDrawing replaces DOM nodes, breaking the
+            // native dblclick event which would fire on the common ancestor).
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
+                // Double-click → open settings
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
+                    if (typeof manager.selectDrawing === 'function') {
+                        manager.selectDrawing(self);
+                    }
+                    manager.editDrawing(self, event.pageX, event.pageY);
+                }
+                return;
+            }
+
+            // 1st click on unselected → select only
             if (!self.selected) {
                 const manager = self.chart && self.chart.drawingManager;
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
@@ -1379,6 +1398,7 @@ class NoteTool extends BaseDrawing {
                 return;
             }
 
+            // Already selected, single click → open inline editor after delay
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 startInlineEdit();
