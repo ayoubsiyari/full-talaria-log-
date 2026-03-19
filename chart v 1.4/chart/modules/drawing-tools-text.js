@@ -1566,8 +1566,8 @@ class PriceNoteTool extends BaseDrawing {
         const x2 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
-        // Draw the line
-        this.group.append('line')
+        // Draw the line (endpoint will be shortened to box edge after label position is known)
+        const lineEl = this.group.append('line')
             .attr('x1', x1)
             .attr('y1', y1)
             .attr('x2', x2)
@@ -1578,7 +1578,7 @@ class PriceNoteTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Invisible hit area
-        this.group.append('line')
+        const lineHitEl = this.group.append('line')
             .attr('class', 'shape-border-hit')
             .attr('x1', x1)
             .attr('y1', y1)
@@ -1645,6 +1645,19 @@ class PriceNoteTool extends BaseDrawing {
         const edgePad = 0;
         labelX = Math.max(minX + boxWidth / 2 + edgePad, Math.min(maxX - boxWidth / 2 - edgePad, labelX));
         labelY = Math.max(clampMinY + boxHeight / 2 + edgePad, Math.min(maxY - boxHeight / 2 - edgePad, labelY));
+
+        // Shorten line so it stops at the near edge of the label box
+        {
+            const backUx = len > 0 ? -(dx / len) : 0;
+            const backUy = len > 0 ? -(dy / len) : -1;
+            const tEdgeX = Math.abs(backUx) > 1e-9 ? (boxWidth / 2) / Math.abs(backUx) : Infinity;
+            const tEdgeY = Math.abs(backUy) > 1e-9 ? (boxHeight / 2) / Math.abs(backUy) : Infinity;
+            const tEdge = Math.min(tEdgeX, tEdgeY);
+            const lineEndX = labelX + backUx * tEdge;
+            const lineEndY = labelY + backUy * tEdge;
+            lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
+            lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
+        }
 
         const labelGroup = this.group.append('g')
             .attr('class', 'price-note-label')
