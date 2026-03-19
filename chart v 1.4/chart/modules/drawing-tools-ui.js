@@ -5141,8 +5141,8 @@ body.light-mode .template-save-dialog .dialog-title {
             const row = document.createElement('div');
             row.className = 'tv-prop-row fib-level-row';
             row.style.cssText = lockFixedLevelCount
-                ? 'display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;'
-                : 'display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
+                ? 'display: grid; grid-template-columns: 20px 80px 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;'
+                : 'display: grid; grid-template-columns: 20px 80px 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
 
             // Visibility checkbox
             const checkboxWrapper = document.createElement('div');
@@ -5163,7 +5163,7 @@ body.light-mode .template-save-dialog .dialog-title {
             // Value input - reuse Regression Inputs component (number-input-wrapper + tv-number-input + custom-spinner)
             const valueWrapper = document.createElement('div');
             valueWrapper.className = 'number-input-wrapper';
-            valueWrapper.style.width = '100%';
+            valueWrapper.style.cssText = 'width: 80px; min-width: 0;';
 
             const valueProp = `fibLevelValue_${idx}`;
 
@@ -5173,7 +5173,7 @@ body.light-mode .template-save-dialog .dialog-title {
             input.dataset.prop = valueProp;
             input.value = level.value;
             input.step = isTimeZone ? '1' : '0.001';
-            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; min-width: 0;';
 
             const updateLevelFromInput = () => {
                 const parsed = parseFloat(input.value);
