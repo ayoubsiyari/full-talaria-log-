@@ -1647,17 +1647,15 @@ class PriceNoteTool extends BaseDrawing {
         labelY = Math.max(clampMinY + boxHeight / 2 + edgePad, Math.min(maxY - boxHeight / 2 - edgePad, labelY));
 
         // Shorten line so it stops at the near edge of the label box
-        {
-            const backUx = len > 0 ? -(dx / len) : 0;
-            const backUy = len > 0 ? -(dy / len) : -1;
-            const tEdgeX = Math.abs(backUx) > 1e-9 ? (boxWidth / 2) / Math.abs(backUx) : Infinity;
-            const tEdgeY = Math.abs(backUy) > 1e-9 ? (boxHeight / 2) / Math.abs(backUy) : Infinity;
-            const tEdge = Math.min(tEdgeX, tEdgeY);
-            const lineEndX = labelX + backUx * tEdge;
-            const lineEndY = labelY + backUy * tEdge;
-            lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
-            lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
-        }
+        const backUx = len > 0 ? -(dx / len) : 0;
+        const backUy = len > 0 ? -(dy / len) : -1;
+        const tEdgeX = Math.abs(backUx) > 1e-9 ? (boxWidth / 2) / Math.abs(backUx) : Infinity;
+        const tEdgeY = Math.abs(backUy) > 1e-9 ? (boxHeight / 2) / Math.abs(backUy) : Infinity;
+        const tEdge = Math.min(tEdgeX, tEdgeY);
+        const lineEndX = labelX + backUx * tEdge;
+        const lineEndY = labelY + backUy * tEdge;
+        lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
+        lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
 
         const labelGroup = this.group.append('g')
             .attr('class', 'price-note-label')
@@ -1703,8 +1701,8 @@ class PriceNoteTool extends BaseDrawing {
         // Create handles at both endpoints, then move p2 handle to label box center
         this.createHandles(this.group, scales);
         this.group.selectAll('[data-point-index="1"]')
-            .attr('cx', labelX)
-            .attr('cy', labelY);
+            .attr('cx', lineEndX)
+            .attr('cy', lineEndY);
 
         return this.group;
     }
