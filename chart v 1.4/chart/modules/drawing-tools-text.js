@@ -443,6 +443,11 @@ class TextTool extends BaseDrawing {
         this.meta.updatedAt = Date.now();
     }
 
+    deselect() {
+        document.body.classList.remove('text-selected');
+        super.deselect();
+    }
+
     toJSON() {
         return {
             ...super.toJSON(),
@@ -1393,6 +1398,7 @@ class NoteTool extends BaseDrawing {
                 const manager = self.chart && self.chart.drawingManager;
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
                 }
                 return;
             }
