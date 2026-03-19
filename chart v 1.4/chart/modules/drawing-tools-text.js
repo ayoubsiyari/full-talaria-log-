@@ -1392,7 +1392,13 @@ class NoteTool extends BaseDrawing {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
-            startInlineEdit();
+            const manager = self.chart && self.chart.drawingManager;
+            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
+                if (typeof manager.selectDrawing === 'function') {
+                    manager.selectDrawing(self);
+                }
+                manager.editDrawing(self, event.pageX, event.pageY);
+            }
         };
 
         const handleOpenSettings = function(event) {
