@@ -2814,6 +2814,7 @@ class DrawingToolsManager {
                 hideSelector: '.temp-drawing text'
             } : {
                 inline: true,
+                showBorder: true,
                 fontSize: `${fontSize}px`,
                 fontFamily,
                 fontWeight,

@@ -1227,6 +1227,7 @@ class NoteTool extends BaseDrawing {
                     'Add text',
                     {
                         inline: true,
+                        showBorder: true,
                         fontSize: `${scaledFontSize}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
