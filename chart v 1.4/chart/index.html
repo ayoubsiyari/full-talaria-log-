@@ -54314,10 +54314,6 @@ P['template']={title:'Template',build:function(){
 
         +'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Choose a preset to quickly update colors.</p>'
 
-        +card('<span style="width:28px;height:28px;border-radius:50%;background:#2962ff;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>','Chart Colors','Candles, grid, crosshair only','tl_chart_dd',swList,c._lastChartOnlyTemplate||null)
-
-        +card('<span style="width:28px;height:28px;border-radius:50%;background:#e8a838;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></span>','Talaria Full Theme','Chart + panel + sidebar','tl_talaria_dd',swList,c._lastTemplateSelected||null)
-
         +card('<span style="width:28px;height:28px;border-radius:8px;background:#f23645;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span>','Panel &amp; Sidebar','UI chrome only, chart untouched','tl_panel_dd',panelSwList,c._lastPanelOnlyTemplate||null));
 
     var resetHtml=sec(st('RESET')
@@ -54430,10 +54426,6 @@ P['template']={title:'Template',build:function(){
 
     }
 
-    setupDd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate',swList);
-
-    setupDd('tl_talaria_dd','applyTemplate','_lastTemplateSelected',swList);
-
     setupDd('tl_panel_dd','applyPanelOnlyTemplate','_lastPanelOnlyTemplate',panelSwList);
 
     document.addEventListener('click',function(){
@@ -54484,7 +54476,11 @@ P['symbol']={title:'Symbol',build:function(){
 
     var colorSec='';
 
-    var templateSec='';
+    var swList=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];
+    function _tDots(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';}
+    function _tMkdd(id,items,selId){var sel=items.find(function(t){return t.id===selId;})||null;var ti=sel?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+sel.name+'</span>'+_tDots(sel):'<span style="flex:1;font-size:12px;color:#787b86;">— Select Template —</span>';var o='';items.forEach(function(t){var a=selId===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?'rgba(255,255,255,0.08)':'transparent')+';"><span style="flex:1;font-size:12px;color:'+(a?'#fff':'#d1d4dc')+';">'+t.name+'</span>'+_tDots(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div>';}
+    function _tCard(icon,title,desc,ddId,list,selId){return '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'+icon+'<div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">'+title+'</div><div style="font-size:11px;color:#787b86;margin-top:2px;">'+desc+'</div></div></div>'+_tMkdd(ddId,list,selId)+'</div>';}
+    var templateSec=sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Choose a preset to quickly update colors.</p>'+_tCard('<span style="width:28px;height:28px;border-radius:50%;background:#2962ff;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>','Chart Colors','Candles, grid, crosshair only','tl_chart_dd',swList,c._lastChartOnlyTemplate||null)+_tCard('<span style="width:28px;height:28px;border-radius:50%;background:#e8a838;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></span>','Talaria Full Theme','Chart + panel + sidebar','tl_talaria_dd',swList,c._lastTemplateSelected||null));
 
     if(isCandleType){
 
@@ -54570,7 +54566,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc')+
 
-        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>')+extraSec;
+        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>')+extraSec+templateSec;
 
 },wire:function(){
 
@@ -54639,6 +54635,11 @@ P['symbol']={title:'Symbol',build:function(){
     wChk('showVals',function(v){set('showChartValues',v);});wChk('showBar',function(v){set('showBarChangeValues',v);});
 
     wChk('symTitle',function(v){set('symbolTitle',v);});wDD('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symClr',function(v){set('symbolTextColor',v);});
+
+    (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];function _sdd(id,meth,prop){var trig=document.getElementById(id+'_trig');var pnl=document.getElementById(id+'_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});opt.addEventListener('mouseleave',function(){var cv2=ch();this.style.background=(cv2&&cv2[prop]===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;cv2[prop]=tid;if(typeof cv2[meth]==='function')cv2[meth](tid);try{if(cv2.saveSettings)cv2.saveSettings();}catch(ex){}pnl.style.display='none';var m=sl.find(function(s){return s.id===tid;});var t2=document.getElementById(id+'_trig');if(t2&&m){t2.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+m.name+'</span><span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+m.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+m.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+m.down+';display:inline-block;"></span></span><svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';}pnl.querySelectorAll('.tl-dd-opt').forEach(function(o2){o2.style.background=o2.dataset.tplid===tid?'rgba(255,255,255,0.08)':'transparent';});});});}
+        _sdd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate');
+        _sdd('tl_talaria_dd','applyTemplate','_lastTemplateSelected');
+    })();
 
 }};
 
