@@ -17,15 +17,15 @@ class FibonacciRetracementTool extends BaseDrawing {
         const globalLineType = `${this.style.levelsLineDasharray ?? ''}`;
         const globalLineWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : 2;
         
-        // Fibonacci levels
+        // Fibonacci levels (0 and 1 fixed at top, middle levels below)
         const defaultLevels = [
             { value: 0, label: '0', color: style.color0 || '#787b86', visible: true },
+            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
             { value: 0.236, label: '0.236', color: style.color236 || '#f23645', visible: true },
             { value: 0.382, label: '0.382', color: style.color382 || '#ff9800', visible: true },
             { value: 0.5, label: '0.5', color: style.color50 || '#ffeb3b', visible: true },
             { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
-            { value: 0.786, label: '0.786', color: style.color786 || '#2196f3', visible: true },
-            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true }
+            { value: 0.786, label: '0.786', color: style.color786 || '#2196f3', visible: true }
         ];
 
         const providedLevels = Array.isArray(style.levels) ? style.levels : defaultLevels;
@@ -273,11 +273,11 @@ class FibonacciExtensionTool extends BaseDrawing {
         if (this.style.trendLineDasharray === undefined || this.style.trendLineDasharray === null) this.style.trendLineDasharray = '2,2';
         if (this.style.trendLineWidth === undefined || this.style.trendLineWidth === null) this.style.trendLineWidth = 1;
         
-        // Fibonacci extension levels (beyond 1.0)
+        // Fibonacci extension levels (0 and 1 fixed at top)
         const defaultLevels = [
             { value: 0, label: '0', color: style.color0 || '#787b86', visible: true },
-            { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
             { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
+            { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
             { value: 1.272, label: '1.272', color: style.color1272 || '#2196f3', visible: true },
             { value: 1.618, label: '1.618', color: style.color1618 || '#9c27b0', visible: true },
             { value: 2.618, label: '2.618', color: style.color2618 || '#e91e63', visible: true },

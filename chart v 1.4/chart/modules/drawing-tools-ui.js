@@ -8809,8 +8809,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 return [
 
                     { value: 0, label: '0', color: '#787b86', visible: true, locked: true },
-                    { value: 0.618, label: '0.618', color: '#4caf50', visible: true },
                     { value: 1, label: '1', color: '#787b86', visible: true, locked: true },
+                    { value: 0.618, label: '0.618', color: '#4caf50', visible: true },
                     { value: 1.272, label: '1.272', color: '#2196f3', visible: true },
                     { value: 1.618, label: '1.618', color: '#9c27b0', visible: true },
                     { value: 2.618, label: '2.618', color: '#e91e63', visible: true },
@@ -8824,12 +8824,12 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return [
                     { value: 0, label: '0', color: '#787b86', enabled: true, locked: true },
+                    { value: 1, label: '1', color: '#787b86', enabled: true, locked: true },
                     { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
                     { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
                     { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
                     { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
                     { value: 0.786, label: '0.786', color: '#2196f3', enabled: true },
-                    { value: 1, label: '1', color: '#787b86', enabled: true, locked: true },
                 ];
 
             }
@@ -8871,12 +8871,12 @@ body.light-mode .template-save-dialog .dialog-title {
                 return [
 
                     { value: 0, label: '0', color: '#787b86', visible: true, locked: true },
+                    { value: 1, label: '1', color: '#787b86', visible: true, locked: true },
                     { value: 0.236, label: '0.236', color: '#f23645', visible: true },
                     { value: 0.382, label: '0.382', color: '#ff9800', visible: true },
                     { value: 0.5, label: '0.5', color: '#ffeb3b', visible: true },
                     { value: 0.618, label: '0.618', color: '#4caf50', visible: true },
-                    { value: 0.786, label: '0.786', color: '#2196f3', visible: true },
-                    { value: 1, label: '1', color: '#787b86', visible: true, locked: true }
+                    { value: 0.786, label: '0.786', color: '#2196f3', visible: true }
 
                 ];
 
@@ -8886,12 +8886,12 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return [
                     { value: 0, label: '0', color: '#787b86', enabled: true, locked: true },
+                    { value: 1, label: '1', color: '#787b86', enabled: true, locked: true },
                     { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
                     { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
                     { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
                     { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
                     { value: 0.786, label: '0.786', color: '#2196f3', enabled: true },
-                    { value: 1, label: '1', color: '#787b86', enabled: true, locked: true },
                 ];
 
             }
@@ -8900,12 +8900,12 @@ body.light-mode .template-save-dialog .dialog-title {
 
             return [
                 { value: 0, label: '0', color: '#787b86', visible: true, locked: true },
+                { value: 1, label: '1', color: '#787b86', visible: true, locked: true },
                 { value: 0.236, label: '0.236', color: '#f23645', visible: true },
                 { value: 0.382, label: '0.382', color: '#ff9800', visible: true },
                 { value: 0.5, label: '0.5', color: '#ffeb3b', visible: true },
                 { value: 0.618, label: '0.618', color: '#4caf50', visible: true },
                 { value: 0.786, label: '0.786', color: '#2196f3', visible: true },
-                { value: 1, label: '1', color: '#787b86', visible: true, locked: true },
             ];
 
         };
