@@ -54890,21 +54890,21 @@ P['canvas']={title:'Canvas',build:function(){
 
     var UI_THEMES={
 
-        'talaria-dark':   {accent:'#2962ff',secondary:'#7b61ff',text:'#e0e3ea',bg:'#050028',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(42,46,57,0.6)',backgroundColor:'#050028'},
+        'talaria-dark':   {accent:'#2962ff',secondary:'#7b61ff',text:'#e0e3ea',bg:'#050028',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(42,46,57,0.6)',backgroundColor:'#050028',scaleLinesColor:'rgba(120,123,134,0.5)'},
 
-        'talaria-light':  {accent:'#1a56db',secondary:'#6d28d9',text:'#131722',bg:'#f5f6fa',bodyUp:'#089981',bodyDown:'#e53935',gridColor:'rgba(0,0,0,0.1)',backgroundColor:'#f5f6fa'},
+        'talaria-light':  {accent:'#1a56db',secondary:'#6d28d9',text:'#131722',bg:'#f5f6fa',bodyUp:'#089981',bodyDown:'#e53935',gridColor:'rgba(0,0,0,0.1)',backgroundColor:'#f5f6fa',scaleLinesColor:'rgba(42,46,57,0.35)'},
 
-        'ocean-blue':     {accent:'#00bcd4',secondary:'#0288d1',text:'#e0ffff',bg:'#0a1929',bodyUp:'#00bcd4',bodyDown:'#ff6e40',gridColor:'rgba(0,188,212,0.12)',backgroundColor:'#071a2b'},
+        'ocean-blue':     {accent:'#00bcd4',secondary:'#0288d1',text:'#e0ffff',bg:'#0a1929',bodyUp:'#00bcd4',bodyDown:'#ff6e40',gridColor:'rgba(0,188,212,0.12)',backgroundColor:'#071a2b',scaleLinesColor:'rgba(0,188,212,0.35)'},
 
-        'emerald':        {accent:'#00e676',secondary:'#00bfa5',text:'#e8f5e9',bg:'#0d1f0d',bodyUp:'#00e676',bodyDown:'#ff1744',gridColor:'rgba(0,230,118,0.12)',backgroundColor:'#0a1a0a'},
+        'emerald':        {accent:'#00e676',secondary:'#00bfa5',text:'#e8f5e9',bg:'#0d1f0d',bodyUp:'#00e676',bodyDown:'#ff1744',gridColor:'rgba(0,230,118,0.12)',backgroundColor:'#0a1a0a',scaleLinesColor:'rgba(0,230,118,0.3)'},
 
-        'midnight-purple':{accent:'#9c27b0',secondary:'#7b61ff',text:'#f3e5f5',bg:'#0d0516',bodyUp:'#7c4dff',bodyDown:'#ff4081',gridColor:'rgba(156,39,176,0.15)',backgroundColor:'#0a0412'},
+        'midnight-purple':{accent:'#9c27b0',secondary:'#7b61ff',text:'#f3e5f5',bg:'#0d0516',bodyUp:'#7c4dff',bodyDown:'#ff4081',gridColor:'rgba(156,39,176,0.15)',backgroundColor:'#0a0412',scaleLinesColor:'rgba(156,39,176,0.4)'},
 
-        'crimson':        {accent:'#f23645',secondary:'#ff6b35',text:'#ffe0e0',bg:'#1a0505',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(242,54,69,0.12)',backgroundColor:'#160303'},
+        'crimson':        {accent:'#f23645',secondary:'#ff6b35',text:'#ffe0e0',bg:'#1a0505',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(242,54,69,0.12)',backgroundColor:'#160303',scaleLinesColor:'rgba(242,54,69,0.35)'},
 
-        'gold':           {accent:'#f5c518',secondary:'#ff9800',text:'#fff9e0',bg:'#1a1500',bodyUp:'#f5c518',bodyDown:'#e53935',gridColor:'rgba(245,197,24,0.12)',backgroundColor:'#150f00'},
+        'gold':           {accent:'#f5c518',secondary:'#ff9800',text:'#fff9e0',bg:'#1a1500',bodyUp:'#f5c518',bodyDown:'#e53935',gridColor:'rgba(245,197,24,0.12)',backgroundColor:'#150f00',scaleLinesColor:'rgba(245,197,24,0.3)'},
 
-        'carbon':         {accent:'#90a4ae',secondary:'#78909c',text:'#eceff1',bg:'#1a1a1a',bodyUp:'#80cbc4',bodyDown:'#ef9a9a',gridColor:'rgba(144,164,174,0.12)',backgroundColor:'#121212'}
+        'carbon':         {accent:'#90a4ae',secondary:'#78909c',text:'#eceff1',bg:'#1a1a1a',bodyUp:'#80cbc4',bodyDown:'#ef9a9a',gridColor:'rgba(144,164,174,0.12)',backgroundColor:'#121212',scaleLinesColor:'rgba(144,164,174,0.35)'}
 
     };
 
@@ -54937,6 +54937,8 @@ P['canvas']={title:'Canvas',build:function(){
             if(t.gridColor)cs.gridColor=t.gridColor;
 
             if(t.backgroundColor){cs.backgroundColor=t.backgroundColor;if(c.canvas)c.canvas.style.backgroundColor=t.backgroundColor;}
+
+            if(t.scaleLinesColor)cs.scaleLinesColor=t.scaleLinesColor;
 
             apply();
 
