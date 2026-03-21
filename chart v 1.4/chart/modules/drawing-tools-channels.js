@@ -929,13 +929,9 @@ class RegressionTrendTool extends BaseDrawing {
         if (this.style.showPearsonsR && r2 !== undefined) {
             const deviationOffsetLower = this.style.lowerDeviation * stdDev;
             const lowerStartRegressionY = scales.yScale(a + deviationOffsetLower);
-            // Use the lowest point of the lower deviation line (larger Y = lower on screen)
-            // so the label never overlaps the channel regardless of slope direction
-            const lowestY = Math.max(
-                lowerStartRegressionY,
-                lowerEndY !== undefined ? lowerEndY : lowerStartRegressionY
-            );
-            this.renderPearsonsR(scales, r2, x1, lowestY);
+            const lowerEndRegressionY = lowerEndY !== undefined ? lowerEndY : lowerStartRegressionY;
+            const angle = Math.atan2(lowerEndRegressionY - lowerStartRegressionY, endX - x1) * (180 / Math.PI);
+            this.renderPearsonsR(scales, r2, x1, lowerStartRegressionY, angle);
         }
         
         // Create handles if selected
@@ -973,21 +969,22 @@ class RegressionTrendTool extends BaseDrawing {
         }
     }
 
-    renderPearsonsR(scales, r2, x, y) {
+    renderPearsonsR(scales, r2, x, y, angle) {
         if (!this.group) return;
         
         // Format R value with 4 decimal places
         const r2Text = `R = ${r2.toFixed(4)}`;
         
-        // Position just below the lower deviation line
+        // Anchor just below the start of the lower deviation line
         const textX = x;
-        const textY = y + 6;
+        const textY = y + 14;
         
         this.group.append('text')
             .attr('class', 'pearson-r-text')
             .attr('x', textX)
             .attr('y', textY)
             .attr('text-anchor', 'start')
+            .attr('transform', `rotate(${angle}, ${textX}, ${textY})`)
             .style('font-size', `${this.style.fontSize || 12}px`)
             .style('font-family', this.style.fontFamily)
             .style('font-weight', this.style.fontWeight)
