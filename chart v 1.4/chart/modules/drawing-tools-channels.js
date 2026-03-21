@@ -1742,10 +1742,6 @@ class DisjointChannelTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
-        if (this.text && this.text.trim()) {
-            this.renderTextLabel(scales);
-        }
-        
         // Create handles if selected - add 4th virtual handle at end of second line
         if (this.points.length === 3) {
             // Use the same calculation as the render logic for consistency
