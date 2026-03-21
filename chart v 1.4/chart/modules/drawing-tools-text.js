@@ -3259,7 +3259,7 @@ class Signpost2Tool extends BaseDrawing {
         const p1 = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
-        const lineColor = this.style.stroke || '#787b86';
+        const lineColor = this.style.fill || this.style.stroke || '#787b86';
         const rawTextBorderColor = this.style.borderColor;
         const textBorderColor = (rawTextBorderColor === undefined || rawTextBorderColor === null || rawTextBorderColor === '')
             ? lineColor
@@ -3406,7 +3406,7 @@ class Signpost2Tool extends BaseDrawing {
             editor.show(
                 x,
                 y,
-                self.text || 'add text',
+                (self.text && self.text !== 'add text') ? self.text : '',
                 (newText) => {
                     const normalized = (newText || '').replace(/\r\n/g, '\n');
                     if (!normalized.trim()) {
@@ -3474,7 +3474,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('cx', x1)
             .attr('cy', y1)
             .attr('r', 4 * scaleFactor)
-            .attr('fill', this.style.stroke)
+            .attr('fill', lineColor)
             .style('pointer-events', 'none');
 
         // Create handles

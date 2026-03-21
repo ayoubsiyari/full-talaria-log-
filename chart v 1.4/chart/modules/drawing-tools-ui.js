@@ -13260,7 +13260,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     : (drawing.type === 'price-label-2' ? drawing.style.fill : (drawing.style.fill || drawing.style.backgroundColor));
 
-                const bgProp = drawing.type === 'price-label-2' ? 'fill' : 'backgroundColor';
+                const bgProp = (drawing.type === 'price-label-2' || drawing.type === 'signpost-2') ? 'fill' : 'backgroundColor';
 
                 const hasBg = bgColor && bgColor !== 'none' && bgColor !== 'transparent';
 
