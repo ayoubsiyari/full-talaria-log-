@@ -927,9 +927,10 @@ class RegressionTrendTool extends BaseDrawing {
         
         // Display Pearson's R if enabled
         if (this.style.showPearsonsR && r2 !== undefined) {
-            // Position at the right end of the channel, below the lower deviation line
-            const labelY = (lowerEndY !== undefined ? lowerEndY : midEndY);
-            this.renderPearsonsR(scales, r2, endX, labelY);
+            // Position at the bottom-left corner like TradingView
+            const deviationOffsetLower = this.style.lowerDeviation * stdDev;
+            const lowerStartRegressionY = scales.yScale(a + deviationOffsetLower);
+            this.renderPearsonsR(scales, r2, x1, lowerStartRegressionY);
         }
         
         // Create handles if selected
@@ -973,15 +974,15 @@ class RegressionTrendTool extends BaseDrawing {
         // Format R value with 4 decimal places
         const r2Text = `R = ${r2.toFixed(4)}`;
         
-        // Position just below the lower deviation line at the right end of the channel
+        // Position below the lower deviation line at the start of the channel
         const textX = x;
-        const textY = y + 14;
+        const textY = y + 20;
         
         this.group.append('text')
             .attr('class', 'pearson-r-text')
             .attr('x', textX)
             .attr('y', textY)
-            .attr('text-anchor', 'end')
+            .attr('text-anchor', 'start')
             .style('font-size', `${this.style.fontSize || 12}px`)
             .style('font-family', this.style.fontFamily)
             .style('font-weight', this.style.fontWeight)
