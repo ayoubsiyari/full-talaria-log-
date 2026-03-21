@@ -3591,7 +3591,7 @@ class FlagMarkTool extends BaseDrawing {
         this.style.stroke = flagColor;
         this.style.fill = flagColor;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.lineLength = 8;
+        this.style.lineLength = 24;
         this.style.flagWidth = 22;
         this.style.flagHeight = 14;
     }
@@ -3612,7 +3612,7 @@ class FlagMarkTool extends BaseDrawing {
         // Get zoom scale factor
         const scaleFactor = scales.chart?.getZoomScaleFactor ? scales.chart.getZoomScaleFactor() : 1;
         const scaledStrokeWidth = (this.style.strokeWidth || 2) * scaleFactor;
-        const lineLength = (this.style.lineLength || 8);
+        const lineLength = (this.style.lineLength || 24);
         const flagWidth = (this.style.flagWidth || 22);
         const flagHeight = (this.style.flagHeight || 14);
 
