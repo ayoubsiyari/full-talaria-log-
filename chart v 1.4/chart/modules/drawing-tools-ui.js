@@ -356,7 +356,7 @@ class DrawingSettingsPanel {
 
     width: auto;
 
-    min-width: 420px;
+    min-width: 360px;
 
     max-width: 92vw;
 
@@ -5346,7 +5346,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 headerRow.style.cssText = 'display: flex; align-items: center; gap: 12px; margin-bottom: 6px;';
 
-            } else if (['trendline', 'curve', 'arrow'].includes(drawing.type)) {
+            } else if (['trendline', 'curve', 'arrow', 'path'].includes(drawing.type)) {
 
                 headerRow.innerHTML = `
 
@@ -5454,7 +5454,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 container.appendChild(brushLineRow);
 
-                if (['trendline', 'curve', 'arrow', 'pitchfork', 'pitchfan'].includes(drawing.type)) {
+                if (['trendline', 'curve', 'arrow', 'pitchfork', 'pitchfan', 'path'].includes(drawing.type)) {
 
                     const lineLabel = brushLineRow.querySelector('.tv-prop-label');
 
