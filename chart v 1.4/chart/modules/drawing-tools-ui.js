@@ -13246,7 +13246,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             // Background and Border controls — placed below the text section
 
-            const supportsBackgroundBorder = ['text', 'notebox', 'note', 'callout', 'comment', 'anchored-text', 'pin', 'price-note', 'price-label-2'].includes(drawing.type);
+            const supportsBackgroundBorder = ['text', 'notebox', 'note', 'callout', 'comment', 'anchored-text', 'pin', 'price-note', 'price-label-2', 'signpost-2'].includes(drawing.type);
 
             if (supportsBackgroundBorder) {
 
@@ -13278,7 +13278,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         </div>
 
-                        <span class="tv-checkbox-label">Background</span>
+                        <span class="tv-checkbox-label">${drawing.type === 'signpost-2' ? 'Color' : 'Background'}</span>
 
                     </div>
 
