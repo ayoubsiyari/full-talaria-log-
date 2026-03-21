@@ -979,9 +979,9 @@ class RegressionTrendTool extends BaseDrawing {
         // Format R value with 4 decimal places
         const r2Text = `R = ${r2.toFixed(4)}`;
         
-        // Position below the lower deviation line at the start of the channel
+        // Position just below the lower deviation line
         const textX = x;
-        const textY = y + 20;
+        const textY = y + 6;
         
         this.group.append('text')
             .attr('class', 'pearson-r-text')
