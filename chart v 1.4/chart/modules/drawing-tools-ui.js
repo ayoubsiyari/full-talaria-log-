@@ -11192,35 +11192,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 
 
-                // Direct SVG update for immediate visual feedback
-
-                if (drawing.group) {
-
-                    drawing.group.selectAll('line').each(function() {
-
-                        const el = d3.select(this);
-
-                        const lineLevel = el.attr('data-level');
-
-                        // Show/hide the line if it matches this level value
-
-                        if (lineLevel && parseFloat(lineLevel) === level.value) {
-
-                            el.style('display', level.enabled ? null : 'none');
-
-                        }
-
-                    });
-
-                }
-
-                
-
-                // Save changes through the UI's applyChanges method
-
-                self.pendingChanges.levels = drawing.levels;
-
-                self.applyChanges(drawing);
+                applyChanges();
 
             };
 
@@ -11410,23 +11382,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     if (cur) cur.innerHTML = _ltSvg(value);
 
-                    if (drawing.group) {
-
-                        drawing.group.selectAll('line').each(function() {
-
-                            const el = d3.select(this);
-
-                            if (el.attr('data-level') && parseFloat(el.attr('data-level')) === level.value)
-
-                                el.attr('stroke-dasharray', value || null);
-
-                        });
-
-                    }
-
-                    self.pendingChanges.levels = drawing.levels;
-
-                    self.applyChanges(drawing);
+                    applyChanges();
 
                     typeMenu.style.display = 'none';
 
@@ -11512,23 +11468,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         if (cur) cur.textContent = `${width}px`;
 
-                        if (drawing.group) {
-
-                            drawing.group.selectAll('line').each(function() {
-
-                                const el = d3.select(this);
-
-                                if (el.attr('data-level') && parseFloat(el.attr('data-level')) === level.value)
-
-                                    el.attr('stroke-width', width);
-
-                            });
-
-                        }
-
-                        self.pendingChanges.levels = drawing.levels;
-
-                        self.applyChanges(drawing);
+                        applyChanges();
 
                     }
 
