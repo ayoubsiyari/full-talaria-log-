@@ -927,10 +927,15 @@ class RegressionTrendTool extends BaseDrawing {
         
         // Display Pearson's R if enabled
         if (this.style.showPearsonsR && r2 !== undefined) {
-            // Position at the bottom-left corner like TradingView
             const deviationOffsetLower = this.style.lowerDeviation * stdDev;
             const lowerStartRegressionY = scales.yScale(a + deviationOffsetLower);
-            this.renderPearsonsR(scales, r2, x1, lowerStartRegressionY);
+            // Use the lowest point of the lower deviation line (larger Y = lower on screen)
+            // so the label never overlaps the channel regardless of slope direction
+            const lowestY = Math.max(
+                lowerStartRegressionY,
+                lowerEndY !== undefined ? lowerEndY : lowerStartRegressionY
+            );
+            this.renderPearsonsR(scales, r2, x1, lowestY);
         }
         
         // Create handles if selected
