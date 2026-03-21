@@ -15460,9 +15460,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const self = this;
 
-        const rowStyle = 'display: flex; justify-content: space-between; align-items: center; min-height: 36px; padding: 0;';
+        const rowStyle = 'display: flex; justify-content: space-between; align-items: center; min-height: 36px; padding: 2px 0;';
 
-        const cbWrapStyle = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+        const cbWrapStyle = 'flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+
+        const wrapperStyle = 'width: 80px; flex-shrink: 0; min-width: 0;';
 
         const svgCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
 
@@ -15486,13 +15488,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
             </div>
 
-            <div class="number-input-wrapper">
+            <div class="number-input-wrapper" style="${wrapperStyle}">
 
                 <input type="number" class="tv-number-input" data-prop="upperDeviation"
 
                        value="${drawing.style.upperDeviation !== undefined ? drawing.style.upperDeviation : 2}"
 
-                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center;">
+                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center; width: 44px;">
 
                 <div class="custom-spinner" data-target="upperDeviation">
 
@@ -15526,13 +15528,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
             </div>
 
-            <div class="number-input-wrapper">
+            <div class="number-input-wrapper" style="${wrapperStyle}">
 
                 <input type="number" class="tv-number-input" data-prop="lowerDeviation"
 
                        value="${drawing.style.lowerDeviation !== undefined ? drawing.style.lowerDeviation : -2}"
 
-                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center;">
+                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center; width: 44px;">
 
                 <div class="custom-spinner" data-target="lowerDeviation">
 
