@@ -1244,6 +1244,7 @@ class ArcTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.group.append('path')
+            .attr('class', 'line-visible-path')
             .attr('d', pathData)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
@@ -1628,6 +1629,7 @@ class CurveTool extends BaseDrawing {
             .style('cursor', 'move');
 
         const path = this.group.append('path')
+            .attr('class', 'line-visible-path')
             .attr('d', pathData)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)

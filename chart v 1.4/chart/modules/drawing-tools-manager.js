@@ -3173,7 +3173,7 @@ class DrawingToolsManager {
             .style('pointer-events', 'all');
         
         // Paths that are NOT fills should be clickable on stroke
-        drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit):not(.pin-body-hit), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
+        drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit):not(.pin-body-hit):not(.line-visible-path), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
             .style('pointer-events', 'stroke');
 
         // Anchored VWAP: allow selection from curve, but keep drag interaction on anchor handles.
@@ -3216,7 +3216,7 @@ class DrawingToolsManager {
         }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
-        drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill')
+        drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill, .line-visible-path')
             .style('pointer-events', 'none');
         
         // Explicitly disable pointer-events on any ellipse/circle fill elements
