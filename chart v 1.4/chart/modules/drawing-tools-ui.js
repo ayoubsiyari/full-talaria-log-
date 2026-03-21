@@ -13186,7 +13186,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Unify all Texts & Notes tools to the same UI style as Text tool
 
-        const unifiedTextTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2'];
+        const unifiedTextTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2', 'flag-mark'];
 
         if (unifiedTextTypes.includes(drawing.type)) {
 
