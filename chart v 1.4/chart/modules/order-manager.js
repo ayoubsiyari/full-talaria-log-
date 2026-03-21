@@ -3341,6 +3341,7 @@ class OrderManager {
                     border-left: 1px solid rgba(255,255,255,0.07);
                     z-index: 9999;
                     overflow: hidden;
+                    overflow-y: auto;
                     transition: right 0.28s cubic-bezier(.4,0,.2,1);
                     box-shadow: -8px 0 40px rgba(0,0,0,0.7);
                     pointer-events: none;
@@ -3395,9 +3396,8 @@ class OrderManager {
                     flex: 1;
                     overflow-y: auto;
                     overflow-x: hidden;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
+                    min-height: 0;
+                    display: block;
                 }
                 .order-panel__header {
                     display: flex;
@@ -3476,7 +3476,7 @@ class OrderManager {
                     display: flex;
                     flex-direction: column;
                     gap: 5px;
-                    margin-bottom: 0;
+                    margin-bottom: 8px;
                 }
                 .order-section--compact { gap: 3px; }
                 .order-button-group {
@@ -3641,9 +3641,8 @@ class OrderManager {
                 .order-collapse {
                     border: 1px solid rgba(255,255,255,0.07);
                     border-radius: 6px;
-                    overflow: hidden;
                     background: rgba(255,255,255,0.015);
-                    margin-bottom: 0;
+                    margin-bottom: 8px;
                     transition: border-color 0.15s;
                 }
                 .order-collapse:hover { border-color: rgba(255,255,255,0.12); }
