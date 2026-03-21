@@ -3527,6 +3527,9 @@ async def delete_trading_session(session_id: int, request: Request):
             raise HTTPException(status_code=404, detail="Session not found")
         if not _can_access_trading_session(user, s):
             raise HTTPException(status_code=403, detail="Forbidden")
+        state = db.query(TradingSessionState).filter(TradingSessionState.session_id == session_id).first()
+        if state:
+            db.delete(state)
         db.delete(s)
         db.commit()
         return {"success": True}
