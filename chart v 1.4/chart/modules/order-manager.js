@@ -255,6 +255,65 @@ class OrderManager {
     }
 
     /**
+     * Auto-detect market type from the current chart symbol.
+     * - If symbol is found in the engine registry → silently switch type, hide dropdown.
+     * - If symbol is heuristically guessed (not exact registry match) → switch type, still hide dropdown.
+     * - If no symbol at all → show dropdown for manual selection.
+     * Returns the detected type string or null when nothing could be resolved.
+     */
+    _autoDetectMarketType() {
+        const sym = this._getSymbol();
+        const section = document.getElementById('marketTypeSectionPanel');
+
+        if (!sym) {
+            if (section) section.style.display = '';
+            return null;
+        }
+
+        let detectedType = null;
+        let inRegistry   = false;
+
+        if (window.marketCalcEngine) {
+            const norm  = sym.replace(/[/\-_\s]/g, '').toUpperCase();
+            const specs = window.marketCalcEngine._registry[norm];
+            if (specs) {
+                detectedType = specs.type;
+                inRegistry   = true;
+            } else {
+                detectedType = window.MarketCalculationEngine
+                    ? window.MarketCalculationEngine.detectMarketType(sym)
+                    : null;
+            }
+        }
+
+        if (!detectedType) {
+            if (section) section.style.display = '';
+            return null;
+        }
+
+        // Map engine type → order-manager marketType key
+        const typeMap = { forex:'forex', futures:'futures', crypto:'crypto', stocks:'stocks' };
+        const newType = typeMap[detectedType] || 'forex';
+
+        // Silently switch without emitting a notification
+        if (this.marketType !== newType && this.marketConfigs[newType]) {
+            this.marketType = newType;
+            this.saveMarketType();
+            const cfg = this.marketConfigs[newType];
+            this.pipSize         = cfg.pipSize;
+            this.pipValuePerLot  = cfg.pipValuePerLot;
+            this.contractSize    = cfg.contractSize;
+            this.symbolPrecision = cfg.symbolPrecision;
+            localStorage.setItem('chart_pipSize',        cfg.pipSize);
+            localStorage.setItem('chart_pipValuePerLot', cfg.pipValuePerLot);
+        }
+
+        // Hide dropdown — symbol is known, no need to choose manually
+        if (section) section.style.display = 'none';
+        return newType;
+    }
+
+    /**
      * P&L in USD for a closed position.
      * @param {'BUY'|'SELL'} side
      * @param {number} entry
@@ -3264,7 +3323,10 @@ class OrderManager {
         panel.style.setProperty('--order-panel-width', `${panelWidth}px`);
         this.orderPanelWidth = panelWidth;
 
-        if (!document.getElementById('orderPanelStyles')) {
+        // Always remove and re-inject so stale cached styles never linger
+        const _existingStyle = document.getElementById('orderPanelStyles');
+        if (_existingStyle) _existingStyle.remove();
+        {
             const styleEl = document.createElement('style');
             styleEl.id = 'orderPanelStyles';
             styleEl.textContent = `
@@ -3869,8 +3931,8 @@ class OrderManager {
             <div class="order-panel__content">
                 <div style="height:4px;"></div>
 
-                <!-- Market Type Selector -->
-                <div class="order-section" style="padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <!-- Market Type Selector (hidden when symbol is auto-detected) -->
+                <div id="marketTypeSectionPanel" class="order-section" style="padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
                     <div id="marketTypeSelectorPanel" class="market-type-selector" style="position: relative;">
                         <button id="marketTypeBtnPanel" type="button" style="
                             width: 100%;
@@ -4783,6 +4845,9 @@ class OrderManager {
      * Update order panel UI based on current market type
      */
     updateOrderPanel() {
+        // Auto-detect and silently switch market type before refreshing UI
+        this._autoDetectMarketType();
+
         const config = this.getMarketConfig();
         
         // Update panel header with market type + symbol badge
