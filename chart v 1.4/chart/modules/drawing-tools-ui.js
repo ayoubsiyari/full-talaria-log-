@@ -13236,9 +13236,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const isAutoText = drawing.type === 'price-note' || drawing.type === 'price-label' || drawing.type === 'price-label-2';
 
-            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note';
+            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note' || drawing.type === 'pin' || drawing.type === 'callout';
 
-            this.buildTextTab(container, drawing, { hideVerticalAlign: true, hideHorizontalAlign, hideTextInput: isAutoText });
+            const hideSizeLabel = drawing.type === 'pin' || drawing.type === 'callout';
+
+            this.buildTextTab(container, drawing, { hideVerticalAlign: true, hideHorizontalAlign, hideTextInput: isAutoText, hideSizeLabel });
 
 
 
@@ -14160,7 +14162,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
     buildTextTab(container, drawing, options = {}) {
 
-        const { hideVerticalAlign = false, hideHorizontalAlign = false, hideTextInput = false, placeholder = 'Enter text...' } = options || {};
+        const { hideVerticalAlign = false, hideHorizontalAlign = false, hideTextInput = false, placeholder = 'Enter text...', hideSizeLabel = false } = options || {};
 
         const isArrowMarkerType = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
 
@@ -14252,7 +14254,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <div class="tv-text-controls">
 
-                <span style="color: #787b86; font-size: 12px;">Size</span>
+                ${!hideSizeLabel ? '<span style="color: #787b86; font-size: 12px;">Size</span>' : ''}
 
                 <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; min-width: 60px;">
 
