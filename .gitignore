@@ -1,5 +1,29 @@
 .DS_Store
 
+# Windsurf IDE
+.windsurf/
+
+# VS Code IDE
+.vscode/
+
+# Temporary / scratch files
+.tmp_drawing_tools_ui_accent_hits.txt
+color.text
+
+# Planning & documentation (local reference only)
+DESIGN_SYSTEM.md
+IMPROVEMENTS.md
+LOCALSTORAGE_AUDIT.md
+PROJECT_STRUCTURE.md
+STRUCTURE_FROM_SCRATCH.md
+TALARIA_PROJECT_DOCUMENTATION.md
+WORKFLOW_ANALYSIS.md
+merge.md
+plan.md
+
+# Tool output directories
+swark-output/
+
 # Env / secrets
 .env
 .env.*

@@ -47,6 +47,42 @@ ssl/*
 *-backup.*
 *-old.*
 backups/
+*.backup
+*.bak
+
+# Documentation (local reference only)
+AUTH_SETUP.md
+DOCKER.md
+SCALABLE_DATA_LOADING_CHECKLIST.md
+SCALABLE_DATA_LOADING_NEXT_STEPS.md
+SCALABLE_DATA_LOADING_PLAN.md
+
+# Server notes / scratch
+talaria chart server info.txt
+
+# Unused / experimental source files
+TradingChart.jsx
+
+# Test & sample data
+Untitled spreadsheet.csv
+ample_data.csv
+test_100_candles.csv
+test_metatrader_format.csv
+
+# Backup / alternate indicator builds (non-active)
+modules/chart-indicators-readable.js
+modules/chart-indicators-with-hma.js
+modules/chart-indicators-working-backup-final.js
+
+# Notes files inside modules
+modules/indicator formuls.text
+modules/kill zone.text
+
+# Load testing scripts (dev only)
+load-tests/
+
+# Backup HTML pages
+backtesting-clean.html
 
 # Environment
 .env.local
