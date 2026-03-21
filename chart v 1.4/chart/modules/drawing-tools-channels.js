@@ -927,14 +927,9 @@ class RegressionTrendTool extends BaseDrawing {
         
         // Display Pearson's R if enabled
         if (this.style.showPearsonsR && r2 !== undefined) {
-            // Position at the bottom-left corner like TradingView
-            // Use the start point X position
-            const deviationOffsetLower = this.style.lowerDeviation * stdDev;
-            
-            // Calculate Y position on the lower deviation line at the start index
-            const lowerStartRegressionY = scales.yScale(a + deviationOffsetLower);
-            
-            this.renderPearsonsR(scales, r2, x1, lowerStartRegressionY);
+            // Position at the right end of the channel, below the lower deviation line
+            const labelY = (lowerEndY !== undefined ? lowerEndY : midEndY);
+            this.renderPearsonsR(scales, r2, endX, labelY);
         }
         
         // Create handles if selected
@@ -975,21 +970,19 @@ class RegressionTrendTool extends BaseDrawing {
     renderPearsonsR(scales, r2, x, y) {
         if (!this.group) return;
         
-        // Format R value with "R" prefix
-        const r2Text = `R ${r2.toFixed(14)}`;
+        // Format R value with 4 decimal places
+        const r2Text = `R = ${r2.toFixed(4)}`;
         
-        // Position the text well below the regression line, centered
+        // Position just below the lower deviation line at the right end of the channel
         const textX = x;
-        const textY = y + 35; // 35 pixels below the line for better visibility
+        const textY = y + 14;
         
-        // Add the text without background, centered
-        // Use the lower line color for the text
         this.group.append('text')
             .attr('class', 'pearson-r-text')
             .attr('x', textX)
             .attr('y', textY)
-            .attr('text-anchor', 'middle') // Center the text horizontally
-            .style('font-size', `${this.style.fontSize}px`)
+            .attr('text-anchor', 'end')
+            .style('font-size', `${this.style.fontSize || 12}px`)
             .style('font-family', this.style.fontFamily)
             .style('font-weight', this.style.fontWeight)
             .style('fill', this.style.lowerStroke || this.style.stroke)
