@@ -54200,7 +54200,7 @@ window._spCddToggle=function(wrap){
 
 document.addEventListener('click',function(e){if(!e.target.closest('.sp-cdd-wrap'))document.querySelectorAll('.sp-cdd-panel').forEach(function(p){p.style.display='none';});},true);
 
-function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+safeVal+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+safeVal+';cursor:pointer;flex-shrink:0;margin-left:auto;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
+function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+safeVal+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+safeVal+';cursor:pointer;flex-shrink:0;margin-left:auto;margin-right:4px;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
 
 function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:var(--sp-accent);font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--sp-text-muted,#787b86);margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
 
@@ -54495,7 +54495,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         colorSec=sec(st('CANDLE COLORS')+
 
-            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 0 10px 12px;margin-bottom:10px;">'+
+            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 4px 10px 12px;margin-bottom:10px;">'+
 
                 '<div style="margin-bottom:8px;"><span style="background:#089981;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bullish</span></div>'+
 
@@ -54503,7 +54503,7 @@ P['symbol']={title:'Symbol',build:function(){
 
             '</div>'+
 
-            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 0 10px 12px;margin-bottom:10px;">'+
+            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 4px 10px 12px;margin-bottom:10px;">'+
 
                 '<div style="margin-bottom:8px;"><span style="background:#f23645;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bearish</span></div>'+
 
