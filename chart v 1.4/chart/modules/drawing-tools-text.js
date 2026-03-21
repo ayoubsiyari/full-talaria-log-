@@ -3591,9 +3591,9 @@ class FlagMarkTool extends BaseDrawing {
         this.style.stroke = flagColor;
         this.style.fill = flagColor;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.lineLength = style.lineLength || 8;
-        this.style.flagWidth = style.flagWidth || 22;
-        this.style.flagHeight = style.flagHeight || 14;
+        this.style.lineLength = 8;
+        this.style.flagWidth = 22;
+        this.style.flagHeight = 14;
     }
 
     render(container, scales) {
