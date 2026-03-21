@@ -284,11 +284,11 @@ class DrawingToolbar {
         })(_fillRaw) : null;
         
         // Line controls (hide for text/marker tools)
-        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'comment', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
+        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'comment', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down', 'flag-mark'];
         const showLineControls = !noLineControlTypes.includes(drawing.type);
 
         // Tools that show only the fill color (no stroke button)
-        const fillOnlyTools = ['arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
+        const fillOnlyTools = ['arrow-marker', 'arrow-mark-up', 'arrow-mark-down', 'flag-mark'];
         const showStrokeColor = !fillOnlyTools.includes(drawing.type);
         
         // Text editing

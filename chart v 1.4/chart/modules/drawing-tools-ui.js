@@ -5244,7 +5244,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Special handling for text tools
 
-        const textTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2'];
+        const textTypes = ['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2', 'flag-mark'];
 
         if (textTypes.includes(drawing.type)) {
 
@@ -13236,17 +13236,21 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const isAutoText = drawing.type === 'price-note' || drawing.type === 'price-label' || drawing.type === 'price-label-2';
 
-            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note' || drawing.type === 'pin' || drawing.type === 'callout' || drawing.type === 'price-label' || drawing.type === 'price-label-2';
+            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note' || drawing.type === 'pin' || drawing.type === 'callout' || drawing.type === 'price-label' || drawing.type === 'price-label-2' || drawing.type === 'flag-mark';
 
             const hideSizeLabel = drawing.type === 'pin' || drawing.type === 'callout';
 
+            if (drawing.type !== 'flag-mark') {
+
             this.buildTextTab(container, drawing, { hideVerticalAlign: true, hideHorizontalAlign, hideTextInput: isAutoText, hideSizeLabel });
+
+            }
 
 
 
             // Background and Border controls — placed below the text section
 
-            const supportsBackgroundBorder = ['text', 'notebox', 'note', 'callout', 'comment', 'anchored-text', 'pin', 'price-note', 'price-label-2', 'signpost-2'].includes(drawing.type);
+            const supportsBackgroundBorder = ['text', 'notebox', 'note', 'callout', 'comment', 'anchored-text', 'pin', 'price-note', 'price-label-2', 'signpost-2', 'flag-mark'].includes(drawing.type);
 
             if (supportsBackgroundBorder) {
 
@@ -13260,7 +13264,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     : (drawing.type === 'price-label-2' ? drawing.style.fill : (drawing.style.fill || drawing.style.backgroundColor));
 
-                const bgProp = (drawing.type === 'price-label-2' || drawing.type === 'signpost-2') ? 'fill' : 'backgroundColor';
+                const bgProp = (drawing.type === 'price-label-2' || drawing.type === 'signpost-2' || drawing.type === 'flag-mark') ? 'fill' : 'backgroundColor';
 
                 const hasBg = bgColor && bgColor !== 'none' && bgColor !== 'transparent';
 
@@ -13278,7 +13282,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         </div>
 
-                        <span class="tv-checkbox-label">${drawing.type === 'signpost-2' ? 'Color' : 'Background'}</span>
+                        <span class="tv-checkbox-label">${(drawing.type === 'signpost-2' || drawing.type === 'flag-mark') ? 'Color' : 'Background'}</span>
 
                     </div>
 
@@ -13294,7 +13298,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-                if (drawing.type !== 'signpost-2') {
+                if (drawing.type !== 'signpost-2' && drawing.type !== 'flag-mark') {
 
                 const borderRow = document.createElement('div');
 
@@ -21472,9 +21476,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 drawing.style.fill = finalColor;
 
-                if (drawing.type === 'signpost-2') {
+                if (drawing.type === 'signpost-2' || drawing.type === 'flag-mark') {
 
-                    // For signpost-2, fill controls both line color and text box background
+                    // fill controls both pole/line stroke and flag fill
 
                     actualDrawing.style.stroke = finalColor;
 
