@@ -234,7 +234,7 @@ class DrawingToolbar {
         const isColorOnlyTool = colorOnlyTools.includes(drawing.type);
         
         // Text-based tools
-        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin'];
+        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin', 'comment'];
         const isTextTool = textTypes.includes(drawing.type);
         
         // Note/box style tools
@@ -284,7 +284,7 @@ class DrawingToolbar {
         })(_fillRaw) : null;
         
         // Line controls (hide for text/marker tools)
-        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
+        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'comment', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
         const showLineControls = !noLineControlTypes.includes(drawing.type);
 
         // Tools that show only the fill color (no stroke button)
@@ -1010,7 +1010,7 @@ class DrawingToolbar {
             // Patterns with fill
             'xabcd-pattern',
             // Text tools with background
-            'notebox', 'note', 'price-note', 'anchored-text', 'callout', 'price-label',
+            'notebox', 'note', 'price-note', 'anchored-text', 'callout', 'price-label', 'comment',
             // Polyline (background shows when shape is closed)
             'polyline',
             // Other
@@ -1752,12 +1752,12 @@ class DrawingToolbar {
     }
 
     isTextTool(drawing) {
-        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin'];
+        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin', 'comment'];
         return drawing && textTypes.includes(drawing.type);
     }
 
     isNoteBox(drawing) {
-        const noteTypes = ['notebox', 'note', 'price-note', 'callout', 'pin'];
+        const noteTypes = ['notebox', 'note', 'price-note', 'callout', 'pin', 'comment'];
         return drawing && noteTypes.includes(drawing.type);
     }
 
