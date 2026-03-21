@@ -13246,7 +13246,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             // Background and Border controls — placed below the text section
 
-            const supportsBackgroundBorder = ['text', 'notebox', 'note', 'callout', 'comment', 'anchored-text', 'pin', 'price-note', 'signpost-2'].includes(drawing.type);
+            const supportsBackgroundBorder = ['text', 'notebox', 'note', 'callout', 'comment', 'anchored-text', 'pin', 'price-note', 'price-label-2', 'signpost-2'].includes(drawing.type);
 
             if (supportsBackgroundBorder) {
 
@@ -13258,7 +13258,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     ? drawing.style.backgroundColor
 
-                    : (drawing.style.fill || drawing.style.backgroundColor);
+                    : (drawing.type === 'price-label-2' ? drawing.style.fill : (drawing.style.fill || drawing.style.backgroundColor));
+
+                const bgProp = drawing.type === 'price-label-2' ? 'fill' : 'backgroundColor';
 
                 const hasBg = bgColor && bgColor !== 'none' && bgColor !== 'transparent';
 
@@ -13282,7 +13284,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     <div class="tv-prop-controls" style="margin-left: auto;">
 
-                        <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${bgColor || 'rgba(41, 98, 255, 0.15)'};"></button>
+                        <button class="tv-color-btn" data-prop="${bgProp}" style="background: ${bgColor || 'rgba(41, 98, 255, 0.15)'};"></button>
 
                     </div>
 
