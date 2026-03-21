@@ -3587,10 +3587,11 @@ class FlagMarkTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('flag-mark', points, style);
         this.requiredPoints = 1;
-        this.style.stroke = style.stroke || '#787b86';
+        const flagColor = style.fill || style.stroke || '#787b86';
+        this.style.stroke = flagColor;
+        this.style.fill = flagColor;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.fill = style.fill || '#787b86';
-        this.style.lineLength = style.lineLength || 28;
+        this.style.lineLength = style.lineLength || 18;
         this.style.flagWidth = style.flagWidth || 16;
         this.style.flagHeight = style.flagHeight || 12;
     }
@@ -3611,7 +3612,7 @@ class FlagMarkTool extends BaseDrawing {
         // Get zoom scale factor
         const scaleFactor = scales.chart?.getZoomScaleFactor ? scales.chart.getZoomScaleFactor() : 1;
         const scaledStrokeWidth = (this.style.strokeWidth || 2) * scaleFactor;
-        const lineLength = (this.style.lineLength || 28) * scaleFactor;
+        const lineLength = (this.style.lineLength || 18) * scaleFactor;
         const flagWidth = (this.style.flagWidth || 40) * scaleFactor;
         const flagHeight = (this.style.flagHeight || 30) * scaleFactor;
 
