@@ -3612,9 +3612,9 @@ class FlagMarkTool extends BaseDrawing {
         // Get zoom scale factor
         const scaleFactor = scales.chart?.getZoomScaleFactor ? scales.chart.getZoomScaleFactor() : 1;
         const scaledStrokeWidth = (this.style.strokeWidth || 2) * scaleFactor;
-        const lineLength = (this.style.lineLength || 8) * scaleFactor;
-        const flagWidth = (this.style.flagWidth || 22) * scaleFactor;
-        const flagHeight = (this.style.flagHeight || 14) * scaleFactor;
+        const lineLength = (this.style.lineLength || 8);
+        const flagWidth = (this.style.flagWidth || 22);
+        const flagHeight = (this.style.flagHeight || 14);
 
         // Vertical line (pole) extending upward
         const lineEndY = y1 - lineLength;
