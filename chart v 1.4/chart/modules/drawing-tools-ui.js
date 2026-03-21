@@ -13236,7 +13236,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const isAutoText = drawing.type === 'price-note' || drawing.type === 'price-label' || drawing.type === 'price-label-2';
 
-            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note' || drawing.type === 'pin' || drawing.type === 'callout';
+            const hideHorizontalAlign = drawing.type === 'note' || drawing.type === 'price-note' || drawing.type === 'pin' || drawing.type === 'callout' || drawing.type === 'price-label' || drawing.type === 'price-label-2';
 
             const hideSizeLabel = drawing.type === 'pin' || drawing.type === 'callout';
 
