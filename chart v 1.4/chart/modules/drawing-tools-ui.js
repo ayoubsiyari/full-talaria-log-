@@ -11117,21 +11117,18 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const applyChanges = () => {
 
-            // Sync levels to actual drawing in manager and to pendingChanges
+            // Use direct reference — deep-copying would replace drawing.levels and break
+            // all level closure variables captured below in the event handlers
 
-            // Deep copy to ensure changes persist
-
-            self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
+            self.pendingChanges.levels = drawing.levels;
 
             if (window.drawingManager) {
 
                 const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id);
 
-                if (actualDrawing) {
+                if (actualDrawing && actualDrawing !== drawing) {
 
-                    actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
-
-                    // [debug removed]
+                    actualDrawing.levels = drawing.levels;
 
                 }
 
@@ -11221,7 +11218,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 // Save changes through the UI's applyChanges method
 
-                self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
+                self.pendingChanges.levels = drawing.levels;
 
                 self.applyChanges(drawing);
 
@@ -11427,7 +11424,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     }
 
-                    self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
+                    self.pendingChanges.levels = drawing.levels;
 
                     self.applyChanges(drawing);
 
@@ -11529,7 +11526,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         }
 
-                        self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
+                        self.pendingChanges.levels = drawing.levels;
 
                         self.applyChanges(drawing);
 
