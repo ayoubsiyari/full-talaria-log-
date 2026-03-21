@@ -278,7 +278,7 @@ class DrawingToolbar {
                 const levelColors = lvls.map(l => l.color).filter(Boolean);
                 const uniqueColors = [...new Set(levelColors)];
                 if (uniqueColors.length > 1) {
-                    strokeBaseColor = `linear-gradient(90deg, ${uniqueColors.join(', ')})`;
+                    strokeBaseColor = 'linear-gradient(90deg, #f23645, #ff9800, #ffeb3b, #4caf50, #2196f3, #9c27b0)';
                 } else if (uniqueColors.length === 1) {
                     strokeBaseColor = uniqueColors[0];
                 }
