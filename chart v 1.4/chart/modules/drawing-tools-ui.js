@@ -1722,7 +1722,7 @@ class DrawingSettingsPanel {
 
     padding: 8px;
 
-    border: none;
+    border: 1px solid rgba(255,255,255,0.12);
 
     background: transparent;
 
@@ -1748,7 +1748,7 @@ class DrawingSettingsPanel {
 
     background: var(--sp-hover-bg, rgba(255,255,255,0.08));
 
-    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9));
+    border-color: rgba(255,255,255,0.28);
 
     color: var(--sp-text, #d1d4dc);
 
