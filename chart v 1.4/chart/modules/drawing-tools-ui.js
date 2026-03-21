@@ -13294,11 +13294,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
+                if (drawing.type !== 'signpost-2') {
+
                 const borderRow = document.createElement('div');
 
                 borderRow.className = 'tv-prop-row';
 
-                const borderColor = (drawing.type === 'callout' || drawing.type === 'comment' || drawing.type === 'pin' || drawing.type === 'anchored-text' || drawing.type === 'signpost-2')
+                const borderColor = (drawing.type === 'callout' || drawing.type === 'comment' || drawing.type === 'pin' || drawing.type === 'anchored-text')
 
                     ? (drawing.style.borderColor !== undefined ? drawing.style.borderColor : drawing.style.stroke)
 
@@ -13333,6 +13335,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 `;
 
                 container.appendChild(borderRow);
+
+                } // end signpost-2 border exclusion
 
             }
 
@@ -21464,13 +21468,33 @@ body.light-mode .template-save-dialog .dialog-title {
 
             } else if (prop === 'fill') {
 
-                // For pin tool - update the marker fill color
-
                 actualDrawing.style.fill = finalColor;
 
-                actualDrawing.style.stroke = finalColor; // Also update stroke for consistency
-
                 drawing.style.fill = finalColor;
+
+                if (drawing.type === 'signpost-2') {
+
+                    // For signpost-2, fill controls both line color and text box background
+
+                    actualDrawing.style.stroke = finalColor;
+
+                    drawing.style.stroke = finalColor;
+
+                    if (drawingManager) {
+
+                        drawingManager.renderDrawing(actualDrawing);
+
+                        drawingManager.saveDrawings();
+
+                    }
+
+                    return;
+
+                }
+
+                // For pin tool - update the marker fill color
+
+                actualDrawing.style.stroke = finalColor; // Also update stroke for consistency
 
                 drawing.style.stroke = finalColor;
 
