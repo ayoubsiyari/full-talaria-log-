@@ -3590,7 +3590,7 @@ class FlagMarkTool extends BaseDrawing {
         this.style.stroke = style.stroke || '#787b86';
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.fill = style.fill || '#787b86';
-        this.style.lineLength = style.lineLength || 40;
+        this.style.lineLength = style.lineLength || 28;
         this.style.flagWidth = style.flagWidth || 16;
         this.style.flagHeight = style.flagHeight || 12;
     }
@@ -3611,7 +3611,7 @@ class FlagMarkTool extends BaseDrawing {
         // Get zoom scale factor
         const scaleFactor = scales.chart?.getZoomScaleFactor ? scales.chart.getZoomScaleFactor() : 1;
         const scaledStrokeWidth = (this.style.strokeWidth || 2) * scaleFactor;
-        const lineLength = (this.style.lineLength || 100) * scaleFactor;
+        const lineLength = (this.style.lineLength || 28) * scaleFactor;
         const flagWidth = (this.style.flagWidth || 40) * scaleFactor;
         const flagHeight = (this.style.flagHeight || 30) * scaleFactor;
 
@@ -3647,8 +3647,8 @@ class FlagMarkTool extends BaseDrawing {
         this.group.append('path')
             .attr('d', flagPath)
             .attr('fill', this.style.fill)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', scaledStrokeWidth * 0.5)
+            .attr('stroke', 'none')
+            .attr('stroke-width', 0)
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
