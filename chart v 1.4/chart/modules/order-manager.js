@@ -4775,10 +4775,15 @@ class OrderManager {
 
         const isVisible = panel.classList.contains('visible');
 
+        const chartWrapper = document.getElementById('chartWrapper');
+        const _c = window.chart || window.mainChart;
+
         if (isVisible) {
             // Close panel
             panel.classList.remove('visible');
             if (backdrop) backdrop.classList.remove('visible');
+            if (chartWrapper) chartWrapper.classList.remove('order-panel-open');
+            if (_c && _c.resize) setTimeout(() => { _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
 
             // Remove preview lines when panel closes
             this.removePreviewLines();
@@ -4797,6 +4802,8 @@ class OrderManager {
         // Open panel
         panel.classList.add('visible');
         if (backdrop) backdrop.classList.add('visible');
+        if (chartWrapper) chartWrapper.classList.add('order-panel-open');
+        if (_c && _c.resize) setTimeout(() => { _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
 
         // Refresh header badge (symbol + market type) every time the drawer opens
         this.updateOrderPanel();
