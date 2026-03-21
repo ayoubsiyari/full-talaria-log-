@@ -1315,8 +1315,8 @@ class ArrowTool extends BaseDrawing {
         const boxHeight = rows.length * lineHeight + padY * 2;
 
         // Responsive placement: offset away from the line direction to avoid overlap
-        const OFFSET_X = 20;
-        const OFFSET_Y = 10;
+        const OFFSET_X = 8;
+        const OFFSET_Y = 4;
         const dx = x2 - x1;
         const dy = y2 - y1;
         // Horizontal: place to the right of p2 if line comes from left, else to the left
@@ -1331,8 +1331,8 @@ class ArrowTool extends BaseDrawing {
         infoGroup.append('rect')
             .attr('x', 0).attr('y', 0)
             .attr('width', boxWidth).attr('height', boxHeight)
-            .attr('fill', 'rgba(30, 34, 45, 0.97)')
-            .attr('stroke', 'rgba(80, 84, 100, 0.6)')
+            .attr('fill', 'rgba(240, 242, 245, 0.96)')
+            .attr('stroke', 'rgba(180, 185, 200, 0.7)')
             .attr('stroke-width', 1)
             .attr('rx', 4);
 
@@ -1345,7 +1345,7 @@ class ArrowTool extends BaseDrawing {
                     .attr('transform', `translate(${padX}, ${rowY - 9})`);
                 iconG.html(row.svgIcon);
                 iconG.select('svg')
-                    .attr('stroke', '#787b86')
+                    .attr('stroke', '#555a6e')
                     .style('overflow', 'visible');
             }
             
@@ -1353,7 +1353,7 @@ class ArrowTool extends BaseDrawing {
             infoGroup.append('text')
                 .attr('x', padX + iconColW + iconTextGap)
                 .attr('y', rowY)
-                .attr('fill', '#d1d4dc')
+                .attr('fill', '#131722')
                 .attr('font-size', `${fontSize}px`)
                 .attr('font-family', fontFamily)
                 .text(row.text);
