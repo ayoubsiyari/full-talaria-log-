@@ -3410,7 +3410,7 @@ class OrderManager {
 
                 .order-panel-backdrop.visible {
                     opacity: 1;
-                    pointer-events: auto;
+                    pointer-events: none;
                 }
 
                 .order-panel__content {
