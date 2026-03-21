@@ -1157,7 +1157,7 @@ class NoteTool extends BaseDrawing {
         const y2 = scales.yScale(p2.y);
 
         // Invisible hit area for easier selection (rendered first, behind visible line)
-        this.group.append('line')
+        const noteLineHitEl = this.group.append('line')
             .attr('class', 'note-line-hit shape-border-hit')
             .attr('x1', x1)
             .attr('y1', y1)
@@ -1169,7 +1169,7 @@ class NoteTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Draw the visible line
-        this.group.append('line')
+        const noteLineEl = this.group.append('line')
             .attr('class', 'note-line')
             .attr('x1', x1)
             .attr('y1', y1)
@@ -1209,8 +1209,12 @@ class NoteTool extends BaseDrawing {
         const boxHeight = totalTextHeight + padding * 2;
 
         // Position box to the right of endpoint
-        const boxX = x2 + 5;
+        const boxX = x2;
         const boxY = y2 - boxHeight / 2;
+
+        // Shorten line so it stops exactly at the left edge of the box (matches PriceNoteTool behaviour)
+        noteLineEl.attr('x2', boxX).attr('y2', y2);
+        noteLineHitEl.attr('x2', boxX).attr('y2', y2);
 
         // Background rectangle - use fill for background color
         const textBox = this.group.append('rect')
