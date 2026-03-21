@@ -1303,7 +1303,18 @@ class DrawingToolbar {
         const strokePreview = this.toolbar.querySelector('#stroke-color-preview');
         const strokePalette = this.toolbar.querySelector('#stroke-color-palette');
         if (strokePreview) {
-            this.updateColorPreview(strokePreview, primaryColor);
+            let _previewColor = primaryColor;
+            const _isFibPreview = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
+            if (_isFibPreview) {
+                const _fibLvls = drawing.levels || (drawing.style && drawing.style.levels);
+                if (Array.isArray(_fibLvls) && _fibLvls.length > 0) {
+                    const _fibUnique = [...new Set(_fibLvls.map(l => l.color).filter(Boolean))];
+                    if (_fibUnique.length > 1) {
+                        _previewColor = 'linear-gradient(90deg, #f23645, #ff9800, #ffeb3b, #4caf50, #2196f3, #9c27b0)';
+                    }
+                }
+            }
+            this.updateColorPreview(strokePreview, _previewColor);
             if (strokePalette) strokePalette.classList.remove('active');
 
             strokePreview.addEventListener('click', (e) => {
