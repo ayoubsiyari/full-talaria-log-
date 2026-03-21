@@ -5153,11 +5153,11 @@ class OrderManager {
         const placeBtn = document.getElementById('placeOrderButton');
         
         buyTab.onclick = () => {
-            buyTab.style.background = '#22c55e';
-            buyTab.style.color = 'white';
-            sellTab.style.background = 'rgba(239, 68, 68, 0.2)';
-            sellTab.style.color = '#ef4444';
-            placeBtn.style.background = '#22c55e';
+            buyTab.classList.add('active');
+            sellTab.classList.remove('active');
+            buyTab.style.cssText = '';
+            sellTab.style.cssText = '';
+            if (placeBtn) { placeBtn.style.background = ''; placeBtn.style.boxShadow = ''; }
             this.orderSide = 'BUY';
             // Reset TP/SL positioning flags when switching sides
             this.tpManuallyPositioned = false;
@@ -5169,11 +5169,11 @@ class OrderManager {
         };
         
         sellTab.onclick = () => {
-            sellTab.style.background = '#ef4444';
-            sellTab.style.color = 'white';
-            buyTab.style.background = 'rgba(34, 197, 94, 0.2)';
-            buyTab.style.color = '#22c55e';
-            placeBtn.style.background = '#ef4444';
+            sellTab.classList.add('active');
+            buyTab.classList.remove('active');
+            sellTab.style.cssText = '';
+            buyTab.style.cssText = '';
+            if (placeBtn) { placeBtn.style.background = ''; placeBtn.style.boxShadow = ''; }
             this.orderSide = 'SELL';
             // Reset TP/SL positioning flags when switching sides
             this.tpManuallyPositioned = false;
@@ -5193,14 +5193,9 @@ class OrderManager {
                 
                 // Update button styling
                 document.querySelectorAll('.order-type-btn').forEach(b => {
-                    b.style.background = 'transparent';
-                    b.style.border = '1px solid transparent';
-                    b.style.color = '#787b86';
+                    b.style.cssText = '';
                     b.classList.remove('active');
                 });
-                btn.style.background = 'rgba(255,255,255,0.1)';
-                btn.style.border = '1px solid transparent';
-                btn.style.color = '#fff';
                 btn.classList.add('active');
                 
                 // Show entry price warning for market orders
@@ -5221,15 +5216,8 @@ class OrderManager {
                 
                 // Update tab styling
                 document.querySelectorAll('.position-mode-tab').forEach(t => {
-                    if (t === tab) {
-                        t.style.background = '#7c3aed';
-                        t.style.color = '#fff';
-                        t.style.border = 'none';
-                    } else {
-                        t.style.background = 'transparent';
-                        t.style.color = '#787b86';
-                        t.style.border = '1px solid #2a2e39';
-                    }
+                    t.style.cssText = '';
+                    t.classList.toggle('active', t === tab);
                 });
                 
                 // Show/hide appropriate input by toggling is-hidden class
@@ -5304,6 +5292,14 @@ class OrderManager {
             };
         });
         
+        // Collapse section toggles (Protection System, Multiple TP, Risk Controls)
+        document.querySelectorAll('.order-collapse__header').forEach(header => {
+            header.onclick = () => {
+                const section = header.closest('.order-collapse');
+                if (section) section.classList.toggle('order-collapse--open');
+            };
+        });
+
         // Risk input changes
         const riskUSDInput = document.getElementById('riskAmountUSD');
         const riskPercentInput = document.getElementById('riskAmountPercent');
