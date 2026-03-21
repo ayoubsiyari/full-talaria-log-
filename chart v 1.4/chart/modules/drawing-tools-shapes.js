@@ -1331,8 +1331,8 @@ class ArrowTool extends BaseDrawing {
         infoGroup.append('rect')
             .attr('x', 0).attr('y', 0)
             .attr('width', boxWidth).attr('height', boxHeight)
-            .attr('fill', 'rgba(240, 242, 245, 0.96)')
-            .attr('stroke', 'rgba(180, 185, 200, 0.7)')
+            .attr('fill', 'rgba(210, 215, 225, 0.97)')
+            .attr('stroke', 'rgba(160, 165, 185, 0.8)')
             .attr('stroke-width', 1)
             .attr('rx', 4);
 
@@ -1345,7 +1345,8 @@ class ArrowTool extends BaseDrawing {
                     .attr('transform', `translate(${padX}, ${rowY - 9})`);
                 iconG.html(row.svgIcon);
                 iconG.select('svg')
-                    .attr('stroke', '#555a6e')
+                    .attr('stroke', '#4a5068')
+                    .style('color', '#4a5068')
                     .style('overflow', 'visible');
             }
             
@@ -1353,7 +1354,7 @@ class ArrowTool extends BaseDrawing {
             infoGroup.append('text')
                 .attr('x', padX + iconColW + iconTextGap)
                 .attr('y', rowY)
-                .attr('fill', '#131722')
+                .attr('fill', '#1e2235')
                 .attr('font-size', `${fontSize}px`)
                 .attr('font-family', fontFamily)
                 .text(row.text);
