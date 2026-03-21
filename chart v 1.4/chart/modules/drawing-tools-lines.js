@@ -567,19 +567,12 @@ class TrendlineTool extends BaseDrawing {
         const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
         // Gap = rectangle support function in perp direction + clearance
         // This ensures no corner of the axis-aligned box touches the line at any angle
-        const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 8;
-        // Corner-align box at p2: the nearest corner touches p2 + clearance in the line direction.
-        const clearance = 12;
-        let boxX, boxY;
-        if (Math.abs(ux) >= Math.abs(uy)) {
-            // More horizontal: side corner at p2's y, box extends in x direction
-            boxX = ux >= 0 ? x2 + clearance : x2 - clearance - boxWidth;
-            boxY = y2;
-        } else {
-            // More vertical: top/bottom corner at p2's x, box extends in y direction
-            boxX = x2;
-            boxY = uy >= 0 ? y2 + clearance : y2 - clearance - boxHeight;
-        }
+        const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 12;
+        // Position box center at p2 offset perpendicularly away from the line
+        const centerX = x2 + perp.x * gap;
+        const centerY = y2 + perp.y * gap;
+        const boxX = centerX - boxWidth / 2;
+        const boxY = centerY - boxHeight / 2;
 
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
