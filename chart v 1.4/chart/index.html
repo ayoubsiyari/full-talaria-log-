@@ -54495,21 +54495,13 @@ P['symbol']={title:'Symbol',build:function(){
 
         colorSec=sec(st('CANDLE COLORS')+
 
-            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 4px 10px 12px;margin-bottom:10px;">'+
+            '<div style="margin-bottom:6px;"><span style="background:#089981;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bullish</span></div>'+
 
-                '<div style="margin-bottom:8px;"><span style="background:#089981;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bullish</span></div>'+
+            clr('Body','bodyUp',bU)+clr('Border','bdrUp',brU)+clr('Wick','wkUp',wU)+
 
-                clr('Body','bodyUp',bU)+clr('Border','bdrUp',brU)+clr('Wick','wkUp',wU)+
+            '<div style="margin-top:10px;margin-bottom:6px;"><span style="background:#f23645;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bearish</span></div>'+
 
-            '</div>'+
-
-            '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 4px 10px 12px;margin-bottom:10px;">'+
-
-                '<div style="margin-bottom:8px;"><span style="background:#f23645;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">Bearish</span></div>'+
-
-                clr('Body','bodyDn',bD)+clr('Border','bdrDn',brD)+clr('Wick','wkDn',wD)+
-
-            '</div>'+
+            clr('Body','bodyDn',bD)+clr('Border','bdrDn',brD)+clr('Wick','wkDn',wD)+
 
             '<div class="tv-row">'+chk('Unified bar color','uniOn',cs.unifiedBarColorEnabled===true)+'<div class="tv-colors tv-colors--single">'+clr('','uniClr',cs.unifiedBarColor||bU)+'</div></div>');
 
