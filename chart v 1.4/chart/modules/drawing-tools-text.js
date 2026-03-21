@@ -1208,13 +1208,23 @@ class NoteTool extends BaseDrawing {
         const boxWidth = Math.max(maxLineWidth + padding * 2, 60);
         const boxHeight = totalTextHeight + padding * 2;
 
-        // Position box to the right of endpoint
-        const boxX = x2;
-        const boxY = y2 - boxHeight / 2;
+        // Position box so its nearest edge always touches p2, regardless of line direction
+        const _dx = x2 - x1;
+        const _dy = y2 - y1;
+        const _len = Math.hypot(_dx, _dy);
+        const _ux = _len > 0 ? _dx / _len : 1;
+        const _uy = _len > 0 ? _dy / _len : 0;
+        const _tEdgeX = Math.abs(_ux) > 1e-9 ? (boxWidth  / 2) / Math.abs(_ux) : Infinity;
+        const _tEdgeY = Math.abs(_uy) > 1e-9 ? (boxHeight / 2) / Math.abs(_uy) : Infinity;
+        const _tEdge  = Math.min(_tEdgeX, _tEdgeY);
+        const _labelCX = x2 + _ux * _tEdge;
+        const _labelCY = y2 + _uy * _tEdge;
+        const boxX = _labelCX - boxWidth  / 2;
+        const boxY = _labelCY - boxHeight / 2;
 
-        // Shorten line so it stops exactly at the left edge of the box (matches PriceNoteTool behaviour)
-        noteLineEl.attr('x2', boxX).attr('y2', y2);
-        noteLineHitEl.attr('x2', boxX).attr('y2', y2);
+        // Line ends exactly at p2, which is now the near edge mid-point of the box
+        noteLineEl.attr('x2', x2).attr('y2', y2);
+        noteLineHitEl.attr('x2', x2).attr('y2', y2);
 
         // Background rectangle - use fill for background color
         const textBox = this.group.append('rect')
