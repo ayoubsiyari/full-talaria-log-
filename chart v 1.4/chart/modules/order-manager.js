@@ -242,6 +242,94 @@ class OrderManager {
         return 'tradeJournal';
     }
 
+    // ── Market Calculation Engine helpers ──────────────────────────────────────
+    // These delegate to window.marketCalcEngine when available, falling back to
+    // the legacy pipSize × pipValuePerLot math so existing behaviour is preserved.
+
+    /**
+     * Get the current symbol from the chart (normalised, no slashes).
+     * @returns {string}
+     */
+    _getSymbol() {
+        return (this.chart && this.chart.currentSymbol) ? this.chart.currentSymbol : '';
+    }
+
+    /**
+     * P&L in USD for a closed position.
+     * @param {'BUY'|'SELL'} side
+     * @param {number} entry
+     * @param {number} exit
+     * @param {number} quantity - lots / contracts / units
+     * @param {number} [currentPrice] - current market price (for forex cross pairs)
+     * @returns {number} USD P&L
+     */
+    _enginePnL(side, entry, exit, quantity, currentPrice) {
+        if (window.marketCalcEngine) {
+            return window.marketCalcEngine.calcPnL(
+                side, entry, exit, quantity,
+                this._getSymbol(), this.marketType, currentPrice || exit
+            );
+        }
+        // Legacy fallback
+        const dir = side === 'BUY' ? 1 : -1;
+        const pips = ((exit - entry) * dir) / (this.pipSize || 0.0001);
+        return pips * quantity * (this.pipValuePerLot || 10);
+    }
+
+    /**
+     * Position size (lots / contracts / units) from a fixed dollar risk.
+     * @param {number} riskUSD
+     * @param {number} entry
+     * @param {number} sl - stop loss price
+     * @param {number} [currentPrice]
+     * @returns {number}
+     */
+    _enginePositionSize(riskUSD, entry, sl, currentPrice) {
+        if (window.marketCalcEngine) {
+            return window.marketCalcEngine.calcPositionSize(
+                riskUSD, entry, sl,
+                this._getSymbol(), this.marketType,
+                this._leverage || 1, currentPrice || entry
+            );
+        }
+        // Legacy fallback
+        const slPips = Math.abs(entry - sl) / (this.pipSize || 0.0001);
+        if (slPips === 0) return 0;
+        return riskUSD / (slPips * (this.pipValuePerLot || 10));
+    }
+
+    /**
+     * Actual dollar risk for a given position.
+     * @param {number} entry
+     * @param {number} sl
+     * @param {number} quantity
+     * @param {number} [currentPrice]
+     * @returns {number} USD at risk
+     */
+    _engineRisk(entry, sl, quantity, currentPrice) {
+        if (window.marketCalcEngine) {
+            return window.marketCalcEngine.calcRisk(
+                entry, sl, quantity,
+                this._getSymbol(), this.marketType, currentPrice || entry
+            );
+        }
+        // Legacy fallback
+        const slPips = Math.abs(entry - sl) / (this.pipSize || 0.0001);
+        return slPips * quantity * (this.pipValuePerLot || 10);
+    }
+
+    /**
+     * Format quantity with the correct unit label for the current market.
+     * @param {number} qty
+     * @returns {string}
+     */
+    _engineFormatQty(qty) {
+        if (window.marketCalcEngine) {
+            return window.marketCalcEngine.formatQty(qty, this._getSymbol(), this.marketType);
+        }
+        return qty.toFixed(2) + ' Lots';
+    }
+
     persistJournal() {
         try {
             const key = this.getJournalStorageKey();
@@ -3182,27 +3270,53 @@ class OrderManager {
             styleEl.textContent = `
                 .order-panel {
                     position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%) scale(0.95);
-                    width: var(--order-panel-width, 320px);
-                    max-height: calc(100vh - 80px);
-                    background: #1a1d26;
-                    border: 1px solid #2a2e39;
-                    border-radius: 8px;
+                    top: 48px;
+                    right: -380px;
+                    width: 360px;
+                    height: calc(100vh - 48px);
+                    background:
+                        linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)),
+                        #131722;
+                    border-left: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 0;
                     z-index: 9999;
                     overflow-y: auto;
                     overflow-x: hidden;
-                    transition: opacity 0.2s ease, transform 0.2s ease;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-                    opacity: 0;
+                    transition: right 0.28s cubic-bezier(.4,0,.2,1);
+                    box-shadow: -8px 0 40px rgba(0,0,0,0.55);
                     pointer-events: none;
+                    display: flex;
+                    flex-direction: column;
                 }
-                
+
                 .order-panel.visible {
-                    opacity: 1;
-                    transform: translate(-50%, -50%) scale(1);
+                    right: 0;
                     pointer-events: auto;
+                }
+
+                /* Left-edge close handle — mirrors .sp-edge-handle */
+                .order-panel__edge-handle {
+                    position: absolute;
+                    left: -19px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 19px;
+                    height: 44px;
+                    background: var(--sp-accent, #2962ff);
+                    border: 1px solid var(--sp-accent, #2962ff);
+                    border-right: none;
+                    border-radius: 6px 0 0 6px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    z-index: 1;
+                    color: #fff;
+                    transition: background 0.15s;
+                    box-shadow: -3px 0 8px rgba(0,0,0,0.35);
+                }
+                .order-panel__edge-handle:hover {
+                    background: rgba(41,98,255,0.8);
                 }
 
                 .order-panel::-webkit-scrollbar {
@@ -3225,30 +3339,33 @@ class OrderManager {
                 .order-panel-backdrop {
                     position: fixed;
                     inset: 0;
-                    background: rgba(0, 0, 0, 0.4);
+                    background: rgba(0, 0, 0, 0.25);
                     z-index: 9998;
                     opacity: 0;
                     pointer-events: none;
-                    transition: opacity 0.2s ease;
+                    transition: opacity 0.28s ease;
                 }
 
                 .order-panel-backdrop.visible {
                     opacity: 1;
-                    pointer-events: none;
+                    pointer-events: auto;
                 }
 
                 .order-panel__content {
-                    padding: 12px;
+                    padding: 14px 16px;
+                    flex: 1;
+                    overflow-y: auto;
+                    overflow-x: hidden;
                 }
 
                 .order-panel__header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 10px;
-                    padding-bottom: 8px;
-                    border-bottom: 1px solid #2a2e39;
-                    cursor: move;
+                    padding: 14px 16px 12px;
+                    border-bottom: 1px solid rgba(255,255,255,0.07);
+                    background: rgba(255,255,255,0.02);
+                    flex-shrink: 0;
                     user-select: none;
                 }
 
@@ -3733,11 +3850,24 @@ class OrderManager {
         }
 
         panel.innerHTML = `
-            <div class="order-panel__content">
-                <div id="orderPanelHeader" class="order-panel__header">
+            <!-- Left-edge close handle (mirrors settings panel) -->
+            <button class="order-panel__edge-handle" id="orderPanelEdgeHandle" title="Close order panel" aria-label="Close order panel">
+                <svg width="7" height="12" viewBox="0 0 7 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+
+            <!-- Fixed header — sits outside the scrollable content -->
+            <div id="orderPanelHeader" class="order-panel__header">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                     <h3 class="order-panel__title">Place order</h3>
-                    <button id="closeOrderPanel" class="order-panel__close" type="button">&times;</button>
                 </div>
+                <button id="closeOrderPanel" class="order-panel__close" type="button">&times;</button>
+            </div>
+
+            <div class="order-panel__content">
+                <div style="height:4px;"></div>
 
                 <!-- Market Type Selector -->
                 <div class="order-section" style="padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
@@ -4538,66 +4668,8 @@ class OrderManager {
     /**
      * Make order panel draggable by its header
      */
-    makePanelDraggable(panel) {
-        const header = document.getElementById('orderPanelHeader');
-        if (!header) return;
-        
-        let isDragging = false;
-        let offsetX = 0;
-        let offsetY = 0;
-        
-        header.addEventListener('mousedown', (e) => {
-            // Don't drag if clicking the close button or any button
-            if (e.target.id === 'closeOrderPanel' || e.target.tagName === 'BUTTON') {
-                return;
-            }
-            
-            if (e.target === header || e.target.tagName === 'H3') {
-                isDragging = true;
-                
-                // Calculate offset from mouse to panel's top-left corner
-                const rect = panel.getBoundingClientRect();
-                offsetX = e.clientX - rect.left;
-                offsetY = e.clientY - rect.top;
-                
-                // Remove center transform and switch to absolute positioning
-                panel.style.transform = 'none';
-                panel.style.right = 'auto';
-                panel.style.top = rect.top + 'px';
-                panel.style.left = rect.left + 'px';
-                panel.style.transition = 'none'; // Disable transition during drag
-                e.preventDefault();
-            }
-        });
-        
-        document.addEventListener('mousemove', (e) => {
-            if (isDragging) {
-                e.preventDefault();
-                
-                // Calculate new position based on mouse position and offset
-                const newLeft = e.clientX - offsetX;
-                const newTop = e.clientY - offsetY;
-                
-                // Apply boundaries to keep panel on screen
-                const minTop = 40; // Below toolbar
-                const maxTop = window.innerHeight - 100; // Keep some visible
-                const minLeft = -350; // Allow some off-screen
-                const maxLeft = window.innerWidth - 50; // Keep some visible
-                
-                const boundedTop = Math.max(minTop, Math.min(maxTop, newTop));
-                const boundedLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
-                
-                panel.style.top = boundedTop + 'px';
-                panel.style.left = boundedLeft + 'px';
-            }
-        });
-        
-        document.addEventListener('mouseup', () => {
-            if (isDragging) {
-                isDragging = false;
-                // Keep left positioning after drag
-            }
-        });
+    makePanelDraggable(_panel) {
+        // No-op: panel is now a fixed right-side drawer and does not need drag-to-reposition.
     }
 
     scheduleAlignPreviewLabels() {
@@ -4664,6 +4736,9 @@ class OrderManager {
         panel.classList.add('visible');
         if (backdrop) backdrop.classList.add('visible');
 
+        // Refresh header badge (symbol + market type) every time the drawer opens
+        this.updateOrderPanel();
+
         // Reset TP/SL positioning flags for new order
         this.tpManuallyPositioned = false;
         this.slManuallyPositioned = false;
@@ -4710,10 +4785,15 @@ class OrderManager {
     updateOrderPanel() {
         const config = this.getMarketConfig();
         
-        // Update panel header with market type indicator
+        // Update panel header with market type + symbol badge
         const headerTitle = document.querySelector('#orderPanelHeader .order-panel__title');
         if (headerTitle) {
-            headerTitle.innerHTML = `Place order <span style="font-size: 10px; opacity: 0.7; margin-left: 6px; padding: 2px 6px; background: rgba(124, 58, 237, 0.2); border-radius: 4px;">${config.icon} ${config.name}</span>`;
+            const sym = this._getSymbol();
+            const symLabel = sym
+                ? `<span style="font-size:10px;opacity:0.85;margin-left:6px;padding:2px 7px;background:rgba(41,98,255,0.18);border:1px solid rgba(41,98,255,0.35);border-radius:4px;letter-spacing:0.03em;font-weight:700;color:#7ca4ff;">${sym}</span>`
+                : '';
+            const mktBadge = `<span style="font-size:10px;opacity:0.6;margin-left:4px;padding:2px 6px;background:rgba(124,58,237,0.15);border-radius:4px;">${config.icon} ${config.name}</span>`;
+            headerTitle.innerHTML = `Place order${symLabel}${mktBadge}`;
         }
         
         // Update position sizing label
@@ -5079,10 +5159,16 @@ class OrderManager {
      * Attach event listeners to order panel
      */
     attachOrderPanelEvents() {
-        // Close button
+        // Close button (header ×)
         document.getElementById('closeOrderPanel').onclick = () => {
             this.toggleOrderPanel();
         };
+
+        // Left-edge handle — same close action
+        const edgeHandle = document.getElementById('orderPanelEdgeHandle');
+        if (edgeHandle) {
+            edgeHandle.onclick = () => this.toggleOrderPanel();
+        }
         
         // Initialize Market Type Selector in panel
         this.initMarketTypeSelectorInPanel();
@@ -5982,16 +6068,12 @@ class OrderManager {
             return;
         }
         
-        // Calculate position size using pip value
-        // Position Size (lots) = Risk $ / (SL Distance in Pips × Pip Value per Lot)
+        // Calculate position size via MarketCalculationEngine (per-symbol correct math)
+        // Falls back to pipSize×pipValuePerLot when engine is unavailable.
+        const positionSize = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
+        const slDistanceInPips = slDistance / (this.pipSize || 0.0001); // kept for logging only
         
-        // Convert price distance to pips
-        const slDistanceInPips = slDistance / this.pipSize;
-        
-        // Calculate position size in lots
-        const positionSize = riskAmount / (slDistanceInPips * this.pipValuePerLot);
-        
-        console.log(`📊 Position Size Calculation (${this.positionSizeMode}):`);
+        console.log(`📊 Position Size Calculation (${this.positionSizeMode}) [engine: ${!!window.marketCalcEngine}]:`);
         console.log(`   Order Side: ${this.orderSide}`);
         console.log(`   Entry: ${entryPrice.toFixed(5)} | SL: ${slPrice.toFixed(5)}`);
         console.log(`   Risk: $${riskAmount.toFixed(2)}`);
@@ -10182,17 +10264,15 @@ class OrderManager {
         const closePrice = currentCandle.c;
         const closeTime = currentCandle.t;
         
-        // Calculate P&L using pip values
-        // P&L = (Price Difference in Pips) × Position Size (Lots) × Pip Value per Lot
-        let priceDiff;
-        if (position.type === 'BUY') {
-            priceDiff = closePrice - position.openPrice;
-        } else {
-            priceDiff = position.openPrice - closePrice;
-        }
-        
-        const pipsMove = priceDiff / this.pipSize;
-        const pnl = pipsMove * position.quantity * this.pipValuePerLot;
+        // Calculate P&L via MarketCalculationEngine (correct formula per asset class)
+        // Falls back to pipSize×pipValuePerLot when engine is unavailable.
+        const pnl = this._enginePnL(
+            position.type,
+            position.openPrice,
+            closePrice,
+            position.quantity,
+            closePrice
+        );
         
         // Update position
         position.closePrice = closePrice;
