@@ -1232,6 +1232,17 @@ class ArcTool extends BaseDrawing {
         // Draw the arc using quadratic curve
         const pathData = `M ${x1} ${y1} Q ${ctrlX} ${ctrlY} ${x2} ${y2}`;
 
+        // Invisible wide hit path for easier clicking (same as CurveTool)
+        this.group.append('path')
+            .attr('d', pathData)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
+            .attr('fill', 'none')
+            .attr('opacity', 1)
+            .attr('stroke-linecap', 'round')
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
         this.group.append('path')
             .attr('d', pathData)
             .attr('stroke', this.style.stroke)
@@ -1241,7 +1252,7 @@ class ArcTool extends BaseDrawing {
             .attr('opacity', this.style.opacity)
             .attr('stroke-linecap', 'round')
             .attr('data-original-width', this.style.strokeWidth)
-            .style('pointer-events', 'stroke')
+            .style('pointer-events', 'none')
             .style('cursor', 'move');
 
         this.renderTextLabel({ x1, y1, x2, y2, scales });
