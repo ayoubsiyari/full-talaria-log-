@@ -1644,9 +1644,9 @@ class DrawingSettingsPanel {
 
     max-height: 60px;
 
-    background: var(--sp-input-bg, rgba(255,255,255,0.05));
+    background: rgba(255,255,255,0.10);
 
-    border: 1px solid var(--sp-input-border, rgba(60,60,80,0.5));
+    border: 1px solid rgba(255,255,255,0.20);
 
     border-radius: 4px;
 
