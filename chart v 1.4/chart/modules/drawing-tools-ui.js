@@ -13268,7 +13268,15 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const hasBg = bgColor && bgColor !== 'none' && bgColor !== 'transparent';
 
-                bgRow.innerHTML = `
+                if (drawing.type === 'flag-mark') {
+                    bgRow.innerHTML = `
+                        <span class="tv-checkbox-label">Color</span>
+                        <div class="tv-prop-controls" style="margin-left: auto;">
+                            <button class="tv-color-btn" data-prop="${bgProp}" style="background: ${bgColor || 'rgba(41, 98, 255, 0.15)'};"></button>
+                        </div>
+                    `;
+                } else {
+                    bgRow.innerHTML = `
 
                     <div class="tv-checkbox-wrapper">
 
@@ -13282,7 +13290,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         </div>
 
-                        <span class="tv-checkbox-label">${(drawing.type === 'signpost-2' || drawing.type === 'flag-mark') ? 'Color' : 'Background'}</span>
+                        <span class="tv-checkbox-label">${drawing.type === 'signpost-2' ? 'Color' : 'Background'}</span>
 
                     </div>
 
@@ -13292,7 +13300,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     </div>
 
-                `;
+                    `;
+                }
 
                 container.appendChild(bgRow);
 

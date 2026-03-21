@@ -270,6 +270,21 @@ class DrawingToolbar {
             strokeBaseColor = style.stroke || '#787b86';
         }
         
+        // For fib tools: show rainbow gradient swatch when levels have multiple distinct colors
+        const isFibTool = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
+        if (isFibTool) {
+            const lvls = drawing.levels || style.levels;
+            if (Array.isArray(lvls) && lvls.length > 0) {
+                const levelColors = lvls.map(l => l.color).filter(Boolean);
+                const uniqueColors = [...new Set(levelColors)];
+                if (uniqueColors.length > 1) {
+                    strokeBaseColor = `linear-gradient(90deg, ${uniqueColors.join(', ')})`;
+                } else if (uniqueColors.length === 1) {
+                    strokeBaseColor = uniqueColors[0];
+                }
+            }
+        }
+
         // Fill color
         const showFill = this.needsFillColor(drawing) && !isColorOnlyTool;
         const _fillRaw = showFill
