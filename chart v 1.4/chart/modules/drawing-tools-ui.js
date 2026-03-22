@@ -12290,17 +12290,33 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const placementRow = createStyleRow('Placement');
 
-        placementRow.controls.innerHTML = `
+        const _mkDropVP = (controls, opts, curVal, widthPx, onChange) => {
+            const w = document.createElement('div');
+            w.style.cssText = `position:relative;width:${widthPx}px;min-width:${widthPx}px;`;
+            const cur = opts.find(o => o.v === curVal) || opts[0];
+            const chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:8px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+            const btn = document.createElement('button'); btn.type = 'button';
+            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
+            btn.innerHTML = `<span class="tv-csd-cur">${cur.l}</span>${chev}`;
+            const menu = document.createElement('div');
+            menu.style.cssText = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
+            opts.forEach((opt, i) => {
+                const item = document.createElement('div');
+                item.style.cssText = `padding:6px 12px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
+                item.textContent = opt.l;
+                item.addEventListener('mouseenter', () => { item.style.background = 'rgba(255,255,255,0.08)'; });
+                item.addEventListener('mouseleave', () => { item.style.background = ''; });
+                item.addEventListener('click', () => { btn.querySelector('.tv-csd-cur').textContent = opt.l; menu.style.display = 'none'; onChange(opt.v); });
+                menu.appendChild(item);
+            });
+            btn.addEventListener('click', e => { e.stopPropagation(); const open = menu.style.display !== 'none'; menu.style.display = open ? 'none' : 'block'; if (!open) { const r = btn.getBoundingClientRect(); menu.style.left = r.left + 'px'; menu.style.top = (r.bottom + 2) + 'px'; menu.style.minWidth = r.width + 'px'; } });
+            document.addEventListener('click', () => { menu.style.display = 'none'; });
+            w.appendChild(btn); w.appendChild(menu); controls.appendChild(w);
+            return w;
+        };
 
-            <select class="tv-select" data-prop="profilePlacement" style="${useCompactFieldSize ? compactControlStyle : 'width: 112px;'}">
-
-                <option value="left" ${placement === 'left' ? 'selected' : ''}>Left</option>
-
-                <option value="right" ${placement === 'right' ? 'selected' : ''}>Right</option>
-
-            </select>
-
-        `;
+        _mkDropVP(placementRow.controls, [{v:'left',l:'Left'},{v:'right',l:'Right'}], placement, 80,
+            (val) => { const v = val === 'right' ? 'right' : 'left'; this.pendingChanges.profilePlacement = v; drawing.style.profilePlacement = v; this.renderPreview(drawing); });
 
 
 
@@ -15901,7 +15917,30 @@ body.light-mode .template-save-dialog .dialog-title {
 
         drawing.style.vwapBand3Multiplier = normalizeMultiplier(drawing.style.vwapBand3Multiplier, 3);
 
-
+        const _mkDrop = (controls, opts, curVal, widthPx, onChange) => {
+            const w = document.createElement('div');
+            w.style.cssText = `position:relative;width:${widthPx}px;min-width:${widthPx}px;`;
+            const cur = opts.find(o => o.v === curVal) || opts[0];
+            const chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:8px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+            const btn = document.createElement('button'); btn.type = 'button';
+            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
+            btn.innerHTML = `<span class="tv-csd-cur">${cur.l}</span>${chev}`;
+            const menu = document.createElement('div');
+            menu.style.cssText = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
+            opts.forEach((opt, i) => {
+                const item = document.createElement('div');
+                item.style.cssText = `padding:6px 12px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
+                item.textContent = opt.l;
+                item.addEventListener('mouseenter', () => { item.style.background = 'rgba(255,255,255,0.08)'; });
+                item.addEventListener('mouseleave', () => { item.style.background = ''; });
+                item.addEventListener('click', () => { btn.querySelector('.tv-csd-cur').textContent = opt.l; menu.style.display = 'none'; onChange(opt.v); });
+                menu.appendChild(item);
+            });
+            btn.addEventListener('click', e => { e.stopPropagation(); const open = menu.style.display !== 'none'; menu.style.display = open ? 'none' : 'block'; if (!open) { const r = btn.getBoundingClientRect(); menu.style.left = r.left + 'px'; menu.style.top = (r.bottom + 2) + 'px'; menu.style.minWidth = r.width + 'px'; } });
+            document.addEventListener('click', () => { menu.style.display = 'none'; });
+            w.appendChild(btn); w.appendChild(menu); controls.appendChild(w);
+            return w;
+        };
 
         const section = document.createElement('div');
 
@@ -15965,17 +16004,10 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const bandsModeRow = createInputRow('Bands Calculation Mode');
 
-        bandsModeRow.controls.innerHTML = `
-
-            <select class="tv-select tv-anchored-vwap-input" data-prop="vwapBandsCalculationMode" style="${selectFieldStyle}">
-
-                <option value="standard_deviation" ${drawing.style.vwapBandsCalculationMode === 'standard_deviation' ? 'selected' : ''}>Standard Deviation</option>
-
-                <option value="percentage" ${drawing.style.vwapBandsCalculationMode === 'percentage' ? 'selected' : ''}>Percentage</option>
-
-            </select>
-
-        `;
+        _mkDrop(bandsModeRow.controls,
+            [{v:'standard_deviation',l:'Std Deviation'},{v:'percentage',l:'Percentage'}],
+            drawing.style.vwapBandsCalculationMode || 'standard_deviation', 130,
+            (val) => { const v = val === 'percentage' ? 'percentage' : 'standard_deviation'; this.pendingChanges.vwapBandsCalculationMode = v; drawing.style.vwapBandsCalculationMode = v; this.renderPreview(drawing); });
 
 
 
@@ -16055,27 +16087,10 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const sourceRow = createInputRow('Source');
 
-        sourceRow.controls.innerHTML = `
-
-            <select class="tv-select tv-anchored-vwap-input" data-prop="source" style="${selectFieldStyle}">
-
-                <option value="hlc3" ${drawing.style.source === 'hlc3' ? 'selected' : ''}>(H + L + C) / 3</option>
-
-                <option value="hl2" ${drawing.style.source === 'hl2' ? 'selected' : ''}>(H + L) / 2</option>
-
-                <option value="ohlc4" ${drawing.style.source === 'ohlc4' ? 'selected' : ''}>(O + H + L + C) / 4</option>
-
-                <option value="close" ${drawing.style.source === 'close' ? 'selected' : ''}>Close</option>
-
-                <option value="open" ${drawing.style.source === 'open' ? 'selected' : ''}>Open</option>
-
-                <option value="high" ${drawing.style.source === 'high' ? 'selected' : ''}>High</option>
-
-                <option value="low" ${drawing.style.source === 'low' ? 'selected' : ''}>Low</option>
-
-            </select>
-
-        `;
+        _mkDrop(sourceRow.controls,
+            [{v:'hlc3',l:'(H+L+C)/3'},{v:'hl2',l:'(H+L)/2'},{v:'ohlc4',l:'(O+H+L+C)/4'},{v:'close',l:'Close'},{v:'open',l:'Open'},{v:'high',l:'High'},{v:'low',l:'Low'}],
+            drawing.style.source || 'hlc3', 130,
+            (val) => { const v = ['close','open','high','low','hl2','hlc3','ohlc4'].includes(val) ? val : 'hlc3'; this.pendingChanges.source = v; drawing.style.source = v; this.renderPreview(drawing); });
 
 
 
@@ -16209,19 +16224,36 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
+        const _mkDropVPI = (controls, opts, curVal, widthPx, onChange) => {
+            const w = document.createElement('div');
+            w.style.cssText = `position:relative;width:${widthPx}px;min-width:${widthPx}px;`;
+            const cur = opts.find(o => o.v === curVal) || opts[0];
+            const chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:8px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+            const btn = document.createElement('button'); btn.type = 'button';
+            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
+            btn.innerHTML = `<span class="tv-csd-cur">${cur.l}</span>${chev}`;
+            const menu = document.createElement('div');
+            menu.style.cssText = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
+            opts.forEach((opt, i) => {
+                const item = document.createElement('div');
+                item.style.cssText = `padding:6px 12px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
+                item.textContent = opt.l;
+                item.addEventListener('mouseenter', () => { item.style.background = 'rgba(255,255,255,0.08)'; });
+                item.addEventListener('mouseleave', () => { item.style.background = ''; });
+                item.addEventListener('click', () => { btn.querySelector('.tv-csd-cur').textContent = opt.l; menu.style.display = 'none'; onChange(opt.v); });
+                menu.appendChild(item);
+            });
+            btn.addEventListener('click', e => { e.stopPropagation(); const open = menu.style.display !== 'none'; menu.style.display = open ? 'none' : 'block'; if (!open) { const r = btn.getBoundingClientRect(); menu.style.left = r.left + 'px'; menu.style.top = (r.bottom + 2) + 'px'; menu.style.minWidth = r.width + 'px'; } });
+            document.addEventListener('click', () => { menu.style.display = 'none'; });
+            w.appendChild(btn); w.appendChild(menu); controls.appendChild(w);
+            return w;
+        };
+
         const rowsLayoutRow = createInputRow('Rows Layout');
 
-        rowsLayoutRow.controls.innerHTML = `
-
-            <select class="tv-select tv-volume-profile-input" data-prop="rowsLayout" style="${selectFieldStyle}">
-
-                <option value="numberOfRows" ${drawing.style.rowsLayout === 'numberOfRows' ? 'selected' : ''}>Number of Rows</option>
-
-                <option value="ticksPerRow" ${drawing.style.rowsLayout === 'ticksPerRow' ? 'selected' : ''}>Ticks Per Row</option>
-
-            </select>
-
-        `;
+        _mkDropVPI(rowsLayoutRow.controls, [{v:'numberOfRows',l:'Number of Rows'},{v:'ticksPerRow',l:'Ticks Per Row'}],
+            drawing.style.rowsLayout || 'numberOfRows', 130,
+            (val) => { const v = val === 'ticksPerRow' ? 'ticksPerRow' : 'numberOfRows'; this.pendingChanges.rowsLayout = v; drawing.style.rowsLayout = v; this.renderPreview(drawing); });
 
 
 
@@ -16275,17 +16307,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         `;
 
-        volumeRow.controls.innerHTML = `
-
-            <select class="tv-select tv-volume-profile-input" data-prop="volumeDisplay" style="${selectFieldStyle} ${volumeEnabled ? '' : 'opacity: 0.55; cursor: not-allowed;'}" ${volumeEnabled ? '' : 'disabled'}>
-
-                <option value="upDown" ${drawing.style.volumeDisplay === 'upDown' ? 'selected' : ''}>Up/Down</option>
-
-                <option value="total" ${drawing.style.volumeDisplay === 'total' ? 'selected' : ''}>Total</option>
-
-            </select>
-
-        `;
+        const _vdDrop = _mkDropVPI(volumeRow.controls, [{v:'upDown',l:'Up/Down'},{v:'total',l:'Total'}],
+            drawing.style.volumeDisplay || 'upDown', 100,
+            (val) => { const v = val === 'total' ? 'total' : 'upDown'; this.pendingChanges.volumeDisplay = v; drawing.style.volumeDisplay = v; this.renderPreview(drawing); });
+        _vdDrop.classList.add('tv-volume-display-dropdown');
+        if (!volumeEnabled) { _vdDrop.style.opacity = '0.55'; _vdDrop.style.pointerEvents = 'none'; }
 
 
 
@@ -18749,13 +18775,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-                    queryAll('.tv-select[data-prop="volumeDisplay"]').forEach((volumeDisplaySelect) => {
+                    queryAll('.tv-volume-display-dropdown').forEach((el) => {
 
-                        volumeDisplaySelect.disabled = !isChecked;
+                        el.style.opacity = isChecked ? '1' : '0.55';
 
-                        volumeDisplaySelect.style.opacity = isChecked ? '1' : '0.55';
-
-                        volumeDisplaySelect.style.cursor = isChecked ? 'pointer' : 'not-allowed';
+                        el.style.pointerEvents = isChecked ? '' : 'none';
 
                     });
 
