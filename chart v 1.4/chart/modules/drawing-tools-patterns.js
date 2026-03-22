@@ -619,16 +619,18 @@ class XABCDPatternTool extends BaseDrawing {
         }
 
         if (this.points.length >= 4) {
-            // BC/AB ratio (C projection) - positioned ON the A-C dashed line (between A and C)
+            // BC/AB ratio - always at the exact midpoint of A-C dashed line
             const bcRatio = calcRatio(this.points[1], this.points[2], this.points[2], this.points[3]);
-            const ax = pointsPx[1].x;
-            const ay = pointsPx[1].y;
-            const cx = pointsPx[3].x;
-            const cy = pointsPx[3].y;
-            // Position at 65% of the way from A to C (on the dashed line)
-            const labelX = ax + (cx - ax) * 0.65;
-            const labelY = ay + (cy - ay) * 0.65;
-            placeRatioLabel(bcRatio, labelX, labelY, ax, ay, cx, cy, -PATTERN_VALUE_OFFSET_PX);
+            if (bcRatio) {
+                const ax = pointsPx[1].x;
+                const ay = pointsPx[1].y;
+                const cx = pointsPx[3].x;
+                const cy = pointsPx[3].y;
+                const midX = (ax + cx) / 2;
+                const midY = (ay + cy) / 2;
+                const off = getPerpendicularOffset(ax, ay, cx, cy, PATTERN_VALUE_OFFSET_PX);
+                this.drawRatioLabel(midX + off.x, midY + off.y, bcRatio);
+            }
         }
 
         if (this.points.length >= 5) {
