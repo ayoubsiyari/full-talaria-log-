@@ -54815,6 +54815,24 @@ P['canvas']={title:'Canvas',build:function(){
 
             if(c.chartSettings){c.chartSettings.activeFullTemplate=null;c.chartSettings.activeChartOnlyTemplate=null;c.chartSettings.activePanelOnlyTemplate=null;}
 
+            // Update dropdown displays to show "Custom"
+
+            var chartDropdown=document.getElementById('tl_chart_dd_trig');
+
+            if(chartDropdown){
+
+                chartDropdown.innerHTML='<span style="flex:1;font-size:12px;color:#787b86;">— Custom —</span><svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
+
+            }
+
+            var panelDropdown=document.getElementById('tl_panel_dd_trig');
+
+            if(panelDropdown){
+
+                panelDropdown.innerHTML='<span style="flex:1;font-size:12px;color:#787b86;">— Custom —</span><svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
+
+            }
+
         }
 
         try{localStorage.removeItem('chart_active_tpl');}catch(e){}
