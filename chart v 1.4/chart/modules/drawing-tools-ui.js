@@ -9273,7 +9273,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         };
 
-
+        let _lvlBtn = null;
 
         if (showCoreStyleControls && (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension' || drawing.type === 'fib-channel')) {
 
@@ -9478,7 +9478,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const levelsDropWrap = document.createElement('div');
             levelsDropWrap.style.cssText = `position:relative;width:${levelsModeSelectWidth}px;min-width:${levelsModeSelectWidth}px;`;
             levelsDropWrap.innerHTML = `<button style="width:100%;height:26px;padding:0 20px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;">${_lvlMode}${_lvlChev}</button><div style="display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);min-width:${levelsModeSelectWidth}px;overflow:hidden;"><div data-value="values" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Values</div><div data-value="percent" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Percent</div></div>`;
-            const _lvlBtn = levelsDropWrap.querySelector('button');
+            _lvlBtn = levelsDropWrap.querySelector('button');
             const _lvlMenu = levelsDropWrap.querySelector('div');
             _lvlBtn.addEventListener('click', e => { e.stopPropagation(); const open = _lvlMenu.style.display !== 'none'; _lvlMenu.style.display = open ? 'none' : 'block'; if (!open) { const r = _lvlBtn.getBoundingClientRect(); _lvlMenu.style.top = r.bottom + 2 + 'px'; _lvlMenu.style.left = r.left + 'px'; } });
             _lvlMenu.addEventListener('click', e => { const o = e.target.closest('[data-value]'); if (!o) return; drawing.style.levelsLabelMode = o.dataset.value; _lvlBtn.childNodes[0].textContent = o.textContent; _lvlMenu.style.display = 'none'; const _pct = o.dataset.value === 'percent'; levelInputs.forEach((inp, i) => { const lvl = levelsRef[i]; if (!lvl || isTimeZone) return; inp.step = _pct ? '0.1' : '0.001'; inp.value = _pct ? String(parseFloat((lvl.value * 100).toFixed(4))) : String(lvl.value); }); if (typeof drawing._styleLevelsRefresh === 'function') drawing._styleLevelsRefresh(o.dataset.value); applyChanges(); });
