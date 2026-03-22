@@ -15435,7 +15435,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         levelsSelect.className = 'tv-select';
 
-        levelsSelect.style.cssText = `width: ${levelsModeSelectWidth}px; min-width: ${levelsModeSelectWidth}px;`;
+        levelsSelect.style.cssText = `width: fit-content; min-width: 0;`;
 
         levelsSelect.innerHTML = `
 
