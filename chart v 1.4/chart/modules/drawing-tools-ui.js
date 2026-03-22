@@ -9481,7 +9481,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const _lvlBtn = levelsDropWrap.querySelector('button');
             const _lvlMenu = levelsDropWrap.querySelector('div');
             _lvlBtn.addEventListener('click', e => { e.stopPropagation(); const open = _lvlMenu.style.display !== 'none'; _lvlMenu.style.display = open ? 'none' : 'block'; if (!open) { const r = _lvlBtn.getBoundingClientRect(); _lvlMenu.style.top = r.bottom + 2 + 'px'; _lvlMenu.style.left = r.left + 'px'; } });
-            _lvlMenu.addEventListener('click', e => { const o = e.target.closest('[data-value]'); if (!o) return; drawing.style.levelsLabelMode = o.dataset.value; _lvlBtn.childNodes[0].textContent = o.textContent; _lvlMenu.style.display = 'none'; const _pct = o.dataset.value === 'percent'; levelInputs.forEach((inp, i) => { const lvl = levelsRef[i]; if (!lvl || isTimeZone) return; inp.step = _pct ? '0.1' : '0.001'; inp.value = _pct ? String(parseFloat((lvl.value * 100).toFixed(4))) : String(lvl.value); }); applyChanges(); });
+            _lvlMenu.addEventListener('click', e => { const o = e.target.closest('[data-value]'); if (!o) return; drawing.style.levelsLabelMode = o.dataset.value; _lvlBtn.childNodes[0].textContent = o.textContent; _lvlMenu.style.display = 'none'; const _pct = o.dataset.value === 'percent'; levelInputs.forEach((inp, i) => { const lvl = levelsRef[i]; if (!lvl || isTimeZone) return; inp.step = _pct ? '0.1' : '0.001'; inp.value = _pct ? String(parseFloat((lvl.value * 100).toFixed(4))) : String(lvl.value); }); if (typeof drawing._styleLevelsRefresh === 'function') drawing._styleLevelsRefresh(o.dataset.value); applyChanges(); });
             _lvlMenu.addEventListener('mouseover', e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = 'rgba(255,255,255,0.08)'; });
             _lvlMenu.addEventListener('mouseout',  e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = ''; });
             document.addEventListener('click', () => { _lvlMenu.style.display = 'none'; });
@@ -10045,6 +10045,18 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         const levelInputs = [];
+
+        const _refreshLevelDisplay = (mode) => {
+            const _pct = mode === 'percent';
+            if (_lvlBtn && _lvlBtn.childNodes[0]) _lvlBtn.childNodes[0].textContent = _pct ? 'Percent' : 'Values';
+            levelInputs.forEach((inp, i) => {
+                const lvl = levelsRef[i];
+                if (!lvl || isTimeZone) return;
+                inp.step = _pct ? '0.1' : '0.001';
+                inp.value = _pct ? String(parseFloat((lvl.value * 100).toFixed(4))) : String(lvl.value);
+            });
+        };
+        drawing._levelDisplayRefresh = _refreshLevelDisplay;
 
         const addLevelRow = (level, idx) => {
 
@@ -15480,12 +15492,14 @@ body.light-mode .template-save-dialog .dialog-title {
                 drawing.style.levelsLabelMode = opt.dataset.value;
                 _lvlBtn2.querySelector('.tv-lvlmode-current').textContent = opt.textContent;
                 _lvlMenu2.style.display = 'none';
+                if (typeof drawing._levelDisplayRefresh === 'function') drawing._levelDisplayRefresh(opt.dataset.value);
                 applyChanges();
             });
             opt.addEventListener('mouseover', () => { opt.style.background = 'rgba(255,255,255,0.08)'; });
             opt.addEventListener('mouseout',  () => { opt.style.background = ''; });
         });
         document.addEventListener('click', () => { _lvlMenu2.style.display = 'none'; });
+        drawing._styleLevelsRefresh = (mode) => { const span = _lvlBtn2.querySelector('.tv-lvlmode-current'); if (span) span.textContent = mode === 'percent' ? 'Percent' : 'Values'; };
         levelsRow.controls.appendChild(levelsDropWrap2);
 
         levelsRow.cb.addEventListener('click', (e) => {
