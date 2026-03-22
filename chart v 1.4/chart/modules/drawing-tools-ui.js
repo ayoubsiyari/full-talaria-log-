@@ -9481,7 +9481,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const _lvlBtn = levelsDropWrap.querySelector('button');
             const _lvlMenu = levelsDropWrap.querySelector('div');
             _lvlBtn.addEventListener('click', e => { e.stopPropagation(); const open = _lvlMenu.style.display !== 'none'; _lvlMenu.style.display = open ? 'none' : 'block'; if (!open) { const r = _lvlBtn.getBoundingClientRect(); _lvlMenu.style.top = r.bottom + 2 + 'px'; _lvlMenu.style.left = r.left + 'px'; } });
-            _lvlMenu.addEventListener('click', e => { const o = e.target.closest('[data-value]'); if (!o) return; drawing.style.levelsLabelMode = o.dataset.value; _lvlBtn.childNodes[0].textContent = o.textContent; _lvlMenu.style.display = 'none'; applyChanges(); });
+            _lvlMenu.addEventListener('click', e => { const o = e.target.closest('[data-value]'); if (!o) return; drawing.style.levelsLabelMode = o.dataset.value; _lvlBtn.childNodes[0].textContent = o.textContent; _lvlMenu.style.display = 'none'; const _pct = o.dataset.value === 'percent'; levelInputs.forEach((inp, i) => { const lvl = levelsRef[i]; if (!lvl || isTimeZone) return; inp.step = _pct ? '0.1' : '0.001'; inp.value = _pct ? String(parseFloat((lvl.value * 100).toFixed(4))) : String(lvl.value); }); applyChanges(); });
             _lvlMenu.addEventListener('mouseover', e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = 'rgba(255,255,255,0.08)'; });
             _lvlMenu.addEventListener('mouseout',  e => { const o = e.target.closest('[data-value]'); if (o) o.style.background = ''; });
             document.addEventListener('click', () => { _lvlMenu.style.display = 'none'; });
@@ -10044,6 +10044,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
+        const levelInputs = [];
+
         const addLevelRow = (level, idx) => {
 
             const row = document.createElement('div');
@@ -10112,9 +10114,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
             input.dataset.prop = valueProp;
 
-            input.value = level.value;
-
-            input.step = isTimeZone ? '1' : '0.001';
+            const _isPct = !isTimeZone && drawing.style.levelsLabelMode === 'percent';
+            input.step = isTimeZone ? '1' : (_isPct ? '0.1' : '0.001');
+            input.value = _isPct ? String(parseFloat((level.value * 100).toFixed(4))) : String(level.value);
 
             input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
 
@@ -10126,9 +10128,19 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (!isNaN(parsed)) {
 
-                    level.value = parsed;
+                    if (!isTimeZone && drawing.style.levelsLabelMode === 'percent') {
 
-                    level.label = input.value;
+                        level.value = parseFloat((parsed / 100).toFixed(6));
+
+                        level.label = String(level.value);
+
+                    } else {
+
+                        level.value = parsed;
+
+                        level.label = input.value;
+
+                    }
 
                     applyChanges();
 
@@ -10270,6 +10282,8 @@ body.light-mode .template-save-dialog .dialog-title {
             }
 
 
+
+            levelInputs.push(input);
 
             list.appendChild(row);
 
