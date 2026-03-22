@@ -13841,38 +13841,37 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
+        const _prChev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+        const _prMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:80px;box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
+        const _prOptBase = `padding:8px;cursor:default;display:flex;align-items:center;justify-content:center;`;
+        const _prOptBorder = `border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));`;
+        const _prGetTypeSvg = (lt) => { const da = (lt === '10,6' || lt === '5,5') ? '12,7' : (lt === '2,2' || lt === '3,3') ? '2,4' : lt === '8,4,2,4' ? '10,4,2,4' : ''; const dasharrayAttr = da ? `stroke-dasharray="${da}"` : ''; return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`; };
+
         const typeControl = showType ? `
-
-                <select class="tv-select" data-prop="${propKey}Type">
-
-                    <option value="" ${values.lineType === '' ? 'selected' : ''}>───────</option>
-
-                    <option value="10,6" ${(values.lineType === '10,6' || values.lineType === '5,5') ? 'selected' : ''}>─ ─ ─ ─</option>
-
-                    <option value="2,2" ${(values.lineType === '2,2' || values.lineType === '3,3') ? 'selected' : ''}>··········</option>
-
-                    <option value="8,4,2,4" ${values.lineType === '8,4,2,4' ? 'selected' : ''}>─·─·─·─</option>
-
-                </select>
-
+                <div class="tv-linetype-dropdown" data-prop="${propKey}Type" style="position:relative;flex:1 1 0;min-width:40px;">
+                    <button class="tv-ending-dropdown-btn" style="width:100%;height:30px;padding:0 6px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;">
+                        <span class="tv-linetype-current" style="flex:1;display:flex;align-items:center;min-width:0;">${_prGetTypeSvg(values.lineType)}</span>
+                        ${_prChev}
+                    </button>
+                    <div class="tv-linetype-dropdown-menu" style="${_prMenuStyle}">
+                        <div class="tv-ending-option" data-value="" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
+                        <div class="tv-ending-option" data-value="10,6" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
+                        <div class="tv-ending-option" data-value="2,2" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
+                        <div class="tv-ending-option" data-value="8,4,2,4" style="${_prOptBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
+                    </div>
+                </div>
         ` : '';
 
-
-
         const widthControl = showWidth ? `
-
-                <select class="tv-select" data-prop="${propKey}Width">
-
-                    <option value="1" ${values.lineWidth == 1 ? 'selected' : ''}>1px</option>
-
-                    <option value="2" ${values.lineWidth == 2 ? 'selected' : ''}>2px</option>
-
-                    <option value="3" ${values.lineWidth == 3 ? 'selected' : ''}>3px</option>
-
-                    <option value="4" ${values.lineWidth == 4 ? 'selected' : ''}>4px</option>
-
-                </select>
-
+                <div class="tv-linewidth-dropdown" data-prop="${propKey}Width" style="position:relative;flex:1 1 0;min-width:40px;">
+                    <button class="tv-ending-dropdown-btn" style="width:100%;height:30px;padding:0 6px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;">
+                        <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${values.lineWidth || 1}px</span>
+                        ${_prChev}
+                    </button>
+                    <div class="tv-linewidth-dropdown-menu" style="${_prMenuStyle}">
+                        ${[1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_prOptBase}padding:6px 12px;${s !== 4 ? _prOptBorder : ''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('')}
+                    </div>
+                </div>
         ` : '';
 
 
@@ -19764,6 +19763,19 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         drawing.style.borderDasharray = value;
 
+                    } else if (/^vwap(?:Lower|Upper)Band[1-3]Type$/.test(prop)) {
+
+                        const normalizedTypeRaw = value === '5,5' ? '10,6' : value;
+                        const normalizedType = ['', '10,6', '2,2', '8,4,2,4'].includes(normalizedTypeRaw) ? normalizedTypeRaw : '2,2';
+                        drawing.style[prop] = normalizedType;
+                        this.pendingChanges[prop] = normalizedType;
+                        const linkedUpperBandTypeMatch = prop.match(/^vwapUpperBand([1-3])Type$/);
+                        if (linkedUpperBandTypeMatch) {
+                            const lowerTypeProp = `vwapLowerBand${linkedUpperBandTypeMatch[1]}Type`;
+                            drawing.style[lowerTypeProp] = normalizedType;
+                            this.pendingChanges[lowerTypeProp] = normalizedType;
+                        }
+
                     } else {
 
                         drawing.style.strokeDasharray = value;
@@ -19869,6 +19881,18 @@ body.light-mode .template-save-dialog .dialog-title {
                     } else if (prop === 'borderWidth') {
 
                         drawing.style.borderWidth = intVal;
+
+                    } else if (/^vwap(?:Lower|Upper)Band[1-3]Width$/.test(prop)) {
+
+                        const normalizedWidth = Number.isFinite(intVal) ? Math.max(1, Math.min(4, intVal)) : 1;
+                        drawing.style[prop] = normalizedWidth;
+                        this.pendingChanges[prop] = normalizedWidth;
+                        const linkedUpperBandWidthMatch = prop.match(/^vwapUpperBand([1-3])Width$/);
+                        if (linkedUpperBandWidthMatch) {
+                            const lowerWidthProp = `vwapLowerBand${linkedUpperBandWidthMatch[1]}Width`;
+                            drawing.style[lowerWidthProp] = normalizedWidth;
+                            this.pendingChanges[lowerWidthProp] = normalizedWidth;
+                        }
 
                     } else {
 
