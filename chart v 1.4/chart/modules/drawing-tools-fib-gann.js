@@ -1242,10 +1242,10 @@ class FibArcsTool extends BaseDrawing {
             return this.group;
         }
 
-        // Like fib-circles but only half: arc direction depends on where point2 is
+        // Like fib-circles but only half: arcs face the direction price came from
         const isDown = y2 >= y1;
-        const sweep = isDown ? 1 : 0;
-        const innerSweep = isDown ? 0 : 1;
+        const sweep = isDown ? 0 : 1;
+        const innerSweep = isDown ? 1 : 0;
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
