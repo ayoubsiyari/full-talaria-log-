@@ -15076,18 +15076,25 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const modeRow = createInputRow('Range Type');
 
+        const _rmLabels = { both: 'Date & Price', price: 'Price Only', time: 'Date/Time Only' };
+        const _rmCurrent = _rmLabels[drawing.style.rangeMode || 'both'] || 'Date & Price';
+        const _rmChev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+        const _rmMenuCss = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
+        const _rmOptB = `border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));`;
+        const _rmOptBase = `padding:8px 12px;cursor:default;display:flex;align-items:center;color:#d1d4dc;font-size:12px;`;
+
         modeRow.controls.innerHTML = `
-
-            <select class="tv-select" data-prop="rangeMode" style="${selectFieldStyle}">
-
-                <option value="both" ${drawing.style.rangeMode === 'both' ? 'selected' : ''}>Date & Price</option>
-
-                <option value="price" ${drawing.style.rangeMode === 'price' ? 'selected' : ''}>Price Only</option>
-
-                <option value="time" ${drawing.style.rangeMode === 'time' ? 'selected' : ''}>Date/Time Only</option>
-
-            </select>
-
+            <div class="tv-rangemode-dropdown" data-prop="rangeMode" style="position:relative;width:140px;">
+                <button class="tv-ending-dropdown-btn" style="width:100%;height:30px;padding:0 8px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;">
+                    <span class="tv-rangemode-current" style="color:#d1d4dc;font-size:12px;">${_rmCurrent}</span>
+                    ${_rmChev}
+                </button>
+                <div class="tv-rangemode-dropdown-menu" style="${_rmMenuCss}">
+                    <div class="tv-ending-option" data-value="both" style="${_rmOptBase}${_rmOptB}">Date &amp; Price</div>
+                    <div class="tv-ending-option" data-value="price" style="${_rmOptBase}${_rmOptB}">Price Only</div>
+                    <div class="tv-ending-option" data-value="time" style="${_rmOptBase}">Date/Time Only</div>
+                </div>
+            </div>
         `;
 
 
@@ -19821,6 +19828,92 @@ body.light-mode .template-save-dialog .dialog-title {
                         window.drawingManager.saveDrawings();
 
                     }
+
+                    menu.style.display = 'none';
+
+                });
+
+                option.addEventListener('mouseenter', () => { option.style.background = '#363a45'; });
+
+                option.addEventListener('mouseleave', () => { option.style.background = 'transparent'; });
+
+            });
+
+        });
+
+
+
+        // Range mode custom dropdown handler
+
+        queryAll('.tv-rangemode-dropdown').forEach(dropdown => {
+
+            const btn = dropdown.querySelector('.tv-ending-dropdown-btn');
+
+            const menu = dropdown.querySelector('.tv-rangemode-dropdown-menu');
+
+            btn.addEventListener('click', (e) => {
+
+                e.stopPropagation();
+
+                queryAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu, .tv-rangemode-dropdown-menu').forEach(m => {
+
+                    if (m !== menu) m.style.display = 'none';
+
+                });
+
+                document.querySelector('.settings-info-dropdown')?.remove();
+
+                document.querySelector('.settings-template-dropdown')?.remove();
+
+                const isOpen = menu.style.display !== 'none';
+
+                if (!isOpen) {
+
+                    const rect = btn.getBoundingClientRect();
+
+                    menu.style.left = rect.left + 'px';
+
+                    menu.style.top = (rect.bottom + 4) + 'px';
+
+                    menu.style.minWidth = rect.width + 'px';
+
+                }
+
+                menu.style.display = isOpen ? 'none' : 'block';
+
+            });
+
+            menu.querySelectorAll('.tv-ending-option').forEach(option => {
+
+                option.addEventListener('click', () => {
+
+                    const value = option.dataset.value;
+
+                    const normalizedMode = this.normalizeRangeMode(value);
+
+                    this.pendingChanges.rangeMode = normalizedMode;
+
+                    drawing.style.rangeMode = normalizedMode;
+
+                    const currentShowInfo = drawing.style.infoSettings?.showInfo !== false;
+
+                    drawing.style.infoSettings = { ...this.getDefaultRangeInfoSettings(normalizedMode), showInfo: currentShowInfo };
+
+                    this.pendingChanges.infoSettings = { ...drawing.style.infoSettings };
+
+                    const infoBtnLabel = modal.querySelector('.tv-info-dropdown-btn span');
+
+                    if (infoBtnLabel) infoBtnLabel.textContent = this.getInfoSummaryText(drawing);
+
+                    document.querySelector('.settings-info-dropdown')?.remove();
+
+                    const currentSpan = btn.querySelector('.tv-rangemode-current');
+
+                    const labels = { both: 'Date & Price', price: 'Price Only', time: 'Date/Time Only' };
+
+                    if (currentSpan) currentSpan.textContent = labels[normalizedMode] || normalizedMode;
+
+                    this.applyChangesImmediately(drawing);
 
                     menu.style.display = 'none';
 
