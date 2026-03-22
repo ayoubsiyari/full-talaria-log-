@@ -1161,6 +1161,19 @@ class VolumeProfileTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
+        // Add transparent hitbox for easier selection
+        this.group.append('rect')
+            .attr('class', 'volume-profile-hitbox')
+            .attr('x', left)
+            .attr('y', top)
+            .attr('width', width)
+            .attr('height', Math.max(1, height))
+            .attr('fill', 'transparent')
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 20)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
         [
             { x: x1, pointIndex: 0 },
