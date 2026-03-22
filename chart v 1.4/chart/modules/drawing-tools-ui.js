@@ -10171,22 +10171,27 @@ body.light-mode .template-save-dialog .dialog-title {
             downBtn.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg>';
 
             const _spinnerStep = () => parseFloat(input.step) || 0.001;
-            upBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const s = _spinnerStep();
-                const dec = (s.toString().split('.')[1] || '').length;
-                const f = Math.pow(10, dec);
-                input.value = String(Math.round((parseFloat(input.value || '0') + s) * f) / f);
-                updateLevelFromInput();
-            });
-            downBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const s = _spinnerStep();
-                const dec = (s.toString().split('.')[1] || '').length;
-                const f = Math.pow(10, dec);
-                input.value = String(Math.round((parseFloat(input.value || '0') - s) * f) / f);
-                updateLevelFromInput();
-            });
+            const _attachSpinner = (btn, direction) => {
+                let _tid = null, _iid = null;
+                const _step = () => {
+                    const s = _spinnerStep();
+                    const dec = (s.toString().split('.')[1] || '').length;
+                    const f = Math.pow(10, dec);
+                    const cur = parseFloat(input.value || '0');
+                    input.value = String(Math.round((cur + direction * s) * f) / f);
+                    updateLevelFromInput();
+                };
+                const _stop = () => { clearTimeout(_tid); clearInterval(_iid); _tid = null; _iid = null; };
+                btn.addEventListener('mousedown', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    _step();
+                    _tid = setTimeout(() => { _iid = setInterval(_step, 60); }, 400);
+                });
+                btn.addEventListener('mouseup', _stop);
+                btn.addEventListener('mouseleave', _stop);
+            };
+            _attachSpinner(upBtn, 1);
+            _attachSpinner(downBtn, -1);
 
             spinner.appendChild(upBtn);
 
@@ -15431,21 +15436,43 @@ body.light-mode .template-save-dialog .dialog-title {
 
         levelsRow.cb.classList.toggle('checked', !!drawing.style.levelsEnabled);
 
-        const levelsSelect = document.createElement('select');
-
-        levelsSelect.className = 'tv-select';
-
-        levelsSelect.style.cssText = `width: fit-content; min-width: 0;`;
-
-        levelsSelect.innerHTML = `
-
-            <option value="values" ${drawing.style.levelsLabelMode === 'values' ? 'selected' : ''}>Values</option>
-
-            <option value="percent" ${drawing.style.levelsLabelMode === 'percent' ? 'selected' : ''}>Percent</option>
-
+        const _lvlChev2 = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
+        const _lvlMode2 = drawing.style.levelsLabelMode === 'percent' ? 'Percent' : 'Values';
+        const _lvlMenuCss2 = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:80px;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
+        const _lvlOptBase2 = `padding:6px 12px;cursor:default;display:flex;align-items:center;color:#d1d4dc;font-size:12px;white-space:nowrap;`;
+        const levelsDropWrap2 = document.createElement('div');
+        levelsDropWrap2.style.cssText = `position:relative;display:inline-flex;align-items:stretch;`;
+        levelsDropWrap2.innerHTML = `
+            <button class="tv-ending-dropdown-btn" style="white-space:nowrap;height:30px;padding:0 8px 0 10px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;gap:6px;box-sizing:border-box;">
+                <span class="tv-lvlmode-current" style="color:#d1d4dc;font-size:12px;">${_lvlMode2}</span>
+                ${_lvlChev2}
+            </button>
+            <div class="tv-lvlmode-menu" style="${_lvlMenuCss2}">
+                <div data-value="values" style="${_lvlOptBase2}border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));">Values</div>
+                <div data-value="percent" style="${_lvlOptBase2}">Percent</div>
+            </div>
         `;
-
-        levelsRow.controls.appendChild(levelsSelect);
+        const _lvlBtn2 = levelsDropWrap2.querySelector('button');
+        const _lvlMenu2 = levelsDropWrap2.querySelector('.tv-lvlmode-menu');
+        _lvlBtn2.addEventListener('click', e => {
+            e.stopPropagation();
+            const open = _lvlMenu2.style.display !== 'none';
+            _lvlMenu2.style.display = open ? 'none' : 'block';
+            if (!open) { const r = _lvlBtn2.getBoundingClientRect(); _lvlMenu2.style.top = r.bottom + 2 + 'px'; _lvlMenu2.style.left = r.left + 'px'; }
+        });
+        _lvlMenu2.querySelectorAll('[data-value]').forEach(opt => {
+            opt.addEventListener('click', e => {
+                e.stopPropagation();
+                drawing.style.levelsLabelMode = opt.dataset.value;
+                _lvlBtn2.querySelector('.tv-lvlmode-current').textContent = opt.textContent;
+                _lvlMenu2.style.display = 'none';
+                applyChanges();
+            });
+            opt.addEventListener('mouseover', () => { opt.style.background = 'rgba(255,255,255,0.08)'; });
+            opt.addEventListener('mouseout',  () => { opt.style.background = ''; });
+        });
+        document.addEventListener('click', () => { _lvlMenu2.style.display = 'none'; });
+        levelsRow.controls.appendChild(levelsDropWrap2);
 
         levelsRow.cb.addEventListener('click', (e) => {
 
@@ -15456,14 +15483,6 @@ body.light-mode .template-save-dialog .dialog-title {
             drawing.style.levelsEnabled = !drawing.style.levelsEnabled;
 
             levelsRow.cb.classList.toggle('checked', !!drawing.style.levelsEnabled);
-
-            applyChanges();
-
-        });
-
-        levelsSelect.addEventListener('change', () => {
-
-            drawing.style.levelsLabelMode = levelsSelect.value;
 
             applyChanges();
 
