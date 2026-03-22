@@ -623,6 +623,10 @@ class DrawingToolbar {
                 .toolbar-dropdown.active {
                     display: flex;
                 }
+                #line-width-dropdown, #fontsize-dropdown, #range-type-dropdown {
+                    min-width: 0;
+                    width: fit-content;
+                }
                 .toolbar-dropdown-item {
                     display: flex;
                     align-items: center;
@@ -855,7 +859,7 @@ class DrawingToolbar {
             <!-- Range Type Dropdown -->
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-range-type-btn" title="Range Type">
-                    <span class="toolbar-width-text" id="tb-range-type-label">${_rangeModeLabel}</span>
+                    <span class="toolbar-width-text" id="tb-range-type-label">Type</span>
                 </button>
                 <div class="toolbar-dropdown" id="range-type-dropdown">
                     <div class="toolbar-dropdown-item ${_rangeMode === 'both' ? 'active' : ''}" data-range="both"><span>Date &amp; Price</span></div>
@@ -1628,9 +1632,6 @@ class DrawingToolbar {
                 const mode = item.dataset.range;
                 const normalized = mode === 'price' ? 'price' : mode === 'time' ? 'time' : 'both';
                 drawing.style.rangeMode = normalized;
-                const labels = { both: 'Date & Price', price: 'Price Only', time: 'Date/Time Only' };
-                const labelEl = rangeTypeBtn.querySelector('#tb-range-type-label');
-                if (labelEl) labelEl.textContent = labels[normalized];
                 rangeTypeDropdown.querySelectorAll('.toolbar-dropdown-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 rangeTypeDropdown.classList.remove('active');
