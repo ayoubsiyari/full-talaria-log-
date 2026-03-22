@@ -11774,7 +11774,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const controlsColumnWidth = 180;
 
-        const compactSelectStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;';
+        const compactSelectStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;';
 
 
 
@@ -11964,7 +11964,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             statsRow.controls.innerHTML = `
 
-                <button class="tv-info-dropdown-btn" style="width: 100%; height: 30px; padding: 0 10px; border: none; border-radius: 4px; background-color: #050028; color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: space-between;">
+                <button class="tv-info-dropdown-btn" style="width: 100%; height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: space-between;">
 
                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statsSummary}</span>
 
@@ -11992,7 +11992,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; width: 60px; min-width: 60px;">
 
-                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 30px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: #050028; color: #d1d4dc; cursor: default; font-size: 11px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 30px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 11px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
 
                     <span>${parseInt(drawing.style.fontSize || 12, 10)}</span>
 
@@ -12122,7 +12122,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             || drawing.type === 'anchored-volume-profile';
 
-        const compactControlStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;';
+        const compactControlStyle = 'width: 60px !important; min-width: 60px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;';
 
 
 
@@ -15019,7 +15019,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const selectFieldWidth = 120;
 
-        const selectFieldStyle = `width: ${selectFieldWidth}px !important; min-width: ${selectFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important; background-color: #050028 !important;`;
+        const selectFieldStyle = `width: ${selectFieldWidth}px !important; min-width: ${selectFieldWidth}px !important; height: 30px !important; border-radius: 4px !important; font-size: 11px !important;`;
 
 
 
