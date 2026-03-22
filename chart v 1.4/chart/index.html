@@ -5182,7 +5182,7 @@
 
             width: 420px;
 
-            height: calc(100vh - 80px);
+            height: calc(100vh - 98px);
 
             background:
 
@@ -46533,6 +46533,18 @@ function showIndicatorsMenu() {
                 document.body.classList.remove('replay-tabs-collapsed');
 
                 applyPanelHeight(getPanelH(), true);
+
+                // Close settings panel when expanding panel
+
+                const settingsPanel = document.getElementById('settingsPanel');
+
+                if (settingsPanel && settingsPanel.classList.contains('open')) {
+
+                    settingsPanel.classList.remove('open');
+
+                    document.body.classList.remove('settings-open');
+
+                }
 
             }
 
