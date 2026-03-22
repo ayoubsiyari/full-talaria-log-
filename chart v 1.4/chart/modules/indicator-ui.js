@@ -1693,30 +1693,20 @@ function setupIndicatorUI(chartInstance) {
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.setupIndicatorUI = setupIndicatorUI;
 
-// Auto-initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-        // Apply to main chart if it exists
-        if (window.chart) {
-            console.log('🎨 Setting up indicator UI for main chart');
-            setupIndicatorUI(window.chart);
-        }
-        if (window.mainChart) {
-            console.log('🎨 Setting up indicator UI for mainChart');
-            setupIndicatorUI(window.mainChart);
-        }
-    });
-} else {
-    // DOM already loaded
-    if (window.chart) {
-        console.log('🎨 Setting up indicator UI for main chart');
-        setupIndicatorUI(window.chart);
-    }
-    if (window.mainChart) {
-        console.log('🎨 Setting up indicator UI for mainChart');
-        setupIndicatorUI(window.mainChart);
+// Auto-initialize: retry until a chart instance is available (handles async chart init)
+let _indicatorUIReady = false;
+function _tryInitIndicatorUI() {
+    if (_indicatorUIReady) return;
+    const chartInstance = window.chart || window.mainChart;
+    if (chartInstance) {
+        _indicatorUIReady = true;
+        console.log('🎨 Setting up indicator UI');
+        setupIndicatorUI(chartInstance);
+    } else {
+        setTimeout(_tryInitIndicatorUI, 150);
     }
 }
+_tryInitIndicatorUI();
 
 // Add updateIndicator function if it doesn't exist
 if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
