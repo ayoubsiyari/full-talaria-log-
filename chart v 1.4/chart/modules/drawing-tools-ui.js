@@ -7303,7 +7303,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             row.className = 'tv-prop-row fib-level-row';
 
-            row.style.cssText = 'display: grid; grid-template-columns: 20px 80px 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
+            row.style.cssText = 'display: grid; grid-template-columns: 20px 80px 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
 
 
 
@@ -7486,6 +7486,14 @@ body.light-mode .template-save-dialog .dialog-title {
             controlsWrapper.appendChild(colorBtn);
 
             row.appendChild(controlsWrapper);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:pointer;font-size:14px;line-height:1;border-radius:4px;';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.onmouseenter = () => { deleteBtn.style.background = '#f2364520'; deleteBtn.style.color = '#f23645'; };
+            deleteBtn.onmouseleave = () => { deleteBtn.style.background = 'transparent'; deleteBtn.style.color = '#787b86'; };
+            deleteBtn.onclick = (e) => { e.stopPropagation(); const i = levelsArray.indexOf(level); if (i > -1) { levelsArray.splice(i, 1); row.remove(); applyChanges(); } };
+            row.appendChild(deleteBtn);
 
 
 
@@ -8024,7 +8032,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             row.className = 'tv-prop-row fib-level-row';
 
-            row.style.cssText = 'display: grid; grid-template-columns: 20px 80px 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
+            row.style.cssText = 'display: grid; grid-template-columns: 20px 80px 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
 
 
 
@@ -8207,6 +8215,14 @@ body.light-mode .template-save-dialog .dialog-title {
             controlsWrapper.appendChild(colorBtn);
 
             row.appendChild(controlsWrapper);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:pointer;font-size:14px;line-height:1;border-radius:4px;';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.onmouseenter = () => { deleteBtn.style.background = '#f2364520'; deleteBtn.style.color = '#f23645'; };
+            deleteBtn.onmouseleave = () => { deleteBtn.style.background = 'transparent'; deleteBtn.style.color = '#787b86'; };
+            deleteBtn.onclick = (e) => { e.stopPropagation(); const i = fanLevels.indexOf(level); if (i > -1) { fanLevels.splice(i, 1); row.remove(); applyChanges(); } };
+            row.appendChild(deleteBtn);
 
 
 
@@ -10739,7 +10755,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 row.className = 'tv-prop-row fib-level-row';
 
-                row.style.cssText = 'display: grid; grid-template-columns: 20px 80px 30px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
+                row.style.cssText = 'display: grid; grid-template-columns: 20px 80px 30px 20px; align-items: center; column-gap: 6px; padding: 2px 0; min-width: 0; min-height: 0;';
 
 
 
@@ -10922,6 +10938,14 @@ body.light-mode .template-save-dialog .dialog-title {
                 controlsWrapper.appendChild(colorBtn);
 
                 row.appendChild(controlsWrapper);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:pointer;font-size:14px;line-height:1;border-radius:4px;';
+                deleteBtn.innerHTML = '×';
+                deleteBtn.onmouseenter = () => { deleteBtn.style.background = '#f2364520'; deleteBtn.style.color = '#f23645'; };
+                deleteBtn.onmouseleave = () => { deleteBtn.style.background = 'transparent'; deleteBtn.style.color = '#787b86'; };
+                deleteBtn.onclick = (e) => { e.stopPropagation(); const i = levels.indexOf(level); if (i > -1) { levels.splice(i, 1); row.remove(); applyChanges(); } };
+                row.appendChild(deleteBtn);
 
 
 
