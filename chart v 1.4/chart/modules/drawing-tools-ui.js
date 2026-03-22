@@ -9275,7 +9275,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const fibControlsColumnWidth = 180;
 
-            const levelsModeSelectWidth = 96;
+            const levelsModeSelectWidth = 76;
 
 
 
@@ -9447,7 +9447,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const _lvlMode = drawing.style.levelsLabelMode === 'percent' ? 'Percent' : 'Values';
             const levelsDropWrap = document.createElement('div');
             levelsDropWrap.style.cssText = `position:relative;width:${levelsModeSelectWidth}px;min-width:${levelsModeSelectWidth}px;`;
-            levelsDropWrap.innerHTML = `<button style="width:100%;height:26px;padding:0 20px 0 10px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;">${_lvlMode}${_lvlChev}</button><div style="display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);min-width:${levelsModeSelectWidth}px;overflow:hidden;"><div data-value="values" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Values</div><div data-value="percent" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Percent</div></div>`;
+            levelsDropWrap.innerHTML = `<button style="width:100%;height:26px;padding:0 20px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;">${_lvlMode}${_lvlChev}</button><div style="display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);min-width:${levelsModeSelectWidth}px;overflow:hidden;"><div data-value="values" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Values</div><div data-value="percent" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Percent</div></div>`;
             const _lvlBtn = levelsDropWrap.querySelector('button');
             const _lvlMenu = levelsDropWrap.querySelector('div');
             _lvlBtn.addEventListener('click', e => { e.stopPropagation(); const open = _lvlMenu.style.display !== 'none'; _lvlMenu.style.display = open ? 'none' : 'block'; if (!open) { const r = _lvlBtn.getBoundingClientRect(); _lvlMenu.style.top = r.bottom + 2 + 'px'; _lvlMenu.style.left = r.left + 'px'; } });
@@ -10140,7 +10140,23 @@ body.light-mode .template-save-dialog .dialog-title {
 
             downBtn.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg>';
 
-
+            const _spinnerStep = () => parseFloat(input.step) || 0.001;
+            upBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const s = _spinnerStep();
+                const dec = (s.toString().split('.')[1] || '').length;
+                const f = Math.pow(10, dec);
+                input.value = String(Math.round((parseFloat(input.value || '0') + s) * f) / f);
+                updateLevelFromInput();
+            });
+            downBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const s = _spinnerStep();
+                const dec = (s.toString().split('.')[1] || '').length;
+                const f = Math.pow(10, dec);
+                input.value = String(Math.round((parseFloat(input.value || '0') - s) * f) / f);
+                updateLevelFromInput();
+            });
 
             spinner.appendChild(upBtn);
 
@@ -15189,7 +15205,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const fibControlsColumnWidth = 180;
 
-        const levelsModeSelectWidth = 96;
+        const levelsModeSelectWidth = 76;
 
 
 
