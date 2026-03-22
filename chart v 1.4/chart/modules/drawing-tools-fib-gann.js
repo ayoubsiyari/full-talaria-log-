@@ -3008,15 +3008,15 @@ class GannFanTool extends BaseDrawing {
         // Fan levels use a multiplier of the 1/1 slope.
         // Label format matches TradingView-style fractions seen in the screenshot.
         const defaultFanLevels = [
-            { value: 8, label: '1/8', enabled: true, color: '#ff9800' },
-            { value: 4, label: '1/4', enabled: true, color: '#4caf50' },
-            { value: 3, label: '1/3', enabled: true, color: '#00c853' },
-            { value: 2, label: '1/2', enabled: true, color: '#00bcd4' },
-            { value: 1, label: '1/1', enabled: true, color: '#2962ff' },
-            { value: 0.5, label: '2/1', enabled: true, color: '#9c27b0' },
-            { value: 1 / 3, label: '3/1', enabled: true, color: '#e91e63' },
-            { value: 0.25, label: '4/1', enabled: true, color: '#f23645' },
-            { value: 0.125, label: '8/1', enabled: true, color: '#b71c1c' }
+            { value: 0.125, label: '1/8', enabled: true, color: '#ff9800' },
+            { value: 0.25,  label: '1/4', enabled: true, color: '#4caf50' },
+            { value: 1 / 3, label: '1/3', enabled: true, color: '#00c853' },
+            { value: 0.5,   label: '1/2', enabled: true, color: '#00bcd4' },
+            { value: 1,     label: '1/1', enabled: true, color: '#2962ff' },
+            { value: 2,     label: '2/1', enabled: true, color: '#9c27b0' },
+            { value: 3,     label: '3/1', enabled: true, color: '#e91e63' },
+            { value: 4,     label: '4/1', enabled: true, color: '#f23645' },
+            { value: 8,     label: '8/1', enabled: true, color: '#b71c1c' }
         ];
 
         // Back-compat: migrate style.angles (label like 1×8) into style.fanLevels.
@@ -3030,7 +3030,7 @@ class GannFanTool extends BaseDrawing {
                         const parts = label.split('×').map(s => s.trim());
                         const n = parseFloat(parts[0]);
                         const d = parseFloat(parts[1]);
-                        if (isFinite(n) && isFinite(d) && n !== 0) mult = d / n;
+                        if (isFinite(n) && isFinite(d) && d !== 0) mult = n / d;
                     }
                     const mappedLabel = label.includes('×') ? label.replace('×', '/') : (label || '1/1');
                     return {

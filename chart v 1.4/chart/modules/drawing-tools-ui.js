@@ -7643,23 +7643,23 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const defaultFanLevels = [
 
-            { value: 8, enabled: true, color: '#ff9800', label: '1/8' },
+            { value: 0.125, enabled: true, color: '#ff9800', label: '1/8' },
 
-            { value: 4, enabled: true, color: '#4caf50', label: '1/4' },
+            { value: 0.25,  enabled: true, color: '#4caf50', label: '1/4' },
 
-            { value: 3, enabled: true, color: '#00c853', label: '1/3' },
+            { value: 1 / 3, enabled: true, color: '#00c853', label: '1/3' },
 
-            { value: 2, enabled: true, color: '#00bcd4', label: '1/2' },
+            { value: 0.5,   enabled: true, color: '#00bcd4', label: '1/2' },
 
-            { value: 1, enabled: true, color: '#2962ff', label: '1/1' },
+            { value: 1,     enabled: true, color: '#2962ff', label: '1/1' },
 
-            { value: 0.5, enabled: true, color: '#9c27b0', label: '2/1' },
+            { value: 2,     enabled: true, color: '#9c27b0', label: '2/1' },
 
-            { value: 1 / 3, enabled: true, color: '#e91e63', label: '3/1' },
+            { value: 3,     enabled: true, color: '#e91e63', label: '3/1' },
 
-            { value: 0.25, enabled: true, color: '#f23645', label: '4/1' },
+            { value: 4,     enabled: true, color: '#f23645', label: '4/1' },
 
-            { value: 0.125, enabled: true, color: '#b71c1c', label: '8/1' }
+            { value: 8,     enabled: true, color: '#b71c1c', label: '8/1' }
 
         ];
 

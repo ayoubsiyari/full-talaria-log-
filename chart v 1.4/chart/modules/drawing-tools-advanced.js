@@ -41,6 +41,16 @@ class RulerTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
+        // Wide invisible hit area — allows selection from anywhere near the line
+        this.group.append('line')
+            .attr('x1', x1).attr('y1', y1)
+            .attr('x2', x2).attr('y2', y2)
+            .attr('stroke', 'rgba(255,255,255,0.001)')
+            .attr('stroke-width', 20)
+            .attr('fill', 'none')
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
         // Draw the measurement line
         this.group.append('line')
             .attr('x1', x1)
@@ -51,7 +61,7 @@ class RulerTool extends BaseDrawing {
             .attr('stroke-width', this.style.strokeWidth || 2)
             .attr('stroke-dasharray', '4,4')
             .attr('opacity', this.style.opacity)
-            .style('pointer-events', 'stroke')
+            .style('pointer-events', 'none')
             .style('cursor', 'move');
 
         // Calculate measurements

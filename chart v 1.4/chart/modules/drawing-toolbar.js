@@ -141,6 +141,26 @@ class DrawingToolbar {
                 background: rgba(255, 255, 255, 0.08);
                 color: #ffffff;
             }
+
+            body:not(.light-mode) .drawing-toolbar .toolbar-btn:active {
+                opacity: 0.7;
+                transform: scale(0.95);
+            }
+
+            body:not(.light-mode) .drawing-toolbar .toolbar-btn-danger:hover {
+                color: #f23645;
+                background: rgba(242, 54, 69, 0.12);
+            }
+
+            body.light-mode .drawing-toolbar .toolbar-btn-danger:hover {
+                color: #f23645;
+                background: rgba(242, 54, 69, 0.10);
+            }
+
+            body.light-mode .drawing-toolbar .toolbar-btn:active {
+                opacity: 0.7;
+                transform: scale(0.95);
+            }
             
             @keyframes toolbarBounce {
                 0% { transform: scale(1); }
@@ -250,6 +270,19 @@ class DrawingToolbar {
         const noTemplateTools = []; // Empty - all tools get templates now
         const isBrushTool = !noTemplateTools.includes(drawing.type);
         const useBrushToolbarLayout = isBrushTool && !isRiskReward;
+
+        // Ruler stats
+        const isRuler = drawing.type === 'ruler';
+        let rulerStatsText = '';
+        if (isRuler && Array.isArray(drawing.points) && drawing.points.length >= 2) {
+            const _p1 = drawing.points[0], _p2 = drawing.points[1];
+            const _pd = _p2.y - _p1.y;
+            const _pct = _p1.y !== 0 ? (_pd / Math.abs(_p1.y)) * 100 : 0;
+            const _sign = _pd >= 0 ? '+' : '−';
+            const _absPd = Math.abs(_pd);
+            const _bars = Math.abs(Math.round(_p2.x - _p1.x));
+            rulerStatsText = `${_sign}${_absPd.toFixed(4)}&nbsp;(${_sign}${Math.abs(_pct).toFixed(2)}%)&nbsp;&middot;&nbsp;${_bars}&nbsp;bars`;
+        }
         
         // Determine stroke/color label and value
         let strokeLabel, strokeBaseColor;
@@ -818,6 +851,13 @@ class DrawingToolbar {
                         </div>
                     `).join('')}
                 </div>
+            </div>
+            ` : ''}
+
+            ${rulerStatsText ? `
+            <!-- Ruler Stats -->
+            <div class="toolbar-item">
+                <div style="height:28px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(120,123,134,0.3);display:flex;align-items:center;font-size:12px;color:#d1d4dc;white-space:nowrap;cursor:default;letter-spacing:0.01em;font-variant-numeric:tabular-nums;">${rulerStatsText}</div>
             </div>
             ` : ''}
 
