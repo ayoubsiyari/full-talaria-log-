@@ -16307,29 +16307,77 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const rowSizeRow = createInputRow('Row Size');
 
-        rowSizeRow.controls.innerHTML = `
-
-            <input
-
-                type="number"
-
-                class="tv-input tv-volume-profile-input"
-
-                data-prop="rowSize"
-
-                value="${drawing.style.rowSize}"
-
-                min="1"
-
-                max="500"
-
-                step="1"
-
-                style="${numericFieldStyle}"
-
-            >
-
-        `;
+        // Create Fibonacci-style number input with spinner
+        const valueWrapper = document.createElement('div');
+        valueWrapper.className = 'number-input-wrapper';
+        valueWrapper.style.cssText = 'width: 80px; min-width: 0;';
+        
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'tv-number-input';
+        input.dataset.prop = 'rowSize';
+        input.value = drawing.style.rowSize;
+        input.min = '1';
+        input.max = '500';
+        input.step = '1';
+        input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+        
+        const updateValue = () => {
+            const parsed = parseInt(input.value);
+            if (!isNaN(parsed)) {
+                const clamped = Math.max(1, Math.min(500, parsed));
+                drawing.style.rowSize = clamped;
+                this.pendingChanges.rowSize = clamped;
+                this.renderPreview(drawing);
+            }
+        };
+        
+        input.addEventListener('input', updateValue);
+        input.addEventListener('change', updateValue);
+        
+        // Create spinner
+        const spinner = document.createElement('div');
+        spinner.className = 'custom-spinner';
+        spinner.dataset.target = 'rowSize';
+        
+        const upBtn = document.createElement('div');
+        upBtn.className = 'custom-spinner-btn';
+        upBtn.dataset.action = 'up';
+        upBtn.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,7 5,3 8,7"></polyline></svg>';
+        
+        const downBtn = document.createElement('div');
+        downBtn.className = 'custom-spinner-btn';
+        downBtn.dataset.action = 'down';
+        downBtn.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg>';
+        
+        const spinnerStep = () => parseFloat(input.step) || 1;
+        const attachSpinner = (btn, direction) => {
+            let tid = null, iid = null;
+            const step = () => {
+                const s = spinnerStep();
+                const cur = parseInt(input.value || '0');
+                const newVal = Math.max(1, Math.min(500, cur + direction * s));
+                input.value = String(newVal);
+                updateValue();
+            };
+            const stop = () => { clearTimeout(tid); clearInterval(iid); tid = null; iid = null; };
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                step();
+                tid = setTimeout(() => { iid = setInterval(step, 60); }, 400);
+            });
+            btn.addEventListener('mouseup', stop);
+            btn.addEventListener('mouseleave', stop);
+        };
+        attachSpinner(upBtn, 1);
+        attachSpinner(downBtn, -1);
+        
+        spinner.appendChild(upBtn);
+        spinner.appendChild(downBtn);
+        
+        valueWrapper.appendChild(input);
+        valueWrapper.appendChild(spinner);
+        rowSizeRow.controls.appendChild(valueWrapper);
 
 
 
@@ -16365,29 +16413,77 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const valueAreaVolumeRow = createInputRow('Value Area Volume');
 
-        valueAreaVolumeRow.controls.innerHTML = `
-
-            <input
-
-                type="number"
-
-                class="tv-input tv-volume-profile-input"
-
-                data-prop="valueAreaVolume"
-
-                value="${drawing.style.valueAreaVolume}"
-
-                min="1"
-
-                max="100"
-
-                step="1"
-
-                style="${numericFieldStyle}"
-
-            >
-
-        `;
+        // Create Fibonacci-style number input with spinner
+        const valueWrapper2 = document.createElement('div');
+        valueWrapper2.className = 'number-input-wrapper';
+        valueWrapper2.style.cssText = 'width: 80px; min-width: 0;';
+        
+        const input2 = document.createElement('input');
+        input2.type = 'number';
+        input2.className = 'tv-number-input';
+        input2.dataset.prop = 'valueAreaVolume';
+        input2.value = drawing.style.valueAreaVolume;
+        input2.min = '1';
+        input2.max = '100';
+        input2.step = '1';
+        input2.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+        
+        const updateValue2 = () => {
+            const parsed = parseInt(input2.value);
+            if (!isNaN(parsed)) {
+                const clamped = Math.max(1, Math.min(100, parsed));
+                drawing.style.valueAreaVolume = clamped;
+                this.pendingChanges.valueAreaVolume = clamped;
+                this.renderPreview(drawing);
+            }
+        };
+        
+        input2.addEventListener('input', updateValue2);
+        input2.addEventListener('change', updateValue2);
+        
+        // Create spinner
+        const spinner2 = document.createElement('div');
+        spinner2.className = 'custom-spinner';
+        spinner2.dataset.target = 'valueAreaVolume';
+        
+        const upBtn2 = document.createElement('div');
+        upBtn2.className = 'custom-spinner-btn';
+        upBtn2.dataset.action = 'up';
+        upBtn2.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,7 5,3 8,7"></polyline></svg>';
+        
+        const downBtn2 = document.createElement('div');
+        downBtn2.className = 'custom-spinner-btn';
+        downBtn2.dataset.action = 'down';
+        downBtn2.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg>';
+        
+        const spinnerStep2 = () => parseFloat(input2.step) || 1;
+        const attachSpinner2 = (btn, direction) => {
+            let tid = null, iid = null;
+            const step = () => {
+                const s = spinnerStep2();
+                const cur = parseInt(input2.value || '0');
+                const newVal = Math.max(1, Math.min(100, cur + direction * s));
+                input2.value = String(newVal);
+                updateValue2();
+            };
+            const stop = () => { clearTimeout(tid); clearInterval(iid); tid = null; iid = null; };
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                step();
+                tid = setTimeout(() => { iid = setInterval(step, 60); }, 400);
+            });
+            btn.addEventListener('mouseup', stop);
+            btn.addEventListener('mouseleave', stop);
+        };
+        attachSpinner2(upBtn2, 1);
+        attachSpinner2(downBtn2, -1);
+        
+        spinner2.appendChild(upBtn2);
+        spinner2.appendChild(downBtn2);
+        
+        valueWrapper2.appendChild(input2);
+        valueWrapper2.appendChild(spinner2);
+        valueAreaVolumeRow.controls.appendChild(valueWrapper2);
 
 
 
@@ -20482,7 +20578,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        queryAll('.tv-input[data-prop="rowSize"], .tv-input[data-prop="valueAreaVolume"]').forEach(input => {
+        queryAll('.tv-number-input[data-prop="rowSize"], .tv-number-input[data-prop="valueAreaVolume"]').forEach(input => {
 
             const prop = input.dataset.prop;
 
