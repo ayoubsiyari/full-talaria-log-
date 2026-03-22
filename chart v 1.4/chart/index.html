@@ -46534,30 +46534,6 @@ function showIndicatorsMenu() {
 
                 applyPanelHeight(getPanelH(), true);
 
-                // Close settings panel when expanding panel
-
-                const settingsPanel = document.getElementById('settingsPanel');
-
-                if (settingsPanel && settingsPanel.classList.contains('open')) {
-
-                    settingsPanel.classList.remove('open');
-
-                    document.body.classList.remove('settings-open');
-
-                    // Resize chart when settings panel closes
-
-                    if (window.chart && window.chart.resize) {
-
-                        requestAnimationFrame(() => {
-
-                            window.chart.resize();
-
-                        });
-
-                    }
-
-                }
-
             }
 
 
