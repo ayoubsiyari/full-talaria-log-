@@ -46546,13 +46546,11 @@ function showIndicatorsMenu() {
 
                     // Resize chart when settings panel closes
 
-                    if (!_rafId && window.chart && window.chart.resize) {
+                    if (window.chart && window.chart.resize) {
 
-                        _rafId = requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
 
                             window.chart.resize();
-
-                            _rafId = null;
 
                         });
 
