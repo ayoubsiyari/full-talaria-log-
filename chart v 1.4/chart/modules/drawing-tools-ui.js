@@ -15084,8 +15084,8 @@ body.light-mode .template-save-dialog .dialog-title {
         const _rmOptBase = `padding:8px 12px;cursor:default;display:flex;align-items:center;color:#d1d4dc;font-size:12px;`;
 
         modeRow.controls.innerHTML = `
-            <div class="tv-rangemode-dropdown" data-prop="rangeMode" style="position:relative;width:140px;">
-                <button class="tv-ending-dropdown-btn" style="width:100%;height:30px;padding:0 8px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;">
+            <div class="tv-rangemode-dropdown" data-prop="rangeMode" style="position:relative;display:inline-flex;align-items:stretch;">
+                <button class="tv-ending-dropdown-btn" style="white-space:nowrap;height:30px;padding:0 8px 0 10px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:6px;">
                     <span class="tv-rangemode-current" style="color:#d1d4dc;font-size:12px;">${_rmCurrent}</span>
                     ${_rmChev}
                 </button>
