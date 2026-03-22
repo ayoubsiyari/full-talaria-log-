@@ -262,6 +262,12 @@ class DrawingToolbar {
         const isBrushTool = !noTemplateTools.includes(drawing.type);
         const useBrushToolbarLayout = isBrushTool && !isRiskReward;
 
+        // Range mode
+        const isDatePriceRange = drawing.type === 'date-price-range';
+        const _rangeMode = isDatePriceRange ? (function(m){const v=String(m||'').toLowerCase().trim();if(v==='price')return 'price';if(v==='time'||v==='date')return 'time';return 'both';})(style.rangeMode) : 'both';
+        const _rangeModeLabels = { both: 'Date & Price', price: 'Price Only', time: 'Date/Time Only' };
+        const _rangeModeLabel = _rangeModeLabels[_rangeMode] || 'Date & Price';
+
         // Ruler stats
         const isRuler = drawing.type === 'ruler';
         let rulerStatsText = '';
@@ -841,6 +847,20 @@ class DrawingToolbar {
                             <span>${s}px</span>
                         </div>
                     `).join('')}
+                </div>
+            </div>
+            ` : ''}
+
+            ${isDatePriceRange ? `
+            <!-- Range Type Dropdown -->
+            <div class="toolbar-item toolbar-dropdown-wrapper">
+                <button class="toolbar-btn toolbar-dropdown-btn" id="tb-range-type-btn" title="Range Type">
+                    <span class="toolbar-width-text" id="tb-range-type-label">${_rangeModeLabel}</span>
+                </button>
+                <div class="toolbar-dropdown" id="range-type-dropdown">
+                    <div class="toolbar-dropdown-item ${_rangeMode === 'both' ? 'active' : ''}" data-range="both"><span>Date &amp; Price</span></div>
+                    <div class="toolbar-dropdown-item ${_rangeMode === 'price' ? 'active' : ''}" data-range="price"><span>Price Only</span></div>
+                    <div class="toolbar-dropdown-item ${_rangeMode === 'time' ? 'active' : ''}" data-range="time"><span>Date/Time Only</span></div>
                 </div>
             </div>
             ` : ''}
@@ -1585,6 +1605,36 @@ class DrawingToolbar {
                     widthDropdown.classList.remove('active');
                     if (this.onUpdate) this.onUpdate(drawing);
                 }
+            });
+        }
+
+        // Range Type Dropdown
+        const rangeTypeBtn = this.toolbar.querySelector('#tb-range-type-btn');
+        const rangeTypeDropdown = this.toolbar.querySelector('#range-type-dropdown');
+        if (rangeTypeBtn && rangeTypeDropdown) {
+            rangeTypeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeColorPickerPopups();
+                this.toolbar.querySelectorAll('.toolbar-dropdown').forEach(d => {
+                    if (d !== rangeTypeDropdown) d.classList.remove('active');
+                });
+                rangeTypeDropdown.classList.toggle('active');
+            });
+
+            rangeTypeDropdown.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const item = e.target.closest('.toolbar-dropdown-item');
+                if (!item) return;
+                const mode = item.dataset.range;
+                const normalized = mode === 'price' ? 'price' : mode === 'time' ? 'time' : 'both';
+                drawing.style.rangeMode = normalized;
+                const labels = { both: 'Date & Price', price: 'Price Only', time: 'Date/Time Only' };
+                const labelEl = rangeTypeBtn.querySelector('#tb-range-type-label');
+                if (labelEl) labelEl.textContent = labels[normalized];
+                rangeTypeDropdown.querySelectorAll('.toolbar-dropdown-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                rangeTypeDropdown.classList.remove('active');
+                if (this.onUpdate) this.onUpdate(drawing);
             });
         }
 
