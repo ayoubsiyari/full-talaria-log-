@@ -147,15 +147,6 @@ class DrawingToolbar {
                 transform: scale(0.95);
             }
 
-            body:not(.light-mode) .drawing-toolbar .toolbar-btn-danger:hover {
-                color: #f23645;
-                background: rgba(242, 54, 69, 0.12);
-            }
-
-            body.light-mode .drawing-toolbar .toolbar-btn-danger:hover {
-                color: #f23645;
-                background: rgba(242, 54, 69, 0.10);
-            }
 
             body.light-mode .drawing-toolbar .toolbar-btn:active {
                 opacity: 0.7;
