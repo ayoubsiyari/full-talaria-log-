@@ -46544,6 +46544,20 @@ function showIndicatorsMenu() {
 
                     document.body.classList.remove('settings-open');
 
+                    // Resize chart when settings panel closes
+
+                    if (!_rafId && window.chart && window.chart.resize) {
+
+                        _rafId = requestAnimationFrame(() => {
+
+                            window.chart.resize();
+
+                            _rafId = null;
+
+                        });
+
+                    }
+
                 }
 
             }
