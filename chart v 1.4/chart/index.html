@@ -54839,6 +54839,48 @@ P['canvas']={title:'Canvas',build:function(){
 
                         panel.style.display=isOpen?'none':'block';
 
+                        // Re-attach option click events
+
+                        var options=panel.querySelectorAll('.tl-dd-opt');
+
+                        options.forEach(function(opt){
+
+                            opt.onclick=function(e){
+
+                                e.stopPropagation();
+
+                                var cv=ch();
+
+                                if(!cv) return;
+
+                                var tid=this.dataset.tplid;
+
+                                if(!tid) return;
+
+                                var originalState=cv._lastChartOnlyTemplate;
+
+                                var originalChartSettings=cv.chartSettings?JSON.parse(JSON.stringify(cv.chartSettings)):null;
+
+                                panel.style.display='none';
+
+                                var m=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[].find(function(s){return s.id===tid;});
+
+                                if(m){
+
+                                    if(typeof cv.applyChartOnlyTemplate==='function') cv.applyChartOnlyTemplate(tid);
+
+                                    showTemplateConfirmation(m.name,'applyChartOnlyTemplate','_lastChartOnlyTemplate',tid,originalState,originalChartSettings);
+
+                                }
+
+                            };
+
+                            opt.onmouseenter=function(){this.style.background='rgba(255,255,255,0.08)';};
+
+                            opt.onmouseleave=function(){this.style.background='transparent';};
+
+                        });
+
                     }
 
                 };
@@ -54866,6 +54908,50 @@ P['canvas']={title:'Canvas',build:function(){
                         document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
 
                         panel.style.display=isOpen?'none':'block';
+
+                        // Re-attach option click events
+
+                        var options=panel.querySelectorAll('.tl-dd-opt');
+
+                        options.forEach(function(opt){
+
+                            opt.onclick=function(e){
+
+                                e.stopPropagation();
+
+                                var cv=ch();
+
+                                if(!cv) return;
+
+                                var tid=this.dataset.tplid;
+
+                                if(!tid) return;
+
+                                var originalState=cv._lastPanelOnlyTemplate;
+
+                                var originalChartSettings=cv.chartSettings?JSON.parse(JSON.stringify(cv.chartSettings)):null;
+
+                                panel.style.display='none';
+
+                                var panelTemplates=typeof cv.getPanelTemplateSwatches==='function'?cv.getPanelTemplateSwatches():[];
+
+                                var m=panelTemplates.find(function(s){return s.id===tid;});
+
+                                if(m){
+
+                                    if(typeof cv.applyPanelOnlyTemplate==='function') cv.applyPanelOnlyTemplate(tid);
+
+                                    showTemplateConfirmation(m.name,'applyPanelOnlyTemplate','_lastPanelOnlyTemplate',tid,originalState,originalChartSettings);
+
+                                }
+
+                            };
+
+                            opt.onmouseenter=function(){this.style.background='rgba(255,255,255,0.08)';};
+
+                            opt.onmouseleave=function(){this.style.background='transparent';};
+
+                        });
 
                     }
 
