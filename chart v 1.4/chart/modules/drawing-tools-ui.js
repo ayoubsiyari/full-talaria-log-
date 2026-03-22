@@ -11989,7 +11989,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             statsRow.controls.innerHTML = `
 
-                <button class="tv-info-dropdown-btn" style="width: 100%; height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: space-between;">
+                <button class="tv-info-dropdown-btn" style="width: fit-content; height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
 
                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statsSummary}</span>
 
