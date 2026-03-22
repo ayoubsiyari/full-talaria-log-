@@ -16041,29 +16041,77 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            row.controls.innerHTML = `
-
-                <input
-
-                    type="number"
-
-                    class="tv-input tv-anchored-vwap-input"
-
-                    data-prop="${multiplierProp}"
-
-                    value="${drawing.style[multiplierProp]}"
-
-                    min="0.001"
-
-                    max="1000"
-
-                    step="0.1"
-
-                    style="${numericFieldStyle} text-align: center;"
-
-                >
-
-            `;
+            // Create Fibonacci-style number input with spinner
+            const valueWrapper = document.createElement('div');
+            valueWrapper.className = 'number-input-wrapper';
+            valueWrapper.style.cssText = 'width: 80px; min-width: 0;';
+            
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'tv-number-input';
+            input.dataset.prop = multiplierProp;
+            input.value = drawing.style[multiplierProp];
+            input.min = '0.001';
+            input.max = '1000';
+            input.step = '0.1';
+            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+            
+            const updateValue = () => {
+                const parsed = parseFloat(input.value);
+                if (!isNaN(parsed)) {
+                    drawing.style[multiplierProp] = parsed;
+                    this.pendingChanges[multiplierProp] = parsed;
+                    this.renderPreview(drawing);
+                }
+            };
+            
+            input.addEventListener('input', updateValue);
+            input.addEventListener('change', updateValue);
+            
+            // Create spinner
+            const spinner = document.createElement('div');
+            spinner.className = 'custom-spinner';
+            spinner.dataset.target = multiplierProp;
+            
+            const upBtn = document.createElement('div');
+            upBtn.className = 'custom-spinner-btn';
+            upBtn.dataset.action = 'up';
+            upBtn.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,7 5,3 8,7"></polyline></svg>';
+            
+            const downBtn = document.createElement('div');
+            downBtn.className = 'custom-spinner-btn';
+            downBtn.dataset.action = 'down';
+            downBtn.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg>';
+            
+            const spinnerStep = () => parseFloat(input.step) || 0.1;
+            const attachSpinner = (btn, direction) => {
+                let tid = null, iid = null;
+                const step = () => {
+                    const s = spinnerStep();
+                    const dec = (s.toString().split('.')[1] || '').length;
+                    const f = Math.pow(10, dec);
+                    const cur = parseFloat(input.value || '0');
+                    input.value = String(Math.round((cur + direction * s) * f) / f);
+                    updateValue();
+                };
+                const stop = () => { clearTimeout(tid); clearInterval(iid); tid = null; iid = null; };
+                btn.addEventListener('mousedown', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    step();
+                    tid = setTimeout(() => { iid = setInterval(step, 60); }, 400);
+                });
+                btn.addEventListener('mouseup', stop);
+                btn.addEventListener('mouseleave', stop);
+            };
+            attachSpinner(upBtn, 1);
+            attachSpinner(downBtn, -1);
+            
+            spinner.appendChild(upBtn);
+            spinner.appendChild(downBtn);
+            
+            valueWrapper.appendChild(input);
+            valueWrapper.appendChild(spinner);
+            row.controls.appendChild(valueWrapper);
 
         };
 
@@ -20518,7 +20566,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        queryAll('.tv-input[data-prop="vwapBand1Multiplier"], .tv-input[data-prop="vwapBand2Multiplier"], .tv-input[data-prop="vwapBand3Multiplier"]').forEach(input => {
+        queryAll('.tv-number-input[data-prop="vwapBand1Multiplier"], .tv-number-input[data-prop="vwapBand2Multiplier"], .tv-number-input[data-prop="vwapBand3Multiplier"]').forEach(input => {
 
             const prop = input.dataset.prop;
 
