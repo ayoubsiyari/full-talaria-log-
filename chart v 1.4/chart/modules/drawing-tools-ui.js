@@ -4750,17 +4750,39 @@ body.light-mode .template-save-dialog .dialog-title {
 
         
 
-        // If no saved position, use default center but without transform animation
+        // If no saved position, use default center but ensure it stays within viewport
 
         if (!hasSavedPosition) {
 
             modal.style.position = 'fixed';
 
-            modal.style.left = '50%';
+            modal.style.transform = 'none';
 
-            modal.style.top = '50%';
+            // Get modal dimensions after it's added to DOM
 
-            modal.style.transform = 'translate(-50%, -50%)';
+            const modalRect = modal.getBoundingClientRect();
+
+            const modalWidth = modalRect.width || 400; // fallback width
+
+            const modalHeight = modalRect.height || 500; // fallback height
+
+            // Calculate centered position
+
+            let left = (window.innerWidth - modalWidth) / 2;
+
+            let top = (window.innerHeight - modalHeight) / 2;
+
+            // Ensure modal stays within viewport bounds
+
+            left = Math.max(10, Math.min(left, window.innerWidth - modalWidth - 10));
+
+            // Account for both top bar (60px) and bottom bar (40px) to avoid overlap
+
+            top = Math.max(60, Math.min(top, window.innerHeight - modalHeight - 50)); // 60px top, 50px bottom margin
+
+            modal.style.left = left + 'px';
+
+            modal.style.top = top + 'px';
 
         }
 
