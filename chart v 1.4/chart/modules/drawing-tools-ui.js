@@ -5770,8 +5770,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const isArrowMarkerType = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
 
-        const isElliottWaveType = typeof drawing.type === 'string' && drawing.type.startsWith('elliott-');
-
         const patternTypes = ['bars-pattern', 'xabcd-pattern', 'cypher-pattern', 'head-shoulders', 'abcd-pattern', 'triangle-pattern', 'three-drives'];
 
         const patternTypesWithBackground = ['bars-pattern', 'xabcd-pattern'];
