@@ -54823,6 +54823,26 @@ P['canvas']={title:'Canvas',build:function(){
 
                 chartDropdown.innerHTML='<span style="flex:1;font-size:12px;color:#787b86;">— Custom —</span><svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
 
+                // Re-attach click event to chart dropdown
+
+                chartDropdown.onclick=function(e){
+
+                    e.stopPropagation();
+
+                    var panel=document.getElementById('tl_chart_dd_panel');
+
+                    if(panel){
+
+                        var isOpen=panel.style.display!=='none';
+
+                        document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
+
+                        panel.style.display=isOpen?'none':'block';
+
+                    }
+
+                };
+
             }
 
             var panelDropdown=document.getElementById('tl_panel_dd_trig');
@@ -54830,6 +54850,26 @@ P['canvas']={title:'Canvas',build:function(){
             if(panelDropdown){
 
                 panelDropdown.innerHTML='<span style="flex:1;font-size:12px;color:#787b86;">— Custom —</span><svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
+
+                // Re-attach click event to panel dropdown
+
+                panelDropdown.onclick=function(e){
+
+                    e.stopPropagation();
+
+                    var panel=document.getElementById('tl_panel_dd_panel');
+
+                    if(panel){
+
+                        var isOpen=panel.style.display!=='none';
+
+                        document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
+
+                        panel.style.display=isOpen?'none':'block';
+
+                    }
+
+                };
 
             }
 
