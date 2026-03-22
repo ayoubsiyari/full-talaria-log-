@@ -5298,6 +5298,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const isArrowMarker = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down';
 
+        const isElliottWaveType = typeof drawing.type === 'string' && drawing.type.startsWith('elliott-');
+
         const isFibTool = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension';
 
         if (!isArrowMarker && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
@@ -5359,6 +5361,20 @@ body.light-mode .template-save-dialog .dialog-title {
                         <span>Type</span>
 
                         <span>Width</span>
+
+                    </div>
+
+                `;
+
+            } else if (isElliottWaveType) {
+
+                headerRow.innerHTML = `
+
+                    <span></span>
+
+                    <div class="tv-controls-header-labels">
+
+                        <span>Color</span>
 
                     </div>
 
@@ -5570,7 +5586,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         : true;
 
-                    const lineRow = this.createPropertyRow(lineLabel, lineEnabled, lineValues, drawing, 'line');
+                    const lineRow = this.createPropertyRow(lineLabel, lineEnabled, lineValues, drawing, 'line', isElliottWaveType ? { showCheckbox: false, showType: false, showWidth: false } : {});
 
                     lineRow.style.borderBottom = 'none';
 
@@ -13792,6 +13808,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const showWidth = options.showWidth !== false;
 
+        const showCheckbox = options.showCheckbox !== false;
+
 
 
         const typeControl = showType ? `
@@ -13840,7 +13858,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <span class="tv-prop-label" style="display: flex; align-items: center; gap: 8px;">
 
-                <div class="tv-checkbox ${checked ? 'checked' : ''}" data-prop="${propKey}Enabled">
+                ${showCheckbox ? `<div class="tv-checkbox ${checked ? 'checked' : ''}" data-prop="${propKey}Enabled">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
 
@@ -13848,7 +13866,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     </svg>
 
-                </div>
+                </div>` : ''}
 
                 ${label}
 
