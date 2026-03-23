@@ -1793,31 +1793,27 @@ class Chart {
     }
     
     showNotification(message) {
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
         const el = document.createElement('div');
         el.className = 'chart-notification';
         el.style.cssText = [
             'position:fixed',
-            'top:18px',
-            'right:22px',
-            'display:flex',
-            'align-items:center',
-            'gap:10px',
-            'padding:11px 18px',
-            'border-radius:10px',
-            'font-size:13px',
-            'font-weight:600',
-            'color:#fff',
-            'background:' + accent,
-            'box-shadow:0 8px 28px rgba(0,0,0,0.45),0 0 0 1px rgba(255,255,255,0.10)',
-            'backdrop-filter:blur(8px)',
-            '-webkit-backdrop-filter:blur(8px)',
+            'bottom:80px',
+            'left:50%',
+            'transform:translateX(-50%) translateY(6px)',
+            'padding:6px 14px',
+            'border-radius:20px',
+            'font-size:11px',
+            'font-weight:500',
+            'color:rgba(255,255,255,0.82)',
+            'background:rgba(20,20,35,0.82)',
+            'border:1px solid rgba(255,255,255,0.10)',
+            'backdrop-filter:blur(10px)',
+            '-webkit-backdrop-filter:blur(10px)',
             'z-index:2147483647',
             'opacity:0',
-            'transform:translateY(-8px) scale(0.97)',
-            'transition:opacity 0.22s ease,transform 0.22s ease',
+            'transition:opacity 0.18s ease,transform 0.18s ease',
             'pointer-events:none',
-            'max-width:340px',
+            'max-width:280px',
             'white-space:nowrap',
             'overflow:hidden',
             'text-overflow:ellipsis'
@@ -1826,13 +1822,13 @@ class Chart {
         document.body.appendChild(el);
         requestAnimationFrame(() => requestAnimationFrame(() => {
             el.style.opacity = '1';
-            el.style.transform = 'translateY(0) scale(1)';
+            el.style.transform = 'translateX(-50%) translateY(0)';
         }));
         setTimeout(() => {
             el.style.opacity = '0';
-            el.style.transform = 'translateY(-8px) scale(0.97)';
-            setTimeout(() => el.remove(), 260);
-        }, 3000);
+            el.style.transform = 'translateX(-50%) translateY(6px)';
+            setTimeout(() => el.remove(), 200);
+        }, 1800);
     }
     
     ensureClearObjectsMenuStyles() {
