@@ -674,7 +674,7 @@ body {
 .settings-toggle {
     width: 40px;
     height: 20px;
-    background: #2a2e39;
+    background: var(--sp-input-bg, rgba(255,255,255,0.1));
     border-radius: 10px;
     position: relative;
     transition: background 0.2s ease;
@@ -749,13 +749,13 @@ body {
 }
 
 .settings-btn-close {
-    background: #2a2e39;
-    color: #d1d5db;
+    background: var(--sp-input-bg, rgba(255,255,255,0.05));
+    color: var(--sp-text, #d1d5db);
 }
 
 .settings-btn-close:hover {
-    background: #3a3e49;
-    color: white;
+    background: var(--sp-hover-bg, rgba(255,255,255,0.1));
+    color: var(--sp-text-active, #ffffff);
 }
 
 .settings-btn-close:active {
