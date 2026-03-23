@@ -4318,14 +4318,11 @@ class Chart {
             const sidebarBg = panelBg;
             const panelRgb = toRgbArray(panelBg, [5, 0, 40]);
             const sidebarRgb = toRgbArray(sidebarBg, [4, 0, 31]);
-            // Detect light vs dark panel to derive UI chrome colors correctly
-            const panelLum = (0.299 * panelRgb[0] + 0.587 * panelRgb[1] + 0.114 * panelRgb[2]) / 255;
-            const isLightPanel = panelLum > 0.55;
-            const darkBase = [0, 0, 0];
-            const chromeBg = isLightPanel ? mixRgb(panelRgb, darkBase, 0.07) : mixRgb(panelRgb, [8, 12, 28], 0.72);
-            const surfaceBg = isLightPanel ? mixRgb(panelRgb, darkBase, 0.04) : mixRgb(panelRgb, [8, 12, 28], 0.58);
-            const sidebarUiBg = isLightPanel ? mixRgb(panelRgb, darkBase, 0.05) : mixRgb(sidebarRgb, [8, 12, 28], 0.62);
-            const borderColorRgb = isLightPanel ? mixRgb(panelRgb, darkBase, 0.18) : mixRgb(surfaceBg, [162, 176, 216], 0.24);
+            const deepUiBase = [8, 12, 28];
+            const chromeBg = mixRgb(panelRgb, deepUiBase, 0.72);
+            const surfaceBg = mixRgb(panelRgb, deepUiBase, 0.58);
+            const sidebarUiBg = mixRgb(sidebarRgb, deepUiBase, 0.62);
+            const borderColorRgb = mixRgb(surfaceBg, [162, 176, 216], 0.24);
             // Secondary accent + text colors
             const secondaryColor = targetChart.chartSettings.settingsPanelSecondaryColor || '#7b61ff';
             const textColor = targetChart.chartSettings.settingsPanelTextColor || '#e0e3ea';
@@ -4334,12 +4331,11 @@ class Chart {
 
             // Derive muted text (mix text toward panel bg)
             const textMutedRgb = mixRgb(textRgb, panelRgb, 0.52);
-            // Input/button bg: slightly darker for light panels, lighter for dark panels
-            const contrastBase = isLightPanel ? darkBase : [255, 255, 255];
-            const inputBgRgb = mixRgb(surfaceBg, contrastBase, 0.06);
-            const inputBorderRgb = mixRgb(surfaceBg, contrastBase, isLightPanel ? 0.22 : 0.14);
-            const btnBorderRgb = mixRgb(surfaceBg, contrastBase, isLightPanel ? 0.30 : 0.20);
-            const hoverBgRgb = mixRgb(surfaceBg, contrastBase, 0.06);
+            // Input/button bg: slightly lighter than surface
+            const inputBgRgb = mixRgb(surfaceBg, [255, 255, 255], 0.06);
+            const inputBorderRgb = mixRgb(surfaceBg, [255, 255, 255], 0.14);
+            const btnBorderRgb = mixRgb(surfaceBg, [255, 255, 255], 0.20);
+            const hoverBgRgb = mixRgb(surfaceBg, [255, 255, 255], 0.05);
             const navIconRgb = mixRgb(textMutedRgb, panelRgb, 0.25);
 
             // Cache accent color on both chart instances so render path avoids getComputedStyle
@@ -4352,7 +4348,7 @@ class Chart {
             root.style.setProperty('--sp-secondary-rgb', `${secondaryRgb[0]}, ${secondaryRgb[1]}, ${secondaryRgb[2]}`);
             root.style.setProperty('--sp-text', rgbToCss(textRgb));
             root.style.setProperty('--sp-text-muted', rgbToCss(textMutedRgb));
-            root.style.setProperty('--sp-text-active', isLightPanel ? '#000000' : '#ffffff');
+            root.style.setProperty('--sp-text-active', '#ffffff');
             root.style.setProperty('--sp-nav-icon-color', rgbToCss(navIconRgb));
             root.style.setProperty('--sp-hover-bg', rgbaToCss(hoverBgRgb, 0.55));
             root.style.setProperty('--sp-input-bg', rgbaToCss(inputBgRgb, 0.72));
@@ -4982,9 +4978,7 @@ class Chart {
                 symbolTextColor: '#1e293b',
                 crosshairColor: 'rgba(71, 85, 105, 0.4)',
                 cursorLabelTextColor: '#f0f4f8', cursorLabelBgColor: '#0284c7',
-                volumeUpColor: 'rgba(2, 132, 199, 0.45)', volumeDownColor: 'rgba(220, 38, 38, 0.45)',
-                settingsPanelBgColor: '#f0f4f8', settingsPanelAccentColor: '#0284c7',
-                settingsPanelSecondaryColor: '#0ea5e9', settingsPanelTextColor: '#1e293b'
+                volumeUpColor: 'rgba(2, 132, 199, 0.45)', volumeDownColor: 'rgba(220, 38, 38, 0.45)'
             },
             'arctic': {
                 name: 'Arctic Ice',
@@ -4997,9 +4991,7 @@ class Chart {
                 symbolTextColor: '#03045e',
                 crosshairColor: 'rgba(0, 150, 199, 0.4)',
                 cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#0077b6',
-                volumeUpColor: 'rgba(0, 150, 199, 0.5)', volumeDownColor: 'rgba(2, 62, 138, 0.5)',
-                settingsPanelBgColor: '#e8f4f8', settingsPanelAccentColor: '#0077b6',
-                settingsPanelSecondaryColor: '#0096c7', settingsPanelTextColor: '#03045e'
+                volumeUpColor: 'rgba(0, 150, 199, 0.5)', volumeDownColor: 'rgba(2, 62, 138, 0.5)'
             },
             'sepia': {
                 name: 'Sepia Vintage',
@@ -5011,9 +5003,7 @@ class Chart {
                 scaleTextColor: '#6b5344', scaleLinesColor: '#6b5344', symbolTextColor: '#3d2914',
                 crosshairColor: 'rgba(139, 119, 101, 0.4)',
                 cursorLabelTextColor: '#f5f0e1', cursorLabelBgColor: '#5d4e37',
-                volumeUpColor: 'rgba(93, 78, 55, 0.5)', volumeDownColor: 'rgba(139, 69, 19, 0.5)',
-                settingsPanelBgColor: '#f5f0e1', settingsPanelAccentColor: '#8b4513',
-                settingsPanelSecondaryColor: '#5d4e37', settingsPanelTextColor: '#3d2914'
+                volumeUpColor: 'rgba(93, 78, 55, 0.5)', volumeDownColor: 'rgba(139, 69, 19, 0.5)'
             },
             'monochrome': {
                 name: 'Monochrome',
@@ -5025,9 +5015,7 @@ class Chart {
                 scaleTextColor: '#666666', scaleLinesColor: '#666666', symbolTextColor: '#000000',
                 crosshairColor: 'rgba(0, 0, 0, 0.3)',
                 cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#333333',
-                volumeUpColor: 'rgba(51, 51, 51, 0.5)', volumeDownColor: 'rgba(153, 153, 153, 0.5)',
-                settingsPanelBgColor: '#f5f5f5', settingsPanelAccentColor: '#333333',
-                settingsPanelSecondaryColor: '#555555', settingsPanelTextColor: '#111111'
+                volumeUpColor: 'rgba(51, 51, 51, 0.5)', volumeDownColor: 'rgba(153, 153, 153, 0.5)'
             },
             'hermes': {
                 name: 'Hermes',
@@ -5040,9 +5028,7 @@ class Chart {
                 symbolTextColor: '#2f4f4f',
                 crosshairColor: 'rgba(47, 79, 79, 0.35)',
                 cursorLabelTextColor: '#f0f0f0', cursorLabelBgColor: '#2f4f4f',
-                volumeUpColor: 'rgba(47, 79, 79, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)',
-                settingsPanelBgColor: '#f0f0f0', settingsPanelAccentColor: '#2f4f4f',
-                settingsPanelSecondaryColor: '#556b2f', settingsPanelTextColor: '#1a2e2e'
+                volumeUpColor: 'rgba(47, 79, 79, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)'
             },
             'kaito': {
                 name: 'Kaito',
@@ -5055,9 +5041,7 @@ class Chart {
                 symbolTextColor: '#333333',
                 crosshairColor: 'rgba(51, 51, 51, 0.3)',
                 cursorLabelTextColor: '#f5f5f5', cursorLabelBgColor: '#333333',
-                volumeUpColor: 'rgba(77, 77, 77, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)',
-                settingsPanelBgColor: '#f5f5f5', settingsPanelAccentColor: '#4d4d4d',
-                settingsPanelSecondaryColor: '#666666', settingsPanelTextColor: '#1a1a1a'
+                volumeUpColor: 'rgba(77, 77, 77, 0.5)', volumeDownColor: 'rgba(169, 169, 169, 0.5)'
             },
             /* ── PANEL & SIDEBAR SOFT THEMES ── */
             'panel-lavender': {
@@ -5129,49 +5113,6 @@ class Chart {
                 settingsPanelAccentColor: '#0ea5e9',
                 settingsPanelSecondaryColor: '#22d3ee',
                 settingsPanelTextColor: '#cffafe'
-            },
-            /* ── LIGHT PANEL THEMES ── */
-            'panel-light-clean': {
-                name: 'Light Clean',
-                settingsPanelBgColor: '#f5f5f5',
-                settingsPanelAccentColor: '#2962ff',
-                settingsPanelSecondaryColor: '#0ea5e9',
-                settingsPanelTextColor: '#111111'
-            },
-            'panel-light-blue': {
-                name: 'Light Blue',
-                settingsPanelBgColor: '#f0f4f8',
-                settingsPanelAccentColor: '#0284c7',
-                settingsPanelSecondaryColor: '#0ea5e9',
-                settingsPanelTextColor: '#1e293b'
-            },
-            'panel-light-warm': {
-                name: 'Light Warm',
-                settingsPanelBgColor: '#faf7f2',
-                settingsPanelAccentColor: '#b45309',
-                settingsPanelSecondaryColor: '#d97706',
-                settingsPanelTextColor: '#1c1008'
-            },
-            'panel-light-mint': {
-                name: 'Light Mint',
-                settingsPanelBgColor: '#f0fdf4',
-                settingsPanelAccentColor: '#059669',
-                settingsPanelSecondaryColor: '#10b981',
-                settingsPanelTextColor: '#052e16'
-            },
-            'panel-light-rose': {
-                name: 'Light Rose',
-                settingsPanelBgColor: '#fff1f2',
-                settingsPanelAccentColor: '#e11d48',
-                settingsPanelSecondaryColor: '#f43f5e',
-                settingsPanelTextColor: '#1a0010'
-            },
-            'panel-light-slate': {
-                name: 'Light Slate',
-                settingsPanelBgColor: '#f1f5f9',
-                settingsPanelAccentColor: '#475569',
-                settingsPanelSecondaryColor: '#64748b',
-                settingsPanelTextColor: '#0f172a'
             }
         };
     }
