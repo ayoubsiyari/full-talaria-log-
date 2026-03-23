@@ -2708,6 +2708,13 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
                 return;
             }
 
+            // Prefer the shared template-aware settings panel from indicator-ui.js
+            // so colors always stay in sync with active template/theme changes.
+            if (typeof window.createIndicatorSettingsPanel === 'function') {
+                window.createIndicatorSettingsPanel(this, indicator.type, indicator);
+                return;
+            }
+
         
         // Check if modal already exists
         const existingModal = document.getElementById('indicator-settings-modal');

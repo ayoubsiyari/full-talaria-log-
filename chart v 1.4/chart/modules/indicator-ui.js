@@ -1457,13 +1457,13 @@ function setupIndicatorUI(chartInstance) {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
-            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 6px; margin-right: 8px; border-radius: 3px; transition: background 0.2s;';
+            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 8px; margin-right: 8px; margin-bottom: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s;';
 
             item.onmouseenter = function() {
-                item.style.background = 'rgba(120, 123, 134, 0.1)';
+                item.style.background = 'rgba(255,255,255,0.1)';
             };
             item.onmouseleave = function() {
-                item.style.background = 'transparent';
+                item.style.background = 'rgba(255,255,255,0.05)';
             };
 
             // Color indicator
@@ -1546,15 +1546,15 @@ function setupIndicatorUI(chartInstance) {
             actions.appendChild(visibilityBtn);
 
             const settingsBtn = document.createElement('span');
-            settingsBtn.textContent = '✎';  // Using pencil symbol instead of gear
-            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #2962ff; font-size: 14px; transition: all 0.2s;';
+            settingsBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #787b86; font-size: 14px; transition: all 0.2s;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = '#2962ff';
+                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
             };
             settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#2962ff';
+                settingsBtn.style.color = '#787b86';
                 settingsBtn.style.background = 'transparent';
             };
             settingsBtn.onclick = function(e) {
@@ -1579,14 +1579,14 @@ function setupIndicatorUI(chartInstance) {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'font-size: 16px; font-weight: bold; color: #787b86; cursor: pointer; padding: 0 2px; transition: all 0.2s;';
+            removeBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #f23645; font-size: 16px; font-weight: 700; transition: all 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.color = '#f23645';
+                removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
                 removeBtn.style.transform = 'scale(1.2)';
             };
             removeBtn.onmouseleave = function() {
-                removeBtn.style.color = '#787b86';
+                removeBtn.style.background = 'transparent';
                 removeBtn.style.transform = 'scale(1)';
             };
             removeBtn.onclick = function(e) {
@@ -1874,13 +1874,13 @@ if (typeof Chart !== 'undefined') {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
-            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 6px; margin-right: 8px; border-radius: 3px; transition: background 0.2s;';
+            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 8px; margin-right: 8px; margin-bottom: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s;';
 
             item.onmouseenter = function() {
-                item.style.background = 'rgba(120, 123, 134, 0.1)';
+                item.style.background = 'rgba(255,255,255,0.1)';
             };
             item.onmouseleave = function() {
-                item.style.background = 'transparent';
+                item.style.background = 'rgba(255,255,255,0.05)';
             };
 
             // Color indicator
@@ -1963,15 +1963,15 @@ if (typeof Chart !== 'undefined') {
             actions.appendChild(visibilityBtn);
 
             const settingsBtn = document.createElement('span');
-            settingsBtn.textContent = '✎';  // Using pencil symbol
-            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #2962ff; font-size: 14px; transition: all 0.2s;';
+            settingsBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #787b86; font-size: 14px; transition: all 0.2s;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = '#2962ff';
+                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
             };
             settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#2962ff';
+                settingsBtn.style.color = '#787b86';
                 settingsBtn.style.background = 'transparent';
             };
             settingsBtn.onclick = function(e) {
@@ -1996,14 +1996,14 @@ if (typeof Chart !== 'undefined') {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'font-size: 16px; font-weight: bold; color: #787b86; cursor: pointer; padding: 0 2px; transition: all 0.2s;';
+            removeBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #f23645; font-size: 16px; font-weight: 700; transition: all 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.color = '#f23645';
+                removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
                 removeBtn.style.transform = 'scale(1.2)';
             };
             removeBtn.onmouseleave = function() {
-                removeBtn.style.color = '#787b86';
+                removeBtn.style.background = 'transparent';
                 removeBtn.style.transform = 'scale(1)';
             };
             removeBtn.onclick = function(e) {
