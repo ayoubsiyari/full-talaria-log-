@@ -5447,19 +5447,13 @@
 
         #settingsPanel .sp-nav-item {
 
-            display: inline-flex;
-
-            align-items: center;
-
-            gap: 6px;
-
-            padding: 0 12px;
+            padding: 0 14px;
 
             border-radius: 8px;
 
             white-space: nowrap;
 
-            min-height: 28px;
+            height: 28px;
 
             flex-shrink: 0;
 
@@ -5483,7 +5477,7 @@
 
         #settingsPanel .sp-nav-item.active { background: linear-gradient(135deg,rgba(var(--sp-accent-rgb,41,98,255),0.55),rgba(var(--sp-accent-rgb,41,98,255),0.30)); border-color: rgba(var(--sp-accent-rgb,41,98,255),0.9); color: var(--sp-text-active, #fff); box-shadow: 0 6px 14px rgba(var(--sp-accent-rgb,41,98,255),0.14); }
 
-        #settingsPanel .sp-nav-item svg { display: block; flex-shrink: 0; width: 16px; height: 16px; }
+        #settingsPanel .sp-nav-item svg { display: none; }
 
 
 
@@ -5561,23 +5555,21 @@
 
 
 
-        /* Keep all settings nav tabs visible in the top bar (icons + labels). Toolbar-only sp-mode still hides the whole nav. */
+        /* Settings mode: hide items that have dedicated toolbar buttons */
 
-        #settingsPanel:not(.sp-mode) .sp-nav-divider {
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="alerts"],
 
-            width: 1px;
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="news"],
 
-            align-self: stretch;
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="watchlist"],
 
-            min-height: 18px;
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="help"],
 
-            margin: 5px 4px;
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="profile"],
 
-            background: var(--sp-ui-border, rgba(255,255,255,0.12));
+        #settingsPanel:not(.sp-mode) .sp-nav-item[data-settings="statusline"] { display: none; }
 
-            flex-shrink: 0;
-
-        }
+        #settingsPanel:not(.sp-mode) .sp-nav-divider { display: none; }
 
 
 
@@ -33773,7 +33765,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="template" onclick="event.stopPropagation();window._spLoad&&window._spLoad('template',this);">
+                <div class="sp-nav-item" data-settings="template" onclick="event.stopPropagation();window._spLoad&&window._spLoad('template',this);" style="display:none;">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
 
@@ -40141,7 +40133,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V142"></script>
+    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V141"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
