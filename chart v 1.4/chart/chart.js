@@ -4329,7 +4329,7 @@ class Chart {
                 chromeBg = mixRgb(panelRgb, [255, 255, 255], 0.18);
                 surfaceBg = mixRgb(panelRgb, [255, 255, 255], 0.30);
                 sidebarUiBg = mixRgb(panelRgb, [255, 255, 255], 0.12);
-                borderColorRgb = mixRgb(panelRgb, [80, 90, 110], 0.22);
+                borderColorRgb = mixRgb(panelRgb, [60, 70, 90], 0.42);
             } else {
                 const deepUiBase = [8, 12, 28];
                 chromeBg = mixRgb(panelRgb, deepUiBase, 0.72);
@@ -4384,7 +4384,7 @@ class Chart {
             root.style.setProperty('--sp-ui-chrome-bg', rgbToCss(chromeBg));
             root.style.setProperty('--sp-ui-surface-bg', rgbToCss(surfaceBg));
             root.style.setProperty('--sp-ui-sidebar-bg', rgbToCss(sidebarUiBg));
-            root.style.setProperty('--sp-ui-border', rgbaToCss(borderColorRgb, 0.42));
+            root.style.setProperty('--sp-ui-border', rgbaToCss(borderColorRgb, isLightPanel ? 0.80 : 0.42));
             root.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
             root.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
             root.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
