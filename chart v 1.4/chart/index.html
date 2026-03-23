@@ -2773,11 +2773,11 @@
 
         body.light-mode .settings-panel {
 
-            background: #f8f3e6;
+            background: var(--sp-ui-surface-bg, var(--sp-bg));
 
-            border-left: 1px solid rgba(139, 115, 85, 0.3);
+            border-left: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
 
-            box-shadow: -4px 0 16px rgba(139, 115, 85, 0.15);
+            box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
 
         }
 
@@ -2785,9 +2785,9 @@
 
         body.light-mode .settings-panel-header {
 
-            background: rgba(139, 115, 85, 0.1);
+            background: var(--sp-ui-chrome-bg, var(--sp-bg));
 
-            border-bottom: 1px solid rgba(139, 115, 85, 0.2);
+            border-bottom: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
 
         }
 
@@ -2795,7 +2795,7 @@
 
         body.light-mode .settings-panel-header h2 {
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2803,7 +2803,7 @@
 
         body.light-mode .settings-panel-close {
 
-            color: rgba(139, 115, 85, 0.7);
+            color: var(--sp-text-muted, #b0b5c3);
 
         }
 
@@ -2811,9 +2811,9 @@
 
         body.light-mode .settings-panel-close:hover {
 
-            background: rgba(139, 115, 85, 0.15);
+            background: var(--sp-hover-bg, rgba(255,255,255,0.05));
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2821,7 +2821,7 @@
 
         body.light-mode .settings-menu-item {
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2829,7 +2829,7 @@
 
         body.light-mode .settings-menu-item:hover {
 
-            background: rgba(139, 115, 85, 0.08);
+            background: var(--sp-hover-bg, rgba(255,255,255,0.05));
 
         }
 
@@ -2837,7 +2837,7 @@
 
         body.light-mode .settings-menu-item.active {
 
-            background: rgba(139, 115, 85, 0.12);
+            background: rgba(var(--sp-accent-rgb), 0.15);
 
         }
 
@@ -2845,7 +2845,7 @@
 
         body.light-mode .settings-menu-item svg {
 
-            color: rgba(139, 115, 85, 0.7);
+            color: var(--sp-text-muted, #b0b5c3);
 
         }
 
@@ -2855,7 +2855,7 @@
 
         body.light-mode .settings-menu-item.active svg {
 
-            color: #2f4f4f;
+            color: var(--sp-accent);
 
         }
 
@@ -2863,7 +2863,7 @@
 
         body.light-mode .settings-section-title {
 
-            color: rgba(139, 115, 85, 0.7);
+            color: var(--sp-text-muted, #b0b5c3);
 
         }
 
@@ -2873,13 +2873,13 @@
 
         body.light-mode .chart-context-menu {
 
-            background: rgba(248, 243, 230, 0.95);
+            background: var(--tv-panel-bg);
 
-            border: 1px solid rgba(139, 115, 85, 0.15);
+            border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
 
-            box-shadow: 0 16px 40px rgba(139, 115, 85, 0.2);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2887,7 +2887,7 @@
 
         body.light-mode .context-menu-item {
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2895,9 +2895,9 @@
 
         body.light-mode .context-menu-item:hover {
 
-            background: rgba(139, 115, 85, 0.12);
+            background: var(--sp-hover-bg, rgba(255,255,255,0.05));
 
-            color: #8b7355;
+            color: var(--sp-accent);
 
         }
 
@@ -2907,13 +2907,13 @@
 
         body.light-mode .drawing-style-editor {
 
-            background: rgba(248, 243, 230, 0.95);
+            background: var(--tv-panel-bg);
 
-            border: 1px solid rgba(139, 115, 85, 0.15);
+            border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
 
-            box-shadow: 0 16px 40px rgba(139, 115, 85, 0.2);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2921,7 +2921,7 @@
 
         body.light-mode .drawing-style-editor .settings-header {
 
-            border-bottom: 1px solid rgba(139, 115, 85, 0.15);
+            border-bottom: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
 
         }
 
@@ -2929,7 +2929,7 @@
 
         body.light-mode .drawing-style-editor .settings-header h3 {
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2937,9 +2937,9 @@
 
         body.light-mode .drawing-style-editor .settings-header .settings-close:hover {
 
-            background: rgba(139, 115, 85, 0.12);
+            background: var(--sp-hover-bg, rgba(255,255,255,0.05));
 
-            color: #8b7355;
+            color: var(--sp-accent);
 
         }
 
@@ -2947,7 +2947,7 @@
 
         body.light-mode .drawing-style-editor label {
 
-            color: rgba(139, 115, 85, 0.7);
+            color: var(--sp-text-muted, #b0b5c3);
 
         }
 
@@ -2957,11 +2957,11 @@
 
         body.light-mode .chart-settings-menu {
 
-            background: #f8f3e6;
+            background: var(--tv-panel-bg);
 
-            border: 1px solid rgba(139, 115, 85, 0.3);
+            border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
 
-            box-shadow: 0 8px 24px rgba(139, 115, 85, 0.15);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 
         }
 
@@ -2969,7 +2969,7 @@
 
         body.light-mode .settings-item {
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -2977,7 +2977,7 @@
 
         body.light-mode .settings-item:hover {
 
-            background: rgba(139, 115, 85, 0.08);
+            background: var(--sp-hover-bg, rgba(255,255,255,0.05));
 
         }
 
@@ -2987,11 +2987,11 @@
 
         body.light-mode #indicatorSettingsPanel {
 
-            background: #f8f3e6 !important;
+            background: var(--sp-ui-surface-bg, var(--sp-bg)) !important;
 
-            border-color: rgba(139, 115, 85, 0.3) !important;
+            border-color: var(--sp-ui-border, rgba(63, 84, 124, 0.35)) !important;
 
-            box-shadow: 0 8px 32px rgba(139, 115, 85, 0.15) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25) !important;
 
         }
 
@@ -2999,7 +2999,7 @@
 
         body.light-mode #indicatorSettingsPanel .settings-section-title {
 
-            color: #2f4f4f !important;
+            color: var(--sp-text, #e0e3ea) !important;
 
         }
 
@@ -3007,7 +3007,7 @@
 
         body.light-mode #indicatorSettingsPanel label {
 
-            color: #2f4f4f !important;
+            color: var(--sp-text, #e0e3ea) !important;
 
         }
 
@@ -3019,11 +3019,11 @@
 
         body.light-mode #indicatorSettingsPanel select {
 
-            background: #f0ebe0 !important;
+            background: var(--sp-input-bg, rgba(255,255,255,0.05)) !important;
 
-            border-color: rgba(139, 115, 85, 0.3) !important;
+            border-color: var(--sp-input-border, rgba(63, 84, 124, 0.5)) !important;
 
-            color: #2f4f4f !important;
+            color: var(--sp-text, #e0e3ea) !important;
 
         }
 
@@ -3031,11 +3031,11 @@
 
         body.light-mode #indicatorSettingsPanel button {
 
-            background: #f0ebe0;
+            background: var(--sp-input-bg, rgba(255,255,255,0.05));
 
-            border-color: rgba(139, 115, 85, 0.3);
+            border-color: var(--sp-btn-border, rgba(63, 84, 124, 0.5));
 
-            color: #2f4f4f;
+            color: var(--sp-text, #e0e3ea);
 
         }
 
@@ -3043,7 +3043,7 @@
 
         body.light-mode #indicatorSettingsPanel button:hover {
 
-            background: #e6dcc7;
+            background: var(--sp-hover-bg, rgba(255,255,255,0.1));
 
         }
 
@@ -3053,7 +3053,7 @@
 
         body.light-mode #indicatorSettingsPanel button[style*="--sp-accent-rgb"] {
 
-            background: #8b7355 !important;
+            background: var(--sp-accent) !important;
 
             color: #ffffff !important;
 
@@ -3063,7 +3063,7 @@
 
         body.light-mode #indicatorSettingsBackdrop {
 
-            background: rgba(248, 243, 230, 0.5) !important;
+            background: rgba(0, 0, 0, 0.5) !important;
 
         }
 
@@ -3071,7 +3071,7 @@
 
         body.light-mode .indicator-color-value {
 
-            color: #2f4f4f !important;
+            color: var(--sp-text, #e0e3ea) !important;
 
         }
 
@@ -3079,9 +3079,9 @@
 
         body.light-mode .indicator-color-palette {
 
-            background: #f8f3e6 !important;
+            background: var(--sp-ui-surface-bg, var(--sp-bg)) !important;
 
-            border: 1px solid rgba(139, 115, 85, 0.3);
+            border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
 
         }
 
