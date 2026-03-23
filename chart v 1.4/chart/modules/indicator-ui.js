@@ -205,6 +205,27 @@ const INDICATOR_COLOR_ROWS = [
 
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
+/** Unified pill chip (OHLC row + separate panels) — same size & chrome as ADX-style bar */
+const TALARIA_INDICATOR_CHIP_CSS =
+    'display:inline-flex;align-items:center;gap:6px;min-height:28px;max-height:28px;box-sizing:border-box;' +
+    'padding:0 10px;margin-right:8px;margin-bottom:4px;border-radius:6px;line-height:1;' +
+    'border:1px solid rgba(255,255,255,0.08);background:rgba(19,23,34,0.96);' +
+    'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);' +
+    'transition:background 0.2s,border-color 0.2s;cursor:pointer;vertical-align:middle;';
+const TALARIA_INDICATOR_CHIP_BG = 'rgba(19,23,34,0.96)';
+const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(42,46,57,0.98)';
+const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255,255,255,0.14)';
+const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
+    'display:inline-block;width:14px;height:3px;border-radius:2px;background:' + color + ';flex-shrink:0;';
+
+if (typeof window !== 'undefined') {
+    window.TALARIA_INDICATOR_CHIP_CSS = TALARIA_INDICATOR_CHIP_CSS;
+    window.TALARIA_INDICATOR_CHIP_BG = TALARIA_INDICATOR_CHIP_BG;
+    window.TALARIA_INDICATOR_CHIP_BG_HOVER = TALARIA_INDICATOR_CHIP_BG_HOVER;
+    window.TALARIA_INDICATOR_CHIP_BORDER_HOVER = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
+    window.TALARIA_INDICATOR_COLOR_STRIP = TALARIA_INDICATOR_COLOR_STRIP;
+}
+
 function ensureIndicatorColorStyles(panel) {
     if (panel.querySelector('#indicator-color-picker-styles')) {
         return;
@@ -236,12 +257,6 @@ function ensureIndicatorColorStyles(panel) {
             border-color: rgba(var(--sp-accent-rgb, 41,98,255), 0.8);
             transform: scale(1.08);
             box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb, 41,98,255), 0.35);
-        }
-        #indicatorSettingsPanel .indicator-color-value {
-            color: #d1d4dc;
-            font-size: 12px;
-            font-weight: 500;
-            min-width: 90px;
         }
         /* Palette is appended to document.body (avoids transform offset bugs). Styles must NOT depend on #indicatorSettingsPanel ancestor. */
         .indicator-color-palette {
@@ -512,10 +527,6 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
     palette.className = 'indicator-color-palette';
     document.body.appendChild(palette);
 
-    const valueLabel = document.createElement('span');
-    valueLabel.className = 'indicator-color-value';
-    container.appendChild(valueLabel);
-
     const hiddenInput = document.createElement('input');
     hiddenInput.type = 'hidden';
     hiddenInput.setAttribute('data-param-id', paramId);
@@ -643,7 +654,6 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         preview.style.background = displayColor;
         hiddenInput.value = displayColor;
         sliderValue.textContent = `${Math.round(opacity * 100)}%`;
-        valueLabel.textContent = `${normalizeHex(baseColor)} • ${Math.round(opacity * 100)}%`;
     };
 
     const positionPalette = () => {
@@ -679,18 +689,6 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
     };
 
     preview.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const wasActive = palette.classList.contains('active');
-        closeAllPalettes();
-        if (!wasActive) {
-            positionPalette();
-            updateSliderGradient();
-            updateSelectedSwatches();
-            palette.classList.add('active');
-        }
-    });
-
-    valueLabel.addEventListener('click', (event) => {
         event.stopPropagation();
         const wasActive = palette.classList.contains('active');
         closeAllPalettes();
@@ -1460,29 +1458,31 @@ function setupIndicatorUI(chartInstance) {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
-            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 8px; margin-right: 8px; margin-bottom: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s;';
+            item.style.cssText = TALARIA_INDICATOR_CHIP_CSS;
 
             item.onmouseenter = function() {
-                item.style.background = 'rgba(255,255,255,0.1)';
+                item.style.background = TALARIA_INDICATOR_CHIP_BG_HOVER;
+                item.style.borderColor = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
             };
             item.onmouseleave = function() {
-                item.style.background = 'rgba(255,255,255,0.05)';
+                item.style.background = TALARIA_INDICATOR_CHIP_BG;
+                item.style.borderColor = 'rgba(255,255,255,0.08)';
             };
 
             // Color indicator
             const colorBox = document.createElement('span');
             const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
-            colorBox.style.cssText = 'width: 12px; height: 2px; background: ' + displayColor + '; border-radius: 1px;';
+            colorBox.style.cssText = TALARIA_INDICATOR_COLOR_STRIP(displayColor);
             item.appendChild(colorBox);
 
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color: #787b86; font-size: 11px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 12px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
 
             const self = this;
             const id = indicator.id;
@@ -1490,8 +1490,8 @@ function setupIndicatorUI(chartInstance) {
 
             // Visibility toggle (eye icon) - for first occurrence
             const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
-            visibilityBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; font-size: 14px; transition: all 0.2s; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
+            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
                 visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
@@ -1505,7 +1505,7 @@ function setupIndicatorUI(chartInstance) {
                 indicator.visible = indicator.visible === false ? true : false;
                 
                 // Update icon
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+                visibilityBtn.innerHTML = indicator.visible ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
@@ -1550,7 +1550,7 @@ function setupIndicatorUI(chartInstance) {
 
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #787b86; font-size: 14px; transition: all 0.2s;';
+            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
@@ -1582,7 +1582,7 @@ function setupIndicatorUI(chartInstance) {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #f23645; font-size: 16px; font-weight: 700; transition: all 0.2s;';
+            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#f23645;font-size:16px;font-weight:700;transition:background 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
                 removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
@@ -1877,29 +1877,31 @@ if (typeof Chart !== 'undefined') {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
-            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 8px; margin-right: 8px; margin-bottom: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s;';
+            item.style.cssText = TALARIA_INDICATOR_CHIP_CSS;
 
             item.onmouseenter = function() {
-                item.style.background = 'rgba(255,255,255,0.1)';
+                item.style.background = TALARIA_INDICATOR_CHIP_BG_HOVER;
+                item.style.borderColor = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
             };
             item.onmouseleave = function() {
-                item.style.background = 'rgba(255,255,255,0.05)';
+                item.style.background = TALARIA_INDICATOR_CHIP_BG;
+                item.style.borderColor = 'rgba(255,255,255,0.08)';
             };
 
             // Color indicator
             const colorBox = document.createElement('span');
             const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
-            colorBox.style.cssText = 'width: 12px; height: 2px; background: ' + displayColor + '; border-radius: 1px;';
+            colorBox.style.cssText = TALARIA_INDICATOR_COLOR_STRIP(displayColor);
             item.appendChild(colorBox);
 
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color: #787b86; font-size: 11px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 12px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
 
             const self = this;
             const id = indicator.id;
@@ -1907,8 +1909,8 @@ if (typeof Chart !== 'undefined') {
 
             // Visibility toggle (eye icon)
             const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
-            visibilityBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; font-size: 14px; transition: all 0.2s; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
+            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
                 visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
@@ -1922,7 +1924,7 @@ if (typeof Chart !== 'undefined') {
                 indicator.visible = indicator.visible === false ? true : false;
                 
                 // Update icon
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+                visibilityBtn.innerHTML = indicator.visible ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
@@ -1967,7 +1969,7 @@ if (typeof Chart !== 'undefined') {
 
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #787b86; font-size: 14px; transition: all 0.2s;';
+            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
@@ -1999,7 +2001,7 @@ if (typeof Chart !== 'undefined') {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #f23645; font-size: 16px; font-weight: 700; transition: all 0.2s;';
+            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#f23645;font-size:16px;font-weight:700;transition:background 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
                 removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';

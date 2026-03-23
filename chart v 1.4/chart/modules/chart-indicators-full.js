@@ -12,6 +12,26 @@
     
     function attachIndicatorMethods() {
         const Chart = global.Chart;
+
+    /** Same pill chrome as indicator-ui.js (ADX-style bar); works before indicator-ui loads */
+    function getTalariaChipStyles() {
+        const w = global;
+        const fallbackChip =
+            'display:inline-flex;align-items:center;gap:6px;min-height:28px;max-height:28px;box-sizing:border-box;' +
+            'padding:0 10px;margin-right:8px;margin-bottom:4px;border-radius:6px;line-height:1;' +
+            'border:1px solid rgba(255,255,255,0.08);background:rgba(19,23,34,0.96);' +
+            'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);' +
+            'transition:background 0.2s,border-color 0.2s;cursor:pointer;vertical-align:middle;';
+        return {
+            chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
+            bg: w.TALARIA_INDICATOR_CHIP_BG || 'rgba(19,23,34,0.96)',
+            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'rgba(42,46,57,0.98)',
+            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'rgba(255,255,255,0.14)',
+            colorStrip: w.TALARIA_INDICATOR_COLOR_STRIP || function(c) {
+                return 'display:inline-block;width:14px;height:3px;border-radius:2px;background:' + c + ';flex-shrink:0;';
+            }
+        };
+    }
     
     // ===== Calculation Functions =====
     
@@ -2612,78 +2632,116 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
+            const chip = getTalariaChipStyles();
             const item = document.createElement('div');
-            item.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; margin-right: 8px; margin-bottom: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s; pointer-events: auto;';
-            
-            // Hover effect for the container
+            item.style.cssText = chip.chipCss + 'pointer-events:auto;';
+
             item.onmouseenter = function() {
-                item.style.background = 'rgba(255,255,255,0.1)';
+                item.style.background = chip.bgHover;
+                item.style.borderColor = chip.borderHover;
             };
             item.onmouseleave = function() {
-                item.style.background = 'rgba(255,255,255,0.05)';
+                item.style.background = chip.bg;
+                item.style.borderColor = 'rgba(255,255,255,0.08)';
             };
-            
-            // Color indicator
+
             const colorBox = document.createElement('span');
             const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
-            colorBox.style.cssText = 'width: 12px; height: 2px; background: ' + displayColor + '; border-radius: 1px; flex-shrink: 0;';
+            colorBox.style.cssText = chip.colorStrip(displayColor);
             item.appendChild(colorBox);
-            
-            // Name (NOT clickable - use Edit link to edit)
+
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 12px; font-weight: 500; user-select: none; pointer-events: auto;';
+            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 12px; font-weight: 500; user-select: none; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             nameSpan.title = indicator.name;
-            
             item.appendChild(nameSpan);
-            
-            // Settings button (three dots menu) - Always visible
+
+            const actions = document.createElement('span');
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
+
+            const self = this;
+            const id = indicator.id;
+
+            const visibilityBtn = document.createElement('span');
+            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
+            visibilityBtn.onmouseenter = function() {
+                visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
+            };
+            visibilityBtn.onmouseleave = function() {
+                visibilityBtn.style.background = 'transparent';
+            };
+            visibilityBtn.onclick = function(e) {
+                e.stopPropagation();
+                indicator.visible = indicator.visible === false ? true : false;
+                visibilityBtn.innerHTML = indicator.visible ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+                visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
+                nameSpan.style.opacity = indicator.visible ? '1' : '0.5';
+                if (!indicator.visible) {
+                    if (indicator.data) {
+                        indicator._hiddenData = indicator.data;
+                        indicator.data = [];
+                    }
+                    if (self.indicators && self.indicators.data && self.indicators.data[id]) {
+                        indicator._hiddenDataStore = self.indicators.data[id];
+                        self.indicators.data[id] = [];
+                    }
+                } else {
+                    if (indicator._hiddenData) {
+                        indicator.data = indicator._hiddenData;
+                        delete indicator._hiddenData;
+                    }
+                    if (indicator._hiddenDataStore && self.indicators && self.indicators.data) {
+                        self.indicators.data[id] = indicator._hiddenDataStore;
+                        delete indicator._hiddenDataStore;
+                    }
+                }
+                if (typeof self.render === 'function') self.render();
+            };
+            actions.appendChild(visibilityBtn);
+
             const settingsBtn = document.createElement('span');
-            settingsBtn.textContent = '•••';
-            settingsBtn.style.cssText = 'cursor: pointer; color: #787b86; margin-left: 6px; font-size: 14px; font-weight: bold; padding: 0 4px; border-radius: 3px; transition: all 0.2s; display: inline-block; line-height: 1;';
-            settingsBtn.title = 'Click to edit settings';
+            settingsBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
+            settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
                 settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
-                settingsBtn.style.transform = 'scale(1.1)';
             };
             settingsBtn.onmouseleave = function() {
                 settingsBtn.style.color = '#787b86';
                 settingsBtn.style.background = 'transparent';
-                settingsBtn.style.transform = 'scale(1)';
             };
-            item.appendChild(settingsBtn);
+            settingsBtn.onclick = function(e) {
+                e.stopPropagation();
+                if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
+            };
+            actions.appendChild(settingsBtn);
 
-            // Remove button (X icon)
+            item.onclick = function(e) {
+                e.stopPropagation();
+                if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
+            };
+
             const removeBtn = document.createElement('span');
-            removeBtn.innerHTML = '×';
-            removeBtn.style.cssText = 'cursor: pointer; opacity: 0.6; font-size: 18px; font-weight: bold; color: #f23645; margin-left: 4px; transition: all 0.2s; line-height: 1; display: flex; align-items: center; padding: 0 2px; pointer-events: auto;';
+            removeBtn.textContent = '×';
+            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#f23645;font-size:16px;font-weight:700;transition:background 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.opacity = '1';
-                removeBtn.style.transform = 'scale(1.2)';
+                removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
             };
             removeBtn.onmouseleave = function() {
-                removeBtn.style.opacity = '0.6';
-                removeBtn.style.transform = 'scale(1)';
-            };
-            item.appendChild(removeBtn);
-            
-            // Click handlers
-            const self = this;
-            const id = indicator.id;
-            
-            // Only the settings button is clickable for editing
-            settingsBtn.onclick = function(e) {
-                if (e) { e.preventDefault(); e.stopPropagation(); }
-                self.showIndicatorSettings(id);
-                return false;
+                removeBtn.style.background = 'transparent';
             };
             removeBtn.onclick = function(e) {
                 e.stopPropagation();
                 self.removeIndicator(id);
             };
-            
+            actions.appendChild(removeBtn);
+
+            item.appendChild(actions);
+            item.title = 'Click to edit, click "×" to remove';
             div.appendChild(item);
         }
 
@@ -3187,6 +3245,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         const self = this;
         // Use accent color cached by applyChartSettings — avoids getComputedStyle in the hot render path
         const accentColor = this._cachedAccentColor || '#2962ff';
+        const chip = getTalariaChipStyles();
 
         indicators.forEach(function(indicator, idx) {
             if (indicator.type === 'volume' || indicator.isVolume) return;
@@ -3197,41 +3256,36 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             const label   = indicator._displayLabel  || '';
             const visible = indicator.visible !== false;
 
-            // Pill container — same style as OHLC overlay indicator items
+            // Pill container — same size & chrome as OHLC / ADX bar
             const bar = document.createElement('div');
             bar.style.cssText = [
                 'position:absolute',
                 'top:' + (slotTop + 5) + 'px',
                 'left:' + (m.l + 6) + 'px',
-                'display:inline-flex',
-                'align-items:center',
-                'gap:4px',
-                'padding:4px 8px',
-                'border-radius:4px',
-                'background:rgba(255,255,255,0.05)',
-                'transition:background 0.2s',
-                'pointer-events:auto',
                 'z-index:10',
+                'pointer-events:auto',
                 'white-space:nowrap',
                 'user-select:none',
                 'font-family:Roboto,sans-serif'
-            ].join(';');
-            bar.onmouseenter = function() { bar.style.background = 'rgba(255,255,255,0.1)'; };
-            bar.onmouseleave = function() { bar.style.background = 'rgba(255,255,255,0.05)'; };
+            ].join(';') + ';' + chip.chipCss + ';margin:0;';
+            bar.onmouseenter = function() {
+                bar.style.background = chip.bgHover;
+                bar.style.borderColor = chip.borderHover;
+            };
+            bar.onmouseleave = function() {
+                bar.style.background = chip.bg;
+                bar.style.borderColor = 'rgba(255,255,255,0.08)';
+            };
 
-            // — dash in indicator color (same as OHLC style)
-            const dash = document.createElement('span');
-            dash.textContent = '—';
-            dash.style.cssText = 'color:' + color + ';font-size:14px;font-weight:700;line-height:1;flex-shrink:0;opacity:' + (visible ? '1' : '0.4') + ';';
-            bar.appendChild(dash);
+            const strip = document.createElement('span');
+            strip.style.cssText = chip.colorStrip(color) + 'opacity:' + (visible ? '1' : '0.4') + ';';
+            bar.appendChild(strip);
 
-            // Indicator name
             const nameEl = document.createElement('span');
             nameEl.textContent = indicator.name;
             nameEl.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.4') + ';';
             bar.appendChild(nameEl);
 
-            // Current value (after name, in indicator color)
             if (label) {
                 const valEl = document.createElement('span');
                 valEl.style.cssText = 'color:#d1d4dc;font-size:12px;margin-left:2px;';
@@ -3239,58 +3293,57 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
                 bar.appendChild(valEl);
             }
 
-            // Eye toggle — SVG icon
+            const actions = document.createElement('span');
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
+
             const eyeBtn = document.createElement('span');
             eyeBtn.title = visible ? 'Hide' : 'Show';
-            eyeBtn.style.cssText = 'cursor:pointer;color:#787b86;display:flex;align-items:center;line-height:0;padding:0 2px;margin-left:4px;';
+            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (visible ? '1' : '0.5') + ';';
             eyeBtn.innerHTML = visible
                 ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
                 : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-            eyeBtn.onmouseenter = function() { eyeBtn.style.color = '#d1d4dc'; };
-            eyeBtn.onmouseleave = function() { eyeBtn.style.color = '#787b86'; };
+            eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(120, 123, 134, 0.2)'; };
+            eyeBtn.onmouseleave = function() { eyeBtn.style.background = 'transparent'; };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
                 indicator.visible = (indicator.visible === false) ? true : false;
                 self._updateIndicatorPanelHeight();
                 if (typeof self.render === 'function') self.render();
             };
-            bar.appendChild(eyeBtn);
+            actions.appendChild(eyeBtn);
 
-            // Pencil / edit settings button (matches screenshot)
             const setBtn = document.createElement('span');
             setBtn.title = 'Settings';
-            setBtn.style.cssText = 'cursor:pointer;color:#787b86;font-size:14px;font-weight:bold;padding:0 4px;border-radius:3px;transition:all 0.2s;display:inline-block;line-height:1;';
+            setBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
             setBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             setBtn.onmouseenter = function() {
                 setBtn.style.color = '#ffffff';
                 setBtn.style.background = accentColor;
-                setBtn.style.transform = 'scale(1.1)';
             };
             setBtn.onmouseleave = function() {
                 setBtn.style.color = '#787b86';
                 setBtn.style.background = 'transparent';
-                setBtn.style.transform = 'scale(1)';
             };
             setBtn.onclick = function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(indicator.id);
             };
-            bar.appendChild(setBtn);
+            actions.appendChild(setBtn);
 
-            // × remove button — matches OHLC style exactly
             const delBtn = document.createElement('span');
-            delBtn.innerHTML = '&times;';
+            delBtn.textContent = '×';
             delBtn.title = 'Remove indicator';
-            delBtn.style.cssText = 'cursor:pointer;opacity:0.6;font-size:18px;font-weight:bold;color:#f23645;margin-left:4px;transition:all 0.2s;line-height:1;display:flex;align-items:center;padding:0 2px;pointer-events:auto;';
-            delBtn.onmouseenter = function() { delBtn.style.opacity = '1'; delBtn.style.transform = 'scale(1.2)'; };
-            delBtn.onmouseleave = function() { delBtn.style.opacity = '0.6'; delBtn.style.transform = 'scale(1)'; };
+            delBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#f23645;font-size:16px;font-weight:700;transition:background 0.2s;';
+            delBtn.onmouseenter = function() { delBtn.style.background = 'rgba(242, 54, 69, 0.18)'; };
+            delBtn.onmouseleave = function() { delBtn.style.background = 'transparent'; };
             delBtn.onclick = function(e) {
                 e.stopPropagation();
                 if (typeof self.removeIndicator === 'function') self.removeIndicator(indicator.id);
             };
-            bar.appendChild(delBtn);
+            actions.appendChild(delBtn);
 
+            bar.appendChild(actions);
             overlay.appendChild(bar);
         });
     };
