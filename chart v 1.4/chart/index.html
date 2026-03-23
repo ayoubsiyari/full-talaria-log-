@@ -46520,6 +46520,8 @@ function showIndicatorsMenu() {
 
                 applyPanelHeight(PANEL_COLLAPSED_H, true);
 
+                if (window._spResizeChart) window._spResizeChart(304);
+
             }
 
 
@@ -46533,6 +46535,8 @@ function showIndicatorsMenu() {
                 document.body.classList.remove('replay-tabs-collapsed');
 
                 applyPanelHeight(getPanelH(), true);
+
+                if (window._spResizeChart) window._spResizeChart(304);
 
             }
 
