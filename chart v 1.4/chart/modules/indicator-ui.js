@@ -509,7 +509,7 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
 
     const palette = document.createElement('div');
     palette.className = 'indicator-color-palette';
-    previewWrapper.appendChild(palette);
+    document.body.appendChild(palette);
 
     const valueLabel = document.createElement('span');
     valueLabel.className = 'indicator-color-value';
@@ -713,7 +713,11 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         container,
         input: hiddenInput,
         close,
-        contains: (target) => container.contains(target)
+        contains: (target) => container.contains(target) || palette.contains(target),
+        destroy: () => {
+            palette.classList.remove('active');
+            if (palette.parentElement) palette.parentElement.removeChild(palette);
+        }
     };
 }
 
@@ -1181,6 +1185,11 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     const closeAllPalettes = () => {
         colorControls.forEach(control => control.close());
     };
+    const destroyAllPalettes = () => {
+        colorControls.forEach(control => {
+            if (typeof control.destroy === 'function') control.destroy();
+        });
+    };
 
     def.params.forEach(param => {
         const wrapper = document.createElement('div');
@@ -1262,7 +1271,10 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     panel.appendChild(form);
 
     const handleOutsideClick = (event) => {
-        if (!panel.contains(event.target)) {
+        const clickedInsideColorControl = colorControls.some(control =>
+            typeof control.contains === 'function' && control.contains(event.target)
+        );
+        if (!panel.contains(event.target) && !clickedInsideColorControl) {
             closeAllPalettes();
         }
     };
@@ -1280,6 +1292,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
         closeAllPalettes();
+        destroyAllPalettes();
         backdrop.remove();
         panel.remove();
     };
