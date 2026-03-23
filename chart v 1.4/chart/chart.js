@@ -11783,6 +11783,23 @@ class Chart {
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const mode = detectCursorMode(mx, my);
+
+            // Start separate indicator panel resize when dragging a panel separator.
+            if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
+                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
+                if (resizeHandle && typeof this.startSeparatePanelResize === 'function' && this.startSeparatePanelResize(resizeHandle, my)) {
+                    this.drag.active = true;
+                    this.drag.type = 'separatePanelResize';
+                    this.drag.startX = e.clientX;
+                    this.drag.startY = e.clientY;
+                    this.drag.lastX = e.clientX;
+                    this.drag.lastY = e.clientY;
+                    this.canvas.style.cursor = 'ns-resize';
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                    e.preventDefault();
+                    return;
+                }
+            }
             
             // Unlock axes IMMEDIATELY if clicking on them - before any other processing
             // Skip if we're currently processing a double-click event
@@ -11903,6 +11920,8 @@ class Chart {
                     dragCursor = 'ew-resize';
                 } else if (this.drag.type === 'pan') {
                     dragCursor = this.cursorType === 'dot' ? 'none' : 'move';
+                } else if (this.drag.type === 'separatePanelResize') {
+                    dragCursor = 'ns-resize';
                 }
                 if (dragCursor !== null) {
                     this.canvas.style.cursor = dragCursor;
@@ -12012,10 +12031,27 @@ class Chart {
                     }
                     this.scheduleRender();
                 }
+                // ─── Separate panel resize ───
+                else if (this.drag.type === 'separatePanelResize') {
+                    if (typeof this.updateSeparatePanelResize === 'function') {
+                        this.updateSeparatePanelResize(my);
+                        this.scheduleRender();
+                    }
+                }
                 
                 this.drag.lastX = e.clientX;
                 this.drag.lastY = e.clientY;
             } else {
+                if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
+                    const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
+                    if (resizeHandle) {
+                        this.canvas.style.cursor = 'ns-resize';
+                        if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                        this.updateCrosshair(e);
+                        this.updateTooltip(e);
+                        return;
+                    }
+                }
                 // Update cursor based on mode
                 const mode = detectCursorMode(mx, my);
                 this.cursor.mode = mode;
@@ -12124,6 +12160,13 @@ class Chart {
                         }
                     });
                 }
+            }
+            // Persist separate panel sizes once drag ends
+            else if (dragType === 'separatePanelResize' && wasDragging) {
+                if (typeof this.finishSeparatePanelResize === 'function') {
+                    this.finishSeparatePanelResize();
+                }
+                this.scheduleRender();
             }
             
             // Reset states
