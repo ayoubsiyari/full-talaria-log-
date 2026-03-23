@@ -218,6 +218,7 @@ function ensureIndicatorColorStyles(panel) {
             align-items: center;
             gap: 12px;
             position: relative;
+            margin-left: auto;
         }
         #indicatorSettingsPanel .indicator-color-preview-wrapper {
             position: relative;
@@ -226,13 +227,15 @@ function ensureIndicatorColorStyles(panel) {
         #indicatorSettingsPanel .indicator-color-preview {
             width: 28px;
             height: 28px;
-            border-radius: 4px;
-            border: 2px solid #363a45;
+            border-radius: 6px;
+            border: 1px solid var(--sp-input-border, rgba(255,255,255,0.14));
             cursor: pointer;
-            transition: border-color 0.2s;
+            transition: transform 0.15s, box-shadow 0.15s, border-color 0.2s;
         }
         #indicatorSettingsPanel .indicator-color-preview:hover {
-            border-color: #2962ff;
+            border-color: rgba(var(--sp-accent-rgb, 41,98,255), 0.8);
+            transform: scale(1.08);
+            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb, 41,98,255), 0.35);
         }
         #indicatorSettingsPanel .indicator-color-value {
             color: #d1d4dc;
@@ -245,7 +248,8 @@ function ensureIndicatorColorStyles(panel) {
             top: calc(100% + 8px);
             left: 50%;
             transform: translateX(-50%);
-            background: #2a2e39;
+            background: var(--sp-ui-chrome-bg, #131722);
+            border: 1px solid var(--sp-input-border, rgba(255,255,255,0.14));
             border-radius: 8px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
             padding: 16px;
@@ -1148,16 +1152,11 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     def.params.forEach(param => {
         const wrapper = document.createElement('div');
-        wrapper.style.display = 'flex';
-        wrapper.style.justifyContent = 'space-between';
-        wrapper.style.alignItems = 'center';
-        wrapper.style.padding = '3px 0';
+        wrapper.className = 'settings-input-row';
 
         const label = document.createElement('label');
+        label.className = 'settings-input-label';
         label.textContent = param.label;
-        label.style.fontSize = '12px';
-        label.style.color = 'var(--sp-text-muted, #787b86)';
-        label.style.fontFamily = "'Roboto', -apple-system, sans-serif";
         wrapper.appendChild(label);
 
         let input;
@@ -1166,18 +1165,12 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         if (param.type === 'number') {
             input = document.createElement('input');
             input.type = 'number';
+            input.className = 'settings-input';
             input.value = currentValue;
             input.min = param.min || 1;
             if (param.max) input.max = param.max;
             if (param.step) input.step = param.step;
-            input.style.width = '80px';
-            input.style.padding = '4px 8px';
-            input.style.borderRadius = '5px';
-            input.style.border = '1px solid var(--sp-input-border, rgba(42,46,57,0.55))';
-            input.style.background = 'var(--sp-input-bg, rgba(30,34,45,0.72))';
-            input.style.color = 'var(--sp-text, #d1d4dc)';
-            input.style.textAlign = 'right';
-            input.style.fontFamily = "'Roboto', -apple-system, sans-serif";
+            input.style.width = '160px';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1201,15 +1194,10 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         } else if (param.type === 'time') {
             input = document.createElement('input');
             input.type = 'time';
+            input.className = 'settings-input';
             input.value = currentValue || param.default;
-            input.style.width = '90px';
-            input.style.padding = '4px 8px';
-            input.style.borderRadius = '5px';
-            input.style.border = '1px solid var(--sp-input-border, rgba(42,46,57,0.55))';
-            input.style.background = 'var(--sp-input-bg, rgba(30,34,45,0.72))';
-            input.style.color = 'var(--sp-text, #d1d4dc)';
+            input.style.width = '160px';
             input.style.cursor = 'pointer';
-            input.style.fontFamily = "'Roboto', -apple-system, sans-serif";
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1229,15 +1217,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             }
             input = document.createElement('input');
             input.type = 'text';
+            input.className = 'settings-input';
             input.value = currentValue;
-            input.style.width = '120px';
-            input.style.padding = '4px 8px';
-            input.style.borderRadius = '5px';
-            input.style.border = '1px solid var(--sp-input-border, rgba(42,46,57,0.55))';
-            input.style.background = 'var(--sp-input-bg, rgba(30,34,45,0.72))';
-            input.style.color = 'var(--sp-text, #d1d4dc)';
-            input.style.textAlign = 'right';
-            input.style.fontFamily = "'Roboto', -apple-system, sans-serif";
+            input.style.width = '160px';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1256,26 +1238,11 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     // Buttons
     const buttonWrapper = document.createElement('div');
-    buttonWrapper.style.display = 'flex';
-    buttonWrapper.style.gap = '10px';
-    buttonWrapper.style.marginTop = '15px';
+    buttonWrapper.className = 'settings-actions';
 
     const saveBtn = document.createElement('button');
-    saveBtn.style.cssText = `
-        background: var(--sp-accent, #2962ff);
-        color: #ffffff;
-        border: none;
-        border-radius: 5px;
-        padding: 8px 18px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.15s;
-        font-family: 'Roboto', -apple-system, sans-serif;
-    `;
+    saveBtn.className = 'settings-btn settings-btn-save';
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
-    saveBtn.onmouseenter = () => { saveBtn.style.background = `rgba(var(--sp-accent-rgb, 41,98,255), 0.8)`; };
-    saveBtn.onmouseleave = () => { saveBtn.style.background = 'var(--sp-accent, #2962ff)'; };
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
         closeAllPalettes();
@@ -1360,21 +1327,8 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     };
 
     const cancelBtn = document.createElement('button');
-    cancelBtn.style.cssText = `
-        background: var(--sp-ui-surface-bg, #1e2740);
-        color: var(--sp-text, #d1d4dc);
-        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        border-radius: 5px;
-        padding: 8px 16px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.15s;
-        font-family: 'Roboto', -apple-system, sans-serif;
-    `;
+    cancelBtn.className = 'settings-btn settings-btn-close';
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))'; };
-    cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'var(--sp-ui-surface-bg, #1e2740)'; };
     cancelBtn.onclick = () => {
         closePanel();
     };
