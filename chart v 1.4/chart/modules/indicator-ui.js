@@ -647,7 +647,11 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
 
     const positionPalette = () => {
         const rect = preview.getBoundingClientRect();
-        const panelRect = panel.getBoundingClientRect();
+        // `panel` is not in scope here — resolve the modal from DOM (same id as createIndicatorSettingsPanel).
+        const settingsPanelEl = document.getElementById('indicatorSettingsPanel');
+        const panelRect = settingsPanelEl
+            ? settingsPanelEl.getBoundingClientRect()
+            : { left: 0, top: 0, width: 400, height: 400 };
         const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
         const vh = window.innerHeight || document.documentElement.clientHeight || 720;
         const paletteWidth = Math.min(320, vw - 16);
