@@ -647,16 +647,23 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
 
     const positionPalette = () => {
         const rect = preview.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
         const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
         const vh = window.innerHeight || document.documentElement.clientHeight || 720;
         const paletteWidth = Math.min(320, vw - 16);
-        const estimatedHeight = 220;
-        let left = rect.left + rect.width / 2 - paletteWidth / 2;
-        let top = rect.bottom + 8;
+        const estimatedHeight = 260;
+        const anchorLeft = Number.isFinite(rect.left) ? rect.left : panelRect.left + panelRect.width * 0.5;
+        const anchorTop = Number.isFinite(rect.top) ? rect.top : panelRect.top + 80;
+        const anchorWidth = Number.isFinite(rect.width) ? rect.width : 24;
+        const anchorBottom = Number.isFinite(rect.bottom) ? rect.bottom : (anchorTop + 24);
+        let left = anchorLeft + anchorWidth / 2 - paletteWidth / 2;
+        let top = anchorBottom + 8;
         left = Math.max(8, Math.min(left, vw - paletteWidth - 8));
         if (top + estimatedHeight > vh - 8) {
-            top = Math.max(8, rect.top - estimatedHeight - 8);
+            top = Math.max(8, anchorTop - estimatedHeight - 8);
         }
+        palette.style.right = 'auto';
+        palette.style.bottom = 'auto';
         palette.style.left = `${left}px`;
         palette.style.top = `${top}px`;
         palette.style.width = `${paletteWidth}px`;
@@ -1260,12 +1267,11 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     // Buttons
     const buttonWrapper = document.createElement('div');
     buttonWrapper.className = 'settings-actions';
-    buttonWrapper.style.justifyContent = 'flex-end';
+    buttonWrapper.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:15px;padding:0;';
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'settings-btn settings-btn-save';
-    saveBtn.style.flex = '0 0 auto';
-    saveBtn.style.minWidth = '150px';
+    saveBtn.style.cssText = 'flex:0 0 auto;min-width:150px;width:auto;padding:10px 22px;';
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
@@ -1352,8 +1358,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'settings-btn settings-btn-close';
-    cancelBtn.style.flex = '0 0 auto';
-    cancelBtn.style.minWidth = '130px';
+    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;padding:10px 22px;';
     cancelBtn.textContent = 'Cancel';
     cancelBtn.onclick = () => {
         closePanel();
