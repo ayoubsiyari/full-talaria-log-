@@ -40133,7 +40133,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260323_SEP_PANEL_AXIS_V135"></script>
+    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V136"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
@@ -54208,6 +54208,8 @@ var P={};
 
 function ch(){ return (window.getActiveChart&&window.getActiveChart())||window.chart||window.mainChart||null; }
 
+function getUnifiedSel(chart){if(!chart)return null;if(typeof chart.getActiveUnifiedThemeId==='function')return chart.getActiveUnifiedThemeId();return null;}
+
 function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} }
 
 function set(k,v){ var c=ch(); if(!c)return; c.chartSettings=c.chartSettings||{}; c.chartSettings[k]=v; apply(); }
@@ -54529,11 +54531,11 @@ P['template']={title:'Template',build:function(){
 
         var cv=ch();if(!cv)return;
 
-        if(typeof cv.applyTemplate==='function'){
+        if(typeof cv.applyUnifiedThemeTemplate==='function'){
 
-            var defTpl=(swList.find(function(t){return t.id==='talaria-dark';})||swList[0]);
+            var defTpl=(swList.find(function(t){return t.id==='tradingview-dark';})||swList[0]);
 
-            if(defTpl)cv.applyTemplate(defTpl.id);
+            if(defTpl)cv.applyUnifiedThemeTemplate(defTpl.id);
 
         }
 
@@ -54567,10 +54569,10 @@ P['symbol']={title:'Symbol',build:function(){
 
     var swList=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];
     function _tDots(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';}
-    function _tMkdd(id,items,selId){var sel=items.find(function(t){return t.id===selId;})||null;var ti=sel?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+sel.name+'</span>'+_tDots(sel):'<span style="flex:1;font-size:12px;color:#787b86;">— Select Template —</span>';var o='';items.forEach(function(t){var a=selId===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?'rgba(255,255,255,0.08)':'transparent')+';"><span style="flex:1;font-size:12px;color:'+(a?'#fff':'#d1d4dc')+';">'+t.name+'</span>'+_tDots(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';}//<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';
+    function _tMkdd(id,items,selId){var sel=items.find(function(t){return t.id===selId;})||null;var ti=sel?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+sel.name+'</span>'+_tDots(sel):'<span style="flex:1;font-size:12px;color:#787b86;">— Select Template —</span>';var o='';var lastG='';items.forEach(function(t){if(t.group&&t.group!==lastG){o+='<div style="padding:6px 10px 2px;font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:0.05em;">'+t.group+'</div>';lastG=t.group;}var a=selId===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?'rgba(255,255,255,0.08)':'transparent')+';"><span style="flex:1;font-size:12px;color:'+(a?'#fff':'#d1d4dc')+';">'+t.name+'</span>'+_tDots(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';}//<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';
     function _tCard(icon,title,desc,ddId,list,selId){return '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'+icon+'<div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">'+title+'</div><div style="font-size:11px;color:#787b86;margin-top:2px;">'+desc+'</div></div></div>'+_tMkdd(ddId,list,selId)+'</div>';}
 
-    var templateSec=sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Choose a preset to quickly update colors.</p>'+_tCard('<span style="width:28px;height:28px;border-radius:50%;background:#2962ff;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>','Chart Colors','Candles, grid, crosshair only','tl_chart_dd',swList,c._lastChartOnlyTemplate||null));
+    var templateSec=sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Six synced themes (2 dark, 2 light, 2 colorful). Same list as Appearance — updates chart and panel together.</p>'+_tCard('<span style="width:28px;height:28px;border-radius:50%;background:#2962ff;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>','Color theme','Chart + panel & sidebar','tl_chart_dd',swList,getUnifiedSel(c)));
 
     if(isCandleType){
 
@@ -54714,12 +54716,12 @@ P['symbol']={title:'Symbol',build:function(){
 
     wChk('symTitle',function(v){set('symbolTitle',v);});wDD('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symClr',function(v){set('symbolTextColor',v);});
 
-    (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];function _sdd(id,meth,prop){var trig=document.getElementById(id+'_trig');var pnl=document.getElementById(id+'_panel');if(!trig||!pnl)return;var pendingSel=null;var originalState=null;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});opt.addEventListener('mouseleave',function(){var cv2=ch();this.style.background=(cv2&&cv2[prop]===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;pendingSel=tid;originalState=cv2[prop];var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';var m=sl.find(function(s){return s.id===tid;});if(m){if(typeof cv2[meth]==='function')cv2[meth](tid);}showTemplateConfirmation(m.name,meth,prop,tid,originalState,originalChartSettings);});});}
-        _sdd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate');
-        _sdd('tl_talaria_dd','applyTemplate','_lastTemplateSelected');
+    (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];function _wireUnifiedDd(id){var trig=document.getElementById(id+'_trig');var pnl=document.getElementById(id+'_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});opt.addEventListener('mouseleave',function(){var cv2=ch();var us=getUnifiedSel(cv2);this.style.background=(us===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;pnl.style.display='none';if(typeof cv2.applyUnifiedThemeTemplate==='function')cv2.applyUnifiedThemeTemplate(tid);var tps=document.getElementById('sl_sp_theme_preset');if(tps)tps.value=tid;});});}
+        _wireUnifiedDd('tl_chart_dd');
+        _wireUnifiedDd('tl_talaria_dd');
     })();
 
-    (function(){var rb=document.getElementById('btn_tpl_reset');if(!rb)return;rb.onmouseenter=function(){this.style.background='rgba(255,255,255,0.07)';};rb.onmouseleave=function(){this.style.background='transparent';};rb.addEventListener('click',function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];if(typeof cv.applyTemplate==='function'){var defTpl=(sl.find(function(t){return t.id==='talaria-dark';})||sl[0]);if(defTpl)cv.applyTemplate(defTpl.id);}loadSection('symbol');});})();
+    (function(){var rb=document.getElementById('btn_tpl_reset');if(!rb)return;rb.onmouseenter=function(){this.style.background='rgba(255,255,255,0.07)';};rb.onmouseleave=function(){this.style.background='transparent';};rb.addEventListener('click',function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];if(typeof cv.applyUnifiedThemeTemplate==='function'){var defTpl=(sl.find(function(t){return t.id==='tradingview-dark';})||sl[0]);if(defTpl)cv.applyUnifiedThemeTemplate(defTpl.id);}loadSection('symbol');});})();
 
 }};
 
@@ -54829,23 +54831,23 @@ P['canvas']={title:'Canvas',build:function(){
 
         '<div class="settings-input-row" style="padding-top:4px;">'+
 
-            '<span class="settings-input-label">Full theme preset</span>'+
+            '<span class="settings-input-label">Theme preset (synced)</span>'+
 
-            '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:152px;">'+
+            '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:200px;">'+
 
                 '<option value="">Custom</option>'+
 
-                '<option value="ocean-blue">Ocean Blue</option>'+
+                '<option value="tradingview-dark">Dark — TradingView</option>'+
 
-                '<option value="emerald">Emerald</option>'+
+                '<option value="binance">Dark — Binance</option>'+
 
-                '<option value="midnight-purple">Midnight Purple</option>'+
+                '<option value="tradingview-light">Light — TradingView</option>'+
 
-                '<option value="crimson">Crimson</option>'+
+                '<option value="nordic">Light — Nordic</option>'+
 
-                '<option value="gold">Gold</option>'+
+                '<option value="sunset">Colorful — Sunset</option>'+
 
-                '<option value="carbon">Carbon</option>'+
+                '<option value="neon">Colorful — Neon</option>'+
 
             '</select>'+
 
@@ -54873,7 +54875,7 @@ P['canvas']={title:'Canvas',build:function(){
 
         row('Scale lines', scaleLinesBtn))+
 
-    (function(){var pL=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);function _d(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';}function _m(id,it,sel){var s=it.find(function(t){return t.id===sel;})||null;var ti=s?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+s.name+'</span>'+_d(s):'<span style="flex:1;font-size:12px;color:#787b86;">\u2014 Select Template \u2014</span>';var o='';it.forEach(function(t){var a=sel===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?'rgba(255,255,255,0.08)':'transparent')+';">'+'<span style="flex:1;font-size:12px;color:'+(a?'#fff':'#d1d4dc')+';">'+t.name+'</span>'+_d(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div>';}return sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Choose a preset to quickly update colors.</p>'+'<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="width:28px;height:28px;border-radius:8px;background:#f23645;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">Panel &amp; Sidebar</div><div style="font-size:11px;color:#787b86;margin-top:2px;">UI chrome only, chart untouched</div></div></div>'+_m('tl_panel_dd',pL,c._lastPanelOnlyTemplate||null)+'</div>');})();
+    (function(){var pL=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);function _d(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';}function _m(id,it,sel){var s=it.find(function(t){return t.id===sel;})||null;var ti=s?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+s.name+'</span>'+_d(s):'<span style="flex:1;font-size:12px;color:#787b86;">\u2014 Select Template \u2014</span>';var o='';var lastG='';it.forEach(function(t){if(t.group&&t.group!==lastG){o+='<div style="padding:6px 10px 2px;font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:0.05em;">'+t.group+'</div>';lastG=t.group;}var a=sel===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?'rgba(255,255,255,0.08)':'transparent')+';">'+'<span style="flex:1;font-size:12px;color:'+(a?'#fff':'#d1d4dc')+';">'+t.name+'</span>'+_d(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div>';}return sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Six synced themes — same list as the Chart tab.</p>'+'<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="width:28px;height:28px;border-radius:8px;background:#f23645;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">Color theme</div><div style="font-size:11px;color:#787b86;margin-top:2px;">Updates chart and panel together</div></div></div>'+_m('tl_panel_dd',pL,getUnifiedSel(c))+'</div>');})();
 
 },wire:function(){
 
@@ -54885,7 +54887,7 @@ P['canvas']={title:'Canvas',build:function(){
 
             c._lastTemplateSelected=null;c._lastChartOnlyTemplate=null;c._lastPanelOnlyTemplate=null;
 
-            if(c.chartSettings){c.chartSettings.activeFullTemplate=null;c.chartSettings.activeChartOnlyTemplate=null;c.chartSettings.activePanelOnlyTemplate=null;}
+            if(c.chartSettings){c.chartSettings.activeFullTemplate=null;c.chartSettings.activeChartOnlyTemplate=null;c.chartSettings.activePanelOnlyTemplate=null;c.chartSettings.activeUnifiedTheme=null;}
 
             // Update dropdown displays to show "Custom"
 
@@ -54987,63 +54989,29 @@ P['canvas']={title:'Canvas',build:function(){
 
 
 
-    // Full theme presets
-
-    var UI_THEMES={
-
-        'talaria-dark':   {accent:'#2962ff',secondary:'#7b61ff',text:'#e0e3ea',bg:'#050028',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(42,46,57,0.6)',backgroundColor:'#050028',scaleLinesColor:'rgba(120,123,134,0.5)'},
-
-        'talaria-light':  {accent:'#1a56db',secondary:'#6d28d9',text:'#131722',bg:'#f5f6fa',bodyUp:'#089981',bodyDown:'#e53935',gridColor:'rgba(0,0,0,0.1)',backgroundColor:'#f5f6fa',scaleLinesColor:'rgba(42,46,57,0.35)'},
-
-        'ocean-blue':     {accent:'#00bcd4',secondary:'#0288d1',text:'#e0ffff',bg:'#0a1929',bodyUp:'#00bcd4',bodyDown:'#ff6e40',gridColor:'rgba(0,188,212,0.12)',backgroundColor:'#071a2b',scaleLinesColor:'rgba(0,188,212,0.35)'},
-
-        'emerald':        {accent:'#00e676',secondary:'#00bfa5',text:'#e8f5e9',bg:'#0d1f0d',bodyUp:'#00e676',bodyDown:'#ff1744',gridColor:'rgba(0,230,118,0.12)',backgroundColor:'#0a1a0a',scaleLinesColor:'rgba(0,230,118,0.3)'},
-
-        'midnight-purple':{accent:'#9c27b0',secondary:'#7b61ff',text:'#f3e5f5',bg:'#0d0516',bodyUp:'#7c4dff',bodyDown:'#ff4081',gridColor:'rgba(156,39,176,0.15)',backgroundColor:'#0a0412',scaleLinesColor:'rgba(156,39,176,0.4)'},
-
-        'crimson':        {accent:'#f23645',secondary:'#ff6b35',text:'#ffe0e0',bg:'#1a0505',bodyUp:'#089981',bodyDown:'#f23645',gridColor:'rgba(242,54,69,0.12)',backgroundColor:'#160303',scaleLinesColor:'rgba(242,54,69,0.35)'},
-
-        'gold':           {accent:'#f5c518',secondary:'#ff9800',text:'#fff9e0',bg:'#1a1500',bodyUp:'#f5c518',bodyDown:'#e53935',gridColor:'rgba(245,197,24,0.12)',backgroundColor:'#150f00',scaleLinesColor:'rgba(245,197,24,0.3)'},
-
-        'carbon':         {accent:'#90a4ae',secondary:'#78909c',text:'#eceff1',bg:'#1a1a1a',bodyUp:'#80cbc4',bodyDown:'#ef9a9a',gridColor:'rgba(144,164,174,0.12)',backgroundColor:'#121212',scaleLinesColor:'rgba(144,164,174,0.35)'}
-
-    };
+    // Full theme preset — same 6 unified themes as Chart tab (chart + panel together)
 
     var themePresetSel=document.getElementById('sl_sp_theme_preset');
 
     if(themePresetSel){
 
+        (function(){
+
+            var c0=ch();
+
+            var uid=c0&&typeof c0.getActiveUnifiedThemeId==='function'?c0.getActiveUnifiedThemeId():'';
+
+            themePresetSel.value=uid||'';
+
+        })();
+
         themePresetSel.addEventListener('change',function(){
 
             var v=this.value;if(!v)return;
 
-            var t=UI_THEMES[v];if(!t)return;
-
             var c=ch();if(!c)return;
 
-            var cs=c.chartSettings=c.chartSettings||{};
-
-            if(t.accent){cs.settingsPanelAccentColor=t.accent;var s=document.getElementById('sw_sp_acc');if(s){s.style.background=t.accent;s.dataset.color=t.accent;}}
-
-            if(t.secondary){cs.settingsPanelSecondaryColor=t.secondary;var s2=document.getElementById('sw_sp_sec');if(s2){s2.style.background=t.secondary;s2.dataset.color=t.secondary;}}
-
-            if(t.text){cs.settingsPanelTextColor=t.text;var s3=document.getElementById('sw_sp_text');if(s3){s3.style.background=t.text;s3.dataset.color=t.text;}}
-
-            if(t.bg){cs.settingsPanelBgColor=t.bg;cs.settingsPanelSidebarBgColor=t.bg;var s4=document.getElementById('sw_sp_bg');if(s4){s4.style.background=t.bg;s4.dataset.color=t.bg;}}
-
-            if(t.bodyUp){cs.bodyUpColor=t.bodyUp;cs.wickUpColor=t.bodyUp;cs.borderUpColor=t.bodyUp;}
-
-            if(t.bodyDown){cs.bodyDownColor=t.bodyDown;cs.wickDownColor=t.bodyDown;cs.borderDownColor=t.bodyDown;}
-
-            if(t.gridColor)cs.gridColor=t.gridColor;
-
-            if(t.backgroundColor){cs.backgroundColor=t.backgroundColor;if(c.canvas)c.canvas.style.backgroundColor=t.backgroundColor;}
-
-            if(t.scaleLinesColor)cs.scaleLinesColor=t.scaleLinesColor;
-
-            apply();
-
-            try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(cs));}
+            if(typeof c.applyUnifiedThemeTemplate==='function')c.applyUnifiedThemeTemplate(v);
 
         });
 
@@ -55118,7 +55086,7 @@ P['canvas']={title:'Canvas',build:function(){
 
     });
 
-        (function(){var cv=ch();if(!cv)return;var pL=typeof cv.getPanelTemplateSwatches==='function'?cv.getPanelTemplateSwatches():(typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[]);var trig=document.getElementById('tl_panel_dd_trig');var pnl=document.getElementById('tl_panel_dd_panel');if(!trig||!pnl)return;var pendingSel=null;var originalState=null;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});opt.addEventListener('mouseleave',function(){var cv2=ch();this.style.background=(cv2&&cv2._lastPanelOnlyTemplate===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;pendingSel=tid;originalState=cv2._lastPanelOnlyTemplate;var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';var m=pL.find(function(s){return s.id===tid;});if(m){if(typeof cv2.applyPanelOnlyTemplate==='function')cv2.applyPanelOnlyTemplate(tid);}showTemplateConfirmation(m.name,'applyPanelOnlyTemplate','_lastPanelOnlyTemplate',tid,originalState,originalChartSettings);});});})();
+        (function(){var cv=ch();if(!cv)return;var trig=document.getElementById('tl_panel_dd_trig');var pnl=document.getElementById('tl_panel_dd_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});opt.addEventListener('mouseleave',function(){var cv2=ch();var us=getUnifiedSel(cv2);this.style.background=(us===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;pnl.style.display='none';if(typeof cv2.applyUnifiedThemeTemplate==='function')cv2.applyUnifiedThemeTemplate(tid);var tps=document.getElementById('sl_sp_theme_preset');if(tps)tps.value=tid;});});})();
 
 }};
 

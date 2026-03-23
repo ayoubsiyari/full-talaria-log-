@@ -4659,7 +4659,12 @@ class Chart {
                 symbolTextColor: '#131722',
                 crosshairColor: 'rgba(120, 123, 134, 0.3)',
                 cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#131722',
-                volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)'
+                volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
+                settingsPanelBgColor: '#ffffff',
+                settingsPanelSidebarBgColor: '#f5f6fa',
+                settingsPanelAccentColor: '#2962ff',
+                settingsPanelSecondaryColor: '#089981',
+                settingsPanelTextColor: '#131722'
             },
             'binance': {
                 name: 'Binance',
@@ -5175,6 +5180,15 @@ class Chart {
 
         this._lastTemplateSelected = resolvedName;
         this.chartSettings.activeFullTemplate = resolvedName;
+        if (this.isUnifiedThemeTemplateId(resolvedName)) {
+            this.chartSettings.activeUnifiedTheme = resolvedName;
+            this._lastChartOnlyTemplate = resolvedName;
+            this._lastPanelOnlyTemplate = resolvedName;
+            this.chartSettings.activeChartOnlyTemplate = resolvedName;
+            this.chartSettings.activePanelOnlyTemplate = resolvedName;
+        } else if (this.chartSettings) {
+            this.chartSettings.activeUnifiedTheme = null;
+        }
         try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: resolvedName, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
 
         // Apply all template settings to chartSettings
@@ -5296,31 +5310,67 @@ class Chart {
         this.showNotification(`Panel template "${template.name}" applied ✓`);
     }
 
-    getPanelTemplateSwatches() {
-        const PANEL_KEYS = ['settingsPanelAccentColor','settingsPanelBgColor','settingsPanelSidebarBgColor','settingsPanelSecondaryColor','settingsPanelTextColor'];
+    /** Six presets (2 dark, 2 light, 2 colorful) — chart + panel stay in sync. */
+    getUnifiedThemeOrder() {
+        return [
+            { id: 'tradingview-dark', group: 'Dark' },
+            { id: 'binance', group: 'Dark' },
+            { id: 'tradingview-light', group: 'Light' },
+            { id: 'nordic', group: 'Light' },
+            { id: 'sunset', group: 'Colorful' },
+            { id: 'neon', group: 'Colorful' }
+        ];
+    }
+
+    isUnifiedThemeTemplateId(id) {
+        return this.getUnifiedThemeOrder().some((e) => e.id === id);
+    }
+
+    getUnifiedThemeSwatches() {
         const templates = this.getChartTemplates();
-        return Object.entries(templates)
-            .filter(([,t]) => PANEL_KEYS.some(k => t[k] !== undefined))
-            .map(([id, t]) => ({
+        return this.getUnifiedThemeOrder().map(({ id, group }) => {
+            const t = templates[id];
+            if (!t) return null;
+            return {
                 id,
                 name: t.name || id,
+                group,
                 bg: t.settingsPanelBgColor || t.backgroundColor || '#1e222d',
                 accent: t.settingsPanelAccentColor || '#2962ff',
-                up: t.settingsPanelSecondaryColor || t.bodyUpColor || '#089981',
-                down: t.bodyDownColor || t.settingsPanelTextColor || '#f23645'
-            }));
+                up: t.bodyUpColor || '#089981',
+                down: t.bodyDownColor || '#f23645'
+            };
+        }).filter(Boolean);
+    }
+
+    getActiveUnifiedThemeId() {
+        const ids = new Set(this.getUnifiedThemeOrder().map((e) => e.id));
+        if (this.chartSettings && this.chartSettings.activeUnifiedTheme && ids.has(this.chartSettings.activeUnifiedTheme)) {
+            return this.chartSettings.activeUnifiedTheme;
+        }
+        if (this._lastChartOnlyTemplate === this._lastPanelOnlyTemplate && ids.has(this._lastChartOnlyTemplate)) {
+            return this._lastChartOnlyTemplate;
+        }
+        if (this._lastTemplateSelected && ids.has(this._lastTemplateSelected)) {
+            return this._lastTemplateSelected;
+        }
+        return null;
+    }
+
+    applyUnifiedThemeTemplate(templateId) {
+        if (!this.isUnifiedThemeTemplateId(templateId)) {
+            console.warn('Not a unified theme id:', templateId);
+            return;
+        }
+        this.applyTemplate(templateId);
+    }
+
+    getPanelTemplateSwatches() {
+        return this.getUnifiedThemeSwatches();
     }
 
     getTalariaTemplateSwatches() {
-        const templates = this.getChartTemplates();
-        return Object.entries(templates).map(([id, t]) => ({
-            id,
-            name: t.name || id,
-            bg: t.backgroundColor || '#1e222d',
-            accent: t.settingsPanelAccentColor || t.bodyUpColor || '#2962ff',
-            up: t.bodyUpColor || '#089981',
-            down: t.bodyDownColor || '#f23645'
-        }));
+        return this.getUnifiedThemeSwatches();
     }
 
     resetChartSettingsToDefault() {
@@ -5328,6 +5378,7 @@ class Chart {
         this._lastTemplateSelected = null;
         this._lastChartOnlyTemplate = null;
         this._lastPanelOnlyTemplate = null;
+        if (this.chartSettings) this.chartSettings.activeUnifiedTheme = null;
         try { localStorage.removeItem('chart_active_tpl'); } catch(e) {}
         try {
             localStorage.removeItem('chartSettings');
