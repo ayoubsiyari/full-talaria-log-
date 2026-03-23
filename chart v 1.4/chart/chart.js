@@ -5180,11 +5180,32 @@ class Chart {
         this._lastChartOnlyTemplate = templateName;
         this.chartSettings.activeChartOnlyTemplate = templateName;
         try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || null, chartOnly: templateName, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
-        Object.keys(template).forEach(key => {
-            if (key !== 'name' && !PANEL_KEYS.has(key)) {
-                this.chartSettings[key] = template[key];
-            }
-        });
+        const chartKeys = Object.keys(template).filter(k => k !== 'name' && !PANEL_KEYS.has(k));
+        if (chartKeys.length > 0) {
+            chartKeys.forEach(key => { this.chartSettings[key] = template[key]; });
+        } else {
+            // Panel-only template: derive chart colors from panel settings
+            const bg  = template.settingsPanelBgColor       || '#1e222d';
+            const up  = template.settingsPanelSecondaryColor || '#089981';
+            const acc = template.settingsPanelAccentColor    || '#2962ff';
+            const txt = template.settingsPanelTextColor      || '#d1d4dc';
+            const dn  = '#f23645'; // keep standard bearish red
+            this.chartSettings.backgroundColor      = bg;
+            this.chartSettings.bodyUpColor          = up;
+            this.chartSettings.borderUpColor        = up;
+            this.chartSettings.wickUpColor          = up;
+            this.chartSettings.volumeUpColor        = up + '80';
+            this.chartSettings.bodyDownColor        = dn;
+            this.chartSettings.borderDownColor      = dn;
+            this.chartSettings.wickDownColor        = dn;
+            this.chartSettings.volumeDownColor      = dn + '80';
+            this.chartSettings.scaleTextColor       = txt;
+            this.chartSettings.symbolTextColor      = txt;
+            this.chartSettings.crosshairColor       = acc + '66';
+            this.chartSettings.cursorLabelBgColor   = acc;
+            this.chartSettings.cursorLabelTextColor = bg;
+            this.chartSettings.gridColor            = bg + '60';
+        }
         if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
         this.applyChartSettings();
         this.showNotification(`Chart template "${template.name}" applied ✓`);
@@ -5208,11 +5229,25 @@ class Chart {
         this._lastPanelOnlyTemplate = templateName;
         this.chartSettings.activePanelOnlyTemplate = templateName;
         try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
-        PANEL_KEYS.forEach(key => {
-            if (template[key] !== undefined) {
-                this.chartSettings[key] = template[key];
-            }
-        });
+        const hasPanelKeys = PANEL_KEYS.some(k => template[k] !== undefined);
+        if (hasPanelKeys) {
+            PANEL_KEYS.forEach(key => {
+                if (template[key] !== undefined) {
+                    this.chartSettings[key] = template[key];
+                }
+            });
+        } else {
+            // Chart-only template: derive panel colors from chart settings
+            const bg  = template.backgroundColor  || '#1e222d';
+            const up  = template.bodyUpColor       || '#089981';
+            const acc = template.bodyDownColor     || '#f23645';
+            const txt = template.scaleTextColor    || '#d1d4dc';
+            this.chartSettings.settingsPanelBgColor        = bg;
+            this.chartSettings.settingsPanelSidebarBgColor = bg;
+            this.chartSettings.settingsPanelSecondaryColor = up;
+            this.chartSettings.settingsPanelAccentColor    = acc;
+            this.chartSettings.settingsPanelTextColor      = txt;
+        }
         if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
         this.applyChartSettings();
         this.showNotification(`Panel template "${template.name}" applied ✓`);
