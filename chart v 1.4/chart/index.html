@@ -11629,15 +11629,15 @@
 
             padding: 8px 20px;
 
-            background: #ffffff;
+            background: rgba(var(--sp-accent-rgb), 0.12);
 
-            border: 1px solid #e0e3eb;
+            border: 1px solid rgba(var(--sp-accent-rgb), 0.25);
 
             border-radius: 4px;
 
             font-size: 14px;
 
-            color: #050028;
+            color: var(--sp-accent);
 
             cursor: default;
 
@@ -11647,7 +11647,7 @@
 
         .overlay-btn-cancel:hover {
 
-            background: #f0f3fa;
+            background: rgba(var(--sp-accent-rgb), 0.18);
 
         }
 
@@ -18471,11 +18471,11 @@
 
             border-radius: 50%;
 
-            background: #7c3aed;
+            background: var(--sp-accent);
 
             cursor: default;
 
-            box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25);
+            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.25);
 
             transition: transform 0.15s ease, box-shadow 0.15s ease;
 
@@ -18491,13 +18491,13 @@
 
             border-radius: 50%;
 
-            background: #7c3aed;
+            background: var(--sp-accent);
 
             cursor: default;
 
             border: none;
 
-            box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25);
+            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.25);
 
             transition: transform 0.15s ease, box-shadow 0.15s ease;
 
@@ -18511,7 +18511,7 @@
 
             transform: scale(1.15);
 
-            box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.35);
+            box-shadow: 0 0 0 4px rgba(var(--sp-accent-rgb), 0.35);
 
         }
 
@@ -18597,7 +18597,7 @@
 
             background: rgba(78, 91, 126, 0.6);
 
-            border-color: rgba(0, 188, 212, 0.3);
+            border-color: rgba(var(--sp-accent-rgb), 0.3);
 
         }
 
@@ -18609,9 +18609,9 @@
 
             background: #050028;
 
-            border-color: #00bcd4;
+            border-color: var(--sp-accent);
 
-            box-shadow: 0 0 10px rgba(0, 188, 212, 0.4);
+            box-shadow: 0 0 10px rgba(var(--sp-accent-rgb), 0.4);
 
         }
 
@@ -19315,9 +19315,9 @@
 
         .datetime-btn-cancel {
 
-            background: transparent;
+            background: rgba(var(--sp-accent-rgb), 0.12);
 
-            color: #6b7280;
+            color: var(--sp-accent);
 
         }
 
@@ -19325,7 +19325,7 @@
 
         .datetime-btn-ok {
 
-            background: #5b21ff;
+            background: var(--sp-accent);
 
             color: #ffffff;
 
@@ -28105,11 +28105,11 @@
 
         .alert-modal-btn.cancel {
 
-            background: transparent;
+            background: rgba(var(--sp-accent-rgb), 0.12);
 
-            color: #8f98ba;
+            color: var(--sp-accent);
 
-            border: 1px solid var(--sp-ui-border, #363a45);
+            border: 1px solid rgba(var(--sp-accent-rgb), 0.25);
 
         }
 
@@ -28137,7 +28137,7 @@
 
         .alert-modal-btn.primary:hover {
 
-            background: rgba(var(--sp-accent-rgb, 41, 98, 255), 0.85);
+            background: rgba(var(--sp-accent-rgb), 0.85);
 
             transform: translateY(-1px);
 
@@ -54286,7 +54286,7 @@ function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><di
 
 function savebtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:var(--sp-accent);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">'+label+'</button>'; }
 
-function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:transparent;color:var(--sp-text-muted,#787b86);border:1px solid var(--sp-input-border,rgba(255,255,255,0.1));border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
+function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:rgba(var(--sp-accent-rgb),0.12);color:var(--sp-accent);border:1px solid rgba(var(--sp-accent-rgb),0.25);border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
 
 function toHex(c){ if(!c)return '#000000'; if(/^#[0-9a-f]{6}$/i.test(c))return c; var m=String(c).match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/); if(m)return '#'+[m[1],m[2],m[3]].map(function(n){return('0'+parseInt(n).toString(16)).slice(-2);}).join(''); return '#000000'; }
 
