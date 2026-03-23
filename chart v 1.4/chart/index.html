@@ -40133,7 +40133,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V141"></script>
+    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V143"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
@@ -54967,7 +54967,9 @@ P['canvas']={title:'Canvas',build:function(){
 
     return sec(st('THEME')+
 
-        '<div class="settings-input-row" style="padding-top:4px;">'+
+        '<p style="color:#787b86;font-size:11px;margin:0 0 10px;line-height:1.45;">Apply a full built-in or custom template to the chart and this panel. For manual colors, use <strong>Panel colors</strong> below.</p>'+
+
+        '<div class="settings-input-row" style="padding-top:2px;">'+
 
             '<span class="settings-input-label">Theme preset (all — chart + panel)</span>'+
 
@@ -54975,7 +54977,11 @@ P['canvas']={title:'Canvas',build:function(){
 
             themePresetInner+
 
-        '</div>'+
+        '</div>')+
+
+    sec(st('PANEL COLORS')+
+
+        '<p style="color:#787b86;font-size:11px;margin:0 0 8px;line-height:1.45;">Panel background, accents, and text for the settings sidebar and UI chrome.</p>'+
 
         clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
 
