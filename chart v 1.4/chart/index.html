@@ -46552,6 +46552,8 @@ function showIndicatorsMenu() {
 
                 collapseToggle.addEventListener('click', () => {
 
+                    if (window.closePanel) window.closePanel();
+
                     if (panelExpanded) { collapsePanel(); } else { expandPanel(); }
 
                 });
