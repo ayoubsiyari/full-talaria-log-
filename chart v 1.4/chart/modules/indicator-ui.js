@@ -243,7 +243,8 @@ function ensureIndicatorColorStyles(panel) {
             font-weight: 500;
             min-width: 90px;
         }
-        #indicatorSettingsPanel .indicator-color-palette {
+        /* Palette is appended to document.body (avoids transform offset bugs). Styles must NOT depend on #indicatorSettingsPanel ancestor. */
+        .indicator-color-palette {
             position: fixed;
             top: 0;
             left: 0;
@@ -256,19 +257,19 @@ function ensureIndicatorColorStyles(panel) {
             display: none;
             flex-direction: column;
             gap: 12px;
-            z-index: 10001;
+            z-index: 100000;
             min-width: 280px;
             max-width: min(92vw, 340px);
         }
-        #indicatorSettingsPanel .indicator-color-palette.active {
+        .indicator-color-palette.active {
             display: flex;
         }
-        #indicatorSettingsPanel .indicator-color-grid {
+        .indicator-color-palette .indicator-color-grid {
             display: grid;
             grid-template-columns: repeat(10, 1fr);
             gap: 4px;
         }
-        #indicatorSettingsPanel .indicator-color-swatch {
+        .indicator-color-palette .indicator-color-swatch {
             width: 22px;
             height: 22px;
             border-radius: 3px;
@@ -276,28 +277,28 @@ function ensureIndicatorColorStyles(panel) {
             border: 2px solid transparent;
             transition: all 0.15s;
         }
-        #indicatorSettingsPanel .indicator-color-swatch:hover {
+        .indicator-color-palette .indicator-color-swatch:hover {
             transform: scale(1.1);
             border-color: #ffffff;
         }
-        #indicatorSettingsPanel .indicator-color-swatch.selected {
+        .indicator-color-palette .indicator-color-swatch.selected {
             border-color: #ffffff;
             box-shadow: 0 0 0 1px #2a2e39, 0 0 0 3px #ffffff;
         }
-        #indicatorSettingsPanel .indicator-color-divider {
+        .indicator-color-palette .indicator-color-divider {
             height: 1px;
             background: #3a3e49;
         }
-        #indicatorSettingsPanel .indicator-color-recent {
+        .indicator-color-palette .indicator-color-recent {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        #indicatorSettingsPanel .indicator-color-recent-items {
+        .indicator-color-palette .indicator-color-recent-items {
             display: flex;
             gap: 6px;
         }
-        #indicatorSettingsPanel .indicator-color-add {
+        .indicator-color-palette .indicator-color-add {
             width: 22px;
             height: 22px;
             border-radius: 3px;
@@ -311,26 +312,26 @@ function ensureIndicatorColorStyles(panel) {
             font-size: 18px;
             transition: all 0.15s;
         }
-        #indicatorSettingsPanel .indicator-color-add:hover {
+        .indicator-color-palette .indicator-color-add:hover {
             background: #4a4e59;
             border-color: #7a7e89;
             color: #ffffff;
         }
-        #indicatorSettingsPanel .indicator-color-opacity {
+        .indicator-color-palette .indicator-color-opacity {
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
-        #indicatorSettingsPanel .indicator-color-opacity-label {
+        .indicator-color-palette .indicator-color-opacity-label {
             color: #8a8e99;
             font-size: 12px;
         }
-        #indicatorSettingsPanel .indicator-color-opacity-control {
+        .indicator-color-palette .indicator-color-opacity-control {
             display: flex;
             align-items: center;
             gap: 12px;
         }
-        #indicatorSettingsPanel .indicator-color-opacity-slider {
+        .indicator-color-palette .indicator-color-opacity-slider {
             flex: 1;
             -webkit-appearance: none;
             appearance: none;
@@ -340,7 +341,7 @@ function ensureIndicatorColorStyles(panel) {
             outline: none;
             cursor: pointer;
         }
-        #indicatorSettingsPanel .indicator-color-opacity-slider::-webkit-slider-thumb {
+        .indicator-color-palette .indicator-color-opacity-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
             width: 16px;
@@ -351,7 +352,7 @@ function ensureIndicatorColorStyles(panel) {
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
-        #indicatorSettingsPanel .indicator-color-opacity-slider::-moz-range-thumb {
+        .indicator-color-palette .indicator-color-opacity-slider::-moz-range-thumb {
             width: 16px;
             height: 16px;
             border-radius: 50%;
@@ -360,7 +361,7 @@ function ensureIndicatorColorStyles(panel) {
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
-        #indicatorSettingsPanel .indicator-color-opacity-value {
+        .indicator-color-palette .indicator-color-opacity-value {
             color: #ffffff;
             font-size: 14px;
             font-weight: 500;
