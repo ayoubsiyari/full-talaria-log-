@@ -54551,10 +54551,6 @@ P['symbol']={title:'Symbol',build:function(){
 
     var extraSec='';
 
-    var priceLineSec=sec(st('PRICE LINE')+
-
-        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>');
-
     var areaSec=(type==='area')?sec(st('AREA COLORS')+clr('Line color','areaLC',aLC)+clr('Fill color','areaFC',aFC)):'';
 
     var baselineSec=(type==='baseline')?sec(st('BASELINE COLOR')+clr('Baseline color','blClr',blC)):'';
@@ -54577,9 +54573,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         selDD('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+
 
-        clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc')+
-
-        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>')+extraSec+templateSec
+        clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc'))+extraSec+templateSec
 
     +sec('<div style="text-align:center;padding:4px 0 2px;"><button id="btn_tpl_reset" type="button" style="padding:9px 20px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.18));border-radius:8px;background:transparent;color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;cursor:pointer;transition:background 0.15s;">Reset to Default Theme</button></div>');
 
