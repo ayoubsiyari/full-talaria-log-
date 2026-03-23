@@ -33704,7 +33704,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="template" onclick="event.stopPropagation();window._spLoad&&window._spLoad('template',this);">
+                <div class="sp-nav-item" data-settings="template" onclick="event.stopPropagation();window._spLoad&&window._spLoad('template',this);" style="display:none;">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
 
@@ -54345,15 +54345,7 @@ P['template']={title:'Template',build:function(){
 
     }
 
-    var resetHtml=sec(st('RESET')
-
-        +'<div style="text-align:center;padding:8px 0;">'
-
-        +'<button id="btn_tpl_reset" type="button" style="padding:9px 20px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.18));border-radius:8px;background:transparent;color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;cursor:pointer;transition:background 0.15s;">Reset to Default Theme</button>'
-
-        +'</div>');
-
-    return resetHtml;
+    return '<p style="color:#787b86;padding:20px 0;font-size:12px;">Use the Chart tab to apply and reset templates.</p>';
 
 },wire:function(){
 
@@ -54587,7 +54579,9 @@ P['symbol']={title:'Symbol',build:function(){
 
         clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc')+
 
-        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>')+extraSec+templateSec;
+        '<div class="tv-row">'+chk('Show price line','showPL',cs.showPriceLine!==false)+'<div class="tv-colors tv-colors--single">'+clr('','plClr',plC)+'</div></div>')+extraSec+templateSec
+
+    +sec('<div style="text-align:center;padding:4px 0 2px;"><button id="btn_tpl_reset" type="button" style="padding:9px 20px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.18));border-radius:8px;background:transparent;color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;cursor:pointer;transition:background 0.15s;">Reset to Default Theme</button></div>');
 
 },wire:function(){
 
@@ -54661,6 +54655,8 @@ P['symbol']={title:'Symbol',build:function(){
         _sdd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate');
         _sdd('tl_talaria_dd','applyTemplate','_lastTemplateSelected');
     })();
+
+    (function(){var rb=document.getElementById('btn_tpl_reset');if(!rb)return;rb.onmouseenter=function(){this.style.background='rgba(255,255,255,0.07)';};rb.onmouseleave=function(){this.style.background='transparent';};rb.addEventListener('click',function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];if(typeof cv.applyTemplate==='function'){var defTpl=(sl.find(function(t){return t.id==='talaria-dark';})||sl[0]);if(defTpl)cv.applyTemplate(defTpl.id);}loadSection('symbol');});})();
 
 }};
 
