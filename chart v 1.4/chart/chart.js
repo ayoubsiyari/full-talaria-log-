@@ -11105,8 +11105,15 @@ class Chart {
         this.ctx.setLineDash([]);
 
         // Price label on axis
-        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = this.getPriceDecimals(priceRange);
+        let decimals;
+        const _prec = this.chartSettings ? this.chartSettings.precision : 'Default';
+        if (_prec && _prec !== 'Default') {
+            const _parsed = parseInt(_prec, 10);
+            decimals = Number.isFinite(_parsed) ? Math.max(0, Math.min(8, _parsed)) : 4;
+        } else {
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            decimals = this.getPriceDecimals(priceRange);
+        }
         const priceText = price.toFixed(decimals);
         const labelH = 16;
         const labelX = axisLeft ? 2 : axisX + 2;
@@ -13975,12 +13982,19 @@ class Chart {
         
         if (priceLabel && this.yScale) {
             const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
-            // Format price with appropriate decimals
-            let decimals = 2;
-            if (price < 0.01) decimals = 6;
-            else if (price < 1) decimals = 5;
-            else if (price < 10) decimals = 4;
-            else if (price < 1000) decimals = 3;
+            // Format price with appropriate decimals — respect precision setting
+            let decimals;
+            const _xhPrec = this.chartSettings ? this.chartSettings.precision : 'Default';
+            if (_xhPrec && _xhPrec !== 'Default') {
+                const _parsed = parseInt(_xhPrec, 10);
+                decimals = Number.isFinite(_parsed) ? Math.max(0, Math.min(8, _parsed)) : 4;
+            } else {
+                if (price < 0.01) decimals = 6;
+                else if (price < 1) decimals = 5;
+                else if (price < 10) decimals = 4;
+                else if (price < 1000) decimals = 3;
+                else decimals = 2;
+            }
             priceLabel.textContent = price.toFixed(decimals);
             
             // Position label to match canvas current price label
