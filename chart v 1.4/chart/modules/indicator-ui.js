@@ -205,16 +205,15 @@ const INDICATOR_COLOR_ROWS = [
 
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
-/** Unified pill chip (OHLC row + separate panels) — same size & chrome as ADX-style bar */
+/** Indicator legend row (OHLC + separate panels) — TradingView-style: no chip background */
 const TALARIA_INDICATOR_CHIP_CSS =
-    'display:inline-flex;align-items:center;gap:6px;min-height:28px;max-height:28px;box-sizing:border-box;' +
-    'padding:0 10px;margin-right:8px;margin-bottom:4px;border-radius:6px;line-height:1;' +
-    'border:1px solid rgba(255,255,255,0.08);background:rgba(19,23,34,0.96);' +
-    'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);' +
-    'transition:background 0.2s,border-color 0.2s;cursor:pointer;vertical-align:middle;';
-const TALARIA_INDICATOR_CHIP_BG = 'rgba(19,23,34,0.96)';
-const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(42,46,57,0.98)';
-const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255,255,255,0.14)';
+    'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
+    'padding:0 4px;margin-right:8px;margin-bottom:4px;border-radius:0;line-height:1;' +
+    'border:none;background:transparent;' +
+    'cursor:pointer;vertical-align:middle;';
+const TALARIA_INDICATOR_CHIP_BG = 'transparent';
+const TALARIA_INDICATOR_CHIP_BG_HOVER = 'transparent';
+const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'transparent';
 const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
     'display:inline-block;width:14px;height:3px;border-radius:2px;background:' + color + ';flex-shrink:0;';
 
@@ -1466,7 +1465,7 @@ function setupIndicatorUI(chartInstance) {
             };
             item.onmouseleave = function() {
                 item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = 'rgba(255,255,255,0.08)';
+                item.style.borderColor = 'transparent';
             };
 
             // Color indicator
@@ -1885,7 +1884,7 @@ if (typeof Chart !== 'undefined') {
             };
             item.onmouseleave = function() {
                 item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = 'rgba(255,255,255,0.08)';
+                item.style.borderColor = 'transparent';
             };
 
             // Color indicator

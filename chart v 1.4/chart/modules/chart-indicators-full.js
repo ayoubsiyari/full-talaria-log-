@@ -13,20 +13,18 @@
     function attachIndicatorMethods() {
         const Chart = global.Chart;
 
-    /** Same pill chrome as indicator-ui.js (ADX-style bar); works before indicator-ui loads */
+    /** TradingView-style transparent legend — matches indicator-ui.js */
     function getTalariaChipStyles() {
         const w = global;
         const fallbackChip =
-            'display:inline-flex;align-items:center;gap:6px;min-height:28px;max-height:28px;box-sizing:border-box;' +
-            'padding:0 10px;margin-right:8px;margin-bottom:4px;border-radius:6px;line-height:1;' +
-            'border:1px solid rgba(255,255,255,0.08);background:rgba(19,23,34,0.96);' +
-            'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);' +
-            'transition:background 0.2s,border-color 0.2s;cursor:pointer;vertical-align:middle;';
+            'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
+            'padding:0 4px;margin-right:8px;margin-bottom:4px;border-radius:0;line-height:1;' +
+            'border:none;background:transparent;cursor:pointer;vertical-align:middle;';
         return {
             chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
-            bg: w.TALARIA_INDICATOR_CHIP_BG || 'rgba(19,23,34,0.96)',
-            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'rgba(42,46,57,0.98)',
-            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'rgba(255,255,255,0.14)',
+            bg: w.TALARIA_INDICATOR_CHIP_BG || 'transparent',
+            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'transparent',
+            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'transparent',
             colorStrip: w.TALARIA_INDICATOR_COLOR_STRIP || function(c) {
                 return 'display:inline-block;width:14px;height:3px;border-radius:2px;background:' + c + ';flex-shrink:0;';
             }
@@ -2642,7 +2640,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             };
             item.onmouseleave = function() {
                 item.style.background = chip.bg;
-                item.style.borderColor = 'rgba(255,255,255,0.08)';
+                item.style.borderColor = 'transparent';
             };
 
             const colorBox = document.createElement('span');
@@ -3274,7 +3272,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             };
             bar.onmouseleave = function() {
                 bar.style.background = chip.bg;
-                bar.style.borderColor = 'rgba(255,255,255,0.08)';
+                bar.style.borderColor = 'transparent';
             };
 
             const strip = document.createElement('span');
