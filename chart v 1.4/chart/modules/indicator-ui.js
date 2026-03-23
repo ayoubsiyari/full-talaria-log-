@@ -244,10 +244,10 @@ function ensureIndicatorColorStyles(panel) {
             min-width: 90px;
         }
         #indicatorSettingsPanel .indicator-color-palette {
-            position: absolute;
-            top: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
+            position: fixed;
+            top: 0;
+            left: 0;
+            transform: none;
             background: var(--sp-ui-chrome-bg, #131722);
             border: 1px solid var(--sp-input-border, rgba(255,255,255,0.14));
             border-radius: 8px;
@@ -258,6 +258,7 @@ function ensureIndicatorColorStyles(panel) {
             gap: 12px;
             z-index: 10001;
             min-width: 280px;
+            max-width: min(92vw, 340px);
         }
         #indicatorSettingsPanel .indicator-color-palette.active {
             display: flex;
@@ -644,6 +645,23 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         valueLabel.textContent = `${normalizeHex(baseColor)} • ${Math.round(opacity * 100)}%`;
     };
 
+    const positionPalette = () => {
+        const rect = preview.getBoundingClientRect();
+        const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+        const vh = window.innerHeight || document.documentElement.clientHeight || 720;
+        const paletteWidth = Math.min(320, vw - 16);
+        const estimatedHeight = 220;
+        let left = rect.left + rect.width / 2 - paletteWidth / 2;
+        let top = rect.bottom + 8;
+        left = Math.max(8, Math.min(left, vw - paletteWidth - 8));
+        if (top + estimatedHeight > vh - 8) {
+            top = Math.max(8, rect.top - estimatedHeight - 8);
+        }
+        palette.style.left = `${left}px`;
+        palette.style.top = `${top}px`;
+        palette.style.width = `${paletteWidth}px`;
+    };
+
     const close = () => {
         palette.classList.remove('active');
     };
@@ -653,6 +671,7 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         const wasActive = palette.classList.contains('active');
         closeAllPalettes();
         if (!wasActive) {
+            positionPalette();
             updateSliderGradient();
             updateSelectedSwatches();
             palette.classList.add('active');
@@ -664,6 +683,7 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         const wasActive = palette.classList.contains('active');
         closeAllPalettes();
         if (!wasActive) {
+            positionPalette();
             updateSliderGradient();
             updateSelectedSwatches();
             palette.classList.add('active');
@@ -1121,6 +1141,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         display: flex;
         flex-direction: column;
         font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+        overflow: visible;
     `;
 
     const title = document.createElement('div');
@@ -1239,9 +1260,12 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     // Buttons
     const buttonWrapper = document.createElement('div');
     buttonWrapper.className = 'settings-actions';
+    buttonWrapper.style.justifyContent = 'flex-end';
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'settings-btn settings-btn-save';
+    saveBtn.style.flex = '0 0 auto';
+    saveBtn.style.minWidth = '150px';
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
@@ -1328,6 +1352,8 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'settings-btn settings-btn-close';
+    cancelBtn.style.flex = '0 0 auto';
+    cancelBtn.style.minWidth = '130px';
     cancelBtn.textContent = 'Cancel';
     cancelBtn.onclick = () => {
         closePanel();
