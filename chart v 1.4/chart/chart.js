@@ -5145,6 +5145,11 @@ class Chart {
                 this.chartSettings[key] = template[key];
             }
         });
+
+        // If template doesn't define priceLineColor, derive it from the accent color
+        if (!template.priceLineColor && this.chartSettings.settingsPanelAccentColor) {
+            this.chartSettings.priceLineColor = this.chartSettings.settingsPanelAccentColor;
+        }
         
         // Refresh the current settings tab to show updated colors
         if (this.currentSettingsCategory) {
@@ -5179,6 +5184,10 @@ class Chart {
         const chartKeys = Object.keys(template).filter(k => k !== 'name' && !PANEL_KEYS.has(k));
         if (chartKeys.length > 0) {
             chartKeys.forEach(key => { this.chartSettings[key] = template[key]; });
+            // Sync priceLineColor with accent if not explicitly in template
+            if (!template.priceLineColor && this.chartSettings.settingsPanelAccentColor) {
+                this.chartSettings.priceLineColor = this.chartSettings.settingsPanelAccentColor;
+            }
         } else {
             // Panel-only template: derive chart colors from panel settings
             const bg  = template.settingsPanelBgColor       || '#1e222d';
