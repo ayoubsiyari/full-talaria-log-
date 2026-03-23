@@ -245,7 +245,8 @@ class Chart {
         this.cursor = {
             x: 0,
             y: 0,
-            mode: 'chart',               // 'chart', 'priceAxis', 'timeAxis'
+            mode: 'chart',               // 'chart', 'priceAxis', 'timeAxis', 'separatePanelAxis'
+            separatePanelSlot: null,     // slot hit on indicator pane price strip (from separatePanelInfo.panelSlots)
             dataIndex: 0,
             price: 0
         };
@@ -11543,8 +11544,19 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const detectCursorMode = (mx, my) => {
             const m = this.margin;
-            // Price axis (right side) - full width of price axis area
+            this.cursor.separatePanelSlot = null;
+            // Right margin: main price axis vs stacked indicator pane axes
             if (mx > this.w - m.r && my > m.t && my < this.h - m.b) {
+                const spi = this.separatePanelInfo;
+                if (spi && Array.isArray(spi.panelSlots)) {
+                    for (let si = 0; si < spi.panelSlots.length; si++) {
+                        const s = spi.panelSlots[si];
+                        if (my >= s.top && my <= s.bottom) {
+                            this.cursor.separatePanelSlot = s;
+                            return 'separatePanelAxis';
+                        }
+                    }
+                }
                 return 'priceAxis';
             // Time axis (bottom) - full height of time axis area
             } else if (my > this.h - m.b && mx > m.l && mx < this.w - m.r) {
@@ -11674,6 +11686,16 @@ class Chart {
 
             const priceLocked = this.priceScale && this.priceScale.locked;
             const timeLocked = this.timeScale && this.timeScale.locked;
+
+            // ─── Separate indicator pane (right strip) → vertical zoom for that pane only ───
+            if (this.cursor.mode === 'separatePanelAxis' &&
+                typeof this.applySeparatePanelAxisWheel === 'function') {
+                this.applySeparatePanelAxisWheel(priceZoomFactor, mx, my);
+                this.scheduleRender();
+                clearTimeout(this._wheelSaveTimer);
+                this._wheelSaveTimer = setTimeout(() => this.scheduleChartViewSave(), 600);
+                return;
+            }
 
             // ─── Price axis → vertical (price) zoom only (Ctrl/Meta disabled) ───
             if (this.cursor.mode === 'priceAxis') {
@@ -11809,7 +11831,7 @@ class Chart {
             } else if (mode === 'timeAxis' && this.timeScale.locked && !this._isDoubleClicking) {
                 this.timeScale.locked = false;
                 e.preventDefault();
-            } else if (mode === 'priceAxis' || mode === 'timeAxis') {
+            } else if (mode === 'priceAxis' || mode === 'timeAxis' || mode === 'separatePanelAxis') {
                 // Prevent text selection when dragging axes
                 e.preventDefault();
             }
@@ -11850,7 +11872,13 @@ class Chart {
             }
             
             // Set drag type based on cursor location
-            if (mode === 'priceAxis') {
+            if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot) {
+                this.drag.type = 'separatePanelAxis';
+                this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
+                this.isZooming = true;
+                this.canvas.style.cursor = 'ns-resize';
+                if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+            } else if (mode === 'priceAxis') {
                 this.drag.type = 'priceAxis';
                 this.autoScale = false;
                 this.priceScale.autoScale = false;
@@ -11914,7 +11942,7 @@ class Chart {
                 
                 // Keep cursor style consistent with drag type (sticky behavior)
                 let dragCursor = null;
-                if (this.drag.type === 'priceAxis') {
+                if (this.drag.type === 'priceAxis' || this.drag.type === 'separatePanelAxis') {
                     dragCursor = 'ns-resize';
                 } else if (this.drag.type === 'timeAxis') {
                     dragCursor = 'ew-resize';
@@ -11999,6 +12027,11 @@ class Chart {
                     this.dispatchScrollSync();
                 }
                 // ─── Price Axis Drag Zoom ───
+                else if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
+                    typeof this.separatePanelAxisDragStep === 'function') {
+                    this.separatePanelAxisDragStep(this.drag.separatePanelSlot, dy, my);
+                    this.scheduleRender();
+                }
                 else if (this.drag.type === 'priceAxis' && this.yScale) {
                     const sensitivity = 0.002;
                     const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
@@ -12059,8 +12092,12 @@ class Chart {
                 // Remove axis cursor classes first
                 this.canvas.classList.remove('cursor-price-axis', 'cursor-time-axis');
                 
-                if (mode === 'priceAxis') {
+                if (mode === 'priceAxis' || mode === 'separatePanelAxis') {
                     this.canvas.classList.add('cursor-price-axis');
+                    if (mode === 'separatePanelAxis') {
+                        this.canvas.style.cursor = 'ns-resize';
+                        if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                    }
                 } else if (mode === 'timeAxis') {
                     this.canvas.classList.add('cursor-time-axis');
                 } else if (this.tool) {
@@ -12172,6 +12209,7 @@ class Chart {
             // Reset states
             this.drag.active = false;
             this.drag.type = null;
+            this.drag.separatePanelSlot = null;
             this.boxZoom.active = false;
             this.movement.isDragging = false;
             this.isZooming = false;
@@ -12255,7 +12293,11 @@ class Chart {
                     const dx = e.clientX - this.drag.lastX;
                     const dy = e.clientY - this.drag.lastY;
 
-                    if (this.drag.type === 'priceAxis' && this.yScale) {
+                    if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
+                        typeof this.separatePanelAxisDragStep === 'function') {
+                        this.separatePanelAxisDragStep(this.drag.separatePanelSlot, dy, my);
+                        this.scheduleRender();
+                    } else if (this.drag.type === 'priceAxis' && this.yScale) {
                         const sensitivity = 0.002;
                         const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
                         const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
@@ -12327,6 +12369,14 @@ class Chart {
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const mode = this.cursor.mode || detectCursorMode(mx, my);
+            
+            if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot &&
+                this.cursor.separatePanelSlot.indicator) {
+                const ind = this.cursor.separatePanelSlot.indicator;
+                ind._panelAxis = { zoom: 1, offset: 0 };
+                this.scheduleRender();
+                return;
+            }
             
             if (mode === 'priceAxis') {
                 // Set flag to prevent unlock during this double-click

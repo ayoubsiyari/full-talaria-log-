@@ -17,8 +17,8 @@
     function getTalariaChipStyles() {
         const w = global;
         const fallbackChip =
-            'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-            'padding:0 4px;margin-right:8px;margin-bottom:4px;border-radius:0;line-height:1;' +
+            'display:inline-flex;align-items:center;gap:4px;min-height:18px;box-sizing:border-box;' +
+            'padding:0 2px;margin-right:6px;margin-bottom:2px;border-radius:0;line-height:1;' +
             'border:none;background:transparent;cursor:pointer;vertical-align:middle;';
         return {
             chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
@@ -26,7 +26,7 @@
             bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'transparent',
             borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'transparent',
             colorStrip: w.TALARIA_INDICATOR_COLOR_STRIP || function(c) {
-                return 'display:inline-block;width:14px;height:3px;border-radius:2px;background:' + c + ';flex-shrink:0;';
+                return 'display:inline-block;width:10px;height:2px;border-radius:1px;background:' + c + ';flex-shrink:0;';
             }
         };
     }
@@ -1951,6 +1951,12 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
+
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        min = dom.min;
+        max = dom.max;
         
         // Scale function for Y axis
         const scaleY = (val) => {
@@ -2199,6 +2205,77 @@ Chart.prototype.drawSeparatePanelCrosshair = function(ctx, m, panelTop, panelBot
     }
     
     ctx.textAlign = 'left';
+};
+
+/** Per-indicator Y zoom/pan for separate panels (right-axis drag / wheel). */
+Chart.prototype._ensureIndicatorPanelAxis = function(indicator) {
+    if (!indicator._panelAxis) indicator._panelAxis = { zoom: 1, offset: 0 };
+};
+
+/**
+ * Map auto-fit [baseMin, baseMax] to displayed domain using indicator._panelAxis.
+ * Bases are stored on indicator as _panelBaseMin / _panelBaseMax each render.
+ */
+Chart.prototype._applyIndicatorPanelDomain = function(baseMin, baseMax, indicator) {
+    this._ensureIndicatorPanelAxis(indicator);
+    const b0 = baseMin;
+    const b1 = baseMax;
+    if (!Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) {
+        return { min: b0, max: b1 };
+    }
+    const pa = indicator._panelAxis;
+    const z = Math.max(0.02, Math.min(200, pa.zoom || 1));
+    const mid = (b0 + b1) / 2 + (pa.offset || 0);
+    const span = (b1 - b0) / z;
+    return { min: mid - span / 2, max: mid + span / 2 };
+};
+
+/** Vertical drag on right margin over a separate indicator slot */
+Chart.prototype.separatePanelAxisDragStep = function(slot, dy, pointerY) {
+    const ind = slot.indicator;
+    const b0 = ind._panelBaseMin;
+    const b1 = ind._panelBaseMax;
+    if (b0 == null || b1 == null || !Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) return;
+    this._ensureIndicatorPanelAxis(ind);
+    const pa = ind._panelAxis;
+    const sensitivity = 0.002;
+    const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
+    const newZoom = Math.max(0.02, Math.min(200, pa.zoom * zoomFactor));
+    const baseSpan = b1 - b0;
+    const oldSpan = baseSpan / pa.zoom;
+    const newSpan = baseSpan / newZoom;
+    const rangeChange = newSpan - oldSpan;
+    const h = Math.max(1, slot.bottom - slot.top);
+    const cursorRatio = Math.max(0, Math.min(1, (pointerY - slot.top) / h));
+    const mid = (b0 + b1) / 2 + (pa.offset || 0);
+    const newMid = mid - rangeChange * (0.5 - cursorRatio);
+    pa.offset = newMid - (b0 + b1) / 2;
+    pa.zoom = newZoom;
+};
+
+/** Mouse wheel while cursor is over separate-pane price strip */
+Chart.prototype.applySeparatePanelAxisWheel = function(priceZoomFactor, mx, my) {
+    const slot = this.cursor && this.cursor.separatePanelSlot;
+    if (!slot || !slot.indicator) return;
+    const ind = slot.indicator;
+    const b0 = ind._panelBaseMin;
+    const b1 = ind._panelBaseMax;
+    if (b0 == null || b1 == null || !Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) return;
+    this._ensureIndicatorPanelAxis(ind);
+    const pa = ind._panelAxis;
+    const oldZoom = pa.zoom || 1;
+    const newZoom = Math.max(0.02, Math.min(200, oldZoom * priceZoomFactor));
+    if (newZoom === oldZoom) return;
+    const baseSpan = b1 - b0;
+    const oldSpan = baseSpan / oldZoom;
+    const newSpan = baseSpan / newZoom;
+    const rangeChange = newSpan - oldSpan;
+    const h = Math.max(1, slot.bottom - slot.top);
+    const cursorRatio = Math.max(0, Math.min(1, (my - slot.top) / h));
+    const mid = (b0 + b1) / 2 + (pa.offset || 0);
+    const newMid = mid - rangeChange * (0.5 - cursorRatio);
+    pa.offset = newMid - (b0 + b1) / 2;
+    pa.zoom = newZoom;
 };
 
 // Handle click on separate panel indicator to open settings
@@ -2650,19 +2727,19 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
 
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 12px; font-weight: 500; user-select: none; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 11px; font-weight: 500; user-select: none; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             nameSpan.title = indicator.name;
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:2px;flex-shrink:0;';
 
             const self = this;
             const id = indicator.id;
 
             const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
                 visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
@@ -2673,7 +2750,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             visibilityBtn.onclick = function(e) {
                 e.stopPropagation();
                 indicator.visible = indicator.visible === false ? true : false;
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+                visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
                 nameSpan.style.opacity = indicator.visible ? '1' : '0.5';
                 if (!indicator.visible) {
@@ -2700,8 +2777,8 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             actions.appendChild(visibilityBtn);
 
             const settingsBtn = document.createElement('span');
-            settingsBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
+            settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
@@ -2724,7 +2801,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
 
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#f23645;font-size:16px;font-weight:700;transition:background 0.2s;';
+            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#f23645;font-size:13px;font-weight:700;transition:background 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
                 removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
@@ -3094,6 +3171,10 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         if (min === Infinity) return;
         const range = max - min || 1;
         min -= range * 0.1; max += range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const domM = this._applyIndicatorPanelDomain(min, max, indicator);
+        min = domM.min; max = domM.max;
         const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - ((v - min) / (max - min)) * (panelHeight - 10);
 
         // Zero line
@@ -3141,7 +3222,13 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     Chart.prototype._renderStochPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data.k || !data.d) return;
         const kArr = data.k, dArr = data.d;
-        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - (v / 100) * (panelHeight - 10);
+        indicator._panelBaseMin = 0;
+        indicator._panelBaseMax = 100;
+        const domS = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const sMin = domS.min;
+        const sMax = domS.max;
+        const sSpan = Math.max(1e-9, sMax - sMin);
+        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
 
         [[80, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.3)'], [20, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
             const ry = scaleY(lvl);
@@ -3182,7 +3269,13 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             [adxArr[i], plusArr[i], minusArr[i]].forEach(v => { if (v !== null && !isNaN(v)) max = Math.max(max, v); });
         }
         max = Math.max(max * 1.1, 60);
-        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - (v / max) * (panelHeight - 10);
+        indicator._panelBaseMin = 0;
+        indicator._panelBaseMax = max;
+        const domA = this._applyIndicatorPanelDomain(0, max, indicator);
+        const aMin = domA.min;
+        const aMax = domA.max;
+        const aSpan = Math.max(1e-9, aMax - aMin);
+        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
 
         // 25 threshold line
         const thY = scaleY(25);
@@ -3281,25 +3374,25 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
 
             const nameEl = document.createElement('span');
             nameEl.textContent = indicator.name;
-            nameEl.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.4') + ';';
+            nameEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.4') + ';';
             bar.appendChild(nameEl);
 
             if (label) {
                 const valEl = document.createElement('span');
-                valEl.style.cssText = 'color:#d1d4dc;font-size:12px;margin-left:2px;';
+                valEl.style.cssText = 'color:#d1d4dc;font-size:11px;margin-left:2px;';
                 valEl.textContent = label;
                 bar.appendChild(valEl);
             }
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:2px;flex-shrink:0;';
 
             const eyeBtn = document.createElement('span');
             eyeBtn.title = visible ? 'Hide' : 'Show';
-            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (visible ? '1' : '0.5') + ';';
+            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (visible ? '1' : '0.5') + ';';
             eyeBtn.innerHTML = visible
-                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
-                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+                ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+                : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
             eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(120, 123, 134, 0.2)'; };
             eyeBtn.onmouseleave = function() { eyeBtn.style.background = 'transparent'; };
             eyeBtn.onclick = function(e) {
@@ -3312,8 +3405,8 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
 
             const setBtn = document.createElement('span');
             setBtn.title = 'Settings';
-            setBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
-            setBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            setBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
+            setBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             setBtn.onmouseenter = function() {
                 setBtn.style.color = '#ffffff';
                 setBtn.style.background = accentColor;
@@ -3332,7 +3425,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             const delBtn = document.createElement('span');
             delBtn.textContent = '×';
             delBtn.title = 'Remove indicator';
-            delBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;color:#f23645;font-size:16px;font-weight:700;transition:background 0.2s;';
+            delBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#f23645;font-size:13px;font-weight:700;transition:background 0.2s;';
             delBtn.onmouseenter = function() { delBtn.style.background = 'rgba(242, 54, 69, 0.18)'; };
             delBtn.onmouseleave = function() { delBtn.style.background = 'transparent'; };
             delBtn.onclick = function(e) {
