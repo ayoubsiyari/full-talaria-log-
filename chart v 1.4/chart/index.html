@@ -54823,68 +54823,6 @@ P['canvas']={title:'Canvas',build:function(){
 
                 chartDropdown.innerHTML='<span style="flex:1;font-size:12px;color:#787b86;">— Custom —</span><svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
 
-                // Re-attach click event to chart dropdown
-
-                chartDropdown.onclick=function(e){
-
-                    e.stopPropagation();
-
-                    var panel=document.getElementById('tl_chart_dd_panel');
-
-                    if(panel){
-
-                        var isOpen=panel.style.display!=='none';
-
-                        document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
-
-                        panel.style.display=isOpen?'none':'block';
-
-                        // Re-attach option click events
-
-                        var options=panel.querySelectorAll('.tl-dd-opt');
-
-                        options.forEach(function(opt){
-
-                            opt.onclick=function(e){
-
-                                e.stopPropagation();
-
-                                var cv=ch();
-
-                                if(!cv) return;
-
-                                var tid=this.dataset.tplid;
-
-                                if(!tid) return;
-
-                                var originalState=cv._lastChartOnlyTemplate;
-
-                                var originalChartSettings=cv.chartSettings?JSON.parse(JSON.stringify(cv.chartSettings)):null;
-
-                                panel.style.display='none';
-
-                                var m=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[].find(function(s){return s.id===tid;});
-
-                                if(m){
-
-                                    if(typeof cv.applyChartOnlyTemplate==='function') cv.applyChartOnlyTemplate(tid);
-
-                                    showTemplateConfirmation(m.name,'applyChartOnlyTemplate','_lastChartOnlyTemplate',tid,originalState,originalChartSettings);
-
-                                }
-
-                            };
-
-                            opt.onmouseenter=function(){this.style.background='rgba(255,255,255,0.08)';};
-
-                            opt.onmouseleave=function(){this.style.background='transparent';};
-
-                        });
-
-                    }
-
-                };
-
             }
 
             var panelDropdown=document.getElementById('tl_panel_dd_trig');
@@ -54892,70 +54830,6 @@ P['canvas']={title:'Canvas',build:function(){
             if(panelDropdown){
 
                 panelDropdown.innerHTML='<span style="flex:1;font-size:12px;color:#787b86;">— Custom —</span><svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
-
-                // Re-attach click event to panel dropdown
-
-                panelDropdown.onclick=function(e){
-
-                    e.stopPropagation();
-
-                    var panel=document.getElementById('tl_panel_dd_panel');
-
-                    if(panel){
-
-                        var isOpen=panel.style.display!=='none';
-
-                        document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
-
-                        panel.style.display=isOpen?'none':'block';
-
-                        // Re-attach option click events
-
-                        var options=panel.querySelectorAll('.tl-dd-opt');
-
-                        options.forEach(function(opt){
-
-                            opt.onclick=function(e){
-
-                                e.stopPropagation();
-
-                                var cv=ch();
-
-                                if(!cv) return;
-
-                                var tid=this.dataset.tplid;
-
-                                if(!tid) return;
-
-                                var originalState=cv._lastPanelOnlyTemplate;
-
-                                var originalChartSettings=cv.chartSettings?JSON.parse(JSON.stringify(cv.chartSettings)):null;
-
-                                panel.style.display='none';
-
-                                var panelTemplates=typeof cv.getPanelTemplateSwatches==='function'?cv.getPanelTemplateSwatches():[];
-
-                                var m=panelTemplates.find(function(s){return s.id===tid;});
-
-                                if(m){
-
-                                    if(typeof cv.applyPanelOnlyTemplate==='function') cv.applyPanelOnlyTemplate(tid);
-
-                                    showTemplateConfirmation(m.name,'applyPanelOnlyTemplate','_lastPanelOnlyTemplate',tid,originalState,originalChartSettings);
-
-                                }
-
-                            };
-
-                            opt.onmouseenter=function(){this.style.background='rgba(255,255,255,0.08)';};
-
-                            opt.onmouseleave=function(){this.style.background='transparent';};
-
-                        });
-
-                    }
-
-                };
 
             }
 
