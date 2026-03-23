@@ -4345,7 +4345,8 @@ class Chart {
             const textRgb = toRgbArray(textColor, [224, 227, 234]);
 
             // Derive muted text (mix text toward panel bg)
-            const textMutedRgb = mixRgb(textRgb, panelRgb, 0.52);
+            // Light panels need less mixing to keep labels readable
+            const textMutedRgb = mixRgb(textRgb, panelRgb, isLightPanel ? 0.22 : 0.52);
             // Input/button bg: slightly darker for light themes, slightly lighter for dark themes
             const inputBgRgb = isLightPanel
                 ? mixRgb(surfaceBg, [0, 0, 0], 0.06)
