@@ -10339,15 +10339,6 @@ class Chart {
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
         }
 
-        // Draw horizontal dotted line across entire chart
-        this.ctx.strokeStyle = bgColor;
-        this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([3, 3]); // Dotted line
-        this.ctx.beginPath();
-        this.ctx.moveTo(m.l, y);
-        this.ctx.lineTo(this.w - m.r, y);
-        this.ctx.stroke();
-        this.ctx.setLineDash([]); // Reset to solid line
     }
     
     /**
