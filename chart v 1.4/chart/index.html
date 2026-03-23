@@ -40133,7 +40133,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V139"></script>
+    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V141"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
@@ -54209,7 +54209,7 @@ var P={};
 function ch(){ return (window.getActiveChart&&window.getActiveChart())||window.chart||window.mainChart||null; }
 
 function getUnifiedSel(chart){if(!chart)return null;if(typeof chart.getActiveUnifiedThemeId==='function')return chart.getActiveUnifiedThemeId();return null;}
-function _syncThemePresetSelectFromChart(){var c=ch();var tps=document.getElementById('sl_sp_theme_preset');if(!tps||!c)return;var uid=typeof c.getActiveUnifiedThemeId==='function'?c.getActiveUnifiedThemeId():'';tps._ignoreThemeChange=true;tps.value=uid||'';setTimeout(function(){tps._ignoreThemeChange=false;},0);}
+function _syncThemePresetSelectFromChart(){var c=ch();var tps=document.getElementById('sl_sp_theme_preset');if(!tps||!c)return;var v=typeof c.getThemePresetSelectValue==='function'?c.getThemePresetSelectValue():((c._lastTemplateSelected||(c.chartSettings&&c.chartSettings.activeFullTemplate))||(typeof c.getActiveUnifiedThemeId==='function'?c.getActiveUnifiedThemeId():'')||'');tps._ignoreThemeChange=true;tps.value=v;setTimeout(function(){tps._ignoreThemeChange=false;},0);}
 
 function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} if(typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome(); }
 
@@ -54290,6 +54290,8 @@ window._spCddToggle=function(wrap){
 };
 
 document.addEventListener('click',function(e){if(!e.target.closest('.sp-cdd-wrap'))document.querySelectorAll('.sp-cdd-panel').forEach(function(p){p.style.display='none';});},true);
+
+document.addEventListener('click',function(e){var t=e.target;if(!t||typeof t.closest!=='function')return;if(t.closest('.tl-dd-wrap'))return;document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});},true);
 
 function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+safeVal+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+safeVal+';cursor:pointer;flex-shrink:0;margin-left:auto;margin-right:4px;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
 
@@ -54637,13 +54639,6 @@ P['template']={title:'Template',build:function(){
 
     }
 
-
-    document.addEventListener('click',function(){
-
-        document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
-
-    });
-
     var resetBtn=document.getElementById('btn_tpl_reset');
 
     if(resetBtn){resetBtn.addEventListener('click',function(){
@@ -54968,29 +54963,17 @@ P['canvas']={title:'Canvas',build:function(){
 
     var scaleLinesBtn='<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:0 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+slCol+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+slW+'" stroke-dasharray="'+slDash+'" stroke-linecap="round"/></svg></button>';
 
+    var themePresetInner=(c&&typeof c.getTemplateSelectorOptionsHtml==='function')?c.getTemplateSelectorOptionsHtml():'<option value="">Custom</option>';
+
     return sec(st('THEME')+
 
         '<div class="settings-input-row" style="padding-top:4px;">'+
 
-            '<span class="settings-input-label">Theme preset (global — instant)</span>'+
+            '<span class="settings-input-label">Theme preset (all — chart + panel)</span>'+
 
-            '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:200px;">'+
+            '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:min(100%,320px);min-width:200px;">'+
 
-                '<option value="">Custom</option>'+
-
-                '<option value="tradingview-dark">Dark — TradingView</option>'+
-
-                '<option value="binance">Dark — Binance</option>'+
-
-                '<option value="tradingview-light">Light — TradingView</option>'+
-
-                '<option value="nordic">Light — Nordic</option>'+
-
-                '<option value="sunset">Colorful — Sunset</option>'+
-
-                '<option value="neon">Colorful — Neon</option>'+
-
-            '</select>'+
+            themePresetInner+
 
         '</div>'+
 
@@ -55130,7 +55113,7 @@ P['canvas']={title:'Canvas',build:function(){
 
 
 
-    // Global theme preset — same 6 unified themes; applies chart + panel together, no confirmation
+    // Global theme preset — all built-in + custom templates (getTemplateSelectorOptionsHtml); full applyTemplate, no confirmation
 
     var themePresetSel=document.getElementById('sl_sp_theme_preset');
 
@@ -55140,7 +55123,7 @@ P['canvas']={title:'Canvas',build:function(){
 
             var c0=ch();
 
-            var uid=c0&&typeof c0.getActiveUnifiedThemeId==='function'?c0.getActiveUnifiedThemeId():'';
+            var uid=c0&&(typeof c0.getThemePresetSelectValue==='function'?c0.getThemePresetSelectValue():((c0._lastTemplateSelected||(c0.chartSettings&&c0.chartSettings.activeFullTemplate))||(typeof c0.getActiveUnifiedThemeId==='function'?c0.getActiveUnifiedThemeId():'')||''));
 
             themePresetSel._ignoreThemeChange=true;
 
@@ -55158,7 +55141,7 @@ P['canvas']={title:'Canvas',build:function(){
 
             var c=ch();if(!c)return;
 
-            if(typeof c.applyUnifiedThemeTemplate==='function')c.applyUnifiedThemeTemplate(v);
+            if(typeof c.applyTemplate==='function')c.applyTemplate(v);
 
             if(typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();
 

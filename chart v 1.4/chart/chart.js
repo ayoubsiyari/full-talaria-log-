@@ -5357,6 +5357,17 @@ class Chart {
         return null;
     }
 
+    /** Current full-template id for the Appearance theme preset dropdown (includes user:… ids). */
+    getThemePresetSelectValue() {
+        if (this._lastTemplateSelected) {
+            return this._lastTemplateSelected;
+        }
+        if (this.chartSettings && this.chartSettings.activeFullTemplate) {
+            return this.chartSettings.activeFullTemplate;
+        }
+        return this.getActiveUnifiedThemeId() || '';
+    }
+
     applyUnifiedThemeTemplate(templateId) {
         if (!this.isUnifiedThemeTemplateId(templateId)) {
             console.warn('Not a unified theme id:', templateId);
