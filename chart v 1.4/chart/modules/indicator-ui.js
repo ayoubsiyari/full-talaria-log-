@@ -965,7 +965,23 @@ function createIndicatorSelectionMenu(chartInstance) {
         item.onclick = () => {
             console.log('📊 Indicator clicked:', key, def.name);
             closeMenu();
-            createIndicatorSettingsPanel(chartInstance, key);
+            const defaultParams = {};
+            const defaultStyle = {};
+            def.params.forEach(param => {
+                if (param.default === undefined) return;
+                if (param.id.toLowerCase().includes('color') || param.id.toLowerCase().includes('width') || param.id.toLowerCase().includes('fill')) {
+                    defaultStyle[param.id] = param.default;
+                } else {
+                    defaultParams[param.id] = param.default;
+                }
+            });
+            let targetChart = chartInstance;
+            if (typeof targetChart.addIndicator !== 'function') {
+                targetChart = window.chart || window.mainChart;
+            }
+            if (targetChart && typeof targetChart.addIndicator === 'function') {
+                targetChart.addIndicator(key, { ...defaultParams, ...defaultStyle });
+            }
         };
 
         indicatorList.appendChild(item);
