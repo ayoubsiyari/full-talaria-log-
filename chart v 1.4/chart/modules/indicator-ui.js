@@ -328,6 +328,63 @@ const INDICATOR_DEFINITIONS = {
     }
 };
 
+/**
+ * Close chart type / toolbar dropdowns when opening indicator modals so two overlays never stack.
+ */
+function dismissToolbarDropdownsForModal() {
+    try {
+        const chartTypeDropdown = document.getElementById('chartTypeDropdown');
+        const chartTypeArrow = document.getElementById('chartTypeDropdownArrow');
+        if (chartTypeDropdown) chartTypeDropdown.classList.remove('show');
+        if (chartTypeArrow) chartTypeArrow.classList.remove('dropdown-open');
+
+        document.querySelectorAll('.tool-dropdown.show').forEach(function(dd) {
+            dd.classList.remove('show');
+            if (dd.id === 'visibility-toolbar-dropdown' || dd.id === 'delete-toolbar-dropdown') {
+                dd.style.display = 'none';
+            }
+        });
+        document.querySelectorAll('.tool-group-btn[data-group]').forEach(function(btn) {
+            btn.classList.remove('dropdown-open');
+        });
+        document.querySelectorAll('.cursor-dropdown-arrow, .dropdown-arrow').forEach(function(arr) {
+            arr.classList.remove('dropdown-open');
+        });
+
+        const timeframeDropdown = document.getElementById('timeframeDropdown');
+        const timeframeDropdownMenu = document.getElementById('timeframeDropdownMenu');
+        if (timeframeDropdownMenu) timeframeDropdownMenu.style.display = 'none';
+        if (timeframeDropdown) timeframeDropdown.classList.remove('open');
+
+        if (window.timeframeFavorites && typeof window.timeframeFavorites._closeTfFlyout === 'function') {
+            window.timeframeFavorites._closeTfFlyout();
+        }
+    } catch (err) {
+        /* ignore */
+    }
+}
+
+function closeIndicatorSelectionMenuIfOpen() {
+    try {
+        const menu = document.getElementById('indicatorSelectionMenu');
+        const backdrop = document.getElementById('indicatorMenuBackdrop');
+        if (menu && menu.classList.contains('visible')) {
+            menu.classList.remove('visible');
+        }
+        if (backdrop) {
+            backdrop.style.visibility = 'hidden';
+            backdrop.style.opacity = '0';
+        }
+    } catch (err) {
+        /* ignore */
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.dismissToolbarDropdownsForModal = dismissToolbarDropdownsForModal;
+    window.closeIndicatorSelectionMenuIfOpen = closeIndicatorSelectionMenuIfOpen;
+}
+
 const INDICATOR_COLOR_ROWS = [
     ['#FFFFFF', '#EBEBEB', '#D6D6D6', '#BFBFBF', '#A8A8A8', '#8F8F8F', '#757575', '#5C5C5C', '#434343', '#000000'],
     ['#FF4444', '#FF9500', '#FFEB3B', '#4CAF50', '#00BCD4', '#00E5FF', '#2962FF', '#7B68EE', '#E040FB', '#FF4081'],
@@ -1256,6 +1313,8 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         return;
     }
 
+    dismissToolbarDropdownsForModal();
+
     // Remove any existing panel and backdrop
     const existingPanel = document.getElementById('indicatorSettingsPanel');
     if (existingPanel) existingPanel.remove();
@@ -1555,6 +1614,7 @@ function setupIndicatorUI(chartInstance) {
         if (isVisible) {
             menu.classList.remove('visible');
         } else {
+            dismissToolbarDropdownsForModal();
             // Show centered menu (position is set in CSS)
             menu.classList.add('visible');
         }

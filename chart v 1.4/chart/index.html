@@ -40371,7 +40371,7 @@
 
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
 
-    <script defer src="modules/indicator-ui.js?v=20260323_INDICATORS_MENU_V15"></script>
+    <script defer src="modules/indicator-ui.js?v=20260323_MODAL_DISMISS_DROPDOWN_V16"></script>
 
     
 
@@ -52293,6 +52293,14 @@ function showIndicatorsMenu() {
                     if (timeframeDropdownMenu) timeframeDropdownMenu.style.display = 'none';
 
                     if (timeframeDropdown) timeframeDropdown.classList.remove('open');
+
+
+
+                    if (typeof window.closeIndicatorSelectionMenuIfOpen === 'function') {
+
+                        window.closeIndicatorSelectionMenuIfOpen();
+
+                    }
 
 
 

@@ -265,7 +265,8 @@
                     lowest = Math.min(lowest, data[i - j].l);
                 }
                 
-                const kValue = ((data[i].c - lowest) / (highest - lowest)) * 100;
+                const range = highest - lowest;
+                const kValue = range === 0 ? 50 : ((data[i].c - lowest) / range) * 100;
                 k.push(kValue);
             }
         }
@@ -875,7 +876,7 @@
 
     function calculateROC(data, period) {
         const out = [];
-        const p = Math.max(1, period);
+        const p = Math.max(2, period);
         for (let i = 0; i < data.length; i++) {
             if (i < p) {
                 out.push(null);
