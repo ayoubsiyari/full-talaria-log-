@@ -1829,14 +1829,14 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         panelHeights = this._separatePanelResize.activeHeights.slice();
     }
     const totalPanelHeight = panelHeights.reduce((sum, h) => sum + h, 0);
-    const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? 
-        (this.h - m.t - m.b) * this.volumeHeight : 0;
 
     // Track total height so calculateScales can reserve the right amount of space
     this.separateIndicatorPanelHeight = totalPanelHeight;
 
-    // Panel position: above volume, below price chart
-    const panelBottom = totalHeight - m.b - effectiveVolumeHeight;
+    // Bottom of the indicator stack is always the inner chart bottom (y = h - m.b), i.e. just above
+    // the time-axis margin — same as yScale/volumeScale layout in calculateScales().
+    // (Volume sits above this band; do NOT subtract volume height here — that misaligned slots.)
+    const panelBottom = totalHeight - m.b;
     const panelTop = panelBottom - totalPanelHeight;
     
     // Draw full panel background using the same chart background color
@@ -1849,6 +1849,12 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         '#131722';
     ctx.fillStyle = panelBackgroundColor;
     ctx.fillRect(m.l, panelTop, chartWidth, totalPanelHeight);
+
+    // Clip all indicator geometry to this stack so lines/labels never bleed into the time axis.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(m.l, panelTop, this.w - m.l, totalPanelHeight);
+    ctx.clip();
     
     // Outer top separator
     ctx.strokeStyle = '#363a45';
@@ -1958,10 +1964,13 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         min = dom.min;
         max = dom.max;
         
-        // Scale function for Y axis
+        const vSpan = Math.max(1e-12, max - min);
+        // Scale function for Y axis (clamp to slot so strokes never leak)
         const scaleY = (val) => {
             if (val === null || val === undefined) return null;
-            return indBottom - 5 - ((val - min) / (max - min)) * (panelHeight - 10);
+            let y = indBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(indTop + 2, Math.min(indBottom - 2, y));
         };
         
         const color = indicator.style.color || '#ff6d00';
@@ -2142,6 +2151,8 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     }
     
     ctx.textAlign = 'left'; // Reset
+
+    ctx.restore(); // end indicator-stack clip
 
     // Build TradingView-style HTML label bars
     this._updateSeparatePanelLabels(panelSlots, separateIndicators, m);
@@ -3138,19 +3149,21 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     };
 
     // ---- Helper: draw a single line in a sub-panel using a pre-computed scaleY ----
-    Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY) {
+    Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY, clipTop, clipBottom) {
         if (!values) return;
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth || 2;
         ctx.setLineDash([]);
         ctx.beginPath();
         let started = false;
+        const useClip = Number.isFinite(clipTop) && Number.isFinite(clipBottom) && clipBottom > clipTop;
         for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
             const val = values[i];
             if (val === null || val === undefined || isNaN(val)) { started = false; continue; }
             const x = this.dataIndexToPixel(i);
-            const y = scaleY(val);
-            if (y === null || x < m.l - 10 || x > this.w - m.r + 10) continue;
+            let y = scaleY(val);
+            if (y === null || !Number.isFinite(y) || x < m.l - 10 || x > this.w - m.r + 10) { started = false; continue; }
+            if (useClip) y = Math.max(clipTop + 0.5, Math.min(clipBottom - 0.5, y));
             if (!started) { ctx.moveTo(x, y); started = true; }
             else { ctx.lineTo(x, y); }
         }
@@ -3175,7 +3188,13 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         indicator._panelBaseMax = max;
         const domM = this._applyIndicatorPanelDomain(min, max, indicator);
         min = domM.min; max = domM.max;
-        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - ((v - min) / (max - min)) * (panelHeight - 10);
+        const mSpan = Math.max(1e-12, max - min);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - min) / mSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
 
         // Zero line
         const zeroY = scaleY(0);
@@ -3206,8 +3225,8 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.fillRect(x - barW / 2, Math.min(y, z), barW, Math.max(1, Math.abs(y - z)));
         }
 
-        this._drawPanelLine(ctx, m, macdArr, indicator.style.macdColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
-        this._drawPanelLine(ctx, m, signalArr, indicator.style.signalColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+        this._drawPanelLine(ctx, m, macdArr, indicator.style.macdColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        this._drawPanelLine(ctx, m, signalArr, indicator.style.signalColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
 
         // Label
         let lastM = null, lastS = null;
@@ -3228,7 +3247,12 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         const sMin = domS.min;
         const sMax = domS.max;
         const sSpan = Math.max(1e-9, sMax - sMin);
-        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
 
         [[80, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.3)'], [20, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
             const ry = scaleY(lvl);
@@ -3248,8 +3272,8 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             }
         });
 
-        this._drawPanelLine(ctx, m, kArr, indicator.style.kColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
-        this._drawPanelLine(ctx, m, dArr, indicator.style.dColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+        this._drawPanelLine(ctx, m, kArr, indicator.style.kColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        this._drawPanelLine(ctx, m, dArr, indicator.style.dColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
 
         let lastK = null, lastD = null;
         for (let i = Math.min(visibleEnd - 1, kArr.length - 1); i >= visibleStart; i--) {
@@ -3275,7 +3299,12 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         const aMin = domA.min;
         const aMax = domA.max;
         const aSpan = Math.max(1e-9, aMax - aMin);
-        const scaleY = v => (v === null || v === undefined) ? null : panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
 
         // 25 threshold line
         const thY = scaleY(25);
@@ -3294,9 +3323,9 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.fillText('25', this.w - m.r - 2, thY - 2);
         }
 
-        this._drawPanelLine(ctx, m, plusArr, indicator.style.plusDIColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
-        this._drawPanelLine(ctx, m, minusArr, indicator.style.minusDIColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
-        this._drawPanelLine(ctx, m, adxArr, indicator.style.adxColor || '#ff00ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY);
+        this._drawPanelLine(ctx, m, plusArr, indicator.style.plusDIColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        this._drawPanelLine(ctx, m, minusArr, indicator.style.minusDIColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        this._drawPanelLine(ctx, m, adxArr, indicator.style.adxColor || '#ff00ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
 
         let lastADX = null;
         for (let i = Math.min(visibleEnd - 1, adxArr.length - 1); i >= visibleStart; i--) {
