@@ -40133,7 +40133,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V137"></script>
+    <script defer src="chart.js?v=20260323_UNIFIED_THEMES_V139"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
@@ -54211,7 +54211,7 @@ function ch(){ return (window.getActiveChart&&window.getActiveChart())||window.c
 function getUnifiedSel(chart){if(!chart)return null;if(typeof chart.getActiveUnifiedThemeId==='function')return chart.getActiveUnifiedThemeId();return null;}
 function _syncThemePresetSelectFromChart(){var c=ch();var tps=document.getElementById('sl_sp_theme_preset');if(!tps||!c)return;var uid=typeof c.getActiveUnifiedThemeId==='function'?c.getActiveUnifiedThemeId():'';tps._ignoreThemeChange=true;tps.value=uid||'';setTimeout(function(){tps._ignoreThemeChange=false;},0);}
 
-function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} }
+function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} if(typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome(); }
 
 function set(k,v){ var c=ch(); if(!c)return; c.chartSettings=c.chartSettings||{}; c.chartSettings[k]=v; apply(); }
 
@@ -54301,6 +54301,114 @@ function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padd
 
 function toHex(c){ if(!c)return '#000000'; if(/^#[0-9a-f]{6}$/i.test(c))return c; var m=String(c).match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/); if(m)return '#'+[m[1],m[2],m[3]].map(function(n){return('0'+parseInt(n).toString(16)).slice(-2);}).join(''); return '#000000'; }
 
+function tlLuminanceHex(hexish){var h=toHex(hexish);var r=parseInt(h.slice(1,3),16)/255,g=parseInt(h.slice(3,5),16)/255,b=parseInt(h.slice(5,7),16)/255;return 0.2126*r+0.7152*g+0.0722*b;}
+
+function tlDdChromeFromChart(cs){
+
+    cs=cs||{};
+
+    var bgRaw=cs.settingsPanelBgColor||cs.settingsPanelSidebarBgColor||'#1e222d';
+
+    var txt=cs.settingsPanelTextColor||'#d1d4dc';
+
+    var accent=cs.settingsPanelAccentColor||'#2962ff';
+
+    var L=tlLuminanceHex(bgRaw);
+
+    var isLight=L>0.55;
+
+    var hoverOpt=isLight?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.08)';
+
+    var activeOpt=isLight?'rgba(0,0,0,0.1)':'rgba(255,255,255,0.12)';
+
+    var trigBg=isLight?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.05)';
+
+    var trigBorder=isLight?'rgba(0,0,0,0.12)':'rgba(255,255,255,0.1)';
+
+    var panelBorder=isLight?'rgba(0,0,0,0.12)':'rgba(104,113,133,0.35)';
+
+    var shadow=isLight?'0 8px 24px rgba(0,0,0,0.12)':'0 8px 24px rgba(0,0,0,0.5)';
+
+    var secondary=isLight?'rgba(0,0,0,0.45)':'rgba(255,255,255,0.45)';
+
+    var groupHdr=isLight?'rgba(0,0,0,0.35)':'#787b86';
+
+    return {
+
+        panelBg:bgRaw,panelBorder:panelBorder,panelShadow:shadow,
+
+        trigBg:trigBg,trigBorder:trigBorder,
+
+        textPrimary:txt,textPlaceholder:secondary,textSecondary:groupHdr,
+
+        chevron:secondary,
+
+        optHover:hoverOpt,optActive:activeOpt,
+
+        optText:txt,optSvgCheck:accent
+
+    };
+
+}
+
+function tlRefreshTemplateDropdownChrome(){
+
+    var c=ch();if(!c)return;
+
+    var ddc=tlDdChromeFromChart(c.chartSettings||{});
+
+    document.querySelectorAll('.tl-dd-panel').forEach(function(p){
+
+        p.style.background=ddc.panelBg;
+
+        p.style.border='1px solid '+ddc.panelBorder;
+
+        p.style.boxShadow=ddc.panelShadow;
+
+    });
+
+    document.querySelectorAll('.tl-dd-trig').forEach(function(trig){
+
+        trig.style.background=ddc.trigBg;
+
+        trig.style.border='1px solid '+ddc.trigBorder;
+
+        var spans=trig.querySelectorAll('span');
+
+        if(spans.length){spans[0].style.color=ddc.textPrimary;}
+
+        var svg=trig.querySelector('svg');
+
+        if(svg)svg.setAttribute('stroke',ddc.chevron);
+
+    });
+
+    document.querySelectorAll('.tl-dd-opt').forEach(function(opt){
+
+        var tid=opt.dataset.tplid,ddid=opt.dataset.ddid;
+
+        var isSel=false;
+
+        if(ddid==='tl_chart_dd')isSel=c._lastChartOnlyTemplate===tid;
+
+        else if(ddid==='tl_panel_dd')isSel=c._lastPanelOnlyTemplate===tid;
+
+        else if(ddid==='tl_talaria_dd')isSel=c._lastTemplateSelected===tid;
+
+        opt.style.background=isSel?ddc.optActive:'transparent';
+
+        var span=opt.querySelector('span');
+
+        if(span)span.style.color=ddc.optText;
+
+        var svg=opt.querySelector('svg');
+
+        if(svg)svg.setAttribute('stroke',ddc.optSvgCheck);
+
+    });
+
+}
+
 
 
 /* wirers */
@@ -54349,13 +54457,15 @@ P['template']={title:'Template',build:function(){
 
     function mkdd(id, items, selId){
 
+        var ddc=tlDdChromeFromChart(c.chartSettings||{});
+
         var sel=items.find(function(t){return t.id===selId;})||null;
 
         var trigInner=sel
 
-            ?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+sel.name+'</span>'+dots(sel)
+            ?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:'+ddc.textPrimary+';">'+sel.name+'</span>'+dots(sel)
 
-            :'<span style="flex:1;font-size:12px;color:#787b86;">\u2014 Select Template \u2014</span>';
+            :'<span style="flex:1;font-size:12px;color:'+ddc.textPlaceholder+';">\u2014 Select Template \u2014</span>';
 
         var opts='';
 
@@ -54363,13 +54473,13 @@ P['template']={title:'Template',build:function(){
 
             var isAct=selId===t.id;
 
-            opts+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(isAct?'rgba(255,255,255,0.08)':'transparent')+';">'
+            opts+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(isAct?ddc.optActive:'transparent')+';">'
 
-                +'<span style="flex:1;font-size:12px;color:'+(isAct?'#fff':'#d1d4dc')+';">'+t.name+'</span>'
+                +'<span style="flex:1;font-size:12px;color:'+ddc.optText+';">'+t.name+'</span>'
 
                 +dots(t)
 
-                +(isAct?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')
+                +(isAct?'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.optSvgCheck+'" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')
 
                 +'</div>';
 
@@ -54377,15 +54487,15 @@ P['template']={title:'Template',build:function(){
 
         return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;">'
 
-            +'<div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'
+            +'<div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:'+ddc.trigBg+';border:1px solid '+ddc.trigBorder+';cursor:pointer;transition:border-color 0.15s;user-select:none;">'
 
             +trigInner
 
-            +'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>'
+            +'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.chevron+'" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>'
 
             +'</div>'
 
-            +'<div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'
+            +'<div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:'+ddc.panelBg+';border:1px solid '+ddc.panelBorder+';border-radius:8px;box-shadow:'+ddc.panelShadow+';z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'
 
             +opts
 
@@ -54459,17 +54569,21 @@ P['template']={title:'Template',build:function(){
 
             panel.style.display=isOpen?'none':'block';
 
+            if(!isOpen&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();
+
         });
 
         panel.querySelectorAll('.tl-dd-opt').forEach(function(opt){
 
-            opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});
+            opt.addEventListener('mouseenter',function(){var ddc=tlDdChromeFromChart((ch()||{}).chartSettings||{});this.style.background=ddc.optHover;});
 
             opt.addEventListener('mouseleave',function(){
 
                 var cv=ch();
 
-                this.style.background=(cv&&cv[propName]===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';
+                var ddc=tlDdChromeFromChart((cv||{}).chartSettings||{});
+
+                this.style.background=(cv&&cv[propName]===this.dataset.tplid)?ddc.optActive:'transparent';
 
             });
 
@@ -54499,17 +54613,21 @@ P['template']={title:'Template',build:function(){
 
                 if(trig2&&match){
 
-                    trig2.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+match.name+'</span>'
+                    var ddc2=tlDdChromeFromChart((cv||{}).chartSettings||{});
+
+                    trig2.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:'+ddc2.textPrimary+';">'+match.name+'</span>'
 
                         +dots(match)
 
-                        +'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
+                        +'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc2.chevron+'" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
 
                 }
 
+                var ddc3=tlDdChromeFromChart((cv||{}).chartSettings||{});
+
                 panel.querySelectorAll('.tl-dd-opt').forEach(function(o){
 
-                    o.style.background=o.dataset.tplid===tid?'rgba(255,255,255,0.08)':'transparent';
+                    o.style.background=o.dataset.tplid===tid?ddc3.optActive:'transparent';
 
                 });
 
@@ -54570,7 +54688,29 @@ P['symbol']={title:'Symbol',build:function(){
 
     var swList=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];
     function _tDots(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';}
-    function _tMkdd(id,items,selId){var sel=items.find(function(t){return t.id===selId;})||null;var ti=sel?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+sel.name+'</span>'+_tDots(sel):'<span style="flex:1;font-size:12px;color:#787b86;">— Select Template —</span>';var o='';var lastG='';items.forEach(function(t){if(t.group&&t.group!==lastG){o+='<div style="padding:6px 10px 2px;font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:0.05em;">'+t.group+'</div>';lastG=t.group;}var a=selId===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?'rgba(255,255,255,0.08)':'transparent')+';"><span style="flex:1;font-size:12px;color:'+(a?'#fff':'#d1d4dc')+';">'+t.name+'</span>'+_tDots(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';}//<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';
+    function _tMkdd(id,items,selId){
+
+        var ddc=tlDdChromeFromChart(c.chartSettings||{});
+
+        var sel=items.find(function(t){return t.id===selId;})||null;
+
+        var ti=sel?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:'+ddc.textPrimary+';">'+sel.name+'</span>'+_tDots(sel):'<span style="flex:1;font-size:12px;color:'+ddc.textPlaceholder+';">— Select Template —</span>';
+
+        var o='';var lastG='';
+
+        items.forEach(function(t){
+
+            if(t.group&&t.group!==lastG){o+='<div style="padding:6px 10px 2px;font-size:10px;font-weight:700;color:'+ddc.textSecondary+';text-transform:uppercase;letter-spacing:0.05em;">'+t.group+'</div>';lastG=t.group;}
+
+            var a=selId===t.id;
+
+            o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?ddc.optActive:'transparent')+';"><span style="flex:1;font-size:12px;color:'+ddc.optText+';">'+t.name+'</span>'+_tDots(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.optSvgCheck+'" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';
+
+        });
+
+        return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:'+ddc.trigBg+';border:1px solid '+ddc.trigBorder+';cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.chevron+'" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:'+ddc.panelBg+';border:1px solid '+ddc.panelBorder+';border-radius:8px;box-shadow:'+ddc.panelShadow+';z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';
+
+    }
     function _tCard(icon,title,desc,ddId,list,selId){return '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'+icon+'<div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">'+title+'</div><div style="font-size:11px;color:#787b86;margin-top:2px;">'+desc+'</div></div></div>'+_tMkdd(ddId,list,selId)+'</div>';}
 
     var templateSec=sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Six synced themes (2 dark, 2 light, 2 colorful). Same list as Appearance — applies <strong>chart colors</strong> (candles, grid, crosshair). Use checkboxes in the confirmation bar to also match panel & sidebar.</p>'+_tCard('<span style="width:28px;height:28px;border-radius:50%;background:#2962ff;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>','Color theme','Chart colors (candles, grid, scales)','tl_chart_dd',swList,c._lastChartOnlyTemplate||null));
@@ -54717,7 +54857,7 @@ P['symbol']={title:'Symbol',build:function(){
 
     wChk('symTitle',function(v){set('symbolTitle',v);});wDD('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symClr',function(v){set('symbolTextColor',v);});
 
-    (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];function _sdd(id,meth,prop){var trig=document.getElementById(id+'_trig');var pnl=document.getElementById(id+'_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});opt.addEventListener('mouseleave',function(){var cv2=ch();this.style.background=(cv2&&cv2[prop]===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;var m=sl.find(function(s){return s.id===tid;});if(!m)return;var originalState=cv2[prop];var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';if(typeof cv2[meth]==='function')cv2[meth](tid);showTemplateConfirmation(m.name,meth,prop,tid,originalState,originalChartSettings);});});}
+    (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];function _sdd(id,meth,prop){var trig=document.getElementById(id+'_trig');var pnl=document.getElementById(id+'_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';if(!o&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){var ddc=tlDdChromeFromChart((ch()||{}).chartSettings||{});this.style.background=ddc.optHover;});opt.addEventListener('mouseleave',function(){var cv2=ch();var ddc=tlDdChromeFromChart((cv2||{}).chartSettings||{});this.style.background=(cv2&&cv2[prop]===this.dataset.tplid)?ddc.optActive:'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;var m=sl.find(function(s){return s.id===tid;});if(!m)return;var originalState=cv2[prop];var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';if(typeof cv2[meth]==='function')cv2[meth](tid);showTemplateConfirmation(m.name,meth,prop,tid,originalState,originalChartSettings);});});}
         _sdd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate');
         _sdd('tl_talaria_dd','applyTemplate','_lastTemplateSelected');
     })();
@@ -54832,7 +54972,7 @@ P['canvas']={title:'Canvas',build:function(){
 
         '<div class="settings-input-row" style="padding-top:4px;">'+
 
-            '<span class="settings-input-label">Theme preset (panel first, confirm)</span>'+
+            '<span class="settings-input-label">Theme preset (global — instant)</span>'+
 
             '<select id="sl_sp_theme_preset" class="settings-select" style="max-width:200px;">'+
 
@@ -54876,7 +55016,7 @@ P['canvas']={title:'Canvas',build:function(){
 
         row('Scale lines', scaleLinesBtn))+
 
-    (function(){var pL=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);function _d(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';}function _m(id,it,sel){var s=it.find(function(t){return t.id===sel;})||null;var ti=s?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+s.name+'</span>'+_d(s):'<span style="flex:1;font-size:12px;color:#787b86;">\u2014 Select Template \u2014</span>';var o='';var lastG='';it.forEach(function(t){if(t.group&&t.group!==lastG){o+='<div style="padding:6px 10px 2px;font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:0.05em;">'+t.group+'</div>';lastG=t.group;}var a=sel===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?'rgba(255,255,255,0.08)':'transparent')+';">'+'<span style="flex:1;font-size:12px;color:'+(a?'#fff':'#d1d4dc')+';">'+t.name+'</span>'+_d(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:rgba(22,24,30,0.99);border:1px solid rgba(104,113,133,0.35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div>';}return sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Six synced themes — same list as the Chart tab. Applies <strong>panel & sidebar</strong> chrome. Use checkboxes in the confirmation bar to also match chart colors.</p>'+'<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="width:28px;height:28px;border-radius:8px;background:#f23645;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">Color theme</div><div style="font-size:11px;color:#787b86;margin-top:2px;">Panel & sidebar (settings chrome)</div></div></div>'+_m('tl_panel_dd',pL,c._lastPanelOnlyTemplate||null)+'</div>');})();
+    (function(){var pL=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);function _d(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';}function _m(id,it,sel){var ddc=tlDdChromeFromChart(c.chartSettings||{});var s=it.find(function(t){return t.id===sel;})||null;var ti=s?'<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:'+ddc.textPrimary+';">'+s.name+'</span>'+_d(s):'<span style="flex:1;font-size:12px;color:'+ddc.textPlaceholder+';">\u2014 Select Template \u2014</span>';var o='';var lastG='';it.forEach(function(t){if(t.group&&t.group!==lastG){o+='<div style="padding:6px 10px 2px;font-size:10px;font-weight:700;color:'+ddc.textSecondary+';text-transform:uppercase;letter-spacing:0.05em;">'+t.group+'</div>';lastG=t.group;}var a=sel===t.id;o+='<div class="tl-dd-opt" data-ddid="'+id+'" data-tplid="'+t.id+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:5px;background:'+(a?ddc.optActive:'transparent')+';">'+'<span style="flex:1;font-size:12px;color:'+ddc.optText+';">'+t.name+'</span>'+_d(t)+(a?'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.optSvgCheck+'" stroke-width="2.5" width="12" height="12" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</div>';});return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:'+ddc.trigBg+';border:1px solid '+ddc.trigBorder+';cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.chevron+'" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:'+ddc.panelBg+';border:1px solid '+ddc.panelBorder+';border-radius:8px;box-shadow:'+ddc.panelShadow+';z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div>';}return sec(st('APPLY A TEMPLATE')+'<p style="color:#787b86;font-size:11px;margin:0 0 12px;line-height:1.5;">Six synced themes — same list as the Chart tab. Applies <strong>panel & sidebar</strong> chrome. Use checkboxes in the confirmation bar to also match chart colors.</p>'+'<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="width:28px;height:28px;border-radius:8px;background:#f23645;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">Color theme</div><div style="font-size:11px;color:#787b86;margin-top:2px;">Panel & sidebar (settings chrome)</div></div></div>'+_m('tl_panel_dd',pL,c._lastPanelOnlyTemplate||null)+'</div>');})();
 
 },wire:function(){
 
@@ -54990,7 +55130,7 @@ P['canvas']={title:'Canvas',build:function(){
 
 
 
-    // Full theme preset — same 6 unified themes; panel-first flow + Apply/Cancel + match checkboxes
+    // Global theme preset — same 6 unified themes; applies chart + panel together, no confirmation
 
     var themePresetSel=document.getElementById('sl_sp_theme_preset');
 
@@ -55018,19 +55158,9 @@ P['canvas']={title:'Canvas',build:function(){
 
             var c=ch();if(!c)return;
 
-            var sl=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);
+            if(typeof c.applyUnifiedThemeTemplate==='function')c.applyUnifiedThemeTemplate(v);
 
-            var m=sl.find(function(t){return t.id===v;});
-
-            if(!m)return;
-
-            var originalState=c._lastPanelOnlyTemplate;
-
-            var originalChartSettings=c.chartSettings?JSON.parse(JSON.stringify(c.chartSettings)):null;
-
-            if(typeof c.applyPanelOnlyTemplate==='function')c.applyPanelOnlyTemplate(v);
-
-            showTemplateConfirmation(m.name,'applyPanelOnlyTemplate','_lastPanelOnlyTemplate',v,originalState,originalChartSettings);
+            if(typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();
 
         });
 
@@ -55105,7 +55235,7 @@ P['canvas']={title:'Canvas',build:function(){
 
     });
 
-        (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getPanelTemplateSwatches==='function'?cv.getPanelTemplateSwatches():(typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[]);var trig=document.getElementById('tl_panel_dd_trig');var pnl=document.getElementById('tl_panel_dd_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){this.style.background='rgba(255,255,255,0.08)';});opt.addEventListener('mouseleave',function(){var cv2=ch();this.style.background=(cv2&&cv2._lastPanelOnlyTemplate===this.dataset.tplid)?'rgba(255,255,255,0.08)':'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;var m=sl.find(function(s){return s.id===tid;});if(!m)return;var originalState=cv2._lastPanelOnlyTemplate;var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';if(typeof cv2.applyPanelOnlyTemplate==='function')cv2.applyPanelOnlyTemplate(tid);showTemplateConfirmation(m.name,'applyPanelOnlyTemplate','_lastPanelOnlyTemplate',tid,originalState,originalChartSettings);});});})();
+        (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getPanelTemplateSwatches==='function'?cv.getPanelTemplateSwatches():(typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[]);var trig=document.getElementById('tl_panel_dd_trig');var pnl=document.getElementById('tl_panel_dd_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';if(!o&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){var ddc=tlDdChromeFromChart((ch()||{}).chartSettings||{});this.style.background=ddc.optHover;});opt.addEventListener('mouseleave',function(){var cv2=ch();var ddc=tlDdChromeFromChart((cv2||{}).chartSettings||{});this.style.background=(cv2&&cv2._lastPanelOnlyTemplate===this.dataset.tplid)?ddc.optActive:'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;var m=sl.find(function(s){return s.id===tid;});if(!m)return;var originalState=cv2._lastPanelOnlyTemplate;var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';if(typeof cv2.applyPanelOnlyTemplate==='function')cv2.applyPanelOnlyTemplate(tid);showTemplateConfirmation(m.name,'applyPanelOnlyTemplate','_lastPanelOnlyTemplate',tid,originalState,originalChartSettings);});});})();
 
 }};
 
