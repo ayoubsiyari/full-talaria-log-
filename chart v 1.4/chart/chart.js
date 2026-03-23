@@ -10238,8 +10238,8 @@ class Chart {
         // Only draw if within price chart area (not in volume area)
         if (y < m.t || y > this.h - m.b - volumeAreaHeight) return;
 
-        // Neutral gray color (like TradingView)
-        const bgColor = '#787B86';
+        // Match the price line color so label and line are always the same color
+        const bgColor = this.chartSettings.priceLineColor || '#787B86';
         
         // Format price — respect explicit precision setting, else match the axis
         let decimals;
