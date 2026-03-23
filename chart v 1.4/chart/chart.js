@@ -10263,7 +10263,7 @@ class Chart {
         const radius = 2;
         
         // Check if in replay mode to combine labels
-        const inReplayMode = this.replaySystem && this.replaySystem.isActive && this.replaySystem.tickProgress !== undefined;
+        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
         let countdownText = '';
         
         if (inReplayMode) {
@@ -11089,33 +11089,7 @@ class Chart {
         this.ctx.stroke();
         this.ctx.setLineDash([]);
 
-        // Price label on axis — skip if the crosshair price label is overlapping this position
-        const _crosshairNear = Number.isFinite(this.mouseY) && Math.abs(this.mouseY - y) < 14;
-        if (!_crosshairNear) {
-            let decimals;
-            const _prec = this.chartSettings ? this.chartSettings.precision : 'Default';
-            if (_prec && _prec !== 'Default') {
-                const _parsed = parseInt(_prec, 10);
-                decimals = Number.isFinite(_parsed) ? Math.max(0, Math.min(8, _parsed)) : 4;
-            } else {
-                const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                decimals = this.getPriceDecimals(priceRange);
-            }
-            const priceText = price.toFixed(decimals);
-            const labelH = 16;
-            const labelX = axisLeft ? 2 : axisX + 2;
-            const labelW = axisW - 4;
-
-            this.ctx.fillStyle = color;
-            this.ctx.fillRect(labelX, Math.round(y) - labelH / 2, labelW, labelH);
-
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.font = `${this.chartSettings.scaleTextSize || 12}px Roboto`;
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(priceText, axisLeft ? m.l / 2 : this.w - m.r / 2, Math.round(y));
-            this.ctx.textBaseline = 'alphabetic';
-        }
+        // Axis label is drawn by drawCurrentPriceLabel — no duplicate label here
 
         this.ctx.restore();
     }
