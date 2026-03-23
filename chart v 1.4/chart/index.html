@@ -3672,7 +3672,7 @@
 
             background: #050028;
 
-            transition: bottom 0.28s cubic-bezier(.4,0,.2,1);
+            transition: none;
 
         }
 
@@ -40040,7 +40040,7 @@
 
     <script defer src="modules/drawing-tools-channels.js?v=20260321_PEARSONR_V6"></script>
 
-    <script defer src="modules/drawing-tools-ui.js?v=20260322_MODAL_POS_V2"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260323_VERT_ALIGN_V1"></script>
 
     <script defer src="modules/color-picker.js?v=20260318_TF_PIN_V60"></script>
 
@@ -40072,7 +40072,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260318_TF_PIN_V116"></script>
+    <script defer src="chart.js?v=20260323_TMPL_FIX_V117"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
@@ -45969,11 +45969,11 @@ function showIndicatorsMenu() {
 
                 if (!replayToolbar || !container) return;
 
+                if (_panelAnimating) return;
+
                 const toolbarHeight = replayToolbar.getBoundingClientRect().height;
 
                 container.style.bottom = `${toolbarHeight}px`;
-
-                if (_panelAnimating) return;
 
                 if (!_ucbRaf && window.chart && typeof window.chart.resize === 'function') {
 
@@ -46521,15 +46521,11 @@ function showIndicatorsMenu() {
 
                 document.body.classList.add('replay-tabs-collapsed');
 
-                if (container) container.style.bottom = PANEL_COLLAPSED_H + 'px';
-
                 _panelAnimating = true;
 
                 applyPanelHeight(PANEL_COLLAPSED_H, true);
 
-                if (window._spResizeChart) window._spResizeChart(304);
-
-                setTimeout(() => { _panelAnimating = false; updateContainerBottom(); }, 310);
+                setTimeout(() => { _panelAnimating = false; updateContainerBottom(); if (window._spResizeChart) window._spResizeChart(0); }, 300);
 
             }
 
@@ -46543,15 +46539,11 @@ function showIndicatorsMenu() {
 
                 document.body.classList.remove('replay-tabs-collapsed');
 
-                if (container) container.style.bottom = getPanelH() + 'px';
-
                 _panelAnimating = true;
 
                 applyPanelHeight(getPanelH(), true);
 
-                if (window._spResizeChart) window._spResizeChart(304);
-
-                setTimeout(() => { _panelAnimating = false; updateContainerBottom(); }, 310);
+                setTimeout(() => { _panelAnimating = false; updateContainerBottom(); if (window._spResizeChart) window._spResizeChart(0); }, 300);
 
             }
 

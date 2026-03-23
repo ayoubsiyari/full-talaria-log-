@@ -14522,17 +14522,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (!hideVerticalAlign) {
 
-            // For vertical line, these buttons control textHAlign (left/center/right of line)
+            const vProp = 'textVAlign';
 
-            const vProp = isVerticalLine ? 'textHAlign' : 'textVAlign';
+            const vVal = ['top', 'middle', 'bottom'];
 
-            const vVal = isVerticalLine ? ['left', 'center', 'right'] : ['top', 'middle', 'bottom'];
-
-            const currentVAlign = isVerticalLine
-
-                ? (drawing.style.textHAlign || defaultHAlign)
-
-                : (drawing.style.textVAlign || drawing.style.textPosition || defaultVAlign);
+            const currentVAlign = drawing.style.textVAlign || drawing.style.textPosition || defaultVAlign;
 
             
 
@@ -14540,61 +14534,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             vAlignSection.className = 'tv-align-section';
 
-            if (isVerticalLine) {
-
-                vAlignSection.innerHTML = `
-
-                    <div class="tv-align-label">Vertical Alignment</div>
-
-                    <div class="tv-align-buttons">
-
-                        <button class="tv-align-btn ${currentVAlign === vVal[0] ? 'active' : ''}" data-prop="${vProp}" data-value="${vVal[0]}">
-
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-
-                                <line x1="4" y1="12" x2="20" y2="12"/>
-
-                                <polyline points="8 8 4 12 8 16"/>
-
-                            </svg>
-
-                        </button>
-
-                        <button class="tv-align-btn ${currentVAlign === vVal[1] ? 'active' : ''}" data-prop="${vProp}" data-value="${vVal[1]}">
-
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-
-                                <line x1="12" y1="4" x2="12" y2="20"/>
-
-                                <line x1="4" y1="12" x2="20" y2="12"/>
-
-                                <line x1="6" y1="6" x2="18" y2="18"/>
-
-                                <line x1="18" y1="6" x2="6" y2="18"/>
-
-                            </svg>
-
-                        </button>
-
-                        <button class="tv-align-btn ${currentVAlign === vVal[2] ? 'active' : ''}" data-prop="${vProp}" data-value="${vVal[2]}">
-
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-
-                                <line x1="4" y1="12" x2="20" y2="12"/>
-
-                                <polyline points="16 8 20 12 16 16"/>
-
-                            </svg>
-
-                        </button>
-
-                    </div>
-
-                `;
-
-            } else {
-
-                vAlignSection.innerHTML = `
+            vAlignSection.innerHTML = `
 
                     <div class="tv-align-label">Vertical Alignment</div>
 
@@ -14642,8 +14582,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 `;
 
-            }
-
             container.appendChild(vAlignSection);
 
         }
@@ -14654,17 +14592,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (!hideHorizontalAlign) {
 
-            // For vertical line, these buttons control textVAlign (top/middle/bottom along line)
+            const hProp = 'textHAlign';
 
-            const hProp = isVerticalLine ? 'textVAlign' : 'textHAlign';
+            const hVal = ['left', 'center', 'right'];
 
-            const hVal = isVerticalLine ? ['top', 'middle', 'bottom'] : ['left', 'center', 'right'];
-
-            const currentHAlign = isVerticalLine
-
-                ? (drawing.style.textVAlign || drawing.style.textPosition || defaultVAlign)
-
-                : (drawing.style.textHAlign || defaultHAlign);
+            const currentHAlign = drawing.style.textHAlign || defaultHAlign;
 
             const hAlignSection = document.createElement('div');
 
@@ -14672,65 +14604,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             hAlignSection.style.marginTop = '12px';
 
-            if (isVerticalLine) {
-
-                hAlignSection.innerHTML = `
-
-                    <div class="tv-align-label">Horizontal Alignment</div>
-
-                    <div class="tv-align-buttons">
-
-                        <button class="tv-align-btn ${currentHAlign === hVal[0] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[0]}">
-
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-
-                                
-
-                                <line x1="18" y1="4" x2="18" y2="18"/>
-
-                                <line x1="12" y1="4" x2="12" y2="14"/>
-
-                                <line x1="6" y1="4" x2="6" y2="20"/>
-
-                            </svg>
-
-                        </button>
-
-                        <button class="tv-align-btn ${currentHAlign === hVal[1] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[1]}">
-
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-
-                                <line x1="18" y1="4" x2="18" y2="20"/>
-
-                                <line x1="12" y1="7" x2="12" y2="17"/>
-
-                                <line x1="6" y1="5" x2="6" y2="19"/>
-
-                            </svg>
-
-                        </button>
-
-                        <button class="tv-align-btn ${currentHAlign === hVal[2] ? 'active' : ''}" data-prop="${hProp}" data-value="${hVal[2]}">
-
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-
-                               <line x1="18" y1="4" x2="18" y2="20"/>
-
-                                <line x1="12" y1="10" x2="12" y2="20"/>
-
-                                <line x1="6" y1="6" x2="6" y2="20"/>
-
-                            </svg>
-
-                        </button>
-
-                    </div>
-
-                `;
-
-            } else {
-
-                hAlignSection.innerHTML = `
+            hAlignSection.innerHTML = `
 
                     <div class="tv-align-label">Horizontal Alignment</div>
 
@@ -14781,8 +14655,6 @@ body.light-mode .template-save-dialog .dialog-title {
                     </div>
 
                 `;
-
-            }
 
             container.appendChild(hAlignSection);
 
