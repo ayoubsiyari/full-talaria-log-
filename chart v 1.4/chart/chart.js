@@ -4392,6 +4392,7 @@ class Chart {
                 document.body.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
                 document.body.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
                 document.body.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
+                document.body.classList.toggle('light-mode', isLightPanel);
             }
         }
         
