@@ -189,6 +189,142 @@ const INDICATOR_DEFINITIONS = {
             { id: 'nyMidnightColor', label: 'NY Midnight Color', type: 'color', default: '#2d62b6' },
             { id: 'textColor', label: 'Text Color', type: 'color', default: '#5c71af' }
         ]
+    },
+    dema: {
+        name: 'Double EMA (DEMA)',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
+            { id: 'color', label: 'Color', type: 'color', default: '#00bcd4' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    tema: {
+        name: 'Triple EMA (TEMA)',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
+            { id: 'color', label: 'Color', type: 'color', default: '#ab47bc' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    hma: {
+        name: 'Hull Moving Average',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
+            { id: 'color', label: 'Color', type: 'color', default: '#26c6da' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    roc: {
+        name: 'Rate of Change',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 12, min: 1 },
+            { id: 'color', label: 'Color', type: 'color', default: '#ffa726' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    mom: {
+        name: 'Momentum',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 10, min: 1 },
+            { id: 'color', label: 'Color', type: 'color', default: '#66bb6a' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    obv: {
+        name: 'On Balance Volume',
+        type: 'separate',
+        params: [
+            { id: 'color', label: 'Line Color', type: 'color', default: '#78909c' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    willr: {
+        name: 'Williams %R',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
+            { id: 'color', label: 'Line Color', type: 'color', default: '#ec407a' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    mfi: {
+        name: 'Money Flow Index',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 2 },
+            { id: 'color', label: 'Line Color', type: 'color', default: '#5c6bc0' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    donchian: {
+        name: 'Donchian Channels',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
+            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff' },
+            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff' },
+            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.06)' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
+    keltner: {
+        name: 'Keltner Channels',
+        type: 'overlay',
+        params: [
+            { id: 'emaPeriod', label: 'EMA Length', type: 'number', default: 20, min: 1 },
+            { id: 'atrPeriod', label: 'ATR Length', type: 'number', default: 10, min: 1 },
+            { id: 'multiplier', label: 'ATR Multiplier', type: 'number', default: 2, min: 0.1, step: 0.1 },
+            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff' },
+            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff' },
+            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.05)' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
+    aroon: {
+        name: 'Aroon',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
+            { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676' },
+            { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    cmf: {
+        name: 'Chaikin Money Flow',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
+            { id: 'color', label: 'Line Color', type: 'color', default: '#29b6f6' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    trix: {
+        name: 'TRIX',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
+            { id: 'color', label: 'Line Color', type: 'color', default: '#8d6e63' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    psar: {
+        name: 'Parabolic SAR',
+        type: 'overlay',
+        params: [
+            { id: 'step', label: 'Start AF (step)', type: 'number', default: 0.02, min: 0.001, step: 0.001 },
+            { id: 'maxStep', label: 'Max AF', type: 'number', default: 0.2, min: 0.01, step: 0.01 },
+            { id: 'bullColor', label: 'Bull Color', type: 'color', default: '#26a69a' },
+            { id: 'bearColor', label: 'Bear Color', type: 'color', default: '#ef5350' },
+            { id: 'lineWidth', label: 'Dot Size (rel.)', type: 'number', default: 2, min: 1, max: 6 }
+        ]
     }
 };
 
@@ -727,7 +863,12 @@ function createIndicatorSelectionMenu(chartInstance) {
         technicals: {
             name: 'Technicals',
             icon: '',
-            indicators: ['sma', 'ema', 'bb', 'rsi', 'macd', 'wma', 'vwap', 'stoch', 'atr', 'cci', 'adx', 'adr', 'volume']
+            indicators: [
+                'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'vwap', 'donchian', 'keltner', 'psar',
+                'roc', 'mom',
+                'rsi', 'macd', 'stoch', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix',
+                'obv', 'adr', 'volume'
+            ]
         },
         sessions: {
             name: 'Sessions',
