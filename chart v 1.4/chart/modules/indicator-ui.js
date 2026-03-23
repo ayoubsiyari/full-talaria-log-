@@ -685,14 +685,10 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
 // 2. UI Generation Functions
 
 function createIndicatorSelectionMenu(chartInstance) {
-    // Check if light mode
-    const isLightMode = document.body.classList.contains('light-mode');
-    
-    // Define categories
     const categories = {
         favorites: { name: 'Favorites', icon: '☆', indicators: [] },
-        technicals: { 
-            name: 'Technicals', 
+        technicals: {
+            name: 'Technicals',
             icon: '',
             indicators: ['sma', 'ema', 'bb', 'rsi', 'macd', 'wma', 'vwap', 'stoch', 'atr', 'cci', 'adx', 'adr', 'volume']
         },
@@ -702,171 +698,134 @@ function createIndicatorSelectionMenu(chartInstance) {
             indicators: ['sessions', 'killzones']
         }
     };
-    
-    // Create backdrop
+
     const backdrop = document.createElement('div');
     backdrop.id = 'indicatorMenuBackdrop';
     backdrop.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: ${isLightMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.6)'};
-        z-index: 9998;
-        visibility: hidden;
-        opacity: 0;
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 9998; visibility: hidden; opacity: 0;
         transition: opacity 0.2s ease, visibility 0.2s ease;
     `;
     document.body.appendChild(backdrop);
 
-    // Create floating menu - TradingView style
     const menu = document.createElement('div');
     menu.id = 'indicatorSelectionMenu';
     menu.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
+        position: fixed; top: 50%; left: 50%;
         transform: translate(-50%, -50%);
-        width: 700px;
-        max-width: 90vw;
-        height: 500px;
-        max-height: 80vh;
-        background: ${isLightMode ? '#ffffff' : '#000000'};
-        border: 1px solid ${isLightMode ? '#e0e3eb' : 'transparent'};
-        border-radius: 8px;
-        box-shadow: ${isLightMode ? '0 8px 32px rgba(0, 0, 0, 0.15)' : '0 16px 48px rgba(0, 0, 0, 0.4)'};
-        z-index: 9999;
-        visibility: hidden;
-        opacity: 0;
+        width: 700px; max-width: 92vw;
+        height: 520px; max-height: 82vh;
+        background: var(--sp-ui-chrome-bg, #131722);
+        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        border-radius: 10px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+        z-index: 9999; visibility: hidden; opacity: 0;
         transition: opacity 0.15s ease, visibility 0.15s ease;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
+        display: flex; flex-direction: column; overflow: hidden;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
     `;
 
-    // Header with title and close button
     const header = document.createElement('div');
     header.style.cssText = `
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 16px 20px;
-        border-bottom: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 17px 22px 15px;
+        border-bottom: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        background: var(--sp-ui-chrome-bg, #131722);
         flex-shrink: 0;
     `;
-    
+
     const title = document.createElement('span');
     title.textContent = 'Indicators, metrics, and strategies';
     title.style.cssText = `
-        font-size: 16px;
-        font-weight: 500;
-        color: ${isLightMode ? '#131722' : '#d1d4dc'};
+        font-size: 15px; font-weight: 600;
+        color: var(--sp-text, #d1d4dc);
+        letter-spacing: 0.01em;
     `;
-    
+
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <line x1="18" y1="6" x2="6" y2="18"/>
-        <line x1="6" y1="6" x2="18" y2="18"/>
+    closeBtn.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>`;
     closeBtn.style.cssText = `
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 6px;
-        display: flex;
-        align-items: center;
-        color: #787b86;
-        border-radius: 4px;
-        transition: all 0.15s;
+        background: none; border: none; cursor: pointer;
+        padding: 6px; display: flex; align-items: center;
+        color: var(--sp-text-muted, #787b86);
+        border-radius: 5px; transition: all 0.15s;
     `;
-    closeBtn.onmouseenter = () => { closeBtn.style.background = isLightMode ? '#f0f3fa' : '#2a2e39'; };
-    closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; };
+    closeBtn.onmouseenter = () => { closeBtn.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))'; closeBtn.style.color = 'var(--sp-text, #d1d4dc)'; };
+    closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; closeBtn.style.color = 'var(--sp-text-muted, #787b86)'; };
     closeBtn.onclick = () => closeMenu();
-    
     header.appendChild(title);
     header.appendChild(closeBtn);
     menu.appendChild(header);
 
-    // Search bar
     const searchContainer = document.createElement('div');
     searchContainer.style.cssText = `
-        padding: 12px 20px;
-        border-bottom: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        background: var(--sp-ui-chrome-bg, #131722);
         flex-shrink: 0;
     `;
-    
+
     const searchWrapper = document.createElement('div');
     searchWrapper.style.cssText = `
-        position: relative;
-        display: flex;
-        align-items: center;
-        background: ${isLightMode ? '#f0f3fa' : '#2a2e39'};
-        border-radius: 6px;
-        padding: 0 12px;
+        position: relative; display: flex; align-items: center;
+        background: var(--sp-ui-surface-bg, #1e2740);
+        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        border-radius: 6px; padding: 0 12px;
+        transition: border-color 0.15s;
     `;
-    
+
     const searchIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    searchIcon.setAttribute('width', '16');
-    searchIcon.setAttribute('height', '16');
-    searchIcon.setAttribute('viewBox', '0 0 24 24');
-    searchIcon.setAttribute('fill', 'none');
-    searchIcon.setAttribute('stroke', '#787b86');
-    searchIcon.setAttribute('stroke-width', '2');
+    searchIcon.setAttribute('width', '14'); searchIcon.setAttribute('height', '14');
+    searchIcon.setAttribute('viewBox', '0 0 24 24'); searchIcon.setAttribute('fill', 'none');
+    searchIcon.setAttribute('stroke', 'var(--sp-text-muted, #787b86)'); searchIcon.setAttribute('stroke-width', '2');
     searchIcon.innerHTML = '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>';
     searchIcon.style.cssText = 'flex-shrink: 0;';
-    
+
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.id = 'indicatorMenuSearch';
-    searchInput.placeholder = 'Search';
+    searchInput.placeholder = 'Search indicators...';
     searchInput.style.cssText = `
-        flex: 1;
-        padding: 10px 12px;
-        border: none;
-        font-size: 14px;
-        color: ${isLightMode ? '#131722' : '#d1d4dc'};
-        background: transparent;
-        outline: none;
+        flex: 1; padding: 9px 10px;
+        border: none; font-size: 13px;
+        color: var(--sp-text, #d1d4dc);
+        background: transparent; outline: none;
+        font-family: 'Roboto', -apple-system, sans-serif;
     `;
-    
+    searchInput.onfocus = () => { searchWrapper.style.borderColor = 'var(--sp-accent, #2962ff)'; };
+    searchInput.onblur  = () => { searchWrapper.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))'; };
+
     searchWrapper.appendChild(searchIcon);
     searchWrapper.appendChild(searchInput);
     searchContainer.appendChild(searchWrapper);
     menu.appendChild(searchContainer);
 
-    // Main content area with sidebar and list
     const contentArea = document.createElement('div');
-    contentArea.style.cssText = `
-        display: flex;
-        flex: 1;
-        overflow: hidden;
-    `;
+    contentArea.style.cssText = `display: flex; flex: 1; overflow: hidden;`;
 
-    // Left sidebar
     const sidebar = document.createElement('div');
     sidebar.style.cssText = `
-        width: 180px;
-        border-right: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
-        padding: 8px 0;
-        overflow-y: auto;
-        flex-shrink: 0;
+        width: 172px;
+        border-right: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        padding: 6px 0; overflow-y: auto; flex-shrink: 0;
+        background: var(--sp-ui-sidebar-bg, #0d1427);
     `;
 
     let activeCategory = 'technicals';
     const categoryButtons = {};
 
-    // Create category items
     const createCategoryItem = (key, cat, isSection = false) => {
         if (isSection) {
             const section = document.createElement('div');
             section.style.cssText = `
-                padding: 12px 16px 6px;
-                font-size: 11px;
-                font-weight: 600;
-                color: #787b86;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
+                padding: 14px 14px 5px;
+                font-size: 10px; font-weight: 700;
+                color: var(--sp-text-muted, #787b86);
+                text-transform: uppercase; letter-spacing: 0.8px;
+                font-family: 'Roboto', -apple-system, sans-serif;
             `;
             section.textContent = cat;
             return section;
@@ -875,161 +834,140 @@ function createIndicatorSelectionMenu(chartInstance) {
         const item = document.createElement('div');
         item.dataset.category = key;
         item.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 16px;
-            cursor: pointer;
-            font-size: 13px;
-            color: ${isLightMode ? '#000000ff' : '#d1d4dc'};
-            transition: all 0.15s;
-            border-radius: 0;
-            margin: 0 8px;
-            border-radius: 4px;
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; cursor: pointer;
+            font-size: 13px; font-weight: 500;
+            color: var(--sp-text, #d1d4dc);
+            transition: all 0.12s;
+            margin: 1px 6px; border-radius: 5px;
+            font-family: 'Roboto', -apple-system, sans-serif;
         `;
-        
+
         const icon = document.createElement('span');
         icon.textContent = cat.icon;
-        icon.style.cssText = 'font-size: 14px; width: 20px; text-align: center;';
-        
+        icon.style.cssText = 'font-size: 13px; width: 18px; text-align: center; flex-shrink: 0;';
+
         const name = document.createElement('span');
         name.textContent = cat.name;
-        
+
         item.appendChild(icon);
         item.appendChild(name);
-        
+
         item.onmouseenter = () => {
             if (activeCategory !== key) {
-                item.style.background = isLightMode ? '#f0f3fa' : '#2a2e39';
+                item.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))';
             }
         };
         item.onmouseleave = () => {
-            if (activeCategory !== key) {
-                item.style.background = 'transparent';
-            }
+            if (activeCategory !== key) item.style.background = 'transparent';
         };
-        
+
         item.onclick = () => {
             const ac = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
-            // Update active state
             Object.keys(categoryButtons).forEach(k => {
                 categoryButtons[k].style.background = 'transparent';
-                categoryButtons[k].style.color = isLightMode ? '#131722' : '#d1d4dc';
+                categoryButtons[k].style.color = 'var(--sp-text, #d1d4dc)';
+                categoryButtons[k].style.fontWeight = '500';
             });
             item.style.background = ac;
             item.style.color = '#ffffff';
+            item.style.fontWeight = '600';
             activeCategory = key;
             filterByCategory(key);
         };
-        
+
         categoryButtons[key] = item;
         return item;
     };
 
-    // Add sections and categories
     sidebar.appendChild(createCategoryItem(null, 'BUILT-IN', true));
     sidebar.appendChild(createCategoryItem('technicals', categories.technicals));
     sidebar.appendChild(createCategoryItem('sessions', categories.sessions));
     sidebar.appendChild(createCategoryItem(null, 'PERSONAL', true));
     sidebar.appendChild(createCategoryItem('favorites', categories.favorites));
 
-    // Set initial active (will be refreshed by updateThemeColors on open)
-    categoryButtons['technicals'].style.background = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+    const initAc = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+    categoryButtons['technicals'].style.background = initAc;
     categoryButtons['technicals'].style.color = '#ffffff';
+    categoryButtons['technicals'].style.fontWeight = '600';
 
     contentArea.appendChild(sidebar);
 
-    // Right content - indicator list
     const listContainer = document.createElement('div');
     listContainer.style.cssText = `
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
+        flex: 1; display: flex; flex-direction: column; overflow: hidden;
+        background: var(--sp-ui-chrome-bg, #131722);
     `;
 
-    // List header
     const listHeader = document.createElement('div');
     listHeader.style.cssText = `
-        display: flex;
-        padding: 8px 16px;
-        border-bottom: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
-        font-size: 11px;
-        font-weight: 500;
-        color: #787b86;
-        text-transform: uppercase;
+        display: flex; padding: 8px 18px;
+        border-bottom: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        font-size: 10px; font-weight: 700;
+        color: var(--sp-text-muted, #787b86);
+        text-transform: uppercase; letter-spacing: 0.8px;
         flex-shrink: 0;
+        font-family: 'Roboto', -apple-system, sans-serif;
     `;
-    listHeader.innerHTML = `<span style="flex: 1;">Indicator Name</span>`;
+    listHeader.innerHTML = `<span style="flex:1;">Indicator Name</span>`;
     listContainer.appendChild(listHeader);
 
-    // Indicator list
     const indicatorList = document.createElement('div');
     indicatorList.style.cssText = `
-        flex: 1;
-        overflow-y: auto;
-        padding: 4px 0;
+        flex: 1; overflow-y: auto; padding: 4px 0;
+        scrollbar-width: thin;
+        scrollbar-color: var(--sp-ui-border, rgba(42,46,57,0.55)) transparent;
     `;
 
-    // Store indicator items for filtering
     const indicatorItems = [];
 
     Object.keys(INDICATOR_DEFINITIONS).forEach(key => {
         const def = INDICATOR_DEFINITIONS[key];
         const item = document.createElement('div');
         item.style.cssText = `
-            display: flex;
-            align-items: center;
-            padding: 10px 16px;
-            cursor: pointer;
+            display: flex; align-items: center;
+            padding: 9px 18px; cursor: pointer;
             transition: background 0.1s;
-            font-size: 13px;
-            color: ${isLightMode ? '#131722' : '#d1d4dc'};
+            font-size: 13px; font-weight: 400;
+            color: var(--sp-text, #d1d4dc);
+            font-family: 'Roboto', -apple-system, sans-serif;
+            border-radius: 4px; margin: 1px 6px;
         `;
         item.dataset.name = def.name.toLowerCase();
         item.dataset.key = key;
-        
-        // Star icon for favorites
+
         const star = document.createElement('span');
         star.innerHTML = '★';
         star.style.cssText = `
-            color: #787b86;
-            margin-right: 12px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: color 0.15s;
+            color: var(--sp-text-muted, #787b86);
+            margin-right: 12px; font-size: 11px;
+            cursor: pointer; transition: color 0.15s; flex-shrink: 0;
         `;
         star.onclick = (e) => {
             e.stopPropagation();
             const isFav = star.style.color === 'rgb(255, 193, 7)';
-            star.style.color = isFav ? '#787b86' : '#ffc107';
-            // Toggle in favorites
+            star.style.color = isFav ? 'var(--sp-text-muted, #787b86)' : '#ffc107';
             const idx = categories.favorites.indicators.indexOf(key);
-            if (isFav && idx > -1) {
-                categories.favorites.indicators.splice(idx, 1);
-            } else if (!isFav) {
-                categories.favorites.indicators.push(key);
-            }
+            if (isFav && idx > -1) categories.favorites.indicators.splice(idx, 1);
+            else if (!isFav) categories.favorites.indicators.push(key);
         };
-        
+
         const nameSpan = document.createElement('span');
         nameSpan.textContent = def.name;
         nameSpan.style.flex = '1';
-        
+
         item.appendChild(star);
         item.appendChild(nameSpan);
-        
-        item.onmouseenter = () => item.style.background = isLightMode ? '#f0f3fa' : '#2a2e39';
-        item.onmouseleave = () => item.style.background = 'transparent';
-        
+
+        item.onmouseenter = () => { item.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))'; };
+        item.onmouseleave = () => { item.style.background = 'transparent'; };
+
         item.onclick = () => {
             console.log('📊 Indicator clicked:', key, def.name);
-            console.log('📊 Chart instance:', chartInstance);
-            console.log('📊 Has addIndicator:', typeof chartInstance?.addIndicator);
             closeMenu();
             createIndicatorSettingsPanel(chartInstance, key);
         };
-        
+
         indicatorList.appendChild(item);
         indicatorItems.push(item);
     });
@@ -1038,7 +976,6 @@ function createIndicatorSelectionMenu(chartInstance) {
     contentArea.appendChild(listContainer);
     menu.appendChild(contentArea);
 
-    // Filter by category
     function filterByCategory(categoryKey) {
         const cat = categories[categoryKey];
         indicatorItems.forEach(item => {
@@ -1052,21 +989,17 @@ function createIndicatorSelectionMenu(chartInstance) {
         });
     }
 
-    // Search functionality
     searchInput.addEventListener('input', function() {
         const searchTerm = this.value.toLowerCase().trim();
         if (searchTerm) {
-            // Show all matching indicators regardless of category
             indicatorItems.forEach(item => {
-                const matches = item.dataset.name.includes(searchTerm);
-                item.style.display = matches ? 'flex' : 'none';
+                item.style.display = item.dataset.name.includes(searchTerm) ? 'flex' : 'none';
             });
         } else {
             filterByCategory(activeCategory);
         }
     });
 
-    // Close menu function
     function closeMenu() {
         menu.classList.remove('visible');
         backdrop.style.visibility = 'hidden';
@@ -1075,71 +1008,31 @@ function createIndicatorSelectionMenu(chartInstance) {
         filterByCategory(activeCategory);
     }
 
-    // Keyboard support
     searchInput.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeMenu();
     });
 
-    // Click backdrop to close
     backdrop.onclick = closeMenu;
 
-    // Function to update theme colors dynamically
     function updateThemeColors() {
-        const lightMode = document.body.classList.contains('light-mode');
-        
-        // Update backdrop
-        backdrop.style.background = lightMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.6)';
-        
-        // Update menu
-        menu.style.background = lightMode ? '#ffffff' : '#000000';
-        menu.style.border = `1px solid ${lightMode ? '#e0e3eb' : 'transparent'}`;
-        menu.style.boxShadow = lightMode ? '0 8px 32px rgba(0, 0, 0, 0.15)' : '0 16px 48px rgba(0, 0, 0, 0.4)';
-        
-        // Update header
-        header.style.borderBottom = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
-        title.style.color = lightMode ? '#131722' : '#d1d4dc';
-        
-        // Update search
-        searchContainer.style.borderBottom = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
-        searchWrapper.style.background = lightMode ? '#f0f3fa' : '#2a2e39';
-        searchInput.style.color = lightMode ? '#131722' : '#d1d4dc';
-        
-        // Update sidebar
-        sidebar.style.borderRight = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
-        
-        // Update category buttons
         const ac = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
         Object.keys(categoryButtons).forEach(k => {
             if (activeCategory !== k) {
                 categoryButtons[k].style.background = 'transparent';
-                categoryButtons[k].style.color = lightMode ? '#131722' : '#d1d4dc';
+                categoryButtons[k].style.color = 'var(--sp-text, #d1d4dc)';
+                categoryButtons[k].style.fontWeight = '500';
             } else {
                 categoryButtons[k].style.background = ac;
                 categoryButtons[k].style.color = '#ffffff';
+                categoryButtons[k].style.fontWeight = '600';
             }
         });
-        
-        // Update list header
-        listHeader.style.borderBottom = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
-        
-        // Update indicator items
-        indicatorItems.forEach(item => {
-            item.style.color = lightMode ? '#131722' : '#d1d4dc';
-            item.onmouseenter = () => item.style.background = lightMode ? '#f0f3fa' : '#2a2e39';
-            item.onmouseleave = () => item.style.background = 'transparent';
-        });
-        
-        // Update close button hover
-        closeBtn.onmouseenter = () => { closeBtn.style.background = lightMode ? '#f0f3fa' : '#2a2e39'; };
-        closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; };
     }
 
-    // Visibility observer
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             if (mutation.attributeName === 'class') {
                 if (menu.classList.contains('visible')) {
-                    // Update theme colors each time menu opens
                     updateThemeColors();
                     menu.style.visibility = 'visible';
                     menu.style.opacity = '1';
@@ -1157,9 +1050,7 @@ function createIndicatorSelectionMenu(chartInstance) {
     });
     observer.observe(menu, { attributes: true });
 
-    // Initial filter
     filterByCategory('technicals');
-
     return menu;
 }
 
@@ -1198,17 +1089,18 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #000000;
-        border: 1px solid #363a45;
-        border-radius: 8px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        background: var(--sp-ui-chrome-bg, #131722);
+        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        border-radius: 10px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.65);
         z-index: 10000;
-        min-width: 350px;
-        max-width: 450px;
+        min-width: 360px;
+        max-width: 460px;
         max-height: 80vh;
-        padding: 20px;
+        padding: 22px;
         display: flex;
         flex-direction: column;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
     `;
 
     const title = document.createElement('div');
@@ -1227,7 +1119,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     form.style.marginTop = '10px';
     // Add scrollbar styling
     form.style.scrollbarWidth = 'thin';
-    form.style.scrollbarColor = '#363a45 #1e222d';
+    form.style.scrollbarColor = 'var(--sp-ui-border, rgba(42,46,57,0.55)) transparent';
 
     const initialParams = existingIndicator ? existingIndicator.params : {};
     const initialStyle = existingIndicator ? existingIndicator.style : {};
@@ -1248,7 +1140,8 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         const label = document.createElement('label');
         label.textContent = param.label;
         label.style.fontSize = '12px';
-        label.style.color = '#d1d4dc';
+        label.style.color = 'var(--sp-text-muted, #787b86)';
+        label.style.fontFamily = "'Roboto', -apple-system, sans-serif";
         wrapper.appendChild(label);
 
         let input;
@@ -1263,11 +1156,12 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             if (param.step) input.step = param.step;
             input.style.width = '80px';
             input.style.padding = '4px 8px';
-            input.style.borderRadius = '4px';
-            input.style.border = '1px solid #363a45';
-            input.style.background = '#000000';
-            input.style.color = '#d1d4dc';
+            input.style.borderRadius = '5px';
+            input.style.border = '1px solid var(--sp-input-border, rgba(42,46,57,0.55))';
+            input.style.background = 'var(--sp-input-bg, rgba(30,34,45,0.72))';
+            input.style.color = 'var(--sp-text, #d1d4dc)';
             input.style.textAlign = 'right';
+            input.style.fontFamily = "'Roboto', -apple-system, sans-serif";
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1294,11 +1188,12 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.value = currentValue || param.default;
             input.style.width = '90px';
             input.style.padding = '4px 8px';
-            input.style.borderRadius = '4px';
-            input.style.border = '1px solid #363a45';
-            input.style.background = '#000000';
-            input.style.color = '#d1d4dc';
+            input.style.borderRadius = '5px';
+            input.style.border = '1px solid var(--sp-input-border, rgba(42,46,57,0.55))';
+            input.style.background = 'var(--sp-input-bg, rgba(30,34,45,0.72))';
+            input.style.color = 'var(--sp-text, #d1d4dc)';
             input.style.cursor = 'pointer';
+            input.style.fontFamily = "'Roboto', -apple-system, sans-serif";
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1321,11 +1216,12 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.value = currentValue;
             input.style.width = '120px';
             input.style.padding = '4px 8px';
-            input.style.borderRadius = '4px';
-            input.style.border = '1px solid #363a45';
-            input.style.background = '#000000';
-            input.style.color = '#d1d4dc';
+            input.style.borderRadius = '5px';
+            input.style.border = '1px solid var(--sp-input-border, rgba(42,46,57,0.55))';
+            input.style.background = 'var(--sp-input-bg, rgba(30,34,45,0.72))';
+            input.style.color = 'var(--sp-text, #d1d4dc)';
             input.style.textAlign = 'right';
+            input.style.fontFamily = "'Roboto', -apple-system, sans-serif";
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1351,14 +1247,15 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     const saveBtn = document.createElement('button');
     saveBtn.style.cssText = `
         background: var(--sp-accent, #2962ff);
-        color: white;
+        color: #ffffff;
         border: none;
-        border-radius: 4px;
-        padding: 8px 16px;
+        border-radius: 5px;
+        padding: 8px 18px;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        transition: background 0.2s;
+        transition: background 0.15s;
+        font-family: 'Roboto', -apple-system, sans-serif;
     `;
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
     saveBtn.onmouseenter = () => { saveBtn.style.background = `rgba(var(--sp-accent-rgb, 41,98,255), 0.8)`; };
@@ -1448,19 +1345,20 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const cancelBtn = document.createElement('button');
     cancelBtn.style.cssText = `
-        background: #363a45;
-        color: #d1d4dc;
-        border: none;
-        border-radius: 4px;
+        background: var(--sp-ui-surface-bg, #1e2740);
+        color: var(--sp-text, #d1d4dc);
+        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+        border-radius: 5px;
         padding: 8px 16px;
         font-size: 13px;
-        font-weight: 600;
+        font-weight: 500;
         cursor: pointer;
-        transition: background 0.2s;
+        transition: background 0.15s;
+        font-family: 'Roboto', -apple-system, sans-serif;
     `;
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.onmouseenter = () => { cancelBtn.style.background = '#434651'; };
-    cancelBtn.onmouseleave = () => { cancelBtn.style.background = '#363a45'; };
+    cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))'; };
+    cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'var(--sp-ui-surface-bg, #1e2740)'; };
     cancelBtn.onclick = () => {
         closePanel();
     };
