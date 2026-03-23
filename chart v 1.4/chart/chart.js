@@ -10241,17 +10241,15 @@ class Chart {
         // Neutral gray color (like TradingView)
         const bgColor = '#787B86';
         
-        // Format price with stable precision across timeframes.
+        // Format price — respect explicit precision setting, else match the axis
         let decimals;
         const precisionSetting = this.chartSettings ? this.chartSettings.precision : 'Default';
         if (precisionSetting && precisionSetting !== 'Default') {
             const parsed = parseInt(precisionSetting, 10);
             decimals = Number.isFinite(parsed) ? Math.max(0, Math.min(8, parsed)) : 4;
         } else {
-            const absPrice = Math.abs(Number(currentPrice));
-            if (absPrice >= 1000) decimals = 3;
-            else if (absPrice >= 1) decimals = 4;
-            else decimals = 5;
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            decimals = this.getPriceDecimals(priceRange);
         }
         const priceText = Number(currentPrice).toFixed(decimals);
 
@@ -13978,18 +13976,15 @@ class Chart {
         
         if (priceLabel && this.yScale) {
             const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
-            // Format price with appropriate decimals — respect precision setting
+            // Format price — respect explicit precision setting, else match the axis
             let decimals;
             const _xhPrec = this.chartSettings ? this.chartSettings.precision : 'Default';
             if (_xhPrec && _xhPrec !== 'Default') {
                 const _parsed = parseInt(_xhPrec, 10);
                 decimals = Number.isFinite(_parsed) ? Math.max(0, Math.min(8, _parsed)) : 4;
             } else {
-                if (price < 0.01) decimals = 6;
-                else if (price < 1) decimals = 5;
-                else if (price < 10) decimals = 4;
-                else if (price < 1000) decimals = 3;
-                else decimals = 2;
+                const _priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+                decimals = this.getPriceDecimals(_priceRange);
             }
             priceLabel.textContent = price.toFixed(decimals);
             
