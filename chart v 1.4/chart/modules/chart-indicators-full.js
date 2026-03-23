@@ -1731,6 +1731,7 @@ Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 6) {
 Chart.prototype.startSeparatePanelResize = function(handle, startY) {
     if (!handle || !this.separatePanelInfo || !Array.isArray(this.separatePanelInfo.panelHeights)) return false;
     this._separatePanelResize = {
+        handleType: handle.type || 'pair',
         handleIndex: handle.index,
         startY: startY,
         baseHeights: this.separatePanelInfo.panelHeights.slice(),
@@ -1745,18 +1746,26 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
     }
     const state = this._separatePanelResize;
     const heights = state.baseHeights.slice();
-    const bottomIdx = state.handleIndex;
-    const topIdx = state.handleIndex + 1;
-    if (bottomIdx < 0 || topIdx >= heights.length) return false;
-
     const dy = currentY - state.startY;
-    const pairTotal = heights[bottomIdx] + heights[topIdx];
-    let nextBottom = heights[bottomIdx] - dy;
-    nextBottom = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextBottom));
-    const nextTop = pairTotal - nextBottom;
+    if (state.handleType === 'top') {
+        const topIdx = state.handleIndex;
+        if (topIdx < 0 || topIdx >= heights.length) return false;
+        let nextTopHeight = heights[topIdx] - dy;
+        nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, nextTopHeight);
+        heights[topIdx] = nextTopHeight;
+    } else {
+        const bottomIdx = state.handleIndex;
+        const topIdx = state.handleIndex + 1;
+        if (bottomIdx < 0 || topIdx >= heights.length) return false;
 
-    heights[bottomIdx] = nextBottom;
-    heights[topIdx] = nextTop;
+        const pairTotal = heights[bottomIdx] + heights[topIdx];
+        let nextBottom = heights[bottomIdx] - dy;
+        nextBottom = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextBottom));
+        const nextTop = pairTotal - nextBottom;
+
+        heights[bottomIdx] = nextBottom;
+        heights[topIdx] = nextTop;
+    }
     state.activeHeights = heights;
     this._persistSeparatePanelHeights(this.separatePanelInfo.indicators, heights, false);
     this.separateIndicatorPanelHeight = heights.reduce((sum, h) => sum + h, 0);
@@ -1830,6 +1839,13 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.beginPath();
     ctx.moveTo(m.l, panelTop);
     ctx.lineTo(this.w - m.r, panelTop);
+    ctx.stroke();
+    const topHandleMidX = this.w - m.r - 18;
+    ctx.strokeStyle = 'rgba(120,123,134,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(topHandleMidX - 10, panelTop);
+    ctx.lineTo(topHandleMidX + 10, panelTop);
     ctx.stroke();
     
     // Get visible range
@@ -2087,7 +2103,10 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         indicators: separateIndicators,
         panelHeights: panelHeights,
         panelSlots: panelSlots,
-        resizeHandles: panelSlots.slice(0, -1).map(slot => ({ index: slot.index, y: slot.top }))
+        resizeHandles: [
+            { type: 'top', index: panelSlots.length - 1, y: panelTop },
+            ...panelSlots.slice(0, -1).map(slot => ({ type: 'pair', index: slot.index, y: slot.top }))
+        ]
     };
     
     // Draw crosshair value if mouse is in the stacked panel area
