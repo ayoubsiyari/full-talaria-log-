@@ -489,7 +489,7 @@ export default function BacktestAnalyticsPage() {
   const bestHeatmap = heatmapData[0];
   const heatmapValueRange = useMemo(() => {
     if (heatmapData.length === 0) return { min: 0, max: 0, absMax: 1 };
-    const vals = heatmapData.map((h) =>
+    const vals = heatmapData.map((h: any) =>
       heatmapMetric === "USD" ? n(h.expectancy_usd ?? h.expectancyUsd) : n(h.expectancy_r ?? h.expectancyR)
     );
     const min = Math.min(...vals);
