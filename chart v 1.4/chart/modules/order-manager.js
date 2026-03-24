@@ -4569,31 +4569,33 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-section" id="tpSection">
-                    <div class="order-toggle-wrapper">
-                        <input type="checkbox" id="enableTP" class="order-checkbox" checked>
-                        <label for="enableTP" class="order-toggle-label">Profit target</label>
-                    </div>
-                    <div id="tpInputs" class="order-grid-two">
-                        <div class="order-field">
-                            <label class="order-label" for="tpPrice">Price</label>
-                            <div class="order-input-wrapper">
-                                <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact">
+                <div class="order-grid-two" style="align-items: start;">
+                    <div class="order-section" id="tpSection">
+                        <div class="order-toggle-wrapper">
+                            <input type="checkbox" id="enableTP" class="order-checkbox" checked>
+                            <label for="enableTP" class="order-toggle-label">Profit target</label>
+                        </div>
+                        <div id="tpInputs" class="order-grid-two">
+                            <div class="order-field">
+                                <label class="order-label" for="tpPrice">Price</label>
+                                <div class="order-input-wrapper">
+                                    <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact">
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="order-section" id="slSection">
-                    <div class="order-toggle-wrapper">
-                        <input type="checkbox" id="enableSL" class="order-checkbox" checked>
-                        <label for="enableSL" class="order-toggle-label">Stop loss</label>
-                    </div>
-                    <div id="slInputs" class="order-grid-two">
-                        <div class="order-field">
-                            <label class="order-label" for="slPrice">Price</label>
-                            <div class="order-input-wrapper">
-                                <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact">
+                    <div class="order-section" id="slSection">
+                        <div class="order-toggle-wrapper">
+                            <input type="checkbox" id="enableSL" class="order-checkbox" checked>
+                            <label for="enableSL" class="order-toggle-label">Stop loss</label>
+                        </div>
+                        <div id="slInputs" class="order-grid-two">
+                            <div class="order-field">
+                                <label class="order-label" for="slPrice">Price</label>
+                                <div class="order-input-wrapper">
+                                    <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact">
+                                </div>
                             </div>
                         </div>
                     </div>
