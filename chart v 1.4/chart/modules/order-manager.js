@@ -16593,6 +16593,7 @@ class OrderManager {
             : (Number.isFinite(replayNowTs)
                 ? replayNowTs
                 : (Number.isFinite(chartNowTs) ? chartNowTs : fallbackNowTs));
+        const equityForPct = Number.parseFloat(this.orderService?.equity ?? this.equity) || 0;
         body.innerHTML = this.openPositions.map((pos) => {
             const ticker = String(pos.ticker || pos.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
             const pnl = Number.parseFloat(pos.unrealizedPnL || 0) || 0;
@@ -16602,6 +16603,10 @@ class OrderManager {
             const margin = this.orderService && typeof this.orderService.estimateTradeMargin === 'function'
                 ? this.orderService.estimateTradeMargin(pos)
                 : 0;
+            const marginPct = equityForPct > 0 ? (margin / equityForPct) * 100 : null;
+            const marginPctLabel = marginPct != null && Number.isFinite(marginPct)
+                ? `${marginPct.toFixed(1)}%`
+                : '—';
             const openTs = normalizeEpochMs(pos.openTime, nowTs);
             let mins = Math.max(0, Math.round((nowTs - openTs) / 60000));
             // Guard: if we somehow mix wall-clock with replay timeline, prefer replay delta.
@@ -16615,7 +16620,7 @@ class OrderManager {
                     <div style="font-size:11px;color:${pos.type === 'SELL' ? '#f87171' : '#4ade80'};">${pos.type || '-'}</div>
                     <div style="font-size:11px;">${Number(pos.quantity || 0).toFixed(2)}L</div>
                     <div style="font-size:11px;color:${pnlClass};">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${rNow >= 0 ? '+' : ''}${rNow.toFixed(2)}R)</div>
-                    <div style="font-size:11px;color:#cbd5e1;">M $${Number(margin || 0).toFixed(0)}</div>
+                    <div style="font-size:11px;color:#cbd5e1;">${marginPctLabel}</div>
                     <div style="font-size:11px;color:#94a3b8;">${timeLabel}</div>
                 </div>
             `;
