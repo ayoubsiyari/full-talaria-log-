@@ -331,7 +331,9 @@ class Chart {
         this.currentFileId = null;
         this.currentSymbol = null; // Store detected symbol from CSV
         this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
-        
+        /** First /smart batch for backtest sessions; replay + pan forward-load merge the rest (was 100k). */
+        this.BACKTEST_SMART_INITIAL_LIMIT = 48000;
+
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
         this.loadedRanges = new Map(); // Cache loaded data ranges
@@ -772,10 +774,12 @@ class Chart {
                 this.updateLoaderProgress(10, 'Session loaded');
                 this.updateLoaderStep(1, 'active');
                 
-                // Load data directly (no file selector needed in backtesting mode)
-                setTimeout(() => {
-                    this.autoLoadBacktestingData(this.backtestingSession);
-                }, 500);
+                // Load ASAP after loader paints (avoid fixed 500ms wait — that only slowed first chart)
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        this.autoLoadBacktestingData(this.backtestingSession);
+                    });
+                });
             } else {
                 console.warn('⚠️ No backtesting session data found in localStorage');
                 alert('Backtesting session not found. Redirecting to setup...');
@@ -924,8 +928,11 @@ class Chart {
             this._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
 
             this.updateLoaderProgress(70, 'Preparing chart...');
-            
-            if (session.fileName) {
+
+            const resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
+            if (resolvedTicker) {
+                this.currentSymbol = resolvedTicker;
+            } else if (session.fileName) {
                 this.currentSymbol = session.fileName.replace('.csv', '').toUpperCase();
             } else if (session.instrumentTickers && session.instrumentTickers.length > 0) {
                 this.currentSymbol = session.instrumentTickers[0];
@@ -942,17 +949,16 @@ class Chart {
             
             this.updateLoaderStep(2, 'completed');
             this.updateLoaderProgress(90, 'Rendering chart...');
-            
+
             this.fitToView();
             this.render();
-            
+
+            // One rAF for paint; start replay on microtask (drops ~300ms of stacked timeouts)
             requestAnimationFrame(() => {
                 this.render();
                 this.updateLoaderProgress(95, 'Starting replay mode...');
                 this.updateLoaderStep(3, 'active');
-                setTimeout(() => {
-                    this.startBacktestingReplay(session);
-                }, 200);
+                queueMicrotask(() => this.startBacktestingReplay(session));
             });
             
         } catch (error) {
@@ -970,7 +976,9 @@ class Chart {
         const isBacktest = session && session.startDate;
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
-        const limit = isBacktest ? '100000' : '5000';
+        const limit = isBacktest
+            ? String(Math.max(5000, Math.min(100000, Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 48000)))
+            : '5000';
         const params = new URLSearchParams({
             timeframe: timeframe,
             limit: limit,
@@ -1281,13 +1289,13 @@ class Chart {
         }
 
         if (this.replaySystem) {
-            setTimeout(() => {
+            queueMicrotask(() => {
                 this.replaySystem.enterReplayMode();
                 this.loadTradingSessionStateIfNeeded();
                 this.updateLoaderProgress(100, 'Replay mode active!');
                 this.updateLoaderStep(3, 'completed');
-                setTimeout(() => { this.hideLoader(); }, 200);
-            }, 100);
+                requestAnimationFrame(() => this.hideLoader());
+            });
         } else {
             console.error('❌ Replay system not available!');
             alert('Replay system not loaded. Please refresh the page.');
@@ -6014,21 +6022,6 @@ class Chart {
         }).join('');
     }
 
-    _bindListClicks(dropdown) {
-        const list = dropdown.querySelector('.ssd-list');
-        if (!list) return;
-        list.addEventListener('click', (e) => {
-            const item = e.target.closest('.ssd-item[data-file-id]');
-            if (!item) return;
-            const fileId = item.dataset.fileId;
-            dropdown.classList.remove('open');
-            if (fileId && String(fileId) !== String(this.currentFileId || '')) {
-                this.currentFileId = fileId;
-                this.loadFileFromServer(fileId);
-            }
-        });
-    }
-
     renderSymbolSwitcherOptions(dropdown) {
         if (!dropdown) return;
         const entries = this.getSymbolSwitcherEntries();
@@ -6039,7 +6032,6 @@ class Chart {
             const list = dropdown.querySelector('.ssd-list');
             if (list) {
                 list.innerHTML = this._buildListContent(entries, query);
-                this._bindListClicks(dropdown);
             }
             return;
         }
@@ -6052,7 +6044,6 @@ class Chart {
         <div class="ssd-header">Instruments</div>
         <div class="ssd-list">${listContent}</div>`;
         this._bindDropdownSearch(dropdown);
-        this._bindListClicks(dropdown);
     }
 
     _bindDropdownSearch(dropdown) {
@@ -6067,7 +6058,6 @@ class Chart {
             const list = dropdown.querySelector('.ssd-list');
             if (list) {
                 list.innerHTML = this._buildListContent(entries, query);
-                this._bindListClicks(dropdown);
             }
         });
         input.addEventListener('click', (e) => e.stopPropagation());

@@ -23683,7 +23683,7 @@
 
             display: flex;
 
-            flex-direction: column;
+            flex-direction: row;
 
             align-items: center;
 
@@ -23707,7 +23707,7 @@
 
             height: 36px;
 
-            transform: translateX(23px);
+            flex-shrink: 0;
 
         }
 
@@ -23715,11 +23715,7 @@
 
         .chart-brand .logo-bottom {
 
-            height: 42px;
-
-            margin-top: 0;
-
-            transform: translateX(-2px);
+            height: 32px;
 
             display: block;
 
@@ -23731,11 +23727,15 @@
 
             overflow: hidden;
 
-            height: 0;
+            max-width: 0;
 
             opacity: 0;
 
-            transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+            white-space: nowrap;
+
+            margin-left: 6px;
+
+            transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
 
         }
 
@@ -23743,7 +23743,7 @@
 
         .chart-brand:hover .logo-bottom-wrap {
 
-            height: 42px;
+            max-width: 300px;
 
             opacity: 1;
 
@@ -40353,7 +40353,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260324_SMART_CANDLES_V160"></script>
+    <script defer src="chart.js?v=20260324_BACKTEST_LOAD_V162"></script>
 
     <script defer src="modules/replay-system.js?v=20260324_MULTI_MILESTONE_V67"></script>
 

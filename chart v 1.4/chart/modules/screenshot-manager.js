@@ -124,7 +124,7 @@ class ScreenshotManager {
         });
 
         clonedDoc.querySelectorAll('.chart-brand .logo-bottom-wrap').forEach((wrap) => {
-            wrap.style.height = '42px';
+            wrap.style.maxWidth = '300px';
             wrap.style.opacity = '1';
         });
 
