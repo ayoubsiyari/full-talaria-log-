@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { API_BASE_URL } from '../config';
 import { colors, colorUtils } from '../config/colors';
 import { useFilter } from '../context/FilterContext';
@@ -15,6 +15,8 @@ import {
   Cell,
   AreaChart,
   Area,
+  LineChart,
+  Line,
 } from 'recharts';
 import {
   DollarSign,
@@ -68,6 +70,7 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [performanceRating, setPerformanceRating] = useState(null);
+  const [instrumentSort, setInstrumentSort] = useState({ key: 'net_pnl', dir: 'desc' });
 
   // import-batch filter state
   const [importHistory, setImportHistory] = useState([]);
@@ -318,8 +321,23 @@ export default function Analytics() {
         pnl,
       }))
     : [];
+  const palette = ['#3b82f6', '#10b981', '#ef4444', '#f59e0b', '#8b5cf6', '#06b6d4', '#84cc16', '#ec4899'];
   const equityCurve = Array.isArray(stats.equity_curve)
-    ? stats.equity_curve.map((pt) => ({ date: pt.date, cumulative_pnl: pt.cumulative_pnl }))
+    ? stats.equity_curve.map((pt, idx) => {
+        const ticker = String(pt.ticker || pt.symbol || pt.instrument || '').toUpperCase();
+        const color = ticker
+          ? palette[Math.abs(
+              ticker.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+            ) % palette.length]
+          : '#3b82f6';
+        return {
+          date: pt.date,
+          cumulative_pnl: pt.cumulative_pnl,
+          ticker,
+          pointColor: color,
+          _idx: idx
+        };
+      })
     : [];
   const winLossData = [
     { name: 'Wins', value: stats.win_loss?.wins || 0, color: '#10b981' },
@@ -377,6 +395,69 @@ export default function Analytics() {
       symbol: value === 'ALL' ? [] : [value]
     };
     updateFilters(nextFilters);
+  };
+
+  const perInstrumentRows = useMemo(() => {
+    const fromStats = stats?.per_instrument_stats;
+    if (fromStats && typeof fromStats === 'object' && !Array.isArray(fromStats)) {
+      return Object.entries(fromStats).map(([ticker, raw]) => {
+        const row = raw || {};
+        return {
+          ticker: String(ticker).toUpperCase(),
+          trade_count: Number(row.trade_count ?? row.trades ?? 0),
+          win_rate: Number(row.win_rate ?? 0),
+          net_pnl: Number(row.net_pnl ?? row.pnl_dollars_net ?? row.pnl ?? 0),
+          net_rr: Number(row.net_rr ?? row.actual_rr_net ?? 0),
+          avg_mae_r: Number(row.avg_mae_r ?? row.mae_r ?? 0),
+          avg_mfe_r: Number(row.avg_mfe_r ?? row.mfe_r ?? 0),
+          capture_ratio: Number(row.capture_ratio ?? 0),
+          commission_paid: Number(row.commission_paid ?? row.commission_total ?? 0),
+          spread_cost: Number(row.spread_cost ?? row.spread_cost_dollars ?? 0),
+        };
+      });
+    }
+
+    // Fallback for older API payloads
+    return allSymbols.map(([symbol, data]) => {
+      const d = data || {};
+      return {
+        ticker: String(symbol).toUpperCase(),
+        trade_count: Number(d.trade_count ?? d.trades ?? 0),
+        win_rate: Number(d.win_rate ?? (d.trades ? (d.wins / d.trades) * 100 : 0)),
+        net_pnl: Number(d.net_pnl ?? d.pnl ?? 0),
+        net_rr: Number(d.net_rr ?? d.actual_rr_net ?? 0),
+        avg_mae_r: Number(d.avg_mae_r ?? 0),
+        avg_mfe_r: Number(d.avg_mfe_r ?? 0),
+        capture_ratio: Number(d.capture_ratio ?? 0),
+        commission_paid: Number(d.commission_paid ?? d.commission_total ?? 0),
+        spread_cost: Number(d.spread_cost ?? d.spread_cost_dollars ?? 0),
+      };
+    });
+  }, [stats, allSymbols]);
+
+  const sortedPerInstrumentRows = useMemo(() => {
+    const rows = [...perInstrumentRows];
+    const { key, dir } = instrumentSort;
+    rows.sort((a, b) => {
+      const av = a[key];
+      const bv = b[key];
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return dir === 'asc'
+          ? String(av).localeCompare(String(bv))
+          : String(bv).localeCompare(String(av));
+      }
+      return dir === 'asc' ? Number(av) - Number(bv) : Number(bv) - Number(av);
+    });
+    return rows;
+  }, [perInstrumentRows, instrumentSort]);
+
+  const onSortInstrument = (key) => {
+    setInstrumentSort((prev) => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, dir: 'desc' };
+    });
   };
 
 
@@ -1029,7 +1110,7 @@ export default function Analytics() {
               </div>
               <ResponsiveContainer width="100%" height={300}>
                 {equityCurve.length > 0 ? (
-                  <AreaChart data={equityCurve}>
+                  <LineChart data={equityCurve}>
                     <defs>
                       <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -1040,18 +1121,25 @@ export default function Analytics() {
                     <XAxis dataKey="date" />
                     <YAxis tickFormatter={(v) => `$${v}`} />
                     <Tooltip
-                      formatter={(value) => [formatCurrency(value), 'Equity']}
+                      formatter={(value, _name, ctx) => {
+                        const t = ctx?.payload?.ticker;
+                        return [formatCurrency(value), t ? `Equity (${t})` : 'Equity'];
+                      }}
                       contentStyle={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb' }}
                     />
-                    <Area
+                    <Line
                       type="monotone"
                       dataKey="cumulative_pnl"
                       stroke="#3b82f6"
                       strokeWidth={3}
-                      fillOpacity={1}
-                      fill="url(#eqGrad)"
+                      dot={(props) => {
+                        const { cx, cy, payload } = props;
+                        if (cx == null || cy == null) return null;
+                        return <circle cx={cx} cy={cy} r={3.5} fill={payload?.pointColor || '#3b82f6'} />;
+                      }}
+                      activeDot={{ r: 5 }}
                     />
-                  </AreaChart>
+                  </LineChart>
                 ) : (
                   <p className="text-xs text-gray-400 text-center mt-8">No equity data</p>
                 )}
@@ -1262,23 +1350,32 @@ export default function Analytics() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Ticker</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Trades</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Win Rate</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Net PnL</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('ticker')}>Ticker</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('trade_count')}>Trades</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('win_rate')}>Win Rate</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('net_pnl')}>Net PnL ($)</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('net_rr')}>Net PnL (R)</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('avg_mae_r')}>Avg MAE (R)</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('avg_mfe_r')}>Avg MFE (R)</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('capture_ratio')}>Capture Ratio</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('commission_paid')}>Commission Paid</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('spread_cost')}>Spread Cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {allSymbols.map(([symbol, data]) => {
-                  const wr = data?.trades ? ((data.wins / data.trades) * 100) : 0;
+                {sortedPerInstrumentRows.map((row) => {
                   return (
-                    <tr key={symbol} className="hover:bg-gray-50 transition-colors duration-200">
-                      <td className="py-3 px-4 font-medium text-gray-900">{symbol}</td>
-                      <td className="py-3 px-4 text-right text-gray-700">{data?.trades || 0}</td>
-                      <td className="py-3 px-4 text-right text-gray-700">{wr.toFixed(1)}%</td>
-                      <td className={`py-3 px-4 text-right font-semibold ${(data?.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(data?.pnl || 0)}
-                      </td>
+                    <tr key={row.ticker} className="hover:bg-gray-50 transition-colors duration-200">
+                      <td className="py-3 px-4 font-medium text-gray-900">{row.ticker}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{row.trade_count}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{row.win_rate.toFixed(1)}%</td>
+                      <td className={`py-3 px-4 text-right font-semibold ${row.net_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(row.net_pnl)}</td>
+                      <td className={`py-3 px-4 text-right font-semibold ${row.net_rr >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatNumber(row.net_rr)}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{formatNumber(row.avg_mae_r)}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{formatNumber(row.avg_mfe_r)}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{formatPercent(row.capture_ratio)}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{formatCurrency(row.commission_paid)}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{formatCurrency(row.spread_cost)}</td>
                     </tr>
                   );
                 })}

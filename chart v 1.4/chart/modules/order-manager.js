@@ -2871,15 +2871,43 @@ class OrderManager {
     }
 
     setupAnalyticsExportButtons() {
+        const wrap = document.getElementById('analyticsExportMenuWrap');
+        const menuBtn = document.getElementById('analyticsExportMenuBtn');
+        const menu = document.getElementById('analyticsExportMenu');
         const csvBtn = document.getElementById('analyticsExportCsvBtn');
         const pdfBtn = document.getElementById('analyticsExportPdfBtn');
+        if (menuBtn && menu && !menuBtn.dataset.bound) {
+            menuBtn.dataset.bound = '1';
+            menuBtn.onclick = (e) => {
+                e.stopPropagation();
+                const isOpen = menu.style.display === 'block';
+                menu.style.display = isOpen ? 'none' : 'block';
+            };
+        }
         if (csvBtn && !csvBtn.dataset.bound) {
             csvBtn.dataset.bound = '1';
-            csvBtn.onclick = () => this.exportAnalyticsToCSV();
+            csvBtn.onclick = (e) => {
+                e.stopPropagation();
+                this.exportAnalyticsToCSV();
+                if (menu) menu.style.display = 'none';
+            };
         }
         if (pdfBtn && !pdfBtn.dataset.bound) {
             pdfBtn.dataset.bound = '1';
-            pdfBtn.onclick = () => this.exportAnalyticsReportToPDF();
+            pdfBtn.onclick = (e) => {
+                e.stopPropagation();
+                this.exportAnalyticsReportToPDF();
+                if (menu) menu.style.display = 'none';
+            };
+        }
+        if (!this._analyticsExportOutsideClickBound) {
+            this._analyticsExportOutsideClickBound = true;
+            document.addEventListener('click', (e) => {
+                if (!menu || !wrap) return;
+                if (!wrap.contains(e.target)) {
+                    menu.style.display = 'none';
+                }
+            });
         }
     }
 

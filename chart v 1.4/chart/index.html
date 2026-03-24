@@ -7389,29 +7389,33 @@
 
         
 
-        /* Symbol Switcher Dropdown */
+        /* Symbol Switcher Dropdown - TradingView Style */
 
         .symbol-switcher-dropdown {
 
             display: none;
 
+            flex-direction: column;
+
             position: fixed;
 
-            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            background: var(--sp-ui-surface-bg, #111a35);
 
-            border: 1px solid rgba(59, 130, 246, 0.3);
+            border: 1px solid var(--sp-ui-border, rgba(98, 116, 160, 0.35));
 
-            border-radius: 8px;
+            border-radius: 6px;
 
-            min-width: 420px;
+            min-width: 280px;
 
-            max-height: 400px;
+            max-height: 420px;
 
-            overflow-y: auto;
+            overflow: hidden;
 
             z-index: 100000;
 
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65), 0 1px 6px rgba(0, 0, 0, 0.4);
+
+            font-family: inherit;
 
         }
 
@@ -7419,41 +7423,145 @@
 
         .symbol-switcher-dropdown.open {
 
-            display: block;
+            display: flex;
 
         }
 
         
 
-        .symbol-switcher-header {
+        /* Search row */
 
-            padding: 10px 14px;
+        .ssd-search-wrapper {
 
-            font-size: 11px;
+            display: flex;
+
+            align-items: center;
+
+            gap: 8px;
+
+            padding: 10px 12px;
+
+            border-bottom: 1px solid rgba(98, 116, 160, 0.18);
+
+            background: var(--sp-ui-chrome-bg, #0d142b);
+
+            flex-shrink: 0;
+
+        }
+
+        
+
+        .ssd-search-icon {
+
+            width: 14px;
+
+            height: 14px;
+
+            color: #6b7280;
+
+            flex-shrink: 0;
+
+        }
+
+        
+
+        .ssd-search-input {
+
+            flex: 1;
+
+            background: none;
+
+            border: none;
+
+            outline: none;
+
+            color: #d1d5db;
+
+            font-size: 13px;
+
+            font-family: inherit;
+
+            padding: 0;
+
+            caret-color: var(--sp-accent, #2962ff);
+
+        }
+
+        
+
+        .ssd-search-input::placeholder {
+
+            color: #3d4b63;
+
+        }
+
+        
+
+        /* Section label */
+
+        .ssd-header {
+
+            padding: 8px 12px 4px;
+
+            font-size: 10px;
 
             font-weight: 600;
 
-            color: #64748b;
+            color: #3d4b63;
 
             text-transform: uppercase;
 
-            letter-spacing: 0.5px;
+            letter-spacing: 0.8px;
 
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-
-        }
-
-        
-
-        .symbol-switcher-list {
-
-            padding: 6px;
+            flex-shrink: 0;
 
         }
 
         
 
-        .symbol-switcher-item {
+        /* Scrollable list */
+
+        .ssd-list {
+
+            overflow-y: auto;
+
+            flex: 1;
+
+            padding: 4px 0;
+
+        }
+
+        
+
+        .ssd-list::-webkit-scrollbar {
+
+            width: 4px;
+
+        }
+
+        
+
+        .ssd-list::-webkit-scrollbar-track {
+
+            background: transparent;
+
+        }
+
+        
+
+        .ssd-list::-webkit-scrollbar-thumb {
+
+            background: rgba(98, 116, 160, 0.25);
+
+            border-radius: 2px;
+
+        }
+
+        
+
+        /* List item */
+
+        .ssd-item {
 
             display: flex;
 
@@ -7461,55 +7569,51 @@
 
             gap: 10px;
 
-            padding: 10px 12px;
+            padding: 7px 12px;
 
-            border-radius: 6px;
+            transition: background 0.12s;
 
-            transition: background 0.15s;
-
-            color: #ffffff;
+            color: #d1d5db;
 
             font-size: 13px;
 
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            min-height: 42px;
+
+            cursor: default;
 
         }
 
         
 
-        .symbol-switcher-item:last-child {
+        .ssd-item:hover {
 
-            border-bottom: none;
-
-        }
-
-        
-
-        .symbol-switcher-item:hover {
-
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(41, 98, 255, 0.08);
 
         }
 
         
 
-        .symbol-switcher-item.active {
+        .ssd-item.active {
 
-            background: rgba(59, 130, 246, 0.15);
+            background: rgba(41, 98, 255, 0.13);
 
         }
 
         
 
-        .symbol-switcher-item .symbol-icon {
+        /* Symbol icon badge */
 
-            width: 28px;
+        .ssd-item-icon {
 
-            height: 28px;
+            width: 30px;
 
-            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg)));
+            height: 30px;
 
             border-radius: 6px;
+
+            background: rgba(98, 116, 160, 0.12);
+
+            border: 1px solid rgba(98, 116, 160, 0.2);
 
             display: flex;
 
@@ -7521,99 +7625,135 @@
 
             font-weight: 700;
 
-            color: white;
+            color: #a0aec0;
 
             flex-shrink: 0;
 
+            text-transform: uppercase;
+
+            letter-spacing: -0.5px;
+
         }
 
         
 
-        .symbol-switcher-item .symbol-name {
+        .ssd-item.active .ssd-item-icon {
+
+            background: rgba(41, 98, 255, 0.2);
+
+            border-color: rgba(41, 98, 255, 0.4);
+
+            color: #6395f9;
+
+        }
+
+        
+
+        /* Item text body */
+
+        .ssd-item-body {
 
             flex: 1;
 
-            font-weight: 500;
-
-            min-width: 80px;
+            min-width: 0;
 
         }
 
         
 
-        .symbol-switcher-item .symbol-check {
-
-            color: #3b82f6;
-
-            margin-left: auto;
-
-        }
-
-        
-
-        /* Symbol Add Options - 3 buttons */
-
-        .symbol-switcher-options {
-
-            display: flex;
-
-            align-items: center;
-
-            gap: 4px;
-
-            margin-left: auto;
-
-        }
-
-        
-
-        .symbol-switcher-option-btn {
-
-            padding: 5px 10px;
-
-            background: rgba(255, 255, 255, 0.06);
-
-            border: 1px solid rgba(120, 123, 134, 0.3);
-
-            border-radius: 4px;
-
-            color: #787b86;
-
-            font-size: 11px;
-
-            cursor: default;
-
-            transition: all 0.15s;
-
-            white-space: nowrap;
-
-        }
-
-        
-
-        .symbol-switcher-option-btn:hover {
-
-            background: rgba(59, 130, 246, 0.15);
-
-            border-color: #3b82f6;
-
-            color: #3b82f6;
-
-        }
-
-        
-
-        .symbol-switcher-empty {
-
-            padding: 20px;
-
-            text-align: center;
-
-            color: #64748b;
+        .ssd-item-name {
 
             font-size: 13px;
 
+            font-weight: 600;
+
+            color: #d1d5db;
+
+            white-space: nowrap;
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+
         }
+
+        
+
+        .ssd-item.active .ssd-item-name {
+
+            color: #ffffff;
+
+        }
+
+        
+
+        .ssd-item-sub {
+
+            font-size: 11px;
+
+            color: #4b5874;
+
+            margin-top: 1px;
+
+            white-space: nowrap;
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+
+        }
+
+        
+
+        /* Checkmark */
+
+        .ssd-item-check {
+
+            width: 13px;
+
+            height: 13px;
+
+            color: var(--sp-accent, #2962ff);
+
+            flex-shrink: 0;
+
+            opacity: 0;
+
+        }
+
+        
+
+        .ssd-item.active .ssd-item-check {
+
+            opacity: 1;
+
+        }
+
+        
+
+        /* Empty state */
+
+        .ssd-empty {
+
+            padding: 24px 16px;
+
+            text-align: center;
+
+            color: #3d4b63;
+
+            font-size: 12px;
+
+        }
+
+        
+
+        /* Legacy classes kept for compatibility */
+
+        .symbol-switcher-options { display: none; }
+
+        .symbol-switcher-option-btn { display: none; }
+
+        .symbol-switcher-empty { display: none; }
 
 
 
@@ -38191,13 +38331,24 @@
 
                         <div class="analytics-container">
 
-                            <div class="analytics-export-actions" style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:12px;">
-                                <button id="analyticsExportCsvBtn" style="padding:8px 12px; background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.35); border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; transition:all .2s;">
-                                    Export Analytics CSV
-                                </button>
-                                <button id="analyticsExportPdfBtn" style="padding:8px 12px; background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.35); border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; transition:all .2s;">
-                                    Export Full PDF Report
-                                </button>
+                            <div class="analytics-export-actions" style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+                                <div id="analyticsExportMenuWrap" style="position:relative;">
+                                    <button id="analyticsExportMenuBtn" title="Export" style="width:34px; height:34px; display:flex; align-items:center; justify-content:center; background:rgba(148,163,184,0.12); color:#cbd5e1; border:1px solid rgba(148,163,184,0.35); border-radius:8px; cursor:pointer; transition:all .2s;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:16px;height:16px;">
+                                            <path d="M12 3v12"></path>
+                                            <path d="M8 11l4 4 4-4"></path>
+                                            <path d="M4 21h16"></path>
+                                        </svg>
+                                    </button>
+                                    <div id="analyticsExportMenu" style="display:none; position:absolute; right:0; top:40px; min-width:210px; background:#111827; border:1px solid rgba(148,163,184,0.25); border-radius:8px; box-shadow:0 10px 28px rgba(0,0,0,0.45); overflow:hidden; z-index:1200;">
+                                        <button id="analyticsExportCsvBtn" style="width:100%; text-align:left; padding:10px 12px; background:transparent; color:#22c55e; border:none; border-bottom:1px solid rgba(148,163,184,0.15); cursor:pointer; font-size:12px; font-weight:600;">
+                                            Export Analytics CSV
+                                        </button>
+                                        <button id="analyticsExportPdfBtn" style="width:100%; text-align:left; padding:10px 12px; background:transparent; color:#60a5fa; border:none; cursor:pointer; font-size:12px; font-weight:600;">
+                                            Export Full PDF Report
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Top Stats Row -->
@@ -40142,7 +40293,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260324_MULTI_MILESTONE_V151"></script>
+    <script defer src="chart.js?v=20260324_MULTI_MILESTONE_V152"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
@@ -40152,7 +40303,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260321_MCE_V1"></script>
 
-    <script defer src="modules/order-manager.js?v=20260324_MULTI_MILESTONE_V20"></script>
+    <script defer src="modules/order-manager.js?v=20260324_MULTI_MILESTONE_V21"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260318_TF_PIN_V78"></script>
 

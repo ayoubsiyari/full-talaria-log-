@@ -5640,7 +5640,7 @@ class Chart {
 
         dropdown.addEventListener('click', (event) => {
             event.stopPropagation();
-            const item = event.target.closest('.symbol-switcher-item[data-file-id]');
+            const item = event.target.closest('.ssd-item[data-file-id]');
             if (!item) return;
 
             const nextFileId = item.dataset.fileId;
@@ -5714,22 +5714,63 @@ class Chart {
     renderSymbolSwitcherOptions(dropdown) {
         if (!dropdown) return;
         const entries = this.getSymbolSwitcherEntries();
+
+        const existingInput = dropdown.querySelector('.ssd-search-input');
+        const searchVal = existingInput ? existingInput.value : '';
+
+        const buildShell = (listContent) => {
+            return `<div class="ssd-search-wrapper">
+                <svg class="ssd-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input class="ssd-search-input" placeholder="Search symbol..." autocomplete="off" spellcheck="false" value="${searchVal.replace(/"/g, '&quot;')}" />
+            </div>
+            <div class="ssd-header">Instruments</div>
+            <div class="ssd-list">${listContent}</div>`;
+        };
+
         if (entries.length === 0) {
-            dropdown.innerHTML = '<div class="symbol-switcher-empty">No instruments available</div>';
+            dropdown.innerHTML = buildShell('<div class="ssd-empty">No instruments available</div>');
+            this._bindDropdownSearch(dropdown);
             return;
         }
 
         const currentId = String(this.currentFileId || '');
-        dropdown.innerHTML = entries.map((entry) => {
-            const activeClass = String(entry.fileId) === currentId ? ' active' : '';
-            const safeTicker = String(entry.ticker || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const safeSubtitle = String(entry.subtitle || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            return `<div class="symbol-switcher-item${activeClass}" data-file-id="${entry.fileId}">
-                <span class="symbol-icon">${safeTicker.slice(0, 1) || '•'}</span>
-                <span class="symbol-name">${safeTicker}</span>
-                <span class="symbol-check">${String(entry.fileId) === currentId ? '✓' : ''}</span>
-            </div>`;
-        }).join('');
+        const query = searchVal.trim().toLowerCase();
+        const filtered = query ? entries.filter(e => String(e.ticker || '').toLowerCase().includes(query)) : entries;
+
+        const listContent = filtered.length === 0
+            ? '<div class="ssd-empty">No results found</div>'
+            : filtered.map((entry) => {
+                const activeClass = String(entry.fileId) === currentId ? ' active' : '';
+                const safeTicker = String(entry.ticker || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeSubtitle = String(entry.subtitle || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const initials = safeTicker.slice(0, 2) || '•';
+                return `<div class="ssd-item${activeClass}" data-file-id="${entry.fileId}">
+                    <div class="ssd-item-icon">${initials}</div>
+                    <div class="ssd-item-body">
+                        <div class="ssd-item-name">${safeTicker}</div>
+                        ${safeSubtitle ? `<div class="ssd-item-sub">${safeSubtitle}</div>` : ''}
+                    </div>
+                    <svg class="ssd-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>`;
+            }).join('');
+
+        dropdown.innerHTML = buildShell(listContent);
+        this._bindDropdownSearch(dropdown);
+    }
+
+    _bindDropdownSearch(dropdown) {
+        const input = dropdown.querySelector('.ssd-search-input');
+        if (!input) return;
+        setTimeout(() => { try { input.focus(); } catch(e) {} }, 30);
+        input.addEventListener('input', () => {
+            this.renderSymbolSwitcherOptions(dropdown);
+        });
+        input.addEventListener('click', (e) => e.stopPropagation());
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                dropdown.classList.remove('open');
+            }
+        });
     }
     
     async loadFileFromServer(fileId) {
