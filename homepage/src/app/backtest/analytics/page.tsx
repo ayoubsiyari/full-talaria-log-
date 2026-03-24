@@ -2,6 +2,16 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Filter, BarChart3 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell,
+} from "recharts";
 
 type Session = {
   id: number;
@@ -23,6 +33,13 @@ type Trade = {
   mae_r?: number | string;
   mfe_r?: number | string;
   rewardToRiskRatio?: number | string;
+  quantity?: number | string;
+  spread_pips_at_entry?: number | string;
+  commission_at_entry?: number | string;
+  pip_value_at_entry?: number | string;
+  openTime?: number;
+  entryTime?: number;
+  closeType?: string;
   setup?: string;
   preTradeNotes?: { setup?: string; tags?: string };
   postTradeNotes?: { setup?: string; tags?: string };
@@ -46,6 +63,33 @@ function n(v: unknown): number {
 
 function fmtMoney(v: number): string {
   return `$${v.toFixed(2)}`;
+}
+
+function fmtPct(v: number): string {
+  return `${v.toFixed(1)}%`;
+}
+
+function buildHistogram(values: number[], bucketSize = 0.5) {
+  const clean = values.filter((v) => Number.isFinite(v));
+  if (clean.length === 0) return [];
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
+  const start = Math.floor(min / bucketSize) * bucketSize;
+  const end = Math.ceil(max / bucketSize) * bucketSize;
+  const bins: { label: string; from: number; to: number; count: number }[] = [];
+  for (let x = start; x < end; x += bucketSize) {
+    bins.push({
+      label: `${x.toFixed(1)} to ${(x + bucketSize).toFixed(1)}`,
+      from: x,
+      to: x + bucketSize,
+      count: 0,
+    });
+  }
+  clean.forEach((v) => {
+    const idx = Math.min(Math.floor((v - start) / bucketSize), bins.length - 1);
+    if (idx >= 0 && bins[idx]) bins[idx].count += 1;
+  });
+  return bins;
 }
 
 export default function BacktestAnalyticsPage() {
@@ -133,10 +177,16 @@ export default function BacktestAnalyticsPage() {
           ticker,
           direction,
           pnl,
+          quantity: n(t.quantity || 0),
           rr: n(t.rMultiple ?? t.rewardToRiskRatio),
           mae_r: n(t.mae_r),
           mfe_r: n(t.mfe_r),
+          spread_pips_at_entry: n(t.spread_pips_at_entry),
+          commission_at_entry: n(t.commission_at_entry),
+          pip_value_at_entry: n(t.pip_value_at_entry),
+          capture_ratio: n(t.mfe_r) > 0 ? n(t.rMultiple ?? t.rewardToRiskRatio) / n(t.mfe_r) : 0,
           setup,
+          openTs: n(t.openTime ?? t.entryTime ?? 0),
           closeTs: n(t.closeTime ?? t.exitTime ?? 0),
         };
       }),
@@ -167,22 +217,40 @@ export default function BacktestAnalyticsPage() {
     const wins = filteredTrades.filter((t) => t.pnl > 0).length;
     const losses = filteredTrades.filter((t) => t.pnl < 0).length;
     const net = filteredTrades.reduce((s, t) => s + t.pnl, 0);
+    const grossProfit = filteredTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+    const grossLossAbs = Math.abs(filteredTrades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
     const winRate = total > 0 ? (wins / total) * 100 : 0;
     const avgRR = total > 0 ? filteredTrades.reduce((s, t) => s + t.rr, 0) / total : 0;
-    return { total, wins, losses, net, winRate, avgRR };
+    const avgWin = wins > 0 ? grossProfit / wins : 0;
+    const avgLoss = losses > 0 ? grossLossAbs / losses : 0;
+    const profitFactor = grossLossAbs > 0 ? grossProfit / grossLossAbs : (grossProfit > 0 ? grossProfit : 0);
+    const expectancy = total > 0 ? net / total : 0;
+    const best = filteredTrades.reduce((m, t) => (t.pnl > m.pnl ? t : m), { pnl: Number.NEGATIVE_INFINITY, ticker: "-" } as any);
+    const worst = filteredTrades.reduce((m, t) => (t.pnl < m.pnl ? t : m), { pnl: Number.POSITIVE_INFINITY, ticker: "-" } as any);
+    const longTrades = filteredTrades.filter((t) => t.direction === "BUY" || t.direction === "LONG");
+    const shortTrades = filteredTrades.filter((t) => t.direction === "SELL" || t.direction === "SHORT");
+    const longPnl = longTrades.reduce((s, t) => s + t.pnl, 0);
+    const shortPnl = shortTrades.reduce((s, t) => s + t.pnl, 0);
+    return { total, wins, losses, net, winRate, avgRR, avgWin, avgLoss, profitFactor, expectancy, best, worst, longPnl, shortPnl };
   }, [filteredTrades]);
 
   const perPair = useMemo(() => {
-    const map = new Map<string, { trades: number; wins: number; pnl: number; rr: number; mae: number; mfe: number }>();
+    const map = new Map<string, { trades: number; wins: number; pnl: number; rr: number; mae: number; mfe: number; capture: number; capN: number; commission: number; spread: number }>();
     filteredTrades.forEach((t) => {
       const key = t.ticker;
-      const cur = map.get(key) || { trades: 0, wins: 0, pnl: 0, rr: 0, mae: 0, mfe: 0 };
+      const cur = map.get(key) || { trades: 0, wins: 0, pnl: 0, rr: 0, mae: 0, mfe: 0, capture: 0, capN: 0, commission: 0, spread: 0 };
       cur.trades += 1;
       cur.wins += t.pnl > 0 ? 1 : 0;
       cur.pnl += t.pnl;
       cur.rr += t.rr;
       cur.mae += t.mae_r;
       cur.mfe += t.mfe_r;
+      if (t.capture_ratio > 0 && t.pnl > 0) {
+        cur.capture += t.capture_ratio;
+        cur.capN += 1;
+      }
+      cur.commission += (t.commission_at_entry || 0) * (t.quantity || 0) * 2;
+      cur.spread += (t.spread_pips_at_entry || 0) * (t.pip_value_at_entry || 0) * (t.quantity || 0);
       map.set(key, cur);
     });
     return Array.from(map.entries()).map(([ticker, v]) => ({
@@ -193,8 +261,45 @@ export default function BacktestAnalyticsPage() {
       netRr: v.rr,
       avgMae: v.trades > 0 ? v.mae / v.trades : 0,
       avgMfe: v.trades > 0 ? v.mfe / v.trades : 0,
+      captureRatio: v.capN > 0 ? v.capture / v.capN : 0,
+      commissionPaid: v.commission,
+      spreadCost: v.spread,
     }));
   }, [filteredTrades]);
+
+  const playbookRows = useMemo(() => {
+    const map = new Map<string, { trades: number; wins: number; pnl: number; rr: number }>();
+    filteredTrades.forEach((t) => {
+      const key = String(t.setup || "General");
+      const cur = map.get(key) || { trades: 0, wins: 0, pnl: 0, rr: 0 };
+      cur.trades += 1;
+      cur.wins += t.pnl > 0 ? 1 : 0;
+      cur.pnl += t.pnl;
+      cur.rr += t.rr;
+      map.set(key, cur);
+    });
+    return Array.from(map.entries()).map(([setup, v]) => ({
+      setup,
+      trades: v.trades,
+      winRate: v.trades > 0 ? (v.wins / v.trades) * 100 : 0,
+      netPnl: v.pnl,
+      avgRr: v.trades > 0 ? v.rr / v.trades : 0,
+    })).sort((a, b) => b.netPnl - a.netPnl);
+  }, [filteredTrades]);
+
+  const recentTrades = useMemo(
+    () => [...filteredTrades].sort((a, b) => b.closeTs - a.closeTs).slice(0, 15),
+    [filteredTrades]
+  );
+
+  const maeDistribution = useMemo(
+    () => buildHistogram(filteredTrades.map((t) => t.mae_r), 0.5),
+    [filteredTrades]
+  );
+  const mfeDistribution = useMemo(
+    () => buildHistogram(filteredTrades.map((t) => t.mfe_r), 0.5),
+    [filteredTrades]
+  );
 
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
@@ -264,8 +369,22 @@ export default function BacktestAnalyticsPage() {
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Total Trades</div><div className="text-2xl font-bold">{stats.total}</div></div>
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Wins</div><div className="text-2xl font-bold text-green-400">{stats.wins}</div></div>
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Losses</div><div className="text-2xl font-bold text-red-400">{stats.losses}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Win Rate</div><div className="text-2xl font-bold">{stats.winRate.toFixed(1)}%</div></div>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Win Rate</div><div className="text-2xl font-bold">{fmtPct(stats.winRate)}</div></div>
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Net PnL</div><div className={`text-2xl font-bold ${stats.net >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.net)}</div></div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Profit Factor</div><div className="text-xl font-bold">{stats.profitFactor.toFixed(2)}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Expectancy / Trade</div><div className={`text-xl font-bold ${stats.expectancy >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.expectancy)}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Avg Win / Avg Loss</div><div className="text-xl font-bold">{fmtMoney(stats.avgWin)} / {fmtMoney(stats.avgLoss)}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Avg R</div><div className="text-xl font-bold">{stats.avgRR.toFixed(2)}</div></div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Best Trade</div><div className="text-xl font-bold text-green-400">{fmtMoney(Number.isFinite(stats.best?.pnl) ? stats.best.pnl : 0)}</div><div className="text-xs text-white/40">{stats.best?.ticker || "-"}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Worst Trade</div><div className="text-xl font-bold text-red-400">{fmtMoney(Number.isFinite(stats.worst?.pnl) ? stats.worst.pnl : 0)}</div><div className="text-xs text-white/40">{stats.worst?.ticker || "-"}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Long PnL</div><div className={`text-xl font-bold ${stats.longPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.longPnl)}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Short PnL</div><div className={`text-xl font-bold ${stats.shortPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.shortPnl)}</div></div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
@@ -280,6 +399,9 @@ export default function BacktestAnalyticsPage() {
                     <th className="text-right px-4 py-2">Net PnL (R)</th>
                     <th className="text-right px-4 py-2">Avg MAE (R)</th>
                     <th className="text-right px-4 py-2">Avg MFE (R)</th>
+                    <th className="text-right px-4 py-2">Capture Ratio</th>
+                    <th className="text-right px-4 py-2">Commission</th>
+                    <th className="text-right px-4 py-2">Spread Cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -287,15 +409,126 @@ export default function BacktestAnalyticsPage() {
                     <tr key={r.ticker} className="border-t border-white/5">
                       <td className="px-4 py-2 font-medium">{r.ticker}</td>
                       <td className="px-4 py-2 text-right">{r.trades}</td>
-                      <td className="px-4 py-2 text-right">{r.winRate.toFixed(1)}%</td>
+                      <td className="px-4 py-2 text-right">{fmtPct(r.winRate)}</td>
                       <td className={`px-4 py-2 text-right ${r.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(r.netPnl)}</td>
                       <td className={`px-4 py-2 text-right ${r.netRr >= 0 ? "text-green-400" : "text-red-400"}`}>{r.netRr.toFixed(2)}</td>
                       <td className="px-4 py-2 text-right">{r.avgMae.toFixed(2)}</td>
                       <td className="px-4 py-2 text-right">{r.avgMfe.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-right">{r.captureRatio.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-right">{fmtMoney(r.commissionPaid)}</td>
+                      <td className="px-4 py-2 text-right">{fmtMoney(r.spreadCost)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10 font-semibold">Playbook Breakdown</div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-xs uppercase text-white/50 border-b border-white/10">
+                      <th className="text-left px-4 py-2">Playbook</th>
+                      <th className="text-right px-4 py-2">Trades</th>
+                      <th className="text-right px-4 py-2">Win Rate</th>
+                      <th className="text-right px-4 py-2">Net PnL</th>
+                      <th className="text-right px-4 py-2">Avg R</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {playbookRows.map((r) => (
+                      <tr key={r.setup} className="border-t border-white/5">
+                        <td className="px-4 py-2">{r.setup}</td>
+                        <td className="px-4 py-2 text-right">{r.trades}</td>
+                        <td className="px-4 py-2 text-right">{fmtPct(r.winRate)}</td>
+                        <td className={`px-4 py-2 text-right ${r.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(r.netPnl)}</td>
+                        <td className="px-4 py-2 text-right">{r.avgRr.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10 font-semibold">Recent Trades</div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-xs uppercase text-white/50 border-b border-white/10">
+                      <th className="text-left px-4 py-2">Ticker</th>
+                      <th className="text-left px-4 py-2">Side</th>
+                      <th className="text-left px-4 py-2">Playbook</th>
+                      <th className="text-right px-4 py-2">PnL</th>
+                      <th className="text-right px-4 py-2">R</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTrades.map((t, idx) => (
+                      <tr key={`${t.tradeId || t.id || idx}`} className="border-t border-white/5">
+                        <td className="px-4 py-2">{t.ticker}</td>
+                        <td className="px-4 py-2">{t.direction || "-"}</td>
+                        <td className="px-4 py-2">{t.setup || "General"}</td>
+                        <td className={`px-4 py-2 text-right ${t.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(t.pnl)}</td>
+                        <td className={`px-4 py-2 text-right ${t.rr >= 0 ? "text-green-400" : "text-red-400"}`}>{t.rr.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
+                <div className="font-semibold mb-3">MAE Distribution (R)</div>
+                <div className="h-72">
+                  {maeDistribution.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={maeDistribution}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                        <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} interval="preserveStartEnd" />
+                        <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} allowDecimals={false} />
+                        <Tooltip
+                          formatter={(value) => [value, "Trades"]}
+                          contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                        />
+                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                          {maeDistribution.map((entry, idx) => (
+                            <Cell key={`mae-${idx}`} fill={entry.from < 0 ? "#ef4444" : "#f59e0b"} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white/40 text-sm">No MAE data</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
+                <div className="font-semibold mb-3">MFE Distribution (R)</div>
+                <div className="h-72">
+                  {mfeDistribution.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={mfeDistribution}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                        <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} interval="preserveStartEnd" />
+                        <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} allowDecimals={false} />
+                        <Tooltip
+                          formatter={(value) => [value, "Trades"]}
+                          contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                        />
+                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                          {mfeDistribution.map((entry, idx) => (
+                            <Cell key={`mfe-${idx}`} fill={entry.to > 0 ? "#22c55e" : "#3b82f6"} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white/40 text-sm">No MFE data</div>
+                  )}
+                </div>
+              </div>
             </div>
           </>
         )}

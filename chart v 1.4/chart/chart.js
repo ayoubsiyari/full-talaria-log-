@@ -5793,65 +5793,89 @@ class Chart {
             safe.slice(idx + query.length);
     }
 
-    renderSymbolSwitcherOptions(dropdown) {
-        if (!dropdown) return;
-        const entries = this.getSymbolSwitcherEntries();
-
-        const existingInput = dropdown.querySelector('.ssd-search-input');
-        const searchVal = existingInput ? existingInput.value : '';
-
-        const buildShell = (listContent) => {
-            return `<div class="ssd-search-wrapper">
-                <svg class="ssd-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                <input class="ssd-search-input" placeholder="Search symbol..." autocomplete="off" spellcheck="false" dir="ltr" value="${searchVal.replace(/"/g, '&quot;')}" />
-            </div>
-            <div class="ssd-header">Instruments</div>
-            <div class="ssd-list">${listContent}</div>`;
-        };
-
-        if (entries.length === 0) {
-            dropdown.innerHTML = buildShell('<div class="ssd-empty">No instruments available</div>');
-            this._bindDropdownSearch(dropdown);
-            return;
-        }
-
+    _buildListContent(entries, query) {
+        if (entries.length === 0) return '<div class="ssd-empty">No instruments available</div>';
         const currentId = String(this.currentFileId || '');
-        const query = searchVal.trim();
-
         const filtered = query
             ? entries
                 .filter(e => this._symbolMatches(e, query))
                 .sort((a, b) => this._symbolScore(b, query) - this._symbolScore(a, query))
             : entries;
+        if (filtered.length === 0) {
+            return `<div class="ssd-empty">No results for "<strong>${String(query).replace(/</g, '&lt;')}</strong>"</div>`;
+        }
+        return filtered.map((entry) => {
+            const activeClass = String(entry.fileId) === currentId ? ' active' : '';
+            const safeTicker = this._ssdHighlight(entry.ticker, query);
+            const rawSubtitle = String(entry.subtitle || '');
+            const safeSubtitle = query ? this._ssdHighlight(rawSubtitle, query) : rawSubtitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const initials = String(entry.ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
+            return `<div class="ssd-item${activeClass}" data-file-id="${entry.fileId}">
+                <div class="ssd-item-icon">${initials}</div>
+                <div class="ssd-item-body">
+                    <div class="ssd-item-name">${safeTicker}</div>
+                    ${rawSubtitle ? `<div class="ssd-item-sub">${safeSubtitle}</div>` : ''}
+                </div>
+                <svg class="ssd-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>`;
+        }).join('');
+    }
 
-        const listContent = filtered.length === 0
-            ? `<div class="ssd-empty">No results for "<strong>${query.replace(/</g, '&lt;')}</strong>"</div>`
-            : filtered.map((entry) => {
-                const activeClass = String(entry.fileId) === currentId ? ' active' : '';
-                const safeTicker = this._ssdHighlight(entry.ticker, query);
-                const rawSubtitle = String(entry.subtitle || '');
-                const safeSubtitle = query ? this._ssdHighlight(rawSubtitle, query) : rawSubtitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const initials = String(entry.ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
-                return `<div class="ssd-item${activeClass}" data-file-id="${entry.fileId}">
-                    <div class="ssd-item-icon">${initials}</div>
-                    <div class="ssd-item-body">
-                        <div class="ssd-item-name">${safeTicker}</div>
-                        ${rawSubtitle ? `<div class="ssd-item-sub">${safeSubtitle}</div>` : ''}
-                    </div>
-                    <svg class="ssd-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                </div>`;
-            }).join('');
+    _bindListClicks(dropdown) {
+        const list = dropdown.querySelector('.ssd-list');
+        if (!list) return;
+        list.addEventListener('click', (e) => {
+            const item = e.target.closest('.ssd-item[data-file-id]');
+            if (!item) return;
+            const fileId = item.dataset.fileId;
+            dropdown.classList.remove('open');
+            if (fileId && String(fileId) !== String(this.currentFileId || '')) {
+                this.currentFileId = fileId;
+                this.loadFileFromServer(fileId);
+            }
+        });
+    }
 
-        dropdown.innerHTML = buildShell(listContent);
+    renderSymbolSwitcherOptions(dropdown) {
+        if (!dropdown) return;
+        const entries = this.getSymbolSwitcherEntries();
+        const existingInput = dropdown.querySelector('.ssd-search-input');
+
+        if (existingInput) {
+            const query = existingInput.value.trim();
+            const list = dropdown.querySelector('.ssd-list');
+            if (list) {
+                list.innerHTML = this._buildListContent(entries, query);
+                this._bindListClicks(dropdown);
+            }
+            return;
+        }
+
+        const listContent = this._buildListContent(entries, '');
+        dropdown.innerHTML = `<div class="ssd-search-wrapper">
+            <svg class="ssd-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input class="ssd-search-input" placeholder="Search symbol..." autocomplete="off" spellcheck="false" dir="ltr" />
+        </div>
+        <div class="ssd-header">Instruments</div>
+        <div class="ssd-list">${listContent}</div>`;
         this._bindDropdownSearch(dropdown);
+        this._bindListClicks(dropdown);
     }
 
     _bindDropdownSearch(dropdown) {
         const input = dropdown.querySelector('.ssd-search-input');
         if (!input) return;
-        setTimeout(() => { try { input.focus(); } catch(e) {} }, 30);
+        input.style.direction = 'ltr';
+        input.style.textAlign = 'left';
+        setTimeout(() => { try { input.focus(); } catch(e) {} }, 20);
         input.addEventListener('input', () => {
-            this.renderSymbolSwitcherOptions(dropdown);
+            const query = input.value.trim();
+            const entries = this.getSymbolSwitcherEntries();
+            const list = dropdown.querySelector('.ssd-list');
+            if (list) {
+                list.innerHTML = this._buildListContent(entries, query);
+                this._bindListClicks(dropdown);
+            }
         });
         input.addEventListener('click', (e) => e.stopPropagation());
         input.addEventListener('keydown', (e) => {

@@ -115,6 +115,8 @@ class OrderManager {
         try {
             this.autoPauseReplayOnAutoClose = localStorage.getItem('replayAutoPauseOnClose') === '1';
         } catch (e) {}
+        this.postExitTrackingMode = 'hours';
+        this.postExitTrackingCandles = 50;
         
         // POSITION SCALING FEATURE
         this.enablePositionScaling = true; // Master toggle for scaling feature
@@ -842,6 +844,14 @@ class OrderManager {
                 this.mfeMaeTrackingHours = parseFloat(savedHours);
                 console.log(`⚙️ Loaded MFE/MAE tracking window: ${this.mfeMaeTrackingHours}h`);
             }
+            const savedMode = localStorage.getItem('postExitTrackingMode');
+            if (savedMode === 'candles' || savedMode === 'hours') {
+                this.postExitTrackingMode = savedMode;
+            }
+            const savedCandles = Number.parseInt(localStorage.getItem('postExitTrackingCandles') || '', 10);
+            if (Number.isFinite(savedCandles) && savedCandles > 0) {
+                this.postExitTrackingCandles = savedCandles;
+            }
         } catch (e) {
             console.warn('Could not load MFE/MAE settings from localStorage:', e);
         }
@@ -1257,6 +1267,20 @@ class OrderManager {
                     style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid #2a2e39; border-radius: 6px; color: #fff; padding: 12px; font-size: 14px;">
                 <div style="color: #787b86; font-size: 10px; margin-top: 4px;">Examples: 0.5 = 30min, 1 = 1h, 4 = 4h, 24 = 1day, 168 = 1week</div>
             </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: #787b86; font-size: 12px; margin-bottom: 8px;">Post-Exit Tracking Mode</label>
+                <select id="postExitTrackingModeInput" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid #2a2e39; border-radius: 6px; color: #fff; padding: 12px; font-size: 14px;">
+                    <option value="hours" ${this.postExitTrackingMode === 'hours' ? 'selected' : ''}>Hours window (legacy)</option>
+                    <option value="candles" ${this.postExitTrackingMode === 'candles' ? 'selected' : ''}>Fixed candle count after close</option>
+                </select>
+                <div style="color: #787b86; font-size: 10px; margin-top: 4px;">For TP/SL post-exit analysis, candle mode tracks exactly N candles.</div>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: #787b86; font-size: 12px; margin-bottom: 8px;">Post-Exit Candles</label>
+                <input type="number" id="postExitTrackingCandlesInput" value="${this.postExitTrackingCandles}" min="1" max="5000" step="1"
+                    style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid #2a2e39; border-radius: 6px; color: #fff; padding: 12px; font-size: 14px;">
+                <div style="color: #787b86; font-size: 10px; margin-top: 4px;">Default 50 candles.</div>
+            </div>
             
             <div style="display: flex; gap: 12px;">
                 <button id="saveMfeMaeSettings" style="flex: 1; padding: 12px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
@@ -1274,16 +1298,24 @@ class OrderManager {
         // Event listeners
         document.getElementById('saveMfeMaeSettings').onclick = () => {
             const newHours = parseFloat(document.getElementById('mfeMaeHoursInput').value);
+            const newMode = document.getElementById('postExitTrackingModeInput').value === 'candles' ? 'candles' : 'hours';
+            const newCandles = Number.parseInt(document.getElementById('postExitTrackingCandlesInput').value, 10);
             if (newHours > 0) {
                 this.mfeMaeTrackingHours = newHours;
+                this.postExitTrackingMode = newMode;
+                if (Number.isFinite(newCandles) && newCandles > 0) {
+                    this.postExitTrackingCandles = newCandles;
+                }
                 // Save to localStorage
                 try {
                     localStorage.setItem('mfeMaeTrackingHours', newHours);
+                    localStorage.setItem('postExitTrackingMode', this.postExitTrackingMode);
+                    localStorage.setItem('postExitTrackingCandles', String(this.postExitTrackingCandles));
                 } catch (e) {
                     console.warn('Could not save MFE/MAE settings:', e);
                 }
-                this.showNotification(`⚙️ MFE/MAE tracking window set to ${newHours}h`, 'success');
-                console.log(`⚙️ MFE/MAE tracking window updated to ${newHours} hours`);
+                this.showNotification(`⚙️ MFE/MAE updated (${newHours}h, ${this.postExitTrackingMode}, ${this.postExitTrackingCandles} candles)`, 'success');
+                console.log(`⚙️ MFE/MAE updated: ${newHours}h, mode=${this.postExitTrackingMode}, candles=${this.postExitTrackingCandles}`);
             }
             modal.remove();
         };
@@ -9841,6 +9873,9 @@ class OrderManager {
             mfeTime: currentCandle.t, // Timestamp when MFE occurred
             maeTime: currentCandle.t, // Timestamp when MAE occurred
             mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000), // End time for MFE/MAE tracking
+            postExitTrackingMode: this.postExitTrackingMode,
+            postExitTrackingCandles: this.postExitTrackingCandles,
+            postExitProcessedCandles: 0,
             trailingStop: trailingStop, // Trailing stop settings
             tpTargets: tpTargets, // Multiple TP targets
             partialCloses: [], // Track partial closes for multiple TPs
@@ -10210,6 +10245,9 @@ class OrderManager {
                 mfeTime: currentCandle.t,
                 maeTime: currentCandle.t,
                 mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
+                postExitTrackingMode: this.postExitTrackingMode,
+                postExitTrackingCandles: this.postExitTrackingCandles,
+                postExitProcessedCandles: 0,
                 // Mark as created from drawing tool
                 createdFromTool: true,
                 toolType: toolData.toolType
@@ -10992,13 +11030,24 @@ class OrderManager {
         const completedTracking = [];
         
         this.mfeMaeTrackingPositions.forEach(position => {
-            // Check if tracking window has expired
-            if (currentCandle.t > position.mfeMaeTrackingEndTime) {
-                completedTracking.push(position);
-                return;
+            const mode = position.postExitTrackingMode || this.postExitTrackingMode || 'hours';
+            if (mode === 'candles') {
+                const maxCandles = Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10);
+                if (!Number.isFinite(position.postExitProcessedCandles)) position.postExitProcessedCandles = 0;
+                if (!Number.isFinite(maxCandles) || maxCandles <= 0 || position.postExitProcessedCandles >= maxCandles) {
+                    completedTracking.push(position);
+                    return;
+                }
+                this._appendExcursionSnapshot(position, currentCandle, true);
+                position.postExitProcessedCandles += 1;
+            } else {
+                // Check if tracking window has expired (legacy hours mode)
+                if (currentCandle.t > position.mfeMaeTrackingEndTime) {
+                    completedTracking.push(position);
+                    return;
+                }
+                this._appendExcursionSnapshot(position, currentCandle, true);
             }
-
-            this._appendExcursionSnapshot(position, currentCandle, true);
             
             // Continue updating MFE/MAE (price levels)
             if (position.type === 'BUY') {
@@ -11214,6 +11263,9 @@ class OrderManager {
             mfeTime: currentCandle.t,
             maeTime: currentCandle.t,
             mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
+            postExitTrackingMode: this.postExitTrackingMode,
+            postExitTrackingCandles: this.postExitTrackingCandles,
+            postExitProcessedCandles: 0,
             // Mark as converted from pending
             wasLimitOrder: pendingOrder.orderType === 'limit',
             wasStopOrder: pendingOrder.orderType === 'stop',
@@ -12437,14 +12489,25 @@ class OrderManager {
         
         this.updatePositionsPanel();
         
-        // Check if MFE/MAE tracking window hasn't expired yet
-        if (currentCandle && closeTime < position.mfeMaeTrackingEndTime) {
+        // Continue post-exit tracking by configured mode (hours or fixed candles).
+        const trackingMode = position.postExitTrackingMode || this.postExitTrackingMode || 'hours';
+        const shouldTrackAfterClose = trackingMode === 'candles'
+            ? (Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10) > 0)
+            : (currentCandle && closeTime < position.mfeMaeTrackingEndTime);
+        if (shouldTrackAfterClose) {
             // Continue tracking this position for MFE/MAE
             this.mfeMaeTrackingPositions.push({
                 ...position,
+                postExitTrackingMode: trackingMode,
+                postExitTrackingCandles: Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10),
+                postExitProcessedCandles: 0,
                 journalIndex: null // Will be set when saved to journal
             });
-            console.log(`📊 Order #${orderId} closed but continuing MFE/MAE tracking until ${new Date(position.mfeMaeTrackingEndTime).toLocaleTimeString()}`);
+            if (trackingMode === 'candles') {
+                console.log(`📊 Order #${orderId} closed, continuing post-exit tracking for ${Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10)} candles`);
+            } else {
+                console.log(`📊 Order #${orderId} closed but continuing MFE/MAE tracking until ${new Date(position.mfeMaeTrackingEndTime).toLocaleTimeString()}`);
+            }
         }
         
         // Show trade journal modal for post-trade notes
