@@ -5614,13 +5614,25 @@ class Chart {
         if (this._symbolSwitcherSetup) return;
         this._symbolSwitcherSetup = true;
 
-        let dropdown = group.querySelector('.symbol-switcher-dropdown');
+        let dropdown = document.getElementById('symbolSwitcherDropdown');
         if (!dropdown) {
             dropdown = document.createElement('div');
             dropdown.className = 'symbol-switcher-dropdown';
             dropdown.id = 'symbolSwitcherDropdown';
-            group.appendChild(dropdown);
+            document.body.appendChild(dropdown);
         }
+
+        const positionDropdown = () => {
+            const rect = group.getBoundingClientRect();
+            const vpW = window.innerWidth;
+            const ddW = 300;
+            let left = rect.left;
+            if (left + ddW > vpW - 8) left = vpW - ddW - 8;
+            if (left < 8) left = 8;
+            dropdown.style.top = (rect.bottom + 4) + 'px';
+            dropdown.style.left = left + 'px';
+            dropdown.style.width = ddW + 'px';
+        };
 
         const closeDropdown = () => {
             dropdown.classList.remove('open');
@@ -5635,6 +5647,7 @@ class Chart {
                 return;
             }
             this.renderSymbolSwitcherOptions(dropdown);
+            positionDropdown();
             dropdown.classList.add('open');
         });
 
@@ -5662,7 +5675,7 @@ class Chart {
         });
 
         document.addEventListener('click', (event) => {
-            if (!group.contains(event.target)) {
+            if (!group.contains(event.target) && !dropdown.contains(event.target)) {
                 closeDropdown();
             }
         });

@@ -342,6 +342,32 @@
             border-color: #ef4444;
             transform: translateY(-1px);
         }
+
+        .analytics-btn {
+            background: rgba(59, 130, 246, 0.12);
+            color: #2563eb;
+            border: 1px solid rgba(59, 130, 246, 0.28);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-right: 8px;
+        }
+
+        .analytics-btn:hover {
+            background: rgba(59, 130, 246, 0.18);
+            border-color: rgba(59, 130, 246, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .action-buttons {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+        }
         
         .empty-state {
             text-align: center;
@@ -726,7 +752,10 @@
                         <td style="font-size: 12px;">${startDate} - ${endDate}</td>
                         <td style="font-size: 12px;">${created}</td>
                         <td>
-                            <button class="delete-btn" onclick="deleteSession(${session.id})" title="Delete session">Delete</button>
+                            <div class="action-buttons">
+                                <button class="analytics-btn" onclick="openSessionAnalytics(${session.id})" title="Open analytics for this session">Analytics</button>
+                                <button class="delete-btn" onclick="deleteSession(${session.id})" title="Delete session">Delete</button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -809,6 +838,20 @@
 
             const mode = session.session_type === 'propfirm' ? 'propfirm' : 'backtest';
             window.location.href = `index.html?mode=${mode}&sessionId=${encodeURIComponent(String(sessionId))}`;
+        }
+
+        function openSessionAnalytics(sessionId) {
+            const session = sessionsCache.find(s => s.id === sessionId);
+            if (!session) return;
+            try {
+                if (session.config) {
+                    localStorage.setItem('backtestingSession', JSON.stringify(session.config));
+                }
+                localStorage.setItem('active_trading_session_id', String(sessionId));
+            } catch (e) {}
+
+            const mode = session.session_type === 'propfirm' ? 'propfirm' : 'backtest';
+            window.location.href = `index.html?mode=${mode}&sessionId=${encodeURIComponent(String(sessionId))}&openAnalytics=1`;
         }
         
         async function deleteSession(sessionId) {

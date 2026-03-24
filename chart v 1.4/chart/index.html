@@ -40293,7 +40293,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260324_MULTI_MILESTONE_V152"></script>
+    <script defer src="chart.js?v=20260324_MULTI_MILESTONE_V153"></script>
 
     <script defer src="modules/replay-system.js?v=20260318_TF_PIN_V64"></script>
 
@@ -46179,6 +46179,16 @@ function showIndicatorsMenu() {
 
             const chartWrapper = document.getElementById('chartWrapper');
 
+            const activateReplayTab = (targetKey) => {
+                if (!targetKey) return;
+                const targetId = getPanelId(targetKey);
+                if (!targetId) return;
+                const targetBtn = tabButtons.find((btn) => btn.dataset.replayTab === targetKey);
+                if (!targetBtn) return;
+                tabButtons.forEach((btn) => btn.classList.toggle('active', btn === targetBtn));
+                tabPanels.forEach((panel) => panel.classList.toggle('active', panel.id === targetId));
+            };
+
 
 
             // Update container bottom and chart resize in sync (rAF-throttled)
@@ -46243,6 +46253,15 @@ function showIndicatorsMenu() {
                 });
 
             });
+
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const openAnalytics = params.get('openAnalytics');
+                if (openAnalytics === '1' || String(openAnalytics).toLowerCase() === 'true') {
+                    document.body.classList.remove('replay-tabs-collapsed');
+                    activateReplayTab('analytics');
+                }
+            } catch (e) {}
 
             
 
