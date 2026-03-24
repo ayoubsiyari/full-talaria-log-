@@ -532,7 +532,10 @@ class OrderManager {
         const accountRuntime = {
             balance: Number.parseFloat(this.balance) || 0,
             equity: Number.parseFloat(this.equity) || 0,
-            initialBalance: Number.parseFloat(this.initialBalance) || 0
+            initialBalance: Number.parseFloat(this.initialBalance) || 0,
+            session_current_time: Number.parseFloat(this.orderService?.multiInstrumentSession?.current_time)
+                || Number.parseFloat(this.chart?.replaySystem?.replayTimestamp)
+                || null
         };
 
         const snapshot = JSON.stringify({
@@ -587,9 +590,13 @@ class OrderManager {
             const balance = Number.parseFloat(accountRuntime.balance);
             const equity = Number.parseFloat(accountRuntime.equity);
             const initialBalance = Number.parseFloat(accountRuntime.initialBalance);
+            const sessionCurrentTime = Number.parseFloat(accountRuntime.session_current_time);
             if (Number.isFinite(balance)) this.balance = balance;
             if (Number.isFinite(equity)) this.equity = equity;
             if (Number.isFinite(initialBalance)) this.initialBalance = initialBalance;
+            if (Number.isFinite(sessionCurrentTime) && this.orderService?.multiInstrumentSession) {
+                this.orderService.multiInstrumentSession.current_time = sessionCurrentTime;
+            }
         }
 
         const orderCounters = state.order_counters && typeof state.order_counters === 'object' ? state.order_counters : null;

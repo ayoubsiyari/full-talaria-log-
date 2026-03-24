@@ -1907,7 +1907,7 @@ class ReplaySystem {
 
         // Persist replay state per session
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
-            this.chart.scheduleSessionStateSave({
+            const replayPatch = {
                 replay: {
                     replayTimestamp: this.replayTimestamp,
                     currentIndex: this.currentIndex,
@@ -1917,7 +1917,11 @@ class ReplaySystem {
                     timeframe: this.chart.currentTimeframe,
                     isActive: true
                 }
-            });
+            };
+            this.chart.scheduleSessionStateSave(replayPatch);
+            if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
+                this.chart.queueCriticalSessionStateSave(replayPatch);
+            }
         }
         
     }

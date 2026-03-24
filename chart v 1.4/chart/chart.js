@@ -1434,6 +1434,7 @@ class Chart {
                     window.addEventListener('pagehide', () => {
                         try {
                             this.flushSessionStateSave();
+                            this.flushCriticalSessionStateSave();
                         } catch (e) {}
                     });
                 }
