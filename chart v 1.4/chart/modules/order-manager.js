@@ -16441,7 +16441,13 @@ class OrderManager {
             body.innerHTML = `<div style="padding:10px;color:#94a3b8;font-size:12px;">No open positions.</div>`;
             return;
         }
-        const nowTs = Number(this.orderService?.multiInstrumentSession?.current_time || Date.now());
+        const normalizeEpochMs = (value, fallback) => {
+            const raw = Number(value);
+            if (!Number.isFinite(raw) || raw <= 0) return fallback;
+            // If value looks like epoch seconds, convert to ms.
+            return raw < 1e12 ? raw * 1000 : raw;
+        };
+        const nowTs = normalizeEpochMs(this.orderService?.multiInstrumentSession?.current_time, Date.now());
         body.innerHTML = this.openPositions.map((pos) => {
             const ticker = String(pos.ticker || pos.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
             const pnl = Number.parseFloat(pos.unrealizedPnL || 0) || 0;
@@ -16451,7 +16457,9 @@ class OrderManager {
             const margin = this.orderService && typeof this.orderService.estimateTradeMargin === 'function'
                 ? this.orderService.estimateTradeMargin(pos)
                 : 0;
-            const mins = Math.max(0, Math.round((nowTs - Number(pos.openTime || nowTs)) / 60000));
+            const openTs = normalizeEpochMs(pos.openTime, nowTs);
+            const mins = Math.max(0, Math.round((nowTs - openTs) / 60000));
+            const timeLabel = mins >= 1440 ? `${(mins / 1440).toFixed(1)}d` : mins >= 60 ? `${(mins / 60).toFixed(1)}h` : `${mins}m`;
             return `
                 <div data-switch-ticker="${ticker}" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,0.07);cursor:pointer;display:grid;grid-template-columns:70px 52px 56px 1fr 82px 54px;gap:8px;align-items:center;">
                     <div style="font-size:12px;font-weight:700;">${ticker}</div>
@@ -16459,7 +16467,7 @@ class OrderManager {
                     <div style="font-size:11px;">${Number(pos.quantity || 0).toFixed(2)}L</div>
                     <div style="font-size:11px;color:${pnlClass};">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${rNow >= 0 ? '+' : ''}${rNow.toFixed(2)}R)</div>
                     <div style="font-size:11px;color:#cbd5e1;">M $${Number(margin || 0).toFixed(0)}</div>
-                    <div style="font-size:11px;color:#94a3b8;">${mins}m</div>
+                    <div style="font-size:11px;color:#94a3b8;">${timeLabel}</div>
                 </div>
             `;
         }).join('');
