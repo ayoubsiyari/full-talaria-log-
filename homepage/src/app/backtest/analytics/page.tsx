@@ -102,6 +102,7 @@ export default function BacktestAnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
   const [pairFilter, setPairFilter] = useState("ALL");
   const [playbookFilter, setPlaybookFilter] = useState("ALL");
+  const [outcomeFilter, setOutcomeFilter] = useState("ALL");
   const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
     key: "netPnl",
     dir: "desc",
@@ -213,9 +214,14 @@ export default function BacktestAnalyticsPage() {
       normalizedTrades.filter((t) => {
         const passPair = pairFilter === "ALL" || t.ticker === pairFilter;
         const passPlaybook = playbookFilter === "ALL" || (t.setup || "General") === playbookFilter;
-        return passPair && passPlaybook;
+        const passOutcome =
+          outcomeFilter === "ALL" ||
+          (outcomeFilter === "WINNERS" && t.pnl > 0) ||
+          (outcomeFilter === "LOSERS" && t.pnl < 0) ||
+          (outcomeFilter === "BREAKEVEN" && t.pnl === 0);
+        return passPair && passPlaybook && passOutcome;
       }),
-    [normalizedTrades, pairFilter, playbookFilter]
+    [normalizedTrades, pairFilter, playbookFilter, outcomeFilter]
   );
 
   const stats = useMemo(() => {
@@ -407,6 +413,16 @@ export default function BacktestAnalyticsPage() {
                 {p}
               </option>
             ))}
+          </select>
+          <select
+            value={outcomeFilter}
+            onChange={(e) => setOutcomeFilter(e.target.value)}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+          >
+            <option value="ALL">All Outcomes</option>
+            <option value="WINNERS">Winners Only</option>
+            <option value="LOSERS">Losers Only</option>
+            <option value="BREAKEVEN">Breakeven Only</option>
           </select>
         </div>
 

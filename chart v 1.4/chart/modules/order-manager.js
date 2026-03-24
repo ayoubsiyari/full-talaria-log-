@@ -3793,7 +3793,7 @@ class OrderManager {
                     position: fixed;
                     top: 48px;
                     right: -380px;
-                    width: 360px;
+                    width: 372px;
                     height: calc(100vh - 48px);
                     background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(0,0,0,0.08) 100%), var(--sp-bg, #050028);
                     border-left: 1px solid rgba(255,255,255,0.07);
@@ -3850,7 +3850,7 @@ class OrderManager {
 
                 /* ── HEADER ──────────────────────────────────────────────────────── */
                 .order-panel__content {
-                    padding: 12px 14px 20px;
+                    padding: 14px 16px 24px;
                     flex: 1;
                     overflow-y: auto;
                     overflow-x: hidden;
@@ -3861,7 +3861,7 @@ class OrderManager {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: 13px 16px 11px;
+                    padding: 14px 16px 12px;
                     border-bottom: 1px solid rgba(255,255,255,0.06);
                     background: rgba(255,255,255,0.015);
                     flex-shrink: 0;
@@ -3870,7 +3870,7 @@ class OrderManager {
                 .order-panel__title {
                     margin: 0;
                     color: #d1d4dc;
-                    font-size: 13px;
+                    font-size: 14px;
                     font-weight: 600;
                     letter-spacing: 0.01em;
                 }
@@ -3933,17 +3933,17 @@ class OrderManager {
                 .order-section {
                     display: flex;
                     flex-direction: column;
-                    gap: 5px;
-                    margin-bottom: 8px;
+                    gap: 7px;
+                    margin-bottom: 10px;
                 }
                 .order-section--compact { gap: 3px; }
                 .order-button-group {
                     display: flex;
                     gap: 2px;
-                    background: rgba(255,255,255,0.04);
-                    border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: 5px;
-                    padding: 3px;
+                    background: rgba(15, 23, 42, 0.55);
+                    border: 1px solid rgba(148,163,184,0.16);
+                    border-radius: 8px;
+                    padding: 4px;
                 }
                 .order-button-group--inline {
                     background: transparent;
@@ -3956,28 +3956,28 @@ class OrderManager {
                 .breakeven-mode-tab {
                     flex: 1;
                     border: none;
-                    border-radius: 3px;
-                    padding: 5px 6px;
+                    border-radius: 6px;
+                    padding: 7px 8px;
                     font-size: 11px;
                     font-weight: 600;
                     cursor: pointer;
-                    color: #555a6e;
+                    color: #7f879e;
                     background: transparent;
                     transition: all 0.15s ease;
-                    letter-spacing: 0.01em;
+                    letter-spacing: 0.015em;
                 }
                 .order-type-btn:hover,
                 .position-mode-tab:hover,
                 .breakeven-mode-tab:hover {
-                    background: rgba(255,255,255,0.07);
-                    color: #d1d4dc;
+                    background: rgba(148,163,184,0.18);
+                    color: #e2e8f0;
                 }
                 .order-type-btn.active,
                 .position-mode-tab.active,
                 .breakeven-mode-tab.active {
                     background: var(--sp-accent, #2962ff);
                     color: #fff;
-                    box-shadow: 0 1px 6px rgba(41,98,255,0.4);
+                    box-shadow: 0 3px 14px rgba(41,98,255,0.35);
                 }
 
                 /* ── RISK SHORTCUT BUTTONS ───────────────────────────────────────── */
@@ -4046,39 +4046,65 @@ class OrderManager {
                 .order-field { display: flex; flex-direction: column; gap: 4px; }
                 .order-label {
                     font-size: 10px;
-                    color: #555a6e;
-                    font-weight: 500;
-                    letter-spacing: 0.02em;
+                    color: #9aa3bd;
+                    font-weight: 600;
+                    letter-spacing: 0.05em;
                     text-transform: uppercase;
                 }
                 .order-input-wrapper {
                     display: flex;
                     align-items: center;
-                    background: rgba(255,255,255,0.04);
-                    border: 1px solid rgba(255,255,255,0.08);
-                    border-radius: 4px;
-                    padding: 0 8px;
-                    transition: border-color 0.15s, background 0.15s;
+                    background: linear-gradient(180deg, rgba(15,23,42,0.82) 0%, rgba(2,6,23,0.82) 100%);
+                    border: 1px solid rgba(148,163,184,0.2);
+                    border-radius: 8px;
+                    padding: 0 10px;
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+                    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
                 }
                 .order-input-wrapper:focus-within {
-                    border-color: var(--sp-accent, #2962ff);
-                    background: rgba(41,98,255,0.06);
+                    border-color: rgba(56,189,248,0.95);
+                    background: linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.95) 100%);
+                    box-shadow: 0 0 0 2px rgba(56,189,248,0.18);
                 }
                 .order-input {
                     flex: 1;
                     background: transparent;
                     border: none;
-                    color: #d1d4dc;
-                    font-size: 12px;
-                    padding: 7px 0;
+                    color: #f1f5f9;
+                    font-size: 13px;
+                    padding: 9px 0;
                     outline: none;
                     font-family: inherit;
+                    font-weight: 600;
                 }
-                .order-input--compact { padding: 6px 0; font-size: 11px; }
+                .order-input::placeholder { color: rgba(148,163,184,0.55); font-weight: 500; }
+                .order-input--compact { padding: 8px 0; font-size: 12px; }
                 .order-input-prefix, .order-input-suffix {
                     font-size: 11px;
-                    color: #555a6e;
+                    color: #94a3b8;
+                    font-weight: 600;
                     flex-shrink: 0;
+                }
+                .input-stepper {
+                    width: 30px !important;
+                    height: 30px !important;
+                    border-radius: 8px !important;
+                    border: 1px solid rgba(148,163,184,0.25) !important;
+                    background: rgba(15,23,42,0.7) !important;
+                    color: #cbd5e1 !important;
+                    font-size: 16px !important;
+                    font-weight: 700 !important;
+                    cursor: pointer !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    transition: all 0.15s ease !important;
+                }
+                .input-stepper:hover {
+                    border-color: rgba(56,189,248,0.55) !important;
+                    background: rgba(30,41,59,0.95) !important;
+                    color: #e2e8f0 !important;
+                    transform: translateY(-1px);
                 }
                 .order-hint { font-size: 10px; color: #3d4256; line-height: 1.4; }
 
@@ -4148,13 +4174,13 @@ class OrderManager {
 
                 /* ── SUMMARY FOOTER ──────────────────────────────────────────────── */
                 .order-summary {
-                    background: rgba(255,255,255,0.025);
-                    border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: 5px;
-                    padding: 9px 12px;
+                    background: linear-gradient(180deg, rgba(15,23,42,0.75) 0%, rgba(2,6,23,0.75) 100%);
+                    border: 1px solid rgba(148,163,184,0.2);
+                    border-radius: 10px;
+                    padding: 11px 12px;
                     display: flex;
                     flex-direction: column;
-                    gap: 5px;
+                    gap: 6px;
                 }
                 .order-summary-row {
                     display: flex;
@@ -4190,12 +4216,12 @@ class OrderManager {
                 /* ── SUBMIT BUTTON ───────────────────────────────────────────────── */
                 .order-submit-btn {
                     width: 100%;
-                    padding: 10px 12px;
+                    padding: 12px 14px;
                     background: linear-gradient(135deg, #065f46 0%, #059669 100%);
                     color: #fff;
                     border: none;
-                    border-radius: 5px;
-                    font-size: 12px;
+                    border-radius: 10px;
+                    font-size: 13px;
                     font-weight: 700;
                     letter-spacing: 0.03em;
                     cursor: pointer;
