@@ -3799,7 +3799,8 @@ async def get_file_smart(
     limit: int = 5000,
     start_ts: int = None,
     end_ts: int = None,
-    anchor: str = "end"
+    anchor: str = "end",
+    response_format: str = "csv",
 ):
     """
     Viewport-based data loading using binary files (like TradingView).
@@ -3949,16 +3950,9 @@ async def get_file_smart(
         first_cursor = raw_first_cursor
         last_cursor = raw_last_cursor
 
-        # ── Convert to CSV for frontend ──
-        output = StringIO()
-        output.write("time,open,high,low,close,volume\n")
-        for c in candles:
-            output.write(f"{c['t']},{c['o']},{c['h']},{c['l']},{c['c']},{c['v']}\n")
-
         elapsed_ms = round((_time.monotonic() - t0) * 1000, 1)
 
-        return {
-            "data": output.getvalue(),
+        base = {
             "timeframe": timeframe,
             "total": total_candles,
             "returned": len(candles),
@@ -3967,8 +3961,20 @@ async def get_file_smart(
             "first_cursor": first_cursor,
             "last_cursor": last_cursor,
             "source": source,
-            "elapsed_ms": elapsed_ms
+            "elapsed_ms": elapsed_ms,
         }
+        rf = (response_format or "csv").lower().strip()
+        if rf == "candles":
+            base["candles"] = candles
+            return base
+
+        # ── Legacy: CSV string in JSON (extra stringify + client parse) ──
+        output = StringIO()
+        output.write("time,open,high,low,close,volume\n")
+        for c in candles:
+            output.write(f"{c['t']},{c['o']},{c['h']},{c['l']},{c['c']},{c['v']}\n")
+        base["data"] = output.getvalue()
+        return base
     finally:
         db.close()
 

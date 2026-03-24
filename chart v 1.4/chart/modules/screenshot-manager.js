@@ -123,6 +123,11 @@ class ScreenshotManager {
             img.style.visibility = 'visible';
         });
 
+        clonedDoc.querySelectorAll('.chart-brand .logo-bottom-wrap').forEach((wrap) => {
+            wrap.style.height = '42px';
+            wrap.style.opacity = '1';
+        });
+
         const darkStack = clonedDoc.querySelector('.chart-brand .logo-dark');
         const lightStack = clonedDoc.querySelector('.chart-brand .logo-light');
         if (darkStack) darkStack.style.display = useDarkBrand ? 'none' : 'block';

@@ -23669,9 +23669,11 @@
 
             bottom: 18px;
 
-            pointer-events: none;
+            pointer-events: auto;
 
             z-index: 5;
+
+            cursor: default;
 
         }
 
@@ -23703,9 +23705,9 @@
 
         .chart-brand .logo-top {
 
-            height: 60px;
+            height: 36px;
 
-            transform: translateX(38px);
+            transform: translateX(23px);
 
         }
 
@@ -23713,11 +23715,37 @@
 
         .chart-brand .logo-bottom {
 
-            height: 70px;
+            height: 42px;
 
-            margin-top: -16px;
+            margin-top: 0;
 
             transform: translateX(-2px);
+
+            display: block;
+
+        }
+
+
+
+        .chart-brand .logo-bottom-wrap {
+
+            overflow: hidden;
+
+            height: 0;
+
+            opacity: 0;
+
+            transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+
+        }
+
+
+
+        .chart-brand:hover .logo-bottom-wrap {
+
+            height: 42px;
+
+            opacity: 1;
 
         }
 
@@ -38987,7 +39015,11 @@
 
                     <img src="modules/logo-09.png" alt="Talaria logo symbol" class="logo-top">
 
-                    <img src="modules/logo-14.png" alt="Talaria logo wordmark" class="logo-bottom">
+                    <div class="logo-bottom-wrap">
+
+                        <img src="modules/logo-14.png" alt="Talaria logo wordmark" class="logo-bottom">
+
+                    </div>
 
                 </div>
 
@@ -38995,7 +39027,11 @@
 
                     <img src="modules/logo-09.png" alt="Talaria logo symbol" class="logo-top">
 
-                    <img src="modules/logo-14.png" alt="Talaria logo wordmark" class="logo-bottom">
+                    <div class="logo-bottom-wrap">
+
+                        <img src="modules/logo-14.png" alt="Talaria logo wordmark" class="logo-bottom">
+
+                    </div>
 
                 </div>
 
@@ -40317,7 +40353,7 @@
 
     <script defer src="modules/timezone-manager.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="chart.js?v=20260324_MULTI_MILESTONE_V159"></script>
+    <script defer src="chart.js?v=20260324_SMART_CANDLES_V160"></script>
 
     <script defer src="modules/replay-system.js?v=20260324_MULTI_MILESTONE_V67"></script>
 

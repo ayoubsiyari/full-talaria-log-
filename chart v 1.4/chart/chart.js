@@ -335,6 +335,7 @@ class Chart {
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
         this.loadedRanges = new Map(); // Cache loaded data ranges
+        this._smartPrefetchCache = new Map(); // LRU-ish cache for other symbols' /smart payloads
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
@@ -897,8 +898,8 @@ class Chart {
             this.updateLoaderStep(1, 'completed');
 
             const result = await this._fetchSmartWindow(fileId, replayRawTf, session);
-            
-            if (!result || !result.data) {
+
+            if (!this._smartResponseHasPayload(result)) {
                 throw new Error('No data in response');
             }
             
@@ -916,11 +917,12 @@ class Chart {
             this.updateLoaderStep(2, 'active');
             this.updateLoaderProgress(45, 'Parsing data...');
             await new Promise(resolve => setTimeout(resolve, 0));
-            // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
-            this.parseCSVChunk(result.data, 0, { skipIndicators: true });
-            this.loadedRanges.set(0, result.returned);
             this.currentFileId = fileId;
-            
+            // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
+            this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
+            this.loadedRanges.set(0, result.returned);
+            this._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
+
             this.updateLoaderProgress(70, 'Preparing chart...');
             
             if (session.fileName) {
@@ -962,22 +964,18 @@ class Chart {
     }
     
     /**
-     * Fetch a window of candles from /smart endpoint.
-     * Returns last N candles at the requested timeframe.
+     * Build query string for GET /file/{id}/smart (shared by fetch + prefetch).
      */
-    async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null) {
-        // In backtest mode, load from the START of the session range
-        // so replay begins at the right place. Pan-loading fills the rest.
+    _buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange = null) {
         const isBacktest = session && session.startDate;
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
-        // In backtest mode, preload the maximum smart-window batch to reduce
-        // edge stalls when replay crosses the first loaded segment.
         const limit = isBacktest ? '100000' : '5000';
         const params = new URLSearchParams({
             timeframe: timeframe,
             limit: limit,
-            anchor: anchor
+            anchor: anchor,
+            response_format: 'candles'
         });
 
         const explicitStartTs = this.normalizeTimestampMs(windowRange?.startTs);
@@ -999,9 +997,173 @@ class Chart {
             if (!isNaN(ts)) params.set('end_ts', String(ts));
         }
 
+        return params;
+    }
+
+    _smartCacheKeyFromParams(fileId, params) {
+        return `${fileId}|${params.toString()}`;
+    }
+
+    _tryTakeSmartPrefetch(fileId, params) {
+        const key = this._smartCacheKeyFromParams(fileId, params);
+        const entry = this._smartPrefetchCache && this._smartPrefetchCache.get(key);
+        if (!entry || !entry.payload) return null;
+        if (Date.now() - entry.at > 180000) {
+            this._smartPrefetchCache.delete(key);
+            return null;
+        }
+        this._smartPrefetchCache.delete(key);
+        return entry.payload;
+    }
+
+    _scheduleSmartPrefetchOthers(activeFileId, timeframe, session) {
+        const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
+        ric(() => {
+            if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
+            const entries = this.getSymbolSwitcherEntries();
+            for (let i = 0; i < entries.length; i++) {
+                const e = entries[i];
+                if (!e || String(e.fileId) === String(activeFileId)) continue;
+                const params = this._buildSmartWindowParams(e.fileId, timeframe, session);
+                const key = this._smartCacheKeyFromParams(e.fileId, params);
+                if (this._smartPrefetchCache.has(key)) continue;
+                fetch(`${this.apiUrl}/file/${e.fileId}/smart?${params.toString()}`)
+                    .then((r) => (r.ok ? r.json() : null))
+                    .then((data) => {
+                        if (!data) return;
+                        const ok = (Array.isArray(data.candles) && data.candles.length) || data.data;
+                        if (!ok) return;
+                        this._smartPrefetchCache.set(key, { at: Date.now(), payload: data });
+                        while (this._smartPrefetchCache.size > 4) {
+                            const first = this._smartPrefetchCache.keys().next().value;
+                            this._smartPrefetchCache.delete(first);
+                        }
+                    })
+                    .catch(() => {});
+            }
+        });
+    }
+
+    async _fetchSmartWindowWithParams(fileId, params) {
         const response = await fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
+    }
+
+    /**
+     * Fetch a window of candles from /smart endpoint.
+     * Server reads binary tiles/mmap; response uses native candle array when response_format=candles.
+     */
+    async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null) {
+        const params = this._buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange);
+        return this._fetchSmartWindowWithParams(fileId, params);
+    }
+
+    _normalizeCandlesFromApi(candles) {
+        const out = [];
+        if (!Array.isArray(candles)) return out;
+        for (let i = 0; i < candles.length; i++) {
+            const c = candles[i];
+            if (!c || typeof c !== 'object') continue;
+            let t = Number(c.t ?? c.time);
+            let o = Number(c.o ?? c.open);
+            let h = Number(c.h ?? c.high);
+            let l = Number(c.l ?? c.low);
+            let cl = Number(c.c ?? c.close);
+            let v = Number(c.v ?? c.volume);
+            if (!Number.isFinite(v)) v = 0;
+            if (Number.isFinite(t) && t < 1e11) t *= 1000;
+            if (Number.isFinite(o) && Number.isFinite(h) && Number.isFinite(l) && Number.isFinite(cl) && Number.isFinite(t)) {
+                out.push({ t, o, h, l, c: cl, v });
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Apply parsed OHLCV rows: resample, indicators, view fit, drawings, chartDataLoaded.
+     * @param {object} options skipIndicators, skipFitToView
+     */
+    _commitLoadedBars(newData, startIndex, options = {}) {
+        if (!newData || newData.length === 0) return;
+
+        if (startIndex === 0) {
+            this.rawData = newData;
+        } else {
+            this.rawData = this.rawData.slice(0, startIndex).concat(newData, this.rawData.slice(startIndex + newData.length));
+        }
+
+        this.data = this.resampleData(this.rawData, this.currentTimeframe);
+
+        if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
+            this.recalculateIndicators();
+        }
+
+        this.updateDateRange();
+
+        if (this.currentSymbol) {
+            this.updateSymbolSelector(this.currentSymbol);
+        }
+
+        if (startIndex === 0 && !options.skipFitToView) {
+            this.resize();
+            this.fitToView();
+            this.scheduleRender();
+        }
+
+        if (startIndex === 0 && this.drawingManager) {
+            const fileChanged = this._lastLoadedFileId && this._lastLoadedFileId !== this.currentFileId;
+
+            if (fileChanged) {
+                if (this.drawingManager.drawings.length > 0) {
+                    this.drawingManager.drawings.forEach(d => d.destroy());
+                    this.drawingManager.drawings = [];
+                }
+                if (typeof this.drawingManager.loadDrawings === 'function') {
+                    this.drawingManager.loadDrawings();
+                }
+            } else if (!this._lastLoadedFileId) {
+                if (typeof this.drawingManager.loadDrawings === 'function') {
+                    this.drawingManager.loadDrawings();
+                }
+            }
+
+            this._lastLoadedFileId = this.currentFileId;
+        }
+
+        window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+            detail: {
+                data: this.data,
+                rawData: this.rawData,
+                symbol: this.currentSymbol,
+                timeframe: this.currentTimeframe
+            }
+        }));
+    }
+
+    _smartResponseHasPayload(result) {
+        return !!(result && ((Array.isArray(result.candles) && result.candles.length > 0) || result.data));
+    }
+
+    /**
+     * Ingest /smart JSON: prefers native candle array; falls back to legacy CSV in result.data.
+     */
+    _ingestSmartWindowResult(result, options = {}) {
+        if (!result) return false;
+        if (Array.isArray(result.candles) && result.candles.length > 0) {
+            const newData = this._normalizeCandlesFromApi(result.candles);
+            if (newData.length === 0) {
+                console.error('❌ No valid candles after normalizing server response');
+                return false;
+            }
+            this._commitLoadedBars(newData, 0, options);
+            return true;
+        }
+        if (result.data) {
+            this.parseCSVChunk(result.data, 0, options);
+            return true;
+        }
+        return false;
     }
     
     /**
@@ -1027,10 +1189,14 @@ class Chart {
             }
             const isBacktestSession = !!(session && session.startDate);
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
-            const result = await this._fetchSmartWindow(fileId, requestTimeframe, session);
-            
-            if (!result || !result.data) throw new Error('No data in response');
-            
+            const params = this._buildSmartWindowParams(fileId, requestTimeframe, session);
+            let result = this._tryTakeSmartPrefetch(fileId, params);
+            if (!result) {
+                result = await this._fetchSmartWindowWithParams(fileId, params);
+            }
+
+            if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
+
             this.rawData = [];
             this.data = [];
             this.totalCandles = result.total;
@@ -1042,21 +1208,19 @@ class Chart {
             };
             this._panLoading = false;
             this.loadedRanges.clear();
-            
-            this.parseCSVChunk(result.data, 0);
-            this.loadedRanges.set(0, result.returned);
-            
+
             this.currentFileId = fileId;
+            this._ingestSmartWindowResult(result, { skipFitToView: true });
+            this.loadedRanges.set(0, result.returned);
+
+            this._scheduleSmartPrefetchOthers(fileId, requestTimeframe, session);
             
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
             
             this.updateChartTitle(this.currentSymbol);
             if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol.substring(0, 15);
-            
-            if (typeof this.recalculateIndicators === 'function') {
-                this.recalculateIndicators();
-            }
-            
+
+            this.resize();
             this.fitToView();
             this.render();
             
@@ -6101,78 +6265,8 @@ class Chart {
                 console.error('   Data start index:', dataStartIdx);
                 return;
             }
-            
-            // Merge with existing data
-            if (startIndex === 0) {
-                this.rawData = newData;
-            } else {
-                // Insert at correct position
-                this.rawData = this.rawData.slice(0, startIndex).concat(newData, this.rawData.slice(startIndex + newData.length));
-            }
-            
-            // Update working data
-            this.data = this.resampleData(this.rawData, this.currentTimeframe);
-            
-            // Recalculate indicators with new data (skip in backtest path — enterReplayMode handles it on the slice)
-            if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
-                this.recalculateIndicators();
-            }
-            
-            
-            // Update date range for date picker
-            this.updateDateRange();
-            
-            // Update symbol selector if symbol was detected
-            if (this.currentSymbol) {
-                this.updateSymbolSelector(this.currentSymbol);
-            }
-            
-            // On initial load (startIndex===0), position to show latest candles.
-            // Do NOT call jumpToLatest() here — it resets candleWidth/zoom on every chunk
-            // including pan-loads, which would destroy the user's current zoom level.
-            if (startIndex === 0) {
-                // Force resize first so this.w/h are accurate before fitToView calculates offsetX.
-                // Without this, fitToView may run with this.w=0 and compute a wrong offsetX.
-                this.resize();
-                this.fitToView();
-                this.scheduleRender();
-            }
-            
-            // Clear old drawings and load saved drawings ONLY when file changes (not on timeframe change)
-            if (startIndex === 0 && this.drawingManager) {
-                const fileChanged = this._lastLoadedFileId && this._lastLoadedFileId !== this.currentFileId;
-                
-                if (fileChanged) {
-                    // File changed - clear old drawings from previous file
-                    if (this.drawingManager.drawings.length > 0) {
-                        this.drawingManager.drawings.forEach(d => d.destroy());
-                        this.drawingManager.drawings = [];
-                    }
-                    
-                    // Load drawings for the new file
-                    if (typeof this.drawingManager.loadDrawings === 'function') {
-                        this.drawingManager.loadDrawings();
-                    }
-                } else if (!this._lastLoadedFileId) {
-                    // First load ever - load drawings
-                    if (typeof this.drawingManager.loadDrawings === 'function') {
-                        this.drawingManager.loadDrawings();
-                    }
-                }
-                // On timeframe change (same file), do nothing - chartDataLoaded listener will handle refresh
-                
-                this._lastLoadedFileId = this.currentFileId;
-            }
-            
-            // Notify that data has been updated (for panels)
-            window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-                detail: { 
-                    data: this.data,
-                    rawData: this.rawData,
-                    symbol: this.currentSymbol,
-                    timeframe: this.currentTimeframe
-                }
-            }));
+
+            this._commitLoadedBars(newData, startIndex, options);
             
         } catch (error) {
             console.error('CSV Parse Error:', error);
@@ -8964,7 +9058,7 @@ class Chart {
                 { startTs: targetTimestamp }
             );
 
-            if (!result || !result.data) {
+            if (!this._smartResponseHasPayload(result)) {
                 return false;
             }
 
@@ -8979,7 +9073,7 @@ class Chart {
             };
             this._panLoading = false;
 
-            this.parseCSVChunk(result.data, 0);
+            this._ingestSmartWindowResult(result, {});
 
             if (usingReplay && this.replaySystem && this.replaySystem.isActive) {
                 this.replaySystem.fullRawData = Array.isArray(this.rawData) ? [...this.rawData] : [];
@@ -9332,9 +9426,9 @@ class Chart {
             
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
-            
-            if (!result || !result.data) throw new Error('No data');
-            
+
+            if (!this._smartResponseHasPayload(result)) throw new Error('No data');
+
             this.rawData = [];
             this.data = [];
             this.totalCandles = result.total;
@@ -9345,22 +9439,15 @@ class Chart {
                 hasMoreRight: result.has_more_right
             };
             this._panLoading = false;
-            
-            this.parseCSVChunk(result.data, 0);
-            // NOTE: parseCSVChunk already resamples this.data to currentTimeframe
-            // do NOT overwrite it with rawData here (that would break non-1m timeframes)
-            
-            if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
+
+            this._ingestSmartWindowResult(result, {});
+            // NOTE: _commitLoadedBars resamples this.data to currentTimeframe
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
-            
-            this.fitToView(); // position to last candle after timeframe change
-            this.scheduleRender();
             if (this.hideLoader) this.hideLoader();
-            // NOTE: parseCSVChunk already dispatches chartDataLoaded internally,
-            // so we do NOT call _fireChartDataLoaded() here to avoid double-refresh of drawings
-            
+            // NOTE: _commitLoadedBars dispatches chartDataLoaded; do not call _fireChartDataLoaded() here.
+
         } catch (error) {
             console.error('❌ Timeframe change failed:', error);
             if (this.hideLoader) this.hideLoader();
