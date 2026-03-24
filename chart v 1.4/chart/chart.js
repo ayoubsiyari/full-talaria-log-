@@ -1008,20 +1008,7 @@ class Chart {
      * Switch to a different file/symbol without page reload
      */
     async loadFileData(fileId) {
-
-        // ── Fix 3: snapshot current view center timestamp + zoom ──────────────
-        let _anchorTs = null;
-        const _savedCandleWidth = this.candleWidth;
-        const _savedCandleWidthIndex = this.zoomLevel ? this.zoomLevel.candleWidthIndex : 8;
-        if (this.data && this.data.length > 0 && this.w > 0) {
-            const cs = this.getCandleSpacing();
-            const cw = this.w - this.margin.l - this.margin.r;
-            const ci = Math.round((-this.offsetX + cw / 2) / cs);
-            const idx = Math.max(0, Math.min(this.data.length - 1, ci));
-            _anchorTs = this.data[idx] ? this.data[idx].t : null;
-        }
-        // ─────────────────────────────────────────────────────────────────────
-
+        
         try {
             const symbolDisplay = document.getElementById('symbolDisplay');
             if (symbolDisplay) symbolDisplay.textContent = 'Loading...';
@@ -1038,14 +1025,10 @@ class Chart {
                     return false;
                 }
             }
-            const isBacktestSession = !!(this.backtestingStarted && session && session.startDate);
+            const isBacktestSession = !!(session && session.startDate);
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
-
-            // ── Fix 4: pass anchor timestamp so server returns data around the current date ──
-            const windowRange = (!isBacktestSession && _anchorTs) ? { endTs: _anchorTs } : null;
-            const result = await this._fetchSmartWindow(fileId, requestTimeframe, session, undefined, windowRange);
-            // ─────────────────────────────────────────────────────────────────────────────────
-
+            const result = await this._fetchSmartWindow(fileId, requestTimeframe, session);
+            
             if (!result || !result.data) throw new Error('No data in response');
             
             this.rawData = [];
@@ -1059,12 +1042,6 @@ class Chart {
             };
             this._panLoading = false;
             this.loadedRanges.clear();
-
-            // Restore zoom before parse so resampleData uses the saved candle width
-            if (!isBacktestSession) {
-                this.candleWidth = _savedCandleWidth;
-                if (this.zoomLevel) this.zoomLevel.candleWidthIndex = _savedCandleWidthIndex;
-            }
             
             this.parseCSVChunk(result.data, 0);
             this.loadedRanges.set(0, result.returned);
@@ -1079,25 +1056,8 @@ class Chart {
             if (typeof this.recalculateIndicators === 'function') {
                 this.recalculateIndicators();
             }
-
-            // ── Fix 5: restore scroll position to same date instead of fitToView ─────────
-            if (!isBacktestSession && _anchorTs && this.data && this.data.length > 0) {
-                let bestIdx = this.data.length - 1;
-                let bestDiff = Infinity;
-                for (let i = 0; i < this.data.length; i++) {
-                    const diff = Math.abs(this.data[i].t - _anchorTs);
-                    if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
-                }
-                const spacing = this.getCandleSpacing();
-                const cw = this.w - this.margin.l - this.margin.r;
-                this.offsetX = cw / 2 - bestIdx * spacing;
-                this._chartViewRestored = true;
-                this.constrainOffset();
-            } else {
-                this.fitToView();
-            }
-            // ─────────────────────────────────────────────────────────────────────────────
-
+            
+            this.fitToView();
             this.render();
             
             if (window.replaySystem) {
@@ -1108,6 +1068,7 @@ class Chart {
                     window.replaySystem.goToReplayTimestamp(window.replaySystem.replayTimestamp, { preserveVisibleWindow: true });
                 }
             }
+            
             
         } catch (error) {
             console.error('❌ Failed to switch symbol:', error);
@@ -5861,15 +5822,16 @@ class Chart {
     }
 
     _bindListClicks(dropdown) {
-        if (dropdown._listClicksBound) return;
-        dropdown._listClicksBound = true;
-        dropdown.addEventListener('click', (e) => {
+        const list = dropdown.querySelector('.ssd-list');
+        if (!list) return;
+        list.addEventListener('click', (e) => {
             const item = e.target.closest('.ssd-item[data-file-id]');
             if (!item) return;
             const fileId = item.dataset.fileId;
             dropdown.classList.remove('open');
             if (fileId && String(fileId) !== String(this.currentFileId || '')) {
-                this.loadFileData(fileId);
+                this.currentFileId = fileId;
+                this.loadFileFromServer(fileId);
             }
         });
     }
@@ -5884,6 +5846,7 @@ class Chart {
             const list = dropdown.querySelector('.ssd-list');
             if (list) {
                 list.innerHTML = this._buildListContent(entries, query);
+                this._bindListClicks(dropdown);
             }
             return;
         }
@@ -5896,6 +5859,7 @@ class Chart {
         <div class="ssd-header">Instruments</div>
         <div class="ssd-list">${listContent}</div>`;
         this._bindDropdownSearch(dropdown);
+        this._bindListClicks(dropdown);
     }
 
     _bindDropdownSearch(dropdown) {
@@ -5910,6 +5874,7 @@ class Chart {
             const list = dropdown.querySelector('.ssd-list');
             if (list) {
                 list.innerHTML = this._buildListContent(entries, query);
+                this._bindListClicks(dropdown);
             }
         });
         input.addEventListener('click', (e) => e.stopPropagation());

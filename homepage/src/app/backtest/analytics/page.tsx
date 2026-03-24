@@ -360,6 +360,18 @@ export default function BacktestAnalyticsPage() {
     });
   }, [filteredTrades, tickerColor]);
 
+  const filterSelectClass =
+    "rounded-lg border px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/60";
+  const filterSelectStyle: React.CSSProperties = {
+    backgroundColor: "rgba(15, 23, 42, 0.95)",
+    borderColor: "rgba(148, 163, 184, 0.35)",
+    color: "#e5e7eb",
+  };
+  const filterOptionStyle: React.CSSProperties = {
+    backgroundColor: "#0f172a",
+    color: "#e5e7eb",
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -384,10 +396,11 @@ export default function BacktestAnalyticsPage() {
           <select
             value={selectedSessionId}
             onChange={(e) => setSelectedSessionId(e.target.value)}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+            className={filterSelectClass}
+            style={filterSelectStyle}
           >
             {sessions.map((s) => (
-              <option key={s.id} value={String(s.id)}>
+              <option key={s.id} value={String(s.id)} style={filterOptionStyle}>
                 {s.name} (#{s.id})
               </option>
             ))}
@@ -395,11 +408,12 @@ export default function BacktestAnalyticsPage() {
           <select
             value={pairFilter}
             onChange={(e) => setPairFilter(e.target.value)}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+            className={filterSelectClass}
+            style={filterSelectStyle}
           >
-            <option value="ALL">All Instruments</option>
+            <option value="ALL" style={filterOptionStyle}>All Instruments</option>
             {pairOptions.map((p) => (
-              <option key={p} value={p}>
+              <option key={p} value={p} style={filterOptionStyle}>
                 {p}
               </option>
             ))}
@@ -407,11 +421,12 @@ export default function BacktestAnalyticsPage() {
           <select
             value={playbookFilter}
             onChange={(e) => setPlaybookFilter(e.target.value)}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+            className={filterSelectClass}
+            style={filterSelectStyle}
           >
-            <option value="ALL">All Playbooks</option>
+            <option value="ALL" style={filterOptionStyle}>All Playbooks</option>
             {playbookOptions.map((p) => (
-              <option key={p} value={p}>
+              <option key={p} value={p} style={filterOptionStyle}>
                 {p}
               </option>
             ))}
@@ -419,12 +434,13 @@ export default function BacktestAnalyticsPage() {
           <select
             value={outcomeFilter}
             onChange={(e) => setOutcomeFilter(e.target.value)}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+            className={filterSelectClass}
+            style={filterSelectStyle}
           >
-            <option value="ALL">All Outcomes</option>
-            <option value="WINNERS">Winners Only</option>
-            <option value="LOSERS">Losers Only</option>
-            <option value="BREAKEVEN">Breakeven Only</option>
+            <option value="ALL" style={filterOptionStyle}>All Outcomes</option>
+            <option value="WINNERS" style={filterOptionStyle}>Winners Only</option>
+            <option value="LOSERS" style={filterOptionStyle}>Losers Only</option>
+            <option value="BREAKEVEN" style={filterOptionStyle}>Breakeven Only</option>
           </select>
         </div>
 
