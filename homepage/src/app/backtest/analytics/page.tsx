@@ -47,6 +47,8 @@ type Trade = {
   postTradeNotes?: { setup?: string; tags?: string };
   closeTime?: number;
   exitTime?: number;
+  riskAmount?: number | string;
+  originalRiskAmount?: number | string;
 };
 
 async function fetchJson<T = unknown>(url: string, options?: RequestInit): Promise<T> {
@@ -103,6 +105,9 @@ export default function BacktestAnalyticsPage() {
   const [pairFilter, setPairFilter] = useState("ALL");
   const [playbookFilter, setPlaybookFilter] = useState("ALL");
   const [outcomeFilter, setOutcomeFilter] = useState("ALL");
+  const [simTpR, setSimTpR] = useState(1.5);
+  const [simSlR, setSimSlR] = useState(1.0);
+  const [heatmapPair, setHeatmapPair] = useState("ALL");
   const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
     key: "netPnl",
     dir: "desc",
@@ -197,6 +202,11 @@ export default function BacktestAnalyticsPage() {
           setup,
           openTs: n(t.openTime ?? t.entryTime ?? 0),
           closeTs: n(t.closeTime ?? t.exitTime ?? 0),
+          riskUsd:
+            n((t as any).riskAmount ?? (t as any).originalRiskAmount) ||
+            (Math.abs(n(t.rMultiple ?? t.rewardToRiskRatio)) > 0
+              ? Math.abs(n(t.netPnL ?? t.realizedPnL ?? t.pnl) / n(t.rMultiple ?? t.rewardToRiskRatio))
+              : 0),
         };
       }),
     [allTrades]
@@ -359,6 +369,95 @@ export default function BacktestAnalyticsPage() {
       };
     });
   }, [filteredTrades, tickerColor]);
+
+  const whatIfTrades = useMemo(
+    () => [...filteredTrades].sort((a, b) => a.closeTs - b.closeTs),
+    [filteredTrades]
+  );
+
+  const whatIfRows = useMemo(() => {
+    const tp = Math.max(0.1, simTpR);
+    const sl = Math.max(0.1, simSlR);
+    return whatIfTrades.map((t) => {
+      const mae = n((t as any).mae_r);
+      const mfe = n((t as any).mfe_r);
+      const actualR = n((t as any).rr);
+      const spreadCost = n((t as any).spread_pips_at_entry) * n((t as any).pip_value_at_entry) * n((t as any).quantity);
+      const commissionCost = n((t as any).commission_at_entry) * n((t as any).quantity) * 2;
+      const totalCost = spreadCost + commissionCost;
+      const riskUsd = Math.max(0, n((t as any).riskUsd));
+
+      const hitsTp = mfe >= tp;
+      const hitsSl = mae <= -sl;
+      let simR = actualR;
+      if (hitsTp && !hitsSl) simR = tp;
+      else if (!hitsTp && hitsSl) simR = -sl;
+      else if (hitsTp && hitsSl) simR = actualR >= 0 ? tp : -sl;
+
+      const simGross = simR * riskUsd;
+      const simNet = simGross - totalCost;
+      return {
+        ...t,
+        simR,
+        simNet,
+        actualNet: n((t as any).pnl),
+      };
+    });
+  }, [whatIfTrades, simTpR, simSlR]);
+
+  const whatIfEquityCurve = useMemo(() => {
+    let actual = 0;
+    let simulated = 0;
+    return whatIfRows.map((t, idx) => {
+      actual += n((t as any).actualNet);
+      simulated += n((t as any).simNet);
+      return {
+        idx: idx + 1,
+        ticker: (t as any).ticker,
+        actual,
+        simulated,
+      };
+    });
+  }, [whatIfRows]);
+
+  const heatmapTrades = useMemo(
+    () =>
+      whatIfTrades.filter((t) => heatmapPair === "ALL" || (t as any).ticker === heatmapPair),
+    [whatIfTrades, heatmapPair]
+  );
+
+  const heatmapData = useMemo(() => {
+    const tpGrid = [0.5, 1, 1.5, 2, 2.5, 3];
+    const slGrid = [0.5, 1, 1.5, 2, 2.5, 3];
+    const rows: Array<{ tp: number; sl: number; expectancy: number; trades: number }> = [];
+
+    for (const tp of tpGrid) {
+      for (const sl of slGrid) {
+        const sims = heatmapTrades.map((t) => {
+          const mae = n((t as any).mae_r);
+          const mfe = n((t as any).mfe_r);
+          const actualR = n((t as any).rr);
+          const spreadCost = n((t as any).spread_pips_at_entry) * n((t as any).pip_value_at_entry) * n((t as any).quantity);
+          const commissionCost = n((t as any).commission_at_entry) * n((t as any).quantity) * 2;
+          const riskUsd = Math.max(0, n((t as any).riskUsd));
+
+          const hitsTp = mfe >= tp;
+          const hitsSl = mae <= -sl;
+          let simR = actualR;
+          if (hitsTp && !hitsSl) simR = tp;
+          else if (!hitsTp && hitsSl) simR = -sl;
+          else if (hitsTp && hitsSl) simR = actualR >= 0 ? tp : -sl;
+
+          return simR * riskUsd - (spreadCost + commissionCost);
+        });
+        const expectancy = sims.length > 0 ? sims.reduce((s, v) => s + v, 0) / sims.length : 0;
+        rows.push({ tp, sl, expectancy, trades: sims.length });
+      }
+    }
+    return rows.sort((a, b) => b.expectancy - a.expectancy);
+  }, [heatmapTrades]);
+
+  const bestHeatmap = heatmapData[0];
 
   const filterSelectClass =
     "rounded-lg border px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/60";
@@ -663,6 +762,98 @@ export default function BacktestAnalyticsPage() {
                     <div className="h-full flex items-center justify-center text-white/40 text-sm">No MFE data</div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4 space-y-4">
+              <div className="font-semibold">What-If TP/SL Simulator</div>
+              <div className="flex flex-wrap gap-3 items-center">
+                <label className="text-sm text-white/70">
+                  TP (R)
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    value={simTpR}
+                    onChange={(e) => setSimTpR(Math.max(0.1, n(e.target.value)))}
+                    className="ml-2 w-24 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm"
+                  />
+                </label>
+                <label className="text-sm text-white/70">
+                  SL (R)
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    value={simSlR}
+                    onChange={(e) => setSimSlR(Math.max(0.1, n(e.target.value)))}
+                    className="ml-2 w-24 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm"
+                  />
+                </label>
+                <div className="text-xs text-white/50">
+                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter} | Trades: {whatIfRows.length}
+                </div>
+              </div>
+
+              <div className="h-72">
+                {whatIfEquityCurve.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={whatIfEquityCurve}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                      <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                      <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                      <Tooltip
+                        formatter={(value, name) => [fmtMoney(Number(value || 0)), name === "simulated" ? "Simulated" : "Actual"]}
+                        contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                      />
+                      <Line type="monotone" dataKey="actual" stroke="#94a3b8" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="simulated" stroke="#22c55e" strokeWidth={2.4} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-white/40 text-sm">No simulation data</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="font-semibold">Per-Instrument Expectancy Heatmap (TP/SL)</div>
+                <label className="text-sm text-white/70">
+                  Run heatmap for:
+                  <select
+                    value={heatmapPair}
+                    onChange={(e) => setHeatmapPair(e.target.value)}
+                    className="ml-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+                  >
+                    <option value="ALL">All</option>
+                    {pairOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="text-xs text-white/50">
+                Scope: {heatmapPair === "ALL" ? "All Instruments (blended)" : heatmapPair} | Trades: {heatmapTrades.length}
+                {bestHeatmap ? ` | Best: TP ${bestHeatmap.tp.toFixed(1)}R / SL ${bestHeatmap.sl.toFixed(1)}R (Expectancy ${fmtMoney(bestHeatmap.expectancy)})` : ""}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {heatmapData.slice(0, 24).map((c) => {
+                  const positive = c.expectancy >= 0;
+                  return (
+                    <div
+                      key={`${c.tp}-${c.sl}`}
+                      className={`rounded-lg border p-2 text-xs ${positive ? "border-green-500/30 bg-green-500/10" : "border-red-500/30 bg-red-500/10"}`}
+                    >
+                      <div className="text-white/70">TP {c.tp.toFixed(1)}R / SL {c.sl.toFixed(1)}R</div>
+                      <div className={`font-semibold ${positive ? "text-green-400" : "text-red-400"}`}>{fmtMoney(c.expectancy)}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </>
