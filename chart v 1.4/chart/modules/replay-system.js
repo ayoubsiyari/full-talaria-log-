@@ -3694,6 +3694,49 @@ class ReplaySystem {
     }
 
     /**
+     * Seek replay to the bar matching a wall-clock / session timestamp (multi-instrument sync).
+     * @param {number|string|Date} targetTimestamp
+     * @param {{ preserveVisibleWindow?: boolean }} options — if true, do not auto-scroll the chart
+     */
+    goToReplayTimestamp(targetTimestamp, options = {}) {
+        const preserveVisibleWindow = !!(options && options.preserveVisibleWindow);
+        if (!this.isActive || !Array.isArray(this.fullRawData) || this.fullRawData.length === 0) {
+            return false;
+        }
+
+        const chart = this.chart;
+        const ts = chart && typeof chart.normalizeTimestampMs === 'function'
+            ? chart.normalizeTimestampMs(targetTimestamp)
+            : Number(targetTimestamp);
+        if (!Number.isFinite(ts)) {
+            return false;
+        }
+
+        let idx = 0;
+        if (chart && typeof chart.findGoToTargetIndex === 'function') {
+            idx = chart.findGoToTargetIndex(this.fullRawData, ts);
+        }
+        if (idx < 0) {
+            idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
+        }
+        if (idx < 0) {
+            idx = this.fullRawData.length - 1;
+        }
+        idx = Math.min(Math.max(idx, 0), this.fullRawData.length - 1);
+
+        this.currentIndex = idx;
+        this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
+        this.tickElapsedMs = 0;
+
+        const autoScroll = preserveVisibleWindow ? false : this.autoScrollEnabled;
+        this.updateChartData(autoScroll);
+        if (typeof this.updateSliderRange === 'function') this.updateSliderRange();
+        if (typeof this.updateSlider === 'function') this.updateSlider();
+        if (typeof this.updateTimeDisplay === 'function') this.updateTimeDisplay();
+        return true;
+    }
+
+    /**
      * Called when user manually pans the chart
      */
     onUserPan() {

@@ -331,13 +331,20 @@ class Chart {
         this.currentFileId = null;
         this.currentSymbol = null; // Store detected symbol from CSV
         this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
-        /** First /smart batch for backtest sessions; replay + pan forward-load merge the rest (was 100k). */
-        this.BACKTEST_SMART_INITIAL_LIMIT = 48000;
+        /**
+         * Backtest: first GET /smart batch size (capped 5k–100k server-side).
+         * Instruments may hold 10–15+ years of 1m bars on disk — that full series is never loaded at once.
+         * Requests are scoped by session start/end; longer windows stream via replay forward /candles merge.
+         * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads (e.g. 48000) for a lighter first paint.
+         */
+        this.BACKTEST_SMART_INITIAL_LIMIT = 100000;
 
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
         this.loadedRanges = new Map(); // Cache loaded data ranges
         this._smartPrefetchCache = new Map(); // LRU-ish cache for other symbols' /smart payloads
+        /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
+        this._symbolLoadSeq = 0;
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
@@ -976,8 +983,14 @@ class Chart {
         const isBacktest = session && session.startDate;
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
+        let backtestBatch = Number(this.BACKTEST_SMART_INITIAL_LIMIT);
+        if (!Number.isFinite(backtestBatch) || backtestBatch <= 0) backtestBatch = 100000;
+        if (typeof window !== 'undefined') {
+            const w = Number(window.CHART_BACKTEST_SMART_INITIAL_LIMIT);
+            if (Number.isFinite(w) && w > 0) backtestBatch = w;
+        }
         const limit = isBacktest
-            ? String(Math.max(5000, Math.min(100000, Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 48000)))
+            ? String(Math.max(5000, Math.min(100000, backtestBatch)))
             : '5000';
         const params = new URLSearchParams({
             timeframe: timeframe,
@@ -1016,6 +1029,10 @@ class Chart {
         const key = this._smartCacheKeyFromParams(fileId, params);
         const entry = this._smartPrefetchCache && this._smartPrefetchCache.get(key);
         if (!entry || !entry.payload) return null;
+        if (String(entry.fileId || '') !== String(fileId)) {
+            this._smartPrefetchCache.delete(key);
+            return null;
+        }
         if (Date.now() - entry.at > 180000) {
             this._smartPrefetchCache.delete(key);
             return null;
@@ -1041,7 +1058,7 @@ class Chart {
                         if (!data) return;
                         const ok = (Array.isArray(data.candles) && data.candles.length) || data.data;
                         if (!ok) return;
-                        this._smartPrefetchCache.set(key, { at: Date.now(), payload: data });
+                        this._smartPrefetchCache.set(key, { at: Date.now(), payload: data, fileId: String(e.fileId) });
                         while (this._smartPrefetchCache.size > 4) {
                             const first = this._smartPrefetchCache.keys().next().value;
                             this._smartPrefetchCache.delete(first);
@@ -1178,13 +1195,15 @@ class Chart {
      * Switch to a different file/symbol without page reload
      */
     async loadFileData(fileId) {
-        
+        const loadSeq = ++this._symbolLoadSeq;
+        const targetFileId = String(fileId);
+
         try {
             const symbolDisplay = document.getElementById('symbolDisplay');
             if (symbolDisplay) symbolDisplay.textContent = 'Loading...';
-            
+
             const session = this.backtestingSession || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
-            const targetTicker = this.resolveSessionTickerForFileId(session, fileId) || this.currentSymbol;
+            const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId) || this.currentSymbol;
             if (this.orderManager && typeof this.orderManager.canSwitchToTicker === 'function') {
                 const canSwitch = this.orderManager.canSwitchToTicker(targetTicker);
                 if (!canSwitch) {
@@ -1197,10 +1216,15 @@ class Chart {
             }
             const isBacktestSession = !!(session && session.startDate);
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
-            const params = this._buildSmartWindowParams(fileId, requestTimeframe, session);
-            let result = this._tryTakeSmartPrefetch(fileId, params);
+            const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
+
+            let result = this._tryTakeSmartPrefetch(targetFileId, params);
             if (!result) {
-                result = await this._fetchSmartWindowWithParams(fileId, params);
+                result = await this._fetchSmartWindowWithParams(targetFileId, params);
+            }
+
+            if (loadSeq !== this._symbolLoadSeq) {
+                return false;
             }
 
             if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
@@ -1217,46 +1241,60 @@ class Chart {
             this._panLoading = false;
             this.loadedRanges.clear();
 
-            this.currentFileId = fileId;
+            this.currentFileId = targetFileId;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
 
-            this._scheduleSmartPrefetchOthers(fileId, requestTimeframe, session);
-            
+            this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
+
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
-            
+
             this.updateChartTitle(this.currentSymbol);
             if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol.substring(0, 15);
 
             this.resize();
             this.fitToView();
             this.render();
-            
-            if (window.replaySystem) {
-                window.replaySystem.fullRawData = [...this.rawData];
-                window.replaySystem.rawTimeframe = requestTimeframe;
-                window.replaySystem.updateChartData();
+
+            const replay = window.replaySystem;
+            if (replay && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                replay.fullRawData = [...this.rawData];
+                replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+                replay.rawTimeframe = requestTimeframe;
+                replay._fullRawDataMatchesTF = false;
+
                 const sessionTime = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
                 const targetTs = Number.isFinite(sessionTime)
                     ? sessionTime
-                    : window.replaySystem.replayTimestamp;
-                if (Number.isFinite(targetTs) && typeof window.replaySystem.goToReplayTimestamp === 'function') {
-                    window.replaySystem.goToReplayTimestamp(targetTs, { preserveVisibleWindow: true });
+                    : Number(replay.replayTimestamp);
+
+                if (typeof replay.goToReplayTimestamp === 'function' && Number.isFinite(targetTs)) {
+                    replay.goToReplayTimestamp(targetTs, { preserveVisibleWindow: true });
+                } else {
+                    replay.currentIndex = Math.min(10, Math.max(0, replay.fullRawData.length - 1));
+                    if (replay.fullRawData[replay.currentIndex]) {
+                        replay.replayTimestamp = replay.fullRawData[replay.currentIndex].t;
+                    }
+                    replay.tickElapsedMs = 0;
+                    replay.updateChartData(true);
+                    if (typeof replay.updateSliderRange === 'function') replay.updateSliderRange();
+                    if (typeof replay.updateSlider === 'function') replay.updateSlider();
+                    if (typeof replay.updateTimeDisplay === 'function') replay.updateTimeDisplay();
                 }
             }
 
-            // Repaint order/SL/TP overlays for the newly-selected symbol.
             if (this.orderManager) {
                 if (typeof this.orderManager.updateSLTPLines === 'function') this.orderManager.updateSLTPLines();
                 if (typeof this.orderManager.updatePositionsPanel === 'function') this.orderManager.updatePositionsPanel();
             }
-            
-            
+
+            return true;
         } catch (error) {
             console.error('❌ Failed to switch symbol:', error);
             if (typeof this.showNotification === 'function') {
                 this.showNotification('Failed to load symbol: ' + error.message);
             }
+            return false;
         }
     }
     
