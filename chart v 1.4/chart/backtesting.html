@@ -151,6 +151,15 @@
             background: rgba(255,255,255,0.06);
         }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .market-types-row { display: flex; gap: 20px; margin-top: 8px; flex-wrap: wrap; }
+        .market-type-option { display: flex; align-items: center; gap: 8px; cursor: pointer; color: rgba(255,255,255,0.6); font-size: 13px; }
+        @media (max-width: 900px) {
+            .form-row-3 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 640px) {
+            .form-row, .form-row-3 { grid-template-columns: 1fr; }
+        }
         .preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
         .preset-btn { padding: 5px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 20px; color: rgba(255,255,255,0.45); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: inherit; }
@@ -309,130 +318,123 @@
                     <!-- Trading Settings Card -->
                     <div class="form-card">
                         <h3>Trading Settings</h3>
-                    
-                    <!-- Market Types -->
-                    <div class="form-group">
-                        <label>Market Types <span class="required">*</span></label>
-                        <div style="display: flex; gap: 20px; margin-top: 8px;">
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="checkbox" class="market-checkbox" name="marketType" value="forex" checked>
-                                <span>Forex</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="checkbox" class="market-checkbox" name="marketType" value="futures">
-                                <span>Futures</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="checkbox" class="market-checkbox" name="marketType" value="crypto">
-                                <span>Crypto</span>
-                            </label>
-                        </div>
-                        <div class="helper-text" style="margin-top: 8px;">Select one or more market types you're backtesting</div>
-                    </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Account Currency</label>
-                            <select id="accountCurrency" name="accountCurrency">
-                                <option value="USD" selected>USD</option>
-                                <option value="EUR">EUR</option>
-                                <option value="GBP">GBP</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Leverage</label>
-                            <select id="accountLeverage" name="accountLeverage">
-                                <option value="1:1">1:1</option>
-                                <option value="1:10">1:10</option>
-                                <option value="1:30" selected>1:30</option>
-                                <option value="1:50">1:50</option>
-                                <option value="1:100">1:100</option>
-                                <option value="1:200">1:200</option>
-                                <option value="1:500">1:500</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Asset Class</label>
-                            <select id="assetClass" name="assetClass">
-                                <option value="Forex" selected>Forex</option>
-                                <option value="Futures">Futures</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Margin Call Level (%)</label>
-                            <input type="number" id="marginCallLevel" name="marginCallLevel" min="1" step="1" value="100">
-                        </div>
-                        <div class="form-group">
-                            <label>Stop Out Level (%)</label>
-                            <input type="number" id="stopOutLevel" name="stopOutLevel" min="1" step="1" value="50">
-                        </div>
-                        <div class="form-group">
-                            <label>Max Risk Per Trade (%)</label>
-                            <input type="number" id="maxRiskPerTradePct" name="maxRiskPerTradePct" min="0" step="0.1" placeholder="Optional">
-                        </div>
-                    </div>
-
-                    <div class="form-card form-card-full">
-                        <h3>Instrument Table (Max 10)</h3>
-                        <div class="helper-text" style="margin-bottom: 10px;">
-                            One row per selected dataset. Configure spread/commission per instrument.
-                        </div>
-                        <div class="instrument-table-wrap">
-                            <table class="instrument-table">
-                                <thead>
-                                    <tr>
-                                        <th>Ticker</th>
-                                        <th>Spread (pips)</th>
-                                        <th>Commission / lot / side</th>
-                                        <th>Pip Size</th>
-                                        <th>Pip Value / lot</th>
-                                        <th>Contract Size</th>
-                                        <th>Min Lot</th>
-                                        <th>Lot Step</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="instrumentTableBody"></tbody>
-                            </table>
-                        </div>
-                        <div id="instrumentTableHint" class="helper-text" style="margin-top:8px;">
-                            Select datasets to populate instrument rows.
-                        </div>
-                    </div>
-
-                        <!-- Default Risk Type -->
-                        <div class="form-group">
-                            <label>Risk Type</label>
-                            <select id="defaultRiskType" name="defaultRiskType">
-                                <option value="percent" selected>Percentage (%)</option>
-                                <option value="dollar">Dollar ($)</option>
-                                <option value="lot">Lot</option>
-                            </select>
-                            <div class="helper-text">How to specify risk per trade</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Start Balance <span class="required">*</span></label>
+                                <input type="number" id="startBalance" name="startBalance" placeholder="$ 0" min="0" step="1000" required value="10000">
+                                <div class="preset-buttons">
+                                    <button type="button" class="preset-btn" data-value="5000">5K</button>
+                                    <button type="button" class="preset-btn" data-value="10000">10K</button>
+                                    <button type="button" class="preset-btn" data-value="20000">20K</button>
+                                    <button type="button" class="preset-btn" data-value="40000">40K</button>
+                                    <button type="button" class="preset-btn" data-value="50000">50K</button>
+                                    <button type="button" class="preset-btn" data-value="100000">100K</button>
+                                </div>
+                                <div class="helper-text">Your starting account balance for this session</div>
+                            </div>
+                            <div class="form-group">
+                                <label>Risk Type</label>
+                                <select id="defaultRiskType" name="defaultRiskType">
+                                    <option value="percent" selected>Percentage (%)</option>
+                                    <option value="dollar">Dollar ($)</option>
+                                    <option value="lot">Lot</option>
+                                </select>
+                                <div class="helper-text">How to specify risk per trade</div>
+                            </div>
                         </div>
 
-                        <!-- Default Risk Value -->
                         <div class="form-group">
                             <label id="defaultRiskLabel">Default Risk Per Trade (%)</label>
                             <input type="number" id="defaultRisk" name="defaultRisk" placeholder="1" min="0.1" step="0.1" value="1">
                             <div class="helper-text" id="defaultRiskHelper">Percentage of account balance to risk</div>
                         </div>
 
-                        <!-- Start Balance -->
                         <div class="form-group">
-                            <label>Start Balance <span class="required">*</span></label>
-                            <input type="number" id="startBalance" name="startBalance" placeholder="$ 0" min="0" step="1000" required value="10000">
-                            <div class="preset-buttons">
-                                <button type="button" class="preset-btn" data-value="5000">5K</button>
-                                <button type="button" class="preset-btn" data-value="10000">10K</button>
-                                <button type="button" class="preset-btn" data-value="20000">20K</button>
-                                <button type="button" class="preset-btn" data-value="40000">40K</button>
-                                <button type="button" class="preset-btn" data-value="50000">50K</button>
-                                <button type="button" class="preset-btn" data-value="100000">100K</button>
+                            <label>Market Types <span class="required">*</span></label>
+                            <div class="market-types-row">
+                                <label class="market-type-option">
+                                    <input type="checkbox" class="market-checkbox" name="marketType" value="forex" checked>
+                                    <span>Forex</span>
+                                </label>
+                                <label class="market-type-option">
+                                    <input type="checkbox" class="market-checkbox" name="marketType" value="futures">
+                                    <span>Futures</span>
+                                </label>
+                                <label class="market-type-option">
+                                    <input type="checkbox" class="market-checkbox" name="marketType" value="crypto">
+                                    <span>Crypto</span>
+                                </label>
                             </div>
-                            <div class="helper-text">Your starting account balance for this backtesting session</div>
+                            <div class="helper-text" style="margin-top: 8px;">Select one or more market types you're backtesting</div>
+                        </div>
+
+                        <div class="form-row-3">
+                            <div class="form-group">
+                                <label>Account Currency</label>
+                                <select id="accountCurrency" name="accountCurrency">
+                                    <option value="USD" selected>USD</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="GBP">GBP</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Leverage</label>
+                                <select id="accountLeverage" name="accountLeverage">
+                                    <option value="1:1">1:1</option>
+                                    <option value="1:10">1:10</option>
+                                    <option value="1:30" selected>1:30</option>
+                                    <option value="1:50">1:50</option>
+                                    <option value="1:100">1:100</option>
+                                    <option value="1:200">1:200</option>
+                                    <option value="1:500">1:500</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Asset Class</label>
+                                <select id="assetClass" name="assetClass">
+                                    <option value="Forex" selected>Forex</option>
+                                    <option value="Futures">Futures</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row-3">
+                            <div class="form-group">
+                                <label>Margin Call Level (%)</label>
+                                <input type="number" id="marginCallLevel" name="marginCallLevel" min="1" step="1" value="100">
+                            </div>
+                            <div class="form-group">
+                                <label>Stop Out Level (%)</label>
+                                <input type="number" id="stopOutLevel" name="stopOutLevel" min="1" step="1" value="50">
+                            </div>
+                            <div class="form-group">
+                                <label>Max Risk Per Trade (%)</label>
+                                <input type="number" id="maxRiskPerTradePct" name="maxRiskPerTradePct" min="0" step="0.1" placeholder="Optional">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 2px;">
+                            <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.34);">Instrument Table (Max 10)</label>
+                            <div class="helper-text" style="margin-bottom: 10px;">One row per selected dataset. Configure spread/commission per instrument.</div>
+                            <div class="instrument-table-wrap">
+                                <table class="instrument-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Ticker</th>
+                                            <th>Spread (pips)</th>
+                                            <th>Commission / lot / side</th>
+                                            <th>Pip Size</th>
+                                            <th>Pip Value / lot</th>
+                                            <th>Contract Size</th>
+                                            <th>Min Lot</th>
+                                            <th>Lot Step</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="instrumentTableBody"></tbody>
+                                </table>
+                            </div>
+                            <div id="instrumentTableHint" class="helper-text" style="margin-top:8px;">Select datasets to populate instrument rows.</div>
                         </div>
                     </div>
 
