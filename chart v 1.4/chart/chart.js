@@ -626,6 +626,66 @@ class Chart {
     /**
      * Check if chart is loaded in backtesting mode and auto-start
      */
+    normalizeBacktestingSession(session) {
+        if (!session || typeof session !== 'object') return session;
+
+        const normalized = { ...session };
+        const sessionId = normalized.session_id || normalized.sessionId || normalized.id || null;
+        if (sessionId) {
+            normalized.session_id = String(sessionId);
+        }
+
+        const leverageText = normalized.leverage || normalized.accountLeverage || '1:30';
+        const leverageMatch = String(leverageText).match(/(\d+)\s*:\s*(\d+)/);
+        if (leverageMatch) {
+            const lev = Number.parseFloat(leverageMatch[2]);
+            if (Number.isFinite(lev) && lev > 0) normalized.leverageNumber = lev;
+        } else if (Number.isFinite(Number.parseFloat(leverageText))) {
+            normalized.leverageNumber = Number.parseFloat(leverageText);
+        }
+
+        const instrumentsMap = {};
+        if (Array.isArray(normalized.instruments)) {
+            normalized.instruments.forEach((row) => {
+                const ticker = String(row?.ticker || row?.symbol || row?.symbolName || '').toUpperCase();
+                if (!ticker) return;
+                instrumentsMap[ticker] = { ...row, ticker };
+            });
+        } else if (normalized.instruments && typeof normalized.instruments === 'object') {
+            Object.keys(normalized.instruments).forEach((key) => {
+                const row = normalized.instruments[key];
+                const ticker = String(row?.ticker || key || '').toUpperCase();
+                if (!ticker) return;
+                instrumentsMap[ticker] = { ...row, ticker };
+            });
+        } else if (Array.isArray(normalized.symbols)) {
+            normalized.symbols.forEach((row) => {
+                const ticker = String(row?.ticker || row?.symbol || row?.symbolName || '').toUpperCase();
+                if (!ticker) return;
+                instrumentsMap[ticker] = { ...row, ticker };
+            });
+        }
+        normalized.instruments = instrumentsMap;
+        normalized.instrumentTickers = Object.keys(instrumentsMap);
+        normalized.asset_class = normalized.asset_class || normalized.assetClass || 'Forex';
+        normalized.margin_call_level = Number.parseFloat(normalized.margin_call_level || normalized.marginCallLevel || 100);
+        normalized.stop_out_level = Number.parseFloat(normalized.stop_out_level || normalized.stopOutLevel || 50);
+
+        return normalized;
+    }
+
+    getPrimarySessionFileId(session) {
+        if (!session) return null;
+        if (session.fileId) return session.fileId;
+        const firstTicker = Array.isArray(session.instrumentTickers) && session.instrumentTickers.length > 0
+            ? session.instrumentTickers[0]
+            : null;
+        if (firstTicker && session.instruments && session.instruments[firstTicker]) {
+            return session.instruments[firstTicker].fileId || session.instruments[firstTicker].datasetId || null;
+        }
+        return null;
+    }
+
     async checkBacktestingMode() {
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
@@ -649,7 +709,7 @@ class Chart {
                     if (res.ok) {
                         const payload = await res.json();
                         if (payload && payload.session && payload.session.config) {
-                            session = payload.session.config;
+                            session = this.normalizeBacktestingSession(payload.session.config);
                             try {
                                 localStorage.setItem('backtestingSession', JSON.stringify(session));
                                 localStorage.setItem('active_trading_session_id', String(sessionId));
@@ -666,14 +726,14 @@ class Chart {
             if (!session) {
                 const sessionData = localStorage.getItem('backtestingSession');
                 if (sessionData) {
-                    session = JSON.parse(sessionData);
+                    session = this.normalizeBacktestingSession(JSON.parse(sessionData));
                 }
             }
 
             if (session) {
                 
                 // Store session data in chart
-                this.backtestingSession = session;
+                this.backtestingSession = this.normalizeBacktestingSession(session);
                 this.isPropFirmMode = isPropFirm;
 
                 if (!this.activeTradingSessionId) {
@@ -690,7 +750,7 @@ class Chart {
                 
                 // Load data directly (no file selector needed in backtesting mode)
                 setTimeout(() => {
-                    this.autoLoadBacktestingData(session);
+                    this.autoLoadBacktestingData(this.backtestingSession);
                 }, 500);
             } else {
                 console.warn('⚠️ No backtesting session data found in localStorage');
@@ -782,7 +842,23 @@ class Chart {
         this.backtestingStarted = true;
         
         const urlParams = new URLSearchParams(window.location.search);
-        const fileId = urlParams.get('fileId') || session.fileId;
+        session = this.normalizeBacktestingSession(session);
+        const missingInstrumentData = [];
+        if (session && session.instruments && typeof session.instruments === 'object') {
+            Object.keys(session.instruments).forEach((ticker) => {
+                const row = session.instruments[ticker];
+                if (!row) return;
+                const fileRef = row.fileId || row.datasetId || row.sourceFileId || null;
+                if (!fileRef) {
+                    missingInstrumentData.push(ticker);
+                }
+            });
+        }
+        if (missingInstrumentData.length > 0) {
+            console.warn('⚠️ Missing data source for instruments:', missingInstrumentData);
+            alert(`No data loaded for: ${missingInstrumentData.join(', ')}. Please load data or remove these instruments from the session.`);
+        }
+        const fileId = urlParams.get('fileId') || this.getPrimarySessionFileId(session);
         
         if (!fileId) {
             console.error('❌ No file ID provided');
@@ -826,6 +902,8 @@ class Chart {
             
             if (session.fileName) {
                 this.currentSymbol = session.fileName.replace('.csv', '').toUpperCase();
+            } else if (session.instrumentTickers && session.instrumentTickers.length > 0) {
+                this.currentSymbol = session.instrumentTickers[0];
             } else if (session.symbol) {
                 this.currentSymbol = session.symbol;
             } else if (session.symbols && session.symbols.length > 0) {

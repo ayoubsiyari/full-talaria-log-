@@ -63,7 +63,7 @@ const toDateKey = (date) => {
 };
 
 export default function Analytics() {
-  const { filters } = useFilter();
+  const { filters, updateFilters } = useFilter();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -330,6 +330,7 @@ export default function Analytics() {
     { name: 'Short', pnl: stats.sell_pnl || 0 },
   ];
   const allSymbols = Array.isArray(stats.top_symbols) ? stats.top_symbols : [];
+  const instrumentOptions = allSymbols.map(([symbol]) => symbol);
   const totalPnL = allSymbols.reduce((sum, [, data]) => sum + data.pnl, 0);
   const avgPnL = allSymbols.length > 0 ? totalPnL / allSymbols.length : 0;
   const topSymbols = allSymbols.filter(([, data]) => data.pnl >= avgPnL);
@@ -367,6 +368,15 @@ export default function Analytics() {
       nxt.setDate(nxt.getDate() + 1);
       setReferenceDate(nxt);
     }
+  };
+
+  const selectedInstrument = (filters.symbol && filters.symbol.length === 1) ? filters.symbol[0] : 'ALL';
+  const onInstrumentFilterChange = (value) => {
+    const nextFilters = {
+      ...filters,
+      symbol: value === 'ALL' ? [] : [value]
+    };
+    updateFilters(nextFilters);
   };
 
 
@@ -418,6 +428,18 @@ export default function Analytics() {
           <option value="">All Trades</option>
           {importHistory.map((batch) => (
             <option key={batch.id} value={batch.id.toString()}>{cleanFilename(batch.filename)}</option>
+          ))}
+        </select>
+        <label htmlFor="instrumentFilter" className="font-medium text-gray-700 ml-4">Instrument:</label>
+        <select
+          id="instrumentFilter"
+          value={selectedInstrument}
+          onChange={(e) => onInstrumentFilterChange(e.target.value)}
+          className="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="ALL">All Instruments</option>
+          {instrumentOptions.map((symbol) => (
+            <option key={symbol} value={symbol}>{symbol}</option>
           ))}
         </select>
       </div>
@@ -1228,6 +1250,40 @@ export default function Analytics() {
                 </p>
               )}
             </ResponsiveContainer>
+          </div>
+        </section>
+
+        {/* 10B. PER-INSTRUMENT BREAKDOWN */}
+        <section>
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">
+            Per-Instrument Breakdown
+          </h2>
+          <div className="bg-white rounded-2xl shadow overflow-hidden border border-gray-200">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Ticker</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Trades</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Win Rate</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">Net PnL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {allSymbols.map(([symbol, data]) => {
+                  const wr = data?.trades ? ((data.wins / data.trades) * 100) : 0;
+                  return (
+                    <tr key={symbol} className="hover:bg-gray-50 transition-colors duration-200">
+                      <td className="py-3 px-4 font-medium text-gray-900">{symbol}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{data?.trades || 0}</td>
+                      <td className="py-3 px-4 text-right text-gray-700">{wr.toFixed(1)}%</td>
+                      <td className={`py-3 px-4 text-right font-semibold ${(data?.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(data?.pnl || 0)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </section>
 

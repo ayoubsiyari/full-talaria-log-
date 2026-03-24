@@ -254,6 +254,28 @@ class OrderManager {
         return (this.chart && this.chart.currentSymbol) ? this.chart.currentSymbol : '';
     }
 
+    _getActiveTicker() {
+        const raw = this._getSymbol() || this.symbol || 'UNKNOWN';
+        return String(raw).replace('/', '').toUpperCase();
+    }
+
+    _getActiveInstrumentSettings() {
+        const ticker = this._getActiveTicker();
+        if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function') {
+            return this.orderService.getInstrumentSettings(ticker, {
+                contractSize: this.contractSize,
+                pipSize: this.pipSize,
+                pipValuePerLot: this.pipValuePerLot
+            });
+        }
+        return {
+            ticker,
+            contract_size: this.contractSize,
+            pip_size: this.pipSize,
+            pip_value_per_lot: this.pipValuePerLot
+        };
+    }
+
     /**
      * Auto-detect market type from the current chart symbol.
      * - If symbol is found in the engine registry → silently switch type, hide dropdown.
@@ -390,16 +412,62 @@ class OrderManager {
     }
 
     persistJournal() {
+        const perInstrumentStats = this.buildPerInstrumentStats();
         try {
             const key = this.getJournalStorageKey();
             localStorage.setItem(key, JSON.stringify(this.tradeJournal));
+            localStorage.setItem(`${key}_perInstrumentStats`, JSON.stringify(perInstrumentStats));
         } catch (e) {
             console.warn('Could not save trade journal to localStorage:', e);
         }
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
-            this.chart.scheduleSessionStateSave({ journal: this.tradeJournal });
+            this.chart.scheduleSessionStateSave({
+                journal: this.tradeJournal,
+                per_instrument_stats: perInstrumentStats
+            });
         }
+    }
+
+    buildPerInstrumentStats() {
+        const buckets = {};
+        this.tradeJournal.forEach((trade) => {
+            const ticker = String(trade.ticker || trade.symbol || 'UNKNOWN').toUpperCase();
+            if (!buckets[ticker]) {
+                buckets[ticker] = {
+                    trade_count: 0,
+                    win_count: 0,
+                    win_rate: 0,
+                    net_pnl: 0,
+                    net_rr: 0,
+                    avg_rr: 0,
+                    avg_mae_r: 0,
+                    avg_mfe_r: 0
+                };
+            }
+            const bucket = buckets[ticker];
+            bucket.trade_count += 1;
+            const pnl = Number.parseFloat(trade.netPnL ?? trade.pnl ?? 0) || 0;
+            const rr = Number.parseFloat(trade.rMultiple ?? 0) || 0;
+            const mfe = Number.parseFloat(trade.mfe_r ?? 0) || 0;
+            const mae = Number.parseFloat(trade.mae_r ?? 0) || 0;
+            if (pnl > 0) bucket.win_count += 1;
+            bucket.net_pnl += pnl;
+            bucket.net_rr += rr;
+            bucket.avg_rr += rr;
+            bucket.avg_mae_r += mae;
+            bucket.avg_mfe_r += mfe;
+        });
+
+        Object.keys(buckets).forEach((ticker) => {
+            const bucket = buckets[ticker];
+            const n = bucket.trade_count || 1;
+            bucket.win_rate = (bucket.win_count / n) * 100;
+            bucket.avg_rr = bucket.avg_rr / n;
+            bucket.avg_mae_r = bucket.avg_mae_r / n;
+            bucket.avg_mfe_r = bucket.avg_mfe_r / n;
+        });
+        return buckets;
     }
     
     init() {
@@ -3049,13 +3117,15 @@ class OrderManager {
             rMultiple = closeData.pnl / riskForCalculation;
         }
         
-        // Get symbol from chart or default to current pair
-        const symbol = this.chart.symbol || 'UNKNOWN';
+        // Resolve ticker from the order first so background/synced trades are attributed correctly.
+        const symbol = order.ticker || order.symbol || this._getActiveTicker();
+        const instrumentSettings = order.instrument_settings || this._getActiveInstrumentSettings();
         
         let journalEntry = {
             // Basic Trade Info
             tradeId: order.id,
             symbol: symbol,
+            ticker: symbol,
             direction: order.type, // BUY or SELL
             
             // Timing
@@ -3092,6 +3162,15 @@ class OrderManager {
             // Position Details
             quantity: order.quantity,
             closeType: closeData.type, // SL, TP, or MANUAL
+            spread_pips_at_entry: Number.parseFloat(
+                instrumentSettings.spread_pips ?? instrumentSettings.spreadPips ?? 0
+            ) || 0,
+            commission_at_entry: Number.parseFloat(
+                instrumentSettings.commission_per_lot_per_side ?? instrumentSettings.commissionPerLotPerSide ?? 0
+            ) || 0,
+            pip_value_at_entry: Number.parseFloat(
+                instrumentSettings.pip_value_per_lot ?? instrumentSettings.pipValuePerLot ?? this.pipValuePerLot
+            ) || this.pipValuePerLot,
             
             // Holding Time
             holdingTimeMs: holdingTime,
@@ -9282,8 +9361,13 @@ class OrderManager {
         }
         
         // Market order: execute immediately
+        const activeTicker = this._getActiveTicker();
+        const activeInstrumentSettings = this._getActiveInstrumentSettings();
         const order = {
             id: this.orderIdCounter++,
+            symbol: activeTicker,
+            ticker: activeTicker,
+            instrument_settings: activeInstrumentSettings,
             type: this.orderSide,
             openPrice: entryPrice,
             openTime: currentCandle.t,
@@ -9409,9 +9493,13 @@ class OrderManager {
      * Place a pending order (Limit or Stop)
      */
     placePendingOrder(entryPrice, quantity, tpPrice, slPrice, riskAmount, autoBreakeven, breakevenSettings, trailingStop, tpTargets, timestamp) {
+        const activeTicker = this._getActiveTicker();
+        const activeInstrumentSettings = this._getActiveInstrumentSettings();
         const pendingOrder = {
             id: this.orderIdCounter++,
-            symbol: this.symbol || 'USD',
+            symbol: activeTicker,
+            ticker: activeTicker,
+            instrument_settings: activeInstrumentSettings,
             orderType: this.orderType, // 'limit' or 'stop'
             direction: this.orderSide, // 'BUY' or 'SELL'
             entryPrice: entryPrice,
@@ -9465,10 +9553,14 @@ class OrderManager {
     placePendingOrderWithSplit(entryPrice, quantity, tpPrice, slPrice, riskAmount, autoBreakeven, breakevenSettings, trailingStop, tpTargets, timestamp, splitGroupId, splitIndex, splitTotal, orderType = null) {
         // Use provided orderType or fall back to main orderType
         const effectiveOrderType = orderType || this.orderType;
+        const activeTicker = this._getActiveTicker();
+        const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
         const pendingOrder = {
             id: this.orderIdCounter++,
-            symbol: this.symbol || 'USD',
+            symbol: activeTicker,
+            ticker: activeTicker,
+            instrument_settings: activeInstrumentSettings,
             orderType: effectiveOrderType, // 'limit' or 'stop' - now uses split entry's type
             direction: this.orderSide, // 'BUY' or 'SELL'
             entryPrice: entryPrice,
@@ -9602,10 +9694,15 @@ class OrderManager {
         }
         
         // Handle PENDING ORDERS (Limit/Stop) vs MARKET orders
+        const activeTicker = this._getActiveTicker();
+        const activeInstrumentSettings = this._getActiveInstrumentSettings();
         if (orderType === 'limit' || orderType === 'stop') {
             // Create PENDING order
             const pendingOrder = {
                 id: this.orderIdCounter++,
+                symbol: activeTicker,
+                ticker: activeTicker,
+                instrument_settings: activeInstrumentSettings,
                 orderType: orderType,
                 direction: this.orderSide,
                 entryPrice: entryPrice,
@@ -9638,6 +9735,9 @@ class OrderManager {
             // Create MARKET order (immediate execution)
             const order = {
                 id: this.orderIdCounter++,
+                symbol: activeTicker,
+                ticker: activeTicker,
+                instrument_settings: activeInstrumentSettings,
                 type: this.orderSide,
                 openPrice: entryPrice,
                 openTime: currentCandle.t,
@@ -10767,6 +10867,9 @@ class OrderManager {
     updatePositions() {
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
+        if (this.orderService && this.orderService.multiInstrumentSession) {
+            this.orderService.multiInstrumentSession.current_time = currentCandle.t;
+        }
         
         const currentPrice = currentCandle.c;
         const high = currentCandle.h;
@@ -11210,6 +11313,11 @@ class OrderManager {
         }
         
         this.equity = this.balance + totalPnL;
+        if (this.orderService && typeof this.orderService.recomputeSharedMarginState === 'function') {
+            this.orderService.equity = this.equity;
+            this.orderService.balance = this.balance;
+            this.orderService.recomputeSharedMarginState();
+        }
         
         // Log current state
         if (this.openPositions.length > 0) {

@@ -1,0 +1,360 @@
+
+TALARIA BACKTESTING PLATFORM
+
+Development Milestones
+Final Version — Multi-Instrument Sessions
+Up to 10 Pairs  ·  Shared Margin Pool  ·  Synchronized Execution
+
+Session Setup  →  Execution  →  Excursion Engine  →  Post-Exit  →  Storage  →  Dashboard  →  What-If
+
+What’s New in This Version
+The session now supports up to 10 instruments simultaneously. The user configures spread and commission per pair. All pairs share one account balance and one margin pool.
+
+The critical new challenge: when the user advances bars on one chart, ALL other instruments with open or post-exit trades must advance in lockstep by time. This document specifies exactly how to handle that synchronization.
+
+What’s Already Done
+Charting tool, drawing tools, and order window are complete. These milestones cover everything from session creation forward.
+
+Milestone 0: Multi-Instrument Session Creation
+Depends on: Nothing. Effort: Medium–Large.
+
+What to Build
+The user creates a session with account settings (shared across all instruments) and an instrument table (per-pair settings). Up to 10 instruments per session.
+
+Step 1: Account Settings (shared)
+Field	Type	Example	Notes
+session_name	String	"Forex Multi-Pair Q1"	User label
+account_currency	Dropdown	USD	USD, EUR, GBP
+starting_balance	Number	10000	Initial equity in account currency
+leverage	Dropdown	1:30	1:1 through 1:500. Applies to ALL instruments in the session.
+margin_call_level	Number	100	% margin level that triggers warning. Default 100%.
+stop_out_level	Number	50	% margin level that triggers forced liquidation. Default 50%.
+max_risk_per_trade_pct	Number	2	Optional guardrail. Warns if planned risk exceeds this %.
+asset_class	Dropdown	Forex or Futures	Determines which instrument fields appear.
+
+Step 2: Instrument Table (per pair)
+A table with 1–10 rows. Each row is one instrument:
+
+Forex Instrument Table
+Field	Pair 1	Pair 2	Pair 3	Notes
+ticker	EURUSD	GBPUSD	USDJPY	Symbol
+spread_pips	1.0	1.2	1.5	In pips, not points. System converts using pip_size.
+commission_per_lot_per_side	$3.50	$3.50	$3.50	Per standard lot, per side. Set to 0 if spread-only broker.
+pip_size	0.0001	0.0001	0.01	0.0001 for most pairs. 0.01 for JPY pairs.
+pip_value_per_lot	$10.00	$10.00	$8.50	Dollar value of 1 pip move per 1 standard lot. User enters based on their broker.
+contract_size	100,000	100,000	100,000	Standard lot = 100K. Mini = 10K. Micro = 1K. User chooses.
+min_lot_size	0.01	0.01	0.01	Minimum allowed position size.
+lot_step	0.01	0.01	0.01	Increment for position sizing.
+
+Futures Instrument Table
+Field	Instrument 1	Instrument 2	Notes
+ticker	ES	NQ	Symbol
+spread_ticks	1	1	In ticks
+commission_per_contract_per_side	$1.24	$1.24	Per contract, per side
+tick_size	0.25	0.25	Minimum price increment
+point_value	$50	$20	Dollar value per full point per contract
+min_contracts	1	1	
+
+Why Pip Value Is User-Entered (Not Calculated)
+For pairs where neither currency is the account currency (e.g., EURGBP on a USD account), the pip value changes with exchange rates. Calculating this accurately requires a live feed of the conversion rate, which a backtesting tool does not have.
+
+Instead, the user enters the pip value from their broker’s specifications. This is a fixed approximation. It’s not perfectly accurate for cross pairs, but the error is small (typically < 5%) and it avoids enormous complexity.
+
+For pairs where the account currency IS the quote currency (EURUSD on a USD account), pip value is always exactly $10 per standard lot. For JPY pairs on USD accounts, it’s approximately $6.50–$7.50 depending on USDJPY rate.
+
+Step 3: Data Requirement
+⚠ All Selected Instruments Must Have Bar Data Loaded
+When the session starts, the system must have price data (OHLC bars) loaded for ALL instruments in the session, not just the one currently displayed on the chart.
+
+If the user adds EURUSD, GBPUSD, and USDJPY to the session, all three datasets must be accessible. When the user advances time on one chart, the engine reads the corresponding bars from all three datasets.
+
+If data for a pair is missing or incomplete, warn the user at session creation: “No data loaded for GBPJPY. Please load data or remove from session.”
+
+Step 4: Initialize Session State
+Field	Initial Value
+session_id	Auto-generated UUID
+instruments{}	Map of ticker → instrument settings (from the table above)
+current_balance	starting_balance
+current_equity	starting_balance
+used_margin	0
+free_margin	starting_balance × leverage_number
+total_buying_power	starting_balance × leverage_number
+open_trades[]	[ ] (trades from ANY instrument)
+post_exit_trades[]	[ ]
+archived_trades[]	[ ]
+equity_curve[]	[ ]
+session_time	Start time of the earliest loaded dataset
+current_time	session_time (advances as user moves through bars)
+
+Step 5: Session Header Display
+Same as before but add an instrument summary:
+Balance: $10,000.00
+Equity: $10,045.00 (balance + all floating PnL across all pairs)
+Used Margin: $5,000.00 (sum across all open trades, all pairs)
+Free Margin: $5,045.00
+Margin Level: 200.9%
+Open Positions: 3 (EURUSD: 1 long 0.5L, GBPUSD: 1 short 0.3L, USDJPY: 1 long 1.0L)
+
+Acceptance Criteria
+Create session with 3 forex pairs, each with different spread and commission. All settings save correctly.
+Try to add an 11th instrument. Should be blocked: max 10.
+Session header shows balance, equity, margin for the combined account.
+Remove an instrument from the session. Verify settings update.
+
+Milestone 1: Synchronized Execution Engine
+Depends on: Milestone 0. Effort: Large — this is the hardest milestone.
+
+The Core Challenge: Time Synchronization
+The user views one chart at a time. But trades on other instruments are running in the background. When the user advances bars on EURUSD, the system must also advance GBPUSD and USDJPY trades to the same point in time.
+
+The Time-Based Architecture
+The session tracks a MASTER CLOCK: current_time.
+
+When the user advances one bar on the displayed chart:
+  1. Get the new bar’s timestamp from the displayed chart.
+  2. Set current_time = that timestamp.
+  3. For EVERY other instrument with open or post-exit trades:
+     Find all bars in that instrument’s data between the previous current_time and the new current_time.
+     Process each of those bars through the trade engine (MFE/MAE update, close check, margin check).
+
+Example: User advances 1 bar on 5-minute EURUSD (time goes from 10:00 to 10:05).
+  The system checks: does GBPUSD have bars between 10:00 and 10:05?
+  If yes (it should, since forex pairs share the same trading hours), process that GBPUSD bar for any open GBPUSD trades.
+  Does USDJPY? Same.
+
+If the user is viewing a 1-hour chart and advances one bar (10:00 to 11:00), the system processes all 5-minute bars for background instruments within that hour — IF those trades were entered on 5-minute charts (timeframe lock from Milestone 2).
+
+⚠ This Is the Hardest Part of the Entire System
+Getting time synchronization right is critical. If background trades don’t advance, they’ll miss their SL/TP and the MFE/MAE data will be incomplete.
+
+If this is too complex for the first version, there is a simpler alternative: REQUIRE the user to only have trades open on the currently displayed instrument. When switching to a different chart, all trades on the previous instrument must be closed (or in POST_EXIT, which auto-completes). This eliminates background processing entirely.
+
+Recommended: Build the simple version first (one active instrument at a time), then upgrade to synchronized multi-instrument in a later phase.
+
+Step 1: Determine Active Instrument
+When the user switches the chart to a different instrument:
+Load that instrument’s price data.
+Find the bar closest to current_time and display from there.
+The user can now place trades on this instrument.
+Any open trades on OTHER instruments continue to process in the background via time sync.
+
+Step 2: Trade Creation
+Same as previous revision: margin check against the SHARED pool, spread-adjusted entry using THIS instrument’s spread_pips, cost calculations using THIS instrument’s pip_value and commission.
+
+The trade object now includes:
+New Field	Value
+ticker	Which instrument this trade is on (e.g., GBPUSD)
+instrument_settings	Reference to this pair’s row in the instrument table
+
+All other fields (original_sl/tp, active_sl/tp, planned_risk_pts, etc.) are the same. The formulas use the trade’s own instrument_settings for spread, pip_size, pip_value, etc.
+
+Step 3: Margin Check (Multi-Instrument)
+Margin Check Across Multiple Pairs
+Same formula as before, but margin comes from the SHARED pool:
+
+  For FOREX:
+    notional = lot_size × contract_size
+    margin_for_this_trade = notional ÷ leverage
+
+  Check: margin_for_this_trade ≤ free_margin?
+    free_margin = current_equity − used_margin
+    (used_margin = sum of margin_required for ALL open trades across ALL pairs)
+
+Example: $10,000 account, 1:30 leverage.
+  Open trade: 0.5L EURUSD = $50,000 notional → $1,667 margin.
+  used_margin = $1,667. free_margin = $8,333.
+  Second trade: 0.3L GBPUSD = $30,000 notional → $1,000 margin.
+  $1,000 < $8,333 → allowed.
+  used_margin = $2,667. free_margin = $7,333.
+  Third trade: 2.0L USDJPY = $200,000 notional → $6,667 margin.
+  $6,667 < $7,333 → allowed.
+  used_margin = $9,333. free_margin = $667.
+  Fourth trade attempt: 0.5L EURUSD = $1,667 margin.
+  $1,667 > $667 → BLOCKED.
+
+Step 4: Equity Calculation (Multi-Instrument)
+Equity with Multiple Open Trades on Different Pairs
+On every time advance:
+
+  total_unrealized_pnl = 0
+
+  For EACH open trade (regardless of instrument):
+    Get the latest bar_close for THAT trade’s ticker (not the displayed chart).
+    Compute floating_pnl_dollars using THAT trade’s instrument_settings.
+    total_unrealized_pnl += floating_pnl_dollars
+
+  current_equity = current_balance + total_unrealized_pnl
+  free_margin = current_equity − used_margin
+  margin_level = (current_equity ÷ used_margin) × 100
+
+Step 5: Margin Call (Multi-Instrument)
+Same logic as before, but when force-liquidating, close the trade with the largest floating loss ACROSS ALL PAIRS, not just the displayed one. If that trade is on a background instrument, its close is processed using that instrument’s bar data at current_time.
+
+Step 6: Bar-by-Bar Close Check
+Each trade’s close check uses its OWN instrument’s bar data. A EURUSD trade checks EURUSD bars. A GBPUSD trade checks GBPUSD bars. The gap handling, SL-before-TP priority, and spread-adjusted exit all use the trade’s own instrument_settings.
+
+Step 7: Session State Update on Close
+Same as single-instrument: update balance, release margin, move to post-exit. The equity recalculation now includes remaining open trades on other pairs.
+
+Acceptance Criteria
+Open trades on 2 different pairs. View EURUSD chart, advance bars. Verify GBPUSD trade also advances (check its floating PnL changes).
+GBPUSD trade hits SL while user is viewing EURUSD chart. Verify: trade closes, balance updates, margin releases, notification appears.
+Margin check with 3 open trades on different pairs: verify used_margin = sum of all three.
+Force liquidation selects the largest loser across all pairs.
+Switch chart from EURUSD to GBPUSD mid-session. Verify chart jumps to current_time and GBPUSD trade is visible with correct state.
+
+Milestone 2: MFE/MAE Tracking Engine
+Depends on: Milestone 1. Effort: Medium.
+
+Summary
+No changes to the core MFE/MAE logic. It operates per-trade, using that trade’s instrument_settings for spread adjustment. Each trade stores its own bar_close_r[], bar_high_r[], bar_low_r[] arrays.
+
+The only multi-instrument consideration: when processing background trades (trades on instruments not currently displayed), the engine reads bar data from the correct dataset for that trade’s ticker. This is already handled by the time-sync logic in Milestone 1.
+
+All other details (exit-bar clamping, TF locking, entry bar exclusion, SL/TP modification logging, floating PnL for equity) remain identical. Refer to the previous milestone document.
+
+Milestone 3: Post-Exit Tracking
+Depends on: Milestone 2. Effort: Small.
+
+Summary
+No changes. Post-exit tracking is per-trade and uses the trade’s own instrument data. A GBPUSD trade in post-exit reads GBPUSD bars via the time-sync engine. Session boundary warnings use the trade’s instrument session_start/session_end settings.
+
+All merged metrics (total_mfe_r, capture_ratio, management_gap, etc.) are unchanged.
+
+Milestone 4: Session & Trade Storage
+Depends on: Milestone 3. Effort: Medium.
+
+What Changed
+The session record now stores the instrument table (all pairs and their settings). Each trade record includes its ticker so it can be linked to the correct instrument settings.
+
+Session Record Additions
+Field	Description
+instruments{}	Full instrument table (all 1–10 pairs with their settings)
+per_instrument_stats{}	Map of ticker → { trade_count, win_rate, net_pnl, avg_rr }
+
+Trade Record Additions
+Field	Description
+ticker	Which instrument this trade was on
+spread_pips_at_entry	The spread setting for this pair at session creation (frozen with the trade)
+commission_at_entry	The commission setting for this pair (frozen)
+pip_value_at_entry	Frozen with the trade in case session settings are later modified
+
+All other storage fields remain from the previous revision (three arrays, planned vs actual, equity curve, drawdown tracking).
+
+Export
+The export should include: a session summary sheet/section with account settings and instrument table, then all trades with their ticker clearly labeled. In CSV, add a “ticker” column. In JSON, trades are grouped by ticker.
+
+Filtering
+The analytics dashboard (Milestone 5) must support filtering by instrument. When the user selects “GBPUSD only,” all charts and stats show only GBPUSD trades. When “All Instruments” is selected, everything is aggregated. This is a critical filter for multi-instrument sessions.
+
+Acceptance Criteria
+Complete trades on 3 different pairs. Restart app. All trades present, each linked to correct ticker.
+per_instrument_stats shows correct win rate and PnL per pair.
+Export CSV: ticker column correctly identifies each trade’s instrument.
+
+Milestone 5: Analytics Dashboard
+Depends on: Milestone 4. Effort: Large.
+
+What Changed
+Dashboard adds instrument filter and per-instrument breakdown.
+
+Instrument Filter
+Dropdown at the top: “All Instruments” / “EURUSD” / “GBPUSD” / etc. When a specific pair is selected, all charts and stat cards reflect only that pair’s trades. This works alongside existing filters (winners/losers, setup, session).
+
+New: Per-Instrument Breakdown Section
+Column	Description
+Ticker	Instrument symbol
+Trades	Total count for this pair
+Win Rate	Winners ÷ total × 100
+Net PnL ($)	Sum of pnl_dollars_net for this pair
+Net PnL (R)	Sum of actual_rr_net
+Avg MAE (R)	Mean mae_r for this pair
+Avg MFE (R)	Mean mfe_r for this pair
+Capture Ratio	Mean capture_ratio for this pair’s winners
+Commission Paid	Sum of commission_total
+Spread Cost	Sum of spread cost in dollars
+
+This table lets the user instantly see which pairs are profitable and which are costing money. Sort by any column.
+
+Equity Curve — Multi-Instrument
+The equity curve shows the combined account balance after every trade close, regardless of which pair the trade was on. Trades are ordered chronologically by exit_time. Each dot on the curve is color-coded by instrument so the user can see which pairs drive gains vs losses.
+
+All Other Charts
+Path cloud, box plots, what-if bars, capture ratio, post-exit curves, setup comparison, recovery rate — all work exactly as before. They just respect the instrument filter. When “EURUSD” is selected, only EURUSD trades feed into these charts. When “All” is selected, all trades are included regardless of pair.
+
+Acceptance Criteria
+Instrument filter: select GBPUSD. All charts show only GBPUSD trades. Stat cards update.
+Per-instrument breakdown table shows correct metrics per pair.
+Equity curve is chronological across all pairs. Color-coding visible.
+Select “All Instruments”: everything aggregates correctly.
+
+Milestone 6: MAE/MFE Distribution Charts
+Depends on: Milestone 5. Effort: Small. No changes.
+
+Distributions work per-trade in R-multiples. They respect the instrument filter. When filtered to one pair, histograms show only that pair’s data. No formula changes needed.
+
+Milestone 7: What-If TP/SL Simulator
+Depends on: Milestone 5. Effort: Large.
+
+What Changed
+The what-if simulator must respect the instrument filter. When running on EURUSD only, it replays only EURUSD trades. When running on “All,” it replays all trades but uses each trade’s own instrument_settings for cost calculations.
+
+The simulated equity curve (new TP/SL vs actual) processes trades chronologically across all pairs, applying the per-trade instrument costs.
+
+Per-Instrument Heatmap
+The expectancy heatmap should be run per instrument (since different pairs have different characteristics). Add a dropdown: “Run heatmap for: EURUSD / GBPUSD / All.” Running on “All” gives a blended result; running per-pair gives the optimal TP/SL for that specific pair.
+
+Acceptance Criteria
+Filter to EURUSD: what-if replays only EURUSD trades with EURUSD costs.
+Run heatmap for GBPUSD: optimal TP/SL may differ from EURUSD. Verify.
+Simulated equity curve on “All”: processes all pairs chronologically.
+
+Milestone 8: Polish & Edge Cases
+Depends on: All previous. Effort: Medium.
+
+8.1 Chart Switching While Trades Are Open
+When the user switches from EURUSD chart to GBPUSD chart, the GBPUSD chart must jump to the session’s current_time. Any GBPUSD trades that exist should be visible on the chart with correct entry/exit lines and floating PnL.
+
+8.2 Notification System for Background Trades
+When a trade on a background instrument (not currently displayed) hits TP, SL, or margin stop-out, show a notification banner: “GBPUSD Long 0.3L closed at TP (+1.8R, +$54.00).” The user can click the notification to switch to that instrument’s chart.
+
+8.3 Open Positions Panel
+A collapsible panel showing all open trades across all instruments: ticker, direction, lot size, floating PnL ($ and R), margin used, time in trade. Clicking a row switches the chart to that instrument.
+
+8.4 Multiple Trades on Same Instrument
+The user can have multiple trades on the same pair (e.g., two separate EURUSD longs with different entries and SLs). Each is tracked independently. The instrument filter in the dashboard aggregates them.
+
+8.5 Margin Across Hedged Positions
+If the user goes long EURUSD and also short EURUSD, some brokers reduce margin (hedging). For simplicity in version 1, do NOT model hedged margin reduction. Both positions require full margin. Add hedged margin as a future enhancement.
+
+8.6 All Previous Edge Cases
+All edge cases from the previous revision still apply: skip/fast-forward integrity (process every bar on every active instrument), entry bar exclusion, breakeven stop, partial close with margin release, SL/TP modifications, undo/redo, session reset.
+
+Acceptance Criteria
+Switch from EURUSD to GBPUSD: chart shows GBPUSD at current_time. Existing GBPUSD trade visible.
+GBPUSD trade hits TP while viewing EURUSD: notification appears. Balance updates immediately.
+Open positions panel shows all trades across all pairs with correct floating PnL.
+Two trades on same pair: both track independently, both visible on chart.
+
+Summary: Final Build Order
+
+#	Milestone	What It Delivers	Effort
+0	Multi-Instrument Session	Account settings + instrument table (up to 10 pairs) with per-pair costs. Shared margin pool. Session header.	Med–Lrg
+1	Synchronized Execution	Time-sync across all instruments. Margin check against shared pool. Background trade processing. Margin calls.	Large
+2	MFE/MAE Engine	Per-trade excursion tracking with 3 arrays. Uses each trade’s instrument settings for spread.	Medium
+3	Post-Exit Tracking	50-bar observation per trade. Session boundary flags per instrument.	Small
+4	Session & Trade Storage	Full session record with instrument table. Per-instrument stats. Trades tagged by ticker.	Medium
+5	Analytics Dashboard	Instrument filter. Per-instrument breakdown table. Cross-pair equity curve. All excursion charts.	Large
+6	MAE/MFE Distributions	Stop/target histograms. Respect instrument filter.	Small
+7	What-If Simulator	Per-instrument replay with correct costs. Per-instrument heatmap. Simulated equity curve.	Large
+8	Polish & Edge Cases	Chart switching, notifications, open positions panel, multiple trades per pair, skip integrity.	Medium
+
+Phased Approach Recommendation
+This is a complex system. Recommend building in two phases:
+
+PHASE 1 (ship first): Single active instrument at a time. The user can have multiple instruments in the session, but can only place and manage trades on the currently displayed chart. When switching instruments, all trades on the previous chart must be closed or in post-exit. This eliminates the background processing challenge entirely while still delivering multi-instrument analytics.
+
+PHASE 2 (upgrade): Full time synchronization. Background trades process alongside the active chart. Notifications for background trade events. Open positions panel.
+
+Phase 1 delivers 90% of the value with 60% of the engineering effort. Phase 2 is a polish upgrade that makes the experience seamless.
+
