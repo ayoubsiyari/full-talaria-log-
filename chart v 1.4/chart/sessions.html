@@ -746,6 +746,8 @@
         function openBacktestingIframe() {
             const modal = document.getElementById('backtestingIframeModal');
             const iframe = document.getElementById('backtestingIframe');
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
             iframe.src = 'backtesting.html?v=' + Date.now();
             modal.classList.add('active');
         }
@@ -754,6 +756,8 @@
             const modal = document.getElementById('backtestingIframeModal');
             const iframe = document.getElementById('backtestingIframe');
             modal.classList.remove('active');
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
             // Clear iframe to stop any scripts running
             setTimeout(() => {
                 iframe.src = '';
@@ -765,6 +769,8 @@
         function openPropFirmIframe() {
             const modal = document.getElementById('propfirmIframeModal');
             const iframe = document.getElementById('propfirmIframe');
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
             iframe.src = 'propfirm-backtest.html';
             modal.classList.add('active');
         }
@@ -773,6 +779,8 @@
             const modal = document.getElementById('propfirmIframeModal');
             const iframe = document.getElementById('propfirmIframe');
             modal.classList.remove('active');
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
             // Clear iframe to stop any scripts running
             setTimeout(() => {
                 iframe.src = '';

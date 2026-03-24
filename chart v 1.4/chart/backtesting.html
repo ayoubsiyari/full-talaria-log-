@@ -73,6 +73,20 @@
             height: 100vh;
             overflow: hidden;
         }
+        html.iframe-mode, html.iframe-mode body {
+            height: 100%;
+            overflow: hidden;
+        }
+        html.iframe-mode .container {
+            height: 100%;
+            padding: 0;
+            max-width: none;
+        }
+        html.iframe-mode .main-content {
+            height: 100%;
+            border-radius: 0;
+            border: none;
+        }
 
         .main-content {
             background: rgba(255,255,255,0.02);
@@ -492,6 +506,7 @@
 
         // Hide top bar if in iframe (modal mode)
         if (window.self !== window.top) {
+            document.documentElement.classList.add('iframe-mode');
             const topBar = document.querySelector('.top-bar');
             if (topBar) {
                 topBar.style.display = 'none';
