@@ -13352,15 +13352,15 @@ class OrderManager {
             return;
         }
         
-        // Use direction color for pending orders (blue for BUY, red for SELL)
-        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
+        // TradingView-like visual styling for pending lines.
+        const lineColor = pendingOrder.direction === 'BUY' ? '#3b82f6' : '#ef4444';
         
         const line = this.chart.svg.append('line')
             .attr('class', `pending-order-line pending-${pendingOrder.id}`)
             .attr('stroke', lineColor)
-            .attr('stroke-width', 2)
-            .attr('stroke-dasharray', '5,5')
-            .attr('opacity', 0.8)
+            .attr('stroke-width', 1.6)
+            .attr('stroke-dasharray', '4,4')
+            .attr('opacity', 0.95)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         
@@ -13368,7 +13368,10 @@ class OrderManager {
         const labelBox = this.chart.svg.append('rect')
             .attr('class', `pending-order-label-box pending-${pendingOrder.id}`)
             .attr('fill', lineColor)
-            .attr('rx', 2)
+            .attr('stroke', '#e2e8f0')
+            .attr('stroke-opacity', 0.35)
+            .attr('stroke-width', 1)
+            .attr('rx', 7)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         
@@ -13378,8 +13381,9 @@ class OrderManager {
         const labelText = this.chart.svg.append('text')
             .attr('class', `pending-order-label-text pending-${pendingOrder.id}`)
             .attr('fill', '#ffffff')
-            .attr('font-size', '10px')
+            .attr('font-size', '11px')
             .attr('font-weight', '700')
+            .attr('letter-spacing', '0.01em')
             .style('cursor', 'pointer')
             .text(`${orderTypeLabel} ${directionLabel}`);
         
@@ -13390,15 +13394,17 @@ class OrderManager {
         if (!pendingOrder.createdFromTool) {
             priceBox = this.chart.svg.append('rect')
                 .attr('class', `pending-order-price-box pending-${pendingOrder.id}`)
-                .attr('fill', lineColor)
-                .attr('rx', 2)
+                .attr('fill', '#0f172a')
+                .attr('stroke', lineColor)
+                .attr('stroke-width', 1.1)
+                .attr('rx', 7)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
             // Price text
             priceText = this.chart.svg.append('text')
                 .attr('class', `pending-order-price-text pending-${pendingOrder.id}`)
-                .attr('fill', '#ffffff')
+                .attr('fill', '#e2e8f0')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
                 .attr('text-anchor', 'middle')
@@ -13414,14 +13420,14 @@ class OrderManager {
         
         const closeBtnBg = closeBtn.append('circle')
             .attr('r', 10)
-            .attr('fill', lineColor)
-            .attr('stroke', '#ffffff')
-            .attr('stroke-width', 1.5)
+            .attr('fill', '#0f172a')
+            .attr('stroke', '#e2e8f0')
+            .attr('stroke-width', 1.2)
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
         
         const closeBtnText = closeBtn.append('text')
-            .attr('fill', '#ffffff')
+            .attr('fill', '#e2e8f0')
             .attr('font-size', '14px')
             .attr('font-weight', '700')
             .attr('text-anchor', 'middle')
@@ -13440,11 +13446,11 @@ class OrderManager {
         
         // Hover effect for close button
         closeBtn.on('mouseover', function() {
-            closeBtnBg.attr('fill', '#ffffff');
-            closeBtnText.attr('fill', lineColor);
-        }).on('mouseout', function() {
             closeBtnBg.attr('fill', lineColor);
             closeBtnText.attr('fill', '#ffffff');
+        }).on('mouseout', function() {
+            closeBtnBg.attr('fill', '#0f172a');
+            closeBtnText.attr('fill', '#e2e8f0');
         });
         
         // Make entry line draggable
@@ -13554,9 +13560,9 @@ class OrderManager {
             const line = this.chart.svg.append('line')
                 .attr('class', `pending-${type.toLowerCase()}-line pending-${type.toLowerCase()}-${pendingOrder.id}`)
                 .attr('stroke', color)
-                .attr('stroke-width', isDraggable ? 3 : 1.5)
-                .attr('stroke-dasharray', type === 'BE' ? '4,3' : '6,4')
-                .attr('opacity', type === 'BE' ? 0.8 : 0.9)
+                .attr('stroke-width', isDraggable ? 2.2 : 1.4)
+                .attr('stroke-dasharray', type === 'BE' ? '3,3' : '4,4')
+                .attr('opacity', type === 'BE' ? 0.9 : 0.95)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
@@ -13682,8 +13688,11 @@ class OrderManager {
                     : '#f59e0b';
                 
                 const labelRect = labelGroup.append('rect')
-                    .attr('rx', 2)
-                    .attr('fill', bgColor);
+                    .attr('rx', 7)
+                    .attr('fill', bgColor)
+                    .attr('stroke', '#e2e8f0')
+                    .attr('stroke-opacity', 0.28)
+                    .attr('stroke-width', 1);
 
                 let displayLabel = '';
                 if (target.labelText) {
