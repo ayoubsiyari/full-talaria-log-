@@ -16315,9 +16315,15 @@ class OrderManager {
         const dock = document.createElement('div');
         dock.id = 'multiInstrumentOpenPositionsDock';
         dock.innerHTML = `
-            <div id="miDockHeader" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.12);cursor:pointer;">
-                <div style="font-size:12px;font-weight:700;color:#e5e7eb;">Open Positions (All Instruments)</div>
-                <div id="miDockMeta" style="font-size:11px;color:#94a3b8;">0</div>
+            <div id="miDockHeader" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.12);cursor:move;user-select:none;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="color:#94a3b8;font-size:13px;">⋮⋮</span>
+                    <div style="font-size:12px;font-weight:700;color:#e5e7eb;">Open Positions (All Instruments)</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div id="miDockMeta" style="font-size:11px;color:#94a3b8;">0</div>
+                    <button id="miDockToggleBtn" type="button" title="Minimize / Expand" style="height:22px;min-width:24px;padding:0 6px;border:1px solid rgba(148,163,184,0.35);background:rgba(15,23,42,0.85);color:#e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;">−</button>
+                </div>
             </div>
             <div id="miDockBody" style="max-height:260px;overflow:auto;"></div>
         `;
@@ -16339,13 +16345,80 @@ class OrderManager {
         document.body.appendChild(dock);
 
         const header = dock.querySelector('#miDockHeader');
-        if (header) {
-            header.addEventListener('click', () => {
-                const body = dock.querySelector('#miDockBody');
+        const body = dock.querySelector('#miDockBody');
+        const toggleBtn = dock.querySelector('#miDockToggleBtn');
+        const dockPosKey = 'miDockPosition';
+        const dockMinKey = 'miDockMinimized';
+
+        // Restore last position (if user moved it)
+        try {
+            const savedPos = JSON.parse(localStorage.getItem(dockPosKey) || 'null');
+            if (savedPos && Number.isFinite(savedPos.left) && Number.isFinite(savedPos.top)) {
+                dock.style.left = `${savedPos.left}px`;
+                dock.style.top = `${savedPos.top}px`;
+                dock.style.right = 'auto';
+            }
+        } catch (_) {}
+
+        // Restore minimized state
+        try {
+            const minimized = localStorage.getItem(dockMinKey) === '1';
+            if (minimized && body) {
+                body.style.display = 'none';
+                if (toggleBtn) toggleBtn.textContent = '+';
+            }
+        } catch (_) {}
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 if (!body) return;
-                const hidden = body.style.display === 'none';
-                body.style.display = hidden ? 'block' : 'none';
+                const isHidden = body.style.display === 'none';
+                body.style.display = isHidden ? 'block' : 'none';
+                toggleBtn.textContent = isHidden ? '−' : '+';
+                try { localStorage.setItem(dockMinKey, isHidden ? '0' : '1'); } catch (_) {}
             });
+        }
+
+        if (header) {
+            // Drag-to-move behavior
+            let dragging = false;
+            let startX = 0;
+            let startY = 0;
+            let startLeft = 0;
+            let startTop = 0;
+
+            header.addEventListener('mousedown', (e) => {
+                if (e.target && e.target.closest && e.target.closest('#miDockToggleBtn')) return;
+                dragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = dock.getBoundingClientRect();
+                startLeft = rect.left;
+                startTop = rect.top;
+                dock.style.right = 'auto';
+                e.preventDefault();
+            });
+
+            const onMouseMove = (e) => {
+                if (!dragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const nextLeft = Math.max(8, Math.min(window.innerWidth - dock.offsetWidth - 8, startLeft + dx));
+                const nextTop = Math.max(8, Math.min(window.innerHeight - dock.offsetHeight - 8, startTop + dy));
+                dock.style.left = `${nextLeft}px`;
+                dock.style.top = `${nextTop}px`;
+            };
+            const onMouseUp = () => {
+                if (!dragging) return;
+                dragging = false;
+                const rect = dock.getBoundingClientRect();
+                try {
+                    localStorage.setItem(dockPosKey, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
+                } catch (_) {}
+            };
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
         }
 
         dock.addEventListener('click', (e) => {
