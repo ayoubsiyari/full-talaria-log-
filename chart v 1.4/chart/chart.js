@@ -5803,7 +5803,7 @@ class Chart {
         const buildShell = (listContent) => {
             return `<div class="ssd-search-wrapper">
                 <svg class="ssd-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                <input class="ssd-search-input" placeholder="Search symbol..." autocomplete="off" spellcheck="false" value="${searchVal.replace(/"/g, '&quot;')}" />
+                <input class="ssd-search-input" placeholder="Search symbol..." autocomplete="off" spellcheck="false" dir="ltr" value="${searchVal.replace(/"/g, '&quot;')}" />
             </div>
             <div class="ssd-header">Instruments</div>
             <div class="ssd-list">${listContent}</div>`;

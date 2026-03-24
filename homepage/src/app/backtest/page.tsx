@@ -108,12 +108,7 @@ export default function BacktestSessions() {
   }
 
   function openSessionAnalytics(session: Session) {
-    try {
-      if (session.config) localStorage.setItem("backtestingSession", JSON.stringify(session.config));
-      localStorage.setItem("active_trading_session_id", String(session.id));
-    } catch {}
-    const mode = session.session_type === "propfirm" ? "propfirm" : "backtest";
-    window.location.href = `/chart/index.html?mode=${mode}&sessionId=${encodeURIComponent(String(session.id))}&openAnalytics=1`;
+    window.location.href = `/backtest/analytics?sessionId=${encodeURIComponent(String(session.id))}`;
   }
 
   async function deleteSession(id: number) {
