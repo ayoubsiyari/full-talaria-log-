@@ -2818,6 +2818,11 @@ class ReplaySystem {
         this.chart.renderPending = true;
         this.chart.render();
 
+        // Same as updateChartData: floating PnL / SL-TP logic must track the latest candle.
+        if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
+            this.chart.orderManager.updatePositions();
+        }
+
         // Keep follow/jump-to-latest button responsive in fast mode too.
         // Throttle checks to avoid unnecessary work at high replay speeds.
         if (!this.autoScrollEnabled) {
@@ -2825,6 +2830,24 @@ class ReplaySystem {
             if (!this._lastFollowIndicatorCheckTs || now - this._lastFollowIndicatorCheckTs >= 100) {
                 this._lastFollowIndicatorCheckTs = now;
                 this.updateAutoScrollIndicator();
+            }
+        }
+
+        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
+            const replayPatch = {
+                replay: {
+                    replayTimestamp: this.replayTimestamp,
+                    currentIndex: this.currentIndex,
+                    tickElapsedMs: this.tickElapsedMs,
+                    speed: this.speed,
+                    playbackMode: this.getPlaybackMode(),
+                    timeframe: this.chart.currentTimeframe,
+                    isActive: true
+                }
+            };
+            this.chart.scheduleSessionStateSave(replayPatch);
+            if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
+                this.chart.queueCriticalSessionStateSave(replayPatch);
             }
         }
     }
@@ -2928,19 +2951,21 @@ class ReplaySystem {
      * @returns {number|null} Current animated price or null if not available
      */
     getCurrentAnimatedPrice() {
-        if (!this.isPlaying) return null;
         if (!this.fullRawData || this.fullRawData.length === 0) return null;
 
-        // Prefer the actively animating candle path (source of truth during playback).
-        if (this.animatingCandle && this.tickProgress > 0) {
-            if (!this.animatingCandle.cachedPath) {
-                this.animatingCandle.cachedPath = this.getTickPath(this.animatingCandle.target || this.animatingCandle);
+        if (this.animatingCandle) {
+            if (this.tickProgress > 0) {
+                if (!this.animatingCandle.cachedPath) {
+                    this.animatingCandle.cachedPath = this.getTickPath(this.animatingCandle.target || this.animatingCandle);
+                }
+                const path = this.animatingCandle.cachedPath;
+                const pathIndex = Math.min(Math.max(0, this.tickProgress - 1), path.length - 1);
+                const price = path[pathIndex];
+                if (Number.isFinite(price)) return price;
+                if (Number.isFinite(this.animatingCandle.close)) return this.animatingCandle.close;
             }
-            const path = this.animatingCandle.cachedPath;
-            const pathIndex = Math.min(Math.max(0, this.tickProgress - 1), path.length - 1);
-            const price = path[pathIndex];
-            if (Number.isFinite(price)) return price;
-            if (Number.isFinite(this.animatingCandle.close)) return this.animatingCandle.close;
+            const openPx = Number.parseFloat(this.animatingCandle.open);
+            if (Number.isFinite(openPx)) return openPx;
         }
 
         // Fallback when no intra-candle animation is available.
@@ -3162,14 +3187,9 @@ class ReplaySystem {
             this.syncPanelChartsWithAnimatedCandle(slicedRaw, animatedCandle);
         }
         
-        // Check order manager for SL/TP hits during tick animation
-        // Only check every 3rd tick to reduce lag, but always check on final ticks
-        const ticksNeeded = this.currentTicksPerCandle || this.ticksPerCandle;
-        const isNearEnd = this.tickProgress > ticksNeeded * 0.8;
+        // Floating PnL must track every displayed tick (user expectation: live with the chart).
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            if (this.tickProgress % 3 === 0 || isNearEnd) {
-                this.chart.orderManager.updatePositions();
-            }
+            this.chart.orderManager.updatePositions();
         }
     }
     

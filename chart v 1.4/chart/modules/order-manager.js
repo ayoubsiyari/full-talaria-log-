@@ -11296,20 +11296,34 @@ class OrderManager {
         
         // Get the last visible candle in replay mode
         if (this.replaySystem && this.replaySystem.isActive) {
-            // Check if we're in tick animation mode - use the animated candle
-            if (this.replaySystem.animatingCandle && this.replaySystem.isPlaying) {
+            // Intra-candle tick animation: use animated OHLC (same source as the canvas).
+            if (this.replaySystem.animatingCandle) {
                 const anim = this.replaySystem.animatingCandle;
+                let c = Number.parseFloat(anim.close);
+                // tickProgress === 0: anim.close is the new bar open — do not fall back to prior raw index.
+                const tickProg = Number(this.replaySystem.tickProgress) || 0;
+                if (tickProg > 0 && typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
+                    const px = this.replaySystem.getCurrentAnimatedPrice();
+                    if (Number.isFinite(px)) c = px;
+                }
+                const high = Math.max(Number.parseFloat(anim.high) || c, c);
+                const low = Math.min(Number.parseFloat(anim.low) || c, c);
                 return {
                     t: anim.t,
                     o: anim.open,
-                    h: anim.high,
-                    l: anim.low,
-                    c: anim.close,
+                    h: high,
+                    l: low,
+                    c,
                     v: anim.volume
                 };
             }
-            
-            // Otherwise use the raw data at current index
+
+            // Prefer the last resampled bar on the chart (matches what the user sees on non-1m TFs).
+            const last = this.chart.data[this.chart.data.length - 1];
+            if (last && Number.isFinite(Number.parseFloat(last.c))) {
+                return last;
+            }
+
             const index = this.replaySystem.currentIndex;
             const rawData = this.replaySystem.fullRawData || this.chart.rawData;
             return rawData[index];
