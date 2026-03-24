@@ -9225,7 +9225,8 @@ class OrderManager {
         // Use actualRisk as the definitive risk amount
         const riskAmount = actualRisk;
 
-        // Shared margin guard: use account-wide free margin.
+        // Session-level account guardrails (shared margin + risk caps).
+        const sessionValidationErrors = [];
         if (this.orderService && typeof this.orderService.estimateTradeMargin === 'function') {
             const tentative = {
                 ticker: activeTicker,
@@ -9233,21 +9234,46 @@ class OrderManager {
                 quantity: quantity,
                 instrument_settings: activeInstrumentSettings
             };
+
             const requiredMargin = this.orderService.estimateTradeMargin(tentative);
-            const freeMargin = Number.parseFloat(this.orderService.multiInstrumentSession?.free_margin ?? this.equity);
+            const sessionState = this.orderService.multiInstrumentSession || {};
+            const freeMargin = Number.parseFloat(sessionState.free_margin ?? this.equity);
+            const usedMargin = Number.parseFloat(sessionState.used_margin ?? 0);
+            const equityNow = Number.parseFloat(this.equity);
+            const marginCallLevel = Number.parseFloat(sessionState.margin_call_level);
+            const stopOutLevel = Number.parseFloat(sessionState.stop_out_level);
+            const maxRiskPerTradePct = Number.parseFloat(sessionState.max_risk_per_trade_pct);
+
             if (Number.isFinite(requiredMargin) && Number.isFinite(freeMargin) && requiredMargin > freeMargin) {
-                this.showNotification(`❌ Insufficient free margin (${requiredMargin.toFixed(2)} required, ${freeMargin.toFixed(2)} available)`, 'error');
-                return;
+                sessionValidationErrors.push(`❌ Insufficient free margin (${requiredMargin.toFixed(2)} required, ${freeMargin.toFixed(2)} available)`);
+            }
+
+            if (Number.isFinite(maxRiskPerTradePct) && maxRiskPerTradePct > 0 && Number.isFinite(equityNow) && equityNow > 0) {
+                const orderRiskPct = (riskAmount / equityNow) * 100;
+                if (Number.isFinite(orderRiskPct) && orderRiskPct > maxRiskPerTradePct) {
+                    sessionValidationErrors.push(`❌ Risk per trade too high (${orderRiskPct.toFixed(2)}% > ${maxRiskPerTradePct.toFixed(2)}% max)`);
+                }
+            }
+
+            const projectedUsedMargin = (Number.isFinite(usedMargin) ? usedMargin : 0) + (Number.isFinite(requiredMargin) ? requiredMargin : 0);
+            if (Number.isFinite(equityNow) && equityNow > 0 && Number.isFinite(projectedUsedMargin) && projectedUsedMargin > 0) {
+                const projectedMarginLevel = (equityNow / projectedUsedMargin) * 100;
+                if (Number.isFinite(stopOutLevel) && projectedMarginLevel <= stopOutLevel) {
+                    sessionValidationErrors.push(`❌ Blocked by Stop-Out level (${projectedMarginLevel.toFixed(2)}% <= ${stopOutLevel.toFixed(2)}%)`);
+                } else if (Number.isFinite(marginCallLevel) && projectedMarginLevel <= marginCallLevel) {
+                    sessionValidationErrors.push(`❌ Blocked by Margin-Call level (${projectedMarginLevel.toFixed(2)}% <= ${marginCallLevel.toFixed(2)}%)`);
+                }
             }
         }
         
         // VALIDATION: Check for order logic errors
         const orderValidationBox = document.getElementById('orderValidation');
         const validationErrors = this.validateOrder(this.orderType, this.orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity, this.positionSizeMode, slEnabled);
+        const allValidationErrors = validationErrors.concat(sessionValidationErrors);
         if (orderValidationBox) {
-            if (validationErrors.length > 0) {
+            if (allValidationErrors.length > 0) {
                 orderValidationBox.className = 'order-validation order-validation--error';
-                orderValidationBox.innerHTML = validationErrors.map(msg => `
+                orderValidationBox.innerHTML = allValidationErrors.map(msg => `
                     <div class="order-validation__item">
                         <span class="order-validation__icon">⚠️</span>
                         <span>${msg}</span>
@@ -9259,8 +9285,11 @@ class OrderManager {
             }
         }
 
-        if (validationErrors.length > 0) {
-            console.warn('❌ Order validation failed:', validationErrors);
+        if (allValidationErrors.length > 0) {
+            console.warn('❌ Order validation failed:', allValidationErrors);
+            if (sessionValidationErrors.length > 0) {
+                this.showNotification(sessionValidationErrors[0], 'error');
+            }
             return;
         }
         
