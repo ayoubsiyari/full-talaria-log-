@@ -2579,6 +2579,10 @@ class TradingSessionUpdateIn(BaseModel):
 class TradingSessionStateUpdateIn(BaseModel):
     drawings: list | None = None
     journal: list | None = None
+    pending_orders: list | None = None
+    open_positions: list | None = None
+    account_runtime: dict | None = None
+    order_counters: dict | None = None
     replay: dict | None = None
     chartView: dict | None = None
     chartSettings: dict | None = None
@@ -3561,6 +3565,10 @@ async def get_trading_session_state(session_id: int, request: Request):
             "state": {
                 "drawings": state.get("drawings") if isinstance(state.get("drawings"), list) else [],
                 "journal": state.get("journal") if isinstance(state.get("journal"), list) else [],
+                "pending_orders": state.get("pending_orders") if isinstance(state.get("pending_orders"), list) else [],
+                "open_positions": state.get("open_positions") if isinstance(state.get("open_positions"), list) else [],
+                "account_runtime": state.get("account_runtime") if isinstance(state.get("account_runtime"), dict) else {},
+                "order_counters": state.get("order_counters") if isinstance(state.get("order_counters"), dict) else {},
                 "replay": state.get("replay") if isinstance(state.get("replay"), dict) else {},
                 "chartView": state.get("chartView") if isinstance(state.get("chartView"), dict) else {},
                 "chartSettings": state.get("chartSettings") if isinstance(state.get("chartSettings"), dict) else {},
@@ -3590,6 +3598,14 @@ async def patch_trading_session_state(session_id: int, payload: TradingSessionSt
             state["drawings"] = payload.drawings
         if payload.journal is not None:
             state["journal"] = payload.journal
+        if payload.pending_orders is not None:
+            state["pending_orders"] = payload.pending_orders
+        if payload.open_positions is not None:
+            state["open_positions"] = payload.open_positions
+        if payload.account_runtime is not None:
+            state["account_runtime"] = payload.account_runtime
+        if payload.order_counters is not None:
+            state["order_counters"] = payload.order_counters
         if payload.replay is not None:
             state["replay"] = payload.replay
         if payload.chartView is not None:

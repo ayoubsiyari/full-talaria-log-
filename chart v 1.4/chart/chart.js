@@ -1183,6 +1183,24 @@ class Chart {
                 }
             }
 
+            if (
+                this.orderManager
+                && typeof this.orderManager.restoreRuntimeOrderStateFromSession === 'function'
+                && (
+                    Array.isArray(state.pending_orders)
+                    || Array.isArray(state.open_positions)
+                    || (state.account_runtime && typeof state.account_runtime === 'object')
+                    || (state.order_counters && typeof state.order_counters === 'object')
+                )
+            ) {
+                this.orderManager.restoreRuntimeOrderStateFromSession({
+                    pending_orders: state.pending_orders,
+                    open_positions: state.open_positions,
+                    account_runtime: state.account_runtime,
+                    order_counters: state.order_counters
+                });
+            }
+
             if (state.replay && typeof state.replay === 'object') {
                 this._pendingReplayState = state.replay;
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {

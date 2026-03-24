@@ -521,6 +521,109 @@ class OrderManager {
         }
     }
 
+    persistRuntimeOrderState() {
+        if (!this.chart) return;
+        const pendingOrders = Array.isArray(this.pendingOrders) ? this.pendingOrders : [];
+        const openPositions = Array.isArray(this.openPositions) ? this.openPositions : [];
+        const orderCounters = {
+            orderIdCounter: Number.parseInt(this.orderIdCounter, 10) || 1,
+            tradeGroupIdCounter: Number.parseInt(this.tradeGroupIdCounter, 10) || 1
+        };
+        const accountRuntime = {
+            balance: Number.parseFloat(this.balance) || 0,
+            equity: Number.parseFloat(this.equity) || 0,
+            initialBalance: Number.parseFloat(this.initialBalance) || 0
+        };
+
+        const snapshot = JSON.stringify({
+            pending_orders: pendingOrders,
+            open_positions: openPositions,
+            account_runtime: accountRuntime,
+            order_counters: orderCounters
+        });
+        if (snapshot === this._lastRuntimeStateSnapshot) return;
+        this._lastRuntimeStateSnapshot = snapshot;
+
+        const patch = {
+            pending_orders: pendingOrders,
+            open_positions: openPositions,
+            account_runtime: accountRuntime,
+            order_counters: orderCounters
+        };
+        if (typeof this.chart.scheduleSessionStateSave === 'function') {
+            this.chart.scheduleSessionStateSave(patch);
+        }
+        if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            this.chart.queueCriticalSessionStateSave(patch);
+        }
+    }
+
+    restoreRuntimeOrderStateFromSession(state) {
+        if (!state || typeof state !== 'object') return;
+
+        const normalizeTradeTicker = (item) => {
+            const ticker = String(item?.ticker || item?.symbol || '').replace('/', '').trim().toUpperCase();
+            return ticker || 'UNKNOWN';
+        };
+
+        const pendingOrders = Array.isArray(state.pending_orders)
+            ? state.pending_orders.map((order) => {
+                const ticker = normalizeTradeTicker(order);
+                return { ...order, ticker, symbol: order?.symbol || ticker };
+            })
+            : null;
+        const openPositions = Array.isArray(state.open_positions)
+            ? state.open_positions.map((position) => {
+                const ticker = normalizeTradeTicker(position);
+                return { ...position, ticker, symbol: position?.symbol || ticker };
+            })
+            : null;
+
+        if (pendingOrders) this.pendingOrders = pendingOrders;
+        if (openPositions) this.openPositions = openPositions;
+
+        const accountRuntime = state.account_runtime && typeof state.account_runtime === 'object' ? state.account_runtime : null;
+        if (accountRuntime) {
+            const balance = Number.parseFloat(accountRuntime.balance);
+            const equity = Number.parseFloat(accountRuntime.equity);
+            const initialBalance = Number.parseFloat(accountRuntime.initialBalance);
+            if (Number.isFinite(balance)) this.balance = balance;
+            if (Number.isFinite(equity)) this.equity = equity;
+            if (Number.isFinite(initialBalance)) this.initialBalance = initialBalance;
+        }
+
+        const orderCounters = state.order_counters && typeof state.order_counters === 'object' ? state.order_counters : null;
+        if (orderCounters) {
+            const orderIdCounter = Number.parseInt(orderCounters.orderIdCounter, 10);
+            const tradeGroupIdCounter = Number.parseInt(orderCounters.tradeGroupIdCounter, 10);
+            if (Number.isFinite(orderIdCounter) && orderIdCounter > 0) this.orderIdCounter = orderIdCounter;
+            if (Number.isFinite(tradeGroupIdCounter) && tradeGroupIdCounter > 0) this.tradeGroupIdCounter = tradeGroupIdCounter;
+        }
+
+        // Remove old runtime visuals before rebuilding from restored state.
+        this.orderLines = [];
+        this.slLines = [];
+        this.tpLines = [];
+        this.beLines = [];
+        this.pendingTargetLines = [];
+        if (this.chart?.svg) {
+            this.chart.svg.selectAll('.order-line,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn').remove();
+            this.chart.svg.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
+            this.chart.svg.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
+            this.chart.svg.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight').remove();
+        }
+
+        this.openPositions.forEach((position) => this.drawOrderLine(position));
+        this.pendingOrders.forEach((order) => {
+            this.drawPendingOrderLine(order);
+            this.drawPendingOrderTargets(order);
+        });
+
+        if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
+        if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+    }
+
     groupJournalByTicker() {
         const grouped = {};
         this.tradeJournal.forEach((trade) => {
@@ -16216,6 +16319,7 @@ class OrderManager {
         this.updateScalingCheckboxAvailability();
         this.updateAnalyticsPanel();
         this.renderCrossInstrumentPositionsDock();
+        this.persistRuntimeOrderState();
         this._isUpdatingPanels = false;
     }
     
