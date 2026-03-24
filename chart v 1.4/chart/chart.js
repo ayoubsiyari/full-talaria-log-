@@ -1038,14 +1038,14 @@ class Chart {
                     return false;
                 }
             }
-            const isBacktestSession = !!(session && session.startDate);
+            const isBacktestSession = !!(this.backtestingStarted && session && session.startDate);
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
 
             // ── Fix 4: pass anchor timestamp so server returns data around the current date ──
             const windowRange = (!isBacktestSession && _anchorTs) ? { endTs: _anchorTs } : null;
             const result = await this._fetchSmartWindow(fileId, requestTimeframe, session, undefined, windowRange);
             // ─────────────────────────────────────────────────────────────────────────────────
-            
+
             if (!result || !result.data) throw new Error('No data in response');
             
             this.rawData = [];
@@ -5884,7 +5884,6 @@ class Chart {
             const list = dropdown.querySelector('.ssd-list');
             if (list) {
                 list.innerHTML = this._buildListContent(entries, query);
-                this._bindListClicks(dropdown);
             }
             return;
         }
@@ -5897,7 +5896,6 @@ class Chart {
         <div class="ssd-header">Instruments</div>
         <div class="ssd-list">${listContent}</div>`;
         this._bindDropdownSearch(dropdown);
-        this._bindListClicks(dropdown); 
     }
 
     _bindDropdownSearch(dropdown) {

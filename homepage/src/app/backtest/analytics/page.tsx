@@ -192,6 +192,8 @@ export default function BacktestAnalyticsPage() {
           commission_at_entry: n(t.commission_at_entry),
           pip_value_at_entry: n(t.pip_value_at_entry),
           capture_ratio: n(t.mfe_r) > 0 ? n(t.rMultiple ?? t.rewardToRiskRatio) / n(t.mfe_r) : 0,
+          hasMae: t.mae_r !== undefined && t.mae_r !== null && String(t.mae_r).trim() !== "",
+          hasMfe: t.mfe_r !== undefined && t.mfe_r !== null && String(t.mfe_r).trim() !== "",
           setup,
           openTs: n(t.openTime ?? t.entryTime ?? 0),
           closeTs: n(t.closeTime ?? t.exitTime ?? 0),
@@ -329,11 +331,11 @@ export default function BacktestAnalyticsPage() {
   );
 
   const maeDistribution = useMemo(
-    () => buildHistogram(filteredTrades.map((t) => t.mae_r), 0.5),
+    () => buildHistogram(filteredTrades.filter((t: any) => t.hasMae).map((t) => t.mae_r), 0.5),
     [filteredTrades]
   );
   const mfeDistribution = useMemo(
-    () => buildHistogram(filteredTrades.map((t) => t.mfe_r), 0.5),
+    () => buildHistogram(filteredTrades.filter((t: any) => t.hasMfe).map((t) => t.mfe_r), 0.5),
     [filteredTrades]
   );
 
@@ -395,7 +397,7 @@ export default function BacktestAnalyticsPage() {
             onChange={(e) => setPairFilter(e.target.value)}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
           >
-            <option value="ALL">All Pairs</option>
+            <option value="ALL">All Instruments</option>
             {pairOptions.map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -591,6 +593,9 @@ export default function BacktestAnalyticsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
                 <div className="font-semibold mb-3">MAE Distribution (R)</div>
+                <div className="text-xs text-white/50 mb-3">
+                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter}
+                </div>
                 <div className="h-72">
                   {maeDistribution.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -617,6 +622,9 @@ export default function BacktestAnalyticsPage() {
 
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
                 <div className="font-semibold mb-3">MFE Distribution (R)</div>
+                <div className="text-xs text-white/50 mb-3">
+                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter}
+                </div>
                 <div className="h-72">
                   {mfeDistribution.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
