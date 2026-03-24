@@ -257,6 +257,18 @@ class OrderService {
         if (order.ticker && !order.instrument_settings) {
             order.instrument_settings = this.getInstrumentSettings(order.ticker);
         }
+        if (!Number.isFinite(Number.parseFloat(order.initialStopLoss)) && Number.isFinite(Number.parseFloat(order.stopLoss))) {
+            order.initialStopLoss = Number.parseFloat(order.stopLoss);
+        }
+        if (!Number.isFinite(Number.parseFloat(order.initialTakeProfit)) && Number.isFinite(Number.parseFloat(order.takeProfit))) {
+            order.initialTakeProfit = Number.parseFloat(order.takeProfit);
+        }
+        if (!Array.isArray(order.bar_close_r)) order.bar_close_r = [];
+        if (!Array.isArray(order.bar_high_r)) order.bar_high_r = [];
+        if (!Array.isArray(order.bar_low_r)) order.bar_low_r = [];
+        if (!Array.isArray(order.post_exit_bar_close_r)) order.post_exit_bar_close_r = [];
+        if (!Array.isArray(order.post_exit_bar_high_r)) order.post_exit_bar_high_r = [];
+        if (!Array.isArray(order.post_exit_bar_low_r)) order.post_exit_bar_low_r = [];
         this.openPositions.push(order);
         this.orders.push(order);
         this.recomputeSharedMarginState();

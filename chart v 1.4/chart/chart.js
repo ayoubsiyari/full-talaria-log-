@@ -1018,7 +1018,9 @@ class Chart {
             if (this.orderManager && typeof this.orderManager.canSwitchToTicker === 'function') {
                 const canSwitch = this.orderManager.canSwitchToTicker(targetTicker);
                 if (!canSwitch) {
-                    alert('You still have open trades on another instrument. Close them before switching chart in this phase.');
+                    if (typeof this.showNotification === 'function') {
+                        this.showNotification('You have active orders/tracking on another instrument. Close or complete them before switching chart in this phase.');
+                    }
                     if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol ? this.currentSymbol.substring(0, 15) : '';
                     return false;
                 }
@@ -1070,7 +1072,9 @@ class Chart {
             
         } catch (error) {
             console.error('❌ Failed to switch symbol:', error);
-            alert('Failed to load symbol: ' + error.message);
+            if (typeof this.showNotification === 'function') {
+                this.showNotification('Failed to load symbol: ' + error.message);
+            }
         }
     }
     
@@ -1150,7 +1154,14 @@ class Chart {
             }
 
             if (this.orderManager && Array.isArray(state.journal)) {
-                this.orderManager.tradeJournal = state.journal;
+                this.orderManager.tradeJournal = state.journal.map((trade) => {
+                    const ticker = String(trade?.ticker || trade?.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+                    return {
+                        ...trade,
+                        ticker,
+                        symbol: trade?.symbol || ticker
+                    };
+                });
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();
                 }
@@ -1280,6 +1291,40 @@ class Chart {
             this._sessionStateSaveTimer = null;
             this.flushSessionStateSave();
         }, 800);
+    }
+
+    queueCriticalSessionStateSave(patch) {
+        const sessionId = this.getActiveTradingSessionId();
+        if (!sessionId) return;
+        if (!patch || typeof patch !== 'object') return;
+
+        this._pendingCriticalSessionStatePatch = Object.assign({}, this._pendingCriticalSessionStatePatch || {}, patch);
+        if (this._criticalSessionStateSaveTimer) return;
+
+        this._criticalSessionStateSaveTimer = setTimeout(() => {
+            this._criticalSessionStateSaveTimer = null;
+            this.flushCriticalSessionStateSave();
+        }, 350);
+    }
+
+    async flushCriticalSessionStateSave() {
+        const sessionId = this.getActiveTradingSessionId();
+        if (!sessionId) return;
+        const patch = this._pendingCriticalSessionStatePatch;
+        if (!patch) return;
+        this._pendingCriticalSessionStatePatch = null;
+
+        try {
+            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                keepalive: true,
+                body: JSON.stringify(patch)
+            });
+        } catch (e) {
+            console.warn('⚠️ Failed to save critical trading session state', e);
+        }
     }
 
     async flushSessionStateSave() {

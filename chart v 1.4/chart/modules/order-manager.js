@@ -281,11 +281,65 @@ class OrderManager {
         return pipsMove * (position.quantity || 0) * pipValue;
     }
 
+    _calculateExcursionRValues(position, candle) {
+        if (!position || !candle) return null;
+        const openPrice = Number.parseFloat(position.openPrice);
+        const initialSL = Number.parseFloat(position.initialStopLoss ?? position.stopLoss);
+        if (!Number.isFinite(openPrice) || !Number.isFinite(initialSL)) return null;
+        const plannedRiskPrice = Math.abs(openPrice - initialSL);
+        if (!(plannedRiskPrice > 0)) return null;
+
+        const high = Number.parseFloat(candle.h);
+        const low = Number.parseFloat(candle.l);
+        const close = Number.parseFloat(candle.c);
+        if (![high, low, close].every(Number.isFinite)) return null;
+
+        if (position.type === 'BUY') {
+            return {
+                bar_high_r: (high - openPrice) / plannedRiskPrice,
+                bar_low_r: (openPrice - low) / plannedRiskPrice,
+                bar_close_r: (close - openPrice) / plannedRiskPrice
+            };
+        }
+        return {
+            bar_high_r: (openPrice - low) / plannedRiskPrice,
+            bar_low_r: (high - openPrice) / plannedRiskPrice,
+            bar_close_r: (openPrice - close) / plannedRiskPrice
+        };
+    }
+
+    _appendExcursionSnapshot(position, candle, isPostExit = false) {
+        const rValues = this._calculateExcursionRValues(position, candle);
+        if (!rValues) return;
+
+        if (!Array.isArray(position.bar_close_r)) position.bar_close_r = [];
+        if (!Array.isArray(position.bar_high_r)) position.bar_high_r = [];
+        if (!Array.isArray(position.bar_low_r)) position.bar_low_r = [];
+        position.bar_close_r.push(rValues.bar_close_r);
+        position.bar_high_r.push(rValues.bar_high_r);
+        position.bar_low_r.push(rValues.bar_low_r);
+
+        if (isPostExit) {
+            if (!Array.isArray(position.post_exit_bar_close_r)) position.post_exit_bar_close_r = [];
+            if (!Array.isArray(position.post_exit_bar_high_r)) position.post_exit_bar_high_r = [];
+            if (!Array.isArray(position.post_exit_bar_low_r)) position.post_exit_bar_low_r = [];
+            position.post_exit_bar_close_r.push(rValues.bar_close_r);
+            position.post_exit_bar_high_r.push(rValues.bar_high_r);
+            position.post_exit_bar_low_r.push(rValues.bar_low_r);
+        }
+    }
+
     canSwitchToTicker(targetTicker) {
         const next = String(targetTicker || '').replace('/', '').toUpperCase();
         if (!next) return true;
-        const blocking = this.openPositions.filter(p => String(p.ticker || p.symbol || '').replace('/', '').toUpperCase() !== next);
-        return blocking.length === 0;
+        const normalizeTicker = (value) => String(value || '').replace('/', '').toUpperCase();
+        const hasDifferentTicker = (item) => normalizeTicker(item?.ticker || item?.symbol) !== next;
+
+        const openBlocking = this.openPositions.some(hasDifferentTicker);
+        const pendingBlocking = this.pendingOrders.some(hasDifferentTicker);
+        const trackingBlocking = this.mfeMaeTrackingPositions.some(hasDifferentTicker);
+
+        return !(openBlocking || pendingBlocking || trackingBlocking);
     }
 
     _getActiveInstrumentSettings() {
@@ -444,10 +498,12 @@ class OrderManager {
 
     persistJournal() {
         const perInstrumentStats = this.buildPerInstrumentStats();
+        const journalByTicker = this.groupJournalByTicker();
         try {
             const key = this.getJournalStorageKey();
             localStorage.setItem(key, JSON.stringify(this.tradeJournal));
             localStorage.setItem(`${key}_perInstrumentStats`, JSON.stringify(perInstrumentStats));
+            localStorage.setItem(`${key}_byTicker`, JSON.stringify(journalByTicker));
         } catch (e) {
             console.warn('Could not save trade journal to localStorage:', e);
         }
@@ -455,9 +511,49 @@ class OrderManager {
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             this.chart.scheduleSessionStateSave({
                 journal: this.tradeJournal,
-                per_instrument_stats: perInstrumentStats
+                per_instrument_stats: perInstrumentStats,
+                journal_by_ticker: journalByTicker
             });
         }
+        if (this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            this.chart.queueCriticalSessionStateSave({
+                journal: this.tradeJournal,
+                per_instrument_stats: perInstrumentStats,
+                journal_by_ticker: journalByTicker
+            });
+        }
+    }
+
+    groupJournalByTicker() {
+        const grouped = {};
+        this.tradeJournal.forEach((trade) => {
+            const ticker = String(trade.ticker || trade.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+            if (!grouped[ticker]) grouped[ticker] = [];
+            grouped[ticker].push(trade);
+        });
+        return grouped;
+    }
+
+    upsertJournalEntry(journalEntry, options = {}) {
+        if (!journalEntry) return { index: -1, inserted: false, entry: null };
+        const { skipIfExists = false } = options;
+        const tradeId = journalEntry.tradeId || journalEntry.id;
+        const existingIndex = this.tradeJournal.findIndex(t => (t.tradeId || t.id) === tradeId);
+
+        if (existingIndex !== -1) {
+            if (skipIfExists) {
+                return { index: existingIndex, inserted: false, entry: this.tradeJournal[existingIndex] };
+            }
+            this.tradeJournal[existingIndex] = {
+                ...this.tradeJournal[existingIndex],
+                ...journalEntry
+            };
+            return { index: existingIndex, inserted: false, entry: this.tradeJournal[existingIndex] };
+        }
+
+        this.tradeJournal.push(journalEntry);
+        const index = this.tradeJournal.length - 1;
+        return { index, inserted: true, entry: this.tradeJournal[index] };
     }
 
     buildPerInstrumentStats() {
@@ -518,6 +614,14 @@ class OrderManager {
             }
             if (savedJournal) {
                 this.tradeJournal = JSON.parse(savedJournal);
+                this.tradeJournal = this.tradeJournal.map((trade) => {
+                    const normalizedTicker = String(trade.ticker || trade.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+                    return {
+                        ...trade,
+                        ticker: normalizedTicker,
+                        symbol: trade.symbol || normalizedTicker
+                    };
+                });
                 console.log(`📔 Loaded ${this.tradeJournal.length} trades from journal`);
                 
                 // Clean up any duplicates that might exist
@@ -1211,151 +1315,34 @@ class OrderManager {
                 
                 // FORCE a small delay to ensure DOM is ready
                 setTimeout(() => {
-                    console.log('🎯 Attaching click handlers...');
-                    
-                    // Method 1: Direct click on each item
                     const items = tradeHistoryList.querySelectorAll('.trade-history-item');
-                    console.log(`Found ${items.length} trade items in DOM`);
-                    
-                    items.forEach((item, idx) => {
+                    items.forEach((item) => {
                         item.style.cursor = 'pointer';
-                        item.addEventListener('click', (e) => {
-                            console.log(`💥 CLICK on item ${idx}!`);
-                            e.stopPropagation();
-                            
+                    });
+
+                    if (!tradeHistoryList.dataset.boundClick) {
+                        tradeHistoryList.dataset.boundClick = '1';
+                        tradeHistoryList.addEventListener('click', (e) => {
+                            const item = e.target.closest('.trade-history-item');
+                            if (!item) return;
                             const tradeData = item.getAttribute('data-trade');
-                            if (tradeData) {
-                                try {
-                                    const trade = JSON.parse(tradeData);
-                                    console.log('📊 Opening details:', trade.id);
-                                    this.showTradeDetails(trade);
-                                } catch (err) {
-                                    console.error('❌ Parse error:', err);
-                                }
+                            if (!tradeData) return;
+                            try {
+                                const trade = JSON.parse(tradeData);
+                                this.showTradeDetails(trade);
+                            } catch (err) {
+                                console.error('❌ Error:', err);
                             }
                         });
-                    });
-                    
-                    // Method 2: Also add to parent as backup
-                    tradeHistoryList.addEventListener('click', (e) => {
-                        const item = e.target.closest('.trade-history-item');
-                        if (item) {
-                            console.log('💥 Parent caught click!');
-                            const tradeData = item.getAttribute('data-trade');
-                            if (tradeData) {
-                                try {
-                                    const trade = JSON.parse(tradeData);
-                                    this.showTradeDetails(trade);
-                                } catch (err) {
-                                    console.error('❌ Error:', err);
-                                }
-                            }
-                        }
-                    });
-                    
-                    console.log('✅ All click handlers attached!');
+                    }
                 }, 100);
             }
         }
 
-        // Update bottom panel positions history table
-        const replayPositionsBody = document.getElementById('replayPositionsBody');
-        const replayMetaOpenCount = document.getElementById('replayMetaOpenCount');
-        const replayMetaClosedCount = document.getElementById('replayMetaClosedCount');
-        
-        console.log('🔍 History Tab (replayPositionsBody) element:', replayPositionsBody ? 'FOUND ✅' : 'NOT FOUND ❌');
-        console.log('📊 Trade Journal:', {
-            exists: !!this.tradeJournal,
-            length: this.tradeJournal ? this.tradeJournal.length : 'N/A',
-            data: this.tradeJournal ? this.tradeJournal.slice(0, 2) : 'N/A'
-        });
-        
-        if (replayPositionsBody) {
-            console.log('✅ replayPositionsBody found, updating content...');
-            console.log('   Element tag:', replayPositionsBody.tagName);
-            console.log('   Parent:', replayPositionsBody.parentElement?.id);
-            
-            if (!this.tradeJournal || this.tradeJournal.length === 0) {
-                console.log('⚠️ No trades in journal, showing empty message');
-                replayPositionsBody.innerHTML = `
-                    <tr class="replay-empty-row">
-                        <td colspan="12">
-                            <div class="replay-tab-empty">
-                                No closed positions yet. Once trades are executed, they will appear here.
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            } else {
-                console.log(`📝 Rendering ${this.tradeJournal.length} trades in History tab`);
-                const reversedJournal = this.tradeJournal.slice().reverse();
-                const htmlContent = reversedJournal.map((trade, index) => {
-                    const tradeId = trade.tradeId || trade.id;
-                    const direction = trade.direction || trade.type;
-                    const sideClass = direction === 'SELL' ? 'replay-badge--sell' : 'replay-badge--buy';
-                    const quantity = trade.quantity || 0;
-                    const status = trade.status || 'CLOSED';
-                    const statusClass = status === 'CLOSED' ? 'replay-badge--closed' : 'replay-badge--open';
-                    const openTime = this.format24Hour(trade.openTime);
-                    const closeTime = this.format24Hour(trade.closeTime);
-                    const entryPrice = trade.entryPrice || trade.openPrice || 0;
-                    const exitPrice = trade.exitPrice || trade.closePrice || 0;
-                    const pnl = trade.netPnL || trade.pnl || 0;
-                    const pnlClass = pnl > 0 ? 'order-value--profit' : pnl < 0 ? 'order-value--loss' : '';
-                    const rulesFollowed = trade.rulesFollowed ? '✅' : '❌';
-                    const tags = trade.tags && trade.tags.length > 0 ? trade.tags.join(', ') : '—';
-                    
-                    // Entries column: show number of entries (1 for regular, 2+ for scaled)
-                    const numberOfEntries = trade.numberOfEntries || 1;
-                    const entriesDisplay = numberOfEntries > 1 
-                        ? `<span style="background: #f59e0b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${numberOfEntries}</span>`
-                        : `<span style="color: #94a3b8;">${numberOfEntries}</span>`;
-
-                    return `
-                        <tr style="cursor: pointer;" onclick="window.chart.orderManager.showTradeDetailsFromBottom(${index})">
-                            <td>${this.tradeJournal.length - index}</td>
-                            <td>${trade.symbol || 'USD'}</td>
-                            <td><span class="replay-badge ${sideClass}">${direction}</span></td>
-                            <td class="replay-cell-number">${quantity.toFixed(2)}</td>
-                            <td class="replay-cell-center">${entriesDisplay}</td>
-                            <td><span class="replay-badge ${statusClass}">${status}</span></td>
-                            <td>${openTime}</td>
-                            <td>${closeTime}</td>
-                            <td class="replay-cell-number">${entryPrice.toFixed(5)}</td>
-                            <td class="replay-cell-number">${exitPrice.toFixed(5)}</td>
-                            <td class="replay-cell-number ${pnlClass}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
-                            <td class="replay-cell-center">${tags}</td>
-                        </tr>
-                    `;
-                });
-                
-                const finalHTML = htmlContent.join('');
-                replayPositionsBody.innerHTML = finalHTML;
-                console.log(`✅ History tab HTML updated with ${reversedJournal.length} trade rows`);
-                console.log(`   HTML length: ${finalHTML.length} characters`);
-                console.log(`   First trade: ID=${reversedJournal[0]?.id}, P&L=$${reversedJournal[0]?.pnl}`);
-            }
-        } else {
-            console.error('❌ CRITICAL: replayPositionsBody element NOT FOUND in DOM!');
+        // Bottom tabs are rendered centrally in updatePositionsPanel().
+        if (!this._isUpdatingPanels) {
+            this.updatePositionsPanel();
         }
-
-        // Update position counts in bottom panel
-        if (replayMetaOpenCount) {
-            replayMetaOpenCount.textContent = this.openPositions.length;
-        }
-        if (replayMetaClosedCount) {
-            replayMetaClosedCount.textContent = this.tradeJournal.length;
-        }
-        
-        // Update View All Trades button text
-        const viewAllTradesBtn = document.getElementById('viewAllTradesBottomBtn');
-        if (viewAllTradesBtn) {
-            viewAllTradesBtn.textContent = `View All Trades (${this.tradeJournal.length})`;
-        }
-        
-        console.log('✅ updateJournalTab() completed - History tab updated with', this.tradeJournal.length, 'trades');
-        console.log('   📈 Open positions:', this.openPositions.length);
-        console.log('   📊 Closed trades:', this.tradeJournal.length);
     }
     
     /**
@@ -2413,6 +2400,7 @@ class OrderManager {
             { key: 'tradeId', label: 'ID' },
             { key: 'direction', label: 'Direction' },
             { key: 'symbol', label: 'Symbol' },
+            { key: 'ticker', label: 'Ticker' },
             { key: 'quantity', label: 'Lots' },
             { key: 'entryPrice', label: 'Entry' },
             { key: 'exitPrice', label: 'Exit' },
@@ -2542,10 +2530,11 @@ class OrderManager {
      */
     exportTradesToCSV() {
         const columns = [
-            'Trade ID', 'Direction', 'Symbol', 'Lots', 'Entry Price', 'Exit Price',
+            'Trade ID', 'Direction', 'Symbol', 'Ticker', 'Lots', 'Entry Price', 'Exit Price',
             'Stop Loss', 'Take Profit', 'Net P&L', 'R-Multiple', 'RR Ratio', 'Risk Amount',
             'Holding Time (hours)', 'Day of Week', 'Entry Hour', 'Exit Hour', 'Month', 'Year',
             'Close Type', 'MFE', 'MAE', 'Highest Price', 'Lowest Price',
+            'Spread (pips) at Entry', 'Commission at Entry', 'Pip Value at Entry',
             'Entry Time', 'Exit Time'
         ];
         
@@ -2557,7 +2546,8 @@ class OrderManager {
                 trade.tradeId || '',
                 trade.direction || '',
                 trade.symbol || '',
-                trade.quantity ? trade.quantity.toFixed(2) : '',
+                trade.ticker || trade.symbol || '',
+                Number.isFinite(Number.parseFloat(trade.quantity)) ? Number.parseFloat(trade.quantity).toFixed(2) : '',
                 trade.entryPrice ? trade.entryPrice.toFixed(5) : '',
                 trade.exitPrice ? trade.exitPrice.toFixed(5) : '',
                 trade.stopLoss ? trade.stopLoss.toFixed(5) : '',
@@ -2577,6 +2567,9 @@ class OrderManager {
                 trade.mae ? trade.mae.toFixed(5) : '',
                 trade.highestPrice ? trade.highestPrice.toFixed(5) : '',
                 trade.lowestPrice ? trade.lowestPrice.toFixed(5) : '',
+                Number.parseFloat(trade.spread_pips_at_entry ?? 0).toFixed(4),
+                Number.parseFloat(trade.commission_at_entry ?? 0).toFixed(4),
+                Number.parseFloat(trade.pip_value_at_entry ?? this.pipValuePerLot ?? 0).toFixed(4),
                 trade.openTime ? this.format24Hour(trade.openTime) : '',
                 trade.closeTime ? this.format24Hour(trade.closeTime) : ''
             ];
@@ -3066,39 +3059,12 @@ class OrderManager {
                 journalEntry.rulesFollowed = postTradeNotes.reason === 'rules-followed';
             }
             
-            // Add to journal (with duplicate check)
-            const tradeId = journalEntry.tradeId || journalEntry.id;
-            const existingIndex = this.tradeJournal.findIndex(t => (t.tradeId || t.id) === tradeId);
-            if (existingIndex !== -1) {
-                console.warn(`⚠️ Trade #${tradeId} already exists in journal at index ${existingIndex} - updating existing entry`);
-                // Update the existing entry with any new data (like post-trade notes)
-                const existingEntry = this.tradeJournal[existingIndex];
-                if (journalEntry.postTradeNotes) {
-                    existingEntry.postTradeNotes = journalEntry.postTradeNotes;
-                }
-                if (journalEntry.exitScreenshot && !existingEntry.exitScreenshot) {
-                    existingEntry.exitScreenshot = journalEntry.exitScreenshot;
-                }
-                if (journalEntry.tags && journalEntry.tags.length > 0) {
-                    existingEntry.tags = journalEntry.tags;
-                }
-                if (journalEntry.rulesFollowed !== null && journalEntry.rulesFollowed !== undefined) {
-                    existingEntry.rulesFollowed = journalEntry.rulesFollowed;
-                }
-                
-                // Save updated journal
-                this.persistJournal();
-                console.log('💾 Updated existing trade');
-                
-                // IMPORTANT: Still update the UI even for duplicates
-                this.updateJournalTab();
-                
-                delete order.pendingJournalEntry;
-                return;
+            const upsert = this.upsertJournalEntry(journalEntry);
+            if (!upsert.inserted) {
+                console.log(`💾 Updated existing trade #${journalEntry.tradeId || journalEntry.id}`);
+            } else {
+                console.log(`📔 Trade #${order.id} saved to journal from pre-built entry`);
             }
-            
-            this.tradeJournal.push(journalEntry);
-            console.log(`📔 Trade #${order.id} saved to journal from pre-built entry`);
             console.log(`📊 Trade Journal now has ${this.tradeJournal.length} trades in memory`);
             console.log(`   Entry screenshots: ${journalEntry.entryScreenshots?.length || (journalEntry.entryScreenshot ? 1 : 0)}`);
             console.log(`   Exit screenshot: ${!!journalEntry.exitScreenshot}`);
@@ -3194,6 +3160,14 @@ class OrderManager {
             maeTime: order.maeTime || order.openTime, // Timestamp when MAE occurred
             highestPrice: order.highestPrice || order.openPrice,
             lowestPrice: order.lowestPrice || order.openPrice,
+            bar_close_r: Array.isArray(order.bar_close_r) ? order.bar_close_r.slice() : [],
+            bar_high_r: Array.isArray(order.bar_high_r) ? order.bar_high_r.slice() : [],
+            bar_low_r: Array.isArray(order.bar_low_r) ? order.bar_low_r.slice() : [],
+            post_exit_bar_close_r: Array.isArray(order.post_exit_bar_close_r) ? order.post_exit_bar_close_r.slice() : [],
+            post_exit_bar_high_r: Array.isArray(order.post_exit_bar_high_r) ? order.post_exit_bar_high_r.slice() : [],
+            post_exit_bar_low_r: Array.isArray(order.post_exit_bar_low_r) ? order.post_exit_bar_low_r.slice() : [],
+            mfe_r: Array.isArray(order.bar_high_r) && order.bar_high_r.length > 0 ? Math.max(...order.bar_high_r) : 0,
+            mae_r: Array.isArray(order.bar_low_r) && order.bar_low_r.length > 0 ? Math.max(...order.bar_low_r) : 0,
             
             // Position Details
             quantity: order.quantity,
@@ -3254,15 +3228,12 @@ class OrderManager {
             }
         }
         
-        // Add to journal (with duplicate check)
-        const tradeId = journalEntry.tradeId || journalEntry.id;
-        const existingIndex = this.tradeJournal.findIndex(t => (t.tradeId || t.id) === tradeId);
-        if (existingIndex !== -1) {
-            console.warn(`⚠️ Trade #${tradeId} already exists in journal at index ${existingIndex} - skipping duplicate`);
+        const upsert = this.upsertJournalEntry(journalEntry, { skipIfExists: true });
+        if (!upsert.inserted) {
+            console.warn(`⚠️ Trade #${journalEntry.tradeId || journalEntry.id} already exists in journal at index ${upsert.index} - skipping duplicate`);
             return;
         }
-        
-        this.tradeJournal.push(journalEntry);
+
         console.log(`📔 Trade #${order.id} saved to journal`);
         console.log('   📸 Entry screenshot:', !!journalEntry.entryScreenshot ? 'YES' : 'NO');
         console.log('   📸 Exit screenshot:', !!journalEntry.exitScreenshot ? 'YES' : 'NO');
@@ -3276,7 +3247,7 @@ class OrderManager {
         // Link tracking position to journal entry if it exists
         const trackingPosition = this.mfeMaeTrackingPositions.find(p => p.id === order.id);
         if (trackingPosition) {
-            trackingPosition.journalIndex = this.tradeJournal.length - 1;
+            trackingPosition.journalIndex = upsert.index;
             console.log(`🔗 Linked tracking position #${order.id} to journal index ${trackingPosition.journalIndex}`);
         }
         
@@ -3300,6 +3271,7 @@ class OrderManager {
         const headers = [
             'Trade ID',
             'Symbol / Pair',
+            'Ticker',
             'Direction',
             'Entry Time',
             'Exit Time',
@@ -3324,6 +3296,9 @@ class OrderManager {
             'Year',
             'Close Type',
             'Position Size (Lots)',
+            'Spread (pips) at Entry',
+            'Commission at Entry',
+            'Pip Value at Entry',
             'Pre-Trade Reason',
             'Pre-Trade Setup',
             'Pre-Trade Tags',
@@ -3336,6 +3311,7 @@ class OrderManager {
         const rows = this.tradeJournal.map(trade => [
             trade.tradeId || trade.id,
             trade.symbol || '',
+            trade.ticker || trade.symbol || '',
             trade.direction || trade.type,
             this.format24Hour(trade.entryTime || trade.openTime),
             this.format24Hour(trade.exitTime || trade.closeTime),
@@ -3359,7 +3335,10 @@ class OrderManager {
             trade.month || '',
             trade.year || '',
             trade.closeType || '',
-            trade.quantity.toFixed(2),
+            Number.isFinite(Number.parseFloat(trade.quantity)) ? Number.parseFloat(trade.quantity).toFixed(2) : '0.00',
+            Number.parseFloat(trade.spread_pips_at_entry ?? 0).toFixed(4),
+            Number.parseFloat(trade.commission_at_entry ?? 0).toFixed(4),
+            Number.parseFloat(trade.pip_value_at_entry ?? this.pipValuePerLot ?? 0).toFixed(4),
             trade.preTradeNotes?.reason || '',
             trade.preTradeNotes?.setup || '',
             trade.preTradeNotes?.tags || '',
@@ -10567,6 +10546,14 @@ class OrderManager {
                 mae: position.mae || null,
                 highestPrice: position.highestPrice || null,
                 lowestPrice: position.lowestPrice || null,
+                bar_close_r: Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [],
+                bar_high_r: Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [],
+                bar_low_r: Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [],
+                post_exit_bar_close_r: [],
+                post_exit_bar_high_r: [],
+                post_exit_bar_low_r: [],
+                mfe_r: Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0 ? Math.max(...position.bar_high_r) : 0,
+                mae_r: Array.isArray(position.bar_low_r) && position.bar_low_r.length > 0 ? Math.max(...position.bar_low_r) : 0,
                 rMultiple: position.riskAmount ? (pnl / position.riskAmount) : null,
                 riskAmount: position.riskAmount || 0,
                 riskPerTrade: position.riskAmount || 0,
@@ -10678,6 +10665,8 @@ class OrderManager {
                 completedTracking.push(position);
                 return;
             }
+
+            this._appendExcursionSnapshot(position, currentCandle, true);
             
             // Continue updating MFE/MAE (price levels)
             if (position.type === 'BUY') {
@@ -10718,6 +10707,14 @@ class OrderManager {
                 this.tradeJournal[journalIndex].maeTime = position.maeTime;
                 this.tradeJournal[journalIndex].highestPrice = position.highestPrice;
                 this.tradeJournal[journalIndex].lowestPrice = position.lowestPrice;
+                this.tradeJournal[journalIndex].bar_close_r = Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [];
+                this.tradeJournal[journalIndex].bar_high_r = Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [];
+                this.tradeJournal[journalIndex].bar_low_r = Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [];
+                this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
+                this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
+                this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
+                this.tradeJournal[journalIndex].mfe_r = Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0 ? Math.max(...position.bar_high_r) : (this.tradeJournal[journalIndex].mfe_r ?? 0);
+                this.tradeJournal[journalIndex].mae_r = Array.isArray(position.bar_low_r) && position.bar_low_r.length > 0 ? Math.max(...position.bar_low_r) : (this.tradeJournal[journalIndex].mae_r ?? 0);
                 
                 // Save updated journal
                 this.persistJournal();
@@ -11039,6 +11036,7 @@ class OrderManager {
         const positionsToClose = [];
         
         this.openPositions.forEach(position => {
+            this._appendExcursionSnapshot(position, currentCandle, false);
             if (position.type === 'BUY') {
                 const priceDiff = currentPrice - position.openPrice;
                 position.unrealizedPnL = this._calculatePositionPnL(position, currentPrice);
@@ -12035,14 +12033,12 @@ class OrderManager {
             
             position.pendingJournalEntry = journalEntry;
             
-            // Check for duplicate before adding
             const tradeId = journalEntry.tradeId || journalEntry.id;
             console.log(`📔 Checking for duplicate with tradeId: "${tradeId}" (type: ${typeof tradeId})`);
-            const existingIndex = this.tradeJournal.findIndex(t => (t.tradeId || t.id) === tradeId);
-            console.log(`📔 Existing index: ${existingIndex}, Journal size: ${this.tradeJournal.length}`);
+            const upsert = this.upsertJournalEntry(journalEntry, { skipIfExists: true });
+            console.log(`📔 Existing index: ${upsert.index}, Journal size: ${this.tradeJournal.length}`);
             
-            if (existingIndex === -1) {
-                this.tradeJournal.push(journalEntry);
+            if (upsert.inserted) {
                 console.log(`📔 ✅ Trade "${tradeId}" (position #${orderId}) saved to journal IMMEDIATELY`);
                 console.log(`📊 Journal now has ${this.tradeJournal.length} trades`);
                 
@@ -15013,6 +15009,8 @@ class OrderManager {
      * Update positions panel
      */
     updatePositionsPanel() {
+        if (this._isUpdatingPanels) return;
+        this._isUpdatingPanels = true;
         console.log('🔄 updatePositionsPanel() called');
         
         // Ensure data arrays are initialized
@@ -15411,26 +15409,24 @@ class OrderManager {
                 });
             }
             
-            // Add closed positions (from trade journal)
+            // Add closed positions (from canonical trade journal)
             if (this.tradeJournal && Array.isArray(this.tradeJournal)) {
                 this.tradeJournal.forEach(trade => {
-                    if (trade.status === 'closed') {
-                        allTrades.push({
-                            type: 'closed',
-                            id: trade.id,
-                            symbol: trade.symbol || 'USD',
-                            direction: trade.type,
-                            quantity: trade.quantity,
-                            orderType: 'MARKET',
-                            entryPrice: trade.openPrice,
-                            currentPrice: trade.closePrice,
-                            pnl: trade.realizedPnL || 0,
-                            stopLoss: trade.stopLoss,
-                            takeProfit: trade.takeProfit,
-                            time: trade.closeTime || trade.openTime,
-                            trade: trade
-                        });
-                    }
+                    allTrades.push({
+                        type: 'closed',
+                        id: trade.id || trade.tradeId,
+                        symbol: trade.symbol || trade.ticker || 'USD',
+                        direction: trade.direction || trade.type,
+                        quantity: trade.quantity,
+                        orderType: 'MARKET',
+                        entryPrice: trade.entryPrice || trade.openPrice,
+                        currentPrice: trade.exitPrice || trade.closePrice,
+                        pnl: Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0) || 0,
+                        stopLoss: trade.stopLoss,
+                        takeProfit: trade.takeProfit,
+                        time: trade.closeTime || trade.exitTime || trade.openTime || trade.entryTime,
+                        trade: trade
+                    });
                 });
             }
             
@@ -15445,7 +15441,7 @@ class OrderManager {
             if (pendingAllEl) pendingAllEl.textContent = this.pendingOrders ? this.pendingOrders.length : 0;
             if (openAllEl) openAllEl.textContent = this.openPositions ? this.openPositions.length : 0;
             if (closedAllEl) {
-                const closedCount = this.tradeJournal ? this.tradeJournal.filter(t => t.status === 'closed').length : 0;
+                const closedCount = this.tradeJournal ? this.tradeJournal.length : 0;
                 closedAllEl.textContent = closedCount;
             }
             if (balanceAllEl) balanceAllEl.textContent = `$${this.balance.toFixed(2)}`;
@@ -15602,6 +15598,7 @@ class OrderManager {
         
         // Update scaling checkbox availability when positions change
         this.updateScalingCheckboxAvailability();
+        this._isUpdatingPanels = false;
     }
     
     /**
