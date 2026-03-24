@@ -115,6 +115,15 @@
         .form-group label { display: block; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.4); margin-bottom: 5px; }
         .form-group label .required { color: #f87171; }
         .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="datetime-local"], .form-group input[type="date"], .form-group textarea, .form-group select { width: 100%; padding: 8px 11px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #e2e8f0; font-size: 13px; font-family: inherit; transition: border-color 0.15s, background 0.15s; -webkit-appearance: none; appearance: none; }
+        .form-group select option {
+            background: #111425;
+            color: #e2e8f0;
+        }
+        .form-group select option:checked,
+        .form-group select option:hover {
+            background: #2b67c1;
+            color: #ffffff;
+        }
         .form-group input::placeholder, .form-group textarea::placeholder { color: rgba(255,255,255,0.18); }
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: rgba(59,130,246,0.4); background: rgba(255,255,255,0.06); }
         .form-group textarea { resize: vertical; min-height: 60px; }

@@ -499,6 +499,14 @@
             border: none;
             border-radius: 16px;
         }
+
+        /* Keep standard backtest modal compact and readable */
+        #backtestingIframeModal .iframe-modal-content {
+            width: min(820px, 92vw);
+            height: min(88vh, 860px);
+            max-width: 92vw;
+            max-height: 88vh;
+        }
     </style>
 </head>
 <body>
