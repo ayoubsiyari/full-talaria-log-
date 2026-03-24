@@ -4374,6 +4374,23 @@ class OrderManager {
                     background: rgba(var(--op-accent-rgb), 0.22);
                     border-color: rgba(var(--op-accent-rgb), 0.7);
                 }
+                .order-utility-btn {
+                    width: 100%;
+                    padding: 9px 12px;
+                    border-radius: 8px;
+                    border: 1px solid var(--op-border);
+                    background: rgba(0,0,0,0.14);
+                    color: var(--op-text);
+                    font-size: 12px;
+                    font-weight: 700;
+                    letter-spacing: 0.02em;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                }
+                .order-utility-btn:hover {
+                    border-color: rgba(var(--op-accent-rgb), 0.7);
+                    background: var(--op-soft-accent);
+                }
 
                 /* ── MISC ────────────────────────────────────────────────────────── */
                 .is-hidden { display: none !important; }
@@ -4739,6 +4756,12 @@ class OrderManager {
                             <p id="tpDistributionHint" class="order-hint" style="font-size: 10px; margin-top: 8px;">TPs will be evenly distributed. Each will close an equal $ amount.</p>
                         </div>
                     </div>
+                </div>
+
+                <div class="order-section" style="margin-top: 8px; margin-bottom: 6px;">
+                    <button type="button" id="mfeMaeSettingsBtn" class="order-utility-btn">
+                        ⚙ MFE/MAE Post-Exit Settings
+                    </button>
                 </div>
 
                 <!-- Position Scaling Control -->
