@@ -286,6 +286,77 @@
                     </div>
 
                     <div class="form-row">
+                        <div class="form-group">
+                            <label>Account Currency</label>
+                            <select id="accountCurrency" name="accountCurrency">
+                                <option value="USD" selected>USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Leverage</label>
+                            <select id="accountLeverage" name="accountLeverage">
+                                <option value="1:1">1:1</option>
+                                <option value="1:10">1:10</option>
+                                <option value="1:30" selected>1:30</option>
+                                <option value="1:50">1:50</option>
+                                <option value="1:100">1:100</option>
+                                <option value="1:200">1:200</option>
+                                <option value="1:500">1:500</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Asset Class</label>
+                            <select id="assetClass" name="assetClass">
+                                <option value="Forex" selected>Forex</option>
+                                <option value="Futures">Futures</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Margin Call Level (%)</label>
+                            <input type="number" id="marginCallLevel" name="marginCallLevel" min="1" step="1" value="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Stop Out Level (%)</label>
+                            <input type="number" id="stopOutLevel" name="stopOutLevel" min="1" step="1" value="50">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Risk Per Trade (%)</label>
+                            <input type="number" id="maxRiskPerTradePct" name="maxRiskPerTradePct" min="0" step="0.1" placeholder="Optional">
+                        </div>
+                    </div>
+
+                    <div class="form-card form-card-full">
+                        <h3>Instrument Table (Max 10)</h3>
+                        <div class="helper-text" style="margin-bottom: 10px;">
+                            One row per selected dataset. Configure spread/commission per instrument.
+                        </div>
+                        <div style="overflow-x: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Ticker</th>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Spread (pips)</th>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Commission / lot / side</th>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Pip Size</th>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Pip Value / lot</th>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Contract Size</th>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Min Lot</th>
+                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Lot Step</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="instrumentTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="instrumentTableHint" class="helper-text" style="margin-top:8px;">
+                            Select datasets to populate instrument rows.
+                        </div>
+                    </div>
+
                         <!-- Default Risk Type -->
                         <div class="form-group">
                             <label>Risk Type</label>
@@ -306,7 +377,7 @@
 
                         <!-- Start Balance -->
                         <div class="form-group">
-                            <label>Start balance (Leverage is 1:1) <span class="required">*</span></label>
+                            <label>Start Balance <span class="required">*</span></label>
                             <input type="number" id="startBalance" name="startBalance" placeholder="$ 0" min="0" step="1000" required value="10000">
                             <div class="preset-buttons">
                                 <button type="button" class="preset-btn" data-value="5000">5K</button>
@@ -916,6 +987,10 @@
         
         // Toggle file selection
         function toggleFileSelection(fileId, fileName) {
+            if (selectedFilesArray.length >= 10 && selectedFilesArray.findIndex(f => f.id === fileId) === -1) {
+                alert('Maximum 10 instruments per session.');
+                return;
+            }
             const index = selectedFilesArray.findIndex(f => f.id === fileId);
             if (index === -1) {
                 selectedFilesArray.push({ id: fileId, name: fileName });
@@ -960,6 +1035,70 @@
             if (selectedFilesArray.length > 0) {
                 loadDateRangeFromFile(selectedFilesArray[0].id);
             }
+            rebuildInstrumentTable();
+        }
+
+        function defaultInstrumentConfigFor(file) {
+            const ticker = cleanPairName(file.name || '').replace('/', '');
+            const isJPY = ticker.endsWith('JPY');
+            return {
+                ticker: ticker || 'UNKNOWN',
+                fileId: file.id,
+                fileName: file.name,
+                spread_pips: 1.0,
+                commission_per_lot_per_side: 3.5,
+                pip_size: isJPY ? 0.01 : 0.0001,
+                pip_value_per_lot: isJPY ? 7 : 10,
+                contract_size: 100000,
+                min_lot_size: 0.01,
+                lot_step: 0.01
+            };
+        }
+
+        function rebuildInstrumentTable() {
+            const body = document.getElementById('instrumentTableBody');
+            const hint = document.getElementById('instrumentTableHint');
+            if (!body) return;
+            if (selectedFilesArray.length === 0) {
+                body.innerHTML = '';
+                if (hint) hint.textContent = 'Select datasets to populate instrument rows.';
+                return;
+            }
+            if (hint) hint.textContent = `${selectedFilesArray.length} instrument(s) selected.`;
+            body.innerHTML = selectedFilesArray.map((file, idx) => {
+                const d = defaultInstrumentConfigFor(file);
+                return `
+                <tr>
+                    <td style="padding:8px;"><input id="inst_${idx}_ticker" value="${d.ticker}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input type="number" step="0.1" min="0" id="inst_${idx}_spread" value="${d.spread_pips}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input type="number" step="0.01" min="0" id="inst_${idx}_commission" value="${d.commission_per_lot_per_side}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input type="number" step="0.0001" min="0.00001" id="inst_${idx}_pipSize" value="${d.pip_size}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input type="number" step="0.01" min="0" id="inst_${idx}_pipValue" value="${d.pip_value_per_lot}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input type="number" step="1" min="1" id="inst_${idx}_contract" value="${d.contract_size}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input type="number" step="0.01" min="0.001" id="inst_${idx}_minLot" value="${d.min_lot_size}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input type="number" step="0.01" min="0.001" id="inst_${idx}_lotStep" value="${d.lot_step}" style="width:100%;"></td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        function collectInstrumentConfigs() {
+            const rows = selectedFilesArray.map((file, idx) => {
+                const ticker = String(document.getElementById(`inst_${idx}_ticker`)?.value || '').toUpperCase().replace('/', '');
+                return {
+                    ticker: ticker || defaultInstrumentConfigFor(file).ticker,
+                    fileId: file.id,
+                    fileName: file.name,
+                    spread_pips: parseFloat(document.getElementById(`inst_${idx}_spread`)?.value || 0),
+                    commission_per_lot_per_side: parseFloat(document.getElementById(`inst_${idx}_commission`)?.value || 0),
+                    pip_size: parseFloat(document.getElementById(`inst_${idx}_pipSize`)?.value || 0.0001),
+                    pip_value_per_lot: parseFloat(document.getElementById(`inst_${idx}_pipValue`)?.value || 10),
+                    contract_size: parseFloat(document.getElementById(`inst_${idx}_contract`)?.value || 100000),
+                    min_lot_size: parseFloat(document.getElementById(`inst_${idx}_minLot`)?.value || 0.01),
+                    lot_step: parseFloat(document.getElementById(`inst_${idx}_lotStep`)?.value || 0.01)
+                };
+            });
+            return rows;
         }
         
         // Update file list checkboxes
@@ -1509,6 +1648,15 @@
                 const primaryFile = selectedFilesArray[0];
                 const selectedFileId = primaryFile.id;
                 const selectedFileName = primaryFile.name;
+                const instrumentRows = collectInstrumentConfigs();
+                if (instrumentRows.length > 10) {
+                    alert('Maximum 10 instruments per session.');
+                    return;
+                }
+                if (instrumentRows.some(row => !row.fileId)) {
+                    alert('Missing data loaded for one or more instruments. Please refresh selected datasets.');
+                    return;
+                }
 
                 // Validate at least one market type is selected
                 const selectedMarkets = document.querySelectorAll('.market-checkbox:checked');
@@ -1534,10 +1682,21 @@
                     fileName: selectedFileName,
                     // Store all selected files for symbol switching
                     files: selectedFilesArray,
+                    instruments: instrumentRows.reduce((acc, row) => {
+                        acc[row.ticker] = row;
+                        return acc;
+                    }, {}),
+                    symbols: instrumentRows.map(row => ({ symbolName: row.ticker, fileId: row.fileId })),
                     activeFileIndex: 0,
                     startDate: document.getElementById('startDate').value,
                     endDate: document.getElementById('endDate').value,
                     startBalance: document.getElementById('startBalance').value,
+                    account_currency: document.getElementById('accountCurrency').value,
+                    leverage: document.getElementById('accountLeverage').value,
+                    asset_class: document.getElementById('assetClass').value,
+                    margin_call_level: parseFloat(document.getElementById('marginCallLevel').value || 100),
+                    stop_out_level: parseFloat(document.getElementById('stopOutLevel').value || 50),
+                    max_risk_per_trade_pct: parseFloat(document.getElementById('maxRiskPerTradePct').value || 0) || null,
                     
                     // Trading Settings
                     marketType: Array.from(document.querySelectorAll('.market-checkbox:checked')).map(cb => cb.value),
