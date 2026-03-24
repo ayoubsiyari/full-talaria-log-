@@ -748,7 +748,7 @@ export default function BacktestAnalyticsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {playbookRows.map((r) => (
+                    {playbookRows.map((r: any) => (
                       <tr key={r.setup} className="border-t border-white/5">
                         <td className="px-4 py-2">{r.setup}</td>
                         <td className="px-4 py-2 text-right">{r.trades}</td>
