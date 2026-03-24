@@ -108,6 +108,7 @@ export default function BacktestAnalyticsPage() {
   const [simTpR, setSimTpR] = useState(1.5);
   const [simSlR, setSimSlR] = useState(1.0);
   const [heatmapPair, setHeatmapPair] = useState("ALL");
+  const [heatmapMetric, setHeatmapMetric] = useState<"USD" | "R">("USD");
   const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
     key: "netPnl",
     dir: "desc",
@@ -429,7 +430,7 @@ export default function BacktestAnalyticsPage() {
   const heatmapData = useMemo(() => {
     const tpGrid = [0.5, 1, 1.5, 2, 2.5, 3];
     const slGrid = [0.5, 1, 1.5, 2, 2.5, 3];
-    const rows: Array<{ tp: number; sl: number; expectancy: number; trades: number }> = [];
+    const rows: Array<{ tp: number; sl: number; expectancyUsd: number; expectancyR: number; trades: number }> = [];
 
     for (const tp of tpGrid) {
       for (const sl of slGrid) {
@@ -448,16 +449,59 @@ export default function BacktestAnalyticsPage() {
           else if (!hitsTp && hitsSl) simR = -sl;
           else if (hitsTp && hitsSl) simR = actualR >= 0 ? tp : -sl;
 
-          return simR * riskUsd - (spreadCost + commissionCost);
+          const simNetUsd = simR * riskUsd - (spreadCost + commissionCost);
+          const costR = riskUsd > 0 ? (spreadCost + commissionCost) / riskUsd : 0;
+          const simNetR = simR - costR;
+          return { simNetUsd, simNetR };
         });
-        const expectancy = sims.length > 0 ? sims.reduce((s, v) => s + v, 0) / sims.length : 0;
-        rows.push({ tp, sl, expectancy, trades: sims.length });
+        const expectancyUsd =
+          sims.length > 0 ? sims.reduce((s, v) => s + v.simNetUsd, 0) / sims.length : 0;
+        const expectancyR =
+          sims.length > 0 ? sims.reduce((s, v) => s + v.simNetR, 0) / sims.length : 0;
+        rows.push({ tp, sl, expectancyUsd, expectancyR, trades: sims.length });
       }
     }
-    return rows.sort((a, b) => b.expectancy - a.expectancy);
-  }, [heatmapTrades]);
+    return rows.sort((a, b) =>
+      heatmapMetric === "USD"
+        ? b.expectancyUsd - a.expectancyUsd
+        : b.expectancyR - a.expectancyR
+    );
+  }, [heatmapTrades, heatmapMetric]);
 
   const bestHeatmap = heatmapData[0];
+  const heatmapValueRange = useMemo(() => {
+    if (heatmapData.length === 0) return { min: 0, max: 0, absMax: 1 };
+    const vals = heatmapData.map((h) =>
+      heatmapMetric === "USD" ? h.expectancyUsd : h.expectancyR
+    );
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const absMax = Math.max(Math.abs(min), Math.abs(max), 1e-9);
+    return { min, max, absMax };
+  }, [heatmapData]);
+
+  const heatmapTpLevels = useMemo(
+    () => Array.from(new Set(heatmapData.map((h) => h.tp))).sort((a, b) => a - b),
+    [heatmapData]
+  );
+  const heatmapSlLevels = useMemo(
+    () => Array.from(new Set(heatmapData.map((h) => h.sl))).sort((a, b) => a - b),
+    [heatmapData]
+  );
+  const heatmapLookup = useMemo(() => {
+    const m = new Map<string, number>();
+    heatmapData.forEach((h) =>
+      m.set(`${h.sl}-${h.tp}`, heatmapMetric === "USD" ? h.expectancyUsd : h.expectancyR)
+    );
+    return m;
+  }, [heatmapData, heatmapMetric]);
+
+  const heatColor = (value: number): string => {
+    const ratio = Math.min(1, Math.abs(value) / heatmapValueRange.absMax);
+    const alpha = 0.12 + ratio * 0.58;
+    if (value >= 0) return `rgba(34,197,94,${alpha.toFixed(3)})`;
+    return `rgba(239,68,68,${alpha.toFixed(3)})`;
+  };
 
   const filterSelectClass =
     "rounded-lg border px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/60";
@@ -819,41 +863,115 @@ export default function BacktestAnalyticsPage() {
             <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="font-semibold">Per-Instrument Expectancy Heatmap (TP/SL)</div>
-                <label className="text-sm text-white/70">
-                  Run heatmap for:
-                  <select
-                    value={heatmapPair}
-                    onChange={(e) => setHeatmapPair(e.target.value)}
-                    className="ml-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
-                  >
-                    <option value="ALL">All</option>
-                    {pairOptions.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="text-sm text-white/70">
+                    Run heatmap for:
+                    <select
+                      value={heatmapPair}
+                      onChange={(e) => setHeatmapPair(e.target.value)}
+                      className="ml-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+                    >
+                      <option value="ALL">All</option>
+                      {pairOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setHeatmapMetric("USD")}
+                      className={`px-3 py-2 text-sm ${heatmapMetric === "USD" ? "bg-blue-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"}`}
+                    >
+                      Expectancy ($)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHeatmapMetric("R")}
+                      className={`px-3 py-2 text-sm border-l border-white/10 ${heatmapMetric === "R" ? "bg-blue-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"}`}
+                    >
+                      Expectancy (R)
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="text-xs text-white/50">
                 Scope: {heatmapPair === "ALL" ? "All Instruments (blended)" : heatmapPair} | Trades: {heatmapTrades.length}
-                {bestHeatmap ? ` | Best: TP ${bestHeatmap.tp.toFixed(1)}R / SL ${bestHeatmap.sl.toFixed(1)}R (Expectancy ${fmtMoney(bestHeatmap.expectancy)})` : ""}
+                {bestHeatmap
+                  ? ` | Best: TP ${bestHeatmap.tp.toFixed(1)}R / SL ${bestHeatmap.sl.toFixed(1)}R (Expectancy ${
+                      heatmapMetric === "USD"
+                        ? fmtMoney(bestHeatmap.expectancyUsd)
+                        : `${bestHeatmap.expectancyR.toFixed(2)}R`
+                    })`
+                  : ""}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                {heatmapData.slice(0, 24).map((c) => {
-                  const positive = c.expectancy >= 0;
-                  return (
-                    <div
-                      key={`${c.tp}-${c.sl}`}
-                      className={`rounded-lg border p-2 text-xs ${positive ? "border-green-500/30 bg-green-500/10" : "border-red-500/30 bg-red-500/10"}`}
-                    >
-                      <div className="text-white/70">TP {c.tp.toFixed(1)}R / SL {c.sl.toFixed(1)}R</div>
-                      <div className={`font-semibold ${positive ? "text-green-400" : "text-red-400"}`}>{fmtMoney(c.expectancy)}</div>
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto rounded-xl border border-white/10">
+                <table className="w-full min-w-[620px] border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-white/5">
+                      <th className="px-3 py-2 text-left text-white/70 border-b border-white/10">SL \\ TP</th>
+                      {heatmapTpLevels.map((tp) => (
+                        <th key={`tp-${tp}`} className="px-3 py-2 text-center text-white/70 border-b border-white/10">
+                          {tp.toFixed(1)}R
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {heatmapSlLevels.map((sl) => (
+                      <tr key={`sl-row-${sl}`} className="border-t border-white/10">
+                        <td className="px-3 py-2 text-white/70 bg-white/5 font-medium">{sl.toFixed(1)}R</td>
+                        {heatmapTpLevels.map((tp) => {
+                          const value = heatmapLookup.get(`${sl}-${tp}`) ?? 0;
+                          const isBest = bestHeatmap && bestHeatmap.tp === tp && bestHeatmap.sl === sl;
+                          return (
+                            <td
+                              key={`cell-${sl}-${tp}`}
+                              className="px-2 py-2 text-center border-l border-white/10"
+                              style={{
+                                background: heatColor(value),
+                                boxShadow: isBest ? "inset 0 0 0 2px rgba(250,204,21,0.9)" : undefined,
+                              }}
+                              title={`TP ${tp.toFixed(1)}R / SL ${sl.toFixed(1)}R => ${
+                                heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`
+                              } expectancy`}
+                            >
+                              <span className={value >= 0 ? "text-green-200 font-semibold" : "text-red-200 font-semibold"}>
+                                {heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`}
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-white/60">
+                <span>Intensity scale:</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(239,68,68,0.6)" }} />
+                  Loss
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(148,163,184,0.25)" }} />
+                  Near zero
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(34,197,94,0.6)" }} />
+                  Profit
+                </span>
+                <span className="ml-auto">
+                  Range: {heatmapMetric === "USD"
+                    ? `${fmtMoney(heatmapValueRange.min)} to ${fmtMoney(heatmapValueRange.max)}`
+                    : `${heatmapValueRange.min.toFixed(2)}R to ${heatmapValueRange.max.toFixed(2)}R`}
+                </span>
               </div>
             </div>
           </>
