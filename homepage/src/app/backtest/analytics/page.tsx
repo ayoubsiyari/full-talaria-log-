@@ -581,7 +581,7 @@ export default function BacktestAnalyticsPage() {
             className={filterSelectClass}
             style={filterSelectStyle}
           >
-            {sessions.map((s) => (
+            {sessions.map((s: any) => (
               <option key={s.id} value={String(s.id)} style={filterOptionStyle}>
                 {s.name} (#{s.id})
               </option>
@@ -594,7 +594,7 @@ export default function BacktestAnalyticsPage() {
             style={filterSelectStyle}
           >
             <option value="ALL" style={filterOptionStyle}>All Instruments</option>
-            {pairOptions.map((p) => (
+            {pairOptions.map((p: any) => (
               <option key={p} value={p} style={filterOptionStyle}>
                 {p}
               </option>
@@ -607,7 +607,7 @@ export default function BacktestAnalyticsPage() {
             style={filterSelectStyle}
           >
             <option value="ALL" style={filterOptionStyle}>All Playbooks</option>
-            {playbookOptions.map((p) => (
+            {playbookOptions.map((p: any) => (
               <option key={p} value={p} style={filterOptionStyle}>
                 {p}
               </option>
@@ -672,7 +672,7 @@ export default function BacktestAnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedPerPair.map((r) => (
+                  {sortedPerPair.map((r: any) => (
                     <tr key={r.ticker} className="border-t border-white/5">
                       <td className="px-4 py-2 font-medium">{r.ticker}</td>
                       <td className="px-4 py-2 text-right">{r.trades}</td>
@@ -726,7 +726,7 @@ export default function BacktestAnalyticsPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-3 mt-2 text-xs text-white/60">
-                  {pairOptions.map((p) => (
+                  {pairOptions.map((p: any) => (
                     <span key={p} className="inline-flex items-center gap-1.5">
                       <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: tickerColor.get(p) || "#3b82f6" }} />
                       {p}
@@ -774,7 +774,7 @@ export default function BacktestAnalyticsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {recentTrades.map((t, idx) => (
+                    {recentTrades.map((t: any, idx: number) => (
                       <tr key={`${t.tradeId || t.id || idx}`} className="border-t border-white/5">
                         <td className="px-4 py-2">{t.ticker}</td>
                         <td className="px-4 py-2">{t.direction || "-"}</td>
@@ -806,7 +806,7 @@ export default function BacktestAnalyticsPage() {
                           contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
                         />
                         <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                          {maeDistribution.map((entry, idx) => (
+                          {maeDistribution.map((entry: any, idx: number) => (
                             <Cell key={`mae-${idx}`} fill={entry.from < 0 ? "#ef4444" : "#f59e0b"} />
                           ))}
                         </Bar>
@@ -835,7 +835,7 @@ export default function BacktestAnalyticsPage() {
                           contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
                         />
                         <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                          {mfeDistribution.map((entry, idx) => (
+                          {mfeDistribution.map((entry: any, idx: number) => (
                             <Cell key={`mfe-${idx}`} fill={entry.to > 0 ? "#22c55e" : "#3b82f6"} />
                           ))}
                         </Bar>
@@ -936,7 +936,7 @@ export default function BacktestAnalyticsPage() {
                       className="ml-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
                     >
                       <option value="ALL">All</option>
-                      {pairOptions.map((p) => (
+                      {pairOptions.map((p: any) => (
                         <option key={p} value={p}>
                           {p}
                         </option>
@@ -997,7 +997,7 @@ export default function BacktestAnalyticsPage() {
                         SL \ TP
                       </text>
 
-                      {heatmapTpLevels.map((tp, c) => {
+                      {heatmapTpLevels.map((tp: any, c: number) => {
                         const x = leftPad + c * cellW + cellW / 2;
                         return (
                           <text
@@ -1014,7 +1014,7 @@ export default function BacktestAnalyticsPage() {
                         );
                       })}
 
-                      {heatmapSlLevels.map((sl, r) => {
+                      {heatmapSlLevels.map((sl: any, r: number) => {
                         const y = topPad + r * cellH + cellH / 2 + 4;
                         return (
                           <text
@@ -1031,8 +1031,8 @@ export default function BacktestAnalyticsPage() {
                         );
                       })}
 
-                      {heatmapSlLevels.flatMap((sl, r) =>
-                        heatmapTpLevels.map((tp, c) => {
+                      {heatmapSlLevels.flatMap((sl: any, r: number) =>
+                        heatmapTpLevels.map((tp: any, c: number) => {
                           const value = heatmapLookup.get(`${sl}-${tp}`) ?? 0;
                           const isBest = Boolean(bestHeatmap && bestHeatmapTp === tp && bestHeatmapSl === sl);
                           const x = leftPad + c * cellW;
