@@ -4243,6 +4243,138 @@ class OrderManager {
                 }
                 .order-submit-btn.sell-mode:hover { box-shadow: 0 3px 18px rgba(220,38,38,0.45); }
 
+                /* ── PROTECTION / MULTI-TP PROFESSIONAL THEME STYLES ─────────────── */
+                .order-card-soft {
+                    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.2) 100%), var(--op-surface);
+                    border: 1px solid var(--op-border);
+                    border-radius: 10px;
+                    padding: 12px;
+                }
+                .order-info-card {
+                    background: rgba(var(--op-accent-rgb), 0.1);
+                    border: 1px solid rgba(var(--op-accent-rgb), 0.35);
+                    border-radius: 10px;
+                    padding: 10px;
+                    margin-bottom: 12px;
+                }
+                .order-info-title {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 6px;
+                    color: var(--op-accent);
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+                .order-info-body {
+                    font-size: 11px;
+                    color: var(--op-text-muted);
+                    line-height: 1.45;
+                }
+                .order-protection-toolbar {
+                    display: flex;
+                    gap: 8px;
+                    margin-bottom: 14px;
+                }
+                .order-btn-icon {
+                    min-width: 38px;
+                    height: 34px;
+                    border-radius: 8px;
+                    border: 1px solid var(--op-border);
+                    background: rgba(0,0,0,0.14);
+                    color: var(--op-text);
+                    font-size: 14px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                }
+                .order-btn-icon:hover {
+                    border-color: rgba(var(--op-accent-rgb), 0.7);
+                    background: var(--op-soft-accent);
+                }
+                .order-btn-icon--accent {
+                    background: rgba(var(--op-accent-rgb), 0.16);
+                    border-color: rgba(var(--op-accent-rgb), 0.45);
+                    color: var(--op-accent);
+                }
+                .order-select {
+                    flex: 1;
+                    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.24) 100%), var(--op-surface);
+                    border: 1px solid var(--op-border);
+                    border-radius: 8px;
+                    padding: 6px 10px;
+                    font-size: 12px;
+                    color: var(--op-text);
+                    cursor: pointer;
+                    outline: none;
+                }
+                .order-stage-card { margin-bottom: 12px; }
+                .order-stage-head {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 10px;
+                }
+                .order-stage-title {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    color: var(--op-text);
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+                .order-stage-badge {
+                    font-size: 9px;
+                    font-weight: 800;
+                    letter-spacing: 0.04em;
+                    color: #fff;
+                    background: rgba(var(--op-accent-rgb), 0.9);
+                    border-radius: 999px;
+                    padding: 3px 8px;
+                }
+                .order-field-stack { margin-bottom: 10px; }
+                .order-note {
+                    font-size: 10px;
+                    color: var(--op-text-muted);
+                    line-height: 1.35;
+                    margin-top: 5px;
+                }
+                .order-status-card {
+                    margin-top: 8px;
+                    padding: 8px 10px;
+                    border-radius: 8px;
+                    border: 1px solid var(--op-border);
+                    background: rgba(0,0,0,0.12);
+                    display: none;
+                }
+                .order-status-title {
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: var(--op-text);
+                }
+                .order-status-sub {
+                    font-size: 10px;
+                    color: var(--op-text-muted);
+                    margin-top: 2px;
+                }
+                .order-inline-action {
+                    margin-left: 8px;
+                    padding: 6px 12px;
+                    border-radius: 8px;
+                    border: 1px solid rgba(var(--op-accent-rgb), 0.45);
+                    background: rgba(var(--op-accent-rgb), 0.15);
+                    color: var(--op-accent);
+                    font-size: 11px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    transition: all 0.15s ease;
+                }
+                .order-inline-action:hover {
+                    background: rgba(var(--op-accent-rgb), 0.22);
+                    border-color: rgba(var(--op-accent-rgb), 0.7);
+                }
+
                 /* ── MISC ────────────────────────────────────────────────────────── */
                 .is-hidden { display: none !important; }
             `;
@@ -4457,12 +4589,12 @@ class OrderManager {
                     </button>
                     <div class="order-collapse__content">
                         <!-- Info Box -->
-                        <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 10px; margin-bottom: 12px;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <div class="order-info-card">
+                            <div class="order-info-title">
                                 <span style="font-size: 16px;">ℹ️</span>
-                                <span style="font-size: 11px; font-weight: 600; color: #3b82f6;">Two-Stage Protection</span>
+                                <span>Two-Stage Protection</span>
                             </div>
-                            <div style="font-size: 10px; color: #9ca3af; line-height: 1.4;">
+                            <div class="order-info-body">
                                 <div style="margin-bottom: 4px;">1️⃣ <strong>Breakeven</strong>: Moves SL to entry (risk-free)</div>
                                 <div>2️⃣ <strong>Trailing</strong>: Locks in profit as price moves</div>
                             </div>
@@ -4470,27 +4602,27 @@ class OrderManager {
 
                         <!-- Custom Protection Settings -->
                         <label class="order-label" style="font-size: 11px; margin-bottom: 8px;">My Protection Settings</label>
-                        <div style="display: flex; gap: 6px; margin-bottom: 16px;">
-                            <button id="createNewProtectionSetting" type="button" style="padding: 6px 12px; font-size: 16px; background: rgba(124, 58, 237, 0.2); border: 1px solid rgba(124, 58, 237, 0.4); color: #a78bfa; border-radius: 4px; cursor: pointer; line-height: 1; font-weight: 700;">
+                        <div class="order-protection-toolbar">
+                            <button id="createNewProtectionSetting" type="button" class="order-btn-icon order-btn-icon--accent" title="Create new protection preset">
                                 +
                             </button>
-                            <select id="savedProtectionSettings" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px 8px; font-size: 10px; color: #fff; cursor: pointer;">
+                            <select id="savedProtectionSettings" class="order-select">
                                 <option value="">-- Select Saved Setting --</option>
                             </select>
-                            <button id="loadProtectionSetting" type="button" style="padding: 6px 12px; font-size: 10px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #3b82f6; border-radius: 4px; cursor: pointer; white-space: nowrap;">
+                            <button id="loadProtectionSetting" type="button" class="order-btn-icon" title="Load selected preset">
                                 📥
                             </button>
-                            <button id="deleteProtectionSetting" type="button" style="padding: 6px 12px; font-size: 10px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 4px; cursor: pointer; white-space: nowrap;">
+                            <button id="deleteProtectionSetting" type="button" class="order-btn-icon" title="Delete selected preset">
                                 🗑️
                             </button>
                         </div>
 
                         <!-- Stage 1: Breakeven -->
-                        <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                                <div style="display: flex; align-items: center; gap: 6px;">
-                                    <span style="background: #22c55e; color: #000; font-weight: 700; font-size: 9px; padding: 2px 6px; border-radius: 3px;">STAGE 1</span>
-                                    <span style="font-size: 11px; font-weight: 600; color: #fff;">Breakeven</span>
+                        <div class="order-card-soft order-stage-card">
+                            <div class="order-stage-head">
+                                <div class="order-stage-title">
+                                    <span class="order-stage-badge">STAGE 1</span>
+                                    <span>Breakeven</span>
                                 </div>
                                 <label class="toggle-switch" style="transform: scale(0.8);">
                                     <input type="checkbox" id="autoBreakevenToggle">
@@ -4500,8 +4632,8 @@ class OrderManager {
                             </div>
 
                             <div id="breakevenSettings" class="is-hidden">
-                                <label class="order-label" style="font-size: 10px; margin-bottom: 6px; color: #9ca3af;">Trigger at</label>
-                                <div class="order-button-group order-button-group--inline" style="margin-bottom: 8px;">
+                                <label class="order-label order-field-stack" style="font-size: 10px; margin-bottom: 6px;">Trigger at</label>
+                                <div class="order-button-group order-button-group--inline order-field-stack" style="margin-bottom: 8px;">
                                     <button class="breakeven-mode-tab active" type="button" data-mode="pips" style="font-size: 10px;">Pips</button>
                                     <button class="breakeven-mode-tab" type="button" data-mode="amount" style="font-size: 10px;">Amount $</button>
                                 </div>
@@ -4516,23 +4648,23 @@ class OrderManager {
                                     <input type="number" id="breakevenAmount" value="50" min="1" step="1" class="order-input order-input--compact">
                                 </div>
 
-                                <label class="order-label" style="font-size: 10px; margin-top: 12px; margin-bottom: 6px; color: #9ca3af;">Move SL to Entry +</label>
+                                <label class="order-label" style="font-size: 10px; margin-top: 12px; margin-bottom: 6px;">Move SL to Entry +</label>
                                 <div class="order-input-wrapper">
                                     <input type="number" id="breakevenPipOffset" value="0" min="-50" max="50" step="0.1" class="order-input order-input--compact">
                                     <span class="order-input-suffix">Pips</span>
                                 </div>
-                                <div style="font-size: 9px; color: #6b7280; margin-top: 4px; line-height: 1.3;">
+                                <div class="order-note">
                                     Tip: Use +2 for buffer above entry, 0 for exact entry, -2 for below entry
                                 </div>
                             </div>
                         </div>
 
                         <!-- Stage 2: Trailing SL -->
-                        <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 12px;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                                <div style="display: flex; align-items: center; gap: 6px;">
-                                    <span style="background: #3b82f6; color: #fff; font-weight: 700; font-size: 9px; padding: 2px 6px; border-radius: 3px;">STAGE 2</span>
-                                    <span style="font-size: 11px; font-weight: 600; color: #fff;">Trailing Stop</span>
+                        <div class="order-card-soft">
+                            <div class="order-stage-head">
+                                <div class="order-stage-title">
+                                    <span class="order-stage-badge">STAGE 2</span>
+                                    <span>Trailing Stop</span>
                                 </div>
                                 <label class="toggle-switch" style="transform: scale(0.8);">
                                     <input type="checkbox" id="trailingSLToggle">
@@ -4564,12 +4696,12 @@ class OrderManager {
                                 <span class="order-input-suffix">Pips</span>
                             </div>
                             
-                            <div id="trailingStatus" style="margin-top: 8px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 4px; border-left: 3px solid #787b86; display: none;">
+                            <div id="trailingStatus" class="order-status-card">
                                 <div style="display: flex; align-items: center; gap: 8px;">
                                     <span style="font-size: 16px;">⏳</span>
                                     <div style="flex: 1;">
-                                        <div style="font-size: 11px; font-weight: 600; color: #fff;">Waiting for Activation</div>
-                                        <div id="trailingStatusDetails" style="font-size: 10px; color: #787b86; margin-top: 2px;">Reach +10 pips to activate</div>
+                                        <div class="order-status-title">Waiting for Activation</div>
+                                        <div id="trailingStatusDetails" class="order-status-sub">Reach +10 pips to activate</div>
                                     </div>
                                 </div>
                             </div>
@@ -4599,7 +4731,7 @@ class OrderManager {
                             <label class="order-label" style="font-size: 11px; margin-bottom: 6px;">Number of TP targets</label>
                             <div class="order-input-wrapper" style="margin-bottom: 12px;">
                                 <input type="number" id="numTPTargets" value="2" min="2" max="10" step="1" class="order-input order-input--compact" style="text-align: center;">
-                                <button type="button" id="recalculateTPTargets" style="padding: 5px 12px; margin-left: 8px; background: rgba(124, 58, 237, 0.2); border: 1px solid rgba(124, 58, 237, 0.4); border-radius: 4px; color: #a78bfa; font-size: 11px; cursor: pointer; font-weight: 500;">
+                                <button type="button" id="recalculateTPTargets" class="order-inline-action">
                                     Auto-Calculate
                                 </button>
                             </div>
