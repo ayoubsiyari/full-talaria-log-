@@ -518,6 +518,7 @@ class Chart {
             this.setupCSVLoader();
             
             this.setupFileSelector();
+            this.setupSymbolSearchSwitcher();
             
             this.setupKeyboardShortcuts();
             
@@ -5554,6 +5555,130 @@ class Chart {
             this.currentFileId = fileId;
             await this.loadFileFromServer(fileId);
         });
+    }
+
+    setupSymbolSearchSwitcher() {
+        const group = document.getElementById('symbolSearchGroup');
+        if (!group) return;
+        if (this._symbolSwitcherSetup) return;
+        this._symbolSwitcherSetup = true;
+
+        let dropdown = group.querySelector('.symbol-switcher-dropdown');
+        if (!dropdown) {
+            dropdown = document.createElement('div');
+            dropdown.className = 'symbol-switcher-dropdown';
+            dropdown.id = 'symbolSwitcherDropdown';
+            group.appendChild(dropdown);
+        }
+
+        const closeDropdown = () => {
+            dropdown.classList.remove('open');
+        };
+
+        group.addEventListener('click', (event) => {
+            const plusBtn = event.target.closest('#symbolPlusBtn');
+            if (plusBtn) return;
+            event.stopPropagation();
+            if (dropdown.classList.contains('open')) {
+                closeDropdown();
+                return;
+            }
+            this.renderSymbolSwitcherOptions(dropdown);
+            dropdown.classList.add('open');
+        });
+
+        dropdown.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const item = event.target.closest('.symbol-switcher-item[data-file-id]');
+            if (!item) return;
+
+            const nextFileId = item.dataset.fileId;
+            if (!nextFileId || String(nextFileId) === String(this.currentFileId || '')) {
+                closeDropdown();
+                return;
+            }
+
+            item.classList.add('active');
+            this.loadFileData(nextFileId)
+                .then((switched) => {
+                    if (switched !== false) closeDropdown();
+                    this.renderSymbolSwitcherOptions(dropdown);
+                })
+                .catch((error) => {
+                    console.error('❌ Failed to switch symbol from search menu:', error);
+                    this.renderSymbolSwitcherOptions(dropdown);
+                });
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!group.contains(event.target)) {
+                closeDropdown();
+            }
+        });
+    }
+
+    getSymbolSwitcherEntries() {
+        const entries = [];
+        const session = this.backtestingSession || this.normalizeBacktestingSession(JSON.parse(localStorage.getItem('backtestingSession') || '{}'));
+
+        if (session && session.instruments && typeof session.instruments === 'object') {
+            Object.keys(session.instruments).forEach((tickerKey) => {
+                const row = session.instruments[tickerKey];
+                if (!row) return;
+                const fileId = row.fileId || row.datasetId || row.sourceFileId;
+                if (!fileId) return;
+                const ticker = String(row.ticker || tickerKey || '').toUpperCase();
+                entries.push({
+                    fileId: String(fileId),
+                    ticker: ticker || String(fileId),
+                    subtitle: row.fileName || row.name || ''
+                });
+            });
+        }
+
+        if (entries.length === 0) {
+            const fileSelect = document.getElementById('fileSelect');
+            if (fileSelect) {
+                Array.from(fileSelect.options).forEach((option) => {
+                    if (!option.value) return;
+                    if (String(option.value).startsWith('local_')) return;
+                    entries.push({
+                        fileId: String(option.value),
+                        ticker: this.resolveSessionTickerForFileId(session, option.value) || option.textContent.split(' ')[0] || String(option.value),
+                        subtitle: option.textContent
+                    });
+                });
+            }
+        }
+
+        const seen = new Set();
+        return entries.filter((entry) => {
+            if (!entry.fileId) return false;
+            if (seen.has(entry.fileId)) return false;
+            seen.add(entry.fileId);
+            return true;
+        });
+    }
+
+    renderSymbolSwitcherOptions(dropdown) {
+        if (!dropdown) return;
+        const entries = this.getSymbolSwitcherEntries();
+        if (entries.length === 0) {
+            dropdown.innerHTML = '<div class="symbol-switcher-empty">No instruments available</div>';
+            return;
+        }
+
+        const currentId = String(this.currentFileId || '');
+        dropdown.innerHTML = entries.map((entry) => {
+            const activeClass = String(entry.fileId) === currentId ? ' active' : '';
+            const safeTicker = String(entry.ticker || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const safeSubtitle = String(entry.subtitle || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `<div class="symbol-switcher-item${activeClass}" data-file-id="${entry.fileId}">
+                <span class="symbol-icon">${safeTicker.slice(0, 1) || '•'}</span>
+                <span class="symbol-name">${safeTicker}</span>
+                <span class="symbol-check">${String(entry.fileId) === currentId ? '✓' : ''}</span>
+            </div>`;
+        }).join('');
     }
     
     async loadFileFromServer(fileId) {
