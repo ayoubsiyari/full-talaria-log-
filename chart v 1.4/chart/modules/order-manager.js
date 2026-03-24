@@ -943,6 +943,11 @@ class OrderManager {
             console.log('📢 Event: position:closed', data);
             this.updatePositionsPanel();
             this.updateJournalTab(); // Update history/journal when trade closes
+            this.updateMarginLevelBadge();
+        });
+
+        this.eventBus.on('account:margin-updated', () => {
+            this.updateMarginLevelBadge();
         });
         
         console.log('✅ OrderService event subscriptions setup complete');
@@ -3820,6 +3825,8 @@ class OrderManager {
                 .order-summary-value--positive { color: #4ade80; }
                 .order-summary-value--negative { color: #f87171; }
                 .order-summary-value--muted { color: #d1d4dc; }
+                .order-summary-value--warning { color: #f59e0b; }
+                .order-summary-value--danger { color: #ef4444; }
                 .order-summary-divider {
                     border-top: 1px solid rgba(255,255,255,0.06);
                     margin-top: 4px;
@@ -4256,6 +4263,10 @@ class OrderManager {
                             <span class="order-summary-label">Total</span>
                             <span id="totalAmount" class="order-summary-value order-summary-value--muted">-$0</span>
                         </div>
+                    </div>
+                    <div class="order-summary-row">
+                        <span class="order-summary-label">Margin Level</span>
+                        <span id="marginLevelBadge" class="order-summary-value order-summary-value--muted">--</span>
                     </div>
                 </div>
 
@@ -6181,7 +6192,10 @@ class OrderManager {
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         
-        if (!entryPrice) return;
+        if (!entryPrice) {
+            this.updateMarginLevelBadge();
+            return;
+        }
         
         // Get TP/SL enabled status
         const tpEnabled = document.getElementById('enableTP')?.checked;
@@ -6352,6 +6366,58 @@ class OrderManager {
                 totalEl.textContent = `${total >= 0 ? '' : '-'}$${Math.abs(total).toFixed(2)}`;
                 totalEl.style.color = total >= 0 ? '#22c55e' : '#ef4444';
             }
+        }
+
+        this.updateMarginLevelBadge();
+    }
+
+    updateMarginLevelBadge() {
+        const badge = document.getElementById('marginLevelBadge');
+        if (!badge) return;
+
+        if (!this.orderService || typeof this.orderService.estimateTradeMargin !== 'function') {
+            badge.textContent = '--';
+            badge.className = 'order-summary-value order-summary-value--muted';
+            return;
+        }
+
+        const quantity = Math.abs(parseFloat(document.getElementById('orderQuantity')?.value || 0));
+        const activeTicker = this._getActiveTicker();
+        const activeInstrumentSettings = this._getActiveInstrumentSettings();
+
+        const sessionState = this.orderService.multiInstrumentSession || {};
+        const usedMargin = Number.parseFloat(sessionState.used_margin ?? 0);
+        const marginCallLevel = Number.parseFloat(sessionState.margin_call_level);
+        const stopOutLevel = Number.parseFloat(sessionState.stop_out_level);
+        const equityNow = Number.parseFloat(this.equity);
+
+        const requiredMargin = quantity > 0
+            ? this.orderService.estimateTradeMargin({
+                ticker: activeTicker,
+                symbol: activeTicker,
+                quantity,
+                instrument_settings: activeInstrumentSettings
+            })
+            : 0;
+
+        const projectedUsedMargin = (Number.isFinite(usedMargin) ? usedMargin : 0) + (Number.isFinite(requiredMargin) ? requiredMargin : 0);
+        const projectedLevel = projectedUsedMargin > 0 && Number.isFinite(equityNow)
+            ? (equityNow / projectedUsedMargin) * 100
+            : null;
+
+        if (!Number.isFinite(projectedLevel)) {
+            badge.textContent = '∞';
+            badge.className = 'order-summary-value order-summary-value--positive';
+            return;
+        }
+
+        badge.textContent = `${projectedLevel.toFixed(2)}%`;
+        badge.className = 'order-summary-value order-summary-value--positive';
+
+        if (Number.isFinite(stopOutLevel) && projectedLevel <= stopOutLevel) {
+            badge.className = 'order-summary-value order-summary-value--danger';
+        } else if (Number.isFinite(marginCallLevel) && projectedLevel <= marginCallLevel) {
+            badge.className = 'order-summary-value order-summary-value--warning';
         }
     }
     
