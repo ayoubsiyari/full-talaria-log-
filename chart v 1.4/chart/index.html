@@ -23665,7 +23665,7 @@
 
             position: absolute;
 
-            left: 0px;
+            left: 12px;
 
             bottom: 18px;
 
@@ -23673,7 +23673,21 @@
 
             z-index: 5;
 
-            cursor: default;
+            cursor: pointer;
+
+            text-decoration: none;
+
+            opacity: 0.75;
+
+            transition: opacity 0.2s ease;
+
+        }
+
+
+
+        .chart-brand:hover {
+
+            opacity: 1;
 
         }
 
@@ -23727,25 +23741,13 @@
 
             overflow: hidden;
 
-            max-width: 0;
-
-            opacity: 0;
-
-            white-space: nowrap;
-
-            margin-left: 6px;
-
-            transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
-
-        }
-
-
-
-        .chart-brand:hover .logo-bottom-wrap {
-
             max-width: 300px;
 
             opacity: 1;
+
+            white-space: nowrap;
+
+            margin-left: 8px;
 
         }
 
@@ -39009,7 +39011,7 @@
 
             </button>
 
-            <div class="chart-brand">
+            <a class="chart-brand" href="/" title="Talaria Homepage">
 
                 <div class="brand-stack logo-dark">
 
@@ -39035,7 +39037,7 @@
 
                 </div>
 
-            </div>
+            </a>
 
             
 
