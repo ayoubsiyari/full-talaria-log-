@@ -5724,6 +5724,75 @@ class Chart {
         });
     }
 
+    _ssdNormalize(s) {
+        return String(s || '').toLowerCase().replace(/[\s\-_\/\.]/g, '');
+    }
+
+    _symbolMatches(entry, query) {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        const qNorm = this._ssdNormalize(query);
+        const ticker = String(entry.ticker || '').toLowerCase();
+        const tickerNorm = this._ssdNormalize(entry.ticker);
+        const subtitle = String(entry.subtitle || '').toLowerCase();
+        const subtitleNorm = this._ssdNormalize(entry.subtitle);
+
+        if (ticker.includes(q)) return true;
+        if (tickerNorm.includes(qNorm)) return true;
+        const parts = ticker.split(/[\s\-_\/\.]/);
+        if (parts.some(p => p.startsWith(q) || p.includes(q))) return true;
+        if (subtitle.includes(q) || subtitleNorm.includes(qNorm)) return true;
+        return false;
+    }
+
+    _symbolScore(entry, query) {
+        if (!query) return 0;
+        const q = query.toLowerCase();
+        const qNorm = this._ssdNormalize(query);
+        const ticker = String(entry.ticker || '').toLowerCase();
+        const tickerNorm = this._ssdNormalize(entry.ticker);
+
+        if (ticker === q || tickerNorm === qNorm) return 100;
+        if (ticker.startsWith(q) || tickerNorm.startsWith(qNorm)) return 80;
+        const parts = ticker.split(/[\s\-_\/\.]/);
+        if (parts.some(p => p.startsWith(q))) return 70;
+        if (ticker.includes(q) || tickerNorm.includes(qNorm)) return 60;
+        return 40;
+    }
+
+    _ssdHighlight(text, query) {
+        const safe = String(text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (!query) return safe;
+        const idx = safe.toLowerCase().indexOf(query.toLowerCase());
+        if (idx === -1) {
+            const normQuery = this._ssdNormalize(query);
+            const normSafe = this._ssdNormalize(safe);
+            const normIdx = normSafe.indexOf(normQuery);
+            if (normIdx !== -1) {
+                let rawIdx = 0, normCount = 0;
+                while (rawIdx < safe.length && normCount < normIdx) {
+                    if (/[\s\-_\/\.]/.test(safe[rawIdx])) { rawIdx++; continue; }
+                    normCount++;
+                    rawIdx++;
+                }
+                let start = rawIdx;
+                let matchLen = 0;
+                while (rawIdx < safe.length && matchLen < normQuery.length) {
+                    if (/[\s\-_\/\.]/.test(safe[rawIdx])) { rawIdx++; continue; }
+                    matchLen++;
+                    rawIdx++;
+                }
+                return safe.slice(0, start) +
+                    '<span class="ssd-highlight">' + safe.slice(start, rawIdx) + '</span>' +
+                    safe.slice(rawIdx);
+            }
+            return safe;
+        }
+        return safe.slice(0, idx) +
+            '<span class="ssd-highlight">' + safe.slice(idx, idx + query.length) + '</span>' +
+            safe.slice(idx + query.length);
+    }
+
     renderSymbolSwitcherOptions(dropdown) {
         if (!dropdown) return;
         const entries = this.getSymbolSwitcherEntries();
@@ -5747,21 +5816,27 @@ class Chart {
         }
 
         const currentId = String(this.currentFileId || '');
-        const query = searchVal.trim().toLowerCase();
-        const filtered = query ? entries.filter(e => String(e.ticker || '').toLowerCase().includes(query)) : entries;
+        const query = searchVal.trim();
+
+        const filtered = query
+            ? entries
+                .filter(e => this._symbolMatches(e, query))
+                .sort((a, b) => this._symbolScore(b, query) - this._symbolScore(a, query))
+            : entries;
 
         const listContent = filtered.length === 0
-            ? '<div class="ssd-empty">No results found</div>'
+            ? `<div class="ssd-empty">No results for "<strong>${query.replace(/</g, '&lt;')}</strong>"</div>`
             : filtered.map((entry) => {
                 const activeClass = String(entry.fileId) === currentId ? ' active' : '';
-                const safeTicker = String(entry.ticker || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const safeSubtitle = String(entry.subtitle || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const initials = safeTicker.slice(0, 2) || '•';
+                const safeTicker = this._ssdHighlight(entry.ticker, query);
+                const rawSubtitle = String(entry.subtitle || '');
+                const safeSubtitle = query ? this._ssdHighlight(rawSubtitle, query) : rawSubtitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const initials = String(entry.ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
                 return `<div class="ssd-item${activeClass}" data-file-id="${entry.fileId}">
                     <div class="ssd-item-icon">${initials}</div>
                     <div class="ssd-item-body">
                         <div class="ssd-item-name">${safeTicker}</div>
-                        ${safeSubtitle ? `<div class="ssd-item-sub">${safeSubtitle}</div>` : ''}
+                        ${rawSubtitle ? `<div class="ssd-item-sub">${safeSubtitle}</div>` : ''}
                     </div>
                     <svg class="ssd-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>`;
@@ -5782,6 +5857,10 @@ class Chart {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 dropdown.classList.remove('open');
+            }
+            if (e.key === 'Enter') {
+                const firstItem = dropdown.querySelector('.ssd-item[data-file-id]');
+                if (firstItem) firstItem.click();
             }
         });
     }

@@ -107,6 +107,15 @@ export default function BacktestSessions() {
     window.location.href = `/chart/index.html?mode=${mode}&sessionId=${encodeURIComponent(String(session.id))}`;
   }
 
+  function openSessionAnalytics(session: Session) {
+    try {
+      if (session.config) localStorage.setItem("backtestingSession", JSON.stringify(session.config));
+      localStorage.setItem("active_trading_session_id", String(session.id));
+    } catch {}
+    const mode = session.session_type === "propfirm" ? "propfirm" : "backtest";
+    window.location.href = `/chart/index.html?mode=${mode}&sessionId=${encodeURIComponent(String(session.id))}&openAnalytics=1`;
+  }
+
   async function deleteSession(id: number) {
     if (!confirm("Are you sure you want to delete this session? This action cannot be undone.")) return;
     try {
@@ -315,13 +324,23 @@ export default function BacktestSessions() {
                       {s.created_at ? new Date(s.created_at).toLocaleDateString() : "-"}
                     </td>
                     <td className="px-4 py-4">
-                      <button
-                        onClick={() => deleteSession(s.id)}
-                        className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/20 transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openSessionAnalytics(s)}
+                          className="flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/20 transition"
+                          title="Open analytics for this session"
+                        >
+                          <BarChart3 className="w-3.5 h-3.5" />
+                          Analytics
+                        </button>
+                        <button
+                          onClick={() => deleteSession(s.id)}
+                          className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/20 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
