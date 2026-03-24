@@ -1064,9 +1064,19 @@ class Chart {
                 window.replaySystem.fullRawData = [...this.rawData];
                 window.replaySystem.rawTimeframe = requestTimeframe;
                 window.replaySystem.updateChartData();
-                if (Number.isFinite(window.replaySystem.replayTimestamp) && typeof window.replaySystem.goToReplayTimestamp === 'function') {
-                    window.replaySystem.goToReplayTimestamp(window.replaySystem.replayTimestamp, { preserveVisibleWindow: true });
+                const sessionTime = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
+                const targetTs = Number.isFinite(sessionTime)
+                    ? sessionTime
+                    : window.replaySystem.replayTimestamp;
+                if (Number.isFinite(targetTs) && typeof window.replaySystem.goToReplayTimestamp === 'function') {
+                    window.replaySystem.goToReplayTimestamp(targetTs, { preserveVisibleWindow: true });
                 }
+            }
+
+            // Repaint order/SL/TP overlays for the newly-selected symbol.
+            if (this.orderManager) {
+                if (typeof this.orderManager.updateSLTPLines === 'function') this.orderManager.updateSLTPLines();
+                if (typeof this.orderManager.updatePositionsPanel === 'function') this.orderManager.updatePositionsPanel();
             }
             
             

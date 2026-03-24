@@ -109,6 +109,7 @@ export default function BacktestAnalyticsPage() {
   const [simSlR, setSimSlR] = useState(1.0);
   const [heatmapPair, setHeatmapPair] = useState("ALL");
   const [heatmapMetric, setHeatmapMetric] = useState<"USD" | "R">("USD");
+  const [whatIfApi, setWhatIfApi] = useState<any>(null);
   const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
     key: "netPnl",
     dir: "desc",
@@ -237,7 +238,7 @@ export default function BacktestAnalyticsPage() {
     [normalizedTrades, pairFilter, playbookFilter, outcomeFilter]
   );
 
-  const stats = useMemo(() => {
+  const statsLocal = useMemo(() => {
     const total = filteredTrades.length;
     const wins = filteredTrades.filter((t) => t.pnl > 0).length;
     const losses = filteredTrades.filter((t) => t.pnl < 0).length;
@@ -258,8 +259,28 @@ export default function BacktestAnalyticsPage() {
     const shortPnl = shortTrades.reduce((s, t) => s + t.pnl, 0);
     return { total, wins, losses, net, winRate, avgRR, avgWin, avgLoss, profitFactor, expectancy, best, worst, longPnl, shortPnl };
   }, [filteredTrades]);
+  const stats = useMemo(() => {
+    const s = whatIfApi?.stats;
+    if (!s) return statsLocal;
+    return {
+      total: n(s.total),
+      wins: n(s.wins),
+      losses: n(s.losses),
+      net: n(s.net),
+      winRate: n(s.win_rate),
+      avgRR: n(s.avg_rr),
+      avgWin: n(s.avg_win),
+      avgLoss: n(s.avg_loss),
+      profitFactor: n(s.profit_factor),
+      expectancy: n(s.expectancy),
+      best: { pnl: n(s.best?.pnl), ticker: String(s.best?.ticker || "-") },
+      worst: { pnl: n(s.worst?.pnl), ticker: String(s.worst?.ticker || "-") },
+      longPnl: n(s.long_pnl),
+      shortPnl: n(s.short_pnl),
+    };
+  }, [whatIfApi, statsLocal]);
 
-  const perPair = useMemo(() => {
+  const perPairLocal = useMemo(() => {
     const map = new Map<string, { trades: number; wins: number; pnl: number; rr: number; mae: number; mfe: number; capture: number; capN: number; commission: number; spread: number }>();
     filteredTrades.forEach((t) => {
       const key = t.ticker;
@@ -292,6 +313,23 @@ export default function BacktestAnalyticsPage() {
     }));
   }, [filteredTrades]);
 
+  const perPair = useMemo(() => {
+    const apiRows = Array.isArray(whatIfApi?.per_instrument) ? whatIfApi.per_instrument : null;
+    if (!apiRows) return perPairLocal;
+    return apiRows.map((r: any) => ({
+      ticker: String(r.ticker || "UNKNOWN"),
+      trades: n(r.trades),
+      winRate: n(r.win_rate),
+      netPnl: n(r.net_pnl_usd),
+      netRr: n(r.net_pnl_r),
+      avgMae: n(r.avg_mae_r),
+      avgMfe: n(r.avg_mfe_r),
+      captureRatio: n(r.capture_ratio),
+      commissionPaid: n(r.commission_cost_usd),
+      spreadCost: n(r.spread_cost_usd),
+    }));
+  }, [whatIfApi, perPairLocal]);
+
   const sortedPerPair = useMemo(() => {
     const rows = [...perPair];
     const { key, dir } = pairSort;
@@ -316,7 +354,7 @@ export default function BacktestAnalyticsPage() {
     );
   };
 
-  const playbookRows = useMemo(() => {
+  const playbookRowsLocal = useMemo(() => {
     const map = new Map<string, { trades: number; wins: number; pnl: number; rr: number }>();
     filteredTrades.forEach((t) => {
       const key = String(t.setup || "General");
@@ -335,20 +373,46 @@ export default function BacktestAnalyticsPage() {
       avgRr: v.trades > 0 ? v.rr / v.trades : 0,
     })).sort((a, b) => b.netPnl - a.netPnl);
   }, [filteredTrades]);
+  const playbookRows = useMemo(() => {
+    const rows = Array.isArray(whatIfApi?.playbook_breakdown) ? whatIfApi.playbook_breakdown : null;
+    if (!rows) return playbookRowsLocal;
+    return rows.map((r: any) => ({
+      setup: String(r.setup || "General"),
+      trades: n(r.trades),
+      winRate: n(r.win_rate),
+      netPnl: n(r.net_pnl),
+      avgRr: n(r.avg_rr),
+    }));
+  }, [whatIfApi, playbookRowsLocal]);
 
-  const recentTrades = useMemo(
+  const recentTradesLocal = useMemo(
     () => [...filteredTrades].sort((a, b) => b.closeTs - a.closeTs).slice(0, 15),
     [filteredTrades]
   );
+  const recentTrades = useMemo(() => {
+    const rows = Array.isArray(whatIfApi?.recent_trades) ? whatIfApi.recent_trades : null;
+    if (!rows) return recentTradesLocal;
+    return rows.map((r: any) => ({
+      tradeId: r.trade_id,
+      ticker: String(r.ticker || "UNKNOWN"),
+      direction: String(r.side || ""),
+      setup: String(r.setup || "General"),
+      pnl: n(r.pnl_net),
+      rr: n(r.rr_actual),
+      closeTs: n(r.close_ts),
+    }));
+  }, [whatIfApi, recentTradesLocal]);
 
-  const maeDistribution = useMemo(
-    () => buildHistogram(filteredTrades.filter((t: any) => t.hasMae).map((t) => t.mae_r), 0.5),
-    [filteredTrades]
-  );
-  const mfeDistribution = useMemo(
-    () => buildHistogram(filteredTrades.filter((t: any) => t.hasMfe).map((t) => t.mfe_r), 0.5),
-    [filteredTrades]
-  );
+  const maeDistribution = useMemo(() => {
+    const apiRows = Array.isArray(whatIfApi?.mae_distribution) ? whatIfApi.mae_distribution : null;
+    if (apiRows) return apiRows;
+    return buildHistogram(filteredTrades.filter((t: any) => t.hasMae).map((t) => t.mae_r), 0.5);
+  }, [whatIfApi, filteredTrades]);
+  const mfeDistribution = useMemo(() => {
+    const apiRows = Array.isArray(whatIfApi?.mfe_distribution) ? whatIfApi.mfe_distribution : null;
+    if (apiRows) return apiRows;
+    return buildHistogram(filteredTrades.filter((t: any) => t.hasMfe).map((t) => t.mfe_r), 0.5);
+  }, [whatIfApi, filteredTrades]);
 
   const tickerColor = useMemo(() => {
     const palette = ["#3b82f6", "#22c55e", "#ef4444", "#f59e0b", "#8b5cf6", "#06b6d4", "#84cc16", "#ec4899", "#f97316", "#14b8a6"];
@@ -371,108 +435,62 @@ export default function BacktestAnalyticsPage() {
     });
   }, [filteredTrades, tickerColor]);
 
-  const whatIfTrades = useMemo(
-    () => [...filteredTrades].sort((a, b) => a.closeTs - b.closeTs),
-    [filteredTrades]
-  );
-
-  const whatIfRows = useMemo(() => {
-    const tp = Math.max(0.1, simTpR);
-    const sl = Math.max(0.1, simSlR);
-    return whatIfTrades.map((t) => {
-      const mae = n((t as any).mae_r);
-      const mfe = n((t as any).mfe_r);
-      const actualR = n((t as any).rr);
-      const spreadCost = n((t as any).spread_pips_at_entry) * n((t as any).pip_value_at_entry) * n((t as any).quantity);
-      const commissionCost = n((t as any).commission_at_entry) * n((t as any).quantity) * 2;
-      const totalCost = spreadCost + commissionCost;
-      const riskUsd = Math.max(0, n((t as any).riskUsd));
-
-      const hitsTp = mfe >= tp;
-      const hitsSl = mae <= -sl;
-      let simR = actualR;
-      if (hitsTp && !hitsSl) simR = tp;
-      else if (!hitsTp && hitsSl) simR = -sl;
-      else if (hitsTp && hitsSl) simR = actualR >= 0 ? tp : -sl;
-
-      const simGross = simR * riskUsd;
-      const simNet = simGross - totalCost;
-      return {
-        ...t,
-        simR,
-        simNet,
-        actualNet: n((t as any).pnl),
-      };
-    });
-  }, [whatIfTrades, simTpR, simSlR]);
-
-  const whatIfEquityCurve = useMemo(() => {
-    let actual = 0;
-    let simulated = 0;
-    return whatIfRows.map((t, idx) => {
-      actual += n((t as any).actualNet);
-      simulated += n((t as any).simNet);
-      return {
-        idx: idx + 1,
-        ticker: (t as any).ticker,
-        actual,
-        simulated,
-      };
-    });
-  }, [whatIfRows]);
-
-  const heatmapTrades = useMemo(
-    () =>
-      whatIfTrades.filter((t) => heatmapPair === "ALL" || (t as any).ticker === heatmapPair),
-    [whatIfTrades, heatmapPair]
-  );
-
-  const heatmapData = useMemo(() => {
-    const tpGrid = [0.5, 1, 1.5, 2, 2.5, 3];
-    const slGrid = [0.5, 1, 1.5, 2, 2.5, 3];
-    const rows: Array<{ tp: number; sl: number; expectancyUsd: number; expectancyR: number; trades: number }> = [];
-
-    for (const tp of tpGrid) {
-      for (const sl of slGrid) {
-        const sims = heatmapTrades.map((t) => {
-          const mae = n((t as any).mae_r);
-          const mfe = n((t as any).mfe_r);
-          const actualR = n((t as any).rr);
-          const spreadCost = n((t as any).spread_pips_at_entry) * n((t as any).pip_value_at_entry) * n((t as any).quantity);
-          const commissionCost = n((t as any).commission_at_entry) * n((t as any).quantity) * 2;
-          const riskUsd = Math.max(0, n((t as any).riskUsd));
-
-          const hitsTp = mfe >= tp;
-          const hitsSl = mae <= -sl;
-          let simR = actualR;
-          if (hitsTp && !hitsSl) simR = tp;
-          else if (!hitsTp && hitsSl) simR = -sl;
-          else if (hitsTp && hitsSl) simR = actualR >= 0 ? tp : -sl;
-
-          const simNetUsd = simR * riskUsd - (spreadCost + commissionCost);
-          const costR = riskUsd > 0 ? (spreadCost + commissionCost) / riskUsd : 0;
-          const simNetR = simR - costR;
-          return { simNetUsd, simNetR };
-        });
-        const expectancyUsd =
-          sims.length > 0 ? sims.reduce((s, v) => s + v.simNetUsd, 0) / sims.length : 0;
-        const expectancyR =
-          sims.length > 0 ? sims.reduce((s, v) => s + v.simNetR, 0) / sims.length : 0;
-        rows.push({ tp, sl, expectancyUsd, expectancyR, trades: sims.length });
-      }
+  useEffect(() => {
+    let mounted = true;
+    if (!selectedSessionId) {
+      setWhatIfApi(null);
+      return;
     }
-    return rows.sort((a, b) =>
-      heatmapMetric === "USD"
-        ? b.expectancyUsd - a.expectancyUsd
-        : b.expectancyR - a.expectancyR
-    );
-  }, [heatmapTrades, heatmapMetric]);
+    (async () => {
+      try {
+        const payload = await fetchJson<any>("/api/analytics/backtest/whatif", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: Number(selectedSessionId),
+            pair_filter: pairFilter,
+            playbook_filter: playbookFilter,
+            outcome_filter: outcomeFilter,
+            heatmap_pair: heatmapPair,
+            tp_r: simTpR,
+            sl_r: simSlR,
+          }),
+        });
+        if (!mounted) return;
+        setWhatIfApi(payload || null);
+      } catch {
+        if (!mounted) return;
+        setWhatIfApi(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedSessionId, pairFilter, playbookFilter, outcomeFilter, heatmapPair, simTpR, simSlR]);
+
+  const whatIfEquityCurve = useMemo(
+    () =>
+      Array.isArray(whatIfApi?.equity_curve)
+        ? whatIfApi.equity_curve.map((x: any) => ({
+            idx: n(x.index),
+            ticker: String(x.ticker || "UNKNOWN"),
+            actual: n(x.actual_equity),
+            simulated: n(x.simulated_equity),
+          }))
+        : [],
+    [whatIfApi]
+  );
+
+  const heatmapData = useMemo(
+    () => (Array.isArray(whatIfApi?.heatmap?.flat) ? whatIfApi.heatmap.flat : []),
+    [whatIfApi]
+  );
 
   const bestHeatmap = heatmapData[0];
   const heatmapValueRange = useMemo(() => {
     if (heatmapData.length === 0) return { min: 0, max: 0, absMax: 1 };
     const vals = heatmapData.map((h) =>
-      heatmapMetric === "USD" ? h.expectancyUsd : h.expectancyR
+      heatmapMetric === "USD" ? n(h.expectancy_usd ?? h.expectancyUsd) : n(h.expectancy_r ?? h.expectancyR)
     );
     const min = Math.min(...vals);
     const max = Math.max(...vals);
@@ -481,17 +499,38 @@ export default function BacktestAnalyticsPage() {
   }, [heatmapData]);
 
   const heatmapTpLevels = useMemo(
-    () => Array.from(new Set(heatmapData.map((h) => h.tp))).sort((a, b) => a - b),
-    [heatmapData]
+    () =>
+      Array.isArray(whatIfApi?.heatmap?.tp_levels)
+        ? whatIfApi.heatmap.tp_levels.map((v: any) => n(v)).sort((a: number, b: number) => a - b)
+        : [],
+    [whatIfApi]
   );
   const heatmapSlLevels = useMemo(
-    () => Array.from(new Set(heatmapData.map((h) => h.sl))).sort((a, b) => a - b),
-    [heatmapData]
+    () =>
+      Array.isArray(whatIfApi?.heatmap?.sl_levels)
+        ? whatIfApi.heatmap.sl_levels.map((v: any) => n(v)).sort((a: number, b: number) => a - b)
+        : [],
+    [whatIfApi]
   );
+  const heatmapTradesCount = n(whatIfApi?.meta?.heatmap_trades_in_scope);
+  const whatIfTradesCount = n(whatIfApi?.meta?.trades_in_scope);
+  const equitySummary = whatIfApi?.equity_summary || null;
+  const bestHeatmapValue = bestHeatmap
+    ? (heatmapMetric === "USD"
+      ? n(bestHeatmap.expectancy_usd ?? bestHeatmap.expectancyUsd)
+      : n(bestHeatmap.expectancy_r ?? bestHeatmap.expectancyR))
+    : 0;
+  const bestHeatmapTp = bestHeatmap ? n(bestHeatmap.tp_r ?? bestHeatmap.tp) : 0;
+  const bestHeatmapSl = bestHeatmap ? n(bestHeatmap.sl_r ?? bestHeatmap.sl) : 0;
   const heatmapLookup = useMemo(() => {
     const m = new Map<string, number>();
-    heatmapData.forEach((h) =>
-      m.set(`${h.sl}-${h.tp}`, heatmapMetric === "USD" ? h.expectancyUsd : h.expectancyR)
+    heatmapData.forEach((h: any) =>
+      m.set(
+        `${n(h.sl_r ?? h.sl)}-${n(h.tp_r ?? h.tp)}`,
+        heatmapMetric === "USD"
+          ? n(h.expectancy_usd ?? h.expectancyUsd)
+          : n(h.expectancy_r ?? h.expectancyR)
+      )
     );
     return m;
   }, [heatmapData, heatmapMetric]);
@@ -835,9 +874,34 @@ export default function BacktestAnalyticsPage() {
                   />
                 </label>
                 <div className="text-xs text-white/50">
-                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter} | Trades: {whatIfRows.length}
+                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter} | Trades: {whatIfTradesCount}
                 </div>
               </div>
+
+              {equitySummary ? (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                    <div className="text-[11px] text-white/50">Actual Final</div>
+                    <div className="text-sm font-semibold">{fmtMoney(n(equitySummary.actual_final))}</div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                    <div className="text-[11px] text-white/50">Simulated Final</div>
+                    <div className="text-sm font-semibold">{fmtMoney(n(equitySummary.simulated_final))}</div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                    <div className="text-[11px] text-white/50">Delta</div>
+                    <div className={`text-sm font-semibold ${n(equitySummary.delta_final) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {fmtMoney(n(equitySummary.delta_final))}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                    <div className="text-[11px] text-white/50">Max DD (Act/Sim)</div>
+                    <div className="text-sm font-semibold">
+                      {fmtMoney(n(equitySummary.actual_max_drawdown))} / {fmtMoney(n(equitySummary.simulated_max_drawdown))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="h-72">
                 {whatIfEquityCurve.length > 0 ? (
@@ -900,12 +964,12 @@ export default function BacktestAnalyticsPage() {
               </div>
 
               <div className="text-xs text-white/50">
-                Scope: {heatmapPair === "ALL" ? "All Instruments (blended)" : heatmapPair} | Trades: {heatmapTrades.length}
+                Scope: {heatmapPair === "ALL" ? "All Instruments (blended)" : heatmapPair} | Trades: {heatmapTradesCount}
                 {bestHeatmap
-                  ? ` | Best: TP ${bestHeatmap.tp.toFixed(1)}R / SL ${bestHeatmap.sl.toFixed(1)}R (Expectancy ${
+                  ? ` | Best: TP ${bestHeatmapTp.toFixed(1)}R / SL ${bestHeatmapSl.toFixed(1)}R (Expectancy ${
                       heatmapMetric === "USD"
-                        ? fmtMoney(bestHeatmap.expectancyUsd)
-                        : `${bestHeatmap.expectancyR.toFixed(2)}R`
+                        ? fmtMoney(bestHeatmapValue)
+                        : `${bestHeatmapValue.toFixed(2)}R`
                     })`
                   : ""}
               </div>
@@ -970,7 +1034,7 @@ export default function BacktestAnalyticsPage() {
                       {heatmapSlLevels.flatMap((sl, r) =>
                         heatmapTpLevels.map((tp, c) => {
                           const value = heatmapLookup.get(`${sl}-${tp}`) ?? 0;
-                          const isBest = Boolean(bestHeatmap && bestHeatmap.tp === tp && bestHeatmap.sl === sl);
+                          const isBest = Boolean(bestHeatmap && bestHeatmapTp === tp && bestHeatmapSl === sl);
                           const x = leftPad + c * cellW;
                           const y = topPad + r * cellH;
                           const label = heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`;

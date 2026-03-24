@@ -25,6 +25,18 @@ from googleapiclient.discovery import build
 from urllib.parse import quote, urlparse
 
 import math
+from analytics_engine import (
+    normalize_trades,
+    filter_by_instrument,
+    simulate_equity_curve,
+    build_expectancy_heatmap,
+    compute_per_instrument_summary,
+    build_histogram,
+    compute_stats,
+    compute_playbook_breakdown,
+    compute_recent_trades,
+    compute_equity_summary,
+)
 
 # Initialize FastAPI
 app = FastAPI(title="Trading Chart API")
@@ -422,6 +434,114 @@ async def get_trading_session_analytics(session_id: int, request: Request):
         session_public = _session_public_dict(s)
         analytics = _compute_session_analytics(session_public, journal)
         return {"analytics": _sanitize_for_json(analytics)}
+    finally:
+        db.close()
+
+
+class BacktestWhatIfRequest(BaseModel):
+    session_id: int
+    pair_filter: str = "ALL"
+    playbook_filter: str = "ALL"
+    outcome_filter: str = "ALL"
+    heatmap_pair: str = "ALL"
+    tp_r: float = 1.5
+    sl_r: float = 1.0
+
+
+def _trade_setup_label(trade: dict) -> str:
+    setup = (
+        trade.get("setup")
+        or (trade.get("preTradeNotes") or {}).get("setup")
+        or (trade.get("postTradeNotes") or {}).get("setup")
+    )
+    if setup:
+        return str(setup).strip() or "General"
+    tags = (trade.get("preTradeNotes") or {}).get("tags")
+    if isinstance(tags, str) and tags.strip():
+        first = tags.split(",")[0].strip()
+        return first or "General"
+    return "General"
+
+
+@app.post("/api/analytics/backtest/whatif")
+async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == payload.session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+        state = _parse_json_dict(st.state_json)
+        journal = state.get("journal") if isinstance(state.get("journal"), list) else []
+
+        pair_filter = str(payload.pair_filter or "ALL").strip().upper().replace("/", "")
+        playbook_filter = str(payload.playbook_filter or "ALL").strip()
+        outcome_filter = str(payload.outcome_filter or "ALL").strip().upper()
+
+        filtered_raw = []
+        for t in journal:
+            if not isinstance(t, dict):
+                continue
+
+            ticker = str(t.get("ticker") or t.get("symbol") or "UNKNOWN").strip().upper().replace("/", "")
+            pnl = float(t.get("netPnL", t.get("realizedPnL", t.get("pnl", 0.0))) or 0.0)
+            setup = _trade_setup_label(t)
+
+            pass_pair = pair_filter == "ALL" or ticker == pair_filter
+            pass_playbook = playbook_filter == "ALL" or setup == playbook_filter
+            pass_outcome = (
+                outcome_filter == "ALL"
+                or (outcome_filter == "WINNERS" and pnl > 0)
+                or (outcome_filter == "LOSERS" and pnl < 0)
+                or (outcome_filter == "BREAKEVEN" and pnl == 0)
+            )
+            if pass_pair and pass_playbook and pass_outcome:
+                filtered_raw.append(t)
+
+        normalized = normalize_trades(filtered_raw)
+        tp_r = max(0.1, float(payload.tp_r))
+        sl_r = max(0.1, float(payload.sl_r))
+
+        equity_curve = simulate_equity_curve(normalized, tp_r=tp_r, sl_r=sl_r)
+        heatmap_scope = str(payload.heatmap_pair or "ALL").strip().upper().replace("/", "")
+        heatmap_trades = filter_by_instrument(normalized, heatmap_scope)
+        heatmap = build_expectancy_heatmap(heatmap_trades)
+        per_instrument = compute_per_instrument_summary(normalized)
+        mae_distribution = build_histogram([t.mae_r for t in normalized], bucket_size=0.5)
+        mfe_distribution = build_histogram([t.mfe_r for t in normalized], bucket_size=0.5)
+        stats = compute_stats(normalized)
+        playbook_breakdown = compute_playbook_breakdown(normalized)
+        recent_trades = compute_recent_trades(normalized, limit=15)
+        equity_summary = compute_equity_summary(equity_curve)
+
+        return {
+            "meta": {
+                "session_id": payload.session_id,
+                "pair_filter": pair_filter,
+                "playbook_filter": playbook_filter,
+                "outcome_filter": outcome_filter,
+                "heatmap_pair": heatmap_scope,
+                "tp_r": tp_r,
+                "sl_r": sl_r,
+                "trades_in_scope": len(normalized),
+                "heatmap_trades_in_scope": len(heatmap_trades),
+            },
+            "equity_curve": equity_curve,
+            "heatmap": heatmap,
+            "per_instrument": per_instrument,
+            "mae_distribution": mae_distribution,
+            "mfe_distribution": mfe_distribution,
+            "stats": stats,
+            "playbook_breakdown": playbook_breakdown,
+            "recent_trades": recent_trades,
+            "equity_summary": equity_summary,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         db.close()
 

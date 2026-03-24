@@ -147,6 +147,8 @@ class OrderService {
     }
 
     recomputeSharedMarginState() {
+        // Milestone 8.5: do NOT reduce margin for hedged long/short pairs in v1.
+        // Every open position consumes full margin independently.
         const usedMargin = this.openPositions.reduce((sum, position) => sum + this.estimateTradeMargin(position), 0);
         this.multiInstrumentSession.used_margin = usedMargin;
         this.multiInstrumentSession.current_time = Date.now();

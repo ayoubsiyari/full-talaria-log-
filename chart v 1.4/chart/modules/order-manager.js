@@ -334,14 +334,9 @@ class OrderManager {
     canSwitchToTicker(targetTicker) {
         const next = String(targetTicker || '').replace('/', '').toUpperCase();
         if (!next) return true;
-        const normalizeTicker = (value) => String(value || '').replace('/', '').toUpperCase();
-        const hasDifferentTicker = (item) => normalizeTicker(item?.ticker || item?.symbol) !== next;
-
-        const openBlocking = this.openPositions.some(hasDifferentTicker);
-        const pendingBlocking = this.pendingOrders.some(hasDifferentTicker);
-        const trackingBlocking = this.mfeMaeTrackingPositions.some(hasDifferentTicker);
-
-        return !(openBlocking || pendingBlocking || trackingBlocking);
+        // Milestone 8: allow switching while orders are open. The engine continues
+        // processing all instruments in background and the chart view simply changes.
+        return true;
     }
 
     _getActiveInstrumentSettings() {
@@ -906,6 +901,7 @@ class OrderManager {
         this.createOrderButtons();
         this.setupTradingPanel();
         this.createNotificationContainer();
+        this.createCrossInstrumentPositionsDock();
         
         // Update panel with initial values
         setTimeout(() => {
@@ -12644,19 +12640,38 @@ class OrderManager {
             this.removeEntryMarker(orderId);
 
             // Show notification based on hit type
+            const closedTicker = String(position.ticker || position.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+            const activeTicker = this._getActiveTicker();
+            const isBackgroundClose = !!closedTicker && !!activeTicker && closedTicker !== activeTicker;
+            const sideLabel = String(position.type || '').toUpperCase() === 'SELL' ? 'Short' : 'Long';
+            const rValue = position.riskAmount ? (pnl / position.riskAmount) : 0;
+            const bgOpts = isBackgroundClose ? {
+                timeoutMs: 9000,
+                title: `Click to switch to ${closedTicker}`,
+                onClick: () => this.switchChartToTicker(closedTicker, { preserveTime: true })
+            } : {};
+
             if (hitType === 'SL') {
-                this.showNotification(`🛑 Stop Loss Hit! Order #${orderId} closed | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, 'error');
+                const msg = isBackgroundClose
+                    ? `${closedTicker} ${sideLabel} ${Number(position.quantity || 0).toFixed(2)}L closed at SL (${rValue >= 0 ? '+' : ''}${rValue.toFixed(2)}R, ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`
+                    : `🛑 Stop Loss Hit! Order #${orderId} closed | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                this.showNotification(msg, 'error', bgOpts);
             } else if (hitType === 'TP') {
                 // Check if this was from multiple TPs (final target hit)
                 const wasMultipleTP = position.tpTargets && position.tpTargets.length > 0;
-                const message = wasMultipleTP 
-                    ? `🎯 All TP Targets Hit! Order #${orderId} closed | Total P&L: +$${pnl.toFixed(2)}`
-                    : `🎯 Take Profit Hit! Order #${orderId} closed | P&L: +$${pnl.toFixed(2)}`;
-                this.showNotification(message, 'success');
+                const message = isBackgroundClose
+                    ? `${closedTicker} ${sideLabel} ${Number(position.quantity || 0).toFixed(2)}L closed at TP (${rValue >= 0 ? '+' : ''}${rValue.toFixed(2)}R, ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`
+                    : (wasMultipleTP 
+                        ? `🎯 All TP Targets Hit! Order #${orderId} closed | Total P&L: +$${pnl.toFixed(2)}`
+                        : `🎯 Take Profit Hit! Order #${orderId} closed | P&L: +$${pnl.toFixed(2)}`);
+                this.showNotification(message, 'success', bgOpts);
             } else {
                 // Manual close
                 const type = pnl >= 0 ? 'success' : 'error';
-                this.showNotification(`✅ Position #${orderId} closed | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, type);
+                const message = isBackgroundClose
+                    ? `${closedTicker} ${sideLabel} ${Number(position.quantity || 0).toFixed(2)}L closed (${rValue >= 0 ? '+' : ''}${rValue.toFixed(2)}R, ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`
+                    : `✅ Position #${orderId} closed | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                this.showNotification(message, type, bgOpts);
             }
         }
         
@@ -16189,6 +16204,7 @@ class OrderManager {
         // Update scaling checkbox availability when positions change
         this.updateScalingCheckboxAvailability();
         this.updateAnalyticsPanel();
+        this.renderCrossInstrumentPositionsDock();
         this._isUpdatingPanels = false;
     }
     
@@ -16292,6 +16308,120 @@ class OrderManager {
             pointer-events: none;
         `;
         document.body.appendChild(container);
+    }
+
+    createCrossInstrumentPositionsDock() {
+        if (document.getElementById('multiInstrumentOpenPositionsDock')) return;
+        const dock = document.createElement('div');
+        dock.id = 'multiInstrumentOpenPositionsDock';
+        dock.innerHTML = `
+            <div id="miDockHeader" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.12);cursor:pointer;">
+                <div style="font-size:12px;font-weight:700;color:#e5e7eb;">Open Positions (All Instruments)</div>
+                <div id="miDockMeta" style="font-size:11px;color:#94a3b8;">0</div>
+            </div>
+            <div id="miDockBody" style="max-height:260px;overflow:auto;"></div>
+        `;
+        dock.style.cssText = `
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            width: 420px;
+            background: rgba(10,15,30,0.95);
+            border: 1px solid rgba(148,163,184,0.25);
+            border-radius: 10px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+            z-index: 9996;
+            backdrop-filter: blur(5px);
+            color: #e5e7eb;
+        `;
+        document.body.appendChild(dock);
+
+        const header = dock.querySelector('#miDockHeader');
+        if (header) {
+            header.addEventListener('click', () => {
+                const body = dock.querySelector('#miDockBody');
+                if (!body) return;
+                const hidden = body.style.display === 'none';
+                body.style.display = hidden ? 'block' : 'none';
+            });
+        }
+
+        dock.addEventListener('click', (e) => {
+            const row = e.target.closest('[data-switch-ticker]');
+            if (!row) return;
+            const ticker = row.getAttribute('data-switch-ticker');
+            if (ticker) this.switchChartToTicker(ticker, { preserveTime: true });
+        });
+    }
+
+    renderCrossInstrumentPositionsDock() {
+        const dock = document.getElementById('multiInstrumentOpenPositionsDock');
+        if (!dock) return;
+        const body = dock.querySelector('#miDockBody');
+        const meta = dock.querySelector('#miDockMeta');
+        if (!body || !meta) return;
+        meta.textContent = String(this.openPositions.length || 0);
+
+        if (!this.openPositions.length) {
+            body.innerHTML = `<div style="padding:10px;color:#94a3b8;font-size:12px;">No open positions.</div>`;
+            return;
+        }
+        const nowTs = Number(this.orderService?.multiInstrumentSession?.current_time || Date.now());
+        body.innerHTML = this.openPositions.map((pos) => {
+            const ticker = String(pos.ticker || pos.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+            const pnl = Number.parseFloat(pos.unrealizedPnL || 0) || 0;
+            const pnlClass = pnl >= 0 ? '#22c55e' : '#ef4444';
+            const risk = Number.parseFloat(pos.riskAmount || 0);
+            const rNow = risk > 0 ? (pnl / risk) : 0;
+            const margin = this.orderService && typeof this.orderService.estimateTradeMargin === 'function'
+                ? this.orderService.estimateTradeMargin(pos)
+                : 0;
+            const mins = Math.max(0, Math.round((nowTs - Number(pos.openTime || nowTs)) / 60000));
+            return `
+                <div data-switch-ticker="${ticker}" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,0.07);cursor:pointer;display:grid;grid-template-columns:70px 52px 56px 1fr 82px 54px;gap:8px;align-items:center;">
+                    <div style="font-size:12px;font-weight:700;">${ticker}</div>
+                    <div style="font-size:11px;color:${pos.type === 'SELL' ? '#f87171' : '#4ade80'};">${pos.type || '-'}</div>
+                    <div style="font-size:11px;">${Number(pos.quantity || 0).toFixed(2)}L</div>
+                    <div style="font-size:11px;color:${pnlClass};">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${rNow >= 0 ? '+' : ''}${rNow.toFixed(2)}R)</div>
+                    <div style="font-size:11px;color:#cbd5e1;">M $${Number(margin || 0).toFixed(0)}</div>
+                    <div style="font-size:11px;color:#94a3b8;">${mins}m</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    switchChartToTicker(targetTicker, opts = {}) {
+        const ticker = String(targetTicker || '').replace('/', '').toUpperCase();
+        if (!ticker || !this.chart) return;
+        const preserveTime = opts.preserveTime !== false;
+
+        let fileId = null;
+        if (typeof this.chart.getSymbolSwitcherEntries === 'function') {
+            const entries = this.chart.getSymbolSwitcherEntries() || [];
+            const match = entries.find((e) => String(e.ticker || '').replace('/', '').toUpperCase() === ticker);
+            fileId = match?.fileId || null;
+        }
+        if (!fileId) {
+            this.showNotification(`Could not find dataset for ${ticker}`, 'warning');
+            return;
+        }
+
+        const ts = preserveTime
+            ? (Number(this.orderService?.multiInstrumentSession?.current_time)
+                || Number(this.chart?.replaySystem?.replayTimestamp)
+                || Number(this.current_time))
+            : null;
+
+        this.chart.loadFileData(fileId).then((ok) => {
+            if (ok === false) return;
+            if (preserveTime && Number.isFinite(ts) && this.chart?.replaySystem?.goToReplayTimestamp) {
+                this.chart.replaySystem.goToReplayTimestamp(ts, { preserveVisibleWindow: true });
+            }
+            if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+            if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        }).catch((err) => {
+            console.error('Failed switching to ticker:', ticker, err);
+        });
     }
     
     /**
@@ -16709,7 +16839,7 @@ class OrderManager {
     /**
      * Show notification
      */
-    showNotification(message, type = 'info') {
+    showNotification(message, type = 'info', opts = {}) {
         const container = document.getElementById('orderNotifications');
         if (!container) return;
         
@@ -16731,6 +16861,13 @@ class OrderManager {
             max-width: 400px;
         `;
         notification.textContent = message;
+        if (opts && typeof opts.onClick === 'function') {
+            notification.style.cursor = 'pointer';
+            notification.title = opts.title || 'Click to open related instrument';
+            notification.addEventListener('click', () => {
+                try { opts.onClick(); } catch (e) { console.error(e); }
+            });
+        }
         
         // Add animation
         const style = document.createElement('style');
@@ -16763,13 +16900,14 @@ class OrderManager {
         
         container.appendChild(notification);
         
-        // Auto remove after 4 seconds
+        // Auto remove after timeout
+        const timeoutMs = Number.isFinite(Number(opts.timeoutMs)) ? Number(opts.timeoutMs) : 4000;
         setTimeout(() => {
             notification.style.animation = 'slideOut 0.3s ease-in';
             setTimeout(() => {
                 notification.remove();
             }, 300);
-        }, 4000);
+        }, timeoutMs);
     }
     
     /**
