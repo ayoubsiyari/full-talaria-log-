@@ -1162,8 +1162,14 @@ class Chart {
                         symbol: trade?.symbol || ticker
                     };
                 });
+                if (typeof this.orderManager.recomputeAccountFromJournal === 'function') {
+                    this.orderManager.recomputeAccountFromJournal();
+                }
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();
+                }
+                if (typeof this.orderManager.updatePositionsPanel === 'function') {
+                    this.orderManager.updatePositionsPanel();
                 }
             }
 

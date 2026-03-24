@@ -534,6 +534,140 @@ class OrderManager {
         return grouped;
     }
 
+    recomputeAccountFromJournal() {
+        const base = Number.parseFloat(this.initialBalance);
+        const startingBalance = Number.isFinite(base) ? base : 0;
+        const realizedPnL = Array.isArray(this.tradeJournal)
+            ? this.tradeJournal.reduce((sum, trade) => {
+                const pnl = Number.parseFloat(trade?.netPnL ?? trade?.realizedPnL ?? trade?.pnl ?? 0);
+                return sum + (Number.isFinite(pnl) ? pnl : 0);
+            }, 0)
+            : 0;
+
+        this.balance = startingBalance + realizedPnL;
+        this.equity = this.balance;
+
+        if (this.orderService) {
+            this.orderService.balance = this.balance;
+            this.orderService.equity = this.equity;
+            if (typeof this.orderService.recomputeSharedMarginState === 'function') {
+                this.orderService.recomputeSharedMarginState();
+            }
+        }
+    }
+
+    updateAnalyticsPanel() {
+        const trades = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
+        const safeNum = (v) => {
+            const n = Number.parseFloat(v);
+            return Number.isFinite(n) ? n : 0;
+        };
+        const fmtMoney = (v) => `$${safeNum(v).toFixed(2)}`;
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+
+        const totalTrades = trades.length;
+        const wins = trades.filter(t => safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl) > 0);
+        const losses = trades.filter(t => safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl) < 0);
+        const breakeven = trades.filter(t => safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl) === 0).length;
+
+        const totalProfit = wins.reduce((s, t) => s + safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl), 0);
+        const totalLossAbs = Math.abs(losses.reduce((s, t) => s + safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl), 0));
+        const netPnL = totalProfit - totalLossAbs;
+        const winRate = totalTrades > 0 ? (wins.length / totalTrades) * 100 : 0;
+        const profitFactor = totalLossAbs > 0 ? totalProfit / totalLossAbs : (totalProfit > 0 ? totalProfit : 0);
+        const avgWin = wins.length > 0 ? totalProfit / wins.length : 0;
+        const avgLossAbs = losses.length > 0 ? totalLossAbs / losses.length : 0;
+        const riskReward = avgLossAbs > 0 ? avgWin / avgLossAbs : 0;
+        const largestWin = wins.length > 0 ? Math.max(...wins.map(t => safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl))) : 0;
+        const largestLoss = losses.length > 0 ? Math.min(...losses.map(t => safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl))) : 0;
+
+        const avgDurationHours = totalTrades > 0
+            ? trades.reduce((s, t) => s + safeNum(t.holdingTimeHours), 0) / totalTrades
+            : 0;
+        const avgDurationMinutes = Math.round(avgDurationHours * 60);
+
+        const chronological = trades.slice().sort((a, b) => safeNum(a.closeTime ?? a.exitTime ?? a.openTime ?? a.entryTime) - safeNum(b.closeTime ?? b.exitTime ?? b.openTime ?? b.entryTime));
+        let consecWins = 0;
+        let consecLosses = 0;
+        let maxConsecWins = 0;
+        let maxConsecLosses = 0;
+        let rollingBalance = safeNum(this.initialBalance);
+        let peakBalance = rollingBalance;
+        let maxDrawdown = 0;
+        chronological.forEach((t) => {
+            const pnl = safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl);
+            if (pnl > 0) {
+                consecWins += 1;
+                consecLosses = 0;
+            } else if (pnl < 0) {
+                consecLosses += 1;
+                consecWins = 0;
+            } else {
+                consecWins = 0;
+                consecLosses = 0;
+            }
+            if (consecWins > maxConsecWins) maxConsecWins = consecWins;
+            if (consecLosses > maxConsecLosses) maxConsecLosses = consecLosses;
+
+            rollingBalance += pnl;
+            if (rollingBalance > peakBalance) peakBalance = rollingBalance;
+            const drawdown = peakBalance - rollingBalance;
+            if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+        });
+
+        const currentBalance = safeNum(this.balance);
+        const startBalance = safeNum(this.initialBalance);
+        const returnPct = startBalance > 0 ? ((currentBalance - startBalance) / startBalance) * 100 : 0;
+        const maxDrawdownPct = peakBalance > 0 ? (maxDrawdown / peakBalance) * 100 : 0;
+
+        const longTrades = trades.filter(t => String(t.direction || t.type || '').toUpperCase() === 'BUY');
+        const shortTrades = trades.filter(t => String(t.direction || t.type || '').toUpperCase() === 'SELL');
+        const longWins = longTrades.filter(t => safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl) > 0).length;
+        const shortWins = shortTrades.filter(t => safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl) > 0).length;
+        const longPnL = longTrades.reduce((s, t) => s + safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl), 0);
+        const shortPnL = shortTrades.reduce((s, t) => s + safeNum(t.netPnL ?? t.realizedPnL ?? t.pnl), 0);
+        const longWinRate = longTrades.length > 0 ? (longWins / longTrades.length) * 100 : 0;
+        const shortWinRate = shortTrades.length > 0 ? (shortWins / shortTrades.length) * 100 : 0;
+
+        setText('analyticsTotalProfit', fmtMoney(totalProfit));
+        setText('analyticsTotalLoss', fmtMoney(totalLossAbs));
+        setText('analyticsNetPnL', `${netPnL >= 0 ? '+' : '-'}$${Math.abs(netPnL).toFixed(2)}`);
+        setText('analyticsTotalTrades', String(totalTrades));
+        setText('analyticsWinRate', `${winRate.toFixed(0)}%`);
+        setText('analyticsWins', String(wins.length));
+        setText('analyticsLosses', String(losses.length));
+        setText('analyticsProfitFactor', profitFactor.toFixed(2));
+        setText('analyticsAvgWin', fmtMoney(avgWin));
+        setText('analyticsAvgLoss', fmtMoney(avgLossAbs));
+        setText('analyticsRiskReward', riskReward.toFixed(2));
+        setText('analyticsLargestWin', fmtMoney(largestWin));
+        setText('analyticsLargestLoss', fmtMoney(largestLoss));
+        setText('analyticsAvgDuration', `${avgDurationMinutes}m`);
+        setText('analyticsConsecWins', String(maxConsecWins));
+        setText('analyticsConsecLosses', String(maxConsecLosses));
+        setText('analyticsBreakeven', String(breakeven));
+        setText('analyticsStartBalance', fmtMoney(startBalance));
+        setText('analyticsCurrentBalance', fmtMoney(currentBalance));
+        setText('analyticsReturn', `${returnPct.toFixed(2)}%`);
+        setText('analyticsMaxDrawdown', fmtMoney(maxDrawdown));
+        setText('analyticsMaxDrawdownPct', `${maxDrawdownPct.toFixed(2)}%`);
+        setText('analyticsPeakBalance', fmtMoney(peakBalance));
+        setText('analyticsLongTrades', String(longTrades.length));
+        setText('analyticsLongWinRate', `${longWinRate.toFixed(0)}%`);
+        setText('analyticsLongPnL', fmtMoney(longPnL));
+        setText('analyticsShortTrades', String(shortTrades.length));
+        setText('analyticsShortWinRate', `${shortWinRate.toFixed(0)}%`);
+        setText('analyticsShortPnL', fmtMoney(shortPnL));
+
+        const winBar = document.getElementById('analyticsWinRateBar');
+        if (winBar) {
+            winBar.style.width = `${Math.max(0, Math.min(100, winRate))}%`;
+        }
+    }
+
     upsertJournalEntry(journalEntry, options = {}) {
         if (!journalEntry) return { index: -1, inserted: false, entry: null };
         const { skipIfExists = false } = options;
@@ -754,6 +888,9 @@ class OrderManager {
         } else {
             console.log(`⚠️ No backtesting session found, using default balance: $${this.balance}`);
         }
+
+        // Rebuild account state from persisted closed trades after refresh/load.
+        this.recomputeAccountFromJournal();
         
         // Create UI
         this.createOrderButtons();
@@ -15598,6 +15735,7 @@ class OrderManager {
         
         // Update scaling checkbox availability when positions change
         this.updateScalingCheckboxAvailability();
+        this.updateAnalyticsPanel();
         this._isUpdatingPanels = false;
     }
     
