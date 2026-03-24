@@ -927,6 +927,8 @@ class OrderManager {
             if (instrumentSettingsBtn) {
                 instrumentSettingsBtn.onclick = () => this.showInstrumentSettings();
             }
+
+            this.setupAnalyticsExportButtons();
         }, 100);
         
         // Listen for replay updates to recalculate P&L
@@ -2828,6 +2830,177 @@ class OrderManager {
         link.click();
         document.body.removeChild(link);
         this.showNotification('✅ Exported session + trades JSON', 'success');
+    }
+
+    getAnalyticsSnapshot() {
+        const readText = (id, fallback = '') => {
+            const el = document.getElementById(id);
+            return el ? String(el.textContent || '').trim() : fallback;
+        };
+        return {
+            total_profit: readText('analyticsTotalProfit', '$0.00'),
+            total_loss: readText('analyticsTotalLoss', '$0.00'),
+            net_pnl: readText('analyticsNetPnL', '$0.00'),
+            total_trades: readText('analyticsTotalTrades', '0'),
+            win_rate: readText('analyticsWinRate', '0%'),
+            wins: readText('analyticsWins', '0'),
+            losses: readText('analyticsLosses', '0'),
+            profit_factor: readText('analyticsProfitFactor', '0.00'),
+            avg_win: readText('analyticsAvgWin', '$0.00'),
+            avg_loss: readText('analyticsAvgLoss', '$0.00'),
+            risk_reward: readText('analyticsRiskReward', '0.00'),
+            largest_win: readText('analyticsLargestWin', '$0.00'),
+            largest_loss: readText('analyticsLargestLoss', '$0.00'),
+            avg_duration: readText('analyticsAvgDuration', '0m'),
+            max_consecutive_wins: readText('analyticsConsecWins', '0'),
+            max_consecutive_losses: readText('analyticsConsecLosses', '0'),
+            breakeven_trades: readText('analyticsBreakeven', '0'),
+            start_balance: readText('analyticsStartBalance', '$0.00'),
+            current_balance: readText('analyticsCurrentBalance', '$0.00'),
+            return_pct: readText('analyticsReturn', '0.00%'),
+            max_drawdown: readText('analyticsMaxDrawdown', '$0.00'),
+            max_drawdown_pct: readText('analyticsMaxDrawdownPct', '0.00%'),
+            peak_balance: readText('analyticsPeakBalance', '$0.00'),
+            long_trades: readText('analyticsLongTrades', '0'),
+            long_win_rate: readText('analyticsLongWinRate', '0%'),
+            long_pnl: readText('analyticsLongPnL', '$0.00'),
+            short_trades: readText('analyticsShortTrades', '0'),
+            short_win_rate: readText('analyticsShortWinRate', '0%'),
+            short_pnl: readText('analyticsShortPnL', '$0.00')
+        };
+    }
+
+    setupAnalyticsExportButtons() {
+        const csvBtn = document.getElementById('analyticsExportCsvBtn');
+        const pdfBtn = document.getElementById('analyticsExportPdfBtn');
+        if (csvBtn && !csvBtn.dataset.bound) {
+            csvBtn.dataset.bound = '1';
+            csvBtn.onclick = () => this.exportAnalyticsToCSV();
+        }
+        if (pdfBtn && !pdfBtn.dataset.bound) {
+            pdfBtn.dataset.bound = '1';
+            pdfBtn.onclick = () => this.exportAnalyticsReportToPDF();
+        }
+    }
+
+    exportAnalyticsToCSV() {
+        const analytics = this.getAnalyticsSnapshot();
+        const perInstrumentStats = this.buildPerInstrumentStats();
+        const escape = (v) => {
+            const text = v === null || v === undefined ? '' : String(v);
+            if (text.includes('"') || text.includes(',') || text.includes('\n')) {
+                return `"${text.replace(/"/g, '""')}"`;
+            }
+            return text;
+        };
+
+        const rows = [];
+        rows.push('Analytics Metric,Value');
+        Object.entries(analytics).forEach(([k, v]) => {
+            rows.push(`${escape(k)},${escape(v)}`);
+        });
+        rows.push('');
+        rows.push('Ticker,Trade Count,Win Rate,Net PnL,Avg RR,Avg MAE(R),Avg MFE(R)');
+        Object.keys(perInstrumentStats).forEach((ticker) => {
+            const s = perInstrumentStats[ticker];
+            rows.push([
+                ticker,
+                s.trade_count ?? 0,
+                Number.parseFloat(s.win_rate ?? 0).toFixed(2) + '%',
+                Number.parseFloat(s.net_pnl ?? 0).toFixed(2),
+                Number.parseFloat(s.avg_rr ?? 0).toFixed(2),
+                Number.parseFloat(s.avg_mae_r ?? 0).toFixed(2),
+                Number.parseFloat(s.avg_mfe_r ?? 0).toFixed(2)
+            ].map(escape).join(','));
+        });
+
+        const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `analytics_report_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        this.showNotification('✅ Exported analytics CSV', 'success');
+    }
+
+    exportAnalyticsReportToPDF() {
+        const snapshot = this.getAnalyticsSnapshot();
+        const milestone4 = this.buildMilestone4ExportSnapshot();
+        const session = milestone4.session_summary || {};
+        const perInstrument = milestone4.per_instrument_stats || {};
+        const instruments = milestone4.instruments || {};
+
+        const metricRows = Object.entries(snapshot)
+            .map(([k, v]) => `<tr><td style="padding:6px 8px;border:1px solid #d1d5db;">${k.replace(/_/g, ' ')}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${String(v)}</td></tr>`)
+            .join('');
+        const instrumentRows = Object.keys(instruments).map((ticker) => {
+            const row = instruments[ticker] || {};
+            return `<tr>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${ticker}</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${row.asset_class || row.assetClass || ''}</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${Number.parseFloat(row.spread_pips ?? row.spreadPips ?? 0).toFixed(4)}</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${Number.parseFloat(row.commission_per_lot_per_side ?? row.commissionPerLotPerSide ?? 0).toFixed(4)}</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${Number.parseFloat(row.pip_value_per_lot ?? row.pipValuePerLot ?? 0).toFixed(4)}</td>
+            </tr>`;
+        }).join('');
+        const statsRows = Object.keys(perInstrument).map((ticker) => {
+            const s = perInstrument[ticker] || {};
+            return `<tr>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${ticker}</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${s.trade_count ?? 0}</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${Number.parseFloat(s.win_rate ?? 0).toFixed(2)}%</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${Number.parseFloat(s.net_pnl ?? 0).toFixed(2)}</td>
+                <td style="padding:6px 8px;border:1px solid #d1d5db;">${Number.parseFloat(s.avg_rr ?? 0).toFixed(2)}</td>
+            </tr>`;
+        }).join('');
+
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>Backtest Analytics Report</title></head>
+<body style="font-family:Arial,sans-serif;color:#111827;padding:20px;">
+    <h1 style="margin:0 0 10px 0;">Backtest Analytics Report</h1>
+    <p style="margin:0 0 14px 0;color:#4b5563;">Generated: ${new Date().toLocaleString()}</p>
+    <h2>Session Info</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Session ID</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.session_id ?? ''}</td></tr>
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Account Currency</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.account_currency ?? 'USD'}</td></tr>
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Leverage</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.leverage ?? ''}</td></tr>
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Margin Call %</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.margin_call_level ?? ''}</td></tr>
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Stop Out %</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.stop_out_level ?? ''}</td></tr>
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Max Risk Per Trade %</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.max_risk_per_trade_pct ?? ''}</td></tr>
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Start Balance</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.start_balance ?? ''}</td></tr>
+        <tr><td style="padding:6px 8px;border:1px solid #d1d5db;">Current Balance</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${session.current_balance ?? ''}</td></tr>
+    </table>
+    <h2>Analytics Summary</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">${metricRows}</table>
+    <h2>Instrument Table</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Ticker</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Asset Class</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Spread (pips)</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Commission</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Pip Value</th></tr>
+        ${instrumentRows}
+    </table>
+    <h2>Per-Instrument Stats</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Ticker</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Trade Count</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Win Rate</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Net PnL</th><th style="padding:6px 8px;border:1px solid #d1d5db;text-align:left;">Avg RR</th></tr>
+        ${statsRows}
+    </table>
+    <h2>Trades Included</h2>
+    <p style="margin:0;">${Array.isArray(milestone4.trades) ? milestone4.trades.length : 0}</p>
+</body></html>`;
+
+        const reportWindow = window.open('', '_blank');
+        if (!reportWindow) {
+            this.showNotification('Popup blocked. Allow popups to export PDF report.', 'warning');
+            return;
+        }
+        reportWindow.document.open();
+        reportWindow.document.write(html);
+        reportWindow.document.close();
+        reportWindow.focus();
+        setTimeout(() => {
+            reportWindow.print();
+        }, 250);
+        this.showNotification('✅ PDF report opened. Choose "Save as PDF" in print dialog.', 'success');
     }
     
     /**
