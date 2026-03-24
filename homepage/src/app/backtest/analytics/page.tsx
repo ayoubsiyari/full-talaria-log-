@@ -6,6 +6,8 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -100,6 +102,10 @@ export default function BacktestAnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
   const [pairFilter, setPairFilter] = useState("ALL");
   const [playbookFilter, setPlaybookFilter] = useState("ALL");
+  const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
+    key: "netPnl",
+    dir: "desc",
+  });
 
   useEffect(() => {
     try {
@@ -267,6 +273,30 @@ export default function BacktestAnalyticsPage() {
     }));
   }, [filteredTrades]);
 
+  const sortedPerPair = useMemo(() => {
+    const rows = [...perPair];
+    const { key, dir } = pairSort;
+    rows.sort((a: any, b: any) => {
+      const av = a[key];
+      const bv = b[key];
+      if (typeof av === "string" || typeof bv === "string") {
+        return dir === "asc"
+          ? String(av).localeCompare(String(bv))
+          : String(bv).localeCompare(String(av));
+      }
+      return dir === "asc" ? Number(av) - Number(bv) : Number(bv) - Number(av);
+    });
+    return rows;
+  }, [perPair, pairSort]);
+
+  const onSortPair = (key: string) => {
+    setPairSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "desc" }
+    );
+  };
+
   const playbookRows = useMemo(() => {
     const map = new Map<string, { trades: number; wins: number; pnl: number; rr: number }>();
     filteredTrades.forEach((t) => {
@@ -300,6 +330,27 @@ export default function BacktestAnalyticsPage() {
     () => buildHistogram(filteredTrades.map((t) => t.mfe_r), 0.5),
     [filteredTrades]
   );
+
+  const tickerColor = useMemo(() => {
+    const palette = ["#3b82f6", "#22c55e", "#ef4444", "#f59e0b", "#8b5cf6", "#06b6d4", "#84cc16", "#ec4899", "#f97316", "#14b8a6"];
+    const map = new Map<string, string>();
+    pairOptions.forEach((t, i) => map.set(t, palette[i % palette.length]));
+    return map;
+  }, [pairOptions]);
+
+  const equityCurve = useMemo(() => {
+    const sorted = [...filteredTrades].sort((a, b) => a.closeTs - b.closeTs);
+    let running = 0;
+    return sorted.map((t, i) => {
+      running += t.pnl;
+      return {
+        idx: i + 1,
+        equity: running,
+        ticker: t.ticker,
+        pointColor: tickerColor.get(t.ticker) || "#3b82f6",
+      };
+    });
+  }, [filteredTrades, tickerColor]);
 
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
@@ -392,20 +443,20 @@ export default function BacktestAnalyticsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="text-xs uppercase text-white/50 border-b border-white/10">
-                    <th className="text-left px-4 py-2">Ticker</th>
-                    <th className="text-right px-4 py-2">Trades</th>
-                    <th className="text-right px-4 py-2">Win Rate</th>
-                    <th className="text-right px-4 py-2">Net PnL ($)</th>
-                    <th className="text-right px-4 py-2">Net PnL (R)</th>
-                    <th className="text-right px-4 py-2">Avg MAE (R)</th>
-                    <th className="text-right px-4 py-2">Avg MFE (R)</th>
-                    <th className="text-right px-4 py-2">Capture Ratio</th>
-                    <th className="text-right px-4 py-2">Commission</th>
-                    <th className="text-right px-4 py-2">Spread Cost</th>
+                    <th className="text-left px-4 py-2 cursor-pointer" onClick={() => onSortPair("ticker")}>Ticker</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("trades")}>Trades</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("winRate")}>Win Rate</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("netPnl")}>Net PnL ($)</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("netRr")}>Net PnL (R)</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("avgMae")}>Avg MAE (R)</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("avgMfe")}>Avg MFE (R)</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("captureRatio")}>Capture Ratio</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("commissionPaid")}>Commission Paid</th>
+                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("spreadCost")}>Spread Cost</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {perPair.map((r) => (
+                  {sortedPerPair.map((r) => (
                     <tr key={r.ticker} className="border-t border-white/5">
                       <td className="px-4 py-2 font-medium">{r.ticker}</td>
                       <td className="px-4 py-2 text-right">{r.trades}</td>
@@ -424,6 +475,50 @@ export default function BacktestAnalyticsPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
+                <div className="font-semibold mb-3">Equity Curve (Multi-Instrument)</div>
+                <div className="h-72">
+                  {equityCurve.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={equityCurve}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                        <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                        <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                        <Tooltip
+                          formatter={(value, _name, item: any) => [
+                            fmtMoney(Number(value || 0)),
+                            item?.payload?.ticker ? `Equity (${item.payload.ticker})` : "Equity",
+                          ]}
+                          contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="equity"
+                          stroke="#60a5fa"
+                          strokeWidth={2.5}
+                          dot={(props: any) => {
+                            const { cx, cy, payload } = props;
+                            if (cx == null || cy == null) return null;
+                            return <circle cx={cx} cy={cy} r={3.5} fill={payload?.pointColor || "#3b82f6"} />;
+                          }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white/40 text-sm">No equity data</div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-3 mt-2 text-xs text-white/60">
+                  {pairOptions.map((p) => (
+                    <span key={p} className="inline-flex items-center gap-1.5">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: tickerColor.get(p) || "#3b82f6" }} />
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/10 font-semibold">Playbook Breakdown</div>
                 <table className="w-full">
