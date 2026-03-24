@@ -686,6 +686,28 @@ class Chart {
         return null;
     }
 
+    resolveSessionTickerForFileId(session, fileId) {
+        if (!session || !fileId) return null;
+        const fileKey = String(fileId);
+        if (session.instruments && typeof session.instruments === 'object') {
+            const keys = Object.keys(session.instruments);
+            for (let i = 0; i < keys.length; i += 1) {
+                const ticker = keys[i];
+                const row = session.instruments[ticker];
+                if (!row) continue;
+                const rowFileId = row.fileId || row.datasetId || row.sourceFileId;
+                if (String(rowFileId) === fileKey) return String(ticker).toUpperCase();
+            }
+        }
+        if (Array.isArray(session.files)) {
+            const file = session.files.find(f => String(f.id) === fileKey);
+            if (file && file.name) {
+                return String(file.name).replace(/\.(csv|CSV)$/, '').replace('/', '').toUpperCase();
+            }
+        }
+        return null;
+    }
+
     async checkBacktestingMode() {
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
@@ -991,6 +1013,15 @@ class Chart {
             if (symbolDisplay) symbolDisplay.textContent = 'Loading...';
             
             const session = this.backtestingSession || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+            const targetTicker = this.resolveSessionTickerForFileId(session, fileId) || this.currentSymbol;
+            if (this.orderManager && typeof this.orderManager.canSwitchToTicker === 'function') {
+                const canSwitch = this.orderManager.canSwitchToTicker(targetTicker);
+                if (!canSwitch) {
+                    alert('You still have open trades on another instrument. Close them before switching chart in this phase.');
+                    if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol ? this.currentSymbol.substring(0, 15) : '';
+                    return false;
+                }
+            }
             const isBacktestSession = !!(session && session.startDate);
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
             const result = await this._fetchSmartWindow(fileId, requestTimeframe, session);
@@ -1014,9 +1045,7 @@ class Chart {
             
             this.currentFileId = fileId;
             
-            if (session.fileName) {
-                this.currentSymbol = session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase();
-            }
+            this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
             
             this.updateChartTitle(this.currentSymbol);
             if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol.substring(0, 15);
@@ -1032,6 +1061,9 @@ class Chart {
                 window.replaySystem.fullRawData = [...this.rawData];
                 window.replaySystem.rawTimeframe = requestTimeframe;
                 window.replaySystem.updateChartData();
+                if (Number.isFinite(window.replaySystem.replayTimestamp) && typeof window.replaySystem.goToReplayTimestamp === 'function') {
+                    window.replaySystem.goToReplayTimestamp(window.replaySystem.replayTimestamp, { preserveVisibleWindow: true });
+                }
             }
             
             

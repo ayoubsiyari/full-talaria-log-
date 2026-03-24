@@ -259,6 +259,35 @@ class OrderManager {
         return String(raw).replace('/', '').toUpperCase();
     }
 
+    _getPositionPipSize(position) {
+        const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
+        const value = Number.parseFloat(raw);
+        return Number.isFinite(value) && value > 0 ? value : (this.pipSize || 0.0001);
+    }
+
+    _getPositionPipValue(position) {
+        const raw = position?.instrument_settings?.pip_value_per_lot ?? position?.instrument_settings?.pipValuePerLot ?? this.pipValuePerLot;
+        const value = Number.parseFloat(raw);
+        return Number.isFinite(value) && value > 0 ? value : (this.pipValuePerLot || 10);
+    }
+
+    _calculatePositionPnL(position, markPrice) {
+        const pipSize = this._getPositionPipSize(position);
+        const pipValue = this._getPositionPipValue(position);
+        const priceDiff = position.type === 'BUY'
+            ? (markPrice - position.openPrice)
+            : (position.openPrice - markPrice);
+        const pipsMove = priceDiff / pipSize;
+        return pipsMove * (position.quantity || 0) * pipValue;
+    }
+
+    canSwitchToTicker(targetTicker) {
+        const next = String(targetTicker || '').replace('/', '').toUpperCase();
+        if (!next) return true;
+        const blocking = this.openPositions.filter(p => String(p.ticker || p.symbol || '').replace('/', '').toUpperCase() !== next);
+        return blocking.length === 0;
+    }
+
     _getActiveInstrumentSettings() {
         const ticker = this._getActiveTicker();
         if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function') {
@@ -344,17 +373,19 @@ class OrderManager {
      * @param {number} [currentPrice] - current market price (for forex cross pairs)
      * @returns {number} USD P&L
      */
-    _enginePnL(side, entry, exit, quantity, currentPrice) {
+    _enginePnL(side, entry, exit, quantity, currentPrice, symbolOverride = null, instrumentSettings = null) {
         if (window.marketCalcEngine) {
             return window.marketCalcEngine.calcPnL(
                 side, entry, exit, quantity,
-                this._getSymbol(), this.marketType, currentPrice || exit
+                symbolOverride || this._getSymbol(), this.marketType, currentPrice || exit
             );
         }
         // Legacy fallback
         const dir = side === 'BUY' ? 1 : -1;
-        const pips = ((exit - entry) * dir) / (this.pipSize || 0.0001);
-        return pips * quantity * (this.pipValuePerLot || 10);
+        const pipSize = Number.parseFloat(instrumentSettings?.pip_size ?? instrumentSettings?.pipSize ?? this.pipSize) || 0.0001;
+        const pipValue = Number.parseFloat(instrumentSettings?.pip_value_per_lot ?? instrumentSettings?.pipValuePerLot ?? this.pipValuePerLot) || 10;
+        const pips = ((exit - entry) * dir) / pipSize;
+        return pips * quantity * pipValue;
     }
 
     /**
@@ -9011,6 +9042,8 @@ class OrderManager {
         const currentPrice = currentCandle.c;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
+        const activeTicker = this._getActiveTicker();
+        const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
         // Get TP/SL enabled status
         const tpEnabled = document.getElementById('enableTP')?.checked;
@@ -9191,6 +9224,22 @@ class OrderManager {
         
         // Use actualRisk as the definitive risk amount
         const riskAmount = actualRisk;
+
+        // Shared margin guard: use account-wide free margin.
+        if (this.orderService && typeof this.orderService.estimateTradeMargin === 'function') {
+            const tentative = {
+                ticker: activeTicker,
+                symbol: activeTicker,
+                quantity: quantity,
+                instrument_settings: activeInstrumentSettings
+            };
+            const requiredMargin = this.orderService.estimateTradeMargin(tentative);
+            const freeMargin = Number.parseFloat(this.orderService.multiInstrumentSession?.free_margin ?? this.equity);
+            if (Number.isFinite(requiredMargin) && Number.isFinite(freeMargin) && requiredMargin > freeMargin) {
+                this.showNotification(`❌ Insufficient free margin (${requiredMargin.toFixed(2)} required, ${freeMargin.toFixed(2)} available)`, 'error');
+                return;
+            }
+        }
         
         // VALIDATION: Check for order logic errors
         const orderValidationBox = document.getElementById('orderValidation');
@@ -9361,8 +9410,6 @@ class OrderManager {
         }
         
         // Market order: execute immediately
-        const activeTicker = this._getActiveTicker();
-        const activeInstrumentSettings = this._getActiveInstrumentSettings();
         const order = {
             id: this.orderIdCounter++,
             symbol: activeTicker,
@@ -10286,7 +10333,9 @@ class OrderManager {
             position.openPrice,
             closePrice,
             position.quantity,
-            closePrice
+            closePrice,
+            position.ticker || position.symbol || this._getActiveTicker(),
+            position.instrument_settings || null
         );
         
         // Update position
@@ -10719,6 +10768,9 @@ class OrderManager {
         // Create market order from pending order
         const order = {
             id: pendingOrder.id,
+            symbol: pendingOrder.symbol || pendingOrder.ticker || this._getActiveTicker(),
+            ticker: pendingOrder.ticker || pendingOrder.symbol || this._getActiveTicker(),
+            instrument_settings: pendingOrder.instrument_settings || this._getActiveInstrumentSettings(),
             type: pendingOrder.direction,
             openPrice: executionPrice, // Use actual execution price (accounts for gaps)
             openTime: currentCandle.t,
@@ -10894,9 +10946,7 @@ class OrderManager {
         this.openPositions.forEach(position => {
             if (position.type === 'BUY') {
                 const priceDiff = currentPrice - position.openPrice;
-                // P&L = (Price Difference in Pips) × Position Size (Lots) × Pip Value per Lot
-                const pipsMove = priceDiff / this.pipSize;
-                position.unrealizedPnL = pipsMove * position.quantity * this.pipValuePerLot;
+                position.unrealizedPnL = this._calculatePositionPnL(position, currentPrice);
                 
                 // Update MFE/MAE for BUY positions (only within tracking window)
                 if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
@@ -11087,9 +11137,7 @@ class OrderManager {
                 }
             } else {
                 const priceDiff = position.openPrice - currentPrice;
-                // P&L = (Price Difference in Pips) × Position Size (Lots) × Pip Value per Lot
-                const pipsMove = priceDiff / this.pipSize;
-                position.unrealizedPnL = pipsMove * position.quantity * this.pipValuePerLot;
+                position.unrealizedPnL = this._calculatePositionPnL(position, currentPrice);
                 
                 // Update MFE/MAE for SELL positions (only within tracking window)
                 if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
