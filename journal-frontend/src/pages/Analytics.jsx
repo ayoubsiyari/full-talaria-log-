@@ -266,6 +266,69 @@ export default function Analytics() {
     if (stats) buildCalendar(stats.pnl_by_date);
   }, [referenceDate, stats, buildCalendar]);
 
+  const perInstrumentRows = useMemo(() => {
+    const fromStats = stats?.per_instrument_stats;
+    if (fromStats && typeof fromStats === 'object' && !Array.isArray(fromStats)) {
+      return Object.entries(fromStats).map(([ticker, raw]) => {
+        const row = raw || {};
+        return {
+          ticker: String(ticker).toUpperCase(),
+          trade_count: Number(row.trade_count ?? row.trades ?? 0),
+          win_rate: Number(row.win_rate ?? 0),
+          net_pnl: Number(row.net_pnl ?? row.pnl_dollars_net ?? row.pnl ?? 0),
+          net_rr: Number(row.net_rr ?? row.actual_rr_net ?? 0),
+          avg_mae_r: Number(row.avg_mae_r ?? row.mae_r ?? 0),
+          avg_mfe_r: Number(row.avg_mfe_r ?? row.mfe_r ?? 0),
+          capture_ratio: Number(row.capture_ratio ?? 0),
+          commission_paid: Number(row.commission_paid ?? row.commission_total ?? 0),
+          spread_cost: Number(row.spread_cost ?? row.spread_cost_dollars ?? 0),
+        };
+      });
+    }
+
+    const fallbackSymbols = Array.isArray(stats?.top_symbols) ? stats.top_symbols : [];
+    return fallbackSymbols.map(([symbol, data]) => {
+      const d = data || {};
+      return {
+        ticker: String(symbol).toUpperCase(),
+        trade_count: Number(d.trade_count ?? d.trades ?? 0),
+        win_rate: Number(d.win_rate ?? (d.trades ? (d.wins / d.trades) * 100 : 0)),
+        net_pnl: Number(d.net_pnl ?? d.pnl ?? 0),
+        net_rr: Number(d.net_rr ?? d.actual_rr_net ?? 0),
+        avg_mae_r: Number(d.avg_mae_r ?? 0),
+        avg_mfe_r: Number(d.avg_mfe_r ?? 0),
+        capture_ratio: Number(d.capture_ratio ?? 0),
+        commission_paid: Number(d.commission_paid ?? d.commission_total ?? 0),
+        spread_cost: Number(d.spread_cost ?? d.spread_cost_dollars ?? 0),
+      };
+    });
+  }, [stats]);
+
+  const sortedPerInstrumentRows = useMemo(() => {
+    const rows = [...perInstrumentRows];
+    const { key, dir } = instrumentSort;
+    rows.sort((a, b) => {
+      const av = a[key];
+      const bv = b[key];
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return dir === 'asc'
+          ? String(av).localeCompare(String(bv))
+          : String(bv).localeCompare(String(av));
+      }
+      return dir === 'asc' ? Number(av) - Number(bv) : Number(bv) - Number(av);
+    });
+    return rows;
+  }, [perInstrumentRows, instrumentSort]);
+
+  const onSortInstrument = (key) => {
+    setInstrumentSort((prev) => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, dir: 'desc' };
+    });
+  };
+
   // ─── Loading / Error / No-Data States ──────────────────────────────────────
   if (loading) {
     return (
@@ -396,70 +459,6 @@ export default function Analytics() {
     };
     updateFilters(nextFilters);
   };
-
-  const perInstrumentRows = useMemo(() => {
-    const fromStats = stats?.per_instrument_stats;
-    if (fromStats && typeof fromStats === 'object' && !Array.isArray(fromStats)) {
-      return Object.entries(fromStats).map(([ticker, raw]) => {
-        const row = raw || {};
-        return {
-          ticker: String(ticker).toUpperCase(),
-          trade_count: Number(row.trade_count ?? row.trades ?? 0),
-          win_rate: Number(row.win_rate ?? 0),
-          net_pnl: Number(row.net_pnl ?? row.pnl_dollars_net ?? row.pnl ?? 0),
-          net_rr: Number(row.net_rr ?? row.actual_rr_net ?? 0),
-          avg_mae_r: Number(row.avg_mae_r ?? row.mae_r ?? 0),
-          avg_mfe_r: Number(row.avg_mfe_r ?? row.mfe_r ?? 0),
-          capture_ratio: Number(row.capture_ratio ?? 0),
-          commission_paid: Number(row.commission_paid ?? row.commission_total ?? 0),
-          spread_cost: Number(row.spread_cost ?? row.spread_cost_dollars ?? 0),
-        };
-      });
-    }
-
-    // Fallback for older API payloads
-    return allSymbols.map(([symbol, data]) => {
-      const d = data || {};
-      return {
-        ticker: String(symbol).toUpperCase(),
-        trade_count: Number(d.trade_count ?? d.trades ?? 0),
-        win_rate: Number(d.win_rate ?? (d.trades ? (d.wins / d.trades) * 100 : 0)),
-        net_pnl: Number(d.net_pnl ?? d.pnl ?? 0),
-        net_rr: Number(d.net_rr ?? d.actual_rr_net ?? 0),
-        avg_mae_r: Number(d.avg_mae_r ?? 0),
-        avg_mfe_r: Number(d.avg_mfe_r ?? 0),
-        capture_ratio: Number(d.capture_ratio ?? 0),
-        commission_paid: Number(d.commission_paid ?? d.commission_total ?? 0),
-        spread_cost: Number(d.spread_cost ?? d.spread_cost_dollars ?? 0),
-      };
-    });
-  }, [stats, allSymbols]);
-
-  const sortedPerInstrumentRows = useMemo(() => {
-    const rows = [...perInstrumentRows];
-    const { key, dir } = instrumentSort;
-    rows.sort((a, b) => {
-      const av = a[key];
-      const bv = b[key];
-      if (typeof av === 'string' || typeof bv === 'string') {
-        return dir === 'asc'
-          ? String(av).localeCompare(String(bv))
-          : String(bv).localeCompare(String(av));
-      }
-      return dir === 'asc' ? Number(av) - Number(bv) : Number(bv) - Number(av);
-    });
-    return rows;
-  }, [perInstrumentRows, instrumentSort]);
-
-  const onSortInstrument = (key) => {
-    setInstrumentSort((prev) => {
-      if (prev.key === key) {
-        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
-      }
-      return { key, dir: 'desc' };
-    });
-  };
-
 
   // ─── RENDER ──────────────────────────────────────────────────────────────
   return (
