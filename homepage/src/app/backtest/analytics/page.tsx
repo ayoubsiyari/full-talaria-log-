@@ -910,47 +910,116 @@ export default function BacktestAnalyticsPage() {
                   : ""}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-white/10">
-                <table className="w-full min-w-[620px] border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-white/5">
-                      <th className="px-3 py-2 text-left text-white/70 border-b border-white/10">SL \\ TP</th>
-                      {heatmapTpLevels.map((tp) => (
-                        <th key={`tp-${tp}`} className="px-3 py-2 text-center text-white/70 border-b border-white/10">
-                          {tp.toFixed(1)}R
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {heatmapSlLevels.map((sl) => (
-                      <tr key={`sl-row-${sl}`} className="border-t border-white/10">
-                        <td className="px-3 py-2 text-white/70 bg-white/5 font-medium">{sl.toFixed(1)}R</td>
-                        {heatmapTpLevels.map((tp) => {
+              <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#0b1220]/40 p-3">
+                {(() => {
+                  const leftPad = 78;
+                  const topPad = 34;
+                  const rightPad = 16;
+                  const bottomPad = 28;
+                  const cellW = 92;
+                  const cellH = 40;
+                  const width = leftPad + heatmapTpLevels.length * cellW + rightPad;
+                  const height = topPad + heatmapSlLevels.length * cellH + bottomPad;
+
+                  return (
+                    <svg
+                      width={width}
+                      height={height}
+                      viewBox={`0 0 ${width} ${height}`}
+                      role="img"
+                      aria-label="TP/SL expectancy heatmap"
+                    >
+                      <text x={14} y={18} fill="rgba(255,255,255,0.65)" fontSize="11" fontWeight="600">
+                        SL \ TP
+                      </text>
+
+                      {heatmapTpLevels.map((tp, c) => {
+                        const x = leftPad + c * cellW + cellW / 2;
+                        return (
+                          <text
+                            key={`tp-label-${tp}`}
+                            x={x}
+                            y={20}
+                            textAnchor="middle"
+                            fill="rgba(255,255,255,0.75)"
+                            fontSize="11"
+                            fontWeight="600"
+                          >
+                            {tp.toFixed(1)}R
+                          </text>
+                        );
+                      })}
+
+                      {heatmapSlLevels.map((sl, r) => {
+                        const y = topPad + r * cellH + cellH / 2 + 4;
+                        return (
+                          <text
+                            key={`sl-label-${sl}`}
+                            x={leftPad - 10}
+                            y={y}
+                            textAnchor="end"
+                            fill="rgba(255,255,255,0.75)"
+                            fontSize="11"
+                            fontWeight="600"
+                          >
+                            {sl.toFixed(1)}R
+                          </text>
+                        );
+                      })}
+
+                      {heatmapSlLevels.flatMap((sl, r) =>
+                        heatmapTpLevels.map((tp, c) => {
                           const value = heatmapLookup.get(`${sl}-${tp}`) ?? 0;
-                          const isBest = bestHeatmap && bestHeatmap.tp === tp && bestHeatmap.sl === sl;
+                          const isBest = Boolean(bestHeatmap && bestHeatmap.tp === tp && bestHeatmap.sl === sl);
+                          const x = leftPad + c * cellW;
+                          const y = topPad + r * cellH;
+                          const label = heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`;
                           return (
-                            <td
-                              key={`cell-${sl}-${tp}`}
-                              className="px-2 py-2 text-center border-l border-white/10"
-                              style={{
-                                background: heatColor(value),
-                                boxShadow: isBest ? "inset 0 0 0 2px rgba(250,204,21,0.9)" : undefined,
-                              }}
-                              title={`TP ${tp.toFixed(1)}R / SL ${sl.toFixed(1)}R => ${
-                                heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`
-                              } expectancy`}
-                            >
-                              <span className={value >= 0 ? "text-green-200 font-semibold" : "text-red-200 font-semibold"}>
-                                {heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`}
-                              </span>
-                            </td>
+                            <g key={`cell-${sl}-${tp}`}>
+                              <rect
+                                x={x}
+                                y={y}
+                                width={cellW}
+                                height={cellH}
+                                fill={heatColor(value)}
+                                stroke="rgba(255,255,255,0.1)"
+                                strokeWidth={1}
+                                rx={4}
+                                ry={4}
+                              />
+                              {isBest ? (
+                                <rect
+                                  x={x + 1.5}
+                                  y={y + 1.5}
+                                  width={cellW - 3}
+                                  height={cellH - 3}
+                                  fill="none"
+                                  stroke="rgba(250,204,21,0.95)"
+                                  strokeWidth={2}
+                                  rx={4}
+                                  ry={4}
+                                />
+                              ) : null}
+                              <text
+                                x={x + cellW / 2}
+                                y={y + cellH / 2 + 4}
+                                textAnchor="middle"
+                                fill={value >= 0 ? "rgba(220,252,231,0.95)" : "rgba(254,226,226,0.95)"}
+                                fontSize="11"
+                                fontWeight="700"
+                              >
+                                {label}
+                              </text>
+                              <title>
+                                {`TP ${tp.toFixed(1)}R / SL ${sl.toFixed(1)}R => ${label} expectancy`}
+                              </title>
+                            </g>
                           );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        })
+                      )}
+                    </svg>
+                  );
+                })()}
               </div>
 
               <div className="flex items-center gap-3 text-xs text-white/60">
