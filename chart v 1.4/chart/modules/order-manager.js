@@ -693,7 +693,7 @@ class OrderManager {
     buildPerInstrumentStats() {
         const buckets = {};
         this.tradeJournal.forEach((trade) => {
-            const ticker = String(trade.ticker || trade.symbol || 'UNKNOWN').toUpperCase();
+            const ticker = String(trade.ticker || trade.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
             if (!buckets[ticker]) {
                 buckets[ticker] = {
                     trade_count: 0,
@@ -708,7 +708,7 @@ class OrderManager {
             }
             const bucket = buckets[ticker];
             bucket.trade_count += 1;
-            const pnl = Number.parseFloat(trade.netPnL ?? trade.pnl ?? 0) || 0;
+            const pnl = Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0) || 0;
             const rr = Number.parseFloat(trade.rMultiple ?? 0) || 0;
             const mfe = Number.parseFloat(trade.mfe_r ?? 0) || 0;
             const mae = Number.parseFloat(trade.mae_r ?? 0) || 0;
@@ -2614,6 +2614,19 @@ class OrderManager {
                     " onmouseover="this.style.background='rgba(34,197,94,0.25)'; this.style.borderColor='rgba(34,197,94,0.5)';" onmouseout="this.style.background='rgba(34,197,94,0.15)'; this.style.borderColor='rgba(34,197,94,0.3)';">
                         Export to CSV
                     </button>
+                    <button id="exportJSONBtn" style="
+                        padding: 10px 16px;
+                        background: rgba(59,130,246,0.15);
+                        color: #60a5fa;
+                        border: 1px solid rgba(59,130,246,0.3);
+                        border-radius: 6px;
+                        font-size: 13px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    " onmouseover="this.style.background='rgba(59,130,246,0.25)'; this.style.borderColor='rgba(59,130,246,0.5)';" onmouseout="this.style.background='rgba(59,130,246,0.15)'; this.style.borderColor='rgba(59,130,246,0.3)';">
+                        Export to JSON
+                    </button>
                     <button id="closeTableModal" style="
                         background: rgba(148,163,184,0.1);
                         border: 1px solid rgba(148,163,184,0.2);
@@ -2655,6 +2668,7 @@ class OrderManager {
         // Event listeners
         document.getElementById('closeTableModal').onclick = () => modal.remove();
         document.getElementById('exportCSVBtn').onclick = () => this.exportTradesToCSV();
+        document.getElementById('exportJSONBtn').onclick = () => this.exportTradesToJSON();
         modal.onclick = (e) => {
             if (e.target === modal) modal.remove();
         };
@@ -2666,6 +2680,49 @@ class OrderManager {
      * Export trades to CSV file
      */
     exportTradesToCSV() {
+        const session = this.chart?.backtestingSession || {};
+        const account = this.orderService?.multiInstrumentSession || {};
+        const instrumentsMap = (account && account.instruments && typeof account.instruments === 'object')
+            ? account.instruments
+            : (session && session.instruments && typeof session.instruments === 'object' ? session.instruments : {});
+        const csvEscape = (value) => {
+            const text = value === null || value === undefined ? '' : String(value);
+            if (text.includes('"') || text.includes(',') || text.includes('\n')) {
+                return `"${text.replace(/"/g, '""')}"`;
+            }
+            return text;
+        };
+        const lines = [];
+        lines.push(['Session Summary', ''].join(','));
+        lines.push(['Session ID', session.id || account.session_id || ''].map(csvEscape).join(','));
+        lines.push(['Account Currency', account.account_currency || session.accountCurrency || 'USD'].map(csvEscape).join(','));
+        lines.push(['Leverage', account.leverage || session.leverage || ''].map(csvEscape).join(','));
+        lines.push(['Margin Call Level %', account.margin_call_level || session.marginCallLevel || ''].map(csvEscape).join(','));
+        lines.push(['Stop Out Level %', account.stop_out_level || session.stopOutLevel || ''].map(csvEscape).join(','));
+        lines.push(['Max Risk Per Trade %', account.max_risk_per_trade_pct || session.maxRiskPerTrade || ''].map(csvEscape).join(','));
+        lines.push(['Start Balance', this.initialBalance ?? ''].map(csvEscape).join(','));
+        lines.push(['Current Balance', this.balance ?? ''].map(csvEscape).join(','));
+        lines.push('');
+        lines.push(['Instrument Table', '', '', '', '', ''].join(','));
+        lines.push(['Ticker', 'Asset Class', 'Spread (pips)', 'Commission/lot/side', 'Pip Value/lot', 'Contract Size'].map(csvEscape).join(','));
+        Object.keys(instrumentsMap).forEach((tickerKey) => {
+            const row = instrumentsMap[tickerKey] || {};
+            const ticker = String(row.ticker || row.symbol || tickerKey || 'UNKNOWN').replace('/', '').toUpperCase();
+            const assetClass = row.asset_class || row.assetClass || '';
+            const spreadPips = Number.parseFloat(row.spread_pips ?? row.spreadPips ?? 0) || 0;
+            const commission = Number.parseFloat(row.commission_per_lot_per_side ?? row.commissionPerLotPerSide ?? 0) || 0;
+            const pipValue = Number.parseFloat(row.pip_value_per_lot ?? row.pipValuePerLot ?? 0) || 0;
+            const contractSize = Number.parseFloat(row.contract_size ?? row.contractSize ?? 0) || 0;
+            lines.push([
+                ticker,
+                assetClass,
+                spreadPips.toFixed(4),
+                commission.toFixed(4),
+                pipValue.toFixed(4),
+                contractSize.toFixed(2)
+            ].map(csvEscape).join(','));
+        });
+        lines.push('');
         const columns = [
             'Trade ID', 'Direction', 'Symbol', 'Ticker', 'Lots', 'Entry Price', 'Exit Price',
             'Stop Loss', 'Take Profit', 'Net P&L', 'R-Multiple', 'RR Ratio', 'Risk Amount',
@@ -2674,22 +2731,20 @@ class OrderManager {
             'Spread (pips) at Entry', 'Commission at Entry', 'Pip Value at Entry',
             'Entry Time', 'Exit Time'
         ];
-        
-        // Build CSV content
-        let csv = columns.join(',') + '\n';
+        lines.push(columns.map(csvEscape).join(','));
         
         this.tradeJournal.forEach(trade => {
             const row = [
                 trade.tradeId || '',
                 trade.direction || '',
                 trade.symbol || '',
-                trade.ticker || trade.symbol || '',
+                String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase(),
                 Number.isFinite(Number.parseFloat(trade.quantity)) ? Number.parseFloat(trade.quantity).toFixed(2) : '',
                 trade.entryPrice ? trade.entryPrice.toFixed(5) : '',
                 trade.exitPrice ? trade.exitPrice.toFixed(5) : '',
                 trade.stopLoss ? trade.stopLoss.toFixed(5) : '',
                 trade.takeProfit ? trade.takeProfit.toFixed(5) : '',
-                trade.netPnL ? trade.netPnL.toFixed(2) : '',
+                Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0).toFixed(2),
                 trade.rMultiple || '',
                 trade.rewardToRiskRatio || '',
                 trade.riskAmount ? trade.riskAmount.toFixed(2) : '',
@@ -2710,17 +2765,9 @@ class OrderManager {
                 trade.openTime ? this.format24Hour(trade.openTime) : '',
                 trade.closeTime ? this.format24Hour(trade.closeTime) : ''
             ];
-            
-            // Escape values that might contain commas
-            const escapedRow = row.map(val => {
-                if (typeof val === 'string' && val.includes(',')) {
-                    return `"${val}"`;
-                }
-                return val;
-            });
-            
-            csv += escapedRow.join(',') + '\n';
+            lines.push(row.map(csvEscape).join(','));
         });
+        const csv = lines.join('\n');
         
         // Create download link
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -2735,6 +2782,52 @@ class OrderManager {
         
         console.log(`✅ Exported ${this.tradeJournal.length} trades to CSV`);
         this.showNotification(`✅ Exported ${this.tradeJournal.length} trades to CSV`, 'success');
+    }
+
+    buildMilestone4ExportSnapshot() {
+        const session = this.chart?.backtestingSession || {};
+        const account = this.orderService?.multiInstrumentSession || {};
+        const instrumentsSource = (account && account.instruments && typeof account.instruments === 'object')
+            ? account.instruments
+            : (session && session.instruments && typeof session.instruments === 'object' ? session.instruments : {});
+        const instruments = {};
+        Object.keys(instrumentsSource).forEach((tickerKey) => {
+            const row = instrumentsSource[tickerKey] || {};
+            const ticker = String(row.ticker || row.symbol || tickerKey || 'UNKNOWN').replace('/', '').toUpperCase();
+            instruments[ticker] = { ...row, ticker };
+        });
+
+        return {
+            session_summary: {
+                session_id: session.id || account.session_id || null,
+                account_currency: account.account_currency || session.accountCurrency || 'USD',
+                leverage: account.leverage || session.leverage || null,
+                margin_call_level: account.margin_call_level || session.marginCallLevel || null,
+                stop_out_level: account.stop_out_level || session.stopOutLevel || null,
+                max_risk_per_trade_pct: account.max_risk_per_trade_pct || session.maxRiskPerTrade || null,
+                start_balance: this.initialBalance,
+                current_balance: this.balance
+            },
+            instruments,
+            per_instrument_stats: this.buildPerInstrumentStats(),
+            journal_by_ticker: this.groupJournalByTicker(),
+            trades: this.tradeJournal
+        };
+    }
+
+    exportTradesToJSON() {
+        const payload = this.buildMilestone4ExportSnapshot();
+        const json = JSON.stringify(payload, null, 2);
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `trade_journal_${new Date().toISOString().split('T')[0]}.json`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        this.showNotification('✅ Exported session + trades JSON', 'success');
     }
     
     /**
@@ -3399,110 +3492,11 @@ class OrderManager {
      * Export trade journal to CSV
      */
     exportJournalToCSV() {
-        if (this.tradeJournal.length === 0) {
-            alert('No trades to export');
-            return;
-        }
-        
-        // Define CSV headers
-        const headers = [
-            'Trade ID',
-            'Symbol / Pair',
-            'Ticker',
-            'Direction',
-            'Entry Time',
-            'Exit Time',
-            'Entry Price',
-            'Exit Price',
-            'Stop Loss',
-            'Take Profit',
-            'Net P&L',
-            'Risk per Trade',
-            'Reward-to-Risk Ratio',
-            'R-Multiple',
-            'MFE (Best Price Level)',
-            'MAE (Worst Price Level)',
-            'Highest Price',
-            'Lowest Price',
-            'Holding Time (Hours)',
-            'Holding Time (Days)',
-            'Day of Week',
-            'Hour of Entry',
-            'Hour of Exit',
-            'Month',
-            'Year',
-            'Close Type',
-            'Position Size (Lots)',
-            'Spread (pips) at Entry',
-            'Commission at Entry',
-            'Pip Value at Entry',
-            'Pre-Trade Reason',
-            'Pre-Trade Setup',
-            'Pre-Trade Tags',
-            'Post-Trade Lessons',
-            'Post-Trade Improvements',
-            'Post-Trade Tags'
-        ];
-        
-        // Build CSV rows
-        const rows = this.tradeJournal.map(trade => [
-            trade.tradeId || trade.id,
-            trade.symbol || '',
-            trade.ticker || trade.symbol || '',
-            trade.direction || trade.type,
-            this.format24Hour(trade.entryTime || trade.openTime),
-            this.format24Hour(trade.exitTime || trade.closeTime),
-            (trade.entryPrice || trade.openPrice).toFixed(5),
-            (trade.exitPrice || trade.closePrice).toFixed(5),
-            trade.stopLoss ? trade.stopLoss.toFixed(5) : 'None',
-            trade.takeProfit ? trade.takeProfit.toFixed(5) : 'None',
-            (trade.netPnL || trade.pnl).toFixed(2),
-            (trade.riskPerTrade || trade.riskAmount || 0).toFixed(2),
-            trade.rewardToRiskRatio || 'N/A',
-            trade.rMultiple || 'N/A',
-            (trade.mfe || trade.openPrice || 0).toFixed(5),
-            (trade.mae || trade.openPrice || 0).toFixed(5),
-            (trade.highestPrice || trade.openPrice || 0).toFixed(5),
-            (trade.lowestPrice || trade.openPrice || 0).toFixed(5),
-            trade.holdingTimeHours || 'N/A',
-            trade.holdingTimeDays || 'N/A',
-            trade.dayOfWeek || '',
-            trade.hourOfEntry !== undefined ? trade.hourOfEntry : '',
-            trade.hourOfExit !== undefined ? trade.hourOfExit : '',
-            trade.month || '',
-            trade.year || '',
-            trade.closeType || '',
-            Number.isFinite(Number.parseFloat(trade.quantity)) ? Number.parseFloat(trade.quantity).toFixed(2) : '0.00',
-            Number.parseFloat(trade.spread_pips_at_entry ?? 0).toFixed(4),
-            Number.parseFloat(trade.commission_at_entry ?? 0).toFixed(4),
-            Number.parseFloat(trade.pip_value_at_entry ?? this.pipValuePerLot ?? 0).toFixed(4),
-            trade.preTradeNotes?.reason || '',
-            trade.preTradeNotes?.setup || '',
-            trade.preTradeNotes?.tags || '',
-            trade.postTradeNotes?.reason || '',
-            trade.postTradeNotes?.setup || '',
-            trade.postTradeNotes?.tags || ''
-        ]);
-        
-        // Combine headers and rows
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-        ].join('\n');
-        
-        // Create download link
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        
-        link.setAttribute('href', url);
-        link.setAttribute('download', `trade_journal_${Date.now()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        console.log(`📊 Exported ${this.tradeJournal.length} trades to CSV`);
+        this.exportTradesToCSV();
+    }
+
+    exportJournal() {
+        this.exportTradesToCSV();
     }
     
     /**
@@ -15149,6 +15143,12 @@ class OrderManager {
         if (this._isUpdatingPanels) return;
         this._isUpdatingPanels = true;
         console.log('🔄 updatePositionsPanel() called');
+        const normalizeTickerSymbol = (item) => {
+            const raw = String(item?.symbol || item?.ticker || '').trim();
+            if (!raw) return 'UNKNOWN';
+            return raw.toUpperCase();
+        };
+        const getTradePnl = (trade) => Number.parseFloat(trade?.netPnL ?? trade?.realizedPnL ?? trade?.pnl ?? 0) || 0;
         
         // Ensure data arrays are initialized
         if (!this.pendingOrders) this.pendingOrders = [];
@@ -15277,7 +15277,7 @@ class OrderManager {
                     return `
                         <tr>
                             <td>${index + 1}</td>
-                            <td>${order.symbol || 'USD'}</td>
+                            <td>${normalizeTickerSymbol(order)}</td>
                             <td><span class="replay-badge ${sideClass}">${direction}</span></td>
                             <td class="replay-cell-number">${quantity}</td>
                             <td><span class="replay-badge">${orderTypeLabel}</span></td>
@@ -15476,7 +15476,7 @@ class OrderManager {
                     return `
                         <tr>
                             <td>${index + 1}</td>
-                            <td>${pos.symbol || 'USD'}</td>
+                            <td>${normalizeTickerSymbol(pos)}</td>
                             <td><span class="replay-badge ${sideClass}">${pos.type}</span></td>
                             <td class="replay-cell-number">${quantity}</td>
                             <td class="replay-cell-number">${entryPrice}</td>
@@ -15509,7 +15509,7 @@ class OrderManager {
                 allTrades.push({
                     type: 'pending',
                     id: order.id,
-                    symbol: order.symbol || 'USD',
+                    symbol: normalizeTickerSymbol(order),
                     direction: order.direction || '—',
                     quantity: order.quantity,
                     orderType: order.orderType,
@@ -15531,7 +15531,7 @@ class OrderManager {
                 allTrades.push({
                     type: 'open',
                     id: pos.id,
-                    symbol: pos.symbol || 'USD',
+                    symbol: normalizeTickerSymbol(pos),
                     direction: pos.type,
                     quantity: pos.quantity,
                     orderType: 'MARKET',
@@ -15552,13 +15552,13 @@ class OrderManager {
                     allTrades.push({
                         type: 'closed',
                         id: trade.id || trade.tradeId,
-                        symbol: trade.symbol || trade.ticker || 'USD',
+                        symbol: normalizeTickerSymbol(trade),
                         direction: trade.direction || trade.type,
                         quantity: trade.quantity,
                         orderType: 'MARKET',
                         entryPrice: trade.entryPrice || trade.openPrice,
                         currentPrice: trade.exitPrice || trade.closePrice,
-                        pnl: Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0) || 0,
+                        pnl: getTradePnl(trade),
                         stopLoss: trade.stopLoss,
                         takeProfit: trade.takeProfit,
                         time: trade.closeTime || trade.exitTime || trade.openTime || trade.entryTime,
@@ -15679,16 +15679,16 @@ class OrderManager {
                 const reversedJournal = this.tradeJournal.slice().reverse();
                 replayPositionsBodyEl.innerHTML = reversedJournal.map((trade, index) => {
                     const tradeId = trade.tradeId || trade.id;
-                    const direction = trade.direction || trade.type;
+                    const direction = String(trade.direction || trade.type || '—').toUpperCase();
                     const sideClass = direction === 'SELL' ? 'replay-badge--sell' : 'replay-badge--buy';
                     const quantity = trade.quantity || 0;
                     const status = trade.status || 'CLOSED';
                     const statusClass = status === 'CLOSED' ? 'replay-badge--closed' : 'replay-badge--open';
-                    const openTime = this.format24Hour(trade.openTime);
-                    const closeTime = this.format24Hour(trade.closeTime);
+                    const openTime = this.format24Hour(trade.openTime || trade.entryTime);
+                    const closeTime = this.format24Hour(trade.closeTime || trade.exitTime || trade.openTime || trade.entryTime);
                     const entryPrice = trade.entryPrice || trade.openPrice || 0;
                     const exitPrice = trade.exitPrice || trade.closePrice || 0;
-                    const pnl = trade.netPnL || trade.pnl || 0;
+                    const pnl = getTradePnl(trade);
                     const pnlClass = pnl > 0 ? 'order-value--profit' : pnl < 0 ? 'order-value--loss' : '';
                     const tags = trade.tags && trade.tags.length > 0 ? trade.tags.join(', ') : '—';
                     
@@ -15701,7 +15701,7 @@ class OrderManager {
                     return `
                         <tr style="cursor: pointer;" onclick="window.chart.orderManager.showTradeDetailsFromBottom(${index})">
                             <td>${this.tradeJournal.length - index}</td>
-                            <td>${trade.symbol || 'USD'}</td>
+                            <td>${normalizeTickerSymbol(trade)}</td>
                             <td><span class="replay-badge ${sideClass}">${direction}</span></td>
                             <td class="replay-cell-number">${quantity.toFixed(2)}</td>
                             <td class="replay-cell-center">${entriesDisplay}</td>
