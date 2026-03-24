@@ -4891,17 +4891,17 @@ class OrderManager {
             return [
                 {
                     text: fullLabel,
-                    fill: 'rgba(255,255,255,0.08)',
+                    fill: color,
                     stroke: color,
-                    textColor: color,
+                    textColor: '#ffffff',
                     fontWeight: '700',
-                    minWidth: 110
+                    minWidth: 104
                 },
                 {
                     text: arrow,
-                    fill: color,
+                    fill: '#0f172a',
                     stroke: color,
-                    textColor: '#0b0f1a',
+                    textColor: color,
                     fontWeight: '700',
                     minWidth: 28
                 }
@@ -4912,9 +4912,9 @@ class OrderManager {
             return [
                 {
                     text: 'TP',
-                    fill: 'rgba(34,197,94,0.15)',
+                    fill: '#16a34a',
                     stroke: '#22c55e',
-                    textColor: '#22c55e',
+                    textColor: '#ffffff',
                     fontWeight: '700',
                     minWidth: 34
                 },
@@ -4934,9 +4934,9 @@ class OrderManager {
             return [
                 {
                     text: 'SL',
-                    fill: 'rgba(239,68,68,0.15)',
+                    fill: '#dc2626',
                     stroke: '#ef4444',
-                    textColor: '#ef4444',
+                    textColor: '#ffffff',
                     fontWeight: '700',
                     minWidth: 34
                 },
@@ -4957,9 +4957,9 @@ class OrderManager {
             return [
                 {
                     text: label,
-                    fill: 'rgba(245,158,11,0.2)',
+                    fill: '#d97706',
                     stroke: '#f59e0b',
-                    textColor: '#f59e0b',
+                    textColor: '#ffffff',
                     fontWeight: '700',
                     strokeWidth: 1.5,
                     minWidth: 80
@@ -4979,7 +4979,7 @@ class OrderManager {
         return [
             {
                 text: label,
-                fill: 'rgba(255,255,255,0.08)',
+                fill: color,
                 stroke: color,
                 textColor: '#ffffff',
                 fontWeight: '700',
@@ -5032,14 +5032,16 @@ class OrderManager {
                 .attr('class', 'preview-label-bg')
                 .attr('width', width)
                 .attr('height', height)
-                .attr('rx', 6)
+                .attr('rx', 7)
                 .attr('stroke', segment.stroke || lineData.color)
                 .attr('stroke-width', segment.strokeWidth || 1.2);
 
-            // For badges: transparent fill + dashed stroke
+            // For badges: solid compact tag (TradingView-like), no dashed ghost box.
             if (lineData.isBadge) {
-                rect.attr('fill', 'transparent')
-                    .attr('stroke-dasharray', '4,3');
+                rect
+                    .attr('fill', segment.fill || lineData.color)
+                    .attr('stroke-dasharray', null)
+                    .attr('stroke-width', 1);
             } else {
                 rect.attr('fill', segment.fill);
             }
@@ -16447,7 +16449,16 @@ class OrderManager {
             // If value looks like epoch seconds, convert to ms.
             return raw < 1e12 ? raw * 1000 : raw;
         };
-        const nowTs = normalizeEpochMs(this.orderService?.multiInstrumentSession?.current_time, Date.now());
+        const sessionNowTs = normalizeEpochMs(this.orderService?.multiInstrumentSession?.current_time, NaN);
+        const replayNowTs = normalizeEpochMs(this.replaySystem?.replayTimestamp, NaN);
+        const chartNowTs = normalizeEpochMs(this.chart?.replaySystem?.replayTimestamp, NaN);
+        const fallbackNowTs = Date.now();
+        // Prefer backtest/replay timeline over wall clock for time-in-trade.
+        const nowTs = Number.isFinite(sessionNowTs)
+            ? sessionNowTs
+            : (Number.isFinite(replayNowTs)
+                ? replayNowTs
+                : (Number.isFinite(chartNowTs) ? chartNowTs : fallbackNowTs));
         body.innerHTML = this.openPositions.map((pos) => {
             const ticker = String(pos.ticker || pos.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
             const pnl = Number.parseFloat(pos.unrealizedPnL || 0) || 0;
@@ -16458,7 +16469,11 @@ class OrderManager {
                 ? this.orderService.estimateTradeMargin(pos)
                 : 0;
             const openTs = normalizeEpochMs(pos.openTime, nowTs);
-            const mins = Math.max(0, Math.round((nowTs - openTs) / 60000));
+            let mins = Math.max(0, Math.round((nowTs - openTs) / 60000));
+            // Guard: if we somehow mix wall-clock with replay timeline, prefer replay delta.
+            if (mins > 60 * 24 * 365 && Number.isFinite(replayNowTs)) {
+                mins = Math.max(0, Math.round((replayNowTs - openTs) / 60000));
+            }
             const timeLabel = mins >= 1440 ? `${(mins / 1440).toFixed(1)}d` : mins >= 60 ? `${(mins / 60).toFixed(1)}h` : `${mins}m`;
             return `
                 <div data-switch-ticker="${ticker}" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,0.07);cursor:pointer;display:grid;grid-template-columns:70px 52px 56px 1fr 82px 54px;gap:8px;align-items:center;">
