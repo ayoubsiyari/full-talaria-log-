@@ -105,6 +105,51 @@
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: rgba(59,130,246,0.4); background: rgba(255,255,255,0.06); }
         .form-group textarea { resize: vertical; min-height: 60px; }
         .helper-text { font-size: 11px; color: rgba(255,255,255,0.22); margin-top: 4px; line-height: 1.4; }
+        .instrument-table-wrap {
+            overflow-x: auto;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.02);
+        }
+        .instrument-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 820px;
+        }
+        .instrument-table thead th {
+            text-align: left;
+            padding: 9px 8px;
+            color: rgba(255,255,255,0.45);
+            font-size: 12px;
+            font-weight: 600;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.02);
+        }
+        .instrument-table tbody td {
+            padding: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .instrument-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .instrument-input {
+            width: 100%;
+            padding: 8px 11px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 13px;
+            font-family: inherit;
+            transition: border-color 0.15s, background 0.15s;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .instrument-input:focus {
+            outline: none;
+            border-color: rgba(59,130,246,0.4);
+            background: rgba(255,255,255,0.06);
+        }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
@@ -335,18 +380,18 @@
                         <div class="helper-text" style="margin-bottom: 10px;">
                             One row per selected dataset. Configure spread/commission per instrument.
                         </div>
-                        <div style="overflow-x: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                            <table style="width: 100%; border-collapse: collapse;">
+                        <div class="instrument-table-wrap">
+                            <table class="instrument-table">
                                 <thead>
                                     <tr>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Ticker</th>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Spread (pips)</th>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Commission / lot / side</th>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Pip Size</th>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Pip Value / lot</th>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Contract Size</th>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Min Lot</th>
-                                        <th style="text-align:left;padding:8px;color:#94a3b8;">Lot Step</th>
+                                        <th>Ticker</th>
+                                        <th>Spread (pips)</th>
+                                        <th>Commission / lot / side</th>
+                                        <th>Pip Size</th>
+                                        <th>Pip Value / lot</th>
+                                        <th>Contract Size</th>
+                                        <th>Min Lot</th>
+                                        <th>Lot Step</th>
                                     </tr>
                                 </thead>
                                 <tbody id="instrumentTableBody"></tbody>
@@ -1069,14 +1114,14 @@
                 const d = defaultInstrumentConfigFor(file);
                 return `
                 <tr>
-                    <td style="padding:8px;"><input id="inst_${idx}_ticker" value="${d.ticker}" style="width:100%;"></td>
-                    <td style="padding:8px;"><input type="number" step="0.1" min="0" id="inst_${idx}_spread" value="${d.spread_pips}" style="width:100%;"></td>
-                    <td style="padding:8px;"><input type="number" step="0.01" min="0" id="inst_${idx}_commission" value="${d.commission_per_lot_per_side}" style="width:100%;"></td>
-                    <td style="padding:8px;"><input type="number" step="0.0001" min="0.00001" id="inst_${idx}_pipSize" value="${d.pip_size}" style="width:100%;"></td>
-                    <td style="padding:8px;"><input type="number" step="0.01" min="0" id="inst_${idx}_pipValue" value="${d.pip_value_per_lot}" style="width:100%;"></td>
-                    <td style="padding:8px;"><input type="number" step="1" min="1" id="inst_${idx}_contract" value="${d.contract_size}" style="width:100%;"></td>
-                    <td style="padding:8px;"><input type="number" step="0.01" min="0.001" id="inst_${idx}_minLot" value="${d.min_lot_size}" style="width:100%;"></td>
-                    <td style="padding:8px;"><input type="number" step="0.01" min="0.001" id="inst_${idx}_lotStep" value="${d.lot_step}" style="width:100%;"></td>
+                    <td style="padding:8px;"><input class="instrument-input" id="inst_${idx}_ticker" value="${d.ticker}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="0.1" min="0" id="inst_${idx}_spread" value="${d.spread_pips}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="0.01" min="0" id="inst_${idx}_commission" value="${d.commission_per_lot_per_side}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="0.0001" min="0.00001" id="inst_${idx}_pipSize" value="${d.pip_size}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="0.01" min="0" id="inst_${idx}_pipValue" value="${d.pip_value_per_lot}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="1" min="1" id="inst_${idx}_contract" value="${d.contract_size}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="0.01" min="0.001" id="inst_${idx}_minLot" value="${d.min_lot_size}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="0.01" min="0.001" id="inst_${idx}_lotStep" value="${d.lot_step}"></td>
                 </tr>
                 `;
             }).join('');
