@@ -16324,7 +16324,7 @@ class OrderManager {
         dock.style.cssText = `
             position: fixed;
             right: 12px;
-            bottom: 12px;
+            top: 86px;
             width: 420px;
             background: rgba(10,15,30,0.95);
             border: 1px solid rgba(148,163,184,0.25);
@@ -16333,6 +16333,8 @@ class OrderManager {
             z-index: 9996;
             backdrop-filter: blur(5px);
             color: #e5e7eb;
+            max-height: calc(100vh - 170px);
+            overflow: hidden;
         `;
         document.body.appendChild(dock);
 
