@@ -3795,8 +3795,16 @@ class OrderManager {
                     right: -380px;
                     width: 372px;
                     height: calc(100vh - 48px);
-                    background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(0,0,0,0.08) 100%), var(--sp-bg, #050028);
-                    border-left: 1px solid rgba(255,255,255,0.07);
+                    --op-accent: var(--sp-accent, #2962ff);
+                    --op-accent-rgb: var(--sp-accent-rgb, 41, 98, 255);
+                    --op-bg: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg, #050028)));
+                    --op-surface: var(--sp-ui-chrome-bg, #0d142b);
+                    --op-text: var(--sp-text, #d1d4dc);
+                    --op-text-muted: var(--sp-text-muted, #7f879e);
+                    --op-border: rgba(var(--op-accent-rgb), 0.22);
+                    --op-soft-accent: rgba(var(--op-accent-rgb), 0.14);
+                    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.10) 100%), var(--op-bg);
+                    border-left: 1px solid var(--op-border);
                     z-index: 9999;
                     overflow: hidden;
                     overflow-y: auto;
@@ -3817,8 +3825,8 @@ class OrderManager {
                     transform: translateY(-50%);
                     width: 19px;
                     height: 44px;
-                    background: var(--sp-accent, #2962ff);
-                    border: 1px solid var(--sp-accent, #2962ff);
+                    background: var(--op-accent);
+                    border: 1px solid var(--op-accent);
                     border-right: none;
                     border-radius: 6px 0 0 6px;
                     display: flex;
@@ -3830,7 +3838,7 @@ class OrderManager {
                     transition: background 0.15s;
                     box-shadow: -3px 0 10px rgba(0,0,0,0.4);
                 }
-                .order-panel__edge-handle:hover { background: rgba(41,98,255,0.75); }
+                .order-panel__edge-handle:hover { filter: brightness(1.06); }
 
                 /* ── SCROLLBAR ───────────────────────────────────────────────────── */
                 .order-panel__content::-webkit-scrollbar { width: 3px; }
@@ -3862,14 +3870,14 @@ class OrderManager {
                     justify-content: space-between;
                     align-items: center;
                     padding: 14px 16px 12px;
-                    border-bottom: 1px solid rgba(255,255,255,0.06);
-                    background: rgba(255,255,255,0.015);
+                    border-bottom: 1px solid var(--op-border);
+                    background: rgba(0,0,0,0.08);
                     flex-shrink: 0;
                     user-select: none;
                 }
                 .order-panel__title {
                     margin: 0;
-                    color: #d1d4dc;
+                    color: var(--op-text);
                     font-size: 14px;
                     font-weight: 600;
                     letter-spacing: 0.01em;
@@ -3877,7 +3885,7 @@ class OrderManager {
                 .order-panel__close {
                     background: transparent;
                     border: none;
-                    color: #555a6e;
+                    color: var(--op-text-muted);
                     cursor: pointer;
                     font-size: 22px;
                     line-height: 1;
@@ -3886,7 +3894,7 @@ class OrderManager {
                     display: flex; align-items: center; justify-content: center;
                     transition: background 0.15s, color 0.15s;
                 }
-                .order-panel__close:hover { background: rgba(255,255,255,0.07); color: #d1d4dc; }
+                .order-panel__close:hover { background: var(--op-soft-accent); color: var(--op-text); }
 
                 /* ── BUY / SELL TABS ─────────────────────────────────────────────── */
                 .order-panel__tab-group {
@@ -3897,7 +3905,7 @@ class OrderManager {
                 }
                 .order-tab {
                     padding: 9px 6px;
-                    border: 1px solid transparent;
+                    border: 1px solid var(--op-border);
                     border-radius: 5px;
                     font-weight: 700;
                     font-size: 12px;
@@ -3906,26 +3914,24 @@ class OrderManager {
                     transition: all 0.15s ease;
                 }
                 .order-tab--buy {
-                    background: rgba(34,197,94,0.08);
-                    border-color: rgba(34,197,94,0.2);
-                    color: #4ade80;
+                    background: rgba(255,255,255,0.02);
+                    color: var(--op-text-muted);
                 }
                 .order-tab--sell {
-                    background: rgba(239,68,68,0.08);
-                    border-color: rgba(239,68,68,0.2);
-                    color: #f87171;
+                    background: rgba(255,255,255,0.02);
+                    color: var(--op-text-muted);
                 }
                 .order-tab.active.order-tab--buy {
-                    background: linear-gradient(135deg, #065f46, #059669);
-                    border-color: #059669;
+                    background: linear-gradient(135deg, rgba(var(--op-accent-rgb), 0.9), rgba(var(--op-accent-rgb), 0.7));
+                    border-color: rgba(var(--op-accent-rgb), 0.9);
                     color: #fff;
-                    box-shadow: 0 2px 12px rgba(5,150,105,0.35);
+                    box-shadow: 0 3px 14px rgba(var(--op-accent-rgb), 0.35);
                 }
                 .order-tab.active.order-tab--sell {
-                    background: linear-gradient(135deg, #7f1d1d, #dc2626);
-                    border-color: #dc2626;
+                    background: linear-gradient(135deg, rgba(var(--op-accent-rgb), 0.9), rgba(var(--op-accent-rgb), 0.7));
+                    border-color: rgba(var(--op-accent-rgb), 0.9);
                     color: #fff;
-                    box-shadow: 0 2px 12px rgba(220,38,38,0.35);
+                    box-shadow: 0 3px 14px rgba(var(--op-accent-rgb), 0.35);
                 }
                 .order-tab:hover { filter: brightness(1.12); }
 
@@ -3940,8 +3946,8 @@ class OrderManager {
                 .order-button-group {
                     display: flex;
                     gap: 2px;
-                    background: rgba(15, 23, 42, 0.55);
-                    border: 1px solid rgba(148,163,184,0.16);
+                    background: rgba(0,0,0,0.18);
+                    border: 1px solid var(--op-border);
                     border-radius: 8px;
                     padding: 4px;
                 }
@@ -3961,7 +3967,7 @@ class OrderManager {
                     font-size: 11px;
                     font-weight: 600;
                     cursor: pointer;
-                    color: #7f879e;
+                    color: var(--op-text-muted);
                     background: transparent;
                     transition: all 0.15s ease;
                     letter-spacing: 0.015em;
@@ -3969,15 +3975,15 @@ class OrderManager {
                 .order-type-btn:hover,
                 .position-mode-tab:hover,
                 .breakeven-mode-tab:hover {
-                    background: rgba(148,163,184,0.18);
-                    color: #e2e8f0;
+                    background: var(--op-soft-accent);
+                    color: var(--op-text);
                 }
                 .order-type-btn.active,
                 .position-mode-tab.active,
                 .breakeven-mode-tab.active {
-                    background: var(--sp-accent, #2962ff);
+                    background: var(--op-accent);
                     color: #fff;
-                    box-shadow: 0 3px 14px rgba(41,98,255,0.35);
+                    box-shadow: 0 3px 14px rgba(var(--op-accent-rgb), 0.35);
                 }
 
                 /* ── RISK SHORTCUT BUTTONS ───────────────────────────────────────── */
@@ -4046,7 +4052,7 @@ class OrderManager {
                 .order-field { display: flex; flex-direction: column; gap: 4px; }
                 .order-label {
                     font-size: 10px;
-                    color: #9aa3bd;
+                    color: var(--op-text-muted);
                     font-weight: 600;
                     letter-spacing: 0.05em;
                     text-transform: uppercase;
@@ -4054,34 +4060,34 @@ class OrderManager {
                 .order-input-wrapper {
                     display: flex;
                     align-items: center;
-                    background: linear-gradient(180deg, rgba(15,23,42,0.82) 0%, rgba(2,6,23,0.82) 100%);
-                    border: 1px solid rgba(148,163,184,0.2);
+                    background: linear-gradient(180deg, rgba(0,0,0,0.14) 0%, rgba(0,0,0,0.3) 100%), var(--op-surface);
+                    border: 1px solid var(--op-border);
                     border-radius: 8px;
                     padding: 0 10px;
                     box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
                     transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
                 }
                 .order-input-wrapper:focus-within {
-                    border-color: rgba(56,189,248,0.95);
-                    background: linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.95) 100%);
-                    box-shadow: 0 0 0 2px rgba(56,189,248,0.18);
+                    border-color: rgba(var(--op-accent-rgb), 0.95);
+                    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.25) 100%), var(--op-surface);
+                    box-shadow: 0 0 0 2px rgba(var(--op-accent-rgb), 0.2);
                 }
                 .order-input {
                     flex: 1;
                     background: transparent;
                     border: none;
-                    color: #f1f5f9;
+                    color: var(--op-text);
                     font-size: 13px;
                     padding: 9px 0;
                     outline: none;
                     font-family: inherit;
                     font-weight: 600;
                 }
-                .order-input::placeholder { color: rgba(148,163,184,0.55); font-weight: 500; }
+                .order-input::placeholder { color: rgba(127, 135, 158, 0.65); font-weight: 500; }
                 .order-input--compact { padding: 8px 0; font-size: 12px; }
                 .order-input-prefix, .order-input-suffix {
                     font-size: 11px;
-                    color: #94a3b8;
+                    color: var(--op-text-muted);
                     font-weight: 600;
                     flex-shrink: 0;
                 }
@@ -4089,9 +4095,9 @@ class OrderManager {
                     width: 30px !important;
                     height: 30px !important;
                     border-radius: 8px !important;
-                    border: 1px solid rgba(148,163,184,0.25) !important;
-                    background: rgba(15,23,42,0.7) !important;
-                    color: #cbd5e1 !important;
+                    border: 1px solid var(--op-border) !important;
+                    background: rgba(0,0,0,0.14) !important;
+                    color: var(--op-text) !important;
                     font-size: 16px !important;
                     font-weight: 700 !important;
                     cursor: pointer !important;
@@ -4101,17 +4107,17 @@ class OrderManager {
                     transition: all 0.15s ease !important;
                 }
                 .input-stepper:hover {
-                    border-color: rgba(56,189,248,0.55) !important;
-                    background: rgba(30,41,59,0.95) !important;
-                    color: #e2e8f0 !important;
+                    border-color: rgba(var(--op-accent-rgb), 0.7) !important;
+                    background: var(--op-soft-accent) !important;
+                    color: var(--op-text) !important;
                     transform: translateY(-1px);
                 }
                 .order-hint { font-size: 10px; color: #3d4256; line-height: 1.4; }
 
                 /* ── POSITION SIZE CALC ROW ──────────────────────────────────────── */
                 .order-calculation {
-                    background: rgba(41,98,255,0.06);
-                    border: 1px solid rgba(41,98,255,0.15);
+                    background: var(--op-soft-accent);
+                    border: 1px solid var(--op-border);
                     border-radius: 4px;
                     padding: 5px 10px;
                     display: flex;
@@ -4119,7 +4125,7 @@ class OrderManager {
                     align-items: center;
                 }
                 .order-calculation-label { color: #555a6e; font-size: 10px; font-weight: 500; }
-                .order-calculation-value { color: var(--sp-accent, #2962ff); font-size: 11px; font-weight: 700; }
+                .order-calculation-value { color: var(--op-accent); font-size: 11px; font-weight: 700; }
 
                 /* ── COLLAPSE SECTIONS (Protection / Multiple TP) ────────────────── */
                 .order-collapse {
@@ -4174,8 +4180,8 @@ class OrderManager {
 
                 /* ── SUMMARY FOOTER ──────────────────────────────────────────────── */
                 .order-summary {
-                    background: linear-gradient(180deg, rgba(15,23,42,0.75) 0%, rgba(2,6,23,0.75) 100%);
-                    border: 1px solid rgba(148,163,184,0.2);
+                    background: linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.24) 100%), var(--op-surface);
+                    border: 1px solid var(--op-border);
                     border-radius: 10px;
                     padding: 11px 12px;
                     display: flex;
@@ -4187,13 +4193,13 @@ class OrderManager {
                     justify-content: space-between;
                     align-items: center;
                 }
-                .order-summary-label { font-size: 11px; font-weight: 500; color: #555a6e; }
+                .order-summary-label { font-size: 11px; font-weight: 500; color: var(--op-text-muted); }
                 .order-summary-label--positive { color: #4ade80; }
                 .order-summary-label--negative { color: #f87171; }
-                .order-summary-value { font-size: 11px; font-weight: 700; color: #d1d4dc; }
+                .order-summary-value { font-size: 11px; font-weight: 700; color: var(--op-text); }
                 .order-summary-value--positive { color: #4ade80; }
                 .order-summary-value--negative { color: #f87171; }
-                .order-summary-value--muted { color: #d1d4dc; }
+                .order-summary-value--muted { color: var(--op-text); }
                 .order-summary-value--warning { color: #f59e0b; }
                 .order-summary-value--danger { color: #ef4444; }
                 .order-summary-divider {
@@ -4217,7 +4223,7 @@ class OrderManager {
                 .order-submit-btn {
                     width: 100%;
                     padding: 12px 14px;
-                    background: linear-gradient(135deg, #065f46 0%, #059669 100%);
+                    background: linear-gradient(135deg, rgba(var(--op-accent-rgb), 0.95) 0%, rgba(var(--op-accent-rgb), 0.75) 100%);
                     color: #fff;
                     border: none;
                     border-radius: 10px;
@@ -4226,10 +4232,10 @@ class OrderManager {
                     letter-spacing: 0.03em;
                     cursor: pointer;
                     transition: filter 0.15s, box-shadow 0.15s;
-                    box-shadow: 0 2px 14px rgba(5,150,105,0.3);
+                    box-shadow: 0 2px 14px rgba(var(--op-accent-rgb), 0.3);
                     margin-top: 2px;
                 }
-                .order-submit-btn:hover { filter: brightness(1.1); box-shadow: 0 3px 18px rgba(5,150,105,0.45); }
+                .order-submit-btn:hover { filter: brightness(1.08); box-shadow: 0 3px 18px rgba(var(--op-accent-rgb), 0.45); }
                 .order-submit-btn:active { filter: brightness(0.92); }
                 .order-submit-btn.sell-mode {
                     background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%);
