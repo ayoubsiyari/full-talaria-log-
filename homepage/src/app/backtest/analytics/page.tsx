@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Filter, BarChart3 } from "lucide-react";
 
 type Session = {
@@ -50,16 +49,21 @@ function fmtMoney(v: number): string {
 }
 
 export default function BacktestAnalyticsPage() {
-  const params = useSearchParams();
-  const initialSessionId = params.get("sessionId") || "";
-
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(initialSessionId);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [allTrades, setAllTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pairFilter, setPairFilter] = useState("ALL");
   const [playbookFilter, setPlaybookFilter] = useState("ALL");
+
+  useEffect(() => {
+    try {
+      const search = typeof window !== "undefined" ? window.location.search : "";
+      const sid = new URLSearchParams(search).get("sessionId") || "";
+      if (sid) setSelectedSessionId(sid);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     let mounted = true;
