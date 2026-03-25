@@ -3259,20 +3259,30 @@ class ReplaySystem {
         
         const mainChart = this.chart;
         const mainSymbol = mainChart ? mainChart.currentSymbol : null;
+        const replayTs = this.replayTimestamp;
         
         window.panelManager.panels.forEach((panel, index) => {
             const pc = panel.chartInstance;
             if (!pc || !pc.isPanel || pc === mainChart) return;
             
             try {
-                if (mainSymbol && pc.currentSymbol !== mainSymbol) {
-                    pc.currentSymbol = mainSymbol;
-                    if (mainChart) pc.currentFileId = mainChart.currentFileId;
-                    if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
+                const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+
+                if (hasOwnData) {
+                    let idx = this._bsearchTimestamp(pc._panelFullRawData, replayTs);
+                    idx = Math.max(0, Math.min(idx, pc._panelFullRawData.length - 1));
+                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    pc.rawData = panelSlice;
+                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
+                } else {
+                    if (mainSymbol && pc.currentSymbol !== mainSymbol) {
+                        pc.currentSymbol = mainSymbol;
+                        if (mainChart) pc.currentFileId = mainChart.currentFileId;
+                        if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
+                    }
+                    pc.rawData = [...slicedRaw];
+                    pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
                 }
-                
-                pc.rawData = [...slicedRaw];
-                pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
                 
                 if (this.tickProgress % 10 === 0 && typeof pc.recalculateIndicators === 'function') {
                     try { pc.recalculateIndicators(); } catch (e) {}
@@ -4080,6 +4090,20 @@ class ReplaySystem {
     /**
      * Synchronize all panel charts with current replay position
      */
+    _bsearchTimestamp(data, ts) {
+        if (!data || data.length === 0) return 0;
+        let lo = 0, hi = data.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if ((data[mid].t || 0) < ts) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
+            return lo - 1;
+        }
+        return lo;
+    }
+
     syncPanelCharts() {
         if (!window.panelManager || !window.panelManager.panels || window.panelManager.panels.length === 0) {
             return;
@@ -4087,8 +4111,8 @@ class ReplaySystem {
         
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
         const slicedRawData = this.fullRawData.slice(0, sliceEnd);
+        const replayTs = this.replayTimestamp;
         
-        // Grab symbol info from main chart so panels stay in sync
         const mainChart = this.chart;
         const mainSymbol = mainChart ? mainChart.currentSymbol : null;
         const mainFileId = mainChart ? mainChart.currentFileId : null;
@@ -4096,28 +4120,29 @@ class ReplaySystem {
         window.panelManager.panels.forEach((panel, index) => {
             const pc = panel.chartInstance;
             if (!pc || !pc.isPanel) return;
-            // Skip the main chart instance — it's already updated by updateChartData
             if (pc === mainChart) return;
             
             try {
-                // Sync symbol / fileId so headers and OHLC show correct pair
-                if (mainSymbol && pc.currentSymbol !== mainSymbol) {
-                    pc.currentSymbol = mainSymbol;
-                    pc.currentFileId = mainFileId;
-                    if (typeof pc.updateChartTitle === 'function') {
-                        pc.updateChartTitle(mainSymbol);
+                const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+
+                if (hasOwnData) {
+                    let idx = this._bsearchTimestamp(pc._panelFullRawData, replayTs);
+                    idx = Math.max(0, Math.min(idx, pc._panelFullRawData.length - 1));
+                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    pc.rawData = panelSlice;
+                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
+                } else {
+                    if (mainSymbol && pc.currentSymbol !== mainSymbol) {
+                        pc.currentSymbol = mainSymbol;
+                        pc.currentFileId = mainFileId;
+                        if (typeof pc.updateChartTitle === 'function') pc.updateChartTitle(mainSymbol);
+                        if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
                     }
-                    if (typeof pc.updateChartOHLCSymbol === 'function') {
-                        pc.updateChartOHLCSymbol(mainSymbol);
-                    }
+                    pc.rawData = slicedRawData;
+                    pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
                 }
                 
-                pc.rawData = slicedRawData;
-                pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
-                
-                if (typeof pc.bumpDataVersion === 'function') {
-                    pc.bumpDataVersion();
-                }
+                if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
                 
                 if (typeof pc.recalculateIndicators === 'function') {
                     try { pc.recalculateIndicators(); } catch (e) {}
@@ -4134,7 +4159,7 @@ class ReplaySystem {
                 pc.render();
                 
             } catch (error) {
-                console.error(`❌ Error syncing panel ${index}:`, error);
+                console.error(`Error syncing panel ${index}:`, error);
             }
         });
     }

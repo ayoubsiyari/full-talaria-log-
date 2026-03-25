@@ -1358,6 +1358,91 @@ class Chart {
     }
     
     /**
+     * Load a different pair into THIS panel independently (does not affect main chart or other panels).
+     * The panel maintains its own fullRawData and slices by the shared replay timestamp.
+     */
+    async loadPanelFileData(fileId) {
+        const targetFileId = String(fileId);
+        const mainChart = window.chart;
+        try {
+            const session = this.backtestingSession
+                || (mainChart && mainChart.backtestingSession)
+                || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+
+            const targetTicker = (mainChart && typeof mainChart.resolveSessionTickerForFileId === 'function')
+                ? mainChart.resolveSessionTickerForFileId(session, targetFileId)
+                : (typeof this.resolveSessionTickerForFileId === 'function'
+                    ? this.resolveSessionTickerForFileId(session, targetFileId)
+                    : this.currentSymbol);
+
+            const replay = this.replaySystem || (mainChart && mainChart.replaySystem);
+            const replayTs = replay && Number.isFinite(Number(replay.replayTimestamp))
+                ? Number(replay.replayTimestamp) : null;
+
+            const isBacktest = !!(session && session.startDate);
+            const requestTimeframe = isBacktest ? '1m' : (this.currentTimeframe || '1m');
+            const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
+
+            if (Number.isFinite(replayTs)) {
+                params.set('end_ts', String(Math.floor(replayTs + 120000)));
+            }
+
+            const result = await this._fetchSmartWindowWithParams(targetFileId, params);
+
+            if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
+
+            this.rawData = [];
+            this.data = [];
+            this._ingestSmartWindowResult(result, { skipFitToView: true });
+
+            this.currentFileId = targetFileId;
+            this.currentSymbol = targetTicker || this.currentSymbol;
+            this._panelFullRawData = [...this.rawData];
+
+            if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
+                let idx = -1;
+                if (typeof this.findGoToTargetIndex === 'function') {
+                    idx = this.findGoToTargetIndex(this._panelFullRawData, replayTs);
+                }
+                if (idx < 0) {
+                    idx = this._panelFullRawData.findIndex(c => Number(c && c.t) >= replayTs);
+                }
+                if (idx < 0) idx = this._panelFullRawData.length - 1;
+                idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
+
+                const sliced = this._panelFullRawData.slice(0, idx + 1);
+                this.rawData = sliced;
+                this.data = this.resampleData(sliced, this.currentTimeframe);
+            }
+
+            this.updateChartOHLCSymbol(this.currentSymbol);
+
+            this.priceZoom = 1;
+            this.priceOffset = 0;
+            this.autoScale = true;
+            if (this.priceScale) this.priceScale.autoScale = true;
+            this.manualCenterPrice = null;
+            this.manualRange = null;
+
+            if (typeof this.recalculateIndicators === 'function') {
+                try { this.recalculateIndicators(); } catch (e) {}
+            }
+
+            this.resize();
+            this.fitToView();
+            this.render();
+
+            return true;
+        } catch (error) {
+            console.error('Failed to load panel file data:', error);
+            if (typeof this.showNotification === 'function') {
+                this.showNotification('Failed to load symbol: ' + error.message);
+            }
+            return false;
+        }
+    }
+
+    /**
      * Start replay mode for backtesting with date filtering
      */
     startBacktestingReplay(session) {
@@ -5955,7 +6040,10 @@ class Chart {
             if (!item) return;
 
             const nextFileId = item.dataset.fileId;
-            if (!nextFileId || String(nextFileId) === String(this.currentFileId || '')) {
+            const activeChart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : this;
+            const targetChart = activeChart || this;
+
+            if (!nextFileId || String(nextFileId) === String(targetChart.currentFileId || '')) {
                 closeDropdown();
                 return;
             }
@@ -5963,12 +6051,17 @@ class Chart {
             dropdown.querySelectorAll('.ssd-item.active').forEach(el => el.classList.remove('active'));
             item.classList.add('active', 'loading');
             closeDropdown();
-            this.loadFileData(nextFileId)
-                .then((switched) => {
+
+            const loadPromise = (targetChart.isPanel && targetChart !== window.chart && typeof targetChart.loadPanelFileData === 'function')
+                ? targetChart.loadPanelFileData(nextFileId)
+                : this.loadFileData(nextFileId);
+
+            loadPromise
+                .then(() => {
                     this.renderSymbolSwitcherOptions(dropdown);
                 })
                 .catch((error) => {
-                    console.error('❌ Failed to switch symbol from search menu:', error);
+                    console.error('Failed to switch symbol:', error);
                     this.renderSymbolSwitcherOptions(dropdown);
                 });
         });
@@ -6096,7 +6189,8 @@ class Chart {
 
     _buildListContent(entries, query) {
         if (entries.length === 0) return '<div class="ssd-empty">No instruments available</div>';
-        const currentId = String(this.currentFileId || '');
+        const activeChart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : this;
+        const currentId = String((activeChart && activeChart.currentFileId) || this.currentFileId || '');
         const filtered = query
             ? entries
                 .filter(e => this._symbolMatches(e, query))
