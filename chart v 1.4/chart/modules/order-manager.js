@@ -11569,11 +11569,17 @@ class OrderManager {
         const ordersToExecute = [];
         const idsToRemove = [];
         
+        const chartTicker = this._getActiveTicker();
         this.pendingOrders.forEach(pendingOrder => {
             // Skip if not actually pending
             if (pendingOrder.status !== 'PENDING') {
                 console.warn(`⚠️ Skipping non-pending order #${pendingOrder.id} with status: ${pendingOrder.status}`);
                 idsToRemove.push(pendingOrder.id);
+                return;
+            }
+
+            const poTicker = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol);
+            if (poTicker && chartTicker && poTicker !== chartTicker) {
                 return;
             }
             
@@ -11850,8 +11856,15 @@ class OrderManager {
         
         // Check each position for SL/TP hits
         const positionsToClose = [];
-        
+        const chartTickerForBar = this._getActiveTicker();
+
         this.openPositions.forEach(position => {
+            const posTicker = this._positionTicker(position);
+            if (posTicker && chartTickerForBar && posTicker !== chartTickerForBar) {
+                totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
+                return;
+            }
+
             this._appendExcursionSnapshot(position, currentCandle, false);
             if (position.type === 'BUY') {
                 const priceDiff = currentPrice - position.openPrice;

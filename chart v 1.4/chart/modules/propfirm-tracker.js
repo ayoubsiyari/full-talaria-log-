@@ -695,13 +695,13 @@ function initPropFirmTracker() {
 
 // Global functions for modal buttons
 window.exitToSessionDashboard = function() {
-    console.log('🚪 Exiting to session dashboard...');
+    console.log('🚪 Exiting to dashboard...');
     
     // Clear the session (optional - user may want to review it later)
     // localStorage.removeItem('backtestingSession');
     
-    // Redirect to sessions page
-    window.location.href = 'sessions.html';
+    // Redirect to homepage
+    window.location.href = '/';
 };
 
 window.continueTrading = function() {
