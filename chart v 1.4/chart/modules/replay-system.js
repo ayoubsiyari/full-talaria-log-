@@ -1902,6 +1902,9 @@ class ReplaySystem {
             this.chart.orderManager.updatePositions();
         }
         
+        // Sync all panel charts with the current replay position
+        this.syncPanelCharts();
+        
         // Update follow button visibility based on whether last candle is visible
         this.updateAutoScrollIndicator();
 
@@ -2823,6 +2826,12 @@ class ReplaySystem {
             this.chart.orderManager.updatePositions();
         }
 
+        // Sync panels (throttle every 3rd update to keep fast mode responsive)
+        if (!this._fastSyncCounter) this._fastSyncCounter = 0;
+        if (++this._fastSyncCounter % 3 === 0) {
+            this.syncPanelCharts();
+        }
+
         // Keep follow/jump-to-latest button responsive in fast mode too.
         // Throttle checks to avoid unnecessary work at high replay speeds.
         if (!this.autoScrollEnabled) {
@@ -3244,17 +3253,26 @@ class ReplaySystem {
      * Sync all panel charts with the animated candle during tick animation
      */
     syncPanelChartsWithAnimatedCandle(slicedRaw, animatedCandle) {
-        // Check if panel manager exists and has panels
         if (!window.panelManager || !window.panelManager.panels || window.panelManager.panels.length === 0) {
             return;
         }
         
-        // Update each panel chart with the same animated data
+        const mainChart = this.chart;
+        const mainSymbol = mainChart ? mainChart.currentSymbol : null;
+        
         window.panelManager.panels.forEach((panel, index) => {
-            if (panel.chartInstance && panel.chartInstance.isPanel) {
-                try {
-                    // Update raw data to same slice (includes animated candle)
-                    panel.chartInstance.rawData = [...slicedRaw];
+            const pc = panel.chartInstance;
+            if (!pc || !pc.isPanel || pc === mainChart) return;
+            
+            try {
+                // Keep symbol in sync (cheap string check, only updates on mismatch)
+                if (mainSymbol && pc.currentSymbol !== mainSymbol) {
+                    pc.currentSymbol = mainSymbol;
+                    if (mainChart) pc.currentFileId = mainChart.currentFileId;
+                    if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
+                }
+                
+                pc.rawData = [...slicedRaw];
                     
                     // Resample to panel's timeframe
                     panel.chartInstance.data = panel.chartInstance.resampleData(
@@ -4081,61 +4099,62 @@ class ReplaySystem {
      * Synchronize all panel charts with current replay position
      */
     syncPanelCharts() {
-        // Check if panel manager exists and has panels
         if (!window.panelManager || !window.panelManager.panels || window.panelManager.panels.length === 0) {
             return;
         }
         
-        
-        // Get the sliced raw data (same as main chart)
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
         const slicedRawData = this.fullRawData.slice(0, sliceEnd);
         
-        // Update each panel chart
+        // Grab symbol info from main chart so panels stay in sync
+        const mainChart = this.chart;
+        const mainSymbol = mainChart ? mainChart.currentSymbol : null;
+        const mainFileId = mainChart ? mainChart.currentFileId : null;
+        
         window.panelManager.panels.forEach((panel, index) => {
-            if (panel.chartInstance && panel.chartInstance.isPanel) {
-                try {
-                    // Update raw data to same slice
-                    panel.chartInstance.rawData = slicedRawData;
-                    
-                    // Resample to panel's timeframe
-                    panel.chartInstance.data = panel.chartInstance.resampleData(
-                        slicedRawData, 
-                        panel.chartInstance.currentTimeframe
-                    );
-                    
-                    // Recalculate indicators if available
-                    if (typeof panel.chartInstance.recalculateIndicators === 'function') {
-                        try {
-                            panel.chartInstance.recalculateIndicators();
-                        } catch (error) {
-                            console.warn(`⚠️ Error recalculating indicators for panel ${index}:`, error);
-                        }
+            const pc = panel.chartInstance;
+            if (!pc || !pc.isPanel) return;
+            // Skip the main chart instance — it's already updated by updateChartData
+            if (pc === mainChart) return;
+            
+            try {
+                // Sync symbol / fileId so headers and OHLC show correct pair
+                if (mainSymbol && pc.currentSymbol !== mainSymbol) {
+                    pc.currentSymbol = mainSymbol;
+                    pc.currentFileId = mainFileId;
+                    if (typeof pc.updateChartTitle === 'function') {
+                        pc.updateChartTitle(mainSymbol);
                     }
-                    
-                    // Auto-scroll panel if enabled
-                    if (this.autoScrollEnabled) {
-                        const panelAutoScrollState = this.getReplayAutoScrollState(panel.chartInstance);
-                        if (panelAutoScrollState) {
-                            panel.chartInstance.offsetX = panelAutoScrollState.offsetX;
-                        }
+                    if (typeof pc.updateChartOHLCSymbol === 'function') {
+                        pc.updateChartOHLCSymbol(mainSymbol);
                     }
-                    
-                    // Apply constraints
-                    if (typeof panel.chartInstance.constrainOffset === 'function') {
-                        panel.chartInstance.constrainOffset();
-                    }
-                    
-                    // Render panel
-                    panel.chartInstance.renderPending = true;
-                    panel.chartInstance.render();
-                    
-                } catch (error) {
-                    console.error(`❌ Error syncing panel ${index}:`, error);
                 }
+                
+                pc.rawData = slicedRawData;
+                pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
+                
+                if (typeof pc.bumpDataVersion === 'function') {
+                    pc.bumpDataVersion();
+                }
+                
+                if (typeof pc.recalculateIndicators === 'function') {
+                    try { pc.recalculateIndicators(); } catch (e) {}
+                }
+                
+                if (this.autoScrollEnabled) {
+                    const st = this.getReplayAutoScrollState(pc);
+                    if (st) pc.offsetX = st.offsetX;
+                }
+                
+                if (typeof pc.constrainOffset === 'function') pc.constrainOffset();
+                
+                pc.renderPending = true;
+                pc.render();
+                
+            } catch (error) {
+                console.error(`❌ Error syncing panel ${index}:`, error);
             }
         });
-        
     }
 }
 
