@@ -3265,7 +3265,6 @@ class ReplaySystem {
             if (!pc || !pc.isPanel || pc === mainChart) return;
             
             try {
-                // Keep symbol in sync (cheap string check, only updates on mismatch)
                 if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                     pc.currentSymbol = mainSymbol;
                     if (mainChart) pc.currentFileId = mainChart.currentFileId;
@@ -3273,41 +3272,24 @@ class ReplaySystem {
                 }
                 
                 pc.rawData = [...slicedRaw];
-                    
-                    // Resample to panel's timeframe
-                    panel.chartInstance.data = panel.chartInstance.resampleData(
-                        slicedRaw, 
-                        panel.chartInstance.currentTimeframe
-                    );
-                    
-                    // Recalculate indicators every 10th tick
-                    if (this.tickProgress % 10 === 0 && typeof panel.chartInstance.recalculateIndicators === 'function') {
-                        try {
-                            panel.chartInstance.recalculateIndicators();
-                        } catch (error) {
-                            // Silent fail for indicator errors during animation
-                        }
-                    }
-                    
-                    // Auto-scroll panel if enabled (every 5th tick)
-                    if (this.autoScrollEnabled && this.tickProgress % 5 === 0) {
-                        if (panel.chartInstance.fitToView) {
-                            panel.chartInstance.fitToView();
-                        } else {
-                            const panelAutoScrollState = this.getReplayAutoScrollState(panel.chartInstance);
-                            if (panelAutoScrollState) {
-                                panel.chartInstance.offsetX = panelAutoScrollState.offsetX;
-                            }
-                        }
-                    }
-                    
-                    // Render panel
-                    if (panel.chartInstance.render) {
-                        panel.chartInstance.render();
-                    }
-                } catch (error) {
-                    // Silent fail during animation to prevent lag
+                pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
+                
+                if (this.tickProgress % 10 === 0 && typeof pc.recalculateIndicators === 'function') {
+                    try { pc.recalculateIndicators(); } catch (e) {}
                 }
+                
+                if (this.autoScrollEnabled && this.tickProgress % 5 === 0) {
+                    if (pc.fitToView) {
+                        pc.fitToView();
+                    } else {
+                        const st = this.getReplayAutoScrollState(pc);
+                        if (st) pc.offsetX = st.offsetX;
+                    }
+                }
+                
+                if (pc.render) pc.render();
+            } catch (error) {
+                // Silent fail during animation to prevent lag
             }
         });
     }
