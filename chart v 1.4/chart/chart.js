@@ -1256,12 +1256,20 @@ class Chart {
             this.fitToView();
             this.render();
 
-            const replay = window.replaySystem;
+            const replay = this.replaySystem;
             if (replay && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                if (replay.isPlaying && typeof replay.pause === 'function') {
+                    replay.pause();
+                }
                 replay.fullRawData = [...this.rawData];
                 replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
                 replay.rawTimeframe = requestTimeframe;
                 replay._fullRawDataMatchesTF = false;
+                // Tick path cache is keyed by bar timestamp — same wall time on another pair would reuse wrong prices.
+                replay.tickPathCache = {};
+                replay.tickPathCacheBuilt = false;
+                replay.animatingCandle = null;
+                replay.tickProgress = 0;
 
                 const sessionTime = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
                 const targetTs = Number.isFinite(sessionTime)
