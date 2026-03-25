@@ -42999,7 +42999,7 @@
 
                             const toolName = (toolId.endsWith('Tool')) ? toolId.slice(0, -4) : null;
 
-                            const chart = window.chart || window.mainChart;
+                            const chart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : (window.chart || window.mainChart);
 
                             
 
@@ -43129,7 +43129,7 @@
 
                     // BUT skip this check if triggered by group button click OR if dropdown is currently open
 
-                    const chart = window.chart || window.mainChart;
+                    const chart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : (window.chart || window.mainChart);
 
                     const toolName = (this.id && this.id.endsWith('Tool')) ? this.id.slice(0, -4) : null;
 
@@ -43553,6 +43553,8 @@
 
                     // Activate the drawing tool FIRST
 
+                    const chart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : (window.chart || window.mainChart);
+
                     if (toolName && typeof chart !== 'undefined' && chart.drawingManager) {
 
                         chart.drawingManager.setTool(toolName);
@@ -43561,9 +43563,11 @@
 
                         setTimeout(() => {
 
-                            if (typeof chart !== 'undefined' && chart.drawingManager) {
+                            const chartRetry = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : (window.chart || window.mainChart);
 
-                                chart.drawingManager.setTool(toolName);
+                            if (typeof chartRetry !== 'undefined' && chartRetry.drawingManager) {
+
+                                chartRetry.drawingManager.setTool(toolName);
 
                             }
 
