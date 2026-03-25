@@ -303,6 +303,158 @@ class OrderManager {
         return pt === this._getActiveTicker();
     }
 
+    _isMultiPanelLayout() {
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        return !!(pm && pm.currentLayout && String(pm.currentLayout) !== '1');
+    }
+
+    _collectLayoutCharts() {
+        const out = [];
+        const seen = new Set();
+        const add = (c) => {
+            if (!c || typeof c.svg?.append !== 'function') return;
+            if (seen.has(c)) return;
+            seen.add(c);
+            out.push(c);
+        };
+        add(this.chart);
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (pm && String(pm.currentLayout || '1') !== '1' && Array.isArray(pm.panels)) {
+            pm.panels.forEach((p) => add(p.chartInstance));
+        }
+        return out;
+    }
+
+    _positionTickerMatchesChartSymbol(position, chart) {
+        if (!chart) return false;
+        const pt = this._positionTicker(position);
+        if (!pt) return chart === this.chart;
+        const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
+        if (!cs) return chart === this.chart;
+        return pt === cs;
+    }
+
+    _stripOrderDrawingLayersFromChart(chart) {
+        if (!chart?.svg?.selectAll) return;
+        const s = chart.svg;
+        s.selectAll('.order-line,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn').remove();
+        s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
+        s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
+        s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
+        s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
+        s.selectAll('.be-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
+        s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
+        s.selectAll('g[class*="entry-marker-"]').remove();
+        s.selectAll('text[class*="pip-indicator"]').remove();
+        s.selectAll('text[class*="dollar-indicator"]').remove();
+        s.selectAll('text[class*="rr-indicator"]').remove();
+    }
+
+    _dropOrderVisualsNotOnMainChart() {
+        const stripOl = (ol) => {
+            try {
+                if (ol.line) ol.line.remove();
+                if (ol.labelBox) ol.labelBox.remove();
+                if (ol.labelText) ol.labelText.remove();
+                if (ol.arrow) ol.arrow.remove();
+                if (ol.priceBox) ol.priceBox.remove();
+                if (ol.priceText) ol.priceText.remove();
+                if (ol.closeBtn) ol.closeBtn.remove();
+            } catch (e) { /* ignore */ }
+        };
+        const stripSl = (sl) => {
+            try {
+                if (sl.line) sl.line.remove();
+                if (sl.labelBox) sl.labelBox.remove();
+                if (sl.labelText) sl.labelText.remove();
+                if (sl.closeBtn) sl.closeBtn.remove();
+                if (sl.priceBox) sl.priceBox.remove();
+                if (sl.priceText) sl.priceText.remove();
+            } catch (e) { /* ignore */ }
+        };
+        const stripTp = (tp) => {
+            try {
+                if (tp.line) tp.line.remove();
+                if (tp.labelBox) tp.labelBox.remove();
+                if (tp.labelText) tp.labelText.remove();
+                if (tp.closeBtn) tp.closeBtn.remove();
+                if (tp.priceBox) tp.priceBox.remove();
+                if (tp.priceText) tp.priceText.remove();
+            } catch (e) { /* ignore */ }
+        };
+        const stripBe = (be) => {
+            try {
+                if (be.line) be.line.remove();
+                if (be.labelBox) be.labelBox.remove();
+                if (be.labelText) be.labelText.remove();
+                if (be.priceBox) be.priceBox.remove();
+                if (be.priceText) be.priceText.remove();
+            } catch (e) { /* ignore */ }
+        };
+        (this.orderLines || []).filter((ol) => ol.chart && ol.chart !== this.chart).forEach(stripOl);
+        this.orderLines = (this.orderLines || []).filter((ol) => !ol.chart || ol.chart === this.chart);
+        (this.slLines || []).filter((sl) => sl.chart && sl.chart !== this.chart).forEach(stripSl);
+        this.slLines = (this.slLines || []).filter((sl) => !sl.chart || sl.chart === this.chart);
+        (this.tpLines || []).filter((tp) => tp.chart && tp.chart !== this.chart).forEach(stripTp);
+        this.tpLines = (this.tpLines || []).filter((tp) => !tp.chart || tp.chart === this.chart);
+        (this.beLines || []).filter((be) => be.chart && be.chart !== this.chart).forEach(stripBe);
+        this.beLines = (this.beLines || []).filter((be) => !be.chart || be.chart === this.chart);
+    }
+
+    _syncOrderVisualsMultiPanel() {
+        const charts = this._collectLayoutCharts();
+        charts.forEach((c) => this._stripOrderDrawingLayersFromChart(c));
+
+        this.orderLines = [];
+        this.slLines = [];
+        this.tpLines = [];
+        this.beLines = [];
+        this.pendingTargetLines = [];
+
+        if (this.entryMarkers && this.entryMarkers.length) {
+            this.entryMarkers.forEach((m) => {
+                try {
+                    if (m.marker) m.marker.remove();
+                } catch (e) { /* ignore */ }
+            });
+            this.entryMarkers = [];
+        }
+
+        (this.openPositions || []).forEach((pos) => {
+            charts.forEach((ch) => {
+                if (!this._positionTickerMatchesChartSymbol(pos, ch)) return;
+                this.drawOrderLine(pos, ch);
+                this.drawSLTPLines(pos, ch);
+                try {
+                    this.drawEntryMarker(pos, ch);
+                } catch (e) { /* scales */ }
+            });
+        });
+
+        const main = this.chart;
+        (this.pendingOrders || []).forEach((po) => {
+            if (!main || !main.svg) return;
+            const t = this._normalizeTicker(po.ticker || po.symbol);
+            const mainT = main.currentSymbol ? this._normalizeTicker(main.currentSymbol) : '';
+            if (t && mainT && t !== mainT) return;
+            const has = (this.orderLines || []).some((ol) => ol.orderId === po.id && ol.isPending);
+            if (!has) {
+                try {
+                    this.drawPendingOrderLine(po);
+                    this.drawPendingOrderTargets(po);
+                } catch (e) { /* ignore */ }
+            }
+        });
+
+        if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+        charts.forEach((c) => {
+            if (c && typeof c.render === 'function') {
+                c.renderPending = true;
+                c.render();
+            }
+        });
+    }
+
     /**
      * Remove visuals for non-active tickers; redraw lines for positions that match the chart symbol.
      * Call after symbol switch (loadFileData) or when restoring session.
@@ -310,6 +462,13 @@ class OrderManager {
     syncOrderVisualsToActiveChart() {
         if (!this.chart || !this.chart.svg) return;
         try {
+            if (this._isMultiPanelLayout()) {
+                this._syncOrderVisualsMultiPanel();
+                return;
+            }
+
+            this._dropOrderVisualsNotOnMainChart();
+
             (this.openPositions || []).forEach((pos) => {
                 if (this._isPositionForActiveChart(pos)) return;
                 this.removeOrderLine(pos.id);
@@ -1078,21 +1237,18 @@ class OrderManager {
         this.tpLines = [];
         this.beLines = [];
         this.pendingTargetLines = [];
-        if (this.chart?.svg) {
-            this.chart.svg.selectAll('.order-line,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn').remove();
-            this.chart.svg.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
-            this.chart.svg.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
-            this.chart.svg.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight').remove();
-        }
+        (this._collectLayoutCharts() || []).forEach((c) => this._stripOrderDrawingLayersFromChart(c));
 
-        this.openPositions.forEach((position) => this.drawOrderLine(position));
+        this.openPositions.forEach((position) => {
+            this.drawOrderLine(position);
+            this.drawSLTPLines(position);
+        });
         this.pendingOrders.forEach((order) => {
             this.drawPendingOrderLine(order);
             this.drawPendingOrderTargets(order);
         });
 
         if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
-        if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
     }
 
@@ -9861,14 +10017,15 @@ class OrderManager {
         this.calculateAdvancedRiskReward();
     }
 
-    drawYAxisPriceHighlight(price, color, label, yOffset = 0) {
-        if (!this.chart?.scales?.yScale || !this.chart?.svg) return null;
+    drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null) {
+        const hChart = targetChart || this.chart;
+        if (!hChart?.scales?.yScale || !hChart?.svg) return null;
 
-        const y = this.chart.scales.yScale(price);
+        const y = hChart.scales.yScale(price);
         const priceText = this.formatPrice(price);
         
         // Create highlight group on the Y-axis with high z-index
-        const highlightGroup = this.chart.svg.append('g')
+        const highlightGroup = hChart.svg.append('g')
             .attr('class', `y-axis-price-highlight y-axis-${label.toLowerCase()}-highlight`)
             .style('pointer-events', 'none')
             .style('isolation', 'isolate');
@@ -9891,8 +10048,8 @@ class OrderManager {
         const width = Math.max(textBBox.width + (paddingH * 2), 60);
         
         // Position flush right on the Y-axis area (like TradingView)
-        const rightMargin = this.chart.margin?.r || 70;
-        const x = this.chart.w - rightMargin + 2; // Flush to price axis
+        const rightMargin = hChart.margin?.r || 70;
+        const x = hChart.w - rightMargin + 2; // Flush to price axis
         
         // Background rect with pill-like rounded corners (TradingView style)
         highlightGroup.insert('rect', ':first-child')
@@ -13418,8 +13575,9 @@ class OrderManager {
      * @param {string} lineType - 'entry', 'sl', 'tp', or 'be'
      * @param {Object} extraElements - Optional: { labelText, priceBox, priceText }
      */
-    makeLineDraggable(line, label, order, lineType, extraElements = {}) {
+    makeLineDraggable(line, label, order, lineType, extraElements = {}, dragChart = null) {
         const self = this;
+        const ctx = dragChart || this.chart;
         let isDragging = false;
         let startY = 0;
         let startPrice = 0;
@@ -13510,8 +13668,8 @@ class OrderManager {
             const newY = lineY + deltaY;
             
             // Convert Y position to price using inverse scale
-            if (self.chart.scales && self.chart.scales.yScale) {
-                const newPrice = self.chart.scales.yScale.invert(newY);
+            if (ctx.scales && ctx.scales.yScale) {
+                const newPrice = ctx.scales.yScale.invert(newY);
                 
                 // Update the order object
                 if (lineType === 'entry') {
@@ -13567,7 +13725,7 @@ class OrderManager {
                 const pipDistance = Math.abs(newPrice - dragStartPrice) / self.pipSize;
                 if (pipDistance > 0.1) {
                     if (!pipIndicator) {
-                        pipIndicator = self.chart.svg.append('text')
+                        pipIndicator = ctx.svg.append('text')
                             .attr('class', `pip-indicator-${order.id}`)
                             .attr('fill', '#fbbf24')
                             .attr('font-size', '10px')
@@ -13576,7 +13734,7 @@ class OrderManager {
                             .attr('pointer-events', 'none');
                     }
                     pipIndicator
-                        .attr('x', self.chart.w / 2)
+                        .attr('x', ctx.w / 2)
                         .attr('y', newY - 25)
                         .text(`${pipDistance.toFixed(1)} pips`);
                 } else if (pipIndicator) {
@@ -13606,7 +13764,7 @@ class OrderManager {
                         const sign = lineType === 'tp' ? '+' : '-';
                         
                         if (!dollarIndicator) {
-                            dollarIndicator = self.chart.svg.append('text')
+                            dollarIndicator = ctx.svg.append('text')
                                 .attr('class', `dollar-indicator-${order.id}`)
                                 .attr('fill', color)
                                 .attr('font-size', '11px')
@@ -13615,7 +13773,7 @@ class OrderManager {
                                 .attr('pointer-events', 'none');
                         }
                         dollarIndicator
-                            .attr('x', self.chart.w / 2 + 50)
+                            .attr('x', ctx.w / 2 + 50)
                             .attr('y', newY + 4)
                             .attr('fill', color)
                             .text(`${sign}$${dollarAmount.toFixed(2)}`);
@@ -13628,7 +13786,7 @@ class OrderManager {
                         const rrRatio = risk > 0 ? (reward / risk) : 0;
                         
                         if (!rrIndicator) {
-                            rrIndicator = self.chart.svg.append('text')
+                            rrIndicator = ctx.svg.append('text')
                                 .attr('class', `rr-indicator-${order.id}`)
                                 .attr('fill', '#60a5fa')
                                 .attr('font-size', '11px')
@@ -13637,7 +13795,7 @@ class OrderManager {
                                 .attr('pointer-events', 'none');
                         }
                         rrIndicator
-                            .attr('x', self.chart.w / 2 + 50)
+                            .attr('x', ctx.w / 2 + 50)
                             .attr('y', newY - 12)
                             .text(`R:R ${rrRatio.toFixed(2)}`);
                     }
@@ -13687,7 +13845,7 @@ class OrderManager {
                              order.takeProfit;
             
             // Final update - refresh all SL/TP lines and positions panel
-            self.updateSLTPLines();
+            self.updateSLTPLines(ctx);
             self.updatePositionsPanel();
             
             console.log(`✅ Drag ended: ${lineType.toUpperCase()} @ ${finalPrice.toFixed(5)}`);
@@ -13710,8 +13868,9 @@ class OrderManager {
     /**
      * Make a multi-TP line draggable
      */
-    makeLineDraggableMultiTP(line, labelBox, labelText, priceBox, priceText, order, targetIndex, target) {
+    makeLineDraggableMultiTP(line, labelBox, labelText, priceBox, priceText, order, targetIndex, target, dragChart = null) {
         const self = this;
+        const ctx = dragChart || this.chart;
         let isDragging = false;
         let startY = 0;
         let dragStartPrice = 0;
@@ -13755,8 +13914,8 @@ class OrderManager {
             const newY = lineY + deltaY;
             
             // Convert Y position to price using inverse scale
-            if (self.chart.scales && self.chart.scales.yScale) {
-                const newPrice = self.chart.scales.yScale.invert(newY);
+            if (ctx.scales && ctx.scales.yScale) {
+                const newPrice = ctx.scales.yScale.invert(newY);
                 
                 // Update target price in the order
                 if (order.tpTargets && order.tpTargets[targetIndex]) {
@@ -13775,7 +13934,7 @@ class OrderManager {
                 const pipDistance = Math.abs(newPrice - dragStartPrice) / self.pipSize;
                 if (pipDistance > 0.1) {
                     if (!pipIndicator) {
-                        pipIndicator = self.chart.svg.append('text')
+                        pipIndicator = ctx.svg.append('text')
                             .attr('class', `pip-indicator-tp-${order.id}-${targetIndex}`)
                             .attr('fill', '#fbbf24')
                             .attr('font-size', '10px')
@@ -13784,7 +13943,7 @@ class OrderManager {
                             .attr('pointer-events', 'none');
                     }
                     pipIndicator
-                        .attr('x', self.chart.w / 2)
+                        .attr('x', ctx.w / 2)
                         .attr('y', newY - 25)
                         .text(`${pipDistance.toFixed(1)} pips`);
                 } else if (pipIndicator) {
@@ -13804,7 +13963,7 @@ class OrderManager {
                     const dollarAmount = pips * targetQuantity * self.pipValuePerLot;
                     
                     if (!dollarIndicator) {
-                        dollarIndicator = self.chart.svg.append('text')
+                        dollarIndicator = ctx.svg.append('text')
                             .attr('class', `dollar-indicator-tp-${order.id}-${targetIndex}`)
                             .attr('fill', '#22c55e')
                             .attr('font-size', '11px')
@@ -13813,7 +13972,7 @@ class OrderManager {
                             .attr('pointer-events', 'none');
                     }
                     dollarIndicator
-                        .attr('x', self.chart.w / 2 + 50)
+                        .attr('x', ctx.w / 2 + 50)
                         .attr('y', newY + 4)
                         .text(`+$${dollarAmount.toFixed(2)}`);
                 } else if (dollarIndicator) {
@@ -13824,7 +13983,7 @@ class OrderManager {
                 // Update SL/TP lines positions (throttled)
                 if (!frameId) {
                     frameId = requestAnimationFrame(() => {
-                        self.updateSLTPLines();
+                        self.updateSLTPLines(ctx);
                         self.updatePositionsPanel();
                         frameId = null;
                     });
@@ -13863,7 +14022,7 @@ class OrderManager {
             const finalPrice = target.price;
             
             // Final update
-            self.updateSLTPLines();
+            self.updateSLTPLines(ctx);
             self.updatePositionsPanel();
             
             console.log(`✅ Multi-TP drag ended: TP${targetIndex + 1} @ ${finalPrice.toFixed(5)}`);
@@ -13886,61 +14045,69 @@ class OrderManager {
     /**
      * Draw order line on chart
      */
-    drawOrderLine(order) {
+    drawOrderLine(order, targetChart = null) {
+        if (targetChart == null && this._isMultiPanelLayout()) {
+            const charts = this._collectLayoutCharts();
+            for (const ch of charts) {
+                if (!this._positionTickerMatchesChartSymbol(order, ch)) continue;
+                const has = (this.orderLines || []).some(
+                    (ol) => ol.orderId === order.id && !ol.isPending && (ol.chart || this.chart) === ch
+                );
+                if (!has) this.drawOrderLine(order, ch);
+            }
+            return;
+        }
+
+        const chart = targetChart || this.chart;
         console.log(`🎨 Drawing order line for ${order.type} #${order.id}`);
-        
-        if (!this.chart.svg) {
+
+        if (!chart?.svg) {
             console.error('❌ Chart SVG not found! Cannot draw order line.');
             return;
         }
-        if (!this._isPositionForActiveChart(order)) {
+        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) {
             return;
         }
-        
+
         const color = order.type === 'BUY' ? '#2962ff' : '#f23645';
         const lineColor = order.type === 'BUY' ? '#2962ff' : '#f23645';
-        
-        const line = this.chart.svg.append('line')
+
+        const line = chart.svg.append('line')
             .attr('class', `order-line order-${order.id}`)
             .attr('stroke', lineColor)
             .attr('stroke-width', 1)
             .attr('opacity', 1)
             .style('cursor', 'ns-resize');
-        
-        // Left side label box (colored background)
-        const labelBox = this.chart.svg.append('rect')
+
+        const labelBox = chart.svg.append('rect')
             .attr('class', `order-label-box order-${order.id}`)
             .attr('fill', color)
             .attr('rx', 2)
             .style('cursor', 'ns-resize');
-        
-        // Label text (white on colored background)
-        const labelText = this.chart.svg.append('text')
+
+        const labelText = chart.svg.append('text')
             .attr('class', `order-label-text order-${order.id}`)
             .attr('fill', '#ffffff')
             .attr('font-size', '11px')
             .attr('font-weight', '600')
             .style('cursor', 'ns-resize')
             .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
-        
-        // Arrow icon
-        const arrow = this.chart.svg.append('text')
+
+        const arrow = chart.svg.append('text')
             .attr('class', `order-arrow order-${order.id}`)
             .attr('fill', '#ffffff')
             .attr('font-size', '12px')
             .attr('font-weight', '700')
             .style('cursor', 'ns-resize')
             .text(order.type === 'BUY' ? '↑' : '↓');
-        
-        // Right side price box (solid background)
-        const priceBox = this.chart.svg.append('rect')
+
+        const priceBox = chart.svg.append('rect')
             .attr('class', `order-price-box order-${order.id}`)
             .attr('fill', color)
             .attr('rx', 2)
             .style('cursor', 'ns-resize');
-        
-        // Price text
-        const priceText = this.chart.svg.append('text')
+
+        const priceText = chart.svg.append('text')
             .attr('class', `order-price-text order-${order.id}`)
             .attr('fill', '#ffffff')
             .attr('font-size', '11px')
@@ -13948,13 +14115,12 @@ class OrderManager {
             .attr('text-anchor', 'middle')
             .style('cursor', 'ns-resize')
             .text(order.openPrice.toFixed(5));
-        
-        // Close button (X)
-        const closeBtn = this.chart.svg.append('g')
+
+        const closeBtn = chart.svg.append('g')
             .attr('class', `order-close-btn order-${order.id}`)
             .attr('pointer-events', 'all')
             .style('cursor', 'pointer');
-        
+
         const closeBtnBg = closeBtn.append('circle')
             .attr('r', 10)
             .attr('fill', color)
@@ -13962,7 +14128,7 @@ class OrderManager {
             .attr('stroke-width', 1.5)
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
-        
+
         const closeBtnText = closeBtn.append('text')
             .attr('fill', '#ffffff')
             .attr('font-size', '14px')
@@ -13971,8 +14137,7 @@ class OrderManager {
             .attr('dy', '0.35em')
             .style('pointer-events', 'none')
             .text('×');
-        
-        // Close button click handler
+
         closeBtn.on('click', (event) => {
             event.stopPropagation();
             event.preventDefault();
@@ -13980,8 +14145,7 @@ class OrderManager {
                 this.closePosition(order.id);
             }
         });
-        
-        // Hover effect for close button
+
         closeBtn.on('mouseover', function() {
             closeBtnBg.attr('fill', '#ffffff');
             closeBtnText.attr('fill', color);
@@ -13989,27 +14153,26 @@ class OrderManager {
             closeBtnBg.attr('fill', color);
             closeBtnText.attr('fill', '#ffffff');
         });
-        
-        // Make line draggable
-        this.makeLineDraggable(line, labelBox, order, 'entry');
-        
-        this.orderLines.push({ 
-            orderId: order.id, 
-            line, 
-            labelBox, 
+
+        this.makeLineDraggable(line, labelBox, order, 'entry', {}, chart);
+
+        this.orderLines.push({
+            orderId: order.id,
+            line,
+            labelBox,
             labelText,
             arrow,
-            priceBox, 
+            priceBox,
             priceText,
-            closeBtn
+            closeBtn,
+            chart
         });
-        
+
         console.log(`✅ Order line created and added to array (total: ${this.orderLines.length})`);
-        
-        // Force a chart render which will position the lines automatically
-        if (this.chart && typeof this.chart.render === 'function') {
-            this.chart.renderPending = true;
-            this.chart.render();
+
+        if (chart && typeof chart.render === 'function') {
+            chart.renderPending = true;
+            chart.render();
             console.log('🎨 Chart render triggered - lines will be positioned automatically');
         }
     }
@@ -14585,96 +14748,66 @@ class OrderManager {
     /**
      * Draw entry marker on chart (TradingView style)
      */
-    drawEntryMarker(order) {
+    drawEntryMarker(order, targetChart = null) {
+        const chart = targetChart || this.chart;
         console.log('🎯 drawEntryMarker called for order:', order.id, order.type);
-        console.log('   Chart:', !!this.chart, 'SVG:', !!this.chart?.svg, 'Scales:', !!this.chart?.scales);
-        
-        if (!this.chart || !this.chart.svg || !this.chart.scales) {
+
+        if (!chart || !chart.svg || !chart.scales) {
             console.error('❌ Cannot draw entry marker - chart not ready');
-            console.error('   this.chart:', this.chart);
-            console.error('   this.chart.svg:', this.chart?.svg);
-            console.error('   this.chart.scales:', this.chart?.scales);
             return;
         }
-        if (order && !this._isPositionForActiveChart(order)) {
+        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) {
             return;
         }
 
-        const { xScale, yScale } = this.chart.scales;
+        const { xScale, yScale } = chart.scales;
         if (!xScale || !yScale) {
             console.error('❌ xScale or yScale not available');
             return;
         }
 
-        // Debug: Log order time and available candle times
-        console.log('   🔍 Looking for candle with openTime:', order.openTime);
-        console.log('   📊 Total candles:', this.chart.data.length);
-        console.log('   📊 Last 5 candle times:', this.chart.data.slice(-5).map(d => d.t));
-        
-        // Find the index of the candle with matching timestamp
-        let dataIndex = this.chart.data.findIndex(d => d.t === order.openTime);
-        
-        // If exact match not found, find the closest candle
+        let dataIndex = chart.data.findIndex((d) => d.t === order.openTime);
+
         if (dataIndex === -1) {
-            console.warn('⚠️ Exact timestamp not found, searching for closest candle...');
             let closestIndex = -1;
             let minDiff = Infinity;
-            
-            this.chart.data.forEach((candle, i) => {
+
+            chart.data.forEach((candle, i) => {
                 const diff = Math.abs(candle.t - order.openTime);
                 if (diff < minDiff) {
                     minDiff = diff;
                     closestIndex = i;
                 }
             });
-            
+
             if (closestIndex !== -1) {
                 dataIndex = closestIndex;
-                console.log('   ✅ Found closest candle at index:', dataIndex, 'time:', this.chart.data[dataIndex].t, 'diff:', minDiff, 'ms');
             } else {
                 console.error('❌ Cannot find any candle near timestamp:', order.openTime);
                 return;
             }
-        } else {
-            console.log('   ✅ Found exact match at index:', dataIndex);
         }
-        
-        // Get candle spacing for centering
-        const candleSpacing = this.chart.getCandleSpacing();
-        const m = this.chart.margin;
-        
-        console.log('   📐 Candle spacing:', candleSpacing, 'offsetX:', this.chart.offsetX);
-        
-        // Use the SAME formula as candle rendering (chart.js line 4584)
-        // x = margin.left + (index * spacing) + offsetX + center_offset
-        const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+
+        const candleSpacing = chart.getCandleSpacing();
+        const m = chart.margin;
+
+        const x = m.l + (dataIndex * candleSpacing) + chart.offsetX + (candleSpacing / 2);
         const y = yScale(order.openPrice);
-        
-        console.log('   📊 Chart dimensions: width=', this.chart.w, 'height=', this.chart.h);
-        console.log('   ✅ X in bounds?', x >= 0 && x <= this.chart.w, '| Y in bounds?', y >= 0 && y <= this.chart.h);
-        
+
         const isBuy = order.type === 'BUY';
         const color = isBuy ? '#22c55e' : '#ef4444';
         const labelText = isBuy ? 'BUY' : 'SELL';
-        
-        // Append directly to main SVG (not to any child group to avoid clip-path issues)
-        console.log('   Appending to main SVG');
-        
-        // Create marker group - append to main svg and bring to VERY front
-        const markerGroup = this.chart.svg.append('g')
+
+        const markerGroup = chart.svg.append('g')
             .attr('class', `entry-marker entry-marker-${order.id}`)
             .attr('data-order-id', order.id)
             .style('pointer-events', 'none')
             .style('clip-path', 'none') // Disable clipping
             .raise(); // Bring to front
         
-        console.log('   ✅ Marker group created at x=', x, 'y=', y);
-        
-        // Simple text label: "SELL 1.23456" or "BUY 1.23456"
         const priceText = `${labelText} ${order.openPrice.toFixed(5)}`;
         const labelY = isBuy ? y + 18 : y - 10;
-        
-        // Simple text with drop shadow for visibility
+
         markerGroup.append('text')
             .attr('data-role', 'entry-label-text')
             .attr('x', x)
@@ -14685,8 +14818,7 @@ class OrderManager {
             .attr('font-size', '11px')
             .attr('font-weight', '600')
             .attr('font-family', 'Roboto, sans-serif').text(priceText);
-        
-        // Store marker reference for updates
+
         if (!this.entryMarkers) this.entryMarkers = [];
         this.entryMarkers.push({
             marker: markerGroup,
@@ -14694,11 +14826,9 @@ class OrderManager {
             price: order.openPrice,
             orderId: order.id,
             type: order.type,
-            hasPriceElements: true
+            hasPriceElements: true,
+            chart
         });
-        
-        console.log(`✅ Entry marker drawn for order #${order.id} at index ${dataIndex}`);
-        console.log(`   Stored ${this.entryMarkers.length} entry markers for pan/zoom updates`);
     }
     
     /**
@@ -14929,110 +15059,106 @@ class OrderManager {
         console.log(`✅ Partial close marker drawn for order #${order.id} target #${closeData.targetId} (P&L: ${pnlText})`);
     }
     
-    /**
-     * Update entry/exit marker positions on chart render
-     */
-    updateTradeMarkers() {
-        if (!this.chart || !this.chart.scales) return;
-        
-        const { xScale, yScale } = this.chart.scales;
-        if (!xScale || !yScale) return;
-        
-        const entryCount = this.entryMarkers?.length || 0;
-        const exitCount = this.exitMarkers?.length || 0;
-        
-        if (entryCount > 0 || exitCount > 0) {
-            console.log(`📍 Updating ${entryCount} entry markers and ${exitCount} exit markers`);
-        }
-        
-        // Update entry markers (simplified structure - just text)
-        if (this.entryMarkers && this.entryMarkers.length > 0) {
-            this.entryMarkers.forEach(markerData => {
-                const { marker, time, price, type } = markerData;
-                // Find candle index for this timestamp
-                const dataIndex = this.chart.data.findIndex(d => d.t === time);
-                if (dataIndex === -1) return;
-                
-                // Get candle spacing and margin
-                const candleSpacing = this.chart.getCandleSpacing();
-                const m = this.chart.margin;
-                
-                // Use same formula as candle rendering
-                const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
-                const y = yScale(price);
-                
-                const isBuy = type === 'BUY';
-                const labelY = isBuy ? y + 18 : y - 10;
-                
-                // Update simple text label position
-                const labelText = marker.select('[data-role="entry-label-text"]');
-                if (!labelText.empty()) {
-                    labelText.attr('x', x).attr('y', labelY);
-                }
-            });
-        }
-        
-        // Update exit markers (simplified structure - just text)
+    _updateEntryMarkersForChart(ch) {
+        if (!this.entryMarkers?.length || !ch?.scales?.yScale) return;
+        this.entryMarkers.forEach((markerData) => {
+            const { marker, time, price, type } = markerData;
+            const c = markerData.chart || this.chart;
+            if (c !== ch) return;
+            if (!c?.scales?.xScale || !c.scales.yScale) return;
+            const { yScale } = c.scales;
+            const dataIndex = c.data.findIndex((d) => d.t === time);
+            if (dataIndex === -1) return;
+
+            const candleSpacing = c.getCandleSpacing();
+            const m = c.margin;
+
+            const x = m.l + (dataIndex * candleSpacing) + c.offsetX + (candleSpacing / 2);
+            const y = yScale(price);
+
+            const isBuy = type === 'BUY';
+            const labelY = isBuy ? y + 18 : y - 10;
+
+            const labelText = marker.select('[data-role="entry-label-text"]');
+            if (!labelText.empty()) {
+                labelText.attr('x', x).attr('y', labelY);
+            }
+        });
+    }
+
+    _updateExitAndPartialMarkersOnMain() {
+        if (!this.chart?.scales) return;
+
         if (this.exitMarkers && this.exitMarkers.length > 0) {
+            const { yScale: mainY } = this.chart.scales;
             this.exitMarkers.forEach(({ marker, time, price }) => {
-                // Find candle index for this timestamp
-                const dataIndex = this.chart.data.findIndex(d => d.t === time);
+                const dataIndex = this.chart.data.findIndex((d) => d.t === time);
                 if (dataIndex === -1) return;
-                
-                // Get candle spacing and margin
+
                 const candleSpacing = this.chart.getCandleSpacing();
                 const m = this.chart.margin;
-                
-                // Use same formula as candle rendering
+
                 const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
-                const y = yScale(price);
-                
+                const y = mainY(price);
+
                 const labelY = y - 10;
-                
-                // Update P&L text position
+
                 const pnlText = marker.select('[data-role="exit-pnl-text"]');
                 if (!pnlText.empty()) {
                     pnlText.attr('x', x).attr('y', labelY);
                 }
-                
-                // Update price text position
+
                 const priceText = marker.select('[data-role="exit-price-text"]');
                 if (!priceText.empty()) {
                     priceText.attr('x', x).attr('y', labelY + 14);
                 }
             });
         }
-        
-        // Update partial close markers (for TP partial hits)
+
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
             this.partialCloseMarkers.forEach(({ marker, time, price }) => {
-                // Find candle index for this timestamp
-                const dataIndex = this.chart.data.findIndex(d => d.t === time);
+                const dataIndex = this.chart.data.findIndex((d) => d.t === time);
                 if (dataIndex === -1) return;
-                
-                // Get candle spacing and margin
+
                 const candleSpacing = this.chart.getCandleSpacing();
                 const m = this.chart.margin;
-                
-                // Use same formula as candle rendering
+
                 const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
-                const y = yScale(price);
-                
+                const y = this.chart.scales.yScale(price);
+
                 const labelY = y - 10;
-                
-                // Update P&L text position
+
                 const pnlText = marker.select('[data-role="partial-pnl-text"]');
                 if (!pnlText.empty()) {
                     pnlText.attr('x', x).attr('y', labelY);
                 }
-                
-                // Update price text position
+
                 const priceText = marker.select('[data-role="partial-price-text"]');
                 if (!priceText.empty()) {
                     priceText.attr('x', x).attr('y', labelY + 14);
                 }
             });
         }
+    }
+
+    /**
+     * Update entry/exit marker positions on chart render
+     */
+    updateTradeMarkers() {
+        if (!this.chart?.scales) return;
+
+        const entryCount = this.entryMarkers?.length || 0;
+        const exitCount = this.exitMarkers?.length || 0;
+
+        if (entryCount > 0 || exitCount > 0) {
+            console.log(`📍 Updating ${entryCount} entry markers and ${exitCount} exit markers`);
+        }
+
+        const entryCharts = new Set();
+        (this.entryMarkers || []).forEach((m) => entryCharts.add(m.chart || this.chart));
+        entryCharts.forEach((c) => this._updateEntryMarkersForChart(c));
+
+        this._updateExitAndPartialMarkersOnMain();
     }
     
     /**
@@ -15102,23 +15228,36 @@ class OrderManager {
     /**
      * Draw SL and TP lines on chart
      */
-    drawSLTPLines(order) {
+    drawSLTPLines(order, targetChart = null) {
         console.log(`🎨 Drawing SL/TP lines for order #${order.id}`);
         console.log(`   SL: ${order.stopLoss}, TP: ${order.takeProfit}`);
         console.log(`   tpTargets:`, order.tpTargets);
         console.log(`   Has multiple TPs: ${order.tpTargets && order.tpTargets.length > 0 ? 'YES (' + order.tpTargets.length + ')' : 'NO'}`);
-        
-        if (!this.chart.svg) {
+
+        if (targetChart == null && this._isMultiPanelLayout()) {
+            const charts = this._collectLayoutCharts();
+            for (const ch of charts) {
+                if (!this._positionTickerMatchesChartSymbol(order, ch)) continue;
+                const hasHere =
+                    (this.slLines || []).some((sl) => sl.orderId === order.id && (sl.chart || this.chart) === ch) ||
+                    (this.tpLines || []).some((tp) => tp.orderId === order.id && (tp.chart || this.chart) === ch);
+                if (!hasHere) this.drawSLTPLines(order, ch);
+            }
+            return;
+        }
+
+        const chart = targetChart || this.chart;
+        if (!chart?.svg) {
             console.error('❌ Chart SVG not found! Cannot draw SL/TP lines.');
             return;
         }
-        if (order && !this._isPositionForActiveChart(order)) {
+        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) {
             return;
         }
-        
+
         const slLines = [];
         const tpLines = [];
-        
+
         // Draw Stop Loss line (red)
         if (order.stopLoss) {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
@@ -15131,7 +15270,7 @@ class OrderManager {
                 slPnL = (order.openPrice - order.stopLoss) * order.quantity * this.contractSize;
             }
             
-            const slLine = this.chart.svg.append('line')
+            const slLine = chart.svg.append('line')
                 .attr('class', `sl-line sl-${order.id}`)
                 .attr('stroke', '#f23645')
                 .attr('stroke-width', 2)
@@ -15140,7 +15279,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             // Left side label box (red background)
-            const slLabelBox = this.chart.svg.append('rect')
+            const slLabelBox = chart.svg.append('rect')
                 .attr('class', `sl-label-box sl-${order.id}`)
                 .attr('fill', '#f23645')
                 .attr('rx', 2)
@@ -15148,7 +15287,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             // Label text (white on red background)
-            const slLabelText = this.chart.svg.append('text')
+            const slLabelText = chart.svg.append('text')
                 .attr('class', `sl-label-text sl-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
@@ -15158,7 +15297,7 @@ class OrderManager {
                 .text(`SL , P&L: ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
             
             // Close button (removes only SL, not the entire position)
-            const slCloseBtn = this.chart.svg.append('g')
+            const slCloseBtn = chart.svg.append('g')
                 .attr('class', `sl-close-btn sl-${order.id}`)
                 .attr('pointer-events', 'all')
                 .style('cursor', 'pointer');
@@ -15199,7 +15338,7 @@ class OrderManager {
             });
             
             // Right side price box
-            const slPriceBox = this.chart.svg.append('rect')
+            const slPriceBox = chart.svg.append('rect')
                 .attr('class', `sl-price-box sl-${order.id}`)
                 .attr('fill', '#f23645')
                 .attr('rx', 2)
@@ -15207,7 +15346,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             // Price text
-            const slPriceText = this.chart.svg.append('text')
+            const slPriceText = chart.svg.append('text')
                 .attr('class', `sl-price-text sl-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
@@ -15222,7 +15361,7 @@ class OrderManager {
                 labelText: slLabelText,
                 priceBox: slPriceBox,
                 priceText: slPriceText
-            });
+            }, chart);
             
             slLines.push({ 
                 orderId: order.id, 
@@ -15232,7 +15371,8 @@ class OrderManager {
                 closeBtn: slCloseBtn,
                 priceBox: slPriceBox,
                 priceText: slPriceText,
-                type: 'SL' 
+                type: 'SL',
+                chart
             });
         }
         
@@ -15256,7 +15396,7 @@ class OrderManager {
                     const colors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
                     const color = colors[Math.min(index, colors.length - 1)];
                     
-                    const tpLine = this.chart.svg.append('line')
+                    const tpLine = chart.svg.append('line')
                         .attr('class', `tp-line tp-${order.id} tp-target-${target.id || index}`)
                         .attr('stroke', color)
                         .attr('stroke-width', 2)
@@ -15264,14 +15404,14 @@ class OrderManager {
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
-                    const tpLabelBox = this.chart.svg.append('rect')
+                    const tpLabelBox = chart.svg.append('rect')
                         .attr('class', `tp-label-box tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', color)
                         .attr('rx', 2)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
-                    const tpLabelText = this.chart.svg.append('text')
+                    const tpLabelText = chart.svg.append('text')
                         .attr('class', `tp-label-text tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', '#ffffff')
                         .attr('font-size', '11px')
@@ -15280,14 +15420,14 @@ class OrderManager {
                         .style('cursor', 'ns-resize')
                         .text(`TP${index + 1} (${target.percentage.toFixed(0)}%) , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
                     
-                    const tpPriceBox = this.chart.svg.append('rect')
+                    const tpPriceBox = chart.svg.append('rect')
                         .attr('class', `tp-price-box tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', color)
                         .attr('rx', 2)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
-                    const tpPriceText = this.chart.svg.append('text')
+                    const tpPriceText = chart.svg.append('text')
                         .attr('class', `tp-price-text tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', '#ffffff')
                         .attr('font-size', '11px')
@@ -15298,7 +15438,7 @@ class OrderManager {
                         .text(target.price.toFixed(5));
                     
                     // Make multiple TP line draggable
-                    this.makeLineDraggableMultiTP(tpLine, tpLabelBox, tpLabelText, tpPriceBox, tpPriceText, order, index, target);
+                    this.makeLineDraggableMultiTP(tpLine, tpLabelBox, tpLabelText, tpPriceBox, tpPriceText, order, index, target, chart);
                     
                     tpLines.push({ 
                         orderId: order.id,
@@ -15308,7 +15448,8 @@ class OrderManager {
                         labelText: tpLabelText,
                         priceBox: tpPriceBox,
                         priceText: tpPriceText,
-                        type: 'TP'
+                        type: 'TP',
+                        chart
                     });
                 }
             });
@@ -15324,7 +15465,7 @@ class OrderManager {
                 tpPnL = (order.openPrice - order.takeProfit) * order.quantity * this.contractSize;
             }
             
-            const tpLine = this.chart.svg.append('line')
+            const tpLine = chart.svg.append('line')
                 .attr('class', `tp-line tp-${order.id}`)
                 .attr('stroke', '#22c55e')
                 .attr('stroke-width', 2)
@@ -15333,7 +15474,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             // Left side label box (green background)
-            const tpLabelBox = this.chart.svg.append('rect')
+            const tpLabelBox = chart.svg.append('rect')
                 .attr('class', `tp-label-box tp-${order.id}`)
                 .attr('fill', '#22c55e')
                 .attr('rx', 2)
@@ -15341,7 +15482,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             // Label text (white on green background)
-            const tpLabelText = this.chart.svg.append('text')
+            const tpLabelText = chart.svg.append('text')
                 .attr('class', `tp-label-text tp-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
@@ -15351,7 +15492,7 @@ class OrderManager {
                 .text(`TP , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
             
             // Close button (removes only TP, not the entire position)
-            const tpCloseBtn = this.chart.svg.append('g')
+            const tpCloseBtn = chart.svg.append('g')
                 .attr('class', `tp-close-btn tp-${order.id}`)
                 .attr('pointer-events', 'all')
                 .style('cursor', 'pointer');
@@ -15392,7 +15533,7 @@ class OrderManager {
             });
             
             // Right side price box (green)
-            const tpPriceBox = this.chart.svg.append('rect')
+            const tpPriceBox = chart.svg.append('rect')
                 .attr('class', `tp-price-box tp-${order.id}`)
                 .attr('fill', '#22c55e')
                 .attr('rx', 2)
@@ -15400,7 +15541,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             // Price text
-            const tpPriceText = this.chart.svg.append('text')
+            const tpPriceText = chart.svg.append('text')
                 .attr('class', `tp-price-text tp-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
@@ -15415,7 +15556,7 @@ class OrderManager {
                 labelText: tpLabelText,
                 priceBox: tpPriceBox,
                 priceText: tpPriceText
-            });
+            }, chart);
             
             tpLines.push({ 
                 orderId: order.id, 
@@ -15425,7 +15566,8 @@ class OrderManager {
                 closeBtn: tpCloseBtn,
                 priceBox: tpPriceBox,
                 priceText: tpPriceText,
-                type: 'TP' 
+                type: 'TP',
+                chart
             });
         }
         
@@ -15452,7 +15594,7 @@ class OrderManager {
                     : entryPrice - profitPrice;
             }
             
-            const beLine = this.chart.svg.append('line')
+            const beLine = chart.svg.append('line')
                 .attr('class', `be-line be-${order.id}`)
                 .attr('stroke', '#f59e0b')
                 .attr('stroke-width', 1.5)
@@ -15465,13 +15607,13 @@ class OrderManager {
                 ? `BE @ ${order.breakevenSettings.value}p`
                 : `BE @ $${order.breakevenSettings.value}`;
             
-            const beLabelBox = this.chart.svg.append('rect')
+            const beLabelBox = chart.svg.append('rect')
                 .attr('class', `be-label-box be-${order.id}`)
                 .attr('fill', '#f59e0b')
                 .attr('rx', 2)
                 .style('cursor', 'ns-resize');
             
-            const beLabelText = this.chart.svg.append('text')
+            const beLabelText = chart.svg.append('text')
                 .attr('class', `be-label-text be-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
@@ -15480,13 +15622,13 @@ class OrderManager {
                 .text(beLabel);
             
             // Right side price box
-            const bePriceBox = this.chart.svg.append('rect')
+            const bePriceBox = chart.svg.append('rect')
                 .attr('class', `be-price-box be-${order.id}`)
                 .attr('fill', '#f59e0b')
                 .attr('rx', 2)
                 .style('cursor', 'ns-resize');
             
-            const bePriceText = this.chart.svg.append('text')
+            const bePriceText = chart.svg.append('text')
                 .attr('class', `be-price-text be-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
@@ -15496,7 +15638,7 @@ class OrderManager {
                 .text(beTriggerPrice.toFixed(5));
             
             // Make BE line draggable
-            this.makeLineDraggable(beLine, beLabelBox, order, 'be');
+            this.makeLineDraggable(beLine, beLabelBox, order, 'be', {}, chart);
             
             // Store BE line data
             if (!this.beLines) this.beLines = [];
@@ -15508,7 +15650,8 @@ class OrderManager {
                 priceBox: bePriceBox,
                 priceText: bePriceText,
                 triggerPrice: beTriggerPrice,
-                type: 'BE'
+                type: 'BE',
+                chart
             });
         } else if (order.autoBreakeven && order.breakevenSettings && order.breakevenSettings.triggered) {
             console.log(`  ✅ Skipping BE line for order #${order.id} - already triggered (SL should be at entry: ${order.openPrice.toFixed(5)})`);
@@ -15525,9 +15668,9 @@ class OrderManager {
         
         // Force a chart render which will position the lines automatically
         // (updateSLTPLines is called during render after scales are ready)
-        if (this.chart && typeof this.chart.render === 'function') {
-            this.chart.renderPending = true;
-            this.chart.render();
+        if (chart && typeof chart.render === 'function') {
+            chart.renderPending = true;
+            chart.render();
             console.log('🎨 Chart render triggered - SL/TP lines will be positioned automatically');
         }
     }
@@ -15536,18 +15679,20 @@ class OrderManager {
      * Remove SL/TP lines from chart
      */
     removeSLTPLines(orderId) {
-        // Remove SL lines
+        // Remove SL lines (one per chart in multi-panel)
         if (this.slLines) {
-            const slLine = this.slLines.find(sl => sl.orderId === orderId);
-            if (slLine) {
-                console.log(`   🧹 Removing SL line for order #${orderId}`);
-                slLine.line.remove();
-                if (slLine.labelBox) slLine.labelBox.remove();
-                if (slLine.labelText) slLine.labelText.remove();
-                if (slLine.closeBtn) slLine.closeBtn.remove();
-                if (slLine.priceBox) slLine.priceBox.remove();
-                if (slLine.priceText) slLine.priceText.remove();
-                this.slLines = this.slLines.filter(sl => sl.orderId !== orderId);
+            const slToRemove = this.slLines.filter((sl) => sl.orderId === orderId);
+            if (slToRemove.length > 0) {
+                console.log(`   🧹 Removing ${slToRemove.length} SL line(s) for order #${orderId}`);
+                slToRemove.forEach((slLine) => {
+                    if (slLine.line) slLine.line.remove();
+                    if (slLine.labelBox) slLine.labelBox.remove();
+                    if (slLine.labelText) slLine.labelText.remove();
+                    if (slLine.closeBtn) slLine.closeBtn.remove();
+                    if (slLine.priceBox) slLine.priceBox.remove();
+                    if (slLine.priceText) slLine.priceText.remove();
+                });
+                this.slLines = this.slLines.filter((sl) => sl.orderId !== orderId);
             }
         }
         
@@ -15570,15 +15715,17 @@ class OrderManager {
         
         // Remove BE lines
         if (this.beLines) {
-            const beLine = this.beLines.find(be => be.orderId === orderId);
-            if (beLine) {
-                console.log(`   🧹 Removing BE line for order #${orderId}`);
-                beLine.line.remove();
-                if (beLine.labelBox) beLine.labelBox.remove();
-                if (beLine.labelText) beLine.labelText.remove();
-                if (beLine.priceBox) beLine.priceBox.remove();
-                if (beLine.priceText) beLine.priceText.remove();
-                this.beLines = this.beLines.filter(be => be.orderId !== orderId);
+            const beToRemove = this.beLines.filter((be) => be.orderId === orderId);
+            if (beToRemove.length > 0) {
+                console.log(`   🧹 Removing ${beToRemove.length} BE line(s) for order #${orderId}`);
+                beToRemove.forEach((beLine) => {
+                    if (beLine.line) beLine.line.remove();
+                    if (beLine.labelBox) beLine.labelBox.remove();
+                    if (beLine.labelText) beLine.labelText.remove();
+                    if (beLine.priceBox) beLine.priceBox.remove();
+                    if (beLine.priceText) beLine.priceText.remove();
+                });
+                this.beLines = this.beLines.filter((be) => be.orderId !== orderId);
             }
         }
         
@@ -15599,18 +15746,18 @@ class OrderManager {
         // Remove SL from order object
         order.stopLoss = null;
         
-        // Remove SL line from chart
+        // Remove SL line from chart(s)
         if (this.slLines) {
-            const slLine = this.slLines.find(sl => sl.orderId === orderId);
-            if (slLine) {
-                slLine.line.remove();
+            const slToRemove = this.slLines.filter((sl) => sl.orderId === orderId);
+            slToRemove.forEach((slLine) => {
+                if (slLine.line) slLine.line.remove();
                 if (slLine.labelBox) slLine.labelBox.remove();
                 if (slLine.labelText) slLine.labelText.remove();
                 if (slLine.closeBtn) slLine.closeBtn.remove();
                 if (slLine.priceBox) slLine.priceBox.remove();
                 if (slLine.priceText) slLine.priceText.remove();
-                this.slLines = this.slLines.filter(sl => sl.orderId !== orderId);
-            }
+            });
+            this.slLines = this.slLines.filter((sl) => sl.orderId !== orderId);
         }
         
         console.log(`✅ Stop Loss removed from order #${orderId}`);
@@ -15631,18 +15778,18 @@ class OrderManager {
         // Remove TP from order object
         order.takeProfit = null;
         
-        // Remove TP line from chart
+        // Remove TP line(s) from chart(s)
         if (this.tpLines) {
-            const tpLine = this.tpLines.find(tp => tp.orderId === orderId);
-            if (tpLine) {
-                tpLine.line.remove();
+            const tpToRemove = this.tpLines.filter((tp) => tp.orderId === orderId);
+            tpToRemove.forEach((tpLine) => {
+                if (tpLine.line) tpLine.line.remove();
                 if (tpLine.labelBox) tpLine.labelBox.remove();
                 if (tpLine.labelText) tpLine.labelText.remove();
                 if (tpLine.closeBtn) tpLine.closeBtn.remove();
                 if (tpLine.priceBox) tpLine.priceBox.remove();
                 if (tpLine.priceText) tpLine.priceText.remove();
-                this.tpLines = this.tpLines.filter(tp => tp.orderId !== orderId);
-            }
+            });
+            this.tpLines = this.tpLines.filter((tp) => tp.orderId !== orderId);
         }
         
         console.log(`✅ Take Profit removed from order #${orderId}`);
@@ -15808,30 +15955,42 @@ class OrderManager {
     /**
      * Update SL/TP line positions
      */
-    updateSLTPLines() {
-        if (!this.chart.scales) {
+    updateSLTPLines(sourceChart) {
+        if (sourceChart === undefined && this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) this.updateSLTPLines(c);
+            });
+            return;
+        }
+
+        const ch = sourceChart || this.chart;
+        if (!ch?.scales) {
             console.log('⚠️ updateSLTPLines: Scales not ready');
             return;
         }
-        
+
         if (!this.slLines && !this.tpLines) {
             console.log('⚠️ updateSLTPLines: No lines to update');
             return;
         }
-        
-        console.log(`📍 updateSLTPLines: SL lines=${this.slLines?.length || 0}, TP lines=${this.tpLines?.length || 0}`);
-        
-        // Remove old Y-axis price highlights for SL/TP (pending target highlights are managed by positionPendingOrderTargets)
-        this.chart.svg.selectAll('.y-axis-sl-highlight').remove();
-        this.chart.svg.selectAll('.y-axis-tp-highlight').remove();
-        this.chart.svg.selectAll('.y-axis-entry-highlight').remove();
-        
-        // Track unique prices for Y-axis highlights
+
+        const slForChart = (this.slLines || []).filter((sl) => (sl.chart || this.chart) === ch);
+        const tpForChart = (this.tpLines || []).filter((tp) => (tp.chart || this.chart) === ch);
+
+        if (slForChart.length === 0 && tpForChart.length === 0) {
+            return;
+        }
+
+        console.log(`📍 updateSLTPLines: SL lines=${slForChart.length}, TP lines=${tpForChart.length}`);
+
+        ch.svg.selectAll('.y-axis-sl-highlight').remove();
+        ch.svg.selectAll('.y-axis-tp-highlight').remove();
+        ch.svg.selectAll('.y-axis-entry-highlight').remove();
+
         const yAxisHighlightPrices = { sl: new Set(), tp: new Set(), entry: new Set() };
-        
-        // Update SL lines - aggregate P&L for positions at same SL price
-        if (this.slLines && this.slLines.length > 0) {
-            console.log(`   Updating ${this.slLines.length} SL lines`);
+
+        if (slForChart.length > 0) {
+            console.log(`   Updating ${slForChart.length} SL lines`);
             
             // Group positions by SL price to aggregate P&L
             const slPriceGroups = {};
@@ -15846,7 +16005,7 @@ class OrderManager {
             // Track which SL prices have been updated (to avoid duplicate labels)
             const updatedSLPrices = new Set();
             
-            this.slLines.forEach(({ orderId, line, labelBox, labelText, closeBtn, priceBox, priceText }, slIndex) => {
+            slForChart.forEach(({ orderId, line, labelBox, labelText, closeBtn, priceBox, priceText }, slIndex) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position || !position.stopLoss) {
                     console.log(`     ⚠️ Position #${orderId} has no SL: position=${!!position}, stopLoss=${position?.stopLoss}`);
@@ -15892,12 +16051,12 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = this.chart.scales.yScale(position.stopLoss);
+                const y = ch.scales.yScale(position.stopLoss);
                 console.log(`     ✅ SL #${orderId}: price=${position.stopLoss.toFixed(5)}, y=${y.toFixed(2)}, totalP&L=${totalSlPnL.toFixed(2)}`);
                 
                 line
                     .attr('x1', 0)
-                    .attr('x2', this.chart.w)
+                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y);
                 
@@ -15909,11 +16068,11 @@ class OrderManager {
                     const yAxisWidth = 70; // Space for Y-axis price highlight
                     
                     // Position close button (rightmost, before Y-axis area)
-                    closeBtn.attr('transform', `translate(${this.chart.w - yAxisWidth - 15}, ${y})`);
+                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15}, ${y})`);
                     
                     // Position label box to the left of close button
                     const labelBoxWidth = labelText.node().getBBox().width + 20;
-                    const labelBoxX = this.chart.w - yAxisWidth - 30 - labelBoxWidth;
+                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth;
                     
                     labelBox
                         .attr('x', labelBoxX)
@@ -15931,14 +16090,14 @@ class OrderManager {
             });
             
             // Create Y-axis highlights for unique SL prices
-            yAxisHighlightPrices.sl.forEach(slPrice => {
-                this.drawYAxisPriceHighlight(slPrice, '#f23645', 'sl', 0);
+            yAxisHighlightPrices.sl.forEach((slPrice) => {
+                this.drawYAxisPriceHighlight(slPrice, '#f23645', 'sl', 0, ch);
             });
         }
         
         // Update TP lines - aggregate P&L for positions at same TP price
-        if (this.tpLines && this.tpLines.length > 0) {
-            console.log(`   Updating ${this.tpLines.length} TP lines`);
+        if (tpForChart.length > 0) {
+            console.log(`   Updating ${tpForChart.length} TP lines`);
             
             // Group by TP price level to aggregate P&L
             const tpPriceGroups = {};
@@ -15978,7 +16137,7 @@ class OrderManager {
             // Track which TP prices have been updated
             const updatedTPPrices = new Set();
             
-            this.tpLines.forEach(({ orderId, targetId, line, labelBox, labelText, closeBtn, priceBox, priceText }) => {
+            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, closeBtn, priceBox, priceText }) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position) {
                     console.log(`     ⚠️ Position #${orderId} not found`);
@@ -16049,12 +16208,12 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = this.chart.scales.yScale(tpPrice);
+                const y = ch.scales.yScale(tpPrice);
                 console.log(`     ✅ TP #${orderId}${targetId !== undefined ? ` target ${targetId}` : ''}: price=${tpPrice.toFixed(5)}, y=${y.toFixed(2)}`);
                 
                 line
                     .attr('x1', 0)
-                    .attr('x2', this.chart.w)
+                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y);
                 
@@ -16066,14 +16225,14 @@ class OrderManager {
                     
                     // Position close button if it exists (rightmost, before Y-axis area)
                     if (closeBtn) {
-                        closeBtn.attr('transform', `translate(${this.chart.w - yAxisWidth - 15}, ${y})`);
+                        closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15}, ${y})`);
                     }
                     
                     // Position label box to the left of close button (or at right edge)
                     const labelBoxWidth = labelText.node().getBBox().width + 20;
                     const labelBoxX = closeBtn 
-                        ? this.chart.w - yAxisWidth - 30 - labelBoxWidth
-                        : this.chart.w - yAxisWidth - 10 - labelBoxWidth;
+                        ? ch.w - yAxisWidth - 30 - labelBoxWidth
+                        : ch.w - yAxisWidth - 10 - labelBoxWidth;
                     
                     labelBox
                         .attr('x', labelBoxX)
@@ -16091,8 +16250,8 @@ class OrderManager {
             });
             
             // Create Y-axis highlights for unique TP prices
-            yAxisHighlightPrices.tp.forEach(tpPrice => {
-                this.drawYAxisPriceHighlight(tpPrice, '#22c55e', 'tp', 0);
+            yAxisHighlightPrices.tp.forEach((tpPrice) => {
+                this.drawYAxisPriceHighlight(tpPrice, '#22c55e', 'tp', 0, ch);
             });
         }
         
@@ -16107,24 +16266,30 @@ class OrderManager {
     /**
      * Update BE line positions
      */
-    updateBELines() {
-        if (!this.chart.scales) {
+    updateBELines(sourceChart) {
+        const ch = sourceChart || this.chart;
+        if (!ch?.scales) {
             return;
         }
         
         if (!this.beLines || this.beLines.length === 0) {
             return;
         }
+
+        const beForChart = this.beLines.filter((be) => (be.chart || this.chart) === ch);
+        if (beForChart.length === 0) {
+            return;
+        }
         
-        this.beLines.forEach(({ orderId, line, labelBox, labelText, priceBox, priceText, triggerPrice }) => {
-            const y = this.chart.scales.yScale(triggerPrice);
+        beForChart.forEach(({ orderId, line, labelBox, labelText, priceBox, priceText, triggerPrice }) => {
+            const y = ch.scales.yScale(triggerPrice);
             const boxHeight = 18;
             const boxY = y - boxHeight / 2;
             
             // Update line position
             line
                 .attr('x1', 0)
-                .attr('x2', this.chart.w)
+                .attr('x2', ch.w)
                 .attr('y1', y)
                 .attr('y2', y);
             
@@ -16142,7 +16307,7 @@ class OrderManager {
             
             // Position right price box
             const priceWidth = 65;
-            const priceX = this.chart.w - priceWidth - 10;
+            const priceX = ch.w - priceWidth - 10;
             
             priceBox
                 .attr('x', priceX)
@@ -16159,114 +16324,110 @@ class OrderManager {
     /**
      * Update order line positions
      */
-    updateOrderLines() {
-        if (!this.chart.scales) {
+    updateOrderLines(sourceChart) {
+        if (sourceChart === undefined && this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) this.updateOrderLines(c);
+            });
+            return;
+        }
+
+        const ch = sourceChart || this.chart;
+        if (!ch?.scales) {
             console.log('⚠️ updateOrderLines: Scales not ready');
             return;
         }
-        
-        // Update trade markers (entry/exit)
-        this.updateTradeMarkers();
-        
-        if (!this.orderLines || this.orderLines.length === 0) {
-            console.log('⚠️ updateOrderLines: No lines to update');
-            return;
+
+        this._updateEntryMarkersForChart(ch);
+
+        if (ch === this.chart) {
+            this._updateExitAndPartialMarkersOnMain();
         }
-        
-        console.log(`📍 updateOrderLines: Updating ${this.orderLines.length} order lines`);
-        
-        // Clean up old pending order entry highlights before recreating
-        this.chart.svg.selectAll('.y-axis-pending-highlight').remove();
-        
-        this.orderLines.forEach(({ orderId, isPending, line, labelBox, labelText, arrow, priceBox, priceText, closeBtn }) => {
-            // Check if it's a pending order or active position
-            let price, orderData;
-            
-            if (isPending) {
-                orderData = this.pendingOrders.find(p => p.id === orderId);
-                if (!orderData) {
-                    console.log(`   ⚠️ Pending order not found for #${orderId}`);
-                    return;
+
+        ch.svg.selectAll('.y-axis-pending-highlight').remove();
+
+        const lines = (this.orderLines || []).filter((ol) => (ol.chart || this.chart) === ch);
+
+        if (lines.length > 0) {
+            console.log(`📍 updateOrderLines: Updating ${lines.length} order lines`);
+
+            lines.forEach(({ orderId, isPending, line, labelBox, labelText, arrow, priceBox, priceText, closeBtn }) => {
+                let price, orderData;
+
+                if (isPending) {
+                    orderData = this.pendingOrders.find((p) => p.id === orderId);
+                    if (!orderData) {
+                        console.log(`   ⚠️ Pending order not found for #${orderId}`);
+                        return;
+                    }
+                    price = orderData.entryPrice;
+                } else {
+                    orderData = this.openPositions.find((p) => p.id === orderId);
+                    if (!orderData) {
+                        console.log(`   ⚠️ Position not found for order #${orderId}`);
+                        return;
+                    }
+                    price = orderData.openPrice;
                 }
-                price = orderData.entryPrice;
-            } else {
-                orderData = this.openPositions.find(p => p.id === orderId);
-                if (!orderData) {
-                    console.log(`   ⚠️ Position not found for order #${orderId}`);
-                    return;
-                }
-                price = orderData.openPrice;
-            }
-            
-            const y = this.chart.scales.yScale(price);
-            
-            console.log(`   ✅ ${isPending ? 'Pending' : 'Active'} Order #${orderId}: price=${price.toFixed(5)}, y=${y.toFixed(2)}, width=${this.chart.w}`);
-            
-            line
-                .attr('x1', 0)
-                .attr('x2', this.chart.w)
-                .attr('y1', y)
-                .attr('y2', y);
-            
-            // HIDE inline price box - price is shown on Y-axis instead
-            if (priceBox) priceBox.style('display', 'none');
-            if (priceText) priceText.style('display', 'none');
-            
-            // Position elements on the right side of the line (before Y-axis)
-            // Match SL/TP pattern: include closeBtn in the conditional
-            if (labelText && closeBtn && labelBox) {
-                const boxHeight = 18;
-                const boxY = y - boxHeight / 2;
-                const yAxisWidth = 70; // Space for Y-axis price highlight
-                
-                // Position close button (rightmost, before Y-axis area)
-                closeBtn.attr('transform', `translate(${this.chart.w - yAxisWidth - 15}, ${y})`);
-                
-                // Position label box to the left of close button
-                const arrowWidth = arrow ? arrow.node().getBBox().width : 0;
-                const labelBoxWidth = labelText.node().getBBox().width + arrowWidth + 20;
-                const labelBoxX = this.chart.w - yAxisWidth - 30 - labelBoxWidth;
-                
-                labelBox
-                    .attr('x', labelBoxX)
-                    .attr('y', boxY)
-                    .attr('width', labelBoxWidth)
-                    .attr('height', boxHeight);
-                
-                labelText
-                    .attr('x', labelBoxX + 10)
-                    .attr('y', y + 4);
-                
-                // Position arrow if it exists (active orders only)
-                if (arrow) {
-                    arrow
-                        .attr('x', labelBoxX + labelText.node().getBBox().width + 12)
+
+                const y = ch.scales.yScale(price);
+
+                console.log(`   ✅ ${isPending ? 'Pending' : 'Active'} Order #${orderId}: price=${price.toFixed(5)}, y=${y.toFixed(2)}, width=${ch.w}`);
+
+                line
+                    .attr('x1', 0)
+                    .attr('x2', ch.w)
+                    .attr('y1', y)
+                    .attr('y2', y);
+
+                if (priceBox) priceBox.style('display', 'none');
+                if (priceText) priceText.style('display', 'none');
+
+                if (labelText && closeBtn && labelBox) {
+                    const boxHeight = 18;
+                    const boxY = y - boxHeight / 2;
+                    const yAxisWidth = 70;
+
+                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15}, ${y})`);
+
+                    const arrowWidth = arrow ? arrow.node().getBBox().width : 0;
+                    const labelBoxWidth = labelText.node().getBBox().width + arrowWidth + 20;
+                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth;
+
+                    labelBox
+                        .attr('x', labelBoxX)
+                        .attr('y', boxY)
+                        .attr('width', labelBoxWidth)
+                        .attr('height', boxHeight);
+
+                    labelText
+                        .attr('x', labelBoxX + 10)
                         .attr('y', y + 4);
+
+                    if (arrow) {
+                        arrow
+                            .attr('x', labelBoxX + labelText.node().getBBox().width + 12)
+                            .attr('y', y + 4);
+                    }
                 }
-            }
-            
-            // Create Y-axis highlight for this order
-            const highlightColor = isPending 
-                ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
-                : '#2962ff'; // Blue for active positions
-            this.drawYAxisPriceHighlight(price, highlightColor, isPending ? 'pending' : 'entry', 0);
-        });
-        
-        // Check if lines are visible in DOM
-        const orderLinesInDom = document.querySelectorAll('.order-line');
-        console.log(`✅ Order lines updated. DOM count: ${orderLinesInDom.length}`);
-        
-        // Update SL/TP lines for active orders
-        this.updateSLTPLines();
-        
-        // Update BE lines for active orders
-        this.updateBELines();
-        
-        // Update preview lines if they exist
-        this.updatePreviewLinePositions();
-        
-        // Keep pending order targets aligned with latest dimensions
-        this.positionPendingOrderTargets();
+
+                const highlightColor = isPending
+                    ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
+                    : '#2962ff';
+                this.drawYAxisPriceHighlight(price, highlightColor, isPending ? 'pending' : 'entry', 0, ch);
+            });
+
+            const orderLinesInDom = document.querySelectorAll('.order-line');
+            console.log(`✅ Order lines updated. DOM count: ${orderLinesInDom.length}`);
+        }
+
+        this.updateSLTPLines(ch);
+        this.updateBELines(ch);
+
+        if (ch === this.chart) {
+            this.updatePreviewLinePositions();
+            this.positionPendingOrderTargets();
+        }
     }
 
     removeEntryMarker(orderId) {

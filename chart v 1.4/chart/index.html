@@ -40633,7 +40633,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_MILESTONE8_SYNC_V192"></script>
+    <script defer src="chart.js?v=20260325_MULTI_PANEL_ORDER_VIS_V193"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_PANEL_INDEP_V75"></script>
 
@@ -40643,7 +40643,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260321_MCE_V1"></script>
 
-    <script defer src="modules/order-manager.js?v=20260325_DEFER_BG_SLTP_ANIM_V47"></script>
+    <script defer src="modules/order-manager.js?v=20260325_MULTI_PANEL_ORDER_VIS_V48"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260318_TF_PIN_V78"></script>
 
@@ -43836,6 +43836,10 @@
                                     initPanelChart(panel);
 
                                 });
+
+                                if (typeof chart !== 'undefined' && chart.orderManager && typeof chart.orderManager.syncOrderVisualsToActiveChart === 'function') {
+                                    chart.orderManager.syncOrderVisualsToActiveChart();
+                                }
 
                             } else {
 

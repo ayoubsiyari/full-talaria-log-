@@ -10678,10 +10678,7 @@ class Chart {
             // Update order lines if order manager is active
             if (this.orderManager) {
                 if (typeof this.orderManager.updateOrderLines === 'function') {
-                    this.orderManager.updateOrderLines();
-                }
-                if (typeof this.orderManager.updateSLTPLines === 'function') {
-                    this.orderManager.updateSLTPLines();
+                    this.orderManager.updateOrderLines(this);
                 }
                 if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                     this.orderManager.updatePreviewLinePositions();
@@ -10753,10 +10750,7 @@ class Chart {
         // This happens AFTER scales are calculated in render()
         if (this.orderManager) {
             if (typeof this.orderManager.updateOrderLines === 'function') {
-                this.orderManager.updateOrderLines();
-            }
-            if (typeof this.orderManager.updateSLTPLines === 'function') {
-                this.orderManager.updateSLTPLines();
+                this.orderManager.updateOrderLines(this);
             }
             if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                 this.orderManager.updatePreviewLinePositions();
