@@ -244,6 +244,9 @@ class OrderService {
             order.symbol = String(this.chart.currentSymbol).replace('/', '').toUpperCase();
         }
         if (!order.ticker && order.symbol) order.ticker = String(order.symbol).toUpperCase();
+        if (!order.sourceFileId && this.chart && this.chart.currentFileId != null && String(this.chart.currentFileId) !== '') {
+            order.sourceFileId = String(this.chart.currentFileId);
+        }
         this.pendingOrders.push(order);
         this.orders.push(order);
         this.emit('order:pending', order);
@@ -256,6 +259,9 @@ class OrderService {
             order.symbol = String(this.chart.currentSymbol).replace('/', '').toUpperCase();
         }
         if (!order.ticker && order.symbol) order.ticker = String(order.symbol).toUpperCase();
+        if (!order.sourceFileId && this.chart && this.chart.currentFileId != null && String(this.chart.currentFileId) !== '') {
+            order.sourceFileId = String(this.chart.currentFileId);
+        }
         if (order.ticker && !order.instrument_settings) {
             order.instrument_settings = this.getInstrumentSettings(order.ticker);
         }

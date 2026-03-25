@@ -274,6 +274,12 @@ class OrderManager {
         return this._normalizeTicker(position && (position.ticker || position.symbol));
     }
 
+    /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
+    _chartSourceFileId() {
+        const id = this.chart && this.chart.currentFileId;
+        return id != null && String(id) !== '' ? String(id) : null;
+    }
+
     /**
      * Order lines / SL-TP / entry markers are drawn on the main chart SVG.
      * Only the instrument currently shown on that chart should be rendered (8.1).
@@ -422,12 +428,26 @@ class OrderManager {
 
     resolveFileIdForTicker(tickerNorm) {
         const T = this._normalizeTicker(tickerNorm);
-        if (!T || !this.chart || typeof this.chart.getSymbolSwitcherEntries !== 'function') return null;
-        const entries = this.chart.getSymbolSwitcherEntries() || [];
-        for (let i = 0; i < entries.length; i++) {
-            const e = entries[i];
-            if (!e || !e.fileId) continue;
-            if (this._normalizeTicker(e.ticker) === T) return String(e.fileId);
+        if (!T || !this.chart) return null;
+        if (typeof this.chart.getSymbolSwitcherEntries === 'function') {
+            const entries = this.chart.getSymbolSwitcherEntries() || [];
+            for (let i = 0; i < entries.length; i++) {
+                const e = entries[i];
+                if (!e || !e.fileId) continue;
+                if (this._normalizeTicker(e.ticker) === T) return String(e.fileId);
+            }
+        }
+        const session = this.chart.backtestingSession;
+        if (session && session.instruments && typeof session.instruments === 'object') {
+            const keys = Object.keys(session.instruments);
+            for (let i = 0; i < keys.length; i++) {
+                const row = session.instruments[keys[i]];
+                if (!row) continue;
+                const cand = this._normalizeTicker(row.ticker || keys[i]);
+                if (cand !== T) continue;
+                const fid = row.fileId || row.datasetId || row.sourceFileId;
+                if (fid) return String(fid);
+            }
         }
         return null;
     }
@@ -467,14 +487,17 @@ class OrderManager {
     }
 
     /**
-     * 1m bar for ticker at replay time (panel rawData or lazy /smart cache). Schedules fetch on miss.
+     * 1m bar at replay time: panel rawData, then lazy /smart cache.
+     * @param {string} tickerNorm — may be empty if preferredFileId is set
+     * @param {number} tMs
+     * @param {string|null} preferredFileId — dataset the position was opened on (avoids ticker/switcher mismatch)
      */
-    _getBackgroundBarForTicker(tickerNorm, tMs) {
+    _getBackgroundBarForTicker(tickerNorm, tMs, preferredFileId = null) {
         const T = this._normalizeTicker(tickerNorm);
-        if (!T || !Number.isFinite(tMs)) return null;
+        if (!Number.isFinite(tMs)) return null;
 
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
-        if (pm && Array.isArray(pm.panels)) {
+        if (T && pm && Array.isArray(pm.panels)) {
             for (let i = 0; i < pm.panels.length; i++) {
                 const pc = pm.panels[i] && pm.panels[i].chartInstance;
                 if (!pc || !Array.isArray(pc.rawData) || !pc.rawData.length) continue;
@@ -484,8 +507,18 @@ class OrderManager {
             }
         }
 
-        const fileId = this.resolveFileIdForTicker(T);
-        if (fileId) {
+        const tryFileIds = [];
+        if (preferredFileId) {
+            const p = String(preferredFileId);
+            if (p) tryFileIds.push(p);
+        }
+        if (T) {
+            const fid = this.resolveFileIdForTicker(T);
+            if (fid && !tryFileIds.includes(fid)) tryFileIds.push(fid);
+        }
+        let scheduledFetch = false;
+        for (let i = 0; i < tryFileIds.length; i++) {
+            const fileId = tryFileIds[i];
             const cached = this._miSeriesByFileId.get(fileId);
             if (cached && Array.isArray(cached.raw) && cached.raw.length) {
                 const bar = this._barRecordAtOrBefore(cached.raw, tMs);
@@ -495,7 +528,10 @@ class OrderManager {
                     this._miSeriesByFileId.delete(fileId);
                 }
             }
-            this._scheduleMiSeriesFetch(fileId, tMs);
+            if (!scheduledFetch) {
+                this._scheduleMiSeriesFetch(fileId, tMs);
+                scheduledFetch = true;
+            }
         }
         return null;
     }
@@ -584,9 +620,10 @@ class OrderManager {
      */
     _resolveBackgroundMarkPrice(position, tMs) {
         const posTicker = this._positionTicker(position);
-        if (!posTicker) return null;
+        const pref = position && position.sourceFileId != null ? String(position.sourceFileId) : null;
+        if (!posTicker && !pref) return null;
 
-        const bgBar = this._getBackgroundBarForTicker(posTicker, tMs);
+        const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
         if (bgBar) {
             const c = Number.parseFloat(bgBar.c);
             if (Number.isFinite(c)) return c;
@@ -900,20 +937,32 @@ class OrderManager {
         if (!state || typeof state !== 'object') return;
 
         const normalizeTradeTicker = (item) => {
-            const ticker = String(item?.ticker || item?.symbol || '').replace('/', '').trim().toUpperCase();
-            return ticker || 'UNKNOWN';
+            const t = String(item?.ticker || item?.symbol || '').replace('/', '').trim().toUpperCase();
+            return t && t !== 'UNKNOWN' ? t : '';
         };
 
         const pendingOrders = Array.isArray(state.pending_orders)
             ? state.pending_orders.map((order) => {
                 const ticker = normalizeTradeTicker(order);
-                return { ...order, ticker, symbol: order?.symbol || ticker };
+                const sym = order?.symbol && String(order.symbol).toUpperCase() !== 'UNKNOWN' ? order.symbol : (ticker || order?.symbol || '');
+                let sourceFileId = order.sourceFileId || order.source_file_id;
+                if (!sourceFileId && ticker && typeof this.resolveFileIdForTicker === 'function') {
+                    const fid = this.resolveFileIdForTicker(ticker);
+                    if (fid) sourceFileId = fid;
+                }
+                return { ...order, ticker: ticker || order?.ticker, symbol: sym, sourceFileId: sourceFileId || order?.sourceFileId };
             })
             : null;
         const openPositions = Array.isArray(state.open_positions)
             ? state.open_positions.map((position) => {
                 const ticker = normalizeTradeTicker(position);
-                return { ...position, ticker, symbol: position?.symbol || ticker };
+                const sym = position?.symbol && String(position.symbol).toUpperCase() !== 'UNKNOWN' ? position.symbol : (ticker || position?.symbol || '');
+                let sourceFileId = position.sourceFileId || position.source_file_id;
+                if (!sourceFileId && ticker && typeof this.resolveFileIdForTicker === 'function') {
+                    const fid = this.resolveFileIdForTicker(ticker);
+                    if (fid) sourceFileId = fid;
+                }
+                return { ...position, ticker: ticker || position?.ticker, symbol: sym, sourceFileId: sourceFileId || position?.sourceFileId };
             })
             : null;
 
@@ -3541,9 +3590,10 @@ class OrderManager {
             border: 1px solid #2a2e39;
         `;
         
-        // Calculate trade metadata
+        // Calculate trade metadata (use order's instrument — chart may be on another pair)
         const entryDate = new Date(order.openTime);
-        const symbol = this.chart.symbol || 'UNKNOWN';
+        const chartSym = (this.chart && (this.chart.currentSymbol || this.chart.symbol)) || '';
+        const symbol = (order.ticker || order.symbol || chartSym) || 'UNKNOWN';
         const dayOfWeek = entryDate.toLocaleDateString('en-US', { weekday: 'long' });
         const month = entryDate.toLocaleDateString('en-US', { month: 'long' });
         const year = entryDate.getFullYear();
@@ -10484,6 +10534,7 @@ class OrderManager {
             id: this.orderIdCounter++,
             symbol: activeTicker,
             ticker: activeTicker,
+            sourceFileId: this._chartSourceFileId(),
             instrument_settings: activeInstrumentSettings,
             type: this.orderSide,
             openPrice: entryPrice,
@@ -10619,6 +10670,7 @@ class OrderManager {
             id: this.orderIdCounter++,
             symbol: activeTicker,
             ticker: activeTicker,
+            sourceFileId: this._chartSourceFileId(),
             instrument_settings: activeInstrumentSettings,
             orderType: this.orderType, // 'limit' or 'stop'
             direction: this.orderSide, // 'BUY' or 'SELL'
@@ -10680,6 +10732,7 @@ class OrderManager {
             id: this.orderIdCounter++,
             symbol: activeTicker,
             ticker: activeTicker,
+            sourceFileId: this._chartSourceFileId(),
             instrument_settings: activeInstrumentSettings,
             orderType: effectiveOrderType, // 'limit' or 'stop' - now uses split entry's type
             direction: this.orderSide, // 'BUY' or 'SELL'
@@ -10822,6 +10875,7 @@ class OrderManager {
                 id: this.orderIdCounter++,
                 symbol: activeTicker,
                 ticker: activeTicker,
+                sourceFileId: this._chartSourceFileId(),
                 instrument_settings: activeInstrumentSettings,
                 orderType: orderType,
                 direction: this.orderSide,
@@ -10857,6 +10911,7 @@ class OrderManager {
                 id: this.orderIdCounter++,
                 symbol: activeTicker,
                 ticker: activeTicker,
+                sourceFileId: this._chartSourceFileId(),
                 instrument_settings: activeInstrumentSettings,
                 type: this.orderSide,
                 openPrice: entryPrice,
@@ -11008,8 +11063,12 @@ class OrderManager {
         
         console.log(`💰 Calculated prices: Entry=${entryPrice.toFixed(5)}, TP=${tpPrice.toFixed(5)}, SL=${slPrice.toFixed(5)}`);
         
+        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
+            symbol: act,
+            ticker: act,
+            sourceFileId: this._chartSourceFileId(),
             type: 'BUY',
             openPrice: entryPrice,
             openTime: timestamp,
@@ -11090,8 +11149,12 @@ class OrderManager {
             slPrice = entryPrice * (1 + slValue / 100);
         }
         
+        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
+            symbol: act,
+            ticker: act,
+            sourceFileId: this._chartSourceFileId(),
             type: 'SELL',
             openPrice: entryPrice,
             openTime: timestamp,
@@ -11155,8 +11218,12 @@ class OrderManager {
         const defaultSL = price - (50 * pipSize);
         const defaultTP = price + (100 * pipSize);
         
+        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
+            symbol: act,
+            ticker: act,
+            sourceFileId: this._chartSourceFileId(),
             type: 'BUY',
             openPrice: price,
             openTime: timestamp,
@@ -11209,8 +11276,12 @@ class OrderManager {
         const defaultSL = price + (50 * pipSize);
         const defaultTP = price - (100 * pipSize);
         
+        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
+            symbol: act,
+            ticker: act,
+            sourceFileId: this._chartSourceFileId(),
             type: 'SELL',
             openPrice: price,
             openTime: timestamp,
@@ -11895,6 +11966,7 @@ class OrderManager {
             id: pendingOrder.id,
             symbol: pendingOrder.symbol || pendingOrder.ticker || this._getActiveTicker(),
             ticker: pendingOrder.ticker || pendingOrder.symbol || this._getActiveTicker(),
+            sourceFileId: pendingOrder.sourceFileId || this._chartSourceFileId(),
             instrument_settings: pendingOrder.instrument_settings || this._getActiveInstrumentSettings(),
             type: pendingOrder.direction,
             openPrice: executionPrice, // Use actual execution price (accounts for gaps)
@@ -12071,12 +12143,17 @@ class OrderManager {
         // Check each position for SL/TP hits
         const positionsToClose = [];
         const chartTickerForBar = this._getActiveTicker();
+        const chartFileId = this.chart?.currentFileId != null ? String(this.chart.currentFileId) : '';
 
         this.openPositions.forEach(position => {
             const posTicker = this._positionTicker(position);
-            if (posTicker && chartTickerForBar && posTicker !== chartTickerForBar) {
+            const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
+            const tickerMismatch = !!(posTicker && chartTickerForBar && posTicker !== chartTickerForBar);
+            const fileMismatch = !!(posFileId && chartFileId && posFileId !== chartFileId);
+            if (tickerMismatch || fileMismatch) {
                 const tMs = Number(currentCandle.t);
-                const bgBar = this._getBackgroundBarForTicker(posTicker, tMs);
+                const pref = posFileId || null;
+                const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
                 if (bgBar) {
                     const c = Number.parseFloat(bgBar.c);
                     if (Number.isFinite(c)) {
@@ -13029,7 +13106,7 @@ class OrderManager {
                     tradeId: position.id,
                     type: position.type,
                     direction: position.type,
-                    symbol: position.symbol || 'USD',
+                    symbol: position.ticker || position.symbol || this._getActiveTicker() || 'USD',
                     quantity: position.originalQuantity || position.quantity, // Use original quantity
                     openPrice: position.openPrice,
                     closePrice: closePrice,
@@ -18009,6 +18086,9 @@ class OrderManager {
         }
         if (existingPos.originalRiskAmount && !order.originalRiskAmount) {
             order.originalRiskAmount = existingPos.originalRiskAmount;
+        }
+        if (existingPos.sourceFileId && !order.sourceFileId) {
+            order.sourceFileId = existingPos.sourceFileId;
         }
         
         // Draw SL/TP lines for the new scaled position if it inherited them
