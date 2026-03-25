@@ -829,6 +829,30 @@ class OrderManager {
         return Number.isFinite(last) ? last : null;
     }
 
+    /**
+     * Mark price for unrealized P&L (dock + equity). Always derived from THIS position's
+     * instrument at the session bar time — never from the unrelated active chart's live tick.
+     * That way values stay stable when you switch EURUSD ↔ EURJPY on the main chart.
+     */
+    _resolveUnrealizedMarkPrice(position, currentCandle) {
+        if (!position || !currentCandle) return null;
+        const tMs = Number(currentCandle.t);
+        if (!Number.isFinite(tMs)) return null;
+        const posTicker = this._positionTicker(position);
+        const pref = position.sourceFileId != null ? String(position.sourceFileId) : null;
+
+        const panelMc = this._markFromPanelDataLastClose(posTicker);
+        if (Number.isFinite(panelMc)) return panelMc;
+
+        const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
+        if (bgBar) {
+            const c = Number.parseFloat(bgBar.c);
+            if (Number.isFinite(c)) return c;
+        }
+
+        return this._resolveBackgroundMarkPrice(position, tMs);
+    }
+
     /** Last resampled close from a panel chart showing this ticker (same TF as main). */
     _markFromPanelDataLastClose(tickerNorm) {
         const T = this._normalizeTicker(tickerNorm);
@@ -12471,29 +12495,16 @@ class OrderManager {
                 const tMs = Number(currentCandle.t);
                 const pref = posFileId || null;
                 const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
+                const markForPnL = this._resolveUnrealizedMarkPrice(position, currentCandle);
+                if (Number.isFinite(markForPnL)) {
+                    position.unrealizedPnL = this._calculatePositionPnL(position, markForPnL);
+                    position._miLastMarkPrice = markForPnL;
+                }
                 if (bgBar) {
-                    // Mark must come from THIS instrument only. Do not scale by the active chart's
-                    // bar (c/o) — that is not a valid proxy across pairs and makes dock PnL jump when
-                    // switching symbols. Prefer a panel showing this ticker; else cached bar close.
-                    const panelMc = this._markFromPanelDataLastClose(posTicker);
-                    let markForPnL = Number.isFinite(panelMc) ? panelMc : Number.parseFloat(bgBar.c);
-                    if (!Number.isFinite(markForPnL)) {
-                        markForPnL = Number.parseFloat(bgBar.c);
-                    }
-                    if (Number.isFinite(markForPnL)) {
-                        position.unrealizedPnL = this._calculatePositionPnL(position, markForPnL);
-                        position._miLastMarkPrice = markForPnL;
-                    }
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
                     if (Number.isFinite(bh) && Number.isFinite(bl) && !this._shouldDeferBackgroundSLTPTouches(bgBar)) {
                         this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose);
-                    }
-                } else {
-                    const markPx = this._resolveBackgroundMarkPrice(position, tMs);
-                    if (Number.isFinite(markPx)) {
-                        position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
-                        position._miLastMarkPrice = markPx;
                     }
                 }
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
@@ -12501,9 +12512,12 @@ class OrderManager {
             }
 
             this._appendExcursionSnapshot(position, currentCandle, false);
+            const markForUnrealized = this._resolveUnrealizedMarkPrice(position, currentCandle);
+            const markPx = Number.isFinite(markForUnrealized) ? markForUnrealized : Number.parseFloat(currentPrice);
             if (position.type === 'BUY') {
-                const priceDiff = currentPrice - position.openPrice;
-                position.unrealizedPnL = this._calculatePositionPnL(position, currentPrice);
+                const priceDiff = markPx - position.openPrice;
+                position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
+                position._miLastMarkPrice = markPx;
                 
                 // Update MFE/MAE for BUY positions (only within tracking window)
                 if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
@@ -12519,7 +12533,7 @@ class OrderManager {
                     }
                 }
                 
-                console.log(`   📊 BUY #${position.id}: Entry=${position.openPrice.toFixed(5)}, Current=${currentPrice.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
+                console.log(`   📊 BUY #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
                 // Check for auto breakeven trigger (skip if trailing stop is already activated)
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
@@ -12693,8 +12707,9 @@ class OrderManager {
                     position.beJustTriggered = false;
                 }
             } else {
-                const priceDiff = position.openPrice - currentPrice;
-                position.unrealizedPnL = this._calculatePositionPnL(position, currentPrice);
+                const priceDiff = position.openPrice - markPx;
+                position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
+                position._miLastMarkPrice = markPx;
                 
                 // Update MFE/MAE for SELL positions (only within tracking window)
                 if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
@@ -12710,7 +12725,7 @@ class OrderManager {
                     }
                 }
                 
-                console.log(`   📊 SELL #${position.id}: Entry=${position.openPrice.toFixed(5)}, Current=${currentPrice.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
+                console.log(`   📊 SELL #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
                 // Check for auto breakeven trigger (skip if trailing stop is already activated)
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
