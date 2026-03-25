@@ -1287,7 +1287,7 @@ class Chart {
                     : (Number.isFinite(sessionTime) ? sessionTime : Number(replay.replayTimestamp));
 
                 if (typeof replay.goToReplayTimestamp === 'function' && Number.isFinite(targetTs)) {
-                    replay.goToReplayTimestamp(targetTs, { preserveVisibleWindow: true });
+                    replay.goToReplayTimestamp(targetTs, { centerOnCandle: true });
                 } else {
                     replay.currentIndex = Math.min(10, Math.max(0, replay.fullRawData.length - 1));
                     if (replay.fullRawData[replay.currentIndex]) {

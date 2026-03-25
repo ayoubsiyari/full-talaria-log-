@@ -3700,6 +3700,7 @@ class ReplaySystem {
      */
     goToReplayTimestamp(targetTimestamp, options = {}) {
         const preserveVisibleWindow = !!(options && options.preserveVisibleWindow);
+        const centerOnCandle = !!(options && options.centerOnCandle);
         if (!this.isActive || !Array.isArray(this.fullRawData) || this.fullRawData.length === 0) {
             return false;
         }
@@ -3728,8 +3729,25 @@ class ReplaySystem {
         this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
         this.tickElapsedMs = 0;
 
-        const autoScroll = preserveVisibleWindow ? false : this.autoScrollEnabled;
+        const autoScroll = (preserveVisibleWindow || centerOnCandle) ? false : this.autoScrollEnabled;
         this.updateChartData(autoScroll);
+
+        if (centerOnCandle && chart && Array.isArray(chart.data) && chart.data.length > 0) {
+            const candleSpacing = typeof chart.getCandleSpacing === 'function'
+                ? chart.getCandleSpacing()
+                : (chart.candleWidth + (chart.candleGap || 2));
+            if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
+                const m = chart.margin || { l: 0, r: 70 };
+                const chartAreaW = Math.max(0, (chart.w || 0) - (m.l || 0) - (m.r || 0));
+                const numVisible = Math.max(1, Math.floor(chartAreaW / candleSpacing));
+                const lastIdx = chart.data.length - 1;
+                const scrollPos = Math.max(0, lastIdx - Math.floor(numVisible / 2));
+                chart.offsetX = -scrollPos * candleSpacing;
+                if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
+                chart.render();
+            }
+        }
+
         if (typeof this.updateSliderRange === 'function') this.updateSliderRange();
         if (typeof this.updateSlider === 'function') this.updateSlider();
         if (typeof this.updateTimeDisplay === 'function') this.updateTimeDisplay();
