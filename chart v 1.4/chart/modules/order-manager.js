@@ -253,11 +253,26 @@ class OrderManager {
     // the legacy pipSize × pipValuePerLot math so existing behaviour is preserved.
 
     /**
+     * Chart used for order entry, ticker, and file-id context (selected panel in multi-panel mode).
+     * @returns {object|null}
+     */
+    _getOrderContextChart() {
+        if (typeof window !== 'undefined' && typeof window.getActiveChart === 'function') {
+            try {
+                const a = window.getActiveChart();
+                if (a) return a;
+            } catch (e) { /* ignore */ }
+        }
+        return this.chart;
+    }
+
+    /**
      * Get the current symbol from the chart (normalised, no slashes).
      * @returns {string}
      */
     _getSymbol() {
-        return (this.chart && this.chart.currentSymbol) ? this.chart.currentSymbol : '';
+        const c = this._getOrderContextChart();
+        return (c && c.currentSymbol) ? c.currentSymbol : '';
     }
 
     _getActiveTicker() {
@@ -276,13 +291,14 @@ class OrderManager {
 
     /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
     _chartSourceFileId() {
-        const id = this.chart && this.chart.currentFileId;
+        const c = this._getOrderContextChart();
+        const id = c && c.currentFileId;
         return id != null && String(id) !== '' ? String(id) : null;
     }
 
     /** Timeframe used for replay OHLC / SL-TP (must match getCurrentCandle / chart.data). */
     _getReplayDecisionTimeframe() {
-        const ch = this.chart;
+        const ch = this._getOrderContextChart();
         const tf = ch && ch.currentTimeframe ? String(ch.currentTimeframe).toLowerCase().trim() : '';
         return tf || '1m';
     }
@@ -431,19 +447,20 @@ class OrderManager {
             });
         });
 
-        const main = this.chart;
         (this.pendingOrders || []).forEach((po) => {
-            if (!main || !main.svg) return;
-            const t = this._normalizeTicker(po.ticker || po.symbol);
-            const mainT = main.currentSymbol ? this._normalizeTicker(main.currentSymbol) : '';
-            if (t && mainT && t !== mainT) return;
-            const has = (this.orderLines || []).some((ol) => ol.orderId === po.id && ol.isPending);
-            if (!has) {
-                try {
-                    this.drawPendingOrderLine(po);
-                    this.drawPendingOrderTargets(po);
-                } catch (e) { /* ignore */ }
-            }
+            charts.forEach((ch) => {
+                if (!ch?.svg) return;
+                if (!this._positionTickerMatchesChartSymbol(po, ch)) return;
+                const has = (this.orderLines || []).some(
+                    (ol) => ol.orderId === po.id && ol.isPending && (ol.chart || this.chart) === ch
+                );
+                if (!has) {
+                    try {
+                        this.drawPendingOrderLine(po, ch);
+                        this.drawPendingOrderTargets(po, ch);
+                    } catch (e) { /* ignore */ }
+                }
+            });
         });
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
@@ -14179,23 +14196,37 @@ class OrderManager {
     
     /**
      * Draw pending order line on chart (dashed line)
+     * @param {object} pendingOrder
+     * @param {object|null} targetChart — when null in multi-panel, draws on every chart whose symbol matches the order
      */
-    drawPendingOrderLine(pendingOrder) {
+    drawPendingOrderLine(pendingOrder, targetChart = null) {
+        if (targetChart == null && this._isMultiPanelLayout()) {
+            const charts = this._collectLayoutCharts();
+            for (const ch of charts) {
+                if (!this._positionTickerMatchesChartSymbol(pendingOrder, ch)) continue;
+                const has = (this.orderLines || []).some(
+                    (ol) => ol.orderId === pendingOrder.id && ol.isPending && (ol.chart || this.chart) === ch
+                );
+                if (!has) this.drawPendingOrderLine(pendingOrder, ch);
+            }
+            return;
+        }
+
+        const chart = targetChart || this.chart;
         console.log(`🎨 Drawing pending ${pendingOrder.orderType} order line for ${pendingOrder.direction} #${pendingOrder.id}`);
-        
-        if (!this.chart.svg) {
+
+        if (!chart?.svg) {
             console.error('❌ Chart SVG not found! Cannot draw pending order line.');
             return;
         }
-        const pTick = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol);
-        if (pTick && pTick !== this._getActiveTicker()) {
+        if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) {
             return;
         }
-        
+
         // TradingView-like visual styling for pending lines.
         const lineColor = pendingOrder.direction === 'BUY' ? '#3b82f6' : '#ef4444';
         
-        const line = this.chart.svg.append('line')
+        const line = chart.svg.append('line')
             .attr('class', `pending-order-line pending-${pendingOrder.id}`)
             .attr('stroke', lineColor)
             .attr('stroke-width', 1.6)
@@ -14205,7 +14236,7 @@ class OrderManager {
             .style('cursor', 'ns-resize');
         
         // Label box with colored background for visibility
-        const labelBox = this.chart.svg.append('rect')
+        const labelBox = chart.svg.append('rect')
             .attr('class', `pending-order-label-box pending-${pendingOrder.id}`)
             .attr('fill', lineColor)
             .attr('stroke', '#e2e8f0')
@@ -14218,7 +14249,7 @@ class OrderManager {
         // Label text showing order type and direction (white text on colored background)
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'LIMIT' : 'STOP';
         const directionLabel = pendingOrder.direction; // BUY or SELL
-        const labelText = this.chart.svg.append('text')
+        const labelText = chart.svg.append('text')
             .attr('class', `pending-order-label-text pending-${pendingOrder.id}`)
             .attr('fill', '#ffffff')
             .attr('font-size', '11px')
@@ -14232,7 +14263,7 @@ class OrderManager {
         let priceText = null;
         
         if (!pendingOrder.createdFromTool) {
-            priceBox = this.chart.svg.append('rect')
+            priceBox = chart.svg.append('rect')
                 .attr('class', `pending-order-price-box pending-${pendingOrder.id}`)
                 .attr('fill', '#0f172a')
                 .attr('stroke', lineColor)
@@ -14242,7 +14273,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             // Price text
-            priceText = this.chart.svg.append('text')
+            priceText = chart.svg.append('text')
                 .attr('class', `pending-order-price-text pending-${pendingOrder.id}`)
                 .attr('fill', '#e2e8f0')
                 .attr('font-size', '11px')
@@ -14253,7 +14284,7 @@ class OrderManager {
         }
         
         // Close button (X) for pending orders
-        const closeBtn = this.chart.svg.append('g')
+        const closeBtn = chart.svg.append('g')
             .attr('class', `pending-order-close-btn pending-${pendingOrder.id}`)
             .attr('pointer-events', 'all')
             .style('cursor', 'pointer');
@@ -14304,11 +14335,11 @@ class OrderManager {
                 console.log(`🎯 Started dragging pending entry line`);
             })
             .on('drag', function(event) {
-                if (!isDragging || !self.chart?.scales?.yScale) return;
+                if (!isDragging || !chart?.scales?.yScale) return;
                 
-                const chartHeight = self.chart.h || 500;
+                const chartHeight = chart.h || 500;
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                const newPrice = self.chart.scales.yScale.invert(clampedY);
+                const newPrice = chart.scales.yScale.invert(clampedY);
                 
                 // Update line position
                 line.attr('y1', clampedY).attr('y2', clampedY);
@@ -14319,12 +14350,12 @@ class OrderManager {
                 const yAxisWidth = 70;
                 
                 // Position close button (rightmost, before Y-axis area)
-                closeBtn.attr('transform', `translate(${self.chart.w - yAxisWidth - 15}, ${clampedY})`);
+                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${clampedY})`);
                 
                 // Position label box to the left of close button
                 const labelTextBbox = labelText.node().getBBox();
                 const labelBoxWidth = labelTextBbox.width + 20;
-                const labelBoxX = self.chart.w - yAxisWidth - 30 - labelBoxWidth;
+                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
                 
                 labelBox
                     .attr('x', labelBoxX)
@@ -14363,30 +14394,42 @@ class OrderManager {
         labelBox.call(drag);
         if (priceBox) priceBox.call(drag);
         
-        this.orderLines.push({ 
-            orderId: pendingOrder.id, 
+        this.orderLines.push({
+            orderId: pendingOrder.id,
             isPending: true,
-            line, 
-            labelBox, 
+            line,
+            labelBox,
             labelText,
             priceBox,
-            closeBtn, 
-            priceText 
+            closeBtn,
+            priceText,
+            chart
         });
         
         console.log(`✅ Pending order line created (total lines: ${this.orderLines.length})`);
         
-        // Force a chart render
-        if (this.chart && typeof this.chart.render === 'function') {
-            this.chart.renderPending = true;
-            this.chart.render();
+        if (chart && typeof chart.render === 'function') {
+            chart.renderPending = true;
+            chart.render();
         }
     }
 
-    drawPendingOrderTargets(pendingOrder) {
-        if (!this.chart?.svg) return;
-        const pTick = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol);
-        if (pTick && pTick !== this._getActiveTicker()) return;
+    drawPendingOrderTargets(pendingOrder, targetChart = null) {
+        if (targetChart == null && this._isMultiPanelLayout()) {
+            const charts = this._collectLayoutCharts();
+            for (const ch of charts) {
+                if (!this._positionTickerMatchesChartSymbol(pendingOrder, ch)) continue;
+                const hasTargets = (this.pendingTargetLines || []).some(
+                    (e) => e.orderId === pendingOrder.id && e.chart === ch
+                );
+                if (!hasTargets) this.drawPendingOrderTargets(pendingOrder, ch);
+            }
+            return;
+        }
+
+        const chart = targetChart || this.chart;
+        if (!chart?.svg) return;
+        if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) return;
         const entries = [];
         const entryPrice = pendingOrder.entryPrice;
         const quantity = pendingOrder.quantity;
@@ -14399,7 +14442,7 @@ class OrderManager {
             const color = type === 'TP' ? '#22c55e' : type === 'SL' ? '#f23645' : '#f59e0b';
             const isDraggable = (type === 'TP' || type === 'SL');
             
-            const line = this.chart.svg.append('line')
+            const line = chart.svg.append('line')
                 .attr('class', `pending-${type.toLowerCase()}-line pending-${type.toLowerCase()}-${pendingOrder.id}`)
                 .attr('stroke', color)
                 .attr('stroke-width', isDraggable ? 2.2 : 1.4)
@@ -14408,7 +14451,7 @@ class OrderManager {
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
-            const labelGroup = this.chart.svg.append('g')
+            const labelGroup = chart.svg.append('g')
                 .attr('class', `pending-${type.toLowerCase()}-label pending-${type.toLowerCase()}-${pendingOrder.id}`)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
@@ -14493,31 +14536,40 @@ class OrderManager {
 
         if (entries.length === 0) return;
 
-        this.pendingTargetLines.push({ orderId: pendingOrder.id, pendingOrder: pendingOrder, targets: entries });
+        this.pendingTargetLines.push({ orderId: pendingOrder.id, pendingOrder: pendingOrder, targets: entries, chart });
 
-        this.positionPendingOrderTargets();
+        if (chart?.scales?.yScale) {
+            this.positionPendingOrderTargets(chart);
+        }
     }
 
-    positionPendingOrderTargets() {
-        if (!this.chart?.scales?.yScale || !this.pendingTargetLines) return;
+    positionPendingOrderTargets(sourceChart) {
+        if (sourceChart === undefined && this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) this.positionPendingOrderTargets(c);
+            });
+            return;
+        }
 
-        // Clean up orphaned pending target highlights
-        this.chart.svg.selectAll('.y-axis-pending-sl-highlight').remove();
-        this.chart.svg.selectAll('.y-axis-pending-tp-highlight').remove();
-        this.chart.svg.selectAll('.y-axis-pending-be-highlight').remove();
+        const ch = sourceChart || this.chart;
+        if (!ch?.scales?.yScale || !this.pendingTargetLines?.length) return;
+
+        ch.svg.selectAll('.y-axis-pending-sl-highlight').remove();
+        ch.svg.selectAll('.y-axis-pending-tp-highlight').remove();
+        ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
 
         const marginRight = 90;
         const lineStopOffset = 14;
 
-        this.pendingTargetLines.forEach(entry => {
-            entry.targets.forEach(target => {
-                const y = this.chart.scales.yScale(target.price);
+        this.pendingTargetLines.forEach((entry) => {
+            if (entry.chart !== ch) return;
+            entry.targets.forEach((target) => {
+                const y = ch.scales.yScale(target.price);
                 const isDraggable = (target.type === 'TP' || target.type === 'SL');
                 
-                // Position visible line
                 target.line
                     .attr('x1', 0)
-                    .attr('x2', this.chart.w - lineStopOffset)
+                    .attr('x2', ch.w - lineStopOffset)
                     .attr('y1', y)
                     .attr('y2', y)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
@@ -14558,7 +14610,6 @@ class OrderManager {
                 const labelWidth = bbox.width + 16;
                 const labelHeight = bbox.height + 8;
                 
-                // Store dimensions for drag calculations
                 target.labelDimensions = { width: labelWidth, height: labelHeight };
                 
                 labelRect
@@ -14573,19 +14624,17 @@ class OrderManager {
                     .attr('text-anchor', 'middle')
                     .attr('dy', '0.35em');
 
-                const translateX = this.chart.w - labelWidth - marginRight;
+                const translateX = ch.w - labelWidth - marginRight;
                 const translateY = y - labelHeight / 2;
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
                 
-                // Apply drag to BOTH line AND labelGroup (same pattern as executed orders)
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
-                    this.makePendingTargetDraggable(target, entry.pendingOrder);
+                    this.makePendingTargetDraggable(target, entry.pendingOrder, ch);
                     target.dragApplied = true;
                 }
                 
-                // Add Y-axis price highlight
                 if (target.priceHighlight) {
                     target.priceHighlight.remove();
                 }
@@ -14593,7 +14642,8 @@ class OrderManager {
                     target.price, 
                     bgColor, 
                     `pending-${target.type.toLowerCase()}`, 
-                    0
+                    0,
+                    ch
                 );
             });
         });
@@ -14601,9 +14651,11 @@ class OrderManager {
 
     /**
      * Make pending order TP/SL target draggable (same pattern as executed orders)
+     * @param {object} dragChart — chart whose SVG/scales own the target geometry
      */
-    makePendingTargetDraggable(target, pendingOrder) {
+    makePendingTargetDraggable(target, pendingOrder, dragChart = null) {
         const self = this;
+        const ch = dragChart || this.chart;
         let isDragging = false;
         
         const drag = d3.drag()
@@ -14613,27 +14665,24 @@ class OrderManager {
                 console.log(`🎯 Started dragging pending ${target.type}`);
             })
             .on('drag', function(event) {
-                if (!isDragging || !self.chart?.scales?.yScale) return;
+                if (!isDragging || !ch?.scales?.yScale) return;
                 
-                const chartHeight = self.chart.h || 500;
+                const chartHeight = ch.h || 500;
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                const newPrice = self.chart.scales.yScale.invert(clampedY);
+                const newPrice = ch.scales.yScale.invert(clampedY);
                 
-                // Update line position
                 target.line.attr('y1', clampedY).attr('y2', clampedY);
                 
-                // Update label position
                 const dims = target.labelDimensions || { width: 80, height: 20 };
                 const marginRight = 90;
-                const translateX = self.chart.w - dims.width - marginRight;
+                const translateX = ch.w - dims.width - marginRight;
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 
-                // Update Y-axis highlight
                 if (target.priceHighlight) {
                     target.priceHighlight.remove();
                 }
                 const color = target.type === 'TP' ? '#22c55e' : '#f23645';
-                target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, color, `pending-${target.type.toLowerCase()}`, 0);
+                target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, color, `pending-${target.type.toLowerCase()}`, 0, ch);
                 
                 target.price = newPrice;
             })
@@ -14646,7 +14695,6 @@ class OrderManager {
                 const formattedPrice = self.formatPrice(target.price);
                 console.log(`📍 Pending ${target.type} moved to ${formattedPrice}`);
                 
-                // Update pending order data
                 if (target.type === 'TP') {
                     if (target.targetId !== undefined && target.targetId !== null && pendingOrder.tpTargets) {
                         const tpTarget = pendingOrder.tpTargets.find(t => t.id === target.targetId);
@@ -14658,7 +14706,6 @@ class OrderManager {
                     pendingOrder.stopLoss = parseFloat(formattedPrice);
                 }
                 
-                // Redraw targets to update P&L display
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.drawPendingOrderTargets(pendingOrder);
                 
@@ -14672,15 +14719,17 @@ class OrderManager {
 
     removePendingSLTPLines(orderId) {
         if (!this.pendingTargetLines) return;
-        const record = this.pendingTargetLines.find(entry => entry.orderId === orderId);
-        if (!record) return;
+        const records = this.pendingTargetLines.filter(entry => entry.orderId === orderId);
+        if (!records.length) return;
 
-        record.targets.forEach(target => {
-            target.line?.remove();
-            target.labelGroup?.remove();
-            target.priceHighlight?.remove();
+        records.forEach((record) => {
+            record.targets.forEach((target) => {
+                target.line?.remove();
+                target.labelGroup?.remove();
+                target.priceHighlight?.remove();
+            });
         });
-        if (this.pendingTargetLines) this.pendingTargetLines = this.pendingTargetLines.filter(entry => entry.orderId !== orderId);
+        this.pendingTargetLines = this.pendingTargetLines.filter(entry => entry.orderId !== orderId);
     }
     
     /**
@@ -14689,8 +14738,8 @@ class OrderManager {
     removePendingOrderLine(orderId) {
         console.log(`🗑️ removePendingOrderLine called for order #${orderId}`);
         
-        const lineData = this.orderLines.find(l => l.orderId === orderId && l.isPending);
-        if (lineData) {
+        const lineDatas = (this.orderLines || []).filter(l => l.orderId === orderId && l.isPending);
+        lineDatas.forEach((lineData) => {
             try {
                 if (lineData.line) lineData.line.remove();
                 if (lineData.labelBox) lineData.labelBox.remove();
@@ -14701,24 +14750,22 @@ class OrderManager {
             } catch (e) {
                 console.error('Error removing lineData elements:', e);
             }
-            
-            this.orderLines = this.orderLines.filter(l => !(l.orderId === orderId && l.isPending));
+        });
+        if (lineDatas.length) {
+            this.orderLines = (this.orderLines || []).filter(l => !(l.orderId === orderId && l.isPending));
             console.log(`✅ Pending order line removed for order #${orderId}`);
         }
         
-        // Also directly remove SVG elements by class selector (fallback)
-        if (this.chart?.svg) {
-            this.chart.svg.selectAll(`.pending-${orderId}`).remove();
-            this.chart.svg.selectAll(`.pending-order-line.pending-${orderId}`).remove();
-            this.chart.svg.selectAll(`.pending-order-price-box.pending-${orderId}`).remove();
-            this.chart.svg.selectAll(`.pending-order-price-text.pending-${orderId}`).remove();
-            this.chart.svg.selectAll(`.pending-order-label-box.pending-${orderId}`).remove();
-            this.chart.svg.selectAll(`.pending-order-label-text.pending-${orderId}`).remove();
-            this.chart.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
-            console.log(`✅ Fallback: removed all .pending-${orderId} elements from SVG`);
-        }
-
-        this.removePendingSLTPLines(orderId);
+        (this._collectLayoutCharts() || []).forEach((c) => {
+            if (!c?.svg) return;
+            c.svg.selectAll(`.pending-${orderId}`).remove();
+            c.svg.selectAll(`.pending-order-line.pending-${orderId}`).remove();
+            c.svg.selectAll(`.pending-order-price-box.pending-${orderId}`).remove();
+            c.svg.selectAll(`.pending-order-price-text.pending-${orderId}`).remove();
+            c.svg.selectAll(`.pending-order-label-box.pending-${orderId}`).remove();
+            c.svg.selectAll(`.pending-order-label-text.pending-${orderId}`).remove();
+            c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
+        });
     }
     
     /**
@@ -14735,8 +14782,8 @@ class OrderManager {
             this.pendingOrders = this.pendingOrders.filter(o => o.id !== orderId);
         }
         
-        // Remove visual line
         this.removePendingOrderLine(orderId);
+        this.removePendingSLTPLines(orderId);
         
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'Limit' : 'Stop';
         console.log(`❌ Cancelled ${orderTypeLabel} ${pendingOrder.direction} order #${orderId}`);
@@ -16426,8 +16473,8 @@ class OrderManager {
 
         if (ch === this.chart) {
             this.updatePreviewLinePositions();
-            this.positionPendingOrderTargets();
         }
+        this.positionPendingOrderTargets(ch);
     }
 
     removeEntryMarker(orderId) {
