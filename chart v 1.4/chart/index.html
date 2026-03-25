@@ -23661,6 +23661,18 @@
 
             box-shadow: none !important;
 
+            transition: right 0.28s cubic-bezier(.4,0,.2,1);
+
+        }
+
+        /* Reserve space for the fixed settings drawer (420px). Applied here so multi-panel
+           mode still reflows: panel-manager sets inline right:auto on #chartWrapper, which
+           overrides .chart-wrapper.settings-open. */
+
+        body.settings-open #chart-container {
+
+            right: 420px;
+
         }
 
         
@@ -23801,12 +23813,6 @@
             bottom: 0;
 
             transition: right 0.28s cubic-bezier(.4,0,.2,1);
-
-        }
-
-        .chart-wrapper.settings-open {
-
-            right: 420px;
 
         }
 
