@@ -1164,6 +1164,25 @@ class OrderManager {
     }
 
     /**
+     * P&L in USD from entry to a price level (chart SL/TP / pending order labels).
+     * Delegates to MarketCalculationEngine like the order panel so chart and menu stay aligned.
+     * @param {'BUY'|'SELL'} direction
+     * @param {number} entryPrice
+     * @param {number} levelPrice
+     * @param {number} quantity - lots (or partial lots) at this level
+     * @param {string} [symbolOverride] - order symbol for multi-instrument
+     */
+    estimatePnLForPriceLevel(direction, entryPrice, levelPrice, quantity, symbolOverride = null) {
+        const side = direction === 'SELL' ? 'SELL' : 'BUY';
+        const q = Number(quantity) || 0;
+        if (!Number.isFinite(entryPrice) || !Number.isFinite(levelPrice) || q <= 0) return 0;
+        const sym = symbolOverride || this._getSymbol();
+        const cc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+        const mark = cc && Number.isFinite(Number.parseFloat(cc.c)) ? Number.parseFloat(cc.c) : levelPrice;
+        return this._enginePnL(side, entryPrice, levelPrice, q, mark, sym, null);
+    }
+
+    /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
      * @param {number} entry
@@ -13768,28 +13787,18 @@ class OrderManager {
                 label.attr('y', newY - 5);
                 if (lineType === 'entry') {
                     label.text(`${order.type} #${order.id} @ ${newPrice.toFixed(5)}`);
-                } else if (lineType === 'sl') {
+                } else                 if (lineType === 'sl') {
                     // Update SL label text with new price
                     if (extraElements.labelText) {
-                        // Calculate new SL P&L
-                        let slPnL = 0;
-                        if (order.type === 'BUY') {
-                            slPnL = (newPrice - order.openPrice) * order.quantity * self.contractSize;
-                        } else {
-                            slPnL = (order.openPrice - newPrice) * order.quantity * self.contractSize;
-                        }
+                        const sym = order.ticker || order.symbol || self._getSymbol();
+                        const slPnL = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
                         extraElements.labelText.text(`SL , P&L: ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
                     }
                 } else if (lineType === 'tp') {
                     // Update TP label text with new price
                     if (extraElements.labelText) {
-                        // Calculate new TP P&L
-                        let tpPnL = 0;
-                        if (order.type === 'BUY') {
-                            tpPnL = (newPrice - order.openPrice) * order.quantity * self.contractSize;
-                        } else {
-                            tpPnL = (order.openPrice - newPrice) * order.quantity * self.contractSize;
-                        }
+                        const sym = order.ticker || order.symbol || self._getSymbol();
+                        const tpPnL = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
                         extraElements.labelText.text(`TP , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
                     }
                 }
@@ -14037,8 +14046,8 @@ class OrderManager {
                     : (entryPrice - newPrice);
                     
                 if (priceDiff > 0) {
-                    const pips = priceDiff / self.pipSize;
-                    const dollarAmount = pips * targetQuantity * self.pipValuePerLot;
+                    const sym = order.ticker || order.symbol || self._getSymbol();
+                    const dollarAmount = self.estimatePnLForPriceLevel(order.type, entryPrice, newPrice, targetQuantity, sym);
                     
                     if (!dollarIndicator) {
                         dollarIndicator = ctx.svg.append('text')
@@ -14495,6 +14504,7 @@ class OrderManager {
         const entryPrice = pendingOrder.entryPrice;
         const quantity = pendingOrder.quantity;
         const direction = pendingOrder.direction; // 'BUY' or 'SELL'
+        const pendingSym = pendingOrder.ticker || pendingOrder.symbol || this._getSymbol();
 
         const self = this;
         
@@ -14527,13 +14537,8 @@ class OrderManager {
                 if (target.hit) return; // Skip already hit targets
                 
                 // Calculate P&L for this TP target based on pending order's entry
-                let tpPnL = 0;
                 const closeQty = quantity * (target.percentage / 100);
-                if (direction === 'BUY') {
-                    tpPnL = (target.price - entryPrice) * closeQty * this.contractSize;
-                } else {
-                    tpPnL = (entryPrice - target.price) * closeQty * this.contractSize;
-                }
+                const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
                 
                 const labelText = `TP${index + 1} (${target.percentage.toFixed(0)}%) , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage);
@@ -14543,12 +14548,7 @@ class OrderManager {
             });
         } else if (pendingOrder.takeProfit) {
             // Single TP - calculate P&L
-            let tpPnL = 0;
-            if (direction === 'BUY') {
-                tpPnL = (pendingOrder.takeProfit - entryPrice) * quantity * this.contractSize;
-            } else {
-                tpPnL = (entryPrice - pendingOrder.takeProfit) * quantity * this.contractSize;
-            }
+            const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
             const labelText = `TP , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.takeProfit, 'TP', labelText, tpPnL);
             if (item) entries.push(item);
@@ -14556,12 +14556,7 @@ class OrderManager {
         
         // Draw SL with P&L calculated from THIS pending order's entry
         if (pendingOrder.stopLoss) {
-            let slPnL = 0;
-            if (direction === 'BUY') {
-                slPnL = (pendingOrder.stopLoss - entryPrice) * quantity * this.contractSize;
-            } else {
-                slPnL = (entryPrice - pendingOrder.stopLoss) * quantity * this.contractSize;
-            }
+            const slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
             const labelText = `SL , P&L: ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.stopLoss, 'SL', labelText, slPnL);
             if (item) entries.push(item);
@@ -15365,18 +15360,14 @@ class OrderManager {
 
         const slLines = [];
         const tpLines = [];
+        const orderSym = order.ticker || order.symbol || this._getSymbol();
 
         // Draw Stop Loss line (red)
         if (order.stopLoss) {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
-            // Calculate potential loss at SL
-            let slPnL = 0;
-            if (order.type === 'BUY') {
-                slPnL = (order.stopLoss - order.openPrice) * order.quantity * this.contractSize;
-            } else {
-                slPnL = (order.openPrice - order.stopLoss) * order.quantity * this.contractSize;
-            }
+            // Calculate potential loss at SL (same engine as order panel)
+            const slPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.stopLoss, order.quantity, orderSym);
             
             const slLine = chart.svg.append('line')
                 .attr('class', `sl-line sl-${order.id}`)
@@ -15493,12 +15484,7 @@ class OrderManager {
                 if (target.price > 0 && target.percentage > 0) {
                     // Calculate PnL for this target
                     const targetQuantity = order.quantity * (target.percentage / 100);
-                    let tpPnL = 0;
-                    if (order.type === 'BUY') {
-                        tpPnL = (target.price - order.openPrice) * targetQuantity * this.contractSize;
-                    } else {
-                        tpPnL = (order.openPrice - target.price) * targetQuantity * this.contractSize;
-                    }
+                    const tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, target.price, targetQuantity, orderSym);
                     
                     // Color gradient from light to dark green
                     const colors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
@@ -15566,12 +15552,7 @@ class OrderManager {
             console.log(`  🎯 Drawing single TP line at ${order.takeProfit.toFixed(2)}`);
             
             // Calculate potential profit at TP
-            let tpPnL = 0;
-            if (order.type === 'BUY') {
-                tpPnL = (order.takeProfit - order.openPrice) * order.quantity * this.contractSize;
-            } else {
-                tpPnL = (order.openPrice - order.takeProfit) * order.quantity * this.contractSize;
-            }
+            const tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.takeProfit, order.quantity, orderSym);
             
             const tpLine = chart.svg.append('line')
                 .attr('class', `tp-line tp-${order.id}`)
