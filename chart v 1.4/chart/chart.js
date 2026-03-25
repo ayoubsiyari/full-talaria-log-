@@ -4863,7 +4863,10 @@ class Chart {
     hideSettingsMenu() {
         // Reset pending template
         this._pendingTemplate = null;
-        
+        if (typeof window !== 'undefined' && window.chart) {
+            window.chart._settingsSourceChart = null;
+        }
+
         // For panels, hide the main chart's settings modal
         if (this.isPanel && window.chart && window.chart.settingsModal) {
             window.chart.settingsModal.style('display', 'none');
@@ -4891,6 +4894,9 @@ class Chart {
     _applyChartSettingsImmediate(settingKey = null, settingValue = null) {
         // Determine which chart to apply settings to
         const targetChart = this._settingsSourceChart || this;
+        // In multi-panel mode the main chart is still `window.chart` but has isPanel=true; only that
+        // instance must drive global toolbar / body / chart-container chrome — never secondary panels.
+        const isMainAppChart = typeof window !== 'undefined' && window.chart && targetChart === window.chart;
 
         const toRgbChannels = (color, fallback = '41, 98, 255') => {
             if (!color) return fallback;
@@ -5040,9 +5046,9 @@ class Chart {
             this._cachedAccentColor = accentColor;
             targetChart._cachedAccentColor = accentColor;
 
-            // Only the main chart drives global toolbar / settings-panel / body.light-mode.
-            // Panel charts call applyChartSettings (e.g. loadPanelSettings) and must not override app theme.
-            if (!targetChart.isPanel) {
+            // Only `window.chart` drives global toolbar / settings-panel / body.light-mode.
+            // Secondary panel instances call applyChartSettings and must not override app theme.
+            if (isMainAppChart) {
                 root.style.setProperty('--sp-accent', accentColor);
                 root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
                 root.style.setProperty('--sp-secondary', secondaryColor);
@@ -5077,8 +5083,8 @@ class Chart {
         // Apply background color to target chart
         targetChart.canvas.style.backgroundColor = targetChart.chartSettings.backgroundColor;
         
-        // Only update container background for main chart
-        if (!targetChart.isPanel) {
+        // Only `window.chart` updates the outer chart container background
+        if (isMainAppChart) {
             const chartContainer = document.querySelector('.chart-container');
             if (chartContainer) {
                 chartContainer.style.backgroundColor = targetChart.chartSettings.backgroundColor;

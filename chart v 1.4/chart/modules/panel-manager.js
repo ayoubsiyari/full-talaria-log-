@@ -3,6 +3,29 @@
  * Allows splitting the chart view into multiple panels with different timeframes
  */
 
+/** Chart look + settings UI colors: always follow `window.chart` for extra panels (index > 0). */
+const PANEL_CHART_APPEARANCE_KEYS = [
+    'backgroundColor', 'backgroundStyle',
+    'gridColor', 'gridStyle', 'showGrid', 'gridPattern',
+    'showSessionBreaks', 'sessionBreaksColor', 'sessionBreaksPattern',
+    'crosshairColor', 'crosshairPattern', 'crosshairWidth', 'showCrosshair', 'crosshairLocked',
+    'showWatermark', 'watermarkColor', 'watermarkPattern',
+    'scaleTextColor', 'scaleTextSize', 'scaleLinesColor', 'scaleLinePattern', 'scaleLineWidth',
+    'cursorLabelTextColor', 'cursorLabelBgColor',
+    'candleUpColor', 'candleDownColor', 'bodyUpColor', 'bodyDownColor',
+    'borderUpColor', 'borderDownColor', 'wickUpColor', 'wickDownColor',
+    'unifiedBarColorEnabled', 'unifiedBarColor',
+    'showCandleBody', 'showCandleBorders', 'showCandleWick', 'colorBasedOnPreviousClose',
+    'showPriceLine', 'priceLineColor',
+    'areaLineColor', 'areaFillColor', 'baselineColor',
+    'volumeUpColor', 'volumeDownColor',
+    'symbolTextColor',
+    'symbolColor', 'prevDayColor',
+    'settingsPanelAccentColor', 'settingsPanelSecondaryColor', 'settingsPanelTextColor',
+    'settingsPanelBgColor', 'settingsPanelSidebarBgColor',
+    'activeFullTemplate', 'activeChartOnlyTemplate', 'activePanelOnlyTemplate'
+];
+
 class PanelManager {
     constructor(container) {
         this.container = container;
@@ -2123,12 +2146,32 @@ class PanelManager {
         const panel = this.panels[panelIndex];
         if (!panel || !panel.chartInstance) return;
         
-        const settings = panel.chartInstance.chartSettings;
+        let settings = panel.chartInstance.chartSettings;
         const key = `chart_panel_${panelIndex}_settings`;
         
         try {
+            if (panelIndex > 0) {
+                settings = { ...settings };
+                for (const k of PANEL_CHART_APPEARANCE_KEYS) {
+                    delete settings[k];
+                }
+            }
             localStorage.setItem(key, JSON.stringify(settings));
         } catch (e) {}
+    }
+
+    /**
+     * Force extra panel chart visuals to match the main chart (avoids stale localStorage themes).
+     */
+    applyMainAppearanceToPanelChart(panelChart) {
+        const main = typeof window !== 'undefined' ? window.chart : null;
+        if (!main || !main.chartSettings || !panelChart || !panelChart.chartSettings) return;
+        if (panelChart === main) return;
+        const cs = panelChart.chartSettings;
+        const m = main.chartSettings;
+        for (const k of PANEL_CHART_APPEARANCE_KEYS) {
+            if (m[k] !== undefined) cs[k] = m[k];
+        }
     }
     
     loadPanelSettings(panelIndex) {
@@ -2141,6 +2184,9 @@ class PanelManager {
                 const panel = this.panels[panelIndex];
                 if (panel && panel.chartInstance) {
                     panel.chartInstance.chartSettings = { ...panel.chartInstance.chartSettings, ...settings };
+                    if (panelIndex > 0) {
+                        this.applyMainAppearanceToPanelChart(panel.chartInstance);
+                    }
                     panel.chartInstance.applyChartSettings();
                     return true;
                 }
