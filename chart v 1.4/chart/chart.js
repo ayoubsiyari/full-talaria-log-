@@ -6216,6 +6216,60 @@ class Chart {
             safe.slice(idx + query.length);
     }
 
+    _currencyToCountry(ccy) {
+        const map = {
+            USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
+            CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
+            HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
+            BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
+            KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
+            ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
+            BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
+            NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
+            BHD: 'bh', OMR: 'om', JOD: 'jo', XAU: 'xau', XAG: 'xag'
+        };
+        return map[(ccy || '').toUpperCase()] || null;
+    }
+
+    _parsePairCurrencies(ticker) {
+        const clean = String(ticker || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+        if (clean.length >= 6) {
+            return { base: clean.slice(0, 3), quote: clean.slice(3, 6) };
+        }
+        if (clean.length === 6) {
+            return { base: clean.slice(0, 3), quote: clean.slice(3) };
+        }
+        return null;
+    }
+
+    _buildPairFlagIcon(ticker) {
+        const pair = this._parsePairCurrencies(ticker);
+        if (!pair) {
+            const initials = String(ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
+            return `<div class="ssd-item-icon">${initials}</div>`;
+        }
+        const baseCC = this._currencyToCountry(pair.base);
+        const quoteCC = this._currencyToCountry(pair.quote);
+        if (!baseCC || !quoteCC) {
+            const initials = String(ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
+            return `<div class="ssd-item-icon">${initials}</div>`;
+        }
+        const flagUrl = (cc) => {
+            if (cc === 'xau') return null;
+            if (cc === 'xag') return null;
+            return `https://flagcdn.com/w80/${cc}.png`;
+        };
+        const baseUrl = flagUrl(baseCC);
+        const quoteUrl = flagUrl(quoteCC);
+        if (!baseUrl || !quoteUrl) {
+            return `<div class="ssd-item-icon">${pair.base.slice(0,2)}</div>`;
+        }
+        return `<div class="ssd-pair-flags">
+            <img class="ssd-flag ssd-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" />
+            <img class="ssd-flag ssd-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />
+        </div>`;
+    }
+
     _buildListContent(entries, query) {
         if (entries.length === 0) return '<div class="ssd-empty">No instruments available</div>';
         const activeChart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : this;
@@ -6233,9 +6287,9 @@ class Chart {
             const safeTicker = this._ssdHighlight(entry.ticker, query);
             const rawSubtitle = String(entry.subtitle || '');
             const safeSubtitle = query ? this._ssdHighlight(rawSubtitle, query) : rawSubtitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const initials = String(entry.ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
+            const flagIcon = this._buildPairFlagIcon(entry.ticker);
             return `<div class="ssd-item${activeClass}" data-file-id="${entry.fileId}">
-                <div class="ssd-item-icon">${initials}</div>
+                ${flagIcon}
                 <div class="ssd-item-body">
                     <div class="ssd-item-name">${safeTicker}</div>
                     ${rawSubtitle ? `<div class="ssd-item-sub">${safeSubtitle}</div>` : ''}

@@ -7693,50 +7693,60 @@
 
         
 
-        /* Symbol icon badge */
-
+        /* Symbol icon — text fallback */
         .ssd-item-icon {
-
             width: 30px;
-
             height: 30px;
-
             border-radius: 6px;
-
             background: rgba(98, 116, 160, 0.12);
-
             border: 1px solid rgba(98, 116, 160, 0.2);
-
             display: flex;
-
             align-items: center;
-
             justify-content: center;
-
             font-size: 10px;
-
             font-weight: 700;
-
             color: #a0aec0;
-
             flex-shrink: 0;
-
             text-transform: uppercase;
-
             letter-spacing: -0.5px;
-
+        }
+        .ssd-item.active .ssd-item-icon {
+            background: rgba(41, 98, 255, 0.2);
+            border-color: rgba(41, 98, 255, 0.4);
+            color: #6395f9;
         }
 
-        
-
-        .ssd-item.active .ssd-item-icon {
-
-            background: rgba(41, 98, 255, 0.2);
-
-            border-color: rgba(41, 98, 255, 0.4);
-
-            color: #6395f9;
-
+        /* Pair flag icons — TradingView style overlapping circles */
+        .ssd-pair-flags {
+            position: relative;
+            width: 38px;
+            height: 28px;
+            flex-shrink: 0;
+        }
+        .ssd-flag {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #1e222d;
+            background: #2a2e39;
+        }
+        .ssd-flag-base {
+            left: 0;
+            top: 2px;
+            z-index: 1;
+        }
+        .ssd-flag-quote {
+            left: 14px;
+            top: 2px;
+            z-index: 2;
+        }
+        .ssd-item:hover .ssd-flag {
+            border-color: #262a35;
+        }
+        .ssd-item.active .ssd-flag {
+            border-color: #1a2744;
         }
 
         
@@ -40506,7 +40516,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_PANEL_OHLC_V181"></script>
+    <script defer src="chart.js?v=20260325_PAIR_FLAGS_V182"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_PANEL_INDEP_V75"></script>
 
