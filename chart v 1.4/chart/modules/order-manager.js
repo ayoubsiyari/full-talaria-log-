@@ -696,6 +696,24 @@ class OrderManager {
         return null;
     }
 
+    /**
+     * While the main chart is mid–tick-animation, getCurrentCandle().t is the forming bar. Cached
+     * background OHLC for that t is the *finished* bar (full wicks). Using it for SL/TP every
+     * frame causes false hits during playback; pause has no animating candle so checks stay correct.
+     */
+    _shouldDeferBackgroundSLTPTouches(bgBar) {
+        if (!bgBar) return false;
+        const rs = this.replaySystem;
+        const anim = rs && rs.animatingCandle;
+        if (!anim || rs.fastMode) return false;
+        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 60) || 60;
+        const tp = Number(rs.tickProgress) || 0;
+        if (!(tp < ticksNeeded)) return false;
+        const bgT = Number(bgBar.t);
+        const animT = Number(anim.t);
+        return Number.isFinite(bgT) && Number.isFinite(animT) && bgT === animT;
+    }
+
     _getPositionPipSize(position) {
         const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
         const value = Number.parseFloat(raw);
@@ -12232,7 +12250,7 @@ class OrderManager {
                     }
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
-                    if (Number.isFinite(bh) && Number.isFinite(bl)) {
+                    if (Number.isFinite(bh) && Number.isFinite(bl) && !this._shouldDeferBackgroundSLTPTouches(bgBar)) {
                         this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose);
                     }
                 } else {
