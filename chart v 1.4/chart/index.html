@@ -4515,6 +4515,16 @@
 
 
 
+        .toolbar-icon-btn-dark.active {
+
+            background: rgba(var(--sp-accent-rgb), 0.25);
+
+            color: #ffffff;
+
+        }
+
+
+
         .toolbar-icon-btn-dark svg {
 
             width: 18px;
@@ -4615,6 +4625,16 @@
 
 
 
+        body.light-mode .toolbar-icon-btn-dark.active {
+
+            background: rgba(var(--sp-accent-rgb), 0.18);
+
+            color: var(--sp-accent, #2962ff);
+
+        }
+
+
+
         body.light-mode .layout-btn {
 
             background: rgba(255, 255, 255, 0.95);
@@ -4671,6 +4691,16 @@
 
 
 
+        .toolbar-icon-btn-light.active {
+
+            background: rgba(var(--sp-accent-rgb), 0.25);
+
+            color: #ffffff;
+
+        }
+
+
+
 
 
         .toolbar-icon-btn-light svg {
@@ -4701,6 +4731,16 @@
 
 
 
+        #helpBtn.active {
+
+            color: #ffffff;
+
+            background: rgba(var(--sp-accent-rgb), 0.25);
+
+        }
+
+
+
         body.light-mode #helpBtn {
 
             color: #f59e0b;
@@ -4714,6 +4754,16 @@
             color: #d97706;
 
             background: rgba(245, 158, 11, 0.16);
+
+        }
+
+
+
+        body.light-mode #helpBtn.active {
+
+            color: var(--sp-accent, #2962ff);
+
+            background: rgba(var(--sp-accent-rgb), 0.14);
 
         }
 
@@ -7200,6 +7250,26 @@
             background: var(--sp-hover-bg, rgba(255, 255, 255, 0.08));
 
             color: var(--sp-accent);
+
+        }
+
+
+
+        .profile-avatar-btn.active {
+
+            background: rgba(var(--sp-accent-rgb), 0.25);
+
+            color: #ffffff;
+
+        }
+
+
+
+        body.light-mode .profile-avatar-btn.active {
+
+            background: rgba(var(--sp-accent-rgb), 0.18);
+
+            color: var(--sp-accent, #2962ff);
 
         }
 
@@ -40723,6 +40793,8 @@
 
                 fullscreenBtn.dataset.tooltip = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
 
+                if (typeof window.syncRightToolbarActionButtons === 'function') window.syncRightToolbarActionButtons();
+
             }
 
             
@@ -40769,7 +40841,7 @@
 
             });
 
-            
+            updateButton();
 
         })();
 
@@ -57147,6 +57219,80 @@ function _spResizeChart(settleDelayMs) {
 
 
 
+/** Right toolbar: accent “selected” state for panel modes + fullscreen (matches drawing tool-btn.active). */
+
+window.syncRightToolbarActionButtons = function() {
+
+    var ids = ['layout-selector-btn', 'screenshotBtn', 'fullscreenBtn', 'globalViewBtn', 'objectTreeBtn', 'toolbarAlertsBtn', 'settingsBtn', 'helpBtn', 'profileBtn'];
+
+    ids.forEach(function(id) {
+
+        var el = document.getElementById(id);
+
+        if (el) el.classList.remove('active');
+
+    });
+
+    var fs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+
+    var fsBtn = document.getElementById('fullscreenBtn');
+
+    if (fs && fsBtn) fsBtn.classList.add('active');
+
+    var spanel = document.getElementById('settingsPanel');
+
+    if (!spanel || !spanel.classList.contains('open')) return;
+
+    if (spanel.classList.contains('sp-mode') && typeof _spCurrentMode === 'string' && _spCurrentMode) {
+
+        var map = { panellayout: 'layout-selector-btn', globalmarket: 'globalViewBtn', objecttree: 'objectTreeBtn', alerts: 'toolbarAlertsBtn', help: 'helpBtn', profile: 'profileBtn' };
+
+        var bid = map[_spCurrentMode];
+
+        if (bid) {
+
+            var b = document.getElementById(bid);
+
+            if (b) b.classList.add('active');
+
+        }
+
+        return;
+
+    }
+
+    if (!spanel.classList.contains('sp-mode')) {
+
+        var gear = document.getElementById('settingsBtn');
+
+        if (gear) gear.classList.add('active');
+
+    }
+
+};
+
+
+
+if (document.readyState === 'loading') {
+
+    document.addEventListener('DOMContentLoaded', function() {
+
+        if (typeof window.syncRightToolbarActionButtons === 'function') window.syncRightToolbarActionButtons();
+
+    });
+
+} else {
+
+    setTimeout(function() {
+
+        if (typeof window.syncRightToolbarActionButtons === 'function') window.syncRightToolbarActionButtons();
+
+    }, 0);
+
+}
+
+
+
 function openPanel(section) {
 
     if (!panel) panel = document.getElementById('settingsPanel');
@@ -57182,6 +57328,8 @@ function openPanel(section) {
     _spBottomInterval = setInterval(_syncSpBottom, 200);
 
     _spResizeChart(_spAnimMs + 24);
+
+    if (typeof window.syncRightToolbarActionButtons === 'function') window.syncRightToolbarActionButtons();
 
 }
 
@@ -57232,6 +57380,8 @@ window.closePanel = function() {
         _spCloseAnimTimer = null;
 
     }, _spAnimMs);
+
+    if (typeof window.syncRightToolbarActionButtons === 'function') window.syncRightToolbarActionButtons();
 
 };
 
@@ -57300,6 +57450,8 @@ window._spOpen = function(section) {
     if (panel.classList.contains('open')) { loadSection(section); }
 
     else { openPanel(section); }
+
+    if (typeof window.syncRightToolbarActionButtons === 'function') window.syncRightToolbarActionButtons();
 
 };
 
