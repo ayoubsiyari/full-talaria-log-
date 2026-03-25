@@ -830,11 +830,63 @@ class OrderManager {
     }
 
     /**
+     * Same tick path math as ReplaySystem.getTickPath, but cache key includes OHLC so two
+     * instruments sharing a bar time (same t) do not share one cached path.
+     */
+    _miTickPathForBarCached(bar, rs) {
+        if (!bar || !rs || typeof rs.generateRandomPath !== 'function') return null;
+        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 60) || 60;
+        const o = Number.parseFloat(bar.o);
+        const h = Number.parseFloat(bar.h);
+        const l = Number.parseFloat(bar.l);
+        const c = Number.parseFloat(bar.c);
+        if (![o, h, l, c].every(Number.isFinite)) return null;
+        const key = `${bar.t}|${o}|${h}|${l}|${c}|${ticksNeeded}`;
+        if (!this._miForeignTickPathCache) this._miForeignTickPathCache = new Map();
+        const cache = this._miForeignTickPathCache;
+        if (cache.has(key)) return cache.get(key);
+        const path = rs.generateRandomPath(o, h, l, c, ticksNeeded, bar.t);
+        if (path && path.length) {
+            if (cache.size > 64) cache.clear();
+            cache.set(key, path);
+        }
+        return path;
+    }
+
+    /**
+     * During smooth replay, advance the mark for a *background* instrument using the same
+     * tickProgress as the main chart (deterministic path for that bar's OHLC).
+     */
+    _miIntrabarMarkForBackgroundBar(bgBar, tMs) {
+        const rs = this.replaySystem;
+        if (!bgBar || !rs || !rs.isActive || rs.fastMode) return null;
+        const anim = rs.animatingCandle;
+        if (!anim) return null;
+        if (Number(anim.t) !== Number(tMs)) return null;
+        if (Number(bgBar.t) !== Number(tMs)) return null;
+        const tickProg = Number(rs.tickProgress) || 0;
+        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 60) || 60;
+        const o = Number.parseFloat(bgBar.o);
+        const h = Number.parseFloat(bgBar.h);
+        const l = Number.parseFloat(bgBar.l);
+        const c = Number.parseFloat(bgBar.c);
+        if (![o, h, l, c].every(Number.isFinite)) return null;
+        const path = this._miTickPathForBarCached(bgBar, rs);
+        if (!path || !path.length) return null;
+        if (tickProg <= 0) return o;
+        if (tickProg >= ticksNeeded) return c;
+        const pathIndex = Math.min(Math.max(0, tickProg - 1), path.length - 1);
+        let px = path[pathIndex];
+        px = Math.max(l, Math.min(h, px));
+        return Number.isFinite(px) ? px : null;
+    }
+
+    /**
      * Mark price for unrealized P&L (dock + equity).
      * - Same instrument + same dataset as the active chart: use live `currentCandle.c` so PnL
      *   moves with replay ticks/candles.
-     * - Otherwise: panel last close for that symbol if a panel shows it, else cached bar close
-     *   for that instrument (stable vs switching the main chart to another pair).
+     * - Other instruments: same session tick index + that bar's OHLC (deterministic path) so
+     *   dock PnL moves smoothly; else panel last close, else cached bar close.
      */
     _resolveUnrealizedMarkPrice(position, currentCandle) {
         if (!position || !currentCandle) return null;
@@ -855,10 +907,13 @@ class OrderManager {
             if (Number.isFinite(live)) return live;
         }
 
+        const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
+        const intrabar = this._miIntrabarMarkForBackgroundBar(bgBar, tMs);
+        if (Number.isFinite(intrabar)) return intrabar;
+
         const panelMc = this._markFromPanelDataLastClose(posTicker);
         if (Number.isFinite(panelMc)) return panelMc;
 
-        const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
         if (bgBar) {
             const c = Number.parseFloat(bgBar.c);
             if (Number.isFinite(c)) return c;
