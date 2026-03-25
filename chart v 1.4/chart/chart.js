@@ -6764,8 +6764,9 @@ class Chart {
     setCursorType(type, skipSync = false) {
         this.cursorType = type;
         
-        // Clear any active drawing tool when switching cursor types
-        if (this.drawingManager && type !== 'eraser') {
+        // Only clear drawing tools when EXPLICITLY changing cursor type from UI
+        // (not during panel init or sync). Drawing tools manage their own state.
+        if (!skipSync && this.drawingManager && type !== 'eraser') {
             this.drawingManager.clearTool();
         }
         this.tool = null;
@@ -12752,7 +12753,8 @@ class Chart {
         // STEP 3 — Pan Logic (mousedown)
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('mousedown', e => {
-            if (this.tool) return; // Drawing tool active
+            if (this.tool) return;
+            if (this.drawingManager && this.drawingManager.currentTool) return;
             
             const rect = this.canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;

@@ -4525,13 +4525,13 @@ class DrawingToolsManager {
         const toolActive = !!this.currentTool;
         const drawingSelected = this.selectedDrawings.length > 0;
         if (this.svg) {
-            if (toolActive || drawingSelected) {
+            if (toolActive) {
                 this.svg.style('z-index', '11');
-                // Only give the SVG itself pointer-events when a tool is active (drawing mode).
-                // When drawings are merely selected, keep pointer-events: none on the SVG so
-                // empty-area drags pass through to the chart canvas for panning.
-                // Individual drawing elements manage their own pointer-events independently.
-                this.svg.style('pointer-events', toolActive ? 'auto' : 'none');
+                // Use 'all' so the entire SVG area captures events (including transparent regions)
+                this.svg.style('pointer-events', 'all');
+            } else if (drawingSelected) {
+                this.svg.style('z-index', '11');
+                this.svg.style('pointer-events', 'none');
             } else {
                 this.svg.style('z-index', '');
                 this.svg.style('pointer-events', '');
