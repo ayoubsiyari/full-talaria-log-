@@ -996,6 +996,30 @@ class PanelManager {
     }
 
     /**
+     * Keep the Talaria logo at the bottom-left of the full chart area in multi-panel mode
+     * (not clipped to panel 0). Single-panel: logo stays inside #chartWrapper.
+     */
+    syncChartBrandPlacement(layout) {
+        const brand = document.querySelector('.chart-brand');
+        const wrapper = document.getElementById('chartWrapper');
+        const pc = this.container || document.getElementById('panels-container');
+        if (!brand || !wrapper || !pc) return;
+
+        if (layout === '1') {
+            if (brand.parentElement !== wrapper) {
+                wrapper.appendChild(brand);
+            }
+            brand.classList.remove('chart-brand--multi');
+            brand.style.zIndex = '';
+        } else {
+            if (brand.parentElement !== pc) {
+                pc.appendChild(brand);
+            }
+            brand.classList.add('chart-brand--multi');
+        }
+    }
+
+    /**
      * Apply selected layout
      */
     applyLayout(layout) {
@@ -1008,6 +1032,9 @@ class PanelManager {
         // If single panel layout, restore original chart to normal position
         if (layout === '1') {
             console.log('🔄 Returning to single layout - cleaning up panels...');
+
+            // Logo must leave panels-container before innerHTML clears it
+            this.syncChartBrandPlacement('1');
             
             // FIRST: Remove ALL resize handles
             if (this.resizeHandles && this.resizeHandles.length > 0) {
@@ -1177,9 +1204,19 @@ class PanelManager {
         // Clear any active drawing tool when switching to multi-panel
         this.clearAllDrawingTools();
         
+        // If logo already lived in panels-container, park it on chart-container so innerHTML does not wipe it
+        const brandEl = document.querySelector('.chart-brand');
+        const chartCont = document.getElementById('chart-container');
+        if (brandEl && this.container.contains(brandEl) && chartCont) {
+            chartCont.appendChild(brandEl);
+        }
+
         // Clear existing additional panels (keep original chart separate)
         this.container.innerHTML = '';
         this.panels = [];
+
+        // Anchor logo to full multi-panel bounds (bottom-left of #panels-container)
+        this.syncChartBrandPlacement(layout);
         
         // Create panels based on layout
         const layouts = {
