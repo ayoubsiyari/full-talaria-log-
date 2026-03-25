@@ -57329,6 +57329,19 @@ function openPanel(section) {
 
     });
 
+    // Close order panel if open so they don't overlap
+    var _op = document.getElementById('orderPanel');
+    if (_op && _op.classList.contains('visible')) {
+        var _c = window.chart || window.mainChart;
+        if (_c && _c.orderManager && typeof _c.orderManager.toggleOrderPanel === 'function') {
+            _c.orderManager.toggleOrderPanel();
+        } else {
+            _op.classList.remove('visible');
+            var _bk = document.getElementById('orderPanelBackdrop');
+            if (_bk) _bk.classList.remove('visible');
+        }
+    }
+
     panel.classList.add('open');
 
     document.body.classList.add('settings-open');
