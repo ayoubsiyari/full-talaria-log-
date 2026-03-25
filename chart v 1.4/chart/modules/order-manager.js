@@ -653,6 +653,49 @@ class OrderManager {
         return Number.isFinite(last) ? last : null;
     }
 
+    /**
+     * During replay tick animation the main chart updates close every tick; background series in cache
+     * still hold the bar's stored close. Scale a reference price on the foreign leg by the main bar's
+     * intrabar return (mc/mo) so floating PnL in the all-instruments dock moves live. SL/TP still use bar h/l.
+     */
+    _liveBackgroundMarkForPnL(bgBar, mainCandle) {
+        const rs = this.replaySystem;
+        if (!rs || !rs.isActive || !rs.animatingCandle || !(Number(rs.tickProgress) > 0)) return null;
+        if (!bgBar || !mainCandle) return null;
+        const mo = Number.parseFloat(mainCandle.o);
+        const mc = Number.parseFloat(mainCandle.c);
+        if (![mo, mc].every(Number.isFinite) || Math.abs(mo) < 1e-12) return null;
+        const ratio = mc / mo;
+        const mt = Number(mainCandle.t);
+        const bt = Number(bgBar.t);
+        if (Number.isFinite(mt) && Number.isFinite(bt) && mt === bt) {
+            const fo = Number.parseFloat(bgBar.o);
+            if (Number.isFinite(fo)) return fo * ratio;
+        }
+        const fc = Number.parseFloat(bgBar.c);
+        return Number.isFinite(fc) ? fc * ratio : null;
+    }
+
+    /** Last resampled close from a panel chart showing this ticker (same TF as main). */
+    _markFromPanelDataLastClose(tickerNorm) {
+        const T = this._normalizeTicker(tickerNorm);
+        if (!T) return null;
+        const mainTf = this._getReplayDecisionTimeframe();
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (!pm || !Array.isArray(pm.panels)) return null;
+        for (let i = 0; i < pm.panels.length; i++) {
+            const pc = pm.panels[i] && pm.panels[i].chartInstance;
+            if (!pc || !Array.isArray(pc.data) || !pc.data.length) continue;
+            if (this._normalizeTicker(pc.currentSymbol) !== T) continue;
+            const pcTf = String(pc.currentTimeframe || '1m').toLowerCase().trim() || '1m';
+            if (pcTf !== mainTf) continue;
+            const last = pc.data[pc.data.length - 1];
+            const c = Number.parseFloat(last && last.c);
+            if (Number.isFinite(c)) return c;
+        }
+        return null;
+    }
+
     _getPositionPipSize(position) {
         const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
         const value = Number.parseFloat(raw);
@@ -12175,10 +12218,17 @@ class OrderManager {
                 const pref = posFileId || null;
                 const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
                 if (bgBar) {
-                    const c = Number.parseFloat(bgBar.c);
-                    if (Number.isFinite(c)) {
-                        position.unrealizedPnL = this._calculatePositionPnL(position, c);
-                        position._miLastMarkPrice = c;
+                    const panelMc = this._markFromPanelDataLastClose(posTicker);
+                    let markForPnL = this._liveBackgroundMarkForPnL(bgBar, currentCandle);
+                    if (!Number.isFinite(markForPnL) && Number.isFinite(panelMc)) {
+                        markForPnL = panelMc;
+                    }
+                    if (!Number.isFinite(markForPnL)) {
+                        markForPnL = Number.parseFloat(bgBar.c);
+                    }
+                    if (Number.isFinite(markForPnL)) {
+                        position.unrealizedPnL = this._calculatePositionPnL(position, markForPnL);
+                        position._miLastMarkPrice = markForPnL;
                     }
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
@@ -12626,7 +12676,13 @@ class OrderManager {
         if (this.openPositions.length > 0) {
             console.log(`💰 Total Unrealized P&L: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)} | Balance: $${this.balance.toFixed(2)} | Equity: $${this.equity.toFixed(2)}`);
         }
-        
+
+        try {
+            if (typeof this.renderCrossInstrumentPositionsDock === 'function') {
+                this.renderCrossInstrumentPositionsDock();
+            }
+        } catch (e) { /* ignore */ }
+
         this.updatePositionsPanel();
     }
     
@@ -16230,7 +16286,14 @@ class OrderManager {
      * Update positions panel
      */
     updatePositionsPanel() {
-        if (this._isUpdatingPanels) return;
+        if (this._isUpdatingPanels) {
+            try {
+                if (typeof this.renderCrossInstrumentPositionsDock === 'function') {
+                    this.renderCrossInstrumentPositionsDock();
+                }
+            } catch (e) { /* ignore */ }
+            return;
+        }
         this._isUpdatingPanels = true;
         console.log('🔄 updatePositionsPanel() called');
         const normalizeTickerSymbol = (item) => {
