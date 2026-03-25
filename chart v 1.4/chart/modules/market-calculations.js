@@ -558,7 +558,45 @@ class MarketCalculationEngine {
         const key  = this._normalize(symbol);
         const spec = this._registry[key];
         if (spec) return spec;
-        return this._fallback(fallbackType || MarketCalculationEngine.detectMarketType(symbol), symbol);
+        const ft = fallbackType || MarketCalculationEngine.detectMarketType(symbol);
+        if (ft === 'forex') {
+            const h = this._heuristicForexSpecs(key, symbol);
+            if (h) return h;
+        }
+        return this._fallback(ft, symbol);
+    }
+
+    /**
+     * Unknown symbols not in INSTRUMENT_REGISTRY: infer JPY-cross / USD-base from ticker
+     * so P&L does not use EUR/USD-style 0.0001 pip on EUR/JPY etc.
+     */
+    _heuristicForexSpecs(key, originalSymbol) {
+        if (!key || key.length < 6) return null;
+        const label = String(originalSymbol || key);
+        if (key === 'USDJPY' && this._registry.USDJPY) {
+            return { ...this._registry.USDJPY };
+        }
+        if (key.endsWith('JPY') && key !== 'USDJPY') {
+            return {
+                type: 'forex',
+                contractSize: 100000,
+                pipSize: 0.01,
+                quoteType: 'cross_jpy',
+                precision: 3,
+                label
+            };
+        }
+        if (key.startsWith('USD') && key.length >= 6 && key !== 'USDT') {
+            return {
+                type: 'forex',
+                contractSize: 100000,
+                pipSize: 0.0001,
+                quoteType: 'usd_base',
+                precision: 5,
+                label
+            };
+        }
+        return null;
     }
 
     _fallback(type, symbol) {

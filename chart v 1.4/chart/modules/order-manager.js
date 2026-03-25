@@ -890,19 +890,50 @@ class OrderManager {
         return Number.isFinite(bgT) && Number.isFinite(animT) && bgT === animT;
     }
 
+    /** When instrument_settings are missing, avoid treating JPY pairs as 0.0001-pip majors. */
+    _inferPipSizeFromTicker(tickerNorm) {
+        const T = this._normalizeTicker(tickerNorm);
+        if (!T || T.length < 6) return null;
+        if (T.endsWith('JPY')) return 0.01;
+        return null;
+    }
+
     _getPositionPipSize(position) {
-        const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
+        const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize;
         const value = Number.parseFloat(raw);
-        return Number.isFinite(value) && value > 0 ? value : (this.pipSize || 0.0001);
+        if (Number.isFinite(value) && value > 0) return value;
+        const inferred = this._inferPipSizeFromTicker(this._positionTicker(position));
+        if (Number.isFinite(inferred) && inferred > 0) return inferred;
+        return this.pipSize || 0.0001;
     }
 
     _getPositionPipValue(position) {
-        const raw = position?.instrument_settings?.pip_value_per_lot ?? position?.instrument_settings?.pipValuePerLot ?? this.pipValuePerLot;
+        const raw = position?.instrument_settings?.pip_value_per_lot ?? position?.instrument_settings?.pipValuePerLot;
         const value = Number.parseFloat(raw);
-        return Number.isFinite(value) && value > 0 ? value : (this.pipValuePerLot || 10);
+        if (Number.isFinite(value) && value > 0) return value;
+        return this.pipValuePerLot || 10;
     }
 
     _calculatePositionPnL(position, markPrice) {
+        const sym = position?.ticker || position?.symbol;
+        if (window.marketCalcEngine && sym) {
+            try {
+                const entry = Number.parseFloat(position.openPrice);
+                const mark = Number.parseFloat(markPrice);
+                const qty = Number.parseFloat(position.quantity) || 0;
+                if ([entry, mark, qty].every(Number.isFinite)) {
+                    return window.marketCalcEngine.calcPnL(
+                        position.type,
+                        entry,
+                        mark,
+                        qty,
+                        sym,
+                        this.marketType,
+                        mark
+                    );
+                }
+            } catch (e) { /* legacy below */ }
+        }
         const pipSize = this._getPositionPipSize(position);
         const pipValue = this._getPositionPipValue(position);
         const priceDiff = position.type === 'BUY'
@@ -4486,13 +4517,13 @@ class OrderManager {
                     height: calc(100vh - 48px);
                     --op-accent: var(--sp-accent, #2962ff);
                     --op-accent-rgb: var(--sp-accent-rgb, 41, 98, 255);
-                    --op-bg: var(--tv-panel-bg, var(--sp-ui-surface-bg, var(--sp-bg, #050028)));
+                    --op-bg: var(--sp-bg, #050028);
                     --op-surface: var(--sp-ui-chrome-bg, #0d142b);
                     --op-text: var(--sp-text, #d1d4dc);
                     --op-text-muted: var(--sp-text-muted, #7f879e);
-                    --op-border: rgba(var(--op-accent-rgb), 0.22);
+                    --op-border: var(--sp-ui-border, rgba(255,255,255,0.07));
                     --op-soft-accent: rgba(var(--op-accent-rgb), 0.14);
-                    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.10) 100%), var(--op-bg);
+                    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)), var(--op-bg);
                     border-left: 1px solid var(--op-border);
                     z-index: 9999;
                     overflow: hidden;
