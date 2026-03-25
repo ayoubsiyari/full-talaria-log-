@@ -1369,24 +1369,36 @@ class Chart {
      * Load a different pair into THIS panel independently (does not affect main chart or other panels).
      * The panel maintains its own fullRawData and slices by the shared replay timestamp.
      */
+    _getPanelOverlayContainer() {
+        if (!this.canvas) return null;
+        return this.canvas.closest('.chart-panel')
+            || this.canvas.closest('.panel-chart-container')
+            || this.canvas.closest('#chart-container')
+            || this.canvas.parentElement;
+    }
+
     _showPanelLoadingOverlay() {
-        const container = this.canvas && (this.canvas.closest('.chart-panel') || this.canvas.closest('.chart-container'));
+        const container = this._getPanelOverlayContainer();
         if (!container) return null;
-        let overlay = container.querySelector('.panel-loading-overlay');
+        if (getComputedStyle(container).position === 'static') {
+            container.style.position = 'relative';
+        }
+        let overlay = container.querySelector(':scope > .panel-loading-overlay');
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.className = 'panel-loading-overlay';
             overlay.innerHTML = '<div class="panel-loading-spinner"></div>';
             container.appendChild(overlay);
         }
+        void overlay.offsetWidth;
         overlay.classList.add('active');
         return overlay;
     }
 
     _hidePanelLoadingOverlay() {
-        const container = this.canvas && (this.canvas.closest('.chart-panel') || this.canvas.closest('.chart-container'));
+        const container = this._getPanelOverlayContainer();
         if (!container) return;
-        const overlay = container.querySelector('.panel-loading-overlay');
+        const overlay = container.querySelector(':scope > .panel-loading-overlay');
         if (overlay) {
             overlay.classList.remove('active');
             setTimeout(() => { if (!overlay.classList.contains('active')) overlay.remove(); }, 400);

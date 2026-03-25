@@ -1210,7 +1210,7 @@ function createIndicatorSelectionMenu(chartInstance) {
                     defaultParams[param.id] = param.default;
                 }
             });
-            let targetChart = chartInstance;
+            let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
             if (typeof targetChart.addIndicator !== 'function') {
                 targetChart = window.chart || window.mainChart;
             }
@@ -1526,11 +1526,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             }
         });
 
-        // Get the chart instance - fallback to global chart if method not available
-        let targetChart = chartInstance;
+        let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
         if (typeof targetChart.addIndicator !== 'function') {
             targetChart = window.chart || window.mainChart;
-            console.log('Using fallback chart instance');
         }
         
         if (!targetChart || typeof targetChart.addIndicator !== 'function') {
