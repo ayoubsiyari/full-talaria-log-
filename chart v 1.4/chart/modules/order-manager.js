@@ -148,6 +148,10 @@ class OrderManager {
         this.pendingPreviewAlignTimeout = null;
         this._lastPreviewChartWidth = null;
         this.pendingTargetLines = [];
+
+        /** 1m bars per fileId for PnL on instruments not shown on the main chart */
+        this._miSeriesByFileId = new Map();
+        this._miSeriesInflight = new Set();
         
         // Professional Trailing SL System
         this.trailingState = {
@@ -367,9 +371,11 @@ class OrderManager {
 
         const activeT = this._getActiveTicker();
         const pt = this._positionTicker(worst);
+        const tMs = currentCandle && Number.isFinite(Number(currentCandle.t)) ? Number(currentCandle.t) : NaN;
         let px = currentCandle && Number.isFinite(Number(currentCandle.c)) ? Number(currentCandle.c) : NaN;
         if (pt && activeT && pt !== activeT) {
-            px = Number.parseFloat(worst.openPrice);
+            const bg = Number.isFinite(tMs) ? this._resolveBackgroundMarkPrice(worst, tMs) : null;
+            px = Number.isFinite(bg) ? bg : Number.parseFloat(worst.openPrice);
         }
         if (!Number.isFinite(px)) px = Number.parseFloat(worst.openPrice);
         if (!Number.isFinite(px)) return;
@@ -380,6 +386,117 @@ class OrderManager {
         } catch (e) {
             console.error('Stop-out liquidation failed:', e);
         }
+    }
+
+    /**
+     * Last bar close at or before tMs (ms). Bars must be sorted by t ascending.
+     */
+    _barCloseAtOrBefore(bars, tMs) {
+        if (!bars || !bars.length || !Number.isFinite(tMs)) return null;
+        let lo = 0;
+        let hi = bars.length - 1;
+        let ans = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const bt = Number(bars[mid].t);
+            if (Number.isFinite(bt) && bt <= tMs) {
+                ans = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if (ans < 0) return null;
+        const cl = Number(bars[ans].c);
+        return Number.isFinite(cl) ? cl : null;
+    }
+
+    resolveFileIdForTicker(tickerNorm) {
+        const T = this._normalizeTicker(tickerNorm);
+        if (!T || !this.chart || typeof this.chart.getSymbolSwitcherEntries !== 'function') return null;
+        const entries = this.chart.getSymbolSwitcherEntries() || [];
+        for (let i = 0; i < entries.length; i++) {
+            const e = entries[i];
+            if (!e || !e.fileId) continue;
+            if (this._normalizeTicker(e.ticker) === T) return String(e.fileId);
+        }
+        return null;
+    }
+
+    _markFromPanelCharts(tickerNorm, tMs) {
+        const T = this._normalizeTicker(tickerNorm);
+        if (!T) return null;
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (!pm || !Array.isArray(pm.panels)) return null;
+        for (let i = 0; i < pm.panels.length; i++) {
+            const pc = pm.panels[i] && pm.panels[i].chartInstance;
+            if (!pc || !Array.isArray(pc.rawData) || !pc.rawData.length) continue;
+            if (this._normalizeTicker(pc.currentSymbol) !== T) continue;
+            return this._barCloseAtOrBefore(pc.rawData, tMs);
+        }
+        return null;
+    }
+
+    _scheduleMiSeriesFetch(fileId, endTsMs) {
+        if (!fileId || this._miSeriesInflight.has(fileId)) return;
+        const ch = this.chart;
+        if (!ch || !ch.apiUrl || typeof ch._buildSmartWindowParams !== 'function') return;
+        this._miSeriesInflight.add(fileId);
+        const session = ch.backtestingSession || {};
+        const anchorTs = Number.isFinite(endTsMs) ? endTsMs + 120000 : endTsMs;
+        const params = ch._buildSmartWindowParams(String(fileId), '1m', session, 'end', { endTs: anchorTs });
+        params.set('limit', '20000');
+        const url = `${ch.apiUrl}/file/${fileId}/smart?${params.toString()}`;
+        fetch(url)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((json) => {
+                if (!json || !Array.isArray(json.candles) || !json.candles.length) return;
+                const norm = typeof ch._normalizeCandlesFromApi === 'function'
+                    ? ch._normalizeCandlesFromApi(json.candles)
+                    : [];
+                if (norm.length) {
+                    this._miSeriesByFileId.set(String(fileId), { raw: norm, builtForEndTs: endTsMs });
+                    if (typeof this.updatePositions === 'function') {
+                        try {
+                            this.updatePositions();
+                        } catch (e) { /* ignore */ }
+                    } else if (typeof this.updatePositionsPanel === 'function') {
+                        this.updatePositionsPanel();
+                    }
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                this._miSeriesInflight.delete(fileId);
+            });
+    }
+
+    /**
+     * Mark price for floating PnL when the main chart is on another instrument (replay / switch).
+     */
+    _resolveBackgroundMarkPrice(position, tMs) {
+        const posTicker = this._positionTicker(position);
+        if (!posTicker) return null;
+
+        const fromPanel = this._markFromPanelCharts(posTicker, tMs);
+        if (Number.isFinite(fromPanel)) return fromPanel;
+
+        const fileId = this.resolveFileIdForTicker(posTicker);
+        if (fileId) {
+            const cached = this._miSeriesByFileId.get(fileId);
+            if (cached && Array.isArray(cached.raw) && cached.raw.length) {
+                const px = this._barCloseAtOrBefore(cached.raw, tMs);
+                if (Number.isFinite(px)) return px;
+                const firstT = Number(cached.raw[0].t);
+                if (Number.isFinite(firstT) && Number.isFinite(tMs) && tMs < firstT) {
+                    this._miSeriesByFileId.delete(fileId);
+                }
+            }
+            this._scheduleMiSeriesFetch(fileId, tMs);
+        }
+
+        const last = Number.parseFloat(position._miLastMarkPrice);
+        return Number.isFinite(last) ? last : null;
     }
 
     _getPositionPipSize(position) {
@@ -11861,6 +11978,12 @@ class OrderManager {
         this.openPositions.forEach(position => {
             const posTicker = this._positionTicker(position);
             if (posTicker && chartTickerForBar && posTicker !== chartTickerForBar) {
+                const tMs = Number(currentCandle.t);
+                const markPx = this._resolveBackgroundMarkPrice(position, tMs);
+                if (Number.isFinite(markPx)) {
+                    position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
+                    position._miLastMarkPrice = markPx;
+                }
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
                 return;
             }
