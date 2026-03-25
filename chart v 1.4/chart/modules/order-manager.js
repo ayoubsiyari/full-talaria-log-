@@ -389,9 +389,9 @@ class OrderManager {
     }
 
     /**
-     * Last bar close at or before tMs (ms). Bars must be sorted by t ascending.
+     * Bar row at or before tMs (ms). Bars must be sorted by t ascending.
      */
-    _barCloseAtOrBefore(bars, tMs) {
+    _barRecordAtOrBefore(bars, tMs) {
         if (!bars || !bars.length || !Number.isFinite(tMs)) return null;
         let lo = 0;
         let hi = bars.length - 1;
@@ -407,7 +407,16 @@ class OrderManager {
             }
         }
         if (ans < 0) return null;
-        const cl = Number(bars[ans].c);
+        return bars[ans];
+    }
+
+    /**
+     * Last bar close at or before tMs (ms). Bars must be sorted by t ascending.
+     */
+    _barCloseAtOrBefore(bars, tMs) {
+        const b = this._barRecordAtOrBefore(bars, tMs);
+        if (!b) return null;
+        const cl = Number(b.c);
         return Number.isFinite(cl) ? cl : null;
     }
 
@@ -419,20 +428,6 @@ class OrderManager {
             const e = entries[i];
             if (!e || !e.fileId) continue;
             if (this._normalizeTicker(e.ticker) === T) return String(e.fileId);
-        }
-        return null;
-    }
-
-    _markFromPanelCharts(tickerNorm, tMs) {
-        const T = this._normalizeTicker(tickerNorm);
-        if (!T) return null;
-        const pm = typeof window !== 'undefined' ? window.panelManager : null;
-        if (!pm || !Array.isArray(pm.panels)) return null;
-        for (let i = 0; i < pm.panels.length; i++) {
-            const pc = pm.panels[i] && pm.panels[i].chartInstance;
-            if (!pc || !Array.isArray(pc.rawData) || !pc.rawData.length) continue;
-            if (this._normalizeTicker(pc.currentSymbol) !== T) continue;
-            return this._barCloseAtOrBefore(pc.rawData, tMs);
         }
         return null;
     }
@@ -472,27 +467,129 @@ class OrderManager {
     }
 
     /**
-     * Mark price for floating PnL when the main chart is on another instrument (replay / switch).
+     * 1m bar for ticker at replay time (panel rawData or lazy /smart cache). Schedules fetch on miss.
      */
-    _resolveBackgroundMarkPrice(position, tMs) {
-        const posTicker = this._positionTicker(position);
-        if (!posTicker) return null;
+    _getBackgroundBarForTicker(tickerNorm, tMs) {
+        const T = this._normalizeTicker(tickerNorm);
+        if (!T || !Number.isFinite(tMs)) return null;
 
-        const fromPanel = this._markFromPanelCharts(posTicker, tMs);
-        if (Number.isFinite(fromPanel)) return fromPanel;
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (pm && Array.isArray(pm.panels)) {
+            for (let i = 0; i < pm.panels.length; i++) {
+                const pc = pm.panels[i] && pm.panels[i].chartInstance;
+                if (!pc || !Array.isArray(pc.rawData) || !pc.rawData.length) continue;
+                if (this._normalizeTicker(pc.currentSymbol) !== T) continue;
+                const bar = this._barRecordAtOrBefore(pc.rawData, tMs);
+                if (bar) return bar;
+            }
+        }
 
-        const fileId = this.resolveFileIdForTicker(posTicker);
+        const fileId = this.resolveFileIdForTicker(T);
         if (fileId) {
             const cached = this._miSeriesByFileId.get(fileId);
             if (cached && Array.isArray(cached.raw) && cached.raw.length) {
-                const px = this._barCloseAtOrBefore(cached.raw, tMs);
-                if (Number.isFinite(px)) return px;
+                const bar = this._barRecordAtOrBefore(cached.raw, tMs);
+                if (bar) return bar;
                 const firstT = Number(cached.raw[0].t);
                 if (Number.isFinite(firstT) && Number.isFinite(tMs) && tMs < firstT) {
                     this._miSeriesByFileId.delete(fileId);
                 }
             }
             this._scheduleMiSeriesFetch(fileId, tMs);
+        }
+        return null;
+    }
+
+    /**
+     * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
+     * Does not use beJustTriggered — that flag is tied to the visible chart candle.
+     */
+    _collectBackgroundSLTPTouches(position, bar, positionsToClose) {
+        if (!position || !bar) return;
+        const high = Number.parseFloat(bar.h);
+        const low = Number.parseFloat(bar.l);
+        if (![high, low].every(Number.isFinite)) return;
+
+        if (position.type === 'BUY') {
+            if (position.tpTargets && position.tpTargets.length > 0) {
+                position.tpTargets.forEach((target) => {
+                    if (!target || target.hit) return;
+                    const tp = Number.parseFloat(target.price);
+                    if (!Number.isFinite(tp) || high < tp) return;
+                    target.hit = true;
+                    const closePercentage = target.percentage / 100;
+                    const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
+                    const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                    positionsToClose.push({
+                        id: position.id,
+                        closePrice: tp,
+                        type: closeType,
+                        percentage: allTargetsHit ? null : closePercentage,
+                        targetId: target.id
+                    });
+                });
+                const sl = Number.parseFloat(position.stopLoss);
+                if (Number.isFinite(sl) && low <= sl) {
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                }
+            } else {
+                const sl = Number.parseFloat(position.stopLoss);
+                if (Number.isFinite(sl) && low <= sl) {
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                } else {
+                    const tp = Number.parseFloat(position.takeProfit);
+                    if (Number.isFinite(tp) && high >= tp) {
+                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP' });
+                    }
+                }
+            }
+        } else {
+            if (position.tpTargets && position.tpTargets.length > 0) {
+                position.tpTargets.forEach((target) => {
+                    if (!target || target.hit) return;
+                    const tp = Number.parseFloat(target.price);
+                    if (!Number.isFinite(tp) || low > tp) return;
+                    target.hit = true;
+                    const closePercentage = target.percentage / 100;
+                    const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
+                    const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                    positionsToClose.push({
+                        id: position.id,
+                        closePrice: tp,
+                        type: closeType,
+                        percentage: allTargetsHit ? null : closePercentage,
+                        targetId: target.id
+                    });
+                });
+                const sl = Number.parseFloat(position.stopLoss);
+                if (Number.isFinite(sl) && high >= sl) {
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                }
+            } else {
+                const sl = Number.parseFloat(position.stopLoss);
+                if (Number.isFinite(sl) && high >= sl) {
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                } else {
+                    const tp = Number.parseFloat(position.takeProfit);
+                    if (Number.isFinite(tp) && low <= tp) {
+                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP' });
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Mark price for floating PnL when the main chart is on another instrument (replay / switch).
+     */
+    _resolveBackgroundMarkPrice(position, tMs) {
+        const posTicker = this._positionTicker(position);
+        if (!posTicker) return null;
+
+        const bgBar = this._getBackgroundBarForTicker(posTicker, tMs);
+        if (bgBar) {
+            const c = Number.parseFloat(bgBar.c);
+            if (Number.isFinite(c)) return c;
         }
 
         const last = Number.parseFloat(position._miLastMarkPrice);
@@ -11979,10 +12076,24 @@ class OrderManager {
             const posTicker = this._positionTicker(position);
             if (posTicker && chartTickerForBar && posTicker !== chartTickerForBar) {
                 const tMs = Number(currentCandle.t);
-                const markPx = this._resolveBackgroundMarkPrice(position, tMs);
-                if (Number.isFinite(markPx)) {
-                    position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
-                    position._miLastMarkPrice = markPx;
+                const bgBar = this._getBackgroundBarForTicker(posTicker, tMs);
+                if (bgBar) {
+                    const c = Number.parseFloat(bgBar.c);
+                    if (Number.isFinite(c)) {
+                        position.unrealizedPnL = this._calculatePositionPnL(position, c);
+                        position._miLastMarkPrice = c;
+                    }
+                    const bh = Number.parseFloat(bgBar.h);
+                    const bl = Number.parseFloat(bgBar.l);
+                    if (Number.isFinite(bh) && Number.isFinite(bl)) {
+                        this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose);
+                    }
+                } else {
+                    const markPx = this._resolveBackgroundMarkPrice(position, tMs);
+                    if (Number.isFinite(markPx)) {
+                        position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
+                        position._miLastMarkPrice = markPx;
+                    }
                 }
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
                 return;
