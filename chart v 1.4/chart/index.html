@@ -14013,6 +14013,8 @@
 
         .interval-clone-btn:hover,
 
+        .interval-clone-wrapper.interval-panel-open .interval-clone-btn,
+
         .interval-clone-btn.active {
 
             background: rgba(255, 255, 255, 0.08);
@@ -15949,7 +15951,7 @@
 
         #intervalTriggerBtn:hover,
 
-        .interval-slider-wrapper:hover #intervalTriggerBtn {
+        .interval-slider-wrapper.interval-panel-open #intervalTriggerBtn {
 
             background: rgba(255,255,255,0.08);
 
@@ -15961,7 +15963,7 @@
 
         }
 
-        /* The slider panel — hidden until wrapper is hovered */
+        /* The slider panel — toggled open via .interval-panel-open (click), not hover */
 
         .interval-slider-panel {
 
@@ -16005,9 +16007,7 @@
 
         }
 
-        .interval-slider-wrapper:hover .interval-slider-panel,
-
-        .interval-slider-panel:hover {
+        .interval-slider-wrapper.interval-panel-open .interval-slider-panel {
 
             opacity: 1;
 
@@ -37805,7 +37805,7 @@
 
                 <div class="interval-slider-wrapper" id="intervalSliderWrapper">
 
-                    <button id="intervalTriggerBtn"><span id="intervalValueDisplay">1m</span></button>
+                    <button type="button" id="intervalTriggerBtn"><span id="intervalValueDisplay">1m</span></button>
 
                     <div class="interval-slider-panel">
 
@@ -51599,7 +51599,35 @@ function showIndicatorsMenu() {
 
 
 
-                    intervalCloneWrapper.addEventListener('mouseenter', rebuildCloneIntervalSlider);
+                    intervalCloneBtn.addEventListener('click', (btnEv) => {
+
+                        btnEv.stopPropagation();
+
+                        const wasOpen = intervalCloneWrapper.classList.contains('interval-panel-open');
+
+                        document.querySelectorAll('#speedSliderClone .interval-clone-wrapper.interval-panel-open').forEach((w) => {
+
+                            if (w !== intervalCloneWrapper) w.classList.remove('interval-panel-open');
+
+                        });
+
+                        const mainIw = document.getElementById('intervalSliderWrapper');
+
+                        if (mainIw) mainIw.classList.remove('interval-panel-open');
+
+                        if (wasOpen) {
+
+                            intervalCloneWrapper.classList.remove('interval-panel-open');
+
+                        } else {
+
+                            rebuildCloneIntervalSlider();
+
+                            intervalCloneWrapper.classList.add('interval-panel-open');
+
+                        }
+
+                    });
 
 
 
@@ -58426,6 +58454,100 @@ setTimeout(function(){
 
 
         if (!sliderTrack || !sliderThumb) return;
+
+
+
+        var intervalSliderWrapper = document.getElementById('intervalSliderWrapper');
+
+        var intervalTriggerBtn = document.getElementById('intervalTriggerBtn');
+
+
+
+        function closeAllReplayIntervalPanels() {
+
+            if (intervalSliderWrapper) intervalSliderWrapper.classList.remove('interval-panel-open');
+
+            var cloneWrap = document.querySelector('#speedSliderClone .interval-clone-wrapper');
+
+            if (cloneWrap) cloneWrap.classList.remove('interval-panel-open');
+
+        }
+
+
+
+        function toggleMainIntervalPanel() {
+
+            if (!intervalSliderWrapper || !intervalTriggerBtn) return;
+
+            var open = intervalSliderWrapper.classList.contains('interval-panel-open');
+
+            if (open) {
+
+                intervalSliderWrapper.classList.remove('interval-panel-open');
+
+            } else {
+
+                closeAllReplayIntervalPanels();
+
+                rebuildIntervals();
+
+                intervalSliderWrapper.classList.add('interval-panel-open');
+
+            }
+
+        }
+
+
+
+        if (intervalTriggerBtn && intervalSliderWrapper) {
+
+            intervalTriggerBtn.addEventListener('click', function(ev) {
+
+                ev.stopPropagation();
+
+                toggleMainIntervalPanel();
+
+            });
+
+        }
+
+
+
+        document.addEventListener('click', function(ev) {
+
+            if (intervalSliderWrapper && intervalSliderWrapper.classList.contains('interval-panel-open')) {
+
+                if (!intervalSliderWrapper.contains(ev.target)) {
+
+                    intervalSliderWrapper.classList.remove('interval-panel-open');
+
+                }
+
+            }
+
+            var cw = document.querySelector('#speedSliderClone .interval-clone-wrapper');
+
+            if (cw && cw.classList.contains('interval-panel-open')) {
+
+                if (!cw.contains(ev.target)) {
+
+                    cw.classList.remove('interval-panel-open');
+
+                }
+
+            }
+
+        });
+
+
+
+        document.addEventListener('keydown', function(ev) {
+
+            if (ev.key !== 'Escape') return;
+
+            closeAllReplayIntervalPanels();
+
+        });
 
 
 
