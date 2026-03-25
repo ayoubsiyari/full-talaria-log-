@@ -1393,7 +1393,9 @@ class Chart {
 
             this.rawData = [];
             this.data = [];
+            this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
+            this._isLoadingOwnPairData = false;
 
             this.currentFileId = targetFileId;
             this.currentSymbol = targetTicker || this.currentSymbol;

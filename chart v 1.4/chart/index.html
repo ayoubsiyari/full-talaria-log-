@@ -23817,7 +23817,7 @@
 
         .chart-brand .logo-top {
 
-            height: 28px;
+            height: 36px;
 
             width: auto;
 
@@ -23829,7 +23829,7 @@
 
         .chart-brand .logo-bottom {
 
-            height: 28px;
+            height: 36px;
 
             width: auto;
 
@@ -44275,8 +44275,8 @@
 
                     }
 
-                    // Skip data overwrite if panel has its own independent pair data
-                    var hasOwnPairData = Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0;
+                    // Skip data overwrite if panel has its own independent pair data or is currently loading it
+                    var hasOwnPairData = panel.chartInstance._isLoadingOwnPairData || (Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0);
 
                     if (!hasOwnPairData) {
                         // Copy symbol from main chart
