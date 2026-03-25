@@ -830,14 +830,14 @@ class OrderManager {
     }
 
     /**
-     * During replay tick animation the main chart updates close every tick; background series in cache
-     * still hold the bar's stored close. Scale a reference price on the foreign leg by the main bar's
-     * intrabar return (mc/mo) so floating PnL in the all-instruments dock moves live. SL/TP still use bar h/l.
+     * While replay runs on another chart, cached background OHLC for the open position's pair can lag
+     * the visible main chart. Scale that leg by the active chart bar's intrabar return (c/o) so the
+     * all-instruments dock PnL moves on every updatePositions() frame — not only when tick animation runs.
+     * (If a panel shows that symbol, prefer _markFromPanelDataLastClose instead — more accurate.)
      */
     _liveBackgroundMarkForPnL(bgBar, mainCandle) {
         const rs = this.replaySystem;
-        if (!rs || !rs.isActive || !rs.animatingCandle || !(Number(rs.tickProgress) > 0)) return null;
-        if (!bgBar || !mainCandle) return null;
+        if (!rs || !rs.isActive || !bgBar || !mainCandle) return null;
         const mo = Number.parseFloat(mainCandle.o);
         const mc = Number.parseFloat(mainCandle.c);
         if (![mo, mc].every(Number.isFinite) || Math.abs(mo) < 1e-12) return null;
@@ -12496,9 +12496,12 @@ class OrderManager {
                 const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
                 if (bgBar) {
                     const panelMc = this._markFromPanelDataLastClose(posTicker);
-                    let markForPnL = this._liveBackgroundMarkForPnL(bgBar, currentCandle);
-                    if (!Number.isFinite(markForPnL) && Number.isFinite(panelMc)) {
+                    let markForPnL = null;
+                    if (Number.isFinite(panelMc)) {
                         markForPnL = panelMc;
+                    }
+                    if (!Number.isFinite(markForPnL)) {
+                        markForPnL = this._liveBackgroundMarkForPnL(bgBar, currentCandle);
                     }
                     if (!Number.isFinite(markForPnL)) {
                         markForPnL = Number.parseFloat(bgBar.c);
