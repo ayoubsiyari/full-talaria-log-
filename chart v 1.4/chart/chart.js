@@ -1228,7 +1228,7 @@ class Chart {
                 : null;
 
             const symbolDisplay = document.getElementById('symbolDisplay');
-            if (symbolDisplay) symbolDisplay.textContent = 'Loading...';
+            const prevSymbol = this.currentSymbol;
 
             const session = this.backtestingSession || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
             const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId) || this.currentSymbol;
@@ -1238,7 +1238,7 @@ class Chart {
                     if (typeof this.showNotification === 'function') {
                         this.showNotification('You have active orders/tracking on another instrument. Close or complete them before switching chart in this phase.');
                     }
-                    if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol ? this.currentSymbol.substring(0, 15) : '';
+                    if (prevSymbol) this.updateChartTitle(prevSymbol);
                     return false;
                 }
             }
@@ -1246,7 +1246,15 @@ class Chart {
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
             const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
 
+            if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
+                params.set('end_ts', String(Math.floor(replayTargetTs + 120000)));
+            }
+
             let result = this._tryTakeSmartPrefetch(targetFileId, params);
+            if (!result) {
+                const prefetchParams = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
+                result = this._tryTakeSmartPrefetch(targetFileId, prefetchParams);
+            }
             if (!result) {
                 result = await this._fetchSmartWindowWithParams(targetFileId, params);
             }
@@ -1344,6 +1352,7 @@ class Chart {
             if (typeof this.showNotification === 'function') {
                 this.showNotification('Failed to load symbol: ' + error.message);
             }
+            if (prevSymbol) this.updateChartTitle(prevSymbol);
             return false;
         }
     }
@@ -5951,10 +5960,11 @@ class Chart {
                 return;
             }
 
-            item.classList.add('active');
+            dropdown.querySelectorAll('.ssd-item.active').forEach(el => el.classList.remove('active'));
+            item.classList.add('active', 'loading');
+            closeDropdown();
             this.loadFileData(nextFileId)
                 .then((switched) => {
-                    if (switched !== false) closeDropdown();
                     this.renderSymbolSwitcherOptions(dropdown);
                 })
                 .catch((error) => {
