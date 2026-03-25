@@ -1412,6 +1412,7 @@ class Chart {
     }
 
     async loadPanelFileData(fileId) {
+        const loadSeq = (this._panelFileLoadSeq = (this._panelFileLoadSeq || 0) + 1);
         const targetFileId = String(fileId);
         const mainChart = window.chart;
         this._showPanelLoadingOverlay();
@@ -1427,6 +1428,7 @@ class Chart {
                     : this.currentSymbol);
 
             const replay = this.replaySystem || (mainChart && mainChart.replaySystem);
+            const replayActiveBefore = !!(replay && replay.isActive);
             const replayTs = replay && Number.isFinite(Number(replay.replayTimestamp))
                 ? Number(replay.replayTimestamp) : null;
 
@@ -1434,15 +1436,52 @@ class Chart {
             const requestTimeframe = isBacktest ? '1m' : (this.currentTimeframe || '1m');
             const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
 
-            const result = await this._fetchSmartWindowWithParams(targetFileId, params);
+            if (replayActiveBefore && Number.isFinite(replayTs)) {
+                params.set('end_ts', String(Math.floor(replayTs + 120000)));
+            }
+
+            // Try main chart's prefetch cache first (same as loadFileData)
+            let result = null;
+            if (mainChart && typeof mainChart._tryTakeSmartPrefetch === 'function') {
+                result = mainChart._tryTakeSmartPrefetch(targetFileId, params);
+                if (!result) {
+                    const prefetchParams = mainChart._buildSmartWindowParams(targetFileId, requestTimeframe, session);
+                    if (replayActiveBefore && Number.isFinite(replayTs)) {
+                        prefetchParams.set('end_ts', String(Math.floor(replayTs + 120000)));
+                    }
+                    result = mainChart._tryTakeSmartPrefetch(targetFileId, prefetchParams);
+                }
+            }
+            if (!result) {
+                result = await this._fetchSmartWindowWithParams(targetFileId, params);
+            }
+
+            if (loadSeq !== this._panelFileLoadSeq) {
+                return false;
+            }
 
             if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
 
             this.rawData = [];
             this.data = [];
+            this.totalCandles = result.total;
+            this._serverCursors = {
+                firstTs: result.first_cursor,
+                lastTs: result.last_cursor,
+                hasMoreLeft: result.has_more_left,
+                hasMoreRight: result.has_more_right
+            };
+            this._panLoading = false;
+            this.loadedRanges.clear();
+
             this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
+            this.loadedRanges.set(0, result.returned);
             this._isLoadingOwnPairData = false;
+
+            if (mainChart && typeof mainChart._scheduleSmartPrefetchOthers === 'function') {
+                mainChart._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
+            }
 
             this.currentFileId = targetFileId;
             this.currentSymbol = targetTicker || this.currentSymbol;
@@ -1478,7 +1517,25 @@ class Chart {
             }
 
             this.resize();
-            this.fitToView();
+
+            const pm = window.panelManager;
+            const alignScrollToMain = !!(pm && pm.syncSettings
+                && (pm.syncSettings.time || pm.syncSettings.dateRange)
+                && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
+                && this.data && this.data.length > 0);
+
+            if (alignScrollToMain) {
+                const sourceSpacing = mainChart.getCandleSpacing
+                    ? mainChart.getCandleSpacing() : (mainChart.candleWidth + 2);
+                const targetSpacing = this.getCandleSpacing
+                    ? this.getCandleSpacing() : (this.candleWidth + 2);
+                const ratio = sourceSpacing > 0 ? (targetSpacing / sourceSpacing) : 1;
+                this.offsetX = mainChart.offsetX * ratio;
+                if (this.constrainOffset) this.constrainOffset();
+            } else {
+                this.fitToView();
+            }
+
             this.render();
             this._hidePanelLoadingOverlay();
 
