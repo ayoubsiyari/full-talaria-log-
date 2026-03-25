@@ -819,6 +819,24 @@ class PanelManager {
     }
     
     /**
+     * Binary search: find index of candle closest to target timestamp.
+     * Falls back to chart.findGoToTargetIndex if available.
+     */
+    _bsearchTimestamp(data, ts) {
+        if (!data || data.length === 0) return 0;
+        let lo = 0, hi = data.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if ((data[mid].t || 0) < ts) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
+            return lo - 1;
+        }
+        return lo;
+    }
+
+    /**
      * Sync time/scroll position across all panels (timestamp-based)
      * This syncs based on the center timestamp of the visible area
      */
@@ -828,39 +846,24 @@ class PanelManager {
         const sourceChart = sourcePanel.chartInstance;
         if (!sourceChart || !sourceChart.data || sourceChart.data.length === 0) return;
         
-        // Get the timestamp at the center of the source view
-        const centerIndex = Math.floor((startIndex + endIndex) / 2);
-        const centerTimestamp = sourceChart.data[Math.min(centerIndex, sourceChart.data.length - 1)]?.t;
-        if (!centerTimestamp) return;
-        
-        // Also get the right edge timestamp for better sync
         const rightTimestamp = sourceChart.data[Math.min(endIndex, sourceChart.data.length - 1)]?.t;
+        if (!rightTimestamp) return;
         
         this.panels.forEach(panel => {
             if (panel.index !== sourcePanel.index && panel.chartInstance) {
                 const chartInst = panel.chartInstance;
                 if (chartInst.data && chartInst.data.length > 0) {
-                    // Find the candle closest to the right edge timestamp
-                    let targetIndex = chartInst.data.length - 1;
-                    let minDiff = Infinity;
+                    const targetIndex = (chartInst.findGoToTargetIndex)
+                        ? chartInst.findGoToTargetIndex(chartInst.data, rightTimestamp)
+                        : this._bsearchTimestamp(chartInst.data, rightTimestamp);
                     
-                    for (let i = 0; i < chartInst.data.length; i++) {
-                        const diff = Math.abs(chartInst.data[i].t - rightTimestamp);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            targetIndex = i;
-                        }
-                    }
-                    
-                    // Position so targetIndex is at the right edge of view
                     const spacing = chartInst.getCandleSpacing ? chartInst.getCandleSpacing() : (chartInst.candleWidth + 2);
                     const chartWidth = chartInst.w - chartInst.margin.l - chartInst.margin.r;
                     const visibleCandles = Math.floor(chartWidth / spacing);
                     
-                    // Position with right alignment (like TradingView)
                     chartInst.offsetX = -(targetIndex - visibleCandles + 5) * spacing;
-                    chartInst.constrainOffset();
-                    chartInst.scheduleRender();
+                    if (chartInst.constrainOffset) chartInst.constrainOffset();
+                    if (chartInst.scheduleRender) chartInst.scheduleRender();
                 }
             }
         });
@@ -899,7 +902,7 @@ class PanelManager {
             if (chart.render) chart.render();
         });
         
-        setTimeout(() => { this._isSyncing = false; }, 16);
+        requestAnimationFrame(() => { this._isSyncing = false; });
     }
     
     /**
@@ -911,31 +914,21 @@ class PanelManager {
         const sourceChart = sourcePanel.chartInstance;
         if (!sourceChart) return;
         
-        // Use the end timestamp (right edge) for alignment
         this.panels.forEach(panel => {
             if (panel.index !== sourcePanel.index && panel.chartInstance) {
                 const chartInst = panel.chartInstance;
                 if (chartInst.data && chartInst.data.length > 0) {
-                    // Find the candle closest to the end timestamp
-                    let targetIndex = chartInst.data.length - 1;
-                    let minDiff = Infinity;
+                    const targetIndex = (chartInst.findGoToTargetIndex)
+                        ? chartInst.findGoToTargetIndex(chartInst.data, endTimestamp)
+                        : this._bsearchTimestamp(chartInst.data, endTimestamp);
                     
-                    for (let i = 0; i < chartInst.data.length; i++) {
-                        const diff = Math.abs(chartInst.data[i].t - endTimestamp);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            targetIndex = i;
-                        }
-                    }
-                    
-                    // Position so targetIndex is at the right edge of view
                     const spacing = chartInst.getCandleSpacing ? chartInst.getCandleSpacing() : (chartInst.candleWidth + 2);
                     const chartWidth = chartInst.w - chartInst.margin.l - chartInst.margin.r;
                     const visibleCandles = Math.floor(chartWidth / spacing);
                     
                     chartInst.offsetX = -(targetIndex - visibleCandles + 5) * spacing;
-                    chartInst.constrainOffset();
-                    chartInst.scheduleRender();
+                    if (chartInst.constrainOffset) chartInst.constrainOffset();
+                    if (chartInst.scheduleRender) chartInst.scheduleRender();
                 }
             }
         });
@@ -1912,27 +1905,13 @@ class PanelManager {
             }
         });
         
-        // Resize the maximized panel's chart
+        // Resize the maximized panel's chart (use Chart.resize() for proper DPR)
         setTimeout(() => {
             const panel = this.panels[index];
-            if (panel) {
-                // Resize canvas
-                if (panel.canvas) {
-                    const rect = panel.element.getBoundingClientRect();
-                    panel.canvas.width = rect.width;
-                    panel.canvas.height = rect.height;
-                }
-                // Resize SVG
-                if (panel.svg) {
-                    const rect = panel.element.getBoundingClientRect();
-                    panel.svg.setAttribute('width', rect.width);
-                    panel.svg.setAttribute('height', rect.height);
-                }
-                // Resize chart instance
-                if (panel.chartInstance && panel.chartInstance.resize) {
-                    panel.chartInstance.resize();
-                    panel.chartInstance.render();
-                }
+            if (panel && panel.chartInstance && panel.chartInstance.resize) {
+                panel.chartInstance._lastResizeDpr = 0; // force DPR recalc
+                panel.chartInstance.resize();
+                panel.chartInstance.render();
             }
         }, 50);
         
@@ -1969,23 +1948,13 @@ class PanelManager {
         this.layoutBeforeMaximize = null;
         this.panelSizesBeforeMaximize = null;
         
-        // Resize all charts
+        // Resize all charts (use Chart.resize() for proper DPR)
         setTimeout(() => {
             this.panels.forEach(panel => {
-                if (panel.element && panel.element.style.display !== 'none') {
-                    const rect = panel.element.getBoundingClientRect();
-                    if (panel.canvas) {
-                        panel.canvas.width = rect.width;
-                        panel.canvas.height = rect.height;
-                    }
-                    if (panel.svg) {
-                        panel.svg.setAttribute('width', rect.width);
-                        panel.svg.setAttribute('height', rect.height);
-                    }
-                    if (panel.chartInstance && panel.chartInstance.resize) {
-                        panel.chartInstance.resize();
-                        panel.chartInstance.render();
-                    }
+                if (panel.element && panel.element.style.display !== 'none' && panel.chartInstance && panel.chartInstance.resize) {
+                    panel.chartInstance._lastResizeDpr = 0;
+                    panel.chartInstance.resize();
+                    panel.chartInstance.render();
                 }
             });
         }, 50);
@@ -2308,28 +2277,15 @@ class PanelManager {
         document.removeEventListener('mousemove', this._resizeMove);
         document.removeEventListener('mouseup', this._resizeEnd);
         
-        // Resize all charts to fit new panel sizes
+        // Resize all charts to fit new panel sizes (use Chart.resize() for proper DPR)
         setTimeout(() => {
             this.panels.forEach(panel => {
-                if (panel.element && panel.element.style.display !== 'none') {
-                    const rect = panel.element.getBoundingClientRect();
-                    if (panel.canvas) {
-                        panel.canvas.width = rect.width;
-                        panel.canvas.height = rect.height;
-                    }
-                    if (panel.svg) {
-                        panel.svg.setAttribute('width', rect.width);
-                        panel.svg.setAttribute('height', rect.height);
-                    }
-                    if (panel.chartInstance && panel.chartInstance.resize) {
-                        panel.chartInstance.resize();
-                        panel.chartInstance.render();
-                    }
+                if (panel.element && panel.element.style.display !== 'none' && panel.chartInstance && panel.chartInstance.resize) {
+                    panel.chartInstance._lastResizeDpr = 0;
+                    panel.chartInstance.resize();
+                    panel.chartInstance.render();
                 }
             });
-            
-            // Resize functionality disabled - panels are fixed size
-            // this.createResizeHandles();
         }, 50);
         
         console.log('📐 Panel resize complete');
