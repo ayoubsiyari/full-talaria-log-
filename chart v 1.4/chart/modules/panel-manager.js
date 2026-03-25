@@ -1332,11 +1332,14 @@ class PanelManager {
             originalChart.style.height = firstConfig.height;
             originalChart.style.left = firstConfig.left || '0';
             originalChart.style.top = firstConfig.top || '0';
+            originalChart.style.right = 'auto';
+            originalChart.style.bottom = 'auto';
             originalChart.style.border = 'none';
             originalChart.style.borderRight = '1px solid #2a2e39';
             originalChart.style.borderBottom = '1px solid #2a2e39';
             originalChart.style.boxSizing = 'border-box';
-            originalChart.style.zIndex = '100'; // Higher than panels-container (z-index: 5)
+            originalChart.style.overflow = 'hidden';
+            originalChart.style.zIndex = '10';
             
             // Add panel 0 info to panels array (reference to main chart)
             const mainPanel = {
@@ -1491,7 +1494,17 @@ class PanelManager {
         const canvas = document.createElement('canvas');
         canvas.className = 'panel-canvas';
         canvas.id = `panelCanvas${index}`;
-        canvas.style.display = 'block';
+        canvas.style.cssText = `
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            user-select: none;
+            z-index: 1;
+        `;
         chartContainer.appendChild(canvas);
         
         // Create SVG for drawings
@@ -1695,17 +1708,18 @@ class PanelManager {
                 panel.element.style.outline = 'none';
                 panel.element.style.outlineOffset = '0';
             }
+            const oldBadge = panel.element && panel.element.querySelector('.panel-select-badge');
+            if (oldBadge) oldBadge.remove();
         });
         
-        // Select the clicked panel - show soft blue border on all 4 sides
+        // Select the clicked panel
         if (this.panels[index]) {
             this.selectedPanelIndex = index;
             const panel = this.panels[index];
             
-            // Highlight selected panel using outline (not clipped by overflow:hidden)
             if (panel.element) {
-                panel.element.style.outline = '3px solid var(--sp-accent)';
-                panel.element.style.outlineOffset = '-3px';
+                panel.element.style.outline = '2px solid #2962FF';
+                panel.element.style.outlineOffset = '-2px';
             }
             
             console.log(`📊 Panel ${index} selected (${panel.timeframe})`);

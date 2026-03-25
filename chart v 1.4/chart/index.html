@@ -39059,7 +39059,7 @@
 
             <!-- Panels Container for multi-panel layout (hidden by default) -->
 
-            <div id="panels-container" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; display: none; z-index: 5; background: #050028;">
+            <div id="panels-container" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; display: none; z-index: 10; background: #050028;">
 
                 <!-- Panels will be created here dynamically -->
 
@@ -40427,7 +40427,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260318_TF_PIN_V59"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_PANEL_INTERACT_V60"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -43708,29 +43708,22 @@
                         
 
                         // Update timeframe bar to show selected panel's timeframe
-
                         const panelTimeframe = event.detail.timeframe;
-
                         if (panelTimeframe) {
-
-                            // Remove active from all timeframe buttons
-
                             document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
-
-                            
-
-                            // Find and activate the matching timeframe button
-
                             const matchingBtn = document.querySelector(`.timeframe-btn[data-timeframe="${panelTimeframe}"]`);
-
                             if (matchingBtn) {
-
                                 matchingBtn.classList.add('active');
-
                             }
-
                         }
 
+                        // Update symbol display header to show selected panel info
+                        const activeChart = event.detail.panel && event.detail.panel.chartInstance
+                            ? event.detail.panel.chartInstance
+                            : (event.detail.isMainChart ? window.chart : null);
+                        if (activeChart && activeChart.currentSymbol) {
+                            activeChart.updateChartTitle(activeChart.currentSymbol);
+                        }
                     });
 
                     
