@@ -23675,23 +23675,18 @@
 
         }
 
-        /* Panel selection indicator — must beat #chart-container * { outline:none!important } */
-        #chart-container .chart-panel.panel-selected,
-        #chart-container .chart-wrapper.panel-selected {
-            outline: 2px solid #2962FF !important;
-            outline-offset: -2px !important;
-        }
+        /* Panel selection — top-bar only (TradingView style), no full outline */
         .panel-select-bar {
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
-            height: 3px;
+            height: 2px;
             background: #2962FF;
             z-index: 200;
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.15s ease;
+            transition: opacity 0.12s ease;
         }
         .panel-selected > .panel-select-bar,
         .panel-selected .panel-select-bar {
@@ -40448,7 +40443,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_PANEL_SELECT_V61"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_PANEL_DPR_V63"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -40464,7 +40459,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_PANEL_SELECT_V172"></script>
+    <script defer src="chart.js?v=20260325_PANEL_DPR_V174"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_TV_STYLE_CENTER_V70"></script>
 
@@ -44239,33 +44234,28 @@
 
                     
 
+                    // Force DPR-correct resize after DOM settles
+                    requestAnimationFrame(() => {
+                        if (panelChart && panelChart.resize) {
+                            panelChart._lastResizeDpr = 0;
+                            panelChart.resize();
+                            panelChart.render();
+                        }
+                    });
+
                     // Add resize observer for this panel's container
-
                     if (typeof ResizeObserver !== 'undefined' && panel.chartContainer) {
-
                         const resizeObserver = new ResizeObserver((entries) => {
-
                             for (const entry of entries) {
-
                                 if (panelChart && panelChart.resize) {
-
                                     panelChart.resize();
-
                                     panelChart.render();
-
                                 }
-
                             }
-
                         });
-
                         resizeObserver.observe(panel.chartContainer);
-
-                        panel.resizeObserver = resizeObserver; // Store for cleanup
-
+                        panel.resizeObserver = resizeObserver;
                     }
-
-                    
 
                     return panelChart;
 

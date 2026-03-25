@@ -1506,8 +1506,6 @@ class PanelManager {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
             touch-action: none;
             user-select: none;
             z-index: 1;
@@ -1666,15 +1664,27 @@ class PanelManager {
         // Setup double-click to maximize
         this.setupPanelMaximize(this.panels[this.panels.length - 1], index);
         
-        // Trigger resize for canvas - use panel element rect, not chartContainer
+        // Trigger resize for canvas with proper DPR scaling
         setTimeout(() => {
             const rect = panel.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0 && rect.height < 10000) {
-                canvas.width = rect.width;
-                canvas.height = rect.height;
-                svg.setAttribute('width', rect.width);
-                svg.setAttribute('height', rect.height);
-                console.log(`📐 Panel ${index} sized: ${rect.width}x${rect.height}`);
+                const dpr = window.devicePixelRatio || 1;
+                const w = Math.floor(rect.width);
+                const h = Math.floor(rect.height);
+                canvas.width = Math.max(1, w * dpr);
+                canvas.height = Math.max(1, h * dpr);
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.scale(dpr, dpr);
+                }
+                svg.setAttribute('width', w);
+                svg.setAttribute('height', h);
+                svg.style.width = w + 'px';
+                svg.style.height = h + 'px';
+                console.log(`📐 Panel ${index} sized: ${w}x${h} (DPR ${dpr}, physical ${w*dpr}x${h*dpr})`);
             } else {
                 console.error(`❌ Panel ${index} invalid size: ${rect.width}x${rect.height}`);
             }
