@@ -4533,8 +4533,11 @@ class DrawingToolsManager {
                 this.svg.style('z-index', '11');
                 this.svg.style('pointer-events', 'none');
             } else {
-                this.svg.style('z-index', '');
-                this.svg.style('pointer-events', '');
+                // Never clear z-index to '' on panels: panel canvas uses z-index 1; SVG default (auto)
+                // stacks below it, so drawings vanish until a tool sets z-index 11 again.
+                const panel = !!(this.chart && this.chart.isPanel);
+                this.svg.style('z-index', panel ? '10' : '2');
+                this.svg.style('pointer-events', 'none');
             }
         }
     }

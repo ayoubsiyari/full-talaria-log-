@@ -930,14 +930,18 @@ class Chart {
         try {
             const displayTf = this.currentTimeframe || '1m';
             const replayRawTf = '1m';
-            this.updateLoaderProgress(30, 'Loading chart data...');
-            this.updateLoaderStep(1, 'completed');
+            // Step 1 must stay active until the HTTP response is back — marking it complete before
+            // await made the UI show "Calculating indicators" during the real network wait.
+            this.updateLoaderStep(1, 'active');
+            this.updateLoaderProgress(20, 'Loading chart data...');
 
             const result = await this._fetchSmartWindow(fileId, replayRawTf, session);
 
             if (!this._smartResponseHasPayload(result)) {
                 throw new Error('No data in response');
             }
+
+            this.updateLoaderStep(1, 'completed');
             
             this.totalCandles = result.total;
             this._serverCursors = {
@@ -949,9 +953,10 @@ class Chart {
             this._panLoading = false;
             
             this.loadedRanges.clear();
-            // Show step 2 active and yield to browser before the blocking parse
+            // Step 2: parse/normalize candles + first full render (not full-dataset indicator pass;
+            // indicators run on the small replay slice inside enterReplayMode → updateChartData).
             this.updateLoaderStep(2, 'active');
-            this.updateLoaderProgress(45, 'Parsing data...');
+            this.updateLoaderProgress(45, 'Processing chart data...');
             await new Promise(resolve => setTimeout(resolve, 0));
             this.currentFileId = fileId;
             // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
@@ -980,7 +985,7 @@ class Chart {
             this.updateDateRange();
             
             this.updateLoaderStep(2, 'completed');
-            this.updateLoaderProgress(90, 'Rendering chart...');
+            this.updateLoaderProgress(80, 'Calculating indicators & rendering...');
 
             this.fitToView();
             this.render();
