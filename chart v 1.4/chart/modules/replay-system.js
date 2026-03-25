@@ -3741,7 +3741,7 @@ class ReplaySystem {
                 const chartAreaW = Math.max(0, (chart.w || 0) - (m.l || 0) - (m.r || 0));
                 const numVisible = Math.max(1, Math.floor(chartAreaW / candleSpacing));
                 const lastIdx = chart.data.length - 1;
-                const scrollPos = Math.max(0, lastIdx - Math.floor(numVisible / 2));
+                const scrollPos = Math.max(0, lastIdx - Math.floor(numVisible * 0.7));
                 chart.offsetX = -scrollPos * candleSpacing;
                 if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
                 chart.render();

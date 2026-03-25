@@ -697,6 +697,23 @@ class Chart {
         return null;
     }
 
+    _formatPairTicker(rawTicker, rawFileName) {
+        const ccys = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG']);
+        const tryFormat = (s) => {
+            if (!s) return null;
+            const clean = String(s).replace(/\.(csv|CSV)$/i, '').replace(/^\d{8}_\d{6}_/, '');
+            const m6 = clean.replace(/[\s\-_\/\.]/g, '').match(/([A-Za-z]{6})/);
+            if (m6) {
+                const pair = m6[1].toUpperCase();
+                const base = pair.substring(0, 3);
+                const quote = pair.substring(3, 6);
+                if (ccys.has(base) || ccys.has(quote)) return base + '/' + quote;
+            }
+            return null;
+        };
+        return tryFormat(rawTicker) || tryFormat(rawFileName) || String(rawTicker || rawFileName || '').toUpperCase();
+    }
+
     resolveSessionTickerForFileId(session, fileId) {
         if (!session || !fileId) return null;
         const fileKey = String(fileId);
@@ -707,13 +724,15 @@ class Chart {
                 const row = session.instruments[ticker];
                 if (!row) continue;
                 const rowFileId = row.fileId || row.datasetId || row.sourceFileId;
-                if (String(rowFileId) === fileKey) return String(ticker).toUpperCase();
+                if (String(rowFileId) === fileKey) {
+                    return this._formatPairTicker(ticker, row.fileName || row.name);
+                }
             }
         }
         if (Array.isArray(session.files)) {
             const file = session.files.find(f => String(f.id) === fileKey);
             if (file && file.name) {
-                return String(file.name).replace(/\.(csv|CSV)$/, '').replace('/', '').toUpperCase();
+                return this._formatPairTicker(file.name, null);
             }
         }
         return null;
@@ -1250,6 +1269,14 @@ class Chart {
             this._panLoading = false;
             this.loadedRanges.clear();
 
+            this.priceZoom = 1;
+            this.priceOffset = 0;
+            this.autoScale = true;
+            if (this.priceScale) this.priceScale.autoScale = true;
+            this.manualCenterPrice = null;
+            this.manualRange = null;
+            this._chartViewRestored = false;
+
             this.currentFileId = targetFileId;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
@@ -1259,7 +1286,6 @@ class Chart {
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
             this.updateChartTitle(this.currentSymbol);
-            if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol.substring(0, 15);
 
             this.resize();
             if (!replayActiveBefore) {
@@ -5954,11 +5980,13 @@ class Chart {
                 if (!row) return;
                 const fileId = row.fileId || row.datasetId || row.sourceFileId;
                 if (!fileId) return;
-                const ticker = String(row.ticker || tickerKey || '').toUpperCase();
+                const rawTicker = String(row.ticker || tickerKey || '');
+                const rawName = row.fileName || row.name || '';
+                const displayTicker = this._formatPairTicker(rawTicker, rawName);
                 entries.push({
                     fileId: String(fileId),
-                    ticker: ticker || String(fileId),
-                    subtitle: row.fileName || row.name || ''
+                    ticker: displayTicker || rawTicker.toUpperCase() || String(fileId),
+                    subtitle: displayTicker !== rawName ? rawName : ''
                 });
             });
         }
