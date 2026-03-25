@@ -1361,9 +1361,34 @@ class Chart {
      * Load a different pair into THIS panel independently (does not affect main chart or other panels).
      * The panel maintains its own fullRawData and slices by the shared replay timestamp.
      */
+    _showPanelLoadingOverlay() {
+        const container = this.canvas && (this.canvas.closest('.chart-panel') || this.canvas.closest('.chart-container'));
+        if (!container) return null;
+        let overlay = container.querySelector('.panel-loading-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'panel-loading-overlay';
+            overlay.innerHTML = '<div class="panel-loading-spinner"></div>';
+            container.appendChild(overlay);
+        }
+        overlay.classList.add('active');
+        return overlay;
+    }
+
+    _hidePanelLoadingOverlay() {
+        const container = this.canvas && (this.canvas.closest('.chart-panel') || this.canvas.closest('.chart-container'));
+        if (!container) return;
+        const overlay = container.querySelector('.panel-loading-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+            setTimeout(() => { if (!overlay.classList.contains('active')) overlay.remove(); }, 400);
+        }
+    }
+
     async loadPanelFileData(fileId) {
         const targetFileId = String(fileId);
         const mainChart = window.chart;
+        this._showPanelLoadingOverlay();
         try {
             const session = this.backtestingSession
                 || (mainChart && mainChart.backtestingSession)
@@ -1429,6 +1454,7 @@ class Chart {
             this.resize();
             this.fitToView();
             this.render();
+            this._hidePanelLoadingOverlay();
 
             if (window.panelManager && typeof window.panelManager.savePanelState === 'function') {
                 window.panelManager.savePanelState();
@@ -1436,6 +1462,7 @@ class Chart {
 
             return true;
         } catch (error) {
+            this._hidePanelLoadingOverlay();
             console.error('Failed to load panel file data:', error);
             if (typeof this.showNotification === 'function') {
                 this.showNotification('Failed to load symbol: ' + error.message);

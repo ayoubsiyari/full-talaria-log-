@@ -23693,6 +23693,36 @@
             opacity: 1;
         }
 
+        .panel-loading-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(19, 23, 34, 0.55);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        .panel-loading-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .panel-loading-spinner {
+            width: 38px;
+            height: 38px;
+            border: 3px solid rgba(255, 255, 255, 0.12);
+            border-top-color: #2962FF;
+            border-radius: 50%;
+            animation: panelSpin 0.8s linear infinite;
+        }
+        @keyframes panelSpin {
+            to { transform: rotate(360deg); }
+        }
+
         .chart-wrapper {
 
             position: absolute;
@@ -40413,7 +40443,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_PANEL_PERSIST_V66"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_PANEL_LOADER_V67"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -40429,7 +40459,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_PANEL_PERSIST_V179"></script>
+    <script defer src="chart.js?v=20260325_PANEL_LOADER_V180"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_PANEL_INDEP_V75"></script>
 
