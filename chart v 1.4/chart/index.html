@@ -23817,7 +23817,7 @@
 
         .chart-brand .logo-top {
 
-            height: 52px;
+            height: 28px;
 
             width: auto;
 
@@ -23829,11 +23829,29 @@
 
         .chart-brand .logo-bottom {
 
-            height: 38px;
+            height: 28px;
 
             width: auto;
 
             display: block;
+
+            max-width: 0;
+
+            overflow: hidden;
+
+            opacity: 0;
+
+            transition: max-width 0.3s ease, opacity 0.25s ease;
+
+        }
+
+
+
+        .chart-brand:hover .logo-bottom {
+
+            max-width: 200px;
+
+            opacity: 1;
 
         }
 
@@ -44245,7 +44263,7 @@
 
                         panel.chartInstance.chartSettings = JSON.parse(JSON.stringify(chart.chartSettings));
 
-                        
+
 
                         // Apply background color
 
@@ -44257,40 +44275,43 @@
 
                     }
 
-                    
+                    // Skip data overwrite if panel has its own independent pair data
+                    var hasOwnPairData = Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0;
 
-                    // Copy symbol from main chart
+                    if (!hasOwnPairData) {
+                        // Copy symbol from main chart
 
-                    if (typeof chart !== 'undefined' && chart.currentSymbol) {
+                        if (typeof chart !== 'undefined' && chart.currentSymbol) {
 
-                        panel.chartInstance.currentSymbol = chart.currentSymbol;
+                            panel.chartInstance.currentSymbol = chart.currentSymbol;
 
-                    }
+                        }
 
-                    
+                        
 
-                    panel.chartInstance.rawData = chart.rawData || [];
+                        panel.chartInstance.rawData = chart.rawData || [];
 
-                    panel.chartInstance.data = panel.chartInstance.resampleData(
+                        panel.chartInstance.data = panel.chartInstance.resampleData(
 
-                        panel.chartInstance.rawData, 
+                            panel.chartInstance.rawData, 
 
-                        panel.timeframe || '1m'
+                            panel.timeframe || '1m'
 
-                    );
+                        );
 
-                    panel.chartInstance.fitToView();
+                        panel.chartInstance.fitToView();
 
-                    panel.chartInstance.render();
+                        panel.chartInstance.render();
 
-                    
+                        
 
-                    // Update OHLC panel with symbol and timeframe
+                        // Update OHLC panel with symbol and timeframe
 
-                    if (panel.chartInstance.currentSymbol) {
+                        if (panel.chartInstance.currentSymbol) {
 
-                        panel.chartInstance.updateChartOHLCSymbol(panel.chartInstance.currentSymbol);
+                            panel.chartInstance.updateChartOHLCSymbol(panel.chartInstance.currentSymbol);
 
+                        }
                     }
 
                 }
