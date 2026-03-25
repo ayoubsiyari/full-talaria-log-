@@ -829,29 +829,6 @@ class OrderManager {
         return Number.isFinite(last) ? last : null;
     }
 
-    /**
-     * While replay runs on another chart, cached background OHLC for the open position's pair can lag
-     * the visible main chart. Scale that leg by the active chart bar's intrabar return (c/o) so the
-     * all-instruments dock PnL moves on every updatePositions() frame — not only when tick animation runs.
-     * (If a panel shows that symbol, prefer _markFromPanelDataLastClose instead — more accurate.)
-     */
-    _liveBackgroundMarkForPnL(bgBar, mainCandle) {
-        const rs = this.replaySystem;
-        if (!rs || !rs.isActive || !bgBar || !mainCandle) return null;
-        const mo = Number.parseFloat(mainCandle.o);
-        const mc = Number.parseFloat(mainCandle.c);
-        if (![mo, mc].every(Number.isFinite) || Math.abs(mo) < 1e-12) return null;
-        const ratio = mc / mo;
-        const mt = Number(mainCandle.t);
-        const bt = Number(bgBar.t);
-        if (Number.isFinite(mt) && Number.isFinite(bt) && mt === bt) {
-            const fo = Number.parseFloat(bgBar.o);
-            if (Number.isFinite(fo)) return fo * ratio;
-        }
-        const fc = Number.parseFloat(bgBar.c);
-        return Number.isFinite(fc) ? fc * ratio : null;
-    }
-
     /** Last resampled close from a panel chart showing this ticker (same TF as main). */
     _markFromPanelDataLastClose(tickerNorm) {
         const T = this._normalizeTicker(tickerNorm);
@@ -12495,14 +12472,11 @@ class OrderManager {
                 const pref = posFileId || null;
                 const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
                 if (bgBar) {
+                    // Mark must come from THIS instrument only. Do not scale by the active chart's
+                    // bar (c/o) — that is not a valid proxy across pairs and makes dock PnL jump when
+                    // switching symbols. Prefer a panel showing this ticker; else cached bar close.
                     const panelMc = this._markFromPanelDataLastClose(posTicker);
-                    let markForPnL = null;
-                    if (Number.isFinite(panelMc)) {
-                        markForPnL = panelMc;
-                    }
-                    if (!Number.isFinite(markForPnL)) {
-                        markForPnL = this._liveBackgroundMarkForPnL(bgBar, currentCandle);
-                    }
+                    let markForPnL = Number.isFinite(panelMc) ? panelMc : Number.parseFloat(bgBar.c);
                     if (!Number.isFinite(markForPnL)) {
                         markForPnL = Number.parseFloat(bgBar.c);
                     }
