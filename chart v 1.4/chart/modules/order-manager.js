@@ -149,7 +149,7 @@ class OrderManager {
         this._lastPreviewChartWidth = null;
         this.pendingTargetLines = [];
 
-        /** 1m bars per fileId for PnL on instruments not shown on the main chart */
+        /** Resampled bars per fileId+timeframe for off-chart mark / SL-TP (matches main chart TF) */
         this._miSeriesByFileId = new Map();
         this._miSeriesInflight = new Set();
         
@@ -278,6 +278,19 @@ class OrderManager {
     _chartSourceFileId() {
         const id = this.chart && this.chart.currentFileId;
         return id != null && String(id) !== '' ? String(id) : null;
+    }
+
+    /** Timeframe used for replay OHLC / SL-TP (must match getCurrentCandle / chart.data). */
+    _getReplayDecisionTimeframe() {
+        const ch = this.chart;
+        const tf = ch && ch.currentTimeframe ? String(ch.currentTimeframe).toLowerCase().trim() : '';
+        return tf || '1m';
+    }
+
+    _miBackgroundSeriesKey(fileId, timeframe) {
+        const fid = String(fileId);
+        const tf = String(timeframe || '1m').toLowerCase().trim() || '1m';
+        return `${fid}::${tf}`;
     }
 
     /**
@@ -453,13 +466,16 @@ class OrderManager {
     }
 
     _scheduleMiSeriesFetch(fileId, endTsMs) {
-        if (!fileId || this._miSeriesInflight.has(fileId)) return;
+        if (!fileId) return;
         const ch = this.chart;
         if (!ch || !ch.apiUrl || typeof ch._buildSmartWindowParams !== 'function') return;
-        this._miSeriesInflight.add(fileId);
+        const tf = this._getReplayDecisionTimeframe();
+        const cacheKey = this._miBackgroundSeriesKey(fileId, tf);
+        if (this._miSeriesInflight.has(cacheKey)) return;
+        this._miSeriesInflight.add(cacheKey);
         const session = ch.backtestingSession || {};
         const anchorTs = Number.isFinite(endTsMs) ? endTsMs + 120000 : endTsMs;
-        const params = ch._buildSmartWindowParams(String(fileId), '1m', session, 'end', { endTs: anchorTs });
+        const params = ch._buildSmartWindowParams(String(fileId), tf, session, 'end', { endTs: anchorTs });
         params.set('limit', '20000');
         const url = `${ch.apiUrl}/file/${fileId}/smart?${params.toString()}`;
         fetch(url)
@@ -470,7 +486,7 @@ class OrderManager {
                     ? ch._normalizeCandlesFromApi(json.candles)
                     : [];
                 if (norm.length) {
-                    this._miSeriesByFileId.set(String(fileId), { raw: norm, builtForEndTs: endTsMs });
+                    this._miSeriesByFileId.set(cacheKey, { raw: norm, builtForEndTs: endTsMs, timeframe: tf });
                     if (typeof this.updatePositions === 'function') {
                         try {
                             this.updatePositions();
@@ -482,12 +498,12 @@ class OrderManager {
             })
             .catch(() => {})
             .finally(() => {
-                this._miSeriesInflight.delete(fileId);
+                this._miSeriesInflight.delete(cacheKey);
             });
     }
 
     /**
-     * 1m bar at replay time: panel rawData, then lazy /smart cache.
+     * Bar at replay time (same timeframe as main chart): matching panel data, else lazy /smart cache.
      * @param {string} tickerNorm — may be empty if preferredFileId is set
      * @param {number} tMs
      * @param {string|null} preferredFileId — dataset the position was opened on (avoids ticker/switcher mismatch)
@@ -495,6 +511,7 @@ class OrderManager {
     _getBackgroundBarForTicker(tickerNorm, tMs, preferredFileId = null) {
         const T = this._normalizeTicker(tickerNorm);
         if (!Number.isFinite(tMs)) return null;
+        const mainTf = this._getReplayDecisionTimeframe();
 
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
         if (T && pm && Array.isArray(pm.panels)) {
@@ -502,6 +519,8 @@ class OrderManager {
                 const pc = pm.panels[i] && pm.panels[i].chartInstance;
                 if (!pc || !Array.isArray(pc.rawData) || !pc.rawData.length) continue;
                 if (this._normalizeTicker(pc.currentSymbol) !== T) continue;
+                const pcTf = String(pc.currentTimeframe || '1m').toLowerCase().trim() || '1m';
+                if (pcTf !== mainTf) continue;
                 const bar = this._barRecordAtOrBefore(pc.rawData, tMs);
                 if (bar) return bar;
             }
@@ -519,13 +538,14 @@ class OrderManager {
         let scheduledFetch = false;
         for (let i = 0; i < tryFileIds.length; i++) {
             const fileId = tryFileIds[i];
-            const cached = this._miSeriesByFileId.get(fileId);
+            const cacheKey = this._miBackgroundSeriesKey(fileId, mainTf);
+            const cached = this._miSeriesByFileId.get(cacheKey);
             if (cached && Array.isArray(cached.raw) && cached.raw.length) {
                 const bar = this._barRecordAtOrBefore(cached.raw, tMs);
                 if (bar) return bar;
                 const firstT = Number(cached.raw[0].t);
                 if (Number.isFinite(firstT) && Number.isFinite(tMs) && tMs < firstT) {
-                    this._miSeriesByFileId.delete(fileId);
+                    this._miSeriesByFileId.delete(cacheKey);
                 }
             }
             if (!scheduledFetch) {

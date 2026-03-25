@@ -40547,7 +40547,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260321_MCE_V1"></script>
 
-    <script defer src="modules/order-manager.js?v=20260325_MI_CLOSE_MODAL_V44"></script>
+    <script defer src="modules/order-manager.js?v=20260325_BG_TF_ALIGN_V45"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260318_TF_PIN_V78"></script>
 
@@ -56987,12 +56987,16 @@ P['profile']={
 
 };
 
-
-
+// Expose P to global scope
+window.P = P;
 
 /* ── DOM wiring ── */
 
 function loadSection(type){
+
+    console.log('[loadSection] Loading section:', type);
+    console.log('[loadSection] P object:', P);
+    console.log('[loadSection] P[panellayout]:', P ? P['panellayout'] : 'P is undefined');
 
     var _hdr=document.querySelector('#settingsPanel .sp-content-header');if(_hdr)_hdr.style.display='';
 
@@ -57009,6 +57013,7 @@ function loadSection(type){
     if(!el)return;
 
     var def=P[type]||(window._spPanels&&window._spPanels[type]);
+    console.log('[loadSection] Definition found:', !!def, 'for type:', type);
 
     try{ el.innerHTML=def?def.build():'<p style="color:#787b86;padding:20px 0;">Coming soon.</p>'; }catch(e){ el.innerHTML='<p style="color:#f23645;">Error: '+e.message+'</p>'; }
 
