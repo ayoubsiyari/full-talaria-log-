@@ -1426,10 +1426,11 @@ class PanelManager {
             }
         }, 200);
         
-        // Trigger panel created event
         window.dispatchEvent(new CustomEvent('panelsCreated', {
             detail: { panels: this.panels, layout: layout }
         }));
+
+        this.savePanelState();
         
         // Resize functionality disabled - panels are fixed size
         // setTimeout(() => this.createResizeHandles(), 200);
@@ -1547,40 +1548,28 @@ class PanelManager {
         ohlcInfo.id = `ohlcInfo${index}`;
         ohlcInfo.style.cssText = 'left: 8px !important; top: 8px !important; flex-direction: column !important; gap: 2px !important;'; // Vertical layout for proper collapse button position
         ohlcInfo.innerHTML = `
-            <!-- Header row with symbol, OHLC -->
-            <div class="ohlc-header" style="display: flex; flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <!-- Symbol & Timeframe Line -->
-                <div class="ohlc-symbol-line" style="display: flex; align-items: center; gap: 6px;">
-                    <span id="chartSymbol${index}">CHART</span>
-                    <span style="color: #787b86;">—</span>
+            <div class="ohlc-header">
+                <div class="ohlc-symbol-block" style="position: relative;">
+                    <span class="ohlc-symbol-dot">●</span>
+                    <span class="ohlc-symbol-text" id="chartSymbol${index}">CHART</span>
+                    <span class="ohlc-separator">·</span>
                     <span id="chartTimeframe${index}">${panelTimeframe}</span>
                 </div>
-                
-                <!-- OHLC Data Line -->
-                <div class="ohlc-data-line" id="ohlcDataLine${index}" style="display: flex; align-items: center; gap: 8px;">
-                    <span><span class="ohlc-label">O</span><span class="ohlc-value" id="open${index}">—</span></span>
-                    <span><span class="ohlc-label">H</span><span class="ohlc-value" id="high${index}">—</span></span>
-                    <span><span class="ohlc-label">L</span><span class="ohlc-value" id="low${index}">—</span></span>
-                    <span><span class="ohlc-label">C</span><span class="ohlc-value" id="close${index}">—</span></span>
+                <div class="ohlc-stats">
+                    <div class="ohlc-item"><span class="ohlc-label">O</span><span class="ohlc-value" id="open${index}">—</span></div>
+                    <div class="ohlc-item"><span class="ohlc-label">H</span><span class="ohlc-value" id="high${index}">—</span></div>
+                    <div class="ohlc-item"><span class="ohlc-label">L</span><span class="ohlc-value" id="low${index}">—</span></div>
+                    <div class="ohlc-item"><span class="ohlc-label">C</span><span class="ohlc-value" id="close${index}">—</span></div>
                     <span class="ohlc-change" id="chartChange${index}">—</span>
                 </div>
             </div>
-            
-            <!-- Body section (hidden when collapsed) -->
             <div class="ohlc-body">
-                <!-- Volume Line -->
                 <div class="ohlc-volume-line" style="display: flex; align-items: center; gap: 6px;">
                     <span class="volume-label">Volume</span>
                     <span class="volume-value" id="volumeValue${index}">—</span>
                 </div>
-                
-                <!-- Indicators Section -->
-                <div class="ohlc-indicators" id="ohlcIndicators${index}">
-                    <!-- Indicators will be added here dynamically -->
-                </div>
+                <div class="ohlc-indicators" id="ohlcIndicators${index}"></div>
             </div>
-            
-            <!-- Collapse button at the bottom -->
             <button class="ohlc-collapse-btn" id="ohlcCollapseBtn${index}" style="margin-top: 4px; align-self: flex-start;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="6 9 12 15 18 9"/>
@@ -1974,15 +1963,9 @@ class PanelManager {
         
         try {
             localStorage.setItem(key, JSON.stringify(settings));
-            console.log(`💾 Panel ${panelIndex} settings saved`);
-        } catch (e) {
-            console.warn(`Failed to save panel ${panelIndex} settings:`, e);
-        }
+        } catch (e) {}
     }
     
-    /**
-     * Load panel-specific settings from localStorage
-     */
     loadPanelSettings(panelIndex) {
         const key = `chart_panel_${panelIndex}_settings`;
         
@@ -1994,14 +1977,94 @@ class PanelManager {
                 if (panel && panel.chartInstance) {
                     panel.chartInstance.chartSettings = { ...panel.chartInstance.chartSettings, ...settings };
                     panel.chartInstance.applyChartSettings();
-                    console.log(`📂 Panel ${panelIndex} settings loaded`);
                     return true;
                 }
             }
-        } catch (e) {
-            console.warn(`Failed to load panel ${panelIndex} settings:`, e);
-        }
+        } catch (e) {}
         return false;
+    }
+
+    savePanelState() {
+        if (!this._saveStateTimer) {
+            this._saveStateTimer = setTimeout(() => {
+                this._saveStateTimer = null;
+                this._doSavePanelState();
+            }, 300);
+        }
+    }
+
+    _doSavePanelState() {
+        try {
+            const state = {
+                layout: this.currentLayout,
+                selectedPanelIndex: this.selectedPanelIndex,
+                panels: this.panels.map((panel, idx) => {
+                    const pc = panel.chartInstance;
+                    if (!pc) return { index: idx, isMainChart: panel.isMainChart };
+                    const hasOwn = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+                    return {
+                        index: idx,
+                        isMainChart: panel.isMainChart,
+                        timeframe: pc.currentTimeframe || '1m',
+                        fileId: hasOwn ? pc.currentFileId : null,
+                        symbol: hasOwn ? pc.currentSymbol : null,
+                        offsetX: pc.offsetX,
+                        candleWidth: pc.candleWidth
+                    };
+                })
+            };
+            localStorage.setItem('chart_panel_state', JSON.stringify(state));
+        } catch (e) {}
+    }
+
+    loadPanelState() {
+        try {
+            const raw = localStorage.getItem('chart_panel_state');
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    restorePanelChartState(panelIndex) {
+        const state = this.loadPanelState();
+        if (!state || !state.panels) return;
+        const ps = state.panels.find(p => p.index === panelIndex);
+        if (!ps || ps.isMainChart) return;
+
+        const panel = this.panels[panelIndex];
+        if (!panel || !panel.chartInstance) return;
+        const pc = panel.chartInstance;
+
+        if (ps.timeframe) pc.currentTimeframe = ps.timeframe;
+        if (Number.isFinite(ps.offsetX)) pc.offsetX = ps.offsetX;
+        if (Number.isFinite(ps.candleWidth) && ps.candleWidth > 0) pc.candleWidth = ps.candleWidth;
+
+        if (ps.fileId && ps.fileId !== (window.chart && window.chart.currentFileId)) {
+            if (typeof pc.loadPanelFileData === 'function') {
+                pc.loadPanelFileData(ps.fileId).then(() => {
+                    pc.updateChartOHLCSymbol(pc.currentSymbol);
+                    this._schedulePostRestoreRender(pc);
+                }).catch(() => {});
+            }
+        } else {
+            this._schedulePostRestoreRender(pc);
+        }
+    }
+
+    _schedulePostRestoreRender(pc) {
+        requestAnimationFrame(() => {
+            if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
+            if (typeof pc.resize === 'function') pc.resize();
+            if (typeof pc.fitToView === 'function') pc.fitToView();
+            if (typeof pc.render === 'function') pc.render();
+            setTimeout(() => {
+                if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
+                if (typeof pc.resize === 'function') pc.resize();
+                if (typeof pc.render === 'function') pc.render();
+            }, 500);
+        });
     }
     
     /**

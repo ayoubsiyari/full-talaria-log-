@@ -1430,6 +1430,10 @@ class Chart {
             this.fitToView();
             this.render();
 
+            if (window.panelManager && typeof window.panelManager.savePanelState === 'function') {
+                window.panelManager.savePanelState();
+            }
+
             return true;
         } catch (error) {
             console.error('Failed to load panel file data:', error);
@@ -11058,22 +11062,29 @@ class Chart {
         if (!displayCandle) return;
         
         // === USE REPLAY-SYNCED PRICE WHEN REPLAY IS ACTIVE ===
-        // Keep the right-side price label consistent across all timeframes.
-        let currentPrice = displayCandle.c; // Default when not in replay
+        let currentPrice = displayCandle.c;
 
         if (this.replaySystem && this.replaySystem.isActive) {
+            const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
             let replayPrice = null;
 
-            if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
-                replayPrice = this.replaySystem.getCurrentAnimatedPrice();
-            }
+            if (hasOwnData) {
+                // Panel with independent pair: use the panel's own last visible candle close
+                if (this.data && this.data.length > 0) {
+                    replayPrice = this.data[this.data.length - 1].c;
+                }
+            } else {
+                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
+                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
+                }
 
-            if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
-                replayPrice = this.replaySystem.animatingCandle.close;
-            }
+                if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
+                    replayPrice = this.replaySystem.animatingCandle.close;
+                }
 
-            if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
-                replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
+                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
+                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
+                }
             }
 
             if (Number.isFinite(replayPrice)) {
