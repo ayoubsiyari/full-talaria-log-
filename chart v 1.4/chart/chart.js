@@ -1354,6 +1354,9 @@ class Chart {
 
             if (this.orderManager) {
                 if (typeof this.orderManager.updateSLTPLines === 'function') this.orderManager.updateSLTPLines();
+                if (typeof this.orderManager.syncOrderVisualsToActiveChart === 'function') {
+                    this.orderManager.syncOrderVisualsToActiveChart();
+                }
                 if (typeof this.orderManager.updatePositionsPanel === 'function') this.orderManager.updatePositionsPanel();
             }
 

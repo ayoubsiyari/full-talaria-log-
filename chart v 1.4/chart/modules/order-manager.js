@@ -261,6 +261,127 @@ class OrderManager {
         return String(raw).replace('/', '').toUpperCase();
     }
 
+    /** Normalize instrument symbol for comparisons (Milestone 8). */
+    _normalizeTicker(t) {
+        return String(t || '').replace(/[/\s]/g, '').toUpperCase();
+    }
+
+    _positionTicker(position) {
+        return this._normalizeTicker(position && (position.ticker || position.symbol));
+    }
+
+    /**
+     * Order lines / SL-TP / entry markers are drawn on the main chart SVG.
+     * Only the instrument currently shown on that chart should be rendered (8.1).
+     */
+    _isPositionForActiveChart(position) {
+        const pt = this._positionTicker(position);
+        if (!pt) return true;
+        return pt === this._getActiveTicker();
+    }
+
+    /**
+     * Remove visuals for non-active tickers; redraw lines for positions that match the chart symbol.
+     * Call after symbol switch (loadFileData) or when restoring session.
+     */
+    syncOrderVisualsToActiveChart() {
+        if (!this.chart || !this.chart.svg) return;
+        try {
+            (this.openPositions || []).forEach((pos) => {
+                if (this._isPositionForActiveChart(pos)) return;
+                this.removeOrderLine(pos.id);
+                this.removeSLTPLines(pos.id);
+                this.removeEntryMarker(pos.id);
+            });
+            (this.pendingOrders || []).forEach((po) => {
+                if (this._normalizeTicker(po.ticker || po.symbol) === this._getActiveTicker()) return;
+                this.removePendingOrderLine(po.id);
+                this.removePendingSLTPLines(po.id);
+            });
+            (this.openPositions || []).forEach((pos) => {
+                if (!this._isPositionForActiveChart(pos)) return;
+                const has = (this.orderLines || []).some((ol) => ol.orderId === pos.id && !ol.isPending);
+                if (!has) {
+                    this.drawOrderLine(pos);
+                    this.drawSLTPLines(pos);
+                    try {
+                        this.drawEntryMarker(pos);
+                    } catch (e) { /* scales may not be ready yet */ }
+                }
+            });
+            (this.pendingOrders || []).forEach((po) => {
+                if (this._normalizeTicker(po.ticker || po.symbol) !== this._getActiveTicker()) return;
+                const has = (this.orderLines || []).some((ol) => ol.orderId === po.id && ol.isPending);
+                if (!has) {
+                    try {
+                        this.drawPendingOrderLine(po);
+                    } catch (e) {}
+                }
+            });
+            if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+            if (this.chart && typeof this.chart.render === 'function') {
+                this.chart.renderPending = true;
+                this.chart.render();
+            }
+        } catch (e) {
+            console.warn('syncOrderVisualsToActiveChart:', e);
+        }
+    }
+
+    /**
+     * Milestone 8.2 / 8.6: when margin level ≤ stop_out_level, force-liquidate the worst floating-loss position.
+     * Uses session used_margin and sum of open unrealized P&L (same frame as updatePositions).
+     */
+    _maybeLiquidateOnStopOut(currentCandle) {
+        const session = this.orderService && this.orderService.multiInstrumentSession;
+        if (!session || !Array.isArray(this.openPositions) || !this.openPositions.length) return;
+        const stopOut = Number.parseFloat(session.stop_out_level);
+        if (!Number.isFinite(stopOut) || stopOut <= 0) return;
+        if (typeof this.orderService.recomputeSharedMarginState === 'function') {
+            this.orderService.recomputeSharedMarginState();
+        }
+        const used = Number.parseFloat(session.used_margin);
+        if (!Number.isFinite(used) || used <= 0) return;
+
+        let unrealizedSum = 0;
+        this.openPositions.forEach((p) => {
+            unrealizedSum += Number.parseFloat(p.unrealizedPnL) || 0;
+        });
+        const equityNow = Number.parseFloat(this.balance) + unrealizedSum;
+        this.equity = equityNow;
+        if (this.orderService) this.orderService.equity = equityNow;
+
+        const level = (equityNow / used) * 100;
+        if (!Number.isFinite(level) || level > stopOut) return;
+
+        let worst = null;
+        let worstU = Infinity;
+        this.openPositions.forEach((p) => {
+            const u = Number.parseFloat(p.unrealizedPnL);
+            if (Number.isFinite(u) && u < worstU) {
+                worstU = u;
+                worst = p;
+            }
+        });
+        if (!worst) worst = this.openPositions[0];
+
+        const activeT = this._getActiveTicker();
+        const pt = this._positionTicker(worst);
+        let px = currentCandle && Number.isFinite(Number(currentCandle.c)) ? Number(currentCandle.c) : NaN;
+        if (pt && activeT && pt !== activeT) {
+            px = Number.parseFloat(worst.openPrice);
+        }
+        if (!Number.isFinite(px)) px = Number.parseFloat(worst.openPrice);
+        if (!Number.isFinite(px)) return;
+
+        console.warn(`⚠️ Stop-out: margin level ${level.toFixed(2)}% ≤ ${stopOut}% — liquidating #${worst.id} (${pt || '?'})`);
+        try {
+            this.closePositionAtPrice(worst.id, px, 'STOP_OUT');
+        } catch (e) {
+            console.error('Stop-out liquidation failed:', e);
+        }
+    }
+
     _getPositionPipSize(position) {
         const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
         const value = Number.parseFloat(raw);
@@ -12154,6 +12275,8 @@ class OrderManager {
             this.orderService.balance = this.balance;
             this.orderService.recomputeSharedMarginState();
         }
+
+        this._maybeLiquidateOnStopOut(currentCandle);
         
         // Log current state
         if (this.openPositions.length > 0) {
@@ -12782,6 +12905,11 @@ class OrderManager {
                     ? `${closedTicker} ${sideLabel} ${Number(position.quantity || 0).toFixed(2)}L closed at SL (${rValue >= 0 ? '+' : ''}${rValue.toFixed(2)}R, ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`
                     : `🛑 Stop Loss Hit! Order #${orderId} closed | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
                 this.showNotification(msg, 'error', bgOpts);
+            } else if (hitType === 'STOP_OUT') {
+                const msg = isBackgroundClose
+                    ? `${closedTicker} ${sideLabel} ${Number(position.quantity || 0).toFixed(2)}L stop-out liquidated (${rValue >= 0 ? '+' : ''}${rValue.toFixed(2)}R, ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`
+                    : `⚠️ Stop-out: Order #${orderId} liquidated | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                this.showNotification(msg, 'error', { ...bgOpts, timeoutMs: bgOpts.timeoutMs || 12000 });
             } else if (hitType === 'TP') {
                 // Check if this was from multiple TPs (final target hit)
                 const wasMultipleTP = position.tpTargets && position.tpTargets.length > 0;
@@ -13347,6 +13475,9 @@ class OrderManager {
             console.error('❌ Chart SVG not found! Cannot draw order line.');
             return;
         }
+        if (!this._isPositionForActiveChart(order)) {
+            return;
+        }
         
         const color = order.type === 'BUY' ? '#2962ff' : '#f23645';
         const lineColor = order.type === 'BUY' ? '#2962ff' : '#f23645';
@@ -13473,6 +13604,10 @@ class OrderManager {
         
         if (!this.chart.svg) {
             console.error('❌ Chart SVG not found! Cannot draw pending order line.');
+            return;
+        }
+        const pTick = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol);
+        if (pTick && pTick !== this._getActiveTicker()) {
             return;
         }
         
@@ -13669,6 +13804,8 @@ class OrderManager {
 
     drawPendingOrderTargets(pendingOrder) {
         if (!this.chart?.svg) return;
+        const pTick = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol);
+        if (pTick && pTick !== this._getActiveTicker()) return;
         const entries = [];
         const entryPrice = pendingOrder.entryPrice;
         const quantity = pendingOrder.quantity;
@@ -14039,6 +14176,9 @@ class OrderManager {
             console.error('   this.chart:', this.chart);
             console.error('   this.chart.svg:', this.chart?.svg);
             console.error('   this.chart.scales:', this.chart?.scales);
+            return;
+        }
+        if (order && !this._isPositionForActiveChart(order)) {
             return;
         }
 
@@ -14552,6 +14692,9 @@ class OrderManager {
         
         if (!this.chart.svg) {
             console.error('❌ Chart SVG not found! Cannot draw SL/TP lines.');
+            return;
+        }
+        if (order && !this._isPositionForActiveChart(order)) {
             return;
         }
         
@@ -16655,6 +16798,7 @@ class OrderManager {
                 this.chart.replaySystem.goToReplayTimestamp(ts, { preserveVisibleWindow: true });
             }
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+            if (typeof this.syncOrderVisualsToActiveChart === 'function') this.syncOrderVisualsToActiveChart();
             if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
         }).catch((err) => {
             console.error('Failed switching to ticker:', ticker, err);
