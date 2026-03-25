@@ -1203,6 +1203,7 @@ class Chart {
             // This prevents switching pairs from jumping to "latest" on the right edge.
             const replay = this.replaySystem;
             const replayActiveBefore = !!(replay && replay.isActive);
+        const replayWasPlayingBefore = !!(replayActiveBefore && replay.isPlaying);
             const replayTargetTs = replayActiveBefore && Number.isFinite(Number(replay.replayTimestamp))
                 ? Number(replay.replayTimestamp)
                 : null;
@@ -1297,6 +1298,12 @@ class Chart {
                     if (typeof replay.updateSliderRange === 'function') replay.updateSliderRange();
                     if (typeof replay.updateSlider === 'function') replay.updateSlider();
                     if (typeof replay.updateTimeDisplay === 'function') replay.updateTimeDisplay();
+                }
+
+                // Resume playback if it was already playing so the session clock keeps advancing
+                // (background instrument processing depends on replay ticks).
+                if (replayWasPlayingBefore && typeof replay.play === 'function') {
+                    replay.play();
                 }
             }
 
