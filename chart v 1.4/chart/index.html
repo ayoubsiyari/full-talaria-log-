@@ -36857,7 +36857,7 @@
 
                 <!-- Layout Button (placeholder - will be managed by panel-manager) -->
 
-                <button class="toolbar-icon-btn-dark" id="layout-selector-btn" data-open-mode="settings-panel" data-tooltip="Panel Layouts" onclick="event.stopPropagation();window._openMode&&window._openMode('panellayout');">
+                <button class="toolbar-icon-btn-dark" id="layout-selector-btn" data-tooltip="Panel Layouts" onclick="event.stopPropagation();">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
 
@@ -40521,7 +40521,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_DRAW_CLICK_FIX_V74"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_LAYOUT_DROPDOWN_FIX_V75"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -52561,13 +52561,19 @@ function showIndicatorsMenu() {
 
             if (settingsPanel && settingsPanel.classList.contains('open')) {
 
-                // Re-render the currently active section
+                // sp-mode sections (panel layouts, object tree) are not in the sidebar nav; reloading here
+                // used the wrong tab (first .sp-nav-item.active in the document, often Help) and dataset.section
+                // is never set on nav items (they use data-settings), which broke the panel layout UI.
 
-                const activeNav = document.querySelector('.sp-nav-item.active');
+                if (window._spCurrentMode !== 'panellayout' && window._spCurrentMode !== 'objecttree') {
 
-                const section = activeNav ? activeNav.dataset.section : 'symbol';
+                    const activeNav = settingsPanel.querySelector('.sp-nav-item[data-settings].active');
 
-                if (window._spLoad) window._spLoad(section, activeNav);
+                    const section = (activeNav && activeNav.dataset.settings) ? activeNav.dataset.settings : 'symbol';
+
+                    if (typeof loadSection === 'function') loadSection(section);
+
+                }
 
             }
 
@@ -55913,7 +55919,9 @@ P['panellayout']={
 
         ctx.querySelectorAll('.pl-layout-btn').forEach(function(btn){
 
-            btn.addEventListener('click',function(){
+            btn.addEventListener('click',function(e){
+
+                if(e&&e.stopPropagation)e.stopPropagation();
 
                 if(!pm||typeof pm.applyLayout!=='function') return;
 
