@@ -1016,6 +1016,8 @@ class PanelManager {
                 pc.appendChild(brand);
             }
             brand.classList.add('chart-brand--multi');
+            /* Above .chart-panel (z-index 100) so watermark is visible */
+            brand.style.zIndex = '5000';
         }
     }
 
@@ -1215,9 +1217,6 @@ class PanelManager {
         this.container.innerHTML = '';
         this.panels = [];
 
-        // Anchor logo to full multi-panel bounds (bottom-left of #panels-container)
-        this.syncChartBrandPlacement(layout);
-        
         // Create panels based on layout
         const layouts = {
             '1': [{ width: '100%', height: '100%' }],
@@ -1514,6 +1513,13 @@ class PanelManager {
         // Create additional panels (starting from index 1)
         for (let i = 1; i < panelConfig.length; i++) {
             this.createPanel(panelConfig[i], i);
+        }
+
+        // After panels exist: logo must stack above .chart-panel (z-index 100) and be last child for paint order
+        this.syncChartBrandPlacement(layout);
+        const brandNode = document.querySelector('.chart-brand');
+        if (brandNode && this.container.contains(brandNode)) {
+            this.container.appendChild(brandNode);
         }
         
         console.log(`✅ ${this.panels.length} panels total (1 main + ${this.panels.length - 1} additional)`);
