@@ -40537,7 +40537,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_OVERLAY_FIX_V186"></script>
+    <script defer src="chart.js?v=20260325_PANEL_DRAW_V187"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_PANEL_INDEP_V75"></script>
 
@@ -44087,7 +44087,7 @@
 
                     // Create Chart instance for this panel
 
-                    const panelChart = new Chart(panel.canvas, panel.svg);
+                    const panelChart = new Chart(panel.canvas, panel.svg, { panelIndex: panel.index });
 
                     
 
@@ -44207,19 +44207,8 @@
 
                     
 
-                    // Initialize drawing manager for this panel
-
-                    if (typeof DrawingToolsManager !== 'undefined' && panel.svg && typeof d3 !== 'undefined') {
-
-                        // Set the SVG as a D3 selection on the chart (required by DrawingToolsManager)
-
-                        panelChart.svg = d3.select(panel.svg);
-
-                        panelChart.drawingManager = new DrawingToolsManager(panelChart);
-
-                    } else {
-
-                    }
+                    // Drawing manager is created by Chart.initDrawingTools() in the constructor
+                    // with the correct SVG and panelIndex. No duplicate creation needed.
 
                     
 

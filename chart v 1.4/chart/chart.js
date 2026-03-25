@@ -113,7 +113,7 @@ class TileManager {
 }
 
 class Chart {
-    constructor(canvasElement = null, svgElement = null) {
+    constructor(canvasElement = null, svgElement = null, options = {}) {
         // Support both main chart and panel instances
         if (canvasElement) {
             this.canvas = canvasElement;
@@ -121,6 +121,10 @@ class Chart {
         } else {
             this.canvas = document.getElementById('chartCanvas');
             this.isPanel = false;
+        }
+        // Set panelIndex early so DrawingToolsManager gets the correct value
+        if (options.panelIndex !== undefined) {
+            this.panelIndex = options.panelIndex;
         }
         
         if (!this.canvas) {
@@ -146,8 +150,10 @@ class Chart {
             .style('position', 'absolute')
             .style('top', '0')
             .style('left', '0')
-            .style('z-index', '2') // Above canvas but below UI elements
-            .style('pointer-events', 'none'); // Allow clicks to pass through to canvas
+            .style('pointer-events', 'none');
+        if (!this.isPanel) {
+            this.svg.style('z-index', '2');
+        }
         
         // Create context menu with unique ID for panels
         const menuId = this.isPanel ? `panel-context-menu-${Date.now()}` : 'main-context-menu';
@@ -6792,14 +6798,13 @@ class Chart {
         
         // Reset SVG pointer-events to allow chart panning (cursor modes don't need to capture events)
         // Eraser mode is an exception - it needs to capture clicks on drawings
-        // Allow pointer-events on SVG for shape hover interactions when not in drawing mode
+        // Don't override if a drawing tool is currently active on this chart
         if (this.svg) {
+            const dmToolActive = !!(this.drawingManager && this.drawingManager.currentTool);
             if (type === 'eraser') {
                 this.svg.style('pointer-events', 'all');
-            } else {
-                // Allow shapes to receive hover events while letting canvas handle panning
+            } else if (!dmToolActive) {
                 this.svg.style('pointer-events', 'none');
-                // Individual shapes will have pointer-events: 'all' set on them
             }
         }
         
