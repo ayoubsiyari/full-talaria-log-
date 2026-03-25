@@ -1199,6 +1199,14 @@ class Chart {
         const targetFileId = String(fileId);
 
         try {
+            // If replay is active, preserve the current wall-clock replay time and visible window.
+            // This prevents switching pairs from jumping to "latest" on the right edge.
+            const replay = this.replaySystem;
+            const replayActiveBefore = !!(replay && replay.isActive);
+            const replayTargetTs = replayActiveBefore && Number.isFinite(Number(replay.replayTimestamp))
+                ? Number(replay.replayTimestamp)
+                : null;
+
             const symbolDisplay = document.getElementById('symbolDisplay');
             if (symbolDisplay) symbolDisplay.textContent = 'Loading...';
 
@@ -1253,11 +1261,12 @@ class Chart {
             if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol.substring(0, 15);
 
             this.resize();
-            this.fitToView();
+            if (!replayActiveBefore) {
+                this.fitToView();
+            }
             this.render();
 
-            const replay = this.replaySystem;
-            if (replay && Array.isArray(this.rawData) && this.rawData.length > 0) {
+            if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
                 if (replay.isPlaying && typeof replay.pause === 'function') {
                     replay.pause();
                 }
@@ -1272,9 +1281,9 @@ class Chart {
                 replay.tickProgress = 0;
 
                 const sessionTime = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
-                const targetTs = Number.isFinite(sessionTime)
-                    ? sessionTime
-                    : Number(replay.replayTimestamp);
+                const targetTs = Number.isFinite(replayTargetTs)
+                    ? replayTargetTs
+                    : (Number.isFinite(sessionTime) ? sessionTime : Number(replay.replayTimestamp));
 
                 if (typeof replay.goToReplayTimestamp === 'function' && Number.isFinite(targetTs)) {
                     replay.goToReplayTimestamp(targetTs, { preserveVisibleWindow: true });
