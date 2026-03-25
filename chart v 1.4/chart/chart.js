@@ -4923,7 +4923,7 @@ class Chart {
 
         // Apply Status Line visibility AFTER render (setTimeout ensures it runs after scheduleRender pipeline)
         const _tc = targetChart;
-        const _idSuffix = (_tc.panelIndex !== undefined) ? _tc.panelIndex : '';
+        const _idSuffix = (_tc.panelIndex !== undefined && _tc.panelIndex !== 0) ? _tc.panelIndex : '';
         setTimeout(function() {
             const el = document.getElementById('ohlcInfo' + _idSuffix) || document.querySelector('.ohlc-info');
             if (!el) return;
@@ -7054,8 +7054,7 @@ class Chart {
      * @param {string} symbol - Symbol to display
      */
     updateChartOHLCSymbol(symbol) {
-        // Determine ID suffix for panel charts
-        const idSuffix = (this.panelIndex !== undefined) ? this.panelIndex : '';
+        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         
         const chartSymbol = document.getElementById('chartSymbol' + idSuffix);
         const chartTimeframe = document.getElementById('chartTimeframe' + idSuffix);
