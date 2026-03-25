@@ -830,9 +830,11 @@ class OrderManager {
     }
 
     /**
-     * Mark price for unrealized P&L (dock + equity). Always derived from THIS position's
-     * instrument at the session bar time — never from the unrelated active chart's live tick.
-     * That way values stay stable when you switch EURUSD ↔ EURJPY on the main chart.
+     * Mark price for unrealized P&L (dock + equity).
+     * - Same instrument + same dataset as the active chart: use live `currentCandle.c` so PnL
+     *   moves with replay ticks/candles.
+     * - Otherwise: panel last close for that symbol if a panel shows it, else cached bar close
+     *   for that instrument (stable vs switching the main chart to another pair).
      */
     _resolveUnrealizedMarkPrice(position, currentCandle) {
         if (!position || !currentCandle) return null;
@@ -840,6 +842,18 @@ class OrderManager {
         if (!Number.isFinite(tMs)) return null;
         const posTicker = this._positionTicker(position);
         const pref = position.sourceFileId != null ? String(position.sourceFileId) : null;
+        const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
+
+        const oc = this._getOrderContextChart() || this.chart;
+        const chartTicker = this._normalizeTicker(oc && oc.currentSymbol ? oc.currentSymbol : '');
+        const chartFileId = oc && oc.currentFileId != null ? String(oc.currentFileId) : '';
+        const sameInstrument = !!(posTicker && chartTicker && posTicker === chartTicker);
+        const sameFile = !posFileId || !chartFileId || posFileId === chartFileId;
+
+        if (sameInstrument && sameFile) {
+            const live = Number.parseFloat(currentCandle.c);
+            if (Number.isFinite(live)) return live;
+        }
 
         const panelMc = this._markFromPanelDataLastClose(posTicker);
         if (Number.isFinite(panelMc)) return panelMc;
