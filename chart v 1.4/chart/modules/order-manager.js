@@ -1070,6 +1070,76 @@ class OrderManager {
     }
 
     /**
+     * Apply pip size / pip value from the active chart symbol (marketCalcEngine registry).
+     * `chart_pipSize` in localStorage is global — switching pairs without updating it leaves
+     * the wrong pip (e.g. 0.0001 after trading USD/JPY at 0.01, or futures tick after forex).
+     * Call after the chart symbol changes; also see `_syncPipFromActiveSymbolIfNeeded`.
+     */
+    syncPipFromActiveSymbol() {
+        const sym = this._getSymbol();
+        const ticker = this._getActiveTicker();
+        if (!sym || !ticker || ticker === 'UNKNOWN') return;
+
+        this._autoDetectMarketType();
+
+        let pip = null;
+        let pvl = null;
+
+        if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                if (calc && calc.specs) {
+                    const s = calc.specs;
+                    if (Number.isFinite(s.pipSize) && s.pipSize > 0) {
+                        pip = s.pipSize;
+                        const cc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+                        const mark = cc && Number.isFinite(Number.parseFloat(cc.c)) ? Number.parseFloat(cc.c) : undefined;
+                        if (typeof calc.calcPipValuePerLot === 'function') {
+                            const pv = calc.calcPipValuePerLot(mark);
+                            if (Number.isFinite(pv) && pv > 0) pvl = pv;
+                        }
+                    } else if (Number.isFinite(s.tickSize) && s.tickSize > 0
+                        && Number.isFinite(s.tickValue) && s.tickValue > 0) {
+                        pip = s.tickSize;
+                        pvl = s.tickValue;
+                    }
+                }
+            } catch (e) { /* keep existing */ }
+        }
+
+        if (pip == null && this.orderService && typeof this.orderService.getInstrumentSettings === 'function') {
+            const inst = this.orderService.getInstrumentSettings(ticker, {
+                contractSize: this.contractSize,
+                pipSize: this.pipSize,
+                pipValuePerLot: this.pipValuePerLot
+            });
+            if (inst) {
+                const p = Number.parseFloat(inst.pip_size ?? inst.pipSize);
+                const v = Number.parseFloat(inst.pip_value_per_lot ?? inst.pipValuePerLot);
+                if (Number.isFinite(p) && p > 0) pip = p;
+                if (Number.isFinite(v) && v > 0) pvl = v;
+            }
+        }
+
+        if (Number.isFinite(pip) && pip > 0) this.pipSize = pip;
+        if (Number.isFinite(pvl) && pvl > 0) this.pipValuePerLot = pvl;
+
+        try {
+            localStorage.setItem('chart_pipSize', String(this.pipSize));
+            localStorage.setItem('chart_pipValuePerLot', String(this.pipValuePerLot));
+        } catch (e) { /* ignore */ }
+
+        this._lastSyncedPipSymbol = ticker;
+    }
+
+    _syncPipFromActiveSymbolIfNeeded() {
+        const t = this._getActiveTicker();
+        if (!t || t === 'UNKNOWN') return;
+        if (this._lastSyncedPipSymbol === t) return;
+        this.syncPipFromActiveSymbol();
+    }
+
+    /**
      * P&L in USD for a closed position.
      * @param {'BUY'|'SELL'} side
      * @param {number} entry
@@ -2202,7 +2272,8 @@ class OrderManager {
                 
                 this.showNotification(`⚙️ Instrument settings updated: Pip=${newPipSize}, Value=$${newPipValue}/lot`, 'success');
                 console.log(`⚙️ Instrument settings: pipSize=${newPipSize}, pipValuePerLot=$${newPipValue}`);
-                
+                this._lastSyncedPipSymbol = this._getActiveTicker();
+
                 // Recalculate position size with new settings
                 this.calculatePositionFromRisk();
             }
@@ -7442,6 +7513,7 @@ class OrderManager {
      * Calculate advanced risk/reward with multiple input types
      */
     calculateAdvancedRiskReward() {
+        this._syncPipFromActiveSymbolIfNeeded();
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         

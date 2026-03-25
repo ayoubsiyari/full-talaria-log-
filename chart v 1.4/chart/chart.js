@@ -1353,6 +1353,9 @@ class Chart {
             }
 
             if (this.orderManager) {
+                if (typeof this.orderManager.syncPipFromActiveSymbol === 'function') {
+                    this.orderManager.syncPipFromActiveSymbol();
+                }
                 if (typeof this.orderManager.updateSLTPLines === 'function') this.orderManager.updateSLTPLines();
                 if (typeof this.orderManager.syncOrderVisualsToActiveChart === 'function') {
                     this.orderManager.syncOrderVisualsToActiveChart();
@@ -1549,6 +1552,11 @@ class Chart {
 
             if (window.panelManager && typeof window.panelManager.savePanelState === 'function') {
                 window.panelManager.savePanelState();
+            }
+
+            const mainOm = window.chart && window.chart.orderManager;
+            if (mainOm && typeof mainOm.syncPipFromActiveSymbol === 'function') {
+                mainOm.syncPipFromActiveSymbol();
             }
 
             // Trigger symbol sync if enabled
