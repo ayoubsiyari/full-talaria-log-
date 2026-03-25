@@ -222,39 +222,11 @@ class PropFirmTracker {
 
     // Check all rules and update violations
     checkRules(skipModalTrigger = false) {
-        const wasDailyLossBreached = this.violations.dailyLoss;
-        const wasTotalLossBreached = this.violations.totalLoss;
-
-        this.violations.dailyLoss = this.isDailyLossBreached();
-        this.violations.totalLoss = this.isTotalLossBreached();
-
-        console.log('🔍 Rule Check:', {
-            skipModalTrigger,
-            dailyLoss: {
-                was: wasDailyLossBreached,
-                now: this.violations.dailyLoss,
-                percent: Math.abs(Math.min(0, this.getTodayPnLPercent())).toFixed(2) + '%',
-                limit: this.rules.maxDailyLoss + '%'
-            },
-            totalLoss: {
-                was: wasTotalLossBreached,
-                now: this.violations.totalLoss,
-                percent: this.getTotalLossPercent().toFixed(2) + '%',
-                limit: this.rules.maxTotalLoss + '%'
-            }
-        });
-
-        // Only alert if a rule was just broken AND we're not in skip mode (e.g., during sync)
-        if (!skipModalTrigger) {
-            if (!wasDailyLossBreached && this.violations.dailyLoss) {
-                this.alertRuleBreached('Daily Loss Limit');
-            }
-            if (!wasTotalLossBreached && this.violations.totalLoss) {
-                this.alertRuleBreached('Total Loss Limit');
-            }
-        }
-
-        return !this.violations.dailyLoss && !this.violations.totalLoss;
+        // Automatic challenge rule enforcement (daily/total loss modals, trading lock) is disabled.
+        // Stats still update via recordTrade/updateBalance; UI bars reflect P&L without failing the run.
+        this.violations.dailyLoss = false;
+        this.violations.totalLoss = false;
+        return true;
     }
 
     // Alert when a rule is breached
@@ -460,15 +432,6 @@ class PropFirmTracker {
         this.currentBalance = newBalance;
         this.peakBalance = Math.max(this.peakBalance, this.currentBalance);
         this.checkRules();
-        
-        // Check if profit target is reached
-        if (this.isProfitTargetReached() && !this.profitTargetReachedShown) {
-            this.profitTargetReachedShown = true;
-            setTimeout(() => {
-                this.showChallengePassedModal();
-            }, 1000);
-        }
-        
         this.updateUI();
     }
 

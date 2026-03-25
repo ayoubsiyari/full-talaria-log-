@@ -4055,34 +4055,6 @@ class OrderManager {
                 }, 150);
             }
             
-            // Check prop firm rules after closing trade (only for closed trades)
-            if (isClosing && window.propFirmTracker && window.propFirmTracker.sessionData) {
-                console.log('✅ Checking prop firm rules after trade close...');
-                const tracker = window.propFirmTracker;
-                
-                // Small delay to ensure modal is removed and UI updated
-                setTimeout(() => {
-                    console.log('🔍 Current violations:', tracker.violations);
-                    console.log('🔍 Profit target reached:', tracker.isProfitTargetReached());
-                    console.log('🔍 Failed modal shown:', tracker.failedModalShown);
-                    console.log('🔍 Profit modal shown:', tracker.profitTargetReachedShown);
-                    
-                    // Priority: Check failures first
-                    if (tracker.violations.dailyLoss && !tracker.failedModalShown) {
-                        console.log('🚨 Daily loss violation detected, showing modal...');
-                        tracker.showChallengeFailedModal('Daily Loss Limit');
-                    } else if (tracker.violations.totalLoss && !tracker.failedModalShown) {
-                        console.log('🚨 Total loss violation detected, showing modal...');
-                        tracker.showChallengeFailedModal('Total Loss Limit');
-                    } else if (tracker.isProfitTargetReached() && !tracker.profitTargetReachedShown) {
-                        console.log('🎉 Profit target reached, showing modal...');
-                        tracker.profitTargetReachedShown = true;
-                        tracker.showChallengePassedModal();
-                    } else {
-                        console.log('ℹ️ No challenge modal needed');
-                    }
-                }, 300);
-            }
         };
         
         document.getElementById('skipTradeNote').onclick = async () => {
@@ -4099,34 +4071,6 @@ class OrderManager {
                 }, 150);
             }
             
-            // Check prop firm rules after closing trade (only for closed trades)
-            if (isClosing && window.propFirmTracker && window.propFirmTracker.sessionData) {
-                console.log('✅ Checking prop firm rules after trade close (skip)...');
-                const tracker = window.propFirmTracker;
-                
-                // Small delay to ensure modal is removed and UI updated
-                setTimeout(() => {
-                    console.log('🔍 Current violations:', tracker.violations);
-                    console.log('🔍 Profit target reached:', tracker.isProfitTargetReached());
-                    console.log('🔍 Failed modal shown:', tracker.failedModalShown);
-                    console.log('🔍 Profit modal shown:', tracker.profitTargetReachedShown);
-                    
-                    // Priority: Check failures first
-                    if (tracker.violations.dailyLoss && !tracker.failedModalShown) {
-                        console.log('🚨 Daily loss violation detected, showing modal...');
-                        tracker.showChallengeFailedModal('Daily Loss Limit');
-                    } else if (tracker.violations.totalLoss && !tracker.failedModalShown) {
-                        console.log('🚨 Total loss violation detected, showing modal...');
-                        tracker.showChallengeFailedModal('Total Loss Limit');
-                    } else if (tracker.isProfitTargetReached() && !tracker.profitTargetReachedShown) {
-                        console.log('🎉 Profit target reached, showing modal...');
-                        tracker.profitTargetReachedShown = true;
-                        tracker.showChallengePassedModal();
-                    } else {
-                        console.log('ℹ️ No challenge modal needed');
-                    }
-                }, 300);
-            }
         };
         
         // Close on background click
@@ -12102,17 +12046,12 @@ class OrderManager {
      */
     checkPendingOrders(currentCandle) {
         if (this.pendingOrders.length === 0) return;
-        
-        const currentPrice = currentCandle.c;
-        const high = currentCandle.h;
-        const low = currentCandle.l;
-        
+
+        const tMs = Number(currentCandle.t);
         const ordersToExecute = [];
         const idsToRemove = [];
-        
-        const chartTicker = this._getActiveTicker();
-        this.pendingOrders.forEach(pendingOrder => {
-            // Skip if not actually pending
+
+        this.pendingOrders.forEach((pendingOrder) => {
             if (pendingOrder.status !== 'PENDING') {
                 console.warn(`⚠️ Skipping non-pending order #${pendingOrder.id} with status: ${pendingOrder.status}`);
                 idsToRemove.push(pendingOrder.id);
@@ -12120,49 +12059,60 @@ class OrderManager {
             }
 
             const poTicker = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol);
-            if (poTicker && chartTicker && poTicker !== chartTicker) {
+            const prefFile = pendingOrder.sourceFileId != null ? String(pendingOrder.sourceFileId) : null;
+            let bar = this._getBackgroundBarForTicker(poTicker || '', tMs, prefFile);
+            if (!bar) {
+                const ctx = this._getOrderContextChart() || this.chart;
+                if (ctx && this._normalizeTicker(ctx.currentSymbol) === poTicker) {
+                    const c = this.getCurrentCandle();
+                    if (c && Number(c.t) === tMs) {
+                        bar = c;
+                    }
+                }
+            }
+            if (!bar) {
                 return;
             }
-            
+
+            const high = Number.parseFloat(bar.h);
+            const low = Number.parseFloat(bar.l);
+            if (!Number.isFinite(high) || !Number.isFinite(low)) {
+                return;
+            }
+
             let shouldExecute = false;
-            
+
             if (pendingOrder.orderType === 'limit') {
-                // Limit BUY: executes when price drops TO or BELOW entry
-                // Limit SELL: executes when price rises TO or ABOVE entry
                 if (pendingOrder.direction === 'BUY' && low <= pendingOrder.entryPrice) {
                     shouldExecute = true;
                 } else if (pendingOrder.direction === 'SELL' && high >= pendingOrder.entryPrice) {
                     shouldExecute = true;
                 }
             } else if (pendingOrder.orderType === 'stop') {
-                // Stop BUY: executes when price rises TO or ABOVE entry
-                // Stop SELL: executes when price drops TO or BELOW entry
                 if (pendingOrder.direction === 'BUY' && high >= pendingOrder.entryPrice) {
                     shouldExecute = true;
                 } else if (pendingOrder.direction === 'SELL' && low <= pendingOrder.entryPrice) {
                     shouldExecute = true;
                 }
             }
-            
+
             if (shouldExecute) {
-                ordersToExecute.push(pendingOrder);
+                ordersToExecute.push({ pendingOrder, bar });
                 idsToRemove.push(pendingOrder.id);
             }
         });
-        
-        // IMPORTANT: Remove from pending array FIRST to prevent re-execution
+
         if (idsToRemove.length > 0) {
             if (this.orderService) {
-                idsToRemove.forEach(id => this.orderService.removePendingOrder(id));
+                idsToRemove.forEach((id) => this.orderService.removePendingOrder(id));
             } else {
-                this.pendingOrders = this.pendingOrders.filter(o => !idsToRemove.includes(o.id));
+                this.pendingOrders = this.pendingOrders.filter((o) => !idsToRemove.includes(o.id));
             }
             console.log(`🗑️ Removed ${idsToRemove.length} order(s) from pending queue`);
         }
-        
-        // Then execute the triggered orders
-        ordersToExecute.forEach(pendingOrder => {
-            this.executePendingOrder(pendingOrder, currentCandle);
+
+        ordersToExecute.forEach(({ pendingOrder, bar }) => {
+            this.executePendingOrder(pendingOrder, bar);
         });
     }
     
@@ -12399,7 +12349,10 @@ class OrderManager {
         // Check each position for SL/TP hits
         const positionsToClose = [];
         const chartTickerForBar = this._getActiveTicker();
-        const chartFileId = this.chart?.currentFileId != null ? String(this.chart.currentFileId) : '';
+        const chartFileId = (() => {
+            const oc = this._getOrderContextChart() || this.chart;
+            return oc?.currentFileId != null ? String(oc.currentFileId) : '';
+        })();
 
         this.openPositions.forEach(position => {
             const posTicker = this._positionTicker(position);
