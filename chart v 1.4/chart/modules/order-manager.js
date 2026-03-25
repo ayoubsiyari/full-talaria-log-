@@ -4506,9 +4506,9 @@ class OrderManager {
                 .order-panel {
                     position: fixed;
                     top: 48px;
-                    right: -380px;
-                    width: 372px;
-                    height: calc(100vh - 48px);
+                    right: -440px;
+                    width: 420px;
+                    height: calc(100vh - 98px);
                     --op-accent: var(--sp-accent, #2962ff);
                     --op-accent-rgb: var(--sp-accent-rgb, 41, 98, 255);
                     --op-bg: var(--sp-bg, #050028);
@@ -4519,11 +4519,11 @@ class OrderManager {
                     --op-soft-accent: rgba(var(--op-accent-rgb), 0.14);
                     background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)), var(--op-bg);
                     border-left: 1px solid var(--op-border);
-                    z-index: 9999;
+                    z-index: 1000010;
                     overflow: hidden;
                     overflow-y: auto;
                     transition: right 0.28s cubic-bezier(.4,0,.2,1);
-                    box-shadow: -8px 0 40px rgba(0,0,0,0.7);
+                    box-shadow: -8px 0 40px rgba(0,0,0,0.6);
                     pointer-events: none;
                     display: flex;
                     flex-direction: column;
@@ -5997,7 +5997,8 @@ class OrderManager {
             // Close panel
             panel.classList.remove('visible');
             if (backdrop) backdrop.classList.remove('visible');
-            if (chartWrapper) chartWrapper.classList.remove('order-panel-open');
+            if (chartWrapper) { chartWrapper.classList.remove('order-panel-open'); chartWrapper.classList.remove('settings-open'); }
+            document.body.classList.remove('settings-open');
             if (_c && _c.resize) setTimeout(() => { _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
 
             // Remove preview lines when panel closes
@@ -6014,10 +6015,14 @@ class OrderManager {
             return;
         }
 
+        // Close settings panel first so they don't overlap
+        if (typeof window.closePanel === 'function') window.closePanel();
+
         // Open panel
         panel.classList.add('visible');
         if (backdrop) backdrop.classList.add('visible');
-        if (chartWrapper) chartWrapper.classList.add('order-panel-open');
+        if (chartWrapper) { chartWrapper.classList.add('order-panel-open'); chartWrapper.classList.add('settings-open'); }
+        document.body.classList.add('settings-open');
         if (_c && _c.resize) setTimeout(() => { _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
 
         // Refresh header badge (symbol + market type) every time the drawer opens
