@@ -11953,7 +11953,8 @@ class OrderManager {
      * Get current candle from replay
      */
     getCurrentCandle() {
-        if (!this.chart.data || this.chart.data.length === 0) return null;
+        const ch = this._getOrderContextChart() || this.chart;
+        if (!ch?.data || ch.data.length === 0) return null;
         
         // Get the last visible candle in replay mode
         if (this.replaySystem && this.replaySystem.isActive) {
@@ -11980,17 +11981,17 @@ class OrderManager {
             }
 
             // Prefer the last resampled bar on the chart (matches what the user sees on non-1m TFs).
-            const last = this.chart.data[this.chart.data.length - 1];
+            const last = ch.data[ch.data.length - 1];
             if (last && Number.isFinite(Number.parseFloat(last.c))) {
                 return last;
             }
 
             const index = this.replaySystem.currentIndex;
-            const rawData = this.replaySystem.fullRawData || this.chart.rawData;
+            const rawData = this.replaySystem.fullRawData || ch.rawData;
             return rawData[index];
         }
         
-        return this.chart.data[this.chart.data.length - 1];
+        return ch.data[ch.data.length - 1];
     }
     
     /**
