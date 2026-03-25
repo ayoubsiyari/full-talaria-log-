@@ -7469,7 +7469,12 @@ class OrderManager {
         // Check if TP is actually set (different from entry price)
         // Use a small epsilon for floating point comparison
         const tpDistance = Math.abs(entryPrice - tpPrice);
-        const minDistance = this.pipSize * 0.5; // At least half a pip difference
+        // Half-pip minimum, but cap the requirement so a mis-set pipSize (e.g. futures tick
+        // left in localStorage while trading forex) does not make every TP/SL "invalid" and
+        // force Reward/Risk to display as ∞.
+        const halfPip = (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001) * 0.5;
+        const maxMinDistance = Math.max(Math.abs(entryPrice) * 1e-4, 1e-12);
+        const minDistance = Math.min(halfPip, maxMinDistance);
         const hasValidTP = tpEnabled && tpPrice > 0 && tpDistance > minDistance;
         
         // Calculate SL price (use the first non-zero value)
