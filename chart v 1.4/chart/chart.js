@@ -1346,6 +1346,14 @@ class Chart {
                 if (typeof this.orderManager.updatePositionsPanel === 'function') this.orderManager.updatePositionsPanel();
             }
 
+            // Trigger symbol sync if enabled
+            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
+                const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
+                if (sourcePanel) {
+                    window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
+                }
+            }
+
             return true;
         } catch (error) {
             console.error('❌ Failed to switch symbol:', error);
@@ -1458,6 +1466,14 @@ class Chart {
 
             if (window.panelManager && typeof window.panelManager.savePanelState === 'function') {
                 window.panelManager.savePanelState();
+            }
+
+            // Trigger symbol sync if enabled
+            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
+                const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
+                if (sourcePanel) {
+                    window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
+                }
             }
 
             return true;
@@ -9677,6 +9693,14 @@ class Chart {
         } else {
             this.updateChartOHLCSymbol(this.currentSymbol);
         }
+
+        // Trigger interval sync if enabled
+        if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
+            const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
+            if (sourcePanel) {
+                window.panelManager.syncInterval(sourcePanel, timeframe);
+            }
+        }
         
         if (this.replaySystem && this.replaySystem.isActive) {
             this.replaySystem.onTimeframeChange();
@@ -13390,86 +13414,56 @@ class Chart {
             'gann-fan'
         ];
 
+        if (!this.isPanel) {
         allTools.forEach(tool => {
             const btnId = tool + 'Tool';
             const btn = document.getElementById(btnId);
-            if (!btn) {
-                console.warn(`Tool button not found: ${btnId}`);
-                return;
-            }
+            if (!btn) return;
             btn.addEventListener('click', () => {
-                // Check if the parent dropdown is currently open (user clicked from open dropdown)
+                const target = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || this;
+                const dm = target.drawingManager;
+                if (!dm) return;
+
                 const parentDropdown = btn.closest('.tool-dropdown');
                 const dropdownIsOpen = parentDropdown && parentDropdown.classList.contains('show');
 
                 const isSameToolActive = !!(
                     !dropdownIsOpen &&
-                    this.drawingManager &&
-                    this.drawingManager.currentTool === tool &&
+                    dm.currentTool === tool &&
                     btn.classList.contains('active')
                 );
 
-                // Toggle behavior: clicking the active tool again deselects it and returns to cursor mode.
-                // Only applies when dropdown is NOT open (direct clicks on visible buttons).
                 if (isSameToolActive) {
-                    this.drawingManager.clearTool();
-                    if (typeof this.drawingManager.deselectAll === 'function') {
-                        this.drawingManager.deselectAll();
-                    }
-                    this.setCursorType('cross');
+                    dm.clearTool();
+                    if (typeof dm.deselectAll === 'function') dm.deselectAll();
+                    target.setCursorType('cross');
                     document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
                     const cursorBtn = document.getElementById('cursorTool');
                     if (cursorBtn) cursorBtn.classList.add('active');
-                    this.hideContextMenu();
-                    this.syncMagnetButton();
+                    target.hideContextMenu();
+                    target.syncMagnetButton();
                     return;
                 }
 
-                // If we were in eraser cursor mode, turn it off when selecting any drawing tool
-                // Do NOT call setCursorType('cross') here, because that would clear the
-                // drawingManager tool we are about to set. Instead, manually reset eraser state
-                // and cursor visuals.
-                if (this.drawingManager && this.drawingManager.eraserMode) {
-                    this.drawingManager.setEraserMode(false);
-                    this.cursorType = 'cross';
-                    const cursorStyle = this.getCurrentCursorStyle();
-
-                    // Update canvas cursor
-                    if (this.canvas) {
-                        this.canvas.style.cursor = cursorStyle;
-                    }
-
-                    // Update chart wrapper cursor
-                    const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
-                    if (chartWrapper) {
-                        chartWrapper.style.cursor = cursorStyle;
-                    }
-
-                    // Update SVG cursor
-                    if (this.svg && this.svg.node()) {
-                        this.svg.node().style.cursor = cursorStyle;
-                    }
-
-                    // Refresh crosshair visibility and cursor dropdown UI to reflect cross mode
-                    if (typeof this.updateCrosshairVisibility === 'function') {
-                        this.updateCrosshairVisibility('cross');
-                    }
-                    if (typeof this.updateCursorDropdownUI === 'function') {
-                        this.updateCursorDropdownUI('cross');
-                    }
+                if (dm.eraserMode) {
+                    dm.setEraserMode(false);
+                    target.cursorType = 'cross';
+                    const cursorStyle = target.getCurrentCursorStyle();
+                    if (target.canvas) target.canvas.style.cursor = cursorStyle;
+                    const chartWrapper = target.isPanel ? target.canvas?.parentElement : document.querySelector('.chart-wrapper');
+                    if (chartWrapper) chartWrapper.style.cursor = cursorStyle;
+                    if (target.svg && target.svg.node()) target.svg.node().style.cursor = cursorStyle;
+                    if (typeof target.updateCrosshairVisibility === 'function') target.updateCrosshairVisibility('cross');
+                    if (typeof target.updateCursorDropdownUI === 'function') target.updateCursorDropdownUI('cross');
                 }
 
-                if (this.drawingManager) {
-                    this.drawingManager.setTool(tool);
-                    // Update active state (but keep keepDrawingMode and magnetMode buttons as they are)
-                    document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                } else {
-                    this.setTool(tool); // Fallback to old method
-                }
-                this.syncMagnetButton();
+                dm.setTool(tool);
+                document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                target.syncMagnetButton();
             });
         });
+        }
 
         // Standalone emoji tool button (optional). Safe even if not present.
         const emojiBtn = document.getElementById('emojiToolStandalone');

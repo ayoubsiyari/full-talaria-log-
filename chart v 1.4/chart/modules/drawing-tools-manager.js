@@ -573,6 +573,10 @@ class DrawingToolsManager {
         // Individual drawing elements will handle their own events
         this.svg.style('pointer-events', 'none');
         
+        const panelIdx = (this.chart && this.chart.panelIndex !== undefined) ? this.chart.panelIndex : '';
+        const clipId = 'chart-clip-path' + (panelIdx !== '' && panelIdx !== 0 ? panelIdx : '');
+        this._clipId = clipId;
+
         // Create clip path definition for chart area (excludes price/time axes)
         let defs = this.svg.select('defs');
         if (defs.empty()) {
@@ -580,10 +584,10 @@ class DrawingToolsManager {
         }
         
         // Create or update clip path for chart area
-        let clipPath = defs.select('#chart-clip-path');
+        let clipPath = defs.select('#' + clipId);
         if (clipPath.empty()) {
             clipPath = defs.append('clipPath')
-                .attr('id', 'chart-clip-path');
+                .attr('id', clipId);
             clipPath.append('rect')
                 .attr('class', 'chart-clip-rect');
         }
@@ -591,15 +595,17 @@ class DrawingToolsManager {
         // Update clip rect dimensions
         this.updateClipPath();
         
+        const clipUrl = 'url(#' + clipId + ')';
+
         // Main drawings group with clipping
         this.drawingsGroup = this.svg.select('.drawings');
         if (this.drawingsGroup.empty()) {
             this.drawingsGroup = this.svg.append('g')
                 .attr('class', 'drawings')
-                .attr('clip-path', 'url(#chart-clip-path)')
-                .style('pointer-events', 'none'); // Will enable per-element
+                .attr('clip-path', clipUrl)
+                .style('pointer-events', 'none');
         } else {
-            this.drawingsGroup.attr('clip-path', 'url(#chart-clip-path)');
+            this.drawingsGroup.attr('clip-path', clipUrl);
         }
         
         // Temporary drawing group (for live preview) with clipping
@@ -607,10 +613,10 @@ class DrawingToolsManager {
         if (this.tempGroup.empty()) {
             this.tempGroup = this.svg.append('g')
                 .attr('class', 'temp-drawing')
-                .attr('clip-path', 'url(#chart-clip-path)')
+                .attr('clip-path', clipUrl)
                 .style('pointer-events', 'none');
         } else {
-            this.tempGroup.attr('clip-path', 'url(#chart-clip-path)');
+            this.tempGroup.attr('clip-path', clipUrl);
         }
 
         // Unclipped labels group — text labels that must not be clipped by chart boundary
@@ -767,14 +773,23 @@ class DrawingToolsManager {
         // Right-click context menu
         svg.on('contextmenu.drawing', (event) => this.handleContextMenu(event));
         
-        // Keyboard shortcuts
-        d3.select(window).on('keydown.drawing', (event) => this.handleKeyDown(event));
-        d3.select(window).on('keyup.drawing', (event) => this.handleKeyUp(event));
-        // Reset modifier-key flags when window loses focus (prevents stuck magnetKeyHeld)
-        d3.select(window).on('blur.drawing', () => { this.magnetKeyHeld = false; this.ctrlSelectMode = false; });
+        // Keyboard shortcuts — only bind for the main chart; panels route through getActiveChart()
+        const kbSuffix = (this.chart && this.chart.panelIndex !== undefined && this.chart.panelIndex !== 0)
+            ? '.drawing' + this.chart.panelIndex : '.drawing';
+        d3.select(window).on('keydown' + kbSuffix, (event) => {
+            const active = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : null;
+            if (active && active.drawingManager && active.drawingManager !== this) return;
+            this.handleKeyDown(event);
+        });
+        d3.select(window).on('keyup' + kbSuffix, (event) => {
+            const active = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : null;
+            if (active && active.drawingManager && active.drawingManager !== this) return;
+            this.handleKeyUp(event);
+        });
+        d3.select(window).on('blur' + kbSuffix, () => { this.magnetKeyHeld = false; this.ctrlSelectMode = false; });
         
         // Canvas-level events for rectangular selection and deselection
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) {
             let suppressNextCanvasClick = false;
 
@@ -4048,7 +4063,7 @@ class DrawingToolsManager {
             drawing._activeResizingPointIndex = Number.isFinite(pointIndex) ? pointIndex : null;
         }
 
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = 'ew-resize';
         this.svg.style('cursor', 'ew-resize');
         // Capture state for undo
@@ -4119,7 +4134,7 @@ class DrawingToolsManager {
         this.resizingHandleRole = null;
         this.resizeBeforeState = null;
 
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
 
@@ -4145,7 +4160,7 @@ class DrawingToolsManager {
         this.customHandleDrawing = drawing;
         this.customHandleRole = handleRole;
 
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = 'ew-resize';
         this.svg.style('cursor', 'ew-resize');
         this.customHandlePointIndex = pointIndex; // Store point index for arc/curve
@@ -4224,7 +4239,7 @@ class DrawingToolsManager {
         this.customHandleStart = null;
         this.customHandleBeforeState = null;
 
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
         this.persistPositionToolDefaults(drawing);
@@ -4271,7 +4286,7 @@ class DrawingToolsManager {
         if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
         if (event && typeof event.preventDefault === 'function') event.preventDefault();
 
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = 'move';
         this.svg.style('cursor', 'move');
         
@@ -4402,7 +4417,7 @@ class DrawingToolsManager {
         this.draggingMultiple = false;
         this.multiDragStartPositions = null;
 
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
         this.saveDrawings();
@@ -7406,7 +7421,7 @@ class DrawingToolsManager {
         const mouseX = event.clientX - svgRect.left;
         const mouseY = event.clientY - svgRect.top;
         
-        const canvas = document.getElementById('chartCanvas');
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (!canvas) return;
 
         if (this.isResizing || this.isCustomHandleDrag) {

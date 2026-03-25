@@ -23728,8 +23728,8 @@
             font-weight: 700;
         }
         .chart-panel .ohlc-symbol-dot.ohlc-dot-flags {
-            width: 32px;
-            height: 18px;
+            width: 29px;
+            height: 16px;
             border-radius: 0;
             background: none;
             border: none;
@@ -40514,13 +40514,13 @@
 
     <script defer src="modules/preferences-init.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=20260321_LINE_HIT_V1"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260325_PANEL_DRAW_V2"></script>
 
     <script defer src="modules/favorites-manager.js?v=20260318_TF_PIN_V59"></script>
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_OHLC_FLAGS_V70"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_SYNC_FIX_V72"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -40536,7 +40536,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_OHLC_FLAGS_V183"></script>
+    <script defer src="chart.js?v=20260325_SYNC_FIX_V185"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_PANEL_INDEP_V75"></script>
 
@@ -43750,55 +43750,8 @@
 
                     
 
-                    // Listen for panel selection - clear ALL drawing tools when switching panels
-
+                    // Listen for panel selection — sync toolbar UI but keep active drawing tool
                     window.addEventListener('panelSelected', (event) => {
-
-                        
-
-                        // Clear drawing tool from ALL charts when switching panels
-
-                        // This ensures one-shot drawing: select tool, draw once, done
-
-                        
-
-                        // Clear main chart
-
-                        if (window.chart && window.chart.drawingManager && window.chart.drawingManager.currentTool) {
-
-                            window.chart.drawingManager.clearTool();
-
-                        }
-
-                        
-
-                        // Clear all panel charts
-
-                        if (window.panelManager && window.panelManager.panels) {
-
-                            window.panelManager.panels.forEach(panel => {
-
-                                if (panel.chartInstance && panel.chartInstance.drawingManager && panel.chartInstance.drawingManager.currentTool) {
-
-                                    panel.chartInstance.drawingManager.clearTool();
-
-                                }
-
-                            });
-
-                        }
-
-                        
-
-                        // Update toolbar UI to show cursor as active
-
-                        document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(btn => btn.classList.remove('active'));
-
-                        const cursorBtn = document.getElementById('cursorTool');
-
-                        if (cursorBtn) cursorBtn.classList.add('active');
-
-                        
 
                         // Update timeframe bar to show selected panel's timeframe
                         const panelTimeframe = event.detail.timeframe;

@@ -25,12 +25,14 @@ class PanelManager {
         
         // Sync settings - time enabled by default for smooth scroll sync
         this.syncSettings = {
-            symbol: false,      // Sync symbol/data across all panels
-            interval: false,    // Sync timeframe across all panels
-            crosshair: true,    // Sync crosshair position
-            time: true,         // Sync time/scroll position (enabled by default)
-            dateRange: false,   // Sync visible date range
-            drawings: true      // Sync drawings across all panels
+            symbol: false,
+            interval: false,
+            crosshair: true,
+            time: true,
+            dateRange: false,
+            drawings: true,
+            indicators: false,
+            chartType: false
         };
         
         // Load saved sync settings
@@ -742,15 +744,33 @@ class PanelManager {
                 e.stopPropagation();
                 this.syncSettings.drawings = e.target.checked;
                 this.saveSyncSettings();
-                
-                // Update syncDrawings on all panel charts
                 this.panels.forEach(panel => {
-                    if (panel.chartInstance) {
-                        panel.chartInstance.syncDrawings = e.target.checked;
-                    }
+                    if (panel.chartInstance) panel.chartInstance.syncDrawings = e.target.checked;
                 });
-                
-                console.log(`✏️ Drawings sync ${e.target.checked ? 'enabled' : 'disabled'}`);
+            });
+        }
+
+        // Indicators sync toggle
+        const indicatorsToggle = dropdown.querySelector('#indicators-sync-toggle');
+        if (indicatorsToggle) {
+            indicatorsToggle.checked = this.syncSettings.indicators !== false;
+            indicatorsToggle.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.syncSettings.indicators = e.target.checked;
+                this.saveSyncSettings();
+                if (e.target.checked) this.syncIndicatorsNow();
+            });
+        }
+
+        // Chart type sync toggle
+        const chartTypeToggle = dropdown.querySelector('#charttype-sync-toggle');
+        if (chartTypeToggle) {
+            chartTypeToggle.checked = !!this.syncSettings.chartType;
+            chartTypeToggle.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.syncSettings.chartType = e.target.checked;
+                this.saveSyncSettings();
+                if (e.target.checked) this.syncChartTypeNow();
             });
         }
     }
@@ -782,14 +802,16 @@ class PanelManager {
     syncSymbol(sourcePanel, symbol, fileId) {
         if (!this.syncSettings.symbol || this.currentLayout === '1') return;
         
-        console.log(`📊 Syncing symbol ${symbol} from panel ${sourcePanel.index} to all panels`);
-        
         this.panels.forEach(panel => {
-            if (panel.index !== sourcePanel.index && panel.chartInstance) {
-                // Load same data but keep panel's own timeframe
-                if (panel.chartInstance.loadFile) {
-                    panel.chartInstance.loadFile(fileId);
-                }
+            if (panel.index === sourcePanel.index) return;
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            if (String(pc.currentFileId) === String(fileId)) return;
+
+            if (panel.isMainChart && window.chart && typeof window.chart.loadFileData === 'function') {
+                window.chart.loadFileData(fileId);
+            } else if (typeof pc.loadPanelFileData === 'function') {
+                pc.loadPanelFileData(fileId);
             }
         });
     }
@@ -800,20 +822,17 @@ class PanelManager {
     syncInterval(sourcePanel, timeframe) {
         if (!this.syncSettings.interval || this.currentLayout === '1') return;
         
-        console.log(`⏱️ Syncing timeframe ${timeframe} from panel ${sourcePanel.index} to all panels`);
-        
         this.panels.forEach(panel => {
-            if (panel.index !== sourcePanel.index && panel.chartInstance) {
-                panel.timeframe = timeframe;
-                if (panel.header) {
-                    panel.header.innerHTML = `
-                        <div style="font-weight: 600; color: #d1d4dc;">Panel ${panel.index + 1}</div>
-                        <div style="font-size: 11px; margin-top: 2px;">${timeframe}</div>
-                    `;
-                }
-                if (panel.chartInstance.setTimeframe) {
-                    panel.chartInstance.setTimeframe(timeframe);
-                }
+            if (panel.index === sourcePanel.index) return;
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            panel.timeframe = timeframe;
+            pc.currentTimeframe = timeframe;
+            if (typeof pc.setTimeframe === 'function') {
+                pc.setTimeframe(timeframe);
+            }
+            if (typeof pc.updateChartOHLCSymbol === 'function') {
+                pc.updateChartOHLCSymbol(pc.currentSymbol);
             }
         });
     }
@@ -934,6 +953,48 @@ class PanelManager {
         });
     }
     
+    /**
+     * Sync indicators from the selected panel to all others
+     */
+    syncIndicatorsNow() {
+        if (!this.syncSettings.indicators || this.currentLayout === '1') return;
+        const src = this.panels[this.selectedPanelIndex];
+        if (!src || !src.chartInstance) return;
+        const srcChart = src.chartInstance;
+        const srcIndicators = srcChart.indicators || [];
+
+        this.panels.forEach(panel => {
+            if (panel.index === src.index) return;
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            pc.indicators = JSON.parse(JSON.stringify(srcIndicators));
+            if (typeof pc.recalculateIndicators === 'function') {
+                try { pc.recalculateIndicators(); } catch (e) {}
+            }
+            if (typeof pc.render === 'function') pc.render();
+        });
+    }
+
+    /**
+     * Sync chart type (candle style) from selected panel to all others
+     */
+    syncChartTypeNow() {
+        if (!this.syncSettings.chartType || this.currentLayout === '1') return;
+        const src = this.panels[this.selectedPanelIndex];
+        if (!src || !src.chartInstance) return;
+        const srcChart = src.chartInstance;
+        const chartType = srcChart.chartSettings && srcChart.chartSettings.chartType
+            ? srcChart.chartSettings.chartType : 'candlestick';
+
+        this.panels.forEach(panel => {
+            if (panel.index === src.index) return;
+            const pc = panel.chartInstance;
+            if (!pc || !pc.chartSettings) return;
+            pc.chartSettings.chartType = chartType;
+            if (typeof pc.render === 'function') pc.render();
+        });
+    }
+
     /**
      * Apply selected layout
      */
@@ -1686,20 +1747,6 @@ class PanelManager {
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
-        // Deactivate any active drawing tool when switching panels
-        if (this.selectedPanelIndex !== index) {
-            // Deactivate drawing tool on all charts
-            this.panels.forEach(panel => {
-                if (panel.chartInstance && panel.chartInstance.drawingManager) {
-                    panel.chartInstance.drawingManager.deactivateTool();
-                }
-            });
-            
-            // Also deactivate on main chart if it exists
-            if (window.chart && window.chart.drawingManager) {
-                window.chart.drawingManager.deactivateTool();
-            }
-        }
         
         // Deselect all panels
         this.panels.forEach((panel, i) => {
