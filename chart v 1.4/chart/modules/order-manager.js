@@ -12172,8 +12172,10 @@ class OrderManager {
      */
     checkPendingOrders(currentCandle) {
         if (this.pendingOrders.length === 0) return;
+        if (!currentCandle) return;
 
         const tMs = Number(currentCandle.t);
+        const activeT = this._normalizeTicker(this._getActiveTicker());
         const ordersToExecute = [];
         const idsToRemove = [];
 
@@ -12190,18 +12192,20 @@ class OrderManager {
             if (!bar) {
                 const ctx = this._getOrderContextChart() || this.chart;
                 if (ctx && this._normalizeTicker(ctx.currentSymbol) === poTicker) {
-                    const c = this.getCurrentCandle();
-                    if (c && Number(c.t) === tMs) {
-                        bar = c;
-                    }
+                    bar = currentCandle;
                 }
             }
             if (!bar) {
                 return;
             }
 
-            const high = Number.parseFloat(bar.h);
-            const low = Number.parseFloat(bar.l);
+            // Use the same OHLC the trader sees for this symbol. Background/cache bars can lag
+            // behind intra-bar tick animation — then high/low never "touch" the order price.
+            const onActiveChart = poTicker === activeT;
+            const touchCandle = onActiveChart && currentCandle ? currentCandle : bar;
+
+            const high = Number.parseFloat(touchCandle.h);
+            const low = Number.parseFloat(touchCandle.l);
             if (!Number.isFinite(high) || !Number.isFinite(low)) {
                 return;
             }
@@ -12223,7 +12227,8 @@ class OrderManager {
             }
 
             if (shouldExecute) {
-                ordersToExecute.push({ pendingOrder, bar });
+                const execCandle = onActiveChart && currentCandle ? currentCandle : bar;
+                ordersToExecute.push({ pendingOrder, bar: execCandle });
                 idsToRemove.push(pendingOrder.id);
             }
         });
