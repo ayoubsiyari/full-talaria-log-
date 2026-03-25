@@ -1383,10 +1383,6 @@ class Chart {
             const requestTimeframe = isBacktest ? '1m' : (this.currentTimeframe || '1m');
             const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
 
-            if (Number.isFinite(replayTs)) {
-                params.set('end_ts', String(Math.floor(replayTs + 120000)));
-            }
-
             const result = await this._fetchSmartWindowWithParams(targetFileId, params);
 
             if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
