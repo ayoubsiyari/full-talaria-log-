@@ -23675,7 +23675,28 @@
 
         }
 
-
+        /* Panel selection indicator — must beat #chart-container * { outline:none!important } */
+        #chart-container .chart-panel.panel-selected,
+        #chart-container .chart-wrapper.panel-selected {
+            outline: 2px solid #2962FF !important;
+            outline-offset: -2px !important;
+        }
+        .panel-select-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #2962FF;
+            z-index: 200;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+        .panel-selected > .panel-select-bar,
+        .panel-selected .panel-select-bar {
+            opacity: 1;
+        }
 
         .chart-wrapper {
 
@@ -40427,7 +40448,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_PANEL_INTERACT_V60"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_PANEL_SELECT_V61"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -40443,7 +40464,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_FAST_SWITCH_V171"></script>
+    <script defer src="chart.js?v=20260325_PANEL_SELECT_V172"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_TV_STYLE_CENTER_V70"></script>
 
@@ -43813,29 +43834,21 @@
                     btn.addEventListener('click', (e) => {
 
                         // Check if we're in multi-panel mode
-
                         if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
-
                             e.preventDefault();
-
                             e.stopImmediatePropagation();
-
-                            
 
                             const timeframe = btn.dataset.timeframe;
 
-                            
-
                             // Update the selected panel's timeframe
-
                             window.panelManager.updateSelectedPanelTimeframe(timeframe);
 
-                            
+                            // Manually update the toolbar active button (stopImmediatePropagation blocks normal handler)
+                            document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
 
                             return false;
-
                         }
-
                         // In single panel mode, let normal behavior happen
 
                     }, true); // Use capture phase to intercept early

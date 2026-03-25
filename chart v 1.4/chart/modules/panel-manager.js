@@ -1355,6 +1355,13 @@ class PanelManager {
             };
             this.panels.push(mainPanel);
             
+            // Add selection bar to main chart wrapper
+            if (!originalChart.querySelector('.panel-select-bar')) {
+                const bar = document.createElement('div');
+                bar.className = 'panel-select-bar';
+                originalChart.appendChild(bar);
+            }
+            
             // Mark main chart as a panel for drawing sync
             if (window.chart) {
                 window.chart.isPanel = true;
@@ -1609,6 +1616,11 @@ class PanelManager {
         
         panel.appendChild(chartContainer);
         
+        // Add selection indicator bar
+        const selectBar = document.createElement('div');
+        selectBar.className = 'panel-select-bar';
+        panel.appendChild(selectBar);
+        
         // Click anywhere on panel to select it (like TradingView)
         panel.addEventListener('mousedown', (e) => {
             console.log(`🖱️ Panel ${index} clicked`, e.target);
@@ -1702,14 +1714,11 @@ class PanelManager {
             }
         }
         
-        // Deselect all panels - reset to no outline
+        // Deselect all panels
         this.panels.forEach((panel, i) => {
             if (panel.element) {
-                panel.element.style.outline = 'none';
-                panel.element.style.outlineOffset = '0';
+                panel.element.classList.remove('panel-selected');
             }
-            const oldBadge = panel.element && panel.element.querySelector('.panel-select-badge');
-            if (oldBadge) oldBadge.remove();
         });
         
         // Select the clicked panel
@@ -1718,17 +1727,27 @@ class PanelManager {
             const panel = this.panels[index];
             
             if (panel.element) {
-                panel.element.style.outline = '2px solid #2962FF';
-                panel.element.style.outlineOffset = '-2px';
+                panel.element.classList.add('panel-selected');
+                // Ensure selection bar exists
+                if (!panel.element.querySelector('.panel-select-bar')) {
+                    const bar = document.createElement('div');
+                    bar.className = 'panel-select-bar';
+                    panel.element.appendChild(bar);
+                }
             }
             
-            console.log(`📊 Panel ${index} selected (${panel.timeframe})`);
+            // Resolve the LIVE timeframe from the chart instance (not the stale snapshot)
+            const liveTimeframe = (panel.chartInstance && panel.chartInstance.currentTimeframe)
+                ? panel.chartInstance.currentTimeframe
+                : panel.timeframe;
             
-            // Dispatch event
+            console.log(`📊 Panel ${index} selected (TF: ${liveTimeframe})`);
+            
+            // Dispatch event with live timeframe
             window.dispatchEvent(new CustomEvent('panelSelected', {
                 detail: { 
                     panelIndex: index,
-                    timeframe: panel.timeframe,
+                    timeframe: liveTimeframe,
                     panel: panel,
                     isMainChart: panel.isMainChart
                 }
