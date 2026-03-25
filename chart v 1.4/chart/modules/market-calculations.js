@@ -586,16 +586,6 @@ class MarketCalculationEngine {
                 label
             };
         }
-        if (key.startsWith('USD') && key.length >= 6 && key !== 'USDT') {
-            return {
-                type: 'forex',
-                contractSize: 100000,
-                pipSize: 0.0001,
-                quoteType: 'usd_base',
-                precision: 5,
-                label
-            };
-        }
         return null;
     }
 

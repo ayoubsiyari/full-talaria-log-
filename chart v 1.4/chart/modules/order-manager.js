@@ -890,50 +890,19 @@ class OrderManager {
         return Number.isFinite(bgT) && Number.isFinite(animT) && bgT === animT;
     }
 
-    /** When instrument_settings are missing, avoid treating JPY pairs as 0.0001-pip majors. */
-    _inferPipSizeFromTicker(tickerNorm) {
-        const T = this._normalizeTicker(tickerNorm);
-        if (!T || T.length < 6) return null;
-        if (T.endsWith('JPY')) return 0.01;
-        return null;
-    }
-
     _getPositionPipSize(position) {
-        const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize;
+        const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
         const value = Number.parseFloat(raw);
-        if (Number.isFinite(value) && value > 0) return value;
-        const inferred = this._inferPipSizeFromTicker(this._positionTicker(position));
-        if (Number.isFinite(inferred) && inferred > 0) return inferred;
-        return this.pipSize || 0.0001;
+        return Number.isFinite(value) && value > 0 ? value : (this.pipSize || 0.0001);
     }
 
     _getPositionPipValue(position) {
-        const raw = position?.instrument_settings?.pip_value_per_lot ?? position?.instrument_settings?.pipValuePerLot;
+        const raw = position?.instrument_settings?.pip_value_per_lot ?? position?.instrument_settings?.pipValuePerLot ?? this.pipValuePerLot;
         const value = Number.parseFloat(raw);
-        if (Number.isFinite(value) && value > 0) return value;
-        return this.pipValuePerLot || 10;
+        return Number.isFinite(value) && value > 0 ? value : (this.pipValuePerLot || 10);
     }
 
     _calculatePositionPnL(position, markPrice) {
-        const sym = position?.ticker || position?.symbol;
-        if (window.marketCalcEngine && sym) {
-            try {
-                const entry = Number.parseFloat(position.openPrice);
-                const mark = Number.parseFloat(markPrice);
-                const qty = Number.parseFloat(position.quantity) || 0;
-                if ([entry, mark, qty].every(Number.isFinite)) {
-                    return window.marketCalcEngine.calcPnL(
-                        position.type,
-                        entry,
-                        mark,
-                        qty,
-                        sym,
-                        this.marketType,
-                        mark
-                    );
-                }
-            } catch (e) { /* legacy below */ }
-        }
         const pipSize = this._getPositionPipSize(position);
         const pipValue = this._getPositionPipValue(position);
         const priceDiff = position.type === 'BUY'
@@ -1001,19 +970,44 @@ class OrderManager {
 
     _getActiveInstrumentSettings() {
         const ticker = this._getActiveTicker();
+        let base;
         if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function') {
-            return this.orderService.getInstrumentSettings(ticker, {
+            base = this.orderService.getInstrumentSettings(ticker, {
                 contractSize: this.contractSize,
                 pipSize: this.pipSize,
                 pipValuePerLot: this.pipValuePerLot
             });
+        } else {
+            base = {
+                ticker,
+                contract_size: this.contractSize,
+                pip_size: this.pipSize,
+                pip_value_per_lot: this.pipValuePerLot
+            };
         }
-        return {
-            ticker,
-            contract_size: this.contractSize,
-            pip_size: this.pipSize,
-            pip_value_per_lot: this.pipValuePerLot
-        };
+        if (window.marketCalcEngine && ticker) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(ticker, this.marketType);
+                if (calc && calc.specs && Number.isFinite(calc.specs.pipSize) && calc.specs.pipSize > 0) {
+                    const cc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+                    const mark = cc && Number.isFinite(Number.parseFloat(cc.c)) ? Number.parseFloat(cc.c) : undefined;
+                    let pv = null;
+                    if (typeof calc.calcPipValuePerLot === 'function') {
+                        pv = calc.calcPipValuePerLot(mark);
+                    }
+                    const pip = calc.specs.pipSize;
+                    const pvl = Number.isFinite(pv) && pv > 0 ? pv : (base.pip_value_per_lot || base.pipValuePerLot || this.pipValuePerLot);
+                    base = {
+                        ...base,
+                        pip_size: pip,
+                        pipSize: pip,
+                        pip_value_per_lot: pvl,
+                        pipValuePerLot: pvl
+                    };
+                }
+            } catch (e) { /* keep session / fallback base */ }
+        }
+        return base;
     }
 
     /**

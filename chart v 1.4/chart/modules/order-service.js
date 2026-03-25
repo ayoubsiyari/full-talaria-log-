@@ -120,21 +120,20 @@ class OrderService {
     }
 
     getInstrumentSettings(ticker, fallback = {}) {
-        const key = String(ticker || '').replace(/\//g, '').toUpperCase();
-        if (key && this.multiInstrumentSession.instruments[key]) {
-            return this.multiInstrumentSession.instruments[key];
+        const rawKey = String(ticker || '').toUpperCase();
+        const normKey = rawKey.replace(/\//g, '');
+        const map = this.multiInstrumentSession.instruments;
+        if (normKey && map[normKey]) {
+            return map[normKey];
         }
-        let pipSize = fallback.pipSize || 0.0001;
-        let pipVal = fallback.pipValuePerLot || 10;
-        if (key.endsWith('JPY')) {
-            pipSize = 0.01;
-            pipVal = key === 'USDJPY' ? (fallback.pipValuePerLot || 10) : (fallback.pipValuePerLot || 9);
+        if (rawKey && map[rawKey]) {
+            return map[rawKey];
         }
         return {
-            ticker: key || 'UNKNOWN',
+            ticker: normKey || rawKey || 'UNKNOWN',
             contract_size: fallback.contractSize || 100000,
-            pip_size: pipSize,
-            pip_value_per_lot: pipVal,
+            pip_size: fallback.pipSize || 0.0001,
+            pip_value_per_lot: fallback.pipValuePerLot || 10,
             commission_per_lot_per_side: fallback.commissionPerLotPerSide || 0,
             spread_pips: fallback.spreadPips || 0
         };
