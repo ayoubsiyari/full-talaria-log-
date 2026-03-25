@@ -7254,6 +7254,24 @@ class Chart {
             };
             chartTimeframe.textContent = timeframeMap[this.currentTimeframe] || this.currentTimeframe;
         }
+
+        const dotEl = document.getElementById('ohlcSymbolDot' + idSuffix);
+        if (dotEl && symbol) {
+            const pair = this._parsePairCurrencies(symbol);
+            if (pair) {
+                const baseCC = this._currencyToCountry(pair.base);
+                const quoteCC = this._currencyToCountry(pair.quote);
+                if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
+                    const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+                    const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+                    dotEl.innerHTML = `<img class="ohlc-dot-flag ohlc-dot-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" /><img class="ohlc-dot-flag ohlc-dot-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />`;
+                    dotEl.classList.add('ohlc-dot-flags');
+                    return;
+                }
+            }
+            dotEl.classList.remove('ohlc-dot-flags');
+            dotEl.textContent = '⚡';
+        }
     }
     
     /**

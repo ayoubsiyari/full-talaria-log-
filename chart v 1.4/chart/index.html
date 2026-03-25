@@ -23727,6 +23727,13 @@
             font-size: 11px;
             font-weight: 700;
         }
+        .chart-panel .ohlc-symbol-dot.ohlc-dot-flags {
+            width: 32px;
+            height: 18px;
+            border-radius: 0;
+            background: none;
+            border: none;
+        }
         .chart-panel .ohlc-stats {
             font-size: 11px;
             font-weight: 300;
@@ -24845,32 +24852,45 @@
 
 
         .ohlc-symbol-dot {
-
             width: 18px;
-
             height: 18px;
-
             border-radius: 6px;
-
             background: rgba(255, 198, 0, 0.18);
-
             border: 1px solid rgba(255, 198, 0, 0.45);
-
             display: inline-flex;
-
             align-items: center;
-
             justify-content: center;
-
             color: #ffd54f;
-
             font-size: 11px;
-
             font-weight: 700;
-
         }
-
-
+        .ohlc-symbol-dot.ohlc-dot-flags {
+            width: 32px;
+            height: 18px;
+            border-radius: 0;
+            background: none;
+            border: none;
+            position: relative;
+            overflow: visible;
+        }
+        .ohlc-dot-flag {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1.5px solid #131722;
+        }
+        .ohlc-dot-flag-base {
+            left: 0;
+            top: 0;
+            z-index: 1;
+        }
+        .ohlc-dot-flag-quote {
+            left: 12px;
+            top: 0;
+            z-index: 2;
+        }
 
         .ohlc-symbol-text {
 
@@ -39220,7 +39240,7 @@
 
                         <div class="ohlc-symbol-block" style="position: relative;">
 
-                            <span class="ohlc-symbol-dot">⚡</span>
+                            <span class="ohlc-symbol-dot" id="ohlcSymbolDot">⚡</span>
 
                             <span class="ohlc-symbol-text" id="chartSymbol">CHART</span>
 
@@ -40500,7 +40520,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_PANEL_OHLC_V69"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_OHLC_FLAGS_V70"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -40516,7 +40536,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_PAIR_FLAGS_V182"></script>
+    <script defer src="chart.js?v=20260325_OHLC_FLAGS_V183"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_PANEL_INDEP_V75"></script>
 
