@@ -23693,6 +23693,53 @@
             opacity: 1;
         }
 
+        .chart-panel .ohlc-info {
+            left: 8px;
+            top: 8px;
+            font-size: 9px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #ffffff;
+        }
+        .chart-panel .ohlc-symbol-block {
+            font-size: 11px;
+            font-weight: 400;
+        }
+        .chart-panel .ohlc-symbol-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            background: rgba(255, 198, 0, 0.18);
+            border: 1px solid rgba(255, 198, 0, 0.45);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffd54f;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .chart-panel .ohlc-stats {
+            font-size: 11px;
+            font-weight: 300;
+            color: #ffffff;
+        }
+        .chart-panel .ohlc-label {
+            color: inherit;
+            font-weight: 400;
+            opacity: 0.6;
+        }
+        .chart-panel .ohlc-value {
+            color: inherit;
+            font-weight: 400;
+        }
+        .chart-panel .ohlc-change {
+            font-weight: 400;
+            color: inherit;
+        }
+        .chart-panel .ohlc-separator {
+            opacity: 0.6;
+            font-weight: 400;
+        }
+
         .panel-loading-overlay {
             position: absolute;
             inset: 0;
@@ -40443,7 +40490,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_PANEL_LOADER_V67"></script>
+    <script defer src="modules/panel-manager.js?v=20260325_PANEL_OHLC_V69"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -40459,7 +40506,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260325_PANEL_LOADER_V180"></script>
+    <script defer src="chart.js?v=20260325_PANEL_OHLC_V181"></script>
 
     <script defer src="modules/replay-system.js?v=20260325_PANEL_INDEP_V75"></script>
 

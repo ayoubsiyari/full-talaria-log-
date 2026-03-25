@@ -1546,7 +1546,6 @@ class PanelManager {
         const ohlcInfo = document.createElement('div');
         ohlcInfo.className = 'ohlc-info';
         ohlcInfo.id = `ohlcInfo${index}`;
-        ohlcInfo.style.cssText = 'left: 8px !important; top: 8px !important; flex-direction: column !important; gap: 2px !important;'; // Vertical layout for proper collapse button position
         ohlcInfo.innerHTML = `
             <div class="ohlc-header">
                 <div class="ohlc-symbol-block" style="position: relative;">
@@ -1564,10 +1563,6 @@ class PanelManager {
                 </div>
             </div>
             <div class="ohlc-body">
-                <div class="ohlc-volume-line" style="display: flex; align-items: center; gap: 6px;">
-                    <span class="volume-label">Volume</span>
-                    <span class="volume-value" id="volumeValue${index}">—</span>
-                </div>
                 <div class="ohlc-indicators" id="ohlcIndicators${index}"></div>
             </div>
             <button class="ohlc-collapse-btn" id="ohlcCollapseBtn${index}" style="margin-top: 4px; align-self: flex-start;">
