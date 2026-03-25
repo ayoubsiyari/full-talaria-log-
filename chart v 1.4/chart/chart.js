@@ -5040,33 +5040,37 @@ class Chart {
             this._cachedAccentColor = accentColor;
             targetChart._cachedAccentColor = accentColor;
 
-            root.style.setProperty('--sp-accent', accentColor);
-            root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
-            root.style.setProperty('--sp-secondary', secondaryColor);
-            root.style.setProperty('--sp-secondary-rgb', `${secondaryRgb[0]}, ${secondaryRgb[1]}, ${secondaryRgb[2]}`);
-            root.style.setProperty('--sp-text', rgbToCss(textRgb));
-            root.style.setProperty('--sp-text-muted', rgbToCss(textMutedRgb));
-            root.style.setProperty('--sp-text-active', isLightPanel ? '#111111' : '#ffffff');
-            root.style.setProperty('--sp-nav-icon-color', rgbToCss(navIconRgb));
-            root.style.setProperty('--sp-hover-bg', rgbaToCss(hoverBgRgb, 0.55));
-            root.style.setProperty('--sp-input-bg', rgbaToCss(inputBgRgb, 0.72));
-            root.style.setProperty('--sp-input-border', rgbaToCss(inputBorderRgb, 0.55));
-            root.style.setProperty('--sp-btn-border', rgbaToCss(btnBorderRgb, 0.65));
-            root.style.setProperty('--sp-select-bg', rgbaToCss(inputBgRgb, 0.72));
-            root.style.setProperty('--sp-bg', panelBg);
-            root.style.setProperty('--sp-sidebar-bg', sidebarBg);
-            root.style.setProperty('--sp-ui-chrome-bg', rgbToCss(chromeBg));
-            root.style.setProperty('--sp-ui-surface-bg', rgbToCss(surfaceBg));
-            root.style.setProperty('--sp-ui-sidebar-bg', rgbToCss(sidebarUiBg));
-            root.style.setProperty('--sp-ui-border', rgbaToCss(borderColorRgb, isLightPanel ? 0.80 : 0.42));
-            root.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
-            root.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
-            root.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
-            if (document.body) {
-                document.body.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
-                document.body.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
-                document.body.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
-                document.body.classList.toggle('light-mode', isLightPanel);
+            // Only the main chart drives global toolbar / settings-panel / body.light-mode.
+            // Panel charts call applyChartSettings (e.g. loadPanelSettings) and must not override app theme.
+            if (!targetChart.isPanel) {
+                root.style.setProperty('--sp-accent', accentColor);
+                root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
+                root.style.setProperty('--sp-secondary', secondaryColor);
+                root.style.setProperty('--sp-secondary-rgb', `${secondaryRgb[0]}, ${secondaryRgb[1]}, ${secondaryRgb[2]}`);
+                root.style.setProperty('--sp-text', rgbToCss(textRgb));
+                root.style.setProperty('--sp-text-muted', rgbToCss(textMutedRgb));
+                root.style.setProperty('--sp-text-active', isLightPanel ? '#111111' : '#ffffff');
+                root.style.setProperty('--sp-nav-icon-color', rgbToCss(navIconRgb));
+                root.style.setProperty('--sp-hover-bg', rgbaToCss(hoverBgRgb, 0.55));
+                root.style.setProperty('--sp-input-bg', rgbaToCss(inputBgRgb, 0.72));
+                root.style.setProperty('--sp-input-border', rgbaToCss(inputBorderRgb, 0.55));
+                root.style.setProperty('--sp-btn-border', rgbaToCss(btnBorderRgb, 0.65));
+                root.style.setProperty('--sp-select-bg', rgbaToCss(inputBgRgb, 0.72));
+                root.style.setProperty('--sp-bg', panelBg);
+                root.style.setProperty('--sp-sidebar-bg', sidebarBg);
+                root.style.setProperty('--sp-ui-chrome-bg', rgbToCss(chromeBg));
+                root.style.setProperty('--sp-ui-surface-bg', rgbToCss(surfaceBg));
+                root.style.setProperty('--sp-ui-sidebar-bg', rgbToCss(sidebarUiBg));
+                root.style.setProperty('--sp-ui-border', rgbaToCss(borderColorRgb, isLightPanel ? 0.80 : 0.42));
+                root.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
+                root.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
+                root.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
+                if (document.body) {
+                    document.body.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
+                    document.body.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
+                    document.body.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
+                    document.body.classList.toggle('light-mode', isLightPanel);
+                }
             }
         }
         
@@ -5158,6 +5162,11 @@ class Chart {
         // Save panel-specific settings
         if (targetChart.isPanel && targetChart.panelIndex !== undefined && window.panelManager) {
             window.panelManager.savePanelSettings(targetChart.panelIndex);
+        }
+
+        if (!targetChart.isPanel && window.panelManager && typeof window.panelManager.refreshMultiPanelChrome === 'function'
+            && window.panelManager.currentLayout && String(window.panelManager.currentLayout) !== '1') {
+            window.panelManager.refreshMultiPanelChrome();
         }
     }
     

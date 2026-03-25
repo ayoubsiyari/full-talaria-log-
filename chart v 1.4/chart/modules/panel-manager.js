@@ -1021,6 +1021,68 @@ class PanelManager {
         }
     }
 
+    /** @returns {[number,number,number]|null} */
+    _parseCssColorToRgb(color) {
+        if (!color) return null;
+        const s = String(color).trim();
+        const rgba = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+        if (rgba) {
+            return [parseInt(rgba[1], 10), parseInt(rgba[2], 10), parseInt(rgba[3], 10)];
+        }
+        const hex = s.startsWith('#') ? s.slice(1) : s;
+        if (/^[0-9a-f]{3}$/i.test(hex)) {
+            return [
+                parseInt(hex[0] + hex[0], 16),
+                parseInt(hex[1] + hex[1], 16),
+                parseInt(hex[2] + hex[2], 16)
+            ];
+        }
+        if (/^[0-9a-f]{6}$/i.test(hex)) {
+            return [
+                parseInt(hex.slice(0, 2), 16),
+                parseInt(hex.slice(2, 4), 16),
+                parseInt(hex.slice(4, 6), 16)
+            ];
+        }
+        return null;
+    }
+
+    _dividerColorForChartBackground(bgColor) {
+        const rgb = this._parseCssColorToRgb(bgColor);
+        if (!rgb) return '#2a2e39';
+        const lum = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114;
+        return lum > 195 ? 'rgba(0, 0, 0, 0.12)' : '#2a2e39';
+    }
+
+    getMultiPanelChromeFromMain() {
+        const mc = typeof window !== 'undefined' ? window.chart : null;
+        const bg = (mc && mc.chartSettings && mc.chartSettings.backgroundColor)
+            ? mc.chartSettings.backgroundColor
+            : '#131722';
+        return {
+            bg,
+            border: this._dividerColorForChartBackground(bg)
+        };
+    }
+
+    /**
+     * Extra panel shells + main chart wrapper borders follow main chart colors (avoids forced dark “theme”).
+     */
+    refreshMultiPanelChrome() {
+        if (!this.container || this.currentLayout === '1') return;
+        const { bg, border } = this.getMultiPanelChromeFromMain();
+        this.container.querySelectorAll('.chart-panel').forEach((el) => {
+            el.style.background = bg;
+            el.style.borderRight = `1px solid ${border}`;
+            el.style.borderBottom = `1px solid ${border}`;
+        });
+        const ow = document.getElementById('chartWrapper');
+        if (ow && this.container.contains(ow)) {
+            ow.style.borderRight = `1px solid ${border}`;
+            ow.style.borderBottom = `1px solid ${border}`;
+        }
+    }
+
     /**
      * Apply selected layout
      */
@@ -1414,7 +1476,8 @@ class PanelManager {
         // Position the original chart as the first panel
         if (originalChart) {
             const firstConfig = panelConfig[0];
-            
+            const mainChrome = this.getMultiPanelChromeFromMain();
+
             // Apply first panel's position to original chart
             originalChart.style.display = 'block';
             originalChart.style.position = 'absolute';
@@ -1425,8 +1488,8 @@ class PanelManager {
             originalChart.style.right = 'auto';
             originalChart.style.bottom = 'auto';
             originalChart.style.border = 'none';
-            originalChart.style.borderRight = '1px solid #2a2e39';
-            originalChart.style.borderBottom = '1px solid #2a2e39';
+            originalChart.style.borderRight = `1px solid ${mainChrome.border}`;
+            originalChart.style.borderBottom = `1px solid ${mainChrome.border}`;
             originalChart.style.boxSizing = 'border-box';
             originalChart.style.overflow = 'hidden';
             originalChart.style.zIndex = '10';
@@ -1541,6 +1604,8 @@ class PanelManager {
             detail: { panels: this.panels, layout: layout }
         }));
 
+        this.refreshMultiPanelChrome();
+
         this.savePanelState();
         
         // Resize functionality disabled - panels are fixed size
@@ -1551,6 +1616,7 @@ class PanelManager {
      * Create individual panel
      */
     createPanel(config, index) {
+        const chrome = this.getMultiPanelChromeFromMain();
         const panel = document.createElement('div');
         panel.className = 'chart-panel';
         panel.dataset.panelId = index;
@@ -1561,9 +1627,9 @@ class PanelManager {
             left: ${config.left || '0'};
             top: ${config.top || '0'};
             border: none;
-            border-right: 1px solid #2a2e39;
-            border-bottom: 1px solid #2a2e39;
-            background: #131722;
+            border-right: 1px solid ${chrome.border};
+            border-bottom: 1px solid ${chrome.border};
+            background: ${chrome.bg};
             box-sizing: border-box;
             overflow: hidden;
             z-index: 100;
