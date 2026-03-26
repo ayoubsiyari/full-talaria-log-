@@ -41473,7 +41473,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260326_PANEL_DRAG_RESIZE_V80"></script>
+    <script defer src="modules/panel-manager.js?v=20260326_PANEL_FIT_VIEW_V81"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -45151,8 +45151,10 @@
 
                     
 
-                    // Render the chart (even if no data, to show background)
+                    // Ensure fitToView is not blocked for new panel charts
+                    panelChart._chartViewRestored = false;
 
+                    // Render the chart (even if no data, to show background)
                     panelChart.fitToView();
 
                     panelChart.render();
@@ -45216,11 +45218,14 @@
 
                     
 
-                    // Force DPR-correct resize after DOM settles
+                    // Force DPR-correct resize after DOM settles, then ensure last candle visible
                     requestAnimationFrame(() => {
                         if (panelChart && panelChart.resize) {
                             panelChart._lastResizeDpr = 0;
                             panelChart.resize();
+                            // After resize, ensure chart shows last candle
+                            panelChart._chartViewRestored = false;
+                            panelChart.fitToView();
                             panelChart.render();
                         }
                         if (window.panelManager && typeof window.panelManager.restorePanelChartState === 'function') {

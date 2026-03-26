@@ -2252,9 +2252,22 @@ class PanelManager {
 
     restorePanelChartState(panelIndex) {
         const state = this.loadPanelState();
-        if (!state || !state.panels) return;
+        if (!state || !state.panels) {
+            // No saved state — just make sure chart shows last candle
+            const panel = this.panels[panelIndex];
+            if (panel && panel.chartInstance) {
+                this._schedulePostRestoreRender(panel.chartInstance);
+            }
+            return;
+        }
         const ps = state.panels.find(p => p.index === panelIndex);
-        if (!ps || ps.isMainChart) return;
+        if (!ps || ps.isMainChart) {
+            const panel = this.panels[panelIndex];
+            if (panel && panel.chartInstance) {
+                this._schedulePostRestoreRender(panel.chartInstance);
+            }
+            return;
+        }
 
         const panel = this.panels[panelIndex];
         if (!panel || !panel.chartInstance) return;
@@ -2269,7 +2282,9 @@ class PanelManager {
                 pc.loadPanelFileData(ps.fileId).then(() => {
                     pc.updateChartOHLCSymbol(pc.currentSymbol);
                     this._schedulePostRestoreRender(pc);
-                }).catch(() => {});
+                }).catch(() => {
+                    this._schedulePostRestoreRender(pc);
+                });
             }
         } else {
             this._schedulePostRestoreRender(pc);
@@ -2280,11 +2295,23 @@ class PanelManager {
         requestAnimationFrame(() => {
             if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
             if (typeof pc.resize === 'function') pc.resize();
+            pc._chartViewRestored = false;
             if (typeof pc.fitToView === 'function') pc.fitToView();
             if (typeof pc.render === 'function') pc.render();
             setTimeout(() => {
                 if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
                 if (typeof pc.resize === 'function') pc.resize();
+                // Ensure last candle is visible after final resize
+                if (pc.data && pc.data.length > 0) {
+                    const m = pc.margin || { l: 0, r: 0 };
+                    const cw = (pc.w || 0) - m.l - m.r;
+                    const spacing = typeof pc.getCandleSpacing === 'function' ? pc.getCandleSpacing() : (pc.candleWidth + 2);
+                    const lastCandleX = m.l + (pc.data.length - 1) * spacing + (pc.offsetX || 0);
+                    if (lastCandleX < 0 || lastCandleX > (pc.w || 0) + spacing * 5) {
+                        pc._chartViewRestored = false;
+                        if (typeof pc.fitToView === 'function') pc.fitToView();
+                    }
+                }
                 if (typeof pc.render === 'function') pc.render();
             }, 500);
         });
