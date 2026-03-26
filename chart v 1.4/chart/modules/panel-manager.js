@@ -2590,16 +2590,18 @@ class PanelManager {
 
         this._resizeState.currentBoundary = newBoundary;
 
-        // Throttled live chart resize for visual feedback (~5 fps)
+        // Throttled canvas resize (~20fps) — panels clip via CSS overflow:hidden
         const now = performance.now();
-        if (!this._lastLiveResize || now - this._lastLiveResize > 200) {
+        if (!this._lastLiveResize || now - this._lastLiveResize > 50) {
             this._lastLiveResize = now;
             panelSnapshots.forEach(snap => {
                 if (!snap) return;
                 const panel = this.panels[snap.idx];
-                if (!panel || !panel.chartInstance || !panel.chartInstance.resize) return;
-                panel.chartInstance._lastResizeDpr = 0;
-                panel.chartInstance.resize();
+                if (!panel || !panel.chartInstance) return;
+                const ci = panel.chartInstance;
+                if (ci._lastResizeDpr !== undefined) ci._lastResizeDpr = 0;
+                if (typeof ci.resize === 'function') ci.resize();
+                if (typeof ci.render === 'function') ci.render();
             });
         }
     }

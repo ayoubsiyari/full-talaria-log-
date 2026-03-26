@@ -23997,18 +23997,14 @@
         }
 
         /* ── Multi-Panel Dividers & Resize Handles ── */
-        .chart-panel {
-            border-right: 2px solid #2a2e39 !important;
-            border-bottom: 2px solid #2a2e39 !important;
-        }
-        body.light-mode .chart-panel {
-            border-right: 2px solid #d6dce6 !important;
-            border-bottom: 2px solid #d6dce6 !important;
-        }
+        .chart-panel,
         #chartWrapper {
             border-right: 2px solid #2a2e39 !important;
             border-bottom: 2px solid #2a2e39 !important;
+            overflow: hidden;
+            will-change: width, height;
         }
+        body.light-mode .chart-panel,
         body.light-mode #chartWrapper {
             border-right: 2px solid #d6dce6 !important;
             border-bottom: 2px solid #d6dce6 !important;
@@ -41841,7 +41837,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260326_SOLID_DIVIDER_V84"></script>
+    <script defer src="modules/panel-manager.js?v=20260326_SMOOTH_RESIZE_V85"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
