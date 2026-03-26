@@ -1227,6 +1227,7 @@ class Chart {
     async loadFileData(fileId) {
         const loadSeq = ++this._symbolLoadSeq;
         const targetFileId = String(fileId);
+        let prevSymbol = this.currentSymbol;
 
         try {
             // If replay is active, preserve the current wall-clock replay time and visible window.
@@ -1239,7 +1240,6 @@ class Chart {
                 : null;
 
             const symbolDisplay = document.getElementById('symbolDisplay');
-            const prevSymbol = this.currentSymbol;
 
             const session = this.backtestingSession || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
             const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId) || this.currentSymbol;

@@ -741,6 +741,7 @@ class OrderManager {
         const high = Number.parseFloat(bar.h);
         const low = Number.parseFloat(bar.l);
         if (![high, low].every(Number.isFinite)) return;
+        const barTime = Number(bar.t) || undefined;
 
         if (position.type === 'BUY') {
             if (position.tpTargets && position.tpTargets.length > 0) {
@@ -757,21 +758,22 @@ class OrderManager {
                         closePrice: tp,
                         type: closeType,
                         percentage: allTargetsHit ? null : closePercentage,
-                        targetId: target.id
+                        targetId: target.id,
+                        bgCloseTime: barTime
                     });
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && low <= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && low <= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     if (Number.isFinite(tp) && high >= tp) {
-                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP' });
+                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP', bgCloseTime: barTime });
                     }
                 }
             }
@@ -790,21 +792,22 @@ class OrderManager {
                         closePrice: tp,
                         type: closeType,
                         percentage: allTargetsHit ? null : closePercentage,
-                        targetId: target.id
+                        targetId: target.id,
+                        bgCloseTime: barTime
                     });
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && high >= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && high >= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL' });
+                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     if (Number.isFinite(tp) && low <= tp) {
-                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP' });
+                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP', bgCloseTime: barTime });
                     }
                 }
             }
@@ -12983,9 +12986,9 @@ class OrderManager {
         
         // Close positions that hit SL/TP
         // Use try-catch to prevent one error from breaking other closes
-        positionsToClose.forEach(({ id, closePrice, type, percentage, targetId }) => {
+        positionsToClose.forEach(({ id, closePrice, type, percentage, targetId, bgCloseTime }) => {
             try {
-                this.closePositionAtPrice(id, closePrice, type, percentage, targetId);
+                this.closePositionAtPrice(id, closePrice, type, percentage, targetId, bgCloseTime);
             } catch (err) {
                 console.error(`❌ Error closing position #${id}:`, err);
                 // Still try to remove the lines even if close failed
@@ -13036,14 +13039,19 @@ class OrderManager {
     /**
      * Close position at specific price (for SL/TP hits)
      */
-    closePositionAtPrice(orderId, closePrice, hitType = null, percentage = null, targetId = null) {
+    closePositionAtPrice(orderId, closePrice, hitType = null, percentage = null, targetId = null, bgCloseTime = null) {
         const position = this.openPositions.find(p => p.id === orderId);
         if (!position) return;
         
         console.log(`🔍 closePositionAtPrice called: orderId=${orderId}, hitType=${hitType}, percentage=${percentage}, targetId=${targetId}`);
         
         const currentCandle = this.getCurrentCandle();
-        const closeTime = currentCandle ? currentCandle.t : Date.now();
+        // For background (cross-pair) closes, use the background bar's timestamp.
+        const closeTime = (Number.isFinite(bgCloseTime) ? bgCloseTime : null)
+            || (currentCandle ? currentCandle.t : Date.now());
+        const posTicker = this._positionTicker(position);
+        const activeTicker = this._getActiveTicker();
+        const isBackgroundClose = !!(posTicker && activeTicker && posTicker !== activeTicker);
         
         // Determine if this is a partial close
         // If hitType is 'TP-PARTIAL' and percentage is provided and < 1, it's partial
@@ -13054,7 +13062,6 @@ class OrderManager {
         console.log(`   isPartialClose=${isPartialClose}, closeQuantity=${closeQuantity}, position.quantity=${position.quantity}`);
         
         // Calculate P&L using per-position instrument settings (safe across pair switches)
-        const posTicker = position.ticker || position.symbol || this._getActiveTicker();
         const posSettings = position.instrument_settings || null;
         const pnl = this._enginePnL(
             position.type,
@@ -13062,7 +13069,7 @@ class OrderManager {
             closePrice,
             closeQuantity,
             closePrice,
-            posTicker,
+            posTicker || activeTicker,
             posSettings
         );
         
@@ -13134,14 +13141,16 @@ class OrderManager {
             // Update remaining SL/TP lines to reflect new quantity (for P&L recalculation)
             this.updateSLTPLines();
             
-            // Draw partial profit marker on chart (like exit marker but for partial close)
-            this.drawPartialCloseMarker(position, {
-                closePrice: closePrice,
-                closeTime: closeTime,
-                pnl: pnl,
-                percentage: percentage,
-                targetId: targetId
-            });
+            // Draw partial profit marker only on the active chart
+            if (!isBackgroundClose) {
+                this.drawPartialCloseMarker(position, {
+                    closePrice: closePrice,
+                    closeTime: closeTime,
+                    pnl: pnl,
+                    percentage: percentage,
+                    targetId: targetId
+                });
+            }
             
             // Show notification
             const remainingTargets = position.tpTargets.filter(t => !t.hit).length;
@@ -13257,13 +13266,15 @@ class OrderManager {
             
             if (!shouldCreateJournalEntry) {
                 // Don't add to journal yet - waiting for all group entries to close
-                // BUT still draw exit marker for THIS individual entry (like split entries do)
-                this.drawExitMarker(position, {
-                    closePrice: closePrice,
-                    closeTime: closeTime,
-                    pnl: position.pnl, // Individual entry's P&L
-                    type: hitType || 'MANUAL'
-                });
+                // Draw exit marker only if position is on the active chart (skip for cross-pair)
+                if (!isBackgroundClose) {
+                    this.drawExitMarker(position, {
+                        closePrice: closePrice,
+                        closeTime: closeTime,
+                        pnl: position.pnl,
+                        type: hitType || 'MANUAL'
+                    });
+                }
                 
                 // Remove the visual lines for this closed position
                 this.removeOrderLine(orderId);
@@ -13594,6 +13605,11 @@ class OrderManager {
                 console.error(`❌ ERROR: journalEntry is undefined for position #${orderId}`);
                 console.error(`   scaledInfo:`, scaledInfo);
                 console.error(`   splitInfo:`, splitInfo);
+                // Still perform cleanup so visual lines don't linger
+                this.removeOrderLine(orderId);
+                this.removeSLTPLines(orderId);
+                this.removeEntryMarker(orderId);
+                this.updatePositionsPanel();
                 return;
             }
             
@@ -13625,21 +13641,20 @@ class OrderManager {
                 console.warn(`⚠️ Trade #${tradeId} already exists in journal - skipping duplicate`);
             }
             
-            // Draw exit marker before removing lines
-            // Use TOTAL P&L (including partials) for the exit marker
-            this.drawExitMarker(position, {
-                closePrice: closePrice,
-                closeTime: closeTime,
-                pnl: totalPnL, // Show total P&L including partial closes
-                type: hitType || 'MANUAL'
-            });
+            // Draw exit marker only on the active chart (skip for cross-pair background closes)
+            if (!isBackgroundClose) {
+                this.drawExitMarker(position, {
+                    closePrice: closePrice,
+                    closeTime: closeTime,
+                    pnl: totalPnL,
+                    type: hitType || 'MANUAL'
+                });
+            }
             
             this.removeEntryMarker(orderId);
 
             // Show notification based on hit type
             const closedTicker = String(position.ticker || position.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
-            const activeTicker = this._getActiveTicker();
-            const isBackgroundClose = !!closedTicker && !!activeTicker && closedTicker !== activeTicker;
             const sideLabel = String(position.type || '').toUpperCase() === 'SELL' ? 'Short' : 'Long';
             const rValue = position.riskAmount ? (pnl / position.riskAmount) : 0;
             const bgOpts = isBackgroundClose ? {
