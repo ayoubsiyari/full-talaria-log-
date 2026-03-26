@@ -2407,8 +2407,12 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.rect(m.l, panelTop, this.w - m.l, totalPanelHeight);
     ctx.clip();
     
-    // Outer top separator
-    ctx.strokeStyle = '#363a45';
+    // Outer top separator — soft divider line
+    const _isLightBg = document.body.classList.contains('light-mode');
+    const _sepColor = _isLightBg ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
+    const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.18)' : 'rgba(120, 123, 134, 0.35)';
+    const _gripHoverColor = _isLightBg ? 'rgba(0, 0, 0, 0.3)' : 'rgba(120, 123, 134, 0.55)';
+    ctx.strokeStyle = _sepColor;
     ctx.lineWidth = 1;
     ctx.setLineDash([]);
     ctx.beginPath();
@@ -2416,12 +2420,14 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.lineTo(this.w - m.r, panelTop);
     ctx.stroke();
     const topHandleMidX = this.w - m.r - 18;
-    ctx.strokeStyle = 'rgba(120,123,134,0.9)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = _gripColor;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(topHandleMidX - 10, panelTop);
-    ctx.lineTo(topHandleMidX + 10, panelTop);
+    ctx.moveTo(topHandleMidX - 8, panelTop);
+    ctx.lineTo(topHandleMidX + 8, panelTop);
     ctx.stroke();
+    ctx.lineCap = 'butt';
     
     // Get visible range
     const visibleStart = Math.max(0, Math.floor(this.visibleStartIndex || 0));
@@ -2454,9 +2460,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         const indTop = slot.top;
         const panelHeight = slot.height;
 
-        // Separator between slots
+        // Separator between slots — soft divider
         if (idx > 0) {
-            ctx.strokeStyle = '#2a2e39';
+            ctx.strokeStyle = _sepColor;
             ctx.lineWidth = 1;
             ctx.setLineDash([]);
             ctx.beginPath();
@@ -2464,12 +2470,14 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             ctx.lineTo(this.w - m.r, indBottom);
             ctx.stroke();
             const handleMidX = this.w - m.r - 18;
-            ctx.strokeStyle = 'rgba(120,123,134,0.75)';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = _gripColor;
+            ctx.lineWidth = 1.5;
+            ctx.lineCap = 'round';
             ctx.beginPath();
-            ctx.moveTo(handleMidX - 10, indBottom);
-            ctx.lineTo(handleMidX + 10, indBottom);
+            ctx.moveTo(handleMidX - 8, indBottom);
+            ctx.lineTo(handleMidX + 8, indBottom);
             ctx.stroke();
+            ctx.lineCap = 'butt';
         }
         
         const indicatorData = this.indicators.data[indicator.id];

@@ -1258,7 +1258,14 @@ class Chart {
             const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
 
             if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
-                params.set('end_ts', String(Math.floor(replayTargetTs + 120000)));
+                // For replay pair switches: fetch data centered around the replay time.
+                // Override start_ts to ensure data reaches the replay position, and
+                // keep session end_ts so there's forward data for continued replay.
+                const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
+                const contextBars = isBacktestSession ? 80000 : 4000;
+                const contextMs = contextBars * 60 * 1000;
+                const adjustedStart = Math.max(sessionStartMs, replayTargetTs - contextMs);
+                params.set('start_ts', String(Math.floor(adjustedStart)));
             }
 
             let result = this._tryTakeSmartPrefetch(targetFileId, params);
@@ -1330,10 +1337,15 @@ class Chart {
                 replay.tickPathCache = {};
                 replay.tickPathCacheBuilt = false;
 
+                // Use the most reliable timestamp for positioning:
+                // 1. replayTargetTs (captured before the fetch)
+                // 2. multiInstrumentSession.current_time (global session clock)
+                // 3. replay.replayTimestamp (last known replay position)
                 const sessionTime = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
                 const targetTs = Number.isFinite(replayTargetTs)
                     ? replayTargetTs
                     : (Number.isFinite(sessionTime) ? sessionTime : Number(replay.replayTimestamp));
+                console.log(`🔄 Pair switch during replay: targetTs=${targetTs}, replayTargetTs=${replayTargetTs}, sessionTime=${sessionTime}`);
 
                 if (typeof replay.goToReplayTimestamp === 'function' && Number.isFinite(targetTs)) {
                     replay.goToReplayTimestamp(targetTs, { centerOnCandle: true });
@@ -1457,7 +1469,11 @@ class Chart {
             const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
 
             if (replayActiveBefore && Number.isFinite(replayTs)) {
-                params.set('end_ts', String(Math.floor(replayTs + 120000)));
+                const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
+                const ctxBars = isBacktest ? 80000 : 4000;
+                const ctxMs = ctxBars * 60 * 1000;
+                const adjStart = Math.max(sessionStartMs, replayTs - ctxMs);
+                params.set('start_ts', String(Math.floor(adjStart)));
             }
 
             // Try main chart's prefetch cache first (same as loadFileData)

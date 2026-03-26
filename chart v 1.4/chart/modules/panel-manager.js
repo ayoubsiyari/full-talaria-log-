@@ -1072,9 +1072,9 @@ class PanelManager {
 
     _dividerColorForChartBackground(bgColor) {
         const rgb = this._parseCssColorToRgb(bgColor);
-        if (!rgb) return '#2a2e39';
+        if (!rgb) return 'rgba(255, 255, 255, 0.06)';
         const lum = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114;
-        return lum > 195 ? 'rgba(0, 0, 0, 0.12)' : '#2a2e39';
+        return lum > 195 ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
     }
 
     getMultiPanelChromeFromMain() {
@@ -1101,6 +1101,7 @@ class PanelManager {
         });
         const ow = document.getElementById('chartWrapper');
         if (ow && this.container.contains(ow)) {
+            ow.style.background = bg;
             ow.style.borderRight = `1px solid ${border}`;
             ow.style.borderBottom = `1px solid ${border}`;
         }
@@ -2451,24 +2452,13 @@ class PanelManager {
         handle.className = `panel-resize-handle ${type}`;
 
         if (type === 'vertical') {
-            handle.style.cssText = `position:absolute;left:${xPct}%;top:${yPct}%;width:10px;height:${sizePct}%;transform:translateX(-50%);cursor:col-resize;background:transparent;z-index:200;pointer-events:auto;`;
+            handle.style.cssText = `left:${xPct}%;top:${yPct}%;width:8px;height:${sizePct}%;transform:translateX(-50%);`;
         } else {
-            handle.style.cssText = `position:absolute;left:${xPct}%;top:${yPct}%;width:${sizePct}%;height:10px;transform:translateY(-50%);cursor:row-resize;background:transparent;z-index:200;pointer-events:auto;`;
+            handle.style.cssText = `left:${xPct}%;top:${yPct}%;width:${sizePct}%;height:8px;transform:translateY(-50%);`;
         }
 
         handle._resizeMeta = meta;
         handle._resizeType = type;
-
-        handle.addEventListener('mouseenter', () => {
-            if (!this.isResizing) {
-                handle.style.background = type === 'vertical'
-                    ? 'linear-gradient(90deg, transparent 20%, rgba(41,98,255,0.55) 50%, transparent 80%)'
-                    : 'linear-gradient(180deg, transparent 20%, rgba(41,98,255,0.55) 50%, transparent 80%)';
-            }
-        });
-        handle.addEventListener('mouseleave', () => {
-            if (!this.isResizing) handle.style.background = 'transparent';
-        });
 
         handle.addEventListener('mousedown', (e) => {
             e.preventDefault();
@@ -2515,9 +2505,7 @@ class PanelManager {
             }),
         };
 
-        handle.style.background = type === 'vertical'
-            ? 'linear-gradient(90deg, transparent 15%, rgba(41,98,255,0.75) 50%, transparent 85%)'
-            : 'linear-gradient(180deg, transparent 15%, rgba(41,98,255,0.75) 50%, transparent 85%)';
+        handle.classList.add('dragging');
         document.body.style.cursor = type === 'vertical' ? 'col-resize' : 'row-resize';
         document.body.style.userSelect = 'none';
 
@@ -2622,7 +2610,7 @@ class PanelManager {
 
         if (this._resizeRAF) { cancelAnimationFrame(this._resizeRAF); this._resizeRAF = null; }
         if (this._resizeOverlay) { this._resizeOverlay.remove(); this._resizeOverlay = null; }
-        if (this.resizeHandle) this.resizeHandle.style.background = 'transparent';
+        if (this.resizeHandle) this.resizeHandle.classList.remove('dragging');
 
         document.body.style.cursor = '';
         document.body.style.userSelect = '';

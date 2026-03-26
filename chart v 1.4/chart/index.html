@@ -1542,7 +1542,7 @@
 
         body.light-mode #chart-container canvas,
 
-        body.light-mode #chart-container *:not(.ohlc-dot-flag):not(.ssd-flag):not(.panel-resize-handle):not(.panel-follow-btn):not(#replayFollow) {
+        body.light-mode #chart-container *:not(.ohlc-dot-flag):not(.ssd-flag):not(.panel-resize-handle):not(.panel-follow-btn):not(#replayFollow):not(.chart-panel):not(#chartWrapper) {
 
             border: none !important;
 
@@ -23996,6 +23996,102 @@
             font-weight: 400;
         }
 
+        /* ── Multi-Panel Dividers & Resize Handles ── */
+        .chart-panel {
+            border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+            transition: border-color 0.2s ease;
+        }
+        body.light-mode .chart-panel {
+            border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+        }
+        #chartWrapper {
+            transition: border-color 0.2s ease;
+        }
+
+        .panel-resize-handle {
+            position: absolute;
+            z-index: 200;
+            pointer-events: auto;
+            background: transparent;
+            transition: background 0.2s ease;
+        }
+        .panel-resize-handle::after {
+            content: '';
+            position: absolute;
+            border-radius: 2px;
+            background: rgba(120, 123, 134, 0);
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+        .panel-resize-handle.vertical {
+            cursor: col-resize;
+        }
+        .panel-resize-handle.horizontal {
+            cursor: row-resize;
+        }
+        .panel-resize-handle.vertical::after {
+            top: 50%;
+            left: 50%;
+            width: 2px;
+            height: 28px;
+            transform: translate(-50%, -50%);
+        }
+        .panel-resize-handle.horizontal::after {
+            top: 50%;
+            left: 50%;
+            width: 28px;
+            height: 2px;
+            transform: translate(-50%, -50%);
+        }
+        .panel-resize-handle:hover::after {
+            background: rgba(120, 123, 134, 0.5);
+            box-shadow: 0 0 6px rgba(120, 123, 134, 0.2);
+        }
+        .panel-resize-handle:hover {
+            background: transparent;
+        }
+        .panel-resize-handle.vertical:hover {
+            background: linear-gradient(90deg, transparent 30%, rgba(120, 123, 134, 0.15) 50%, transparent 70%);
+        }
+        .panel-resize-handle.horizontal:hover {
+            background: linear-gradient(180deg, transparent 30%, rgba(120, 123, 134, 0.15) 50%, transparent 70%);
+        }
+        .panel-resize-handle.dragging {
+            background: transparent !important;
+        }
+        .panel-resize-handle.vertical.dragging {
+            background: linear-gradient(90deg, transparent 25%, rgba(41, 98, 255, 0.18) 50%, transparent 75%) !important;
+        }
+        .panel-resize-handle.horizontal.dragging {
+            background: linear-gradient(180deg, transparent 25%, rgba(41, 98, 255, 0.18) 50%, transparent 75%) !important;
+        }
+        .panel-resize-handle.dragging::after {
+            background: rgba(41, 98, 255, 0.55);
+            box-shadow: 0 0 8px rgba(41, 98, 255, 0.25);
+        }
+
+        body.light-mode .panel-resize-handle:hover::after {
+            background: rgba(0, 0, 0, 0.2);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.08);
+        }
+        body.light-mode .panel-resize-handle.vertical:hover {
+            background: linear-gradient(90deg, transparent 30%, rgba(0, 0, 0, 0.05) 50%, transparent 70%);
+        }
+        body.light-mode .panel-resize-handle.horizontal:hover {
+            background: linear-gradient(180deg, transparent 30%, rgba(0, 0, 0, 0.05) 50%, transparent 70%);
+        }
+        body.light-mode .panel-resize-handle.vertical.dragging {
+            background: linear-gradient(90deg, transparent 25%, rgba(41, 98, 255, 0.1) 50%, transparent 75%) !important;
+        }
+        body.light-mode .panel-resize-handle.horizontal.dragging {
+            background: linear-gradient(180deg, transparent 25%, rgba(41, 98, 255, 0.1) 50%, transparent 75%) !important;
+        }
+        body.light-mode .panel-resize-handle.dragging::after {
+            background: rgba(41, 98, 255, 0.45);
+            box-shadow: 0 0 8px rgba(41, 98, 255, 0.15);
+        }
+
         .panel-loading-overlay {
             position: absolute;
             inset: 0;
@@ -41742,7 +41838,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260326_PANEL_FOLLOW_BTN_V82"></script>
+    <script defer src="modules/panel-manager.js?v=20260326_SOFT_RESIZE_V83"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -41758,7 +41854,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_PAIR_SWITCH_REPLAY_V202"></script>
+    <script defer src="chart.js?v=20260326_PAIR_SWITCH_DATE_SYNC_V203"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V77"></script>
 
@@ -41994,7 +42090,7 @@
 
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
 
-    <script defer src="modules/chart-indicators-full.js?v=20260323_INDICATORS_WIRE_V74"></script>
+    <script defer src="modules/chart-indicators-full.js?v=20260326_SOFT_SEPARATORS_V75"></script>
 
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
 
