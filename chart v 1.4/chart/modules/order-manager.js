@@ -4834,6 +4834,17 @@ class OrderManager {
                 body.light-mode .order-panel *,
                 body.light-mode .order-panel *:focus,
                 body.light-mode .order-panel *:focus-visible { outline: none !important; }
+                body.light-mode .order-panel button,
+                body.light-mode .order-panel .order-tab,
+                body.light-mode .order-panel .order-type-btn,
+                body.light-mode .order-panel .position-mode-tab,
+                body.light-mode .order-panel .breakeven-mode-tab,
+                body.light-mode .order-panel .input-stepper,
+                body.light-mode .order-panel .risk-btn,
+                body.light-mode .order-panel .order-btn-icon,
+                body.light-mode .order-panel .order-utility-btn {
+                    transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+                }
 
                 /* Scrollbar */
                 body.light-mode .order-panel__content::-webkit-scrollbar-thumb { background: #c4c9d2 !important; }
@@ -4861,8 +4872,10 @@ class OrderManager {
                 body.light-mode .order-tab:hover:not(.active) {
                     background: #ffffff !important;
                     border-color: #9ca3af !important;
-                    color: #374151 !important;
-                    -webkit-text-fill-color: #374151 !important;
+                    color: #6b7280 !important;
+                    -webkit-text-fill-color: #6b7280 !important;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+                    filter: none !important;
                 }
                 body.light-mode .order-tab.active.order-tab--buy {
                     background: linear-gradient(135deg, #22c55e, #16a34a) !important;
@@ -4879,14 +4892,18 @@ class OrderManager {
                     box-shadow: 0 3px 12px rgba(239,68,68,0.35) !important;
                 }
                 body.light-mode .order-tab.active.order-tab--buy:hover {
+                    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
                     border-color: #15803d !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
+                    box-shadow: 0 3px 12px rgba(34,197,94,0.35) !important;
                 }
                 body.light-mode .order-tab.active.order-tab--sell:hover {
+                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
                     border-color: #b91c1c !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
+                    box-shadow: 0 3px 12px rgba(239,68,68,0.35) !important;
                 }
 
                 /* ── Button groups (Market/Limit/Stop + Risk$/Risk%/LotSize) ── */
@@ -4910,7 +4927,10 @@ class OrderManager {
                 }
                 body.light-mode .order-type-btn.active,
                 body.light-mode .position-mode-tab.active,
-                body.light-mode .breakeven-mode-tab.active {
+                body.light-mode .breakeven-mode-tab.active,
+                body.light-mode .order-type-btn.active:hover,
+                body.light-mode .position-mode-tab.active:hover,
+                body.light-mode .breakeven-mode-tab.active:hover {
                     background: var(--op-accent, #2962ff) !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
