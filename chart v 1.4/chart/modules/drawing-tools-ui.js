@@ -3808,6 +3808,52 @@ body.light-mode .tv-select option {
 
 }
 
+body.light-mode .tv-prop-dropdown-btn {
+
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #1f2937;
+
+}
+
+body.light-mode .tv-prop-dropdown-btn:hover {
+
+    background: rgba(41, 98, 255, 0.10);
+    border-color: rgba(41, 98, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.14);
+    color: #0f172a;
+
+}
+
+body.light-mode .tv-prop-dropdown-menu {
+
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+
+}
+
+body.light-mode .tv-prop-dropdown-option {
+
+    color: #1f2937;
+    font-weight: 500;
+
+}
+
+body.light-mode .tv-prop-dropdown-option:hover {
+
+    background: #eff6ff;
+    color: #0f172a;
+
+}
+
+body.light-mode .tv-prop-dropdown-option.selected {
+
+    background: rgba(41, 98, 255, 0.14);
+    color: #1e40af;
+
+}
+
 
 
 body.light-mode .tv-input {
