@@ -24009,62 +24009,59 @@
             position: absolute;
             z-index: 200;
             pointer-events: auto;
-            transition: background-color 0.15s ease;
+            background: transparent !important;
         }
-        /* Full-length overlay divider line — always visible */
+        /* Transparent hit area — full boundary size */
         .panel-resize-handle.vertical {
             cursor: col-resize;
             width: 9px;
             transform: translateX(-4.5px);
-            background: transparent;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: none;
-            border-bottom: none;
-            box-sizing: border-box;
-            background-clip: content-box;
-            background-color: #2a2e39;
         }
         .panel-resize-handle.horizontal {
             cursor: row-resize;
             height: 9px;
             transform: translateY(-4.5px);
-            background: transparent;
-            border-top: 4px solid transparent;
-            border-bottom: 4px solid transparent;
-            border-left: none;
-            border-right: none;
-            box-sizing: border-box;
-            background-clip: content-box;
-            background-color: #2a2e39;
         }
-        /* Hover — line brightens */
-        .panel-resize-handle.vertical:hover {
-            background-color: #3b4050;
+        /* Visible line via ::before — clipped to avoid axis overlap */
+        .panel-resize-handle::before {
+            content: '';
+            position: absolute;
+            background: #2a2e39;
+            transition: background 0.15s ease;
+            pointer-events: none;
         }
-        .panel-resize-handle.horizontal:hover {
-            background-color: #3b4050;
+        .panel-resize-handle.vertical::before {
+            left: 50%;
+            width: 1px;
+            transform: translateX(-0.5px);
+            top: 0;
+            bottom: 30px;
         }
-        /* Dragging — accent blue */
-        .panel-resize-handle.vertical.dragging {
-            background-color: #2962FF !important;
+        .panel-resize-handle.horizontal::before {
+            top: 50%;
+            height: 1px;
+            transform: translateY(-0.5px);
+            left: 0;
+            right: 60px;
         }
-        .panel-resize-handle.horizontal.dragging {
-            background-color: #2962FF !important;
+        /* Hover */
+        .panel-resize-handle:hover::before {
+            background: #3b4050;
+        }
+        /* Dragging */
+        .panel-resize-handle.dragging::before {
+            background: #2962FF !important;
         }
 
         /* Light mode */
-        body.light-mode .panel-resize-handle.vertical,
-        body.light-mode .panel-resize-handle.horizontal {
-            background-color: #d6dce6;
+        body.light-mode .panel-resize-handle::before {
+            background: #d6dce6;
         }
-        body.light-mode .panel-resize-handle.vertical:hover,
-        body.light-mode .panel-resize-handle.horizontal:hover {
-            background-color: #b0b8c5;
+        body.light-mode .panel-resize-handle:hover::before {
+            background: #b0b8c5;
         }
-        body.light-mode .panel-resize-handle.vertical.dragging,
-        body.light-mode .panel-resize-handle.horizontal.dragging {
-            background-color: #2962FF !important;
+        body.light-mode .panel-resize-handle.dragging::before {
+            background: #2962FF !important;
         }
 
         .panel-loading-overlay {
