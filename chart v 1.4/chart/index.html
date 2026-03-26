@@ -24017,11 +24017,32 @@
             background: transparent;
             transition: background 0.2s ease;
         }
+        /* Always-visible divider line */
+        .panel-resize-handle::before {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.07);
+        }
+        .panel-resize-handle.vertical::before {
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            transform: translateX(-0.5px);
+        }
+        .panel-resize-handle.horizontal::before {
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 1px;
+            transform: translateY(-0.5px);
+        }
+        /* Small grip pill (center) */
         .panel-resize-handle::after {
             content: '';
             position: absolute;
             border-radius: 2px;
-            background: rgba(120, 123, 134, 0);
+            background: rgba(120, 123, 134, 0.25);
             transition: background 0.2s ease, box-shadow 0.2s ease;
         }
         .panel-resize-handle.vertical {
@@ -24044,52 +24065,43 @@
             height: 2px;
             transform: translate(-50%, -50%);
         }
+        /* Hover — line brightens */
+        .panel-resize-handle:hover::before {
+            background: rgba(120, 123, 134, 0.3);
+        }
         .panel-resize-handle:hover::after {
-            background: rgba(120, 123, 134, 0.5);
-            box-shadow: 0 0 6px rgba(120, 123, 134, 0.2);
+            background: rgba(120, 123, 134, 0.55);
+            box-shadow: 0 0 6px rgba(120, 123, 134, 0.15);
         }
-        .panel-resize-handle:hover {
-            background: transparent;
-        }
-        .panel-resize-handle.vertical:hover {
-            background: linear-gradient(90deg, transparent 30%, rgba(120, 123, 134, 0.15) 50%, transparent 70%);
-        }
-        .panel-resize-handle.horizontal:hover {
-            background: linear-gradient(180deg, transparent 30%, rgba(120, 123, 134, 0.15) 50%, transparent 70%);
-        }
-        .panel-resize-handle.dragging {
-            background: transparent !important;
-        }
-        .panel-resize-handle.vertical.dragging {
-            background: linear-gradient(90deg, transparent 25%, rgba(41, 98, 255, 0.18) 50%, transparent 75%) !important;
-        }
-        .panel-resize-handle.horizontal.dragging {
-            background: linear-gradient(180deg, transparent 25%, rgba(41, 98, 255, 0.18) 50%, transparent 75%) !important;
+        /* Dragging — accent blue */
+        .panel-resize-handle.dragging::before {
+            background: rgba(41, 98, 255, 0.25);
         }
         .panel-resize-handle.dragging::after {
             background: rgba(41, 98, 255, 0.55);
-            box-shadow: 0 0 8px rgba(41, 98, 255, 0.25);
+            box-shadow: 0 0 8px rgba(41, 98, 255, 0.2);
         }
 
+        /* Light mode */
+        body.light-mode .panel-resize-handle::before {
+            background: rgba(0, 0, 0, 0.09);
+        }
+        body.light-mode .panel-resize-handle::after {
+            background: rgba(0, 0, 0, 0.12);
+        }
+        body.light-mode .panel-resize-handle:hover::before {
+            background: rgba(0, 0, 0, 0.18);
+        }
         body.light-mode .panel-resize-handle:hover::after {
-            background: rgba(0, 0, 0, 0.2);
-            box-shadow: 0 0 6px rgba(0, 0, 0, 0.08);
+            background: rgba(0, 0, 0, 0.25);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.06);
         }
-        body.light-mode .panel-resize-handle.vertical:hover {
-            background: linear-gradient(90deg, transparent 30%, rgba(0, 0, 0, 0.05) 50%, transparent 70%);
-        }
-        body.light-mode .panel-resize-handle.horizontal:hover {
-            background: linear-gradient(180deg, transparent 30%, rgba(0, 0, 0, 0.05) 50%, transparent 70%);
-        }
-        body.light-mode .panel-resize-handle.vertical.dragging {
-            background: linear-gradient(90deg, transparent 25%, rgba(41, 98, 255, 0.1) 50%, transparent 75%) !important;
-        }
-        body.light-mode .panel-resize-handle.horizontal.dragging {
-            background: linear-gradient(180deg, transparent 25%, rgba(41, 98, 255, 0.1) 50%, transparent 75%) !important;
+        body.light-mode .panel-resize-handle.dragging::before {
+            background: rgba(41, 98, 255, 0.18);
         }
         body.light-mode .panel-resize-handle.dragging::after {
             background: rgba(41, 98, 255, 0.45);
-            box-shadow: 0 0 8px rgba(41, 98, 255, 0.15);
+            box-shadow: 0 0 8px rgba(41, 98, 255, 0.12);
         }
 
         .panel-loading-overlay {
