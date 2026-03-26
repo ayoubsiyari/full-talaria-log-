@@ -7201,7 +7201,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
-        const _ddBtnStyle = 'height:26px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
+        const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
         const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
         const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
         const _lvlMenus = [];
@@ -7449,7 +7449,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             input.step = '0.001';
 
-            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
+            input.style.cssText = 'color: var(--sp-text,#d1d4dc); background: var(--sp-input-bg,rgba(255,255,255,0.08)); border: 1px solid var(--sp-input-border,#363a45); border-radius: 6px; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
 
 
 
@@ -7932,7 +7932,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
-        const _ddBtnStyle = 'height:26px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
+        const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
         const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
         const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
         const _lvlMenus = [];
@@ -8178,7 +8178,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             input.step = '0.001';
 
-            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
+            input.style.cssText = 'color: var(--sp-text,#d1d4dc); background: var(--sp-input-bg,rgba(255,255,255,0.08)); border: 1px solid var(--sp-input-border,#363a45); border-radius: 6px; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
 
 
 
@@ -10066,7 +10066,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
             const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
-            const _ddBtnStyle = 'height:26px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
+            const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
             const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
             const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
             const _allMenus = [];
@@ -10682,7 +10682,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
-        const _ddBtnStyle = 'height:26px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
+        const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
         const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
         const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
         const _gannMenus = [];
@@ -10932,7 +10932,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 input.step = '0.001';
 
-                input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
+                input.style.cssText = 'color: var(--sp-text,#d1d4dc); background: var(--sp-input-bg,rgba(255,255,255,0.08)); border: 1px solid var(--sp-input-border,#363a45); border-radius: 6px; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
 
 
 
