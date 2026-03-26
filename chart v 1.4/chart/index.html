@@ -41750,7 +41750,7 @@
 
     <script defer src="settings-panel-ext.js?v=20260321_CLR_ALIGN_V1"></script>
 
-    <script defer src="modules/timeframe-favorites.js?v=20260318_TF_PIN_V59"></script>
+    <script defer src="modules/timeframe-favorites.js?v=20260326_PANEL_TF_SIDEBAR_V60"></script>
 
     <script defer src="modules/propfirm-tracker.js?v=20260325_CHALLENGE_ENFORCE_OFF_V60"></script>
 
@@ -44987,15 +44987,7 @@
                     // Listen for panel selection — sync toolbar UI but keep active drawing tool
                     window.addEventListener('panelSelected', (event) => {
 
-                        // Update timeframe bar to show selected panel's timeframe
-                        const panelTimeframe = event.detail.timeframe;
-                        if (panelTimeframe) {
-                            document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
-                            const matchingBtn = document.querySelector(`.timeframe-btn[data-timeframe="${panelTimeframe}"]`);
-                            if (matchingBtn) {
-                                matchingBtn.classList.add('active');
-                            }
-                        }
+                        // Timeframe toolbar + sidebar sync is handled in the global panelSelected listener (timeframeFavorites)
 
                         // Update symbol display header to show selected panel info
                         const activeChart = event.detail.panel && event.detail.panel.chartInstance
@@ -53799,17 +53791,29 @@ function showIndicatorsMenu() {
 
 
 
-            // 2. Sync timeframe label in sidebar / toolbar
+            // 2. Sync timeframe sidebar + toolbar highlight to the selected panel's interval (add TF to bar if missing)
 
             const timeframe = detail.timeframe || activeChart.currentTimeframe || '1m';
 
-            const sidebarTf = document.getElementById('sidebarCurrentTimeframe');
+            if (window.panelManager && typeof window.panelManager.getCurrentLayout === 'function' && window.panelManager.getCurrentLayout() !== '1') {
 
-            if (sidebarTf) sidebarTf.textContent = timeframe;
+                if (window.timeframeFavorites && typeof window.timeframeFavorites.reflectActivePanelTimeframeWithoutChartChange === 'function') {
 
-            const tfLabel = document.getElementById('currentTimeframeLabel');
+                    window.timeframeFavorites.reflectActivePanelTimeframeWithoutChartChange(timeframe);
 
-            if (tfLabel) tfLabel.textContent = timeframe;
+                }
+
+            } else {
+
+                const sidebarTf = document.getElementById('sidebarCurrentTimeframe');
+
+                if (sidebarTf) sidebarTf.textContent = timeframe;
+
+                const tfLabel = document.getElementById('currentTimeframeLabel');
+
+                if (tfLabel) tfLabel.textContent = timeframe;
+
+            }
 
 
 
