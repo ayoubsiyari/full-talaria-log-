@@ -1796,9 +1796,8 @@ class ReplaySystem {
             newRawIndex = idx;
         }
         
-        // We want to KEEP this candle and remove everything after
-        // So we set currentIndex to newRawIndex + 1 (to include the clicked candle)
-        newRawIndex = newRawIndex + 1;
+        // Last included raw bar index = idx → slice(0, idx+1). Replay uses currentIndex as that
+        // last bar index (same convention as completeTickAnimation / updateChartData).
         
         
         const flashCutLines = () => {
@@ -1819,7 +1818,6 @@ class ReplaySystem {
             // Exit go back mode
             this.exitGoBackMode();
             
-            // Update current index to go back
             this.currentIndex = newRawIndex;
             
             // Update chart data with smooth transition
@@ -3561,7 +3559,7 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
 
                 if (hasOwnData) {
-                    let idx = this._bsearchTimestamp(pc._panelFullRawData, replayTs);
+                    let idx = this._findLastRawIndexAtOrBefore(pc._panelFullRawData, replayTs);
                     idx = Math.max(0, Math.min(idx, pc._panelFullRawData.length - 1));
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
@@ -4410,6 +4408,29 @@ class ReplaySystem {
         return lo;
     }
 
+    /**
+     * Last raw bar index with t <= ts (sorted ascending by .t).
+     * Used so every pair ends on the same wall-clock cut as main replayTimestamp.
+     */
+    _findLastRawIndexAtOrBefore(data, ts) {
+        if (!Array.isArray(data) || data.length === 0) return 0;
+        if (!Number.isFinite(ts)) return Math.max(0, data.length - 1);
+        let lo = 0;
+        let hi = data.length - 1;
+        let ans = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            const t = data[mid]?.t || 0;
+            if (t <= ts) {
+                ans = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return ans >= 0 ? ans : 0;
+    }
+
     syncPanelCharts() {
         if (!window.panelManager || !window.panelManager.panels || window.panelManager.panels.length === 0) {
             return;
@@ -4432,7 +4453,7 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
 
                 if (hasOwnData) {
-                    let idx = this._bsearchTimestamp(pc._panelFullRawData, replayTs);
+                    let idx = this._findLastRawIndexAtOrBefore(pc._panelFullRawData, replayTs);
                     idx = Math.max(0, Math.min(idx, pc._panelFullRawData.length - 1));
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
