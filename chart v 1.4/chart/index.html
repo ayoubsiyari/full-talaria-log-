@@ -55841,11 +55841,60 @@ function gSave(p){ var c=Object.assign({},gLoad(),p); try{localStorage.setItem('
 // Template preview mode: do not persist previewed colors until user confirms Apply.
 if(!window.__tplPreviewCommitHookBound){
     window.__tplPreviewCommitHookBound=true;
+    // Capture state before preview selection so Cancel can always restore.
+    document.addEventListener('click',function(e){
+        var t=e&&e.target; if(!t||typeof t.closest!=='function') return;
+        var opt=t.closest('.tl-dd-opt'); if(!opt) return;
+        var ddid=opt.dataset&&opt.dataset.ddid;
+        if(ddid!=='tl_chart_dd'&&ddid!=='tl_panel_dd') return;
+        var c=ch(); if(!c) return;
+        var tid=opt.dataset.tplid;
+        var cs=c.chartSettings||{};
+        var current=(ddid==='tl_chart_dd')?(cs.activeChartOnlyTemplate||c._lastChartOnlyTemplate||null):(cs.activePanelOnlyTemplate||c._lastPanelOnlyTemplate||null);
+        if(!tid||tid===current) return;
+        window.__templatePreviewOriginal={
+            chartSettings:JSON.parse(JSON.stringify(cs)),
+            lastChart:c._lastChartOnlyTemplate||null,
+            lastPanel:c._lastPanelOnlyTemplate||null,
+            activeChart:cs.activeChartOnlyTemplate||null,
+            activePanel:cs.activePanelOnlyTemplate||null,
+            activeUnified:cs.activeUnifiedTheme||null
+        };
+    },true);
+
     document.addEventListener('click',function(e){
         var t=e&&e.target;
         if(!t||!t.id) return;
         if(t.id==='confirmApplyTemplate'||t.id==='confirmCancelTemplate'||t.id==='confirmCloseTemplate'){
             window._templatePreviewMode=false;
+            if(t.id==='confirmApplyTemplate'){
+                setTimeout(function(){
+                    var c=ch(); if(!c) return;
+                    var cs=c.chartSettings||{};
+                    var payload={
+                        full:c._lastTemplateSelected||cs.activeUnifiedTheme||null,
+                        chartOnly:c._lastChartOnlyTemplate||cs.activeChartOnlyTemplate||null,
+                        panelOnly:c._lastPanelOnlyTemplate||cs.activePanelOnlyTemplate||null
+                    };
+                    try{ localStorage.setItem('chart_active_tpl',JSON.stringify(payload)); }catch(_e){}
+                    window.__templatePreviewOriginal=null;
+                },0);
+            }else{
+                var c=ch();
+                var snap=window.__templatePreviewOriginal;
+                if(c&&snap&&snap.chartSettings){
+                    c.chartSettings=JSON.parse(JSON.stringify(snap.chartSettings));
+                    c._lastChartOnlyTemplate=snap.lastChart;
+                    c._lastPanelOnlyTemplate=snap.lastPanel;
+                    c.chartSettings.activeChartOnlyTemplate=snap.activeChart;
+                    c.chartSettings.activePanelOnlyTemplate=snap.activePanel;
+                    c.chartSettings.activeUnifiedTheme=snap.activeUnified;
+                    if(c.applyChartSettings)c.applyChartSettings();
+                    if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render();
+                    if(typeof tlRefreshTemplateDropdownChrome==='function') tlRefreshTemplateDropdownChrome();
+                }
+                window.__templatePreviewOriginal=null;
+            }
         }
     },true);
 }
