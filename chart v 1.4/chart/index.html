@@ -34160,6 +34160,13 @@
         }
 
         /* ── Order panel: light-mode overrides (mirrors dark-mode structure) ── */
+        body.light-mode .order-panel button,
+        body.light-mode .order-panel button:focus,
+        body.light-mode .order-panel button:focus-visible,
+        body.light-mode .order-panel input:focus,
+        body.light-mode .order-panel select:focus {
+            outline: none !important;
+        }
         body.light-mode .order-panel {
             --op-bg: #f4f5f7;
             --op-surface: #eaecf0;
@@ -34190,16 +34197,25 @@
         /* Buy/Sell tabs */
         body.light-mode .order-tab {
             background: rgba(0,0,0,0.02) !important;
-            border: 1px solid var(--op-border) !important;
-            color: var(--op-text-muted) !important;
+            border: 1px solid rgba(0,0,0,0.08) !important;
+            color: #374151 !important;
+            outline: none !important;
         }
-        body.light-mode .order-tab:hover:not(.active) { filter: brightness(0.96) !important; color: var(--op-text) !important; }
+        body.light-mode .order-tab:hover:not(.active) {
+            background: rgba(0,0,0,0.05) !important;
+            border-color: rgba(0,0,0,0.12) !important;
+            color: #111827 !important;
+        }
+        body.light-mode .order-tab:focus, body.light-mode .order-tab:focus-visible {
+            outline: none !important;
+        }
         body.light-mode .order-tab.active.order-tab--buy,
         body.light-mode .order-tab.active.order-tab--sell {
             background: linear-gradient(135deg, rgba(var(--op-accent-rgb),0.9), rgba(var(--op-accent-rgb),0.7)) !important;
             border-color: rgba(var(--op-accent-rgb),0.9) !important;
             color: #fff !important;
             box-shadow: 0 3px 14px rgba(var(--op-accent-rgb),0.35) !important;
+            outline: none !important;
         }
         body.light-mode .order-tab.active:hover { filter: brightness(1.06) !important; }
 
@@ -34213,6 +34229,7 @@
         body.light-mode .breakeven-mode-tab {
             color: var(--op-text-muted) !important;
             background: transparent !important;
+            outline: none !important;
         }
         body.light-mode .order-type-btn:hover:not(.active),
         body.light-mode .position-mode-tab:hover:not(.active),
@@ -34274,6 +34291,7 @@
             background: rgba(0,0,0,0.04) !important;
             border: 1px solid var(--op-border) !important;
             color: var(--op-text) !important;
+            outline: none !important;
         }
         body.light-mode .input-stepper:hover {
             border-color: rgba(var(--op-accent-rgb),0.7) !important;
