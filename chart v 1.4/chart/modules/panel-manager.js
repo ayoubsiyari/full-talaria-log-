@@ -34,11 +34,6 @@ class PanelManager {
         this.layoutSelector = null;
         this.selectedPanelIndex = 0; // Currently selected panel
         
-        // Maximize state
-        this.maximizedPanelIndex = null;
-        this.layoutBeforeMaximize = null;
-        this.panelSizesBeforeMaximize = null;
-        
         // Resize state
         this.resizeHandles = [];
         this.isResizing = false;
@@ -1250,7 +1245,6 @@ class PanelManager {
             // Reset panel tracking
             this.panels = [];
             this.selectedPanelIndex = 0;
-            this.maximizedPanelIndex = null;
             
             // Reset resize state and remove any active resize listeners
             this.isResizing = false;
@@ -1639,9 +1633,6 @@ class PanelManager {
                 chartWrapper.addEventListener('mousedown', chartWrapper._panelClickHandler, true);
             }
             
-            // Setup double-click to maximize for main chart
-            this.setupPanelMaximize(mainPanel, 0);
-            
             console.log(`📊 Panel 0: Main chart positioned at ${firstConfig.width} x ${firstConfig.height}`);
             
             // Trigger resize for main chart after positioning
@@ -1926,9 +1917,6 @@ class PanelManager {
         
         console.log(`✅ Panel ${index} added to DOM`);
         
-        // Setup double-click to maximize
-        this.setupPanelMaximize(this.panels[this.panels.length - 1], index);
-        
         // Trigger resize for canvas with proper DPR scaling
         setTimeout(() => {
             const rect = panel.getBoundingClientRect();
@@ -2114,113 +2102,6 @@ class PanelManager {
     }
     
     /**
-     * Toggle maximize/restore for a panel
-     */
-    toggleMaximize(index) {
-        if (this.maximizedPanelIndex === index) {
-            // Restore from maximized
-            this.restoreFromMaximize();
-        } else {
-            // Maximize this panel
-            this.maximizePanel(index);
-        }
-    }
-    
-    /**
-     * Maximize a single panel to full screen
-     */
-    maximizePanel(index) {
-        if (this.panels.length <= 1) return;
-        
-        // Save current state
-        this.layoutBeforeMaximize = this.currentLayout;
-        this.panelSizesBeforeMaximize = this.panels.map(p => ({
-            width: p.element?.style.width,
-            height: p.element?.style.height,
-            left: p.element?.style.left,
-            top: p.element?.style.top,
-            display: p.element?.style.display
-        }));
-        
-        this.maximizedPanelIndex = index;
-        
-        // Hide all panels except the maximized one
-        this.panels.forEach((panel, i) => {
-            if (panel.element) {
-                if (i === index) {
-                    // Maximize this panel
-                    panel.element.style.left = '0';
-                    panel.element.style.top = '0';
-                    panel.element.style.width = '100%';
-                    panel.element.style.height = '100%';
-                    panel.element.style.display = 'block';
-                    panel.element.style.zIndex = '200';
-                    panel.element.style.overflow = 'visible'; // Allow crosshair lines to render fully
-                } else {
-                    // Hide other panels
-                    panel.element.style.display = 'none';
-                }
-            }
-        });
-        
-        // Resize the maximized panel's chart (use Chart.resize() for proper DPR)
-        setTimeout(() => {
-            const panel = this.panels[index];
-            if (panel && panel.chartInstance && panel.chartInstance.resize) {
-                panel.chartInstance._lastResizeDpr = 0; // force DPR recalc
-                panel.chartInstance.resize();
-                panel.chartInstance.render();
-            }
-        }, 50);
-        
-        console.log(`🔲 Panel ${index} maximized`);
-        
-        // Show notification
-        if (window.chart && window.chart.showNotification) {
-            window.chart.showNotification('Double-click to restore');
-        }
-    }
-    
-    /**
-     * Restore from maximized state
-     */
-    restoreFromMaximize() {
-        if (this.maximizedPanelIndex === null) return;
-        
-        // Restore all panel sizes
-        this.panels.forEach((panel, i) => {
-            if (panel.element && this.panelSizesBeforeMaximize[i]) {
-                const saved = this.panelSizesBeforeMaximize[i];
-                panel.element.style.width = saved.width;
-                panel.element.style.height = saved.height;
-                panel.element.style.left = saved.left;
-                panel.element.style.top = saved.top;
-                panel.element.style.display = saved.display || 'block';
-                panel.element.style.zIndex = '100';
-                panel.element.style.overflow = 'hidden'; // Restore clipping
-            }
-        });
-        
-        const wasMaximized = this.maximizedPanelIndex;
-        this.maximizedPanelIndex = null;
-        this.layoutBeforeMaximize = null;
-        this.panelSizesBeforeMaximize = null;
-        
-        // Resize all charts (use Chart.resize() for proper DPR)
-        setTimeout(() => {
-            this.panels.forEach(panel => {
-                if (panel.element && panel.element.style.display !== 'none' && panel.chartInstance && panel.chartInstance.resize) {
-                    panel.chartInstance._lastResizeDpr = 0;
-                    panel.chartInstance.resize();
-                    panel.chartInstance.render();
-                }
-            });
-        }, 50);
-        
-        console.log(`🔲 Panel ${wasMaximized} restored`);
-    }
-    
-    /**
      * Save panel-specific settings to localStorage
      */
     savePanelSettings(panelIndex) {
@@ -2387,49 +2268,13 @@ class PanelManager {
     }
     
     /**
-     * Setup double-click to maximize for a panel
-     */
-    setupPanelMaximize(panel, index) {
-        if (!panel.element) return;
-        
-        panel.element.addEventListener('dblclick', (e) => {
-            // Don't maximize if clicking on controls or OHLC info
-            if (e.target.closest('.ohlc-info') || e.target.closest('button')) {
-                return;
-            }
-            
-            // Don't maximize if clicking on price axis (right edge of chart)
-            // Price axis is typically the rightmost ~60 pixels
-            const rect = panel.element.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const priceAxisWidth = 60; // Width of price axis area
-            
-            if (clickX > rect.width - priceAxisWidth) {
-                // Clicked on price axis - let the chart handle it for reset scale
-                return;
-            }
-            
-            // Don't maximize if clicking on time axis (bottom edge of chart)
-            const clickY = e.clientY - rect.top;
-            const timeAxisHeight = 30; // Height of time axis area
-            
-            if (clickY > rect.height - timeAxisHeight) {
-                // Clicked on time axis - let the chart handle it
-                return;
-            }
-            
-            this.toggleMaximize(index);
-        });
-    }
-    
-    /**
      * Create resize handles between panels (percentage-based)
      */
     createResizeHandles() {
         this.resizeHandles.forEach(h => { if (h && h.parentNode) h.parentNode.removeChild(h); });
         this.resizeHandles = [];
 
-        if (this.panels.length < 2 || this.maximizedPanelIndex !== null) return;
+        if (this.panels.length < 2) return;
 
         const chartContainer = document.getElementById('chart-container');
         if (!chartContainer) return;
