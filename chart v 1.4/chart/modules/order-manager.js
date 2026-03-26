@@ -4717,7 +4717,7 @@ class OrderManager {
                     transition: background 0.15s;
                     box-shadow: -3px 0 10px rgba(0,0,0,0.4);
                 }
-                .order-panel__edge-handle:hover { filter: brightness(1.06); }
+                .order-panel__edge-handle:hover { filter: none; }
 
                 /* ── SCROLLBAR ───────────────────────────────────────────────────── */
                 .order-panel__content::-webkit-scrollbar { width: 3px; }
@@ -4773,7 +4773,7 @@ class OrderManager {
                     display: flex; align-items: center; justify-content: center;
                     transition: background 0.15s, color 0.15s;
                 }
-                .order-panel__close:hover { background: var(--op-soft-accent); color: var(--op-text); }
+                .order-panel__close:hover { background: transparent; color: var(--op-text-muted); }
 
                 /* ── BUY / SELL TABS ─────────────────────────────────────────────── */
                 .order-panel__tab-group {
@@ -4812,7 +4812,7 @@ class OrderManager {
                     color: #fff;
                     box-shadow: 0 3px 14px rgba(239,68,68,0.35);
                 }
-                .order-tab:hover:not(.active) { filter: brightness(1.12); }
+                .order-tab:hover:not(.active) { filter: none; }
 
                 /* ═══════════════════════════════════════════════════════════════
                    LIGHT MODE — Designer theme from scratch
@@ -5245,8 +5245,8 @@ class OrderManager {
                 .order-type-btn:hover,
                 .position-mode-tab:hover,
                 .breakeven-mode-tab:hover {
-                    background: var(--op-soft-accent);
-                    color: var(--op-text);
+                    background: transparent;
+                    color: var(--op-text-muted);
                 }
                 .order-type-btn.active,
                 .position-mode-tab.active,
@@ -5270,9 +5270,9 @@ class OrderManager {
                     transition: all 0.15s ease;
                 }
                 .risk-btn:hover {
-                    background: rgba(41,98,255,0.12);
-                    border-color: rgba(41,98,255,0.4);
-                    color: #7aa3ff;
+                    background: rgba(255,255,255,0.03);
+                    border-color: rgba(255,255,255,0.07);
+                    color: #555a6e;
                 }
                 .risk-btn.active {
                     background: rgba(41,98,255,0.22);
@@ -5306,7 +5306,7 @@ class OrderManager {
                     color: #787b86; font-size: 11px; cursor: pointer; user-select: none;
                     transition: color 0.15s;
                 }
-                .order-toggle-label:hover, .order-radio-label:hover { color: #d1d4dc; }
+                .order-toggle-label:hover, .order-radio-label:hover { color: #787b86; }
 
                 /* ── RADIO GROUP ─────────────────────────────────────────────────── */
                 .order-radio-group { display: flex; gap: 14px; }
@@ -5377,10 +5377,10 @@ class OrderManager {
                     transition: all 0.15s ease !important;
                 }
                 .input-stepper:hover {
-                    border-color: rgba(var(--op-accent-rgb), 0.7) !important;
-                    background: var(--op-soft-accent) !important;
+                    border-color: var(--op-border) !important;
+                    background: rgba(0,0,0,0.14) !important;
                     color: var(--op-text) !important;
-                    transform: translateY(-1px);
+                    transform: none;
                 }
                 .order-hint { font-size: 10px; color: #3d4256; line-height: 1.4; }
 
@@ -5405,7 +5405,7 @@ class OrderManager {
                     margin-bottom: 8px;
                     transition: border-color 0.15s;
                 }
-                .order-collapse:hover { border-color: rgba(255,255,255,0.12); }
+                .order-collapse:hover { border-color: rgba(255,255,255,0.07); }
                 .order-collapse__header {
                     width: 100%;
                     padding: 9px 12px;
@@ -5423,7 +5423,7 @@ class OrderManager {
                     letter-spacing: 0.01em;
                     text-align: left;
                 }
-                .order-collapse__header:hover { background: rgba(255,255,255,0.04); color: #d1d4dc; }
+                .order-collapse__header:hover { background: rgba(255,255,255,0.02); color: #9ca3af; }
                 .order-collapse--open .order-collapse__header {
                     color: #d1d4dc;
                     border-bottom-color: rgba(255,255,255,0.06);
@@ -5505,13 +5505,13 @@ class OrderManager {
                     box-shadow: 0 2px 14px rgba(var(--op-accent-rgb), 0.3);
                     margin-top: 2px;
                 }
-                .order-submit-btn:hover { filter: brightness(1.08); box-shadow: 0 3px 18px rgba(var(--op-accent-rgb), 0.45); }
+                .order-submit-btn:hover { filter: none; box-shadow: 0 2px 14px rgba(var(--op-accent-rgb), 0.3); }
                 .order-submit-btn:active { filter: brightness(0.92); }
                 .order-submit-btn.sell-mode {
                     background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%);
                     box-shadow: 0 2px 14px rgba(220,38,38,0.3);
                 }
-                .order-submit-btn.sell-mode:hover { box-shadow: 0 3px 18px rgba(220,38,38,0.45); }
+                .order-submit-btn.sell-mode:hover { box-shadow: 0 2px 14px rgba(220,38,38,0.3); }
 
                 /* ── PROTECTION / MULTI-TP PROFESSIONAL THEME STYLES ─────────────── */
                 .order-card-soft {
@@ -5559,8 +5559,8 @@ class OrderManager {
                     transition: all 0.15s ease;
                 }
                 .order-btn-icon:hover {
-                    border-color: rgba(var(--op-accent-rgb), 0.7);
-                    background: var(--op-soft-accent);
+                    border-color: var(--op-border);
+                    background: rgba(0,0,0,0.14);
                 }
                 .order-btn-icon--accent {
                     background: rgba(var(--op-accent-rgb), 0.16);
@@ -5641,8 +5641,8 @@ class OrderManager {
                     transition: all 0.15s ease;
                 }
                 .order-inline-action:hover {
-                    background: rgba(var(--op-accent-rgb), 0.22);
-                    border-color: rgba(var(--op-accent-rgb), 0.7);
+                    background: rgba(var(--op-accent-rgb), 0.15);
+                    border-color: rgba(var(--op-accent-rgb), 0.45);
                 }
                 .order-utility-btn {
                     width: 100%;
@@ -5658,8 +5658,8 @@ class OrderManager {
                     transition: all 0.15s ease;
                 }
                 .order-utility-btn:hover {
-                    border-color: rgba(var(--op-accent-rgb), 0.7);
-                    background: var(--op-soft-accent);
+                    border-color: var(--op-border);
+                    background: rgba(0,0,0,0.14);
                 }
 
                 /* ── MISC ────────────────────────────────────────────────────────── */
@@ -6785,17 +6785,8 @@ class OrderManager {
 
         const orderTypeButtons = document.querySelectorAll('.order-type-btn');
         orderTypeButtons.forEach(btn => {
-            if (btn.dataset.type === (order.orderType || 'limit')) {
-                btn.style.background = 'rgba(255,255,255,0.1)';
-                btn.style.border = '1px solid transparent';
-                btn.style.color = '#fff';
-                btn.classList.add('active');
-            } else {
-                btn.style.background = 'transparent';
-                btn.style.border = '1px solid transparent';
-                btn.style.color = '#787b86';
-                btn.classList.remove('active');
-            }
+            btn.style.cssText = '';
+            btn.classList.toggle('active', btn.dataset.type === (order.orderType || 'limit'));
         });
 
         const entryInput = document.getElementById('orderEntryPrice');
@@ -6877,15 +6868,8 @@ class OrderManager {
 
             document.querySelectorAll('.breakeven-mode-tab').forEach(tab => {
                 const mode = tab.getAttribute('data-mode');
-                if (mode === this.breakevenMode) {
-                    tab.style.background = '#7c3aed';
-                    tab.style.color = '#fff';
-                    tab.style.border = 'none';
-                } else {
-                    tab.style.background = 'transparent';
-                    tab.style.color = '#787b86';
-                    tab.style.border = '1px solid #2a2e39';
-                }
+                tab.style.cssText = '';
+                tab.classList.toggle('active', mode === this.breakevenMode);
             });
         }
 
@@ -7333,11 +7317,10 @@ class OrderManager {
                 
                 // Highlight selected button
                 document.querySelectorAll('.risk-btn').forEach(b => {
-                    b.style.background = 'rgba(255,255,255,0.05)';
-                    b.style.color = '#787b86';
+                    b.style.cssText = '';
+                    b.classList.remove('active');
                 });
-                btn.style.background = 'rgba(124, 58, 237, 0.2)';
-                btn.style.color = '#7c3aed';
+                btn.classList.add('active');
                 
                 // Update preview lines
                 this.updatePreviewLines();
@@ -7492,14 +7475,11 @@ class OrderManager {
                     // Update tab styles
                     document.querySelectorAll('.breakeven-mode-tab').forEach(t => {
                         if (t.getAttribute('data-mode') === 'pips' || t.getAttribute('data-mode') === 'amount') {
-                            t.style.background = 'transparent';
-                            t.style.color = '#787b86';
-                            t.style.border = '1px solid #2a2e39';
+                            t.style.cssText = '';
+                            t.classList.remove('active');
                         }
                     });
-                    tab.style.background = '#7c3aed';
-                    tab.style.color = '#fff';
-                    tab.style.border = 'none';
+                    tab.classList.add('active');
                     
                     // Toggle inputs
                     const pipsInput = document.getElementById('breakevenPipsInput');
