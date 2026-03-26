@@ -5665,10 +5665,7 @@ class OrderManager {
                         <span id="riskAmount" class="order-summary-value order-summary-value--negative">$0</span>
                     </div>
                     <div class="order-summary-divider">
-                        <div class="order-summary-row">
-                            <span class="order-summary-label">Total</span>
-                            <span id="totalAmount" class="order-summary-value order-summary-value--muted">-$0</span>
-                        </div>
+                        
                     </div>
                     <div class="order-summary-row">
                         <span class="order-summary-label">Margin Level</span>
@@ -7663,14 +7660,18 @@ class OrderManager {
                 const balance = balanceType === 'current' ? this.balance : this.initialBalance;
                 risk = (balance * riskPercent) / 100;
             } else if (this.positionSizeMode === 'lot-size') {
-                // Calculate risk from lot size and SL distance
-                const slDistanceInPips = slDistance / this.pipSize;
-                risk = slDistanceInPips * quantity * this.pipValuePerLot;
+                if (window.marketCalcEngine) {
+                    risk = this._engineRisk(entryPrice, slPrice, quantity, entryPrice);
+                }
+                if (!window.marketCalcEngine || !Number.isFinite(risk)) {
+                    const slDistanceInPips = slDistance / this.pipSize;
+                    risk = slDistanceInPips * quantity * this.pipValuePerLot;
+                }
             }
         }
         
-        // Calculate reward using pip values (ONLY if TP is enabled)
-        // For multiple TPs: calculate reward based on distribution mode
+        // Reward: use MarketCalculationEngine (same as chart TP/SL labels) so JPY / cross / tick
+        // specs match position sizing; manual pipSize×pipValue can be wrong and inflate $ reward.
         let reward = 0;
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
         
@@ -7681,29 +7682,26 @@ class OrderManager {
                 this.tpTargets.forEach((target, index) => {
                     console.log(`   Target ${index + 1}: price=${target.price?.toFixed(5)}, percentage=${target.percentage}`);
                     if (target.price > 0 && target.percentage > 0) {
+                        const tpPx = Number.parseFloat(target.price);
                         let priceDiff;
                         if (this.orderSide === 'BUY') {
-                            priceDiff = target.price - entryPrice;
+                            priceDiff = tpPx - entryPrice;
                         } else {
-                            priceDiff = entryPrice - target.price;
+                            priceDiff = entryPrice - tpPx;
                         }
                         
-                        // Only add if TP is in correct direction (positive profit)
                         if (priceDiff > 0) {
-                            const pipsMove = priceDiff / this.pipSize;
-                            
                             let partialReward = 0;
                             if (this.tpDistributionMode === 'percent') {
-                                // Percent mode: target.percentage is % of position (0-100)
                                 const partialQuantity = quantity * (target.percentage / 100);
-                                partialReward = pipsMove * partialQuantity * this.pipValuePerLot;
+                                partialReward = Math.max(0, this.estimatePnLForPriceLevel(
+                                    this.orderSide, entryPrice, tpPx, partialQuantity));
                             } else if (this.tpDistributionMode === 'amount') {
-                                // Amount mode: target.percentage is already the dollar amount
                                 partialReward = target.percentage;
                                 console.log(`      Amount mode: partialReward = ${partialReward}`);
                             } else if (this.tpDistributionMode === 'lots') {
-                                // Lots mode: target.percentage is the lot size to close
-                                partialReward = pipsMove * target.percentage * this.pipValuePerLot;
+                                partialReward = Math.max(0, this.estimatePnLForPriceLevel(
+                                    this.orderSide, entryPrice, tpPx, target.percentage));
                             }
                             
                             reward += partialReward;
@@ -7713,7 +7711,6 @@ class OrderManager {
                 });
                 console.log(`   Final calculated reward: $${reward.toFixed(2)}`);
             } else if (tpPrice > 0) {
-                // Single TP reward calculation
                 let priceDiff;
                 if (this.orderSide === 'BUY') {
                     priceDiff = tpPrice - entryPrice;
@@ -7721,10 +7718,9 @@ class OrderManager {
                     priceDiff = entryPrice - tpPrice;
                 }
                 
-                // Only calculate if TP is in correct direction
                 if (priceDiff > 0) {
-                    const pipsMove = priceDiff / this.pipSize;
-                    reward = pipsMove * quantity * this.pipValuePerLot;
+                    reward = Math.max(0, this.estimatePnLForPriceLevel(
+                        this.orderSide, entryPrice, tpPrice, quantity));
                 }
             }
         }
