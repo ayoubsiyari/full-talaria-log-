@@ -1726,10 +1726,12 @@
 
             border-left: 1px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
 
+            box-shadow: none !important;
+
         }
 
         
-
+        
         body.light-mode .unified-panel-header {
 
             background: var(--sp-ui-chrome-bg, #a9a9a9);
@@ -2082,7 +2084,9 @@
 
             background: var(--sp-ui-chrome-bg, #f5f5dc);
 
-            border-top: 1px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
+            border-top: 1px solid rgba(47, 79, 79, 0.12);
+
+            box-shadow: none;
 
         }
 
@@ -2773,11 +2777,11 @@
 
         body.light-mode .settings-panel {
 
-            background: var(--sp-ui-surface-bg, var(--sp-bg));
+            background: var(--sp-ui-surface-bg, #f0f0f0);
 
-            border-left: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
+            border-left: 1px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
 
-            box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+            box-shadow: none;
 
         }
 
@@ -6178,6 +6182,12 @@
         }
 
         .side-panel.open { right: 0; }
+
+        body.light-mode .side-panel {
+            background: var(--sp-ui-surface-bg, #f0f0f0);
+            border-left: 1px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
+            box-shadow: none;
+        }
 
         .side-panel-title {
 
@@ -24002,7 +24012,6 @@
             border: none !important;
             box-sizing: border-box !important;
             overflow: hidden;
-            will-change: width, height;
         }
 
         .panel-resize-handle {
@@ -41825,7 +41834,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_AXIS_CLEARANCE_V208"></script>
+    <script defer src="chart.js?v=20260326_PANEL_SHADOW_FIX_V209"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V77"></script>
 
