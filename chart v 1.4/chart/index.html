@@ -56051,6 +56051,22 @@ function tlRefreshTemplateDropdownChrome(){
             var L=tlLuminanceHex(bgColor||'#1e222d');
             return L>0.55?(lightId||darkId):(darkId||lightId);
         }
+        function normalizeHex(v){return toHex(v||'#000000').toLowerCase();}
+        function inferChartByColors(list,cs){
+            if(!list||!list.length) return null;
+            var bg=normalizeHex(cs.backgroundColor||cs.settingsPanelBgColor||cs.settingsPanelSidebarBgColor);
+            var up=normalizeHex(cs.bodyUpColor||cs.candleUpColor||cs.borderUpColor||cs.wickUpColor);
+            var dn=normalizeHex(cs.bodyDownColor||cs.candleDownColor||cs.borderDownColor||cs.wickDownColor);
+            var best=null,bestScore=-1;
+            list.forEach(function(t){
+                var score=0;
+                if(normalizeHex(t.bg)===bg) score+=3;
+                if(normalizeHex(t.up)===up) score+=4;
+                if(normalizeHex(t.down)===dn) score+=4;
+                if(score>bestScore){bestScore=score;best=t.id;}
+            });
+            return bestScore>=7?best:null;
+        }
         if(ddid==='tl_chart_dd'){
             var chartList=typeof c.getChartColorTemplateSwatches==='function'?c.getChartColorTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);
             var chartIds=new Set(chartList.map(function(t){return t.id;}));
@@ -56058,6 +56074,8 @@ function tlRefreshTemplateDropdownChrome(){
             var pickedChart=null;
             if(cs.activeChartOnlyTemplate&&chartIds.has(cs.activeChartOnlyTemplate)) pickedChart=cs.activeChartOnlyTemplate;
             else if(c._lastChartOnlyTemplate&&chartIds.has(c._lastChartOnlyTemplate)) pickedChart=c._lastChartOnlyTemplate;
+            var inferredByColors=inferChartByColors(chartList,cs);
+            if(inferredByColors) pickedChart=inferredByColors;
             var inferredChart=inferDarkLightId(chartList,cs.backgroundColor||cs.settingsPanelBgColor||cs.settingsPanelSidebarBgColor);
             if(!pickedChart&&inferredChart) pickedChart=inferredChart;
             if(pickedChart) c._lastChartOnlyTemplate=pickedChart;
@@ -56708,12 +56726,6 @@ P['canvas']={title:'Canvas',build:function(){
     sec(st('PANEL COLORS')+
         
         '<p style="color:#787b86;font-size:11px;margin:0 0 8px;line-height:1.45;">Panel background, accents, and text for the settings sidebar and UI chrome.</p>'+
-
-        clr('Panel background','sp_bg',cs.settingsPanelBgColor||'#050028')+
-
-        clr('Primary accent','sp_acc',cs.settingsPanelAccentColor||panelAccent)+
-
-        clr('Secondary accent','sp_sec',cs.settingsPanelSecondaryColor||'#7b61ff')+
 
         clr('Text color','sp_text',cs.settingsPanelTextColor||'#e0e3ea'))+
 
