@@ -40,6 +40,9 @@ class PanelManager {
         this.resizeStartX = 0;
         this.resizeStartY = 0;
         this.resizeHandle = null;
+
+        /** True while applying date-range sync so charts don't re-dispatch scroll storms */
+        this._syncingDateRange = false;
         
         // Sync settings - time enabled by default for smooth scroll sync
         this.syncSettings = {
@@ -110,7 +113,7 @@ class PanelManager {
             if (!panel) return;
             // Date range: align by visible time window (required when panels use different intervals).
             if (this.syncSettings.dateRange && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
-                && startTimestamp > 0 && endTimestamp > 0) {
+                && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
             } else if (this.syncSettings.time) {
                 this.syncScroll(panel, offsetX, candleWidth);
@@ -935,32 +938,67 @@ class PanelManager {
     }
 
     /**
-     * Scroll sync by matching the visible left edge to the same wall-clock time (multi-timeframe safe).
+     * Date-range sync: every panel shows the same wall-clock window [start, rangeEndExclusive).
+     * Fits candles into the plot width (resize) + scroll so the span matches (e.g. 7×30m = same 3.5h on 1m).
+     * @param {number} rangeEndExclusive - first instant after the last visible bar (source open + barMs).
      */
-    syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, endTimestamp) {
+    syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
         if (this._isSyncing) return;
         if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
 
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
-        if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)) return;
+        if (!Number.isFinite(startTimestamp) || !Number.isFinite(rangeEndExclusive)) return;
+        if (rangeEndExclusive <= startTimestamp) return;
 
         this._isSyncing = true;
+        this._syncingDateRange = true;
         try {
             this.panels.forEach(panel => {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
 
-                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-                const targetStartIdx = this._findLastIndexAtOrBefore(chart.data, startTimestamp);
+                const m = chart.margin || { l: 0, r: 60 };
+                const chartWidth = chart.w - m.l - m.r;
+                if (chartWidth <= 0) return;
 
-                chart.offsetX = -targetStartIdx * spacing;
+                const iL = this._findLastIndexAtOrBefore(chart.data, startTimestamp);
+                const iR = this._findLastIndexAtOrBefore(chart.data, rangeEndExclusive - 1);
+                const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+                const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+                const numBars = Math.max(1, iR2 - iL2 + 1);
+
+                const rawSpacing = chartWidth / numBars;
+                const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+                    ? chart.zoomLevel.allowedWidths
+                    : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                const minW = allowedWidths[0];
+                const maxW = allowedWidths[allowedWidths.length - 1];
+                chart.candleWidth = Math.max(minW, Math.min(maxW, rawSpacing));
+                let nearestIdx = 0;
+                let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+                for (let i = 1; i < allowedWidths.length; i++) {
+                    const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+                    if (d < minDiff) {
+                        minDiff = d;
+                        nearestIdx = i;
+                    }
+                }
+                if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+                if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
+                chart.offsetX = -iL2 * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
-                if (chart.render) chart.render();
+                if (chart.scheduleRender) chart.scheduleRender();
+                else if (chart.render) chart.render();
             });
         } finally {
-            requestAnimationFrame(() => { this._isSyncing = false; });
+            requestAnimationFrame(() => {
+                this._isSyncing = false;
+                this._syncingDateRange = false;
+            });
         }
     }
 
@@ -1003,32 +1041,18 @@ class PanelManager {
     }
     
     /**
-     * Sync date range across all panels (scroll to same time window)
+     * Sync date range across all panels (same visible wall-clock window + fit zoom)
      */
-    syncDateRange(sourcePanel, startTimestamp, endTimestamp) {
+    syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
         if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
-        
+
         const sourceChart = sourcePanel.chartInstance;
-        if (!sourceChart) return;
-        
-        this.panels.forEach(panel => {
-            if (panel.index !== sourcePanel.index && panel.chartInstance) {
-                const chartInst = panel.chartInstance;
-                if (chartInst.data && chartInst.data.length > 0) {
-                    const targetIndex = (chartInst.findGoToTargetIndex)
-                        ? chartInst.findGoToTargetIndex(chartInst.data, endTimestamp)
-                        : this._bsearchTimestamp(chartInst.data, endTimestamp);
-                    
-                    const spacing = chartInst.getCandleSpacing ? chartInst.getCandleSpacing() : (chartInst.candleWidth + 2);
-                    const chartWidth = chartInst.w - chartInst.margin.l - chartInst.margin.r;
-                    const visibleCandles = Math.floor(chartWidth / spacing);
-                    
-                    chartInst.offsetX = -(targetIndex - visibleCandles + 5) * spacing;
-                    if (chartInst.constrainOffset) chartInst.constrainOffset();
-                    if (chartInst.scheduleRender) chartInst.scheduleRender();
-                }
-            }
-        });
+        if (!sourceChart?.data?.length) return;
+        const barMs = typeof sourceChart.inferBarDurationMs === 'function'
+            ? sourceChart.inferBarDurationMs()
+            : 60000;
+        const rangeEndExclusive = (Number.isFinite(endTimestampLastOpen) ? endTimestampLastOpen : startTimestamp) + barMs;
+        this.syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive);
     }
     
     /**

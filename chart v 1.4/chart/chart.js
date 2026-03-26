@@ -7029,13 +7029,32 @@ class Chart {
     }
     
     /**
+     * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
+     */
+    inferBarDurationMs() {
+        if (this.data && this.data.length >= 2) {
+            const d = Math.abs(this.data[1].t - this.data[0].t);
+            if (Number.isFinite(d) && d > 0) return d;
+        }
+        const tf = this.currentTimeframe || '1m';
+        const tfMap = {
+            '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000,
+            '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000,
+            '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000,
+            '1d': 86400000, '1w': 604800000, '1mo': 2592000000
+        };
+        return tfMap[tf] || 60000;
+    }
+
+    /**
      * Dispatch scroll/zoom sync event for panel synchronization
      */
     dispatchScrollSync() {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
-        
+        if (window.panelManager._syncingDateRange) return;
+
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
             ? this.getVisibleStartIndex()
@@ -7045,7 +7064,9 @@ class Chart {
             : Math.max(0, this.data.length - 1);
 
         const startTimestamp = this.data[startIndex]?.t ?? 0;
-        const endTimestamp = this.data[endIndex]?.t ?? 0;
+        const barMs = this.inferBarDurationMs();
+        // Exclusive end of the visible window (same wall-clock span on every timeframe).
+        const endTimestamp = (this.data[endIndex]?.t ?? 0) + barMs;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
@@ -7072,6 +7093,7 @@ class Chart {
                 endIndex,
                 startTimestamp,
                 endTimestamp,
+                rangeEndExclusive: endTimestamp,
                 offsetX: this.offsetX,
                 candleWidth: this.candleWidth
             }
