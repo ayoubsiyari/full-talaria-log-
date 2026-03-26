@@ -34201,10 +34201,14 @@
             color: #374151 !important;
             outline: none !important;
         }
+        body.light-mode .order-tab.order-tab--buy,
+        body.light-mode .order-tab.order-tab--sell {
+            color: #4b5563 !important;
+        }
         body.light-mode .order-tab:hover:not(.active) {
             background: rgba(0,0,0,0.05) !important;
             border-color: rgba(0,0,0,0.12) !important;
-            color: #111827 !important;
+            color: #1f2937 !important;
         }
         body.light-mode .order-tab:focus, body.light-mode .order-tab:focus-visible {
             outline: none !important;
@@ -34215,11 +34219,13 @@
             border-color: rgba(var(--op-accent-rgb),0.9) !important;
             color: #ffffff !important;
             font-weight: 700 !important;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
             box-shadow: 0 3px 14px rgba(var(--op-accent-rgb),0.35) !important;
             outline: none !important;
         }
-        body.light-mode .order-tab.active:hover { filter: brightness(1.06) !important; }
+        body.light-mode .order-tab.active:hover {
+            filter: brightness(1.06) !important;
+            color: #ffffff !important;
+        }
 
         /* Order type buttons (Market/Limit/Stop) + Position sizing tabs */
         body.light-mode .order-button-group {
