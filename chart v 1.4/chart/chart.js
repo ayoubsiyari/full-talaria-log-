@@ -5359,6 +5359,97 @@ class Chart {
                 settingsPanelAccentColor: '#2962ff',
                 settingsPanelSecondaryColor: '#089981',
                 settingsPanelTextColor: '#131722'
+            },
+            /* ── COLOR THEMES ── */
+            'ocean-blue': {
+                name: 'Ocean Blue',
+                backgroundColor: '#0a1929',
+                gridColor: 'rgba(41, 121, 255, 0.15)',
+                bodyUpColor: '#00bcd4', bodyDownColor: '#ff6b6b',
+                borderUpColor: '#00bcd4', borderDownColor: '#ff6b6b',
+                wickUpColor: '#00bcd4', wickDownColor: '#ff6b6b',
+                scaleTextColor: '#e3f2fd', scaleLinesColor: '#1976d2',
+                symbolTextColor: '#e3f2fd',
+                crosshairColor: 'rgba(41, 121, 255, 0.3)',
+                cursorLabelTextColor: '#0a1929', cursorLabelBgColor: '#2962ff',
+                volumeUpColor: 'rgba(0, 188, 212, 0.5)', volumeDownColor: 'rgba(255, 107, 107, 0.5)',
+                settingsPanelBgColor: '#0a1929', settingsPanelAccentColor: '#2962ff',
+                settingsPanelSecondaryColor: '#00bcd4', settingsPanelTextColor: '#e3f2fd'
+            },
+            'forest-green': {
+                name: 'Forest Green',
+                backgroundColor: '#0d2818',
+                gridColor: 'rgba(76, 175, 80, 0.15)',
+                bodyUpColor: '#4caf50', bodyDownColor: '#ff9800',
+                borderUpColor: '#4caf50', borderDownColor: '#ff9800',
+                wickUpColor: '#4caf50', wickDownColor: '#ff9800',
+                scaleTextColor: '#e8f5e8', scaleLinesColor: '#4caf50',
+                symbolTextColor: '#e8f5e8',
+                crosshairColor: 'rgba(76, 175, 80, 0.3)',
+                cursorLabelTextColor: '#0d2818', cursorLabelBgColor: '#4caf50',
+                volumeUpColor: 'rgba(76, 175, 80, 0.5)', volumeDownColor: 'rgba(255, 152, 0, 0.5)',
+                settingsPanelBgColor: '#0d2818', settingsPanelAccentColor: '#4caf50',
+                settingsPanelSecondaryColor: '#8bc34a', settingsPanelTextColor: '#e8f5e8'
+            },
+            'sunset-orange': {
+                name: 'Sunset Orange',
+                backgroundColor: '#2d1b0e',
+                gridColor: 'rgba(255, 152, 0, 0.15)',
+                bodyUpColor: '#ff9800', bodyDownColor: '#e91e63',
+                borderUpColor: '#ff9800', borderDownColor: '#e91e63',
+                wickUpColor: '#ff9800', wickDownColor: '#e91e63',
+                scaleTextColor: '#fff3e0', scaleLinesColor: '#ff9800',
+                symbolTextColor: '#fff3e0',
+                crosshairColor: 'rgba(255, 152, 0, 0.3)',
+                cursorLabelTextColor: '#2d1b0e', cursorLabelBgColor: '#ff9800',
+                volumeUpColor: 'rgba(255, 152, 0, 0.5)', volumeDownColor: 'rgba(233, 30, 99, 0.5)',
+                settingsPanelBgColor: '#2d1b0e', settingsPanelAccentColor: '#ff9800',
+                settingsPanelSecondaryColor: '#ffc107', settingsPanelTextColor: '#fff3e0'
+            },
+            'royal-purple': {
+                name: 'Royal Purple',
+                backgroundColor: '#1a0033',
+                gridColor: 'rgba(156, 39, 176, 0.15)',
+                bodyUpColor: '#9c27b0', bodyDownColor: '#ff5722',
+                borderUpColor: '#9c27b0', borderDownColor: '#ff5722',
+                wickUpColor: '#9c27b0', wickDownColor: '#ff5722',
+                scaleTextColor: '#f3e5f5', scaleLinesColor: '#9c27b0',
+                symbolTextColor: '#f3e5f5',
+                crosshairColor: 'rgba(156, 39, 176, 0.3)',
+                cursorLabelTextColor: '#1a0033', cursorLabelBgColor: '#9c27b0',
+                volumeUpColor: 'rgba(156, 39, 176, 0.5)', volumeDownColor: 'rgba(255, 87, 34, 0.5)',
+                settingsPanelBgColor: '#1a0033', settingsPanelAccentColor: '#9c27b0',
+                settingsPanelSecondaryColor: '#673ab7', settingsPanelTextColor: '#f3e5f5'
+            },
+            'ruby-red': {
+                name: 'Ruby Red',
+                backgroundColor: '#330011',
+                gridColor: 'rgba(244, 67, 54, 0.15)',
+                bodyUpColor: '#f44336', bodyDownColor: '#2196f3',
+                borderUpColor: '#f44336', borderDownColor: '#2196f3',
+                wickUpColor: '#f44336', wickDownColor: '#2196f3',
+                scaleTextColor: '#ffebee', scaleLinesColor: '#f44336',
+                symbolTextColor: '#ffebee',
+                crosshairColor: 'rgba(244, 67, 54, 0.3)',
+                cursorLabelTextColor: '#330011', cursorLabelBgColor: '#f44336',
+                volumeUpColor: 'rgba(244, 67, 54, 0.5)', volumeDownColor: 'rgba(33, 150, 243, 0.5)',
+                settingsPanelBgColor: '#330011', settingsPanelAccentColor: '#f44336',
+                settingsPanelSecondaryColor: '#e91e63', settingsPanelTextColor: '#ffebee'
+            },
+            'emerald': {
+                name: 'Emerald',
+                backgroundColor: '#0a2e0a',
+                gridColor: 'rgba(0, 230, 118, 0.15)',
+                bodyUpColor: '#00e676', bodyDownColor: '#ff4081',
+                borderUpColor: '#00e676', borderDownColor: '#ff4081',
+                wickUpColor: '#00e676', wickDownColor: '#ff4081',
+                scaleTextColor: '#e8f5e9', scaleLinesColor: '#00e676',
+                symbolTextColor: '#e8f5e9',
+                crosshairColor: 'rgba(0, 230, 118, 0.3)',
+                cursorLabelTextColor: '#0a2e0a', cursorLabelBgColor: '#00e676',
+                volumeUpColor: 'rgba(0, 230, 118, 0.5)', volumeDownColor: 'rgba(255, 64, 129, 0.5)',
+                settingsPanelBgColor: '#0a2e0a', settingsPanelAccentColor: '#00e676',
+                settingsPanelSecondaryColor: '#4caf50', settingsPanelTextColor: '#e8f5e9'
             }
         };
     }
@@ -5513,11 +5604,17 @@ class Chart {
         this.showNotification(`Panel template "${template.name}" applied ✓`);
     }
 
-    /** Two presets (Dark & Light) — chart + panel stay in sync. */
+    /** Chart templates — chart + panel stay in sync. */
     getUnifiedThemeOrder() {
         return [
-            { id: 'tradingview-dark', group: 'Dark' },
-            { id: 'tradingview-light', group: 'Light' }
+            { id: 'tradingview-dark', group: 'Professional' },
+            { id: 'tradingview-light', group: 'Professional' },
+            { id: 'ocean-blue', group: 'Color Themes' },
+            { id: 'forest-green', group: 'Color Themes' },
+            { id: 'sunset-orange', group: 'Color Themes' },
+            { id: 'royal-purple', group: 'Color Themes' },
+            { id: 'ruby-red', group: 'Color Themes' },
+            { id: 'emerald', group: 'Color Themes' }
         ];
     }
 

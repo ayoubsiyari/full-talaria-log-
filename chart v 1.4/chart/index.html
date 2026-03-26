@@ -34436,12 +34436,25 @@
         }
 
         body.light-mode .replay-mode-trigger,
-        body.light-mode .replay-mode-trigger span {
-            color: #1f2937 !important;
+        body.light-mode #speedSliderClone .replay-mode-trigger {
+            color: #131722 !important;
+            background: rgba(0,0,0,0.04) !important;
+            border-color: rgba(0,0,0,0.15) !important;
+            box-shadow: none !important;
         }
 
-        body.light-mode .replay-mode-trigger:hover {
-            background: rgba(var(--sp-accent-rgb), 0.08) !important;
+        body.light-mode .replay-mode-trigger span,
+        body.light-mode #speedSliderClone .replay-mode-trigger span {
+            color: inherit !important;
+        }
+
+        body.light-mode .replay-mode-trigger:hover,
+        body.light-mode #speedSliderClone .replay-mode-trigger:hover,
+        body.light-mode .replay-mode-trigger.replay-open,
+        body.light-mode #speedSliderClone .replay-mode-trigger.replay-open {
+            background: rgba(0,0,0,0.08) !important;
+            color: #131722 !important;
+            border-color: rgba(0,0,0,0.15) !important;
         }
 
         body.light-mode .replay-mode-dropdown-arrow {
@@ -41707,7 +41720,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_INDEX_CLEAN_V213"></script>
+    <script defer src="chart.js?v=20260326_INDEX_CLEAN_V214"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V78"></script>
 
