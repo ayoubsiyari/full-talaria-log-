@@ -10456,7 +10456,7 @@ class Chart {
         
         yTicks.forEach(price => {
             const y = this.yScale(price);
-            if (y > m.t && y < this.h - m.b - volumeAreaHeight) {
+            if (y > m.t + 8 && y < this.h - m.b - volumeAreaHeight - 8) {
                 const text = price.toFixed(decimals);
                 this.ctx.fillStyle = this.chartSettings.scaleTextColor;
                 this.ctx.fillText(text, axisMidX, y + 4);
