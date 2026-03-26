@@ -4812,7 +4812,7 @@ class OrderManager {
                     color: #fff;
                     box-shadow: 0 3px 14px rgba(239,68,68,0.35);
                 }
-                .order-tab:hover { filter: brightness(1.12); }
+                .order-tab:hover:not(.active) { filter: brightness(1.12); }
 
                 /* ═══════════════════════════════════════════════════════════════
                    LIGHT MODE — Designer theme from scratch
@@ -4878,8 +4878,13 @@ class OrderManager {
                     -webkit-text-fill-color: #ffffff !important;
                     box-shadow: 0 3px 12px rgba(239,68,68,0.35) !important;
                 }
-                body.light-mode .order-tab.active:hover {
-                    filter: brightness(1.06) !important;
+                body.light-mode .order-tab.active.order-tab--buy:hover {
+                    background: linear-gradient(135deg, #2dd968, #1db954) !important;
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                }
+                body.light-mode .order-tab.active.order-tab--sell:hover {
+                    background: linear-gradient(135deg, #f87171, #ef4444) !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                 }
