@@ -34159,123 +34159,7 @@
             color: #0f172a !important;
         }
 
-        /* ── Order panel: light-mode — variable-only swap (dark→light) ── */
-        body.light-mode .order-panel,
-        body.light-mode .order-panel * {
-            outline: none !important;
-        }
-        body.light-mode .order-panel {
-            --op-bg: #f8f9fb;
-            --op-surface: #eef1f6;
-            --op-text: #1a1d26;
-            --op-text-muted: #6b7280;
-            --op-border: rgba(0, 0, 0, 0.09);
-            --op-soft-accent: rgba(var(--op-accent-rgb), 0.12);
-            background: linear-gradient(180deg, rgba(0,0,0,0.005), rgba(0,0,0,0.03)), var(--op-bg) !important;
-            border-left: 1px solid var(--op-border) !important;
-            box-shadow: none !important;
-            color: var(--op-text) !important;
-        }
-
-        body.light-mode .order-panel__content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12) !important; }
-        body.light-mode .order-panel__content::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22) !important; }
-        body.light-mode .order-panel-backdrop { background: rgba(0,0,0,0.1) !important; }
-        body.light-mode .order-panel__edge-handle { box-shadow: -3px 0 10px rgba(0,0,0,0.1) !important; }
-
-        body.light-mode .order-panel__header { background: rgba(0,0,0,0.025) !important; }
-        body.light-mode .order-panel__title { color: var(--op-text) !important; }
-        body.light-mode .order-panel__close { color: var(--op-text-muted) !important; }
-        body.light-mode .order-panel__close:hover { background: var(--op-soft-accent) !important; color: var(--op-text) !important; }
-
-        body.light-mode .order-tab {
-            background: rgba(0,0,0,0.02) !important;
-            color: var(--op-text-muted) !important;
-        }
-        body.light-mode .order-tab:hover { filter: brightness(0.96) !important; }
-        body.light-mode .order-tab.active.order-tab--buy,
-        body.light-mode .order-tab.active.order-tab--sell {
-            color: #fff !important;
-        }
-
-        body.light-mode .order-button-group { background: rgba(0,0,0,0.045) !important; }
-        body.light-mode .order-type-btn,
-        body.light-mode .position-mode-tab,
-        body.light-mode .breakeven-mode-tab { color: var(--op-text-muted) !important; }
-        body.light-mode .order-type-btn:hover:not(.active),
-        body.light-mode .position-mode-tab:hover:not(.active),
-        body.light-mode .breakeven-mode-tab:hover:not(.active) { background: var(--op-soft-accent) !important; color: var(--op-text) !important; }
-        body.light-mode .order-type-btn.active,
-        body.light-mode .position-mode-tab.active,
-        body.light-mode .breakeven-mode-tab.active { color: #fff !important; }
-
-        body.light-mode .order-input-wrapper {
-            background: linear-gradient(180deg, rgba(0,0,0,0.025) 0%, rgba(0,0,0,0.06) 100%), var(--op-surface) !important;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.5) !important;
-        }
-        body.light-mode .order-input-wrapper:focus-within {
-            background: linear-gradient(180deg, rgba(0,0,0,0.015) 0%, rgba(0,0,0,0.045) 100%), var(--op-surface) !important;
-        }
-        body.light-mode .order-input { color: var(--op-text) !important; }
-        body.light-mode .order-input::placeholder { color: rgba(107,114,128,0.55) !important; }
-        body.light-mode .order-input-prefix,
-        body.light-mode .order-input-suffix { color: var(--op-text-muted) !important; }
-        body.light-mode .order-label { color: var(--op-text-muted) !important; }
-        body.light-mode .order-hint { color: #9ca3af !important; }
-        body.light-mode .order-input--compact { color: var(--op-text) !important; }
-
-        body.light-mode .input-stepper { background: rgba(0,0,0,0.04) !important; color: var(--op-text) !important; }
-        body.light-mode .input-stepper:hover { background: var(--op-soft-accent) !important; }
-
-        body.light-mode .risk-btn { background: rgba(0,0,0,0.02) !important; color: var(--op-text-muted) !important; }
-        body.light-mode .risk-btn:hover:not(.active) { background: rgba(var(--op-accent-rgb),0.08) !important; color: var(--op-accent,#2962ff) !important; }
-        body.light-mode .risk-btn.active { background: rgba(var(--op-accent-rgb),0.18) !important; color: var(--op-accent,#2962ff) !important; }
-
-        body.light-mode .order-calculation { background: var(--op-soft-accent) !important; }
-        body.light-mode .order-calculation-label { color: var(--op-text-muted) !important; }
-        body.light-mode .order-calculation-value { color: var(--op-accent,#2962ff) !important; }
-
-        body.light-mode .toggle-switch__track { background: rgba(0,0,0,0.14) !important; }
-        body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: var(--op-accent,#2962ff) !important; }
-        body.light-mode .order-toggle-label,
-        body.light-mode .order-radio-label { color: var(--op-text-muted) !important; }
-        body.light-mode .order-toggle-label:hover,
-        body.light-mode .order-radio-label:hover { color: var(--op-text) !important; }
-        body.light-mode .order-panel input[type="checkbox"] { accent-color: var(--op-accent,#2962ff); }
-
-        body.light-mode .order-collapse { background: rgba(0,0,0,0.012) !important; }
-        body.light-mode .order-collapse__header { color: #9ca3af !important; background: rgba(0,0,0,0.02) !important; }
-        body.light-mode .order-collapse__header:hover { background: rgba(0,0,0,0.04) !important; color: var(--op-text) !important; }
-        body.light-mode .order-collapse--open .order-collapse__header { color: var(--op-text) !important; background: rgba(var(--op-accent-rgb),0.06) !important; }
-        body.light-mode .order-collapse__chevron { color: #9ca3af !important; }
-        body.light-mode .order-collapse--open .order-collapse__chevron { color: var(--op-text) !important; }
-        body.light-mode .order-collapse__content { background: rgba(0,0,0,0.025) !important; }
-
-        body.light-mode .order-summary {
-            background: linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.06) 100%), var(--op-surface) !important;
-        }
-        body.light-mode .order-summary-label { color: var(--op-text-muted) !important; }
-        body.light-mode .order-summary-label--positive { color: #16a34a !important; }
-        body.light-mode .order-summary-label--negative { color: #dc2626 !important; }
-        body.light-mode .order-summary-value { color: var(--op-text) !important; }
-        body.light-mode .order-summary-value--positive { color: #16a34a !important; }
-        body.light-mode .order-summary-value--negative { color: #dc2626 !important; }
-        body.light-mode .order-summary-value--warning { color: #d97706 !important; }
-        body.light-mode .order-summary-value--danger { color: #dc2626 !important; }
-        body.light-mode .order-summary-divider { border-top-color: rgba(0,0,0,0.06) !important; }
-
-        body.light-mode .order-card-soft {
-            background: linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.05) 100%), var(--op-surface) !important;
-        }
-        body.light-mode .order-info-card { background: rgba(var(--op-accent-rgb),0.05) !important; }
-        body.light-mode .order-info-body { color: var(--op-text-muted) !important; }
-
-        body.light-mode .order-validation--error { color: #dc2626 !important; }
-
-        body.light-mode .order-btn-icon { background: rgba(0,0,0,0.04) !important; color: var(--op-text) !important; }
-        body.light-mode .order-btn-icon:hover { background: var(--op-soft-accent) !important; }
-
-        body.light-mode .order-panel .market-type-badge,
-        body.light-mode .order-panel .symbol-badge { background: rgba(0,0,0,0.04) !important; color: var(--op-text) !important; }
+        /* ── Order panel light-mode: handled entirely by order-manager.js injected styles ── */
 
         /* ── Replay toolbar + bottom panels: neutral light overrides ── */
         body.light-mode .replay-toolbar,
@@ -41703,7 +41587,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_LIGHT_ORDER_MIRROR_V210"></script>
+    <script defer src="chart.js?v=20260326_ORDER_LIGHT_IN_JS_V211"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V77"></script>
 
@@ -41713,7 +41597,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260325_JPY_HEURISTIC_ONLY_V3"></script>
 
-    <script defer src="modules/order-manager.js?v=20260326_CROSS_PAIR_REPLAY_V66"></script>
+    <script defer src="modules/order-manager.js?v=20260326_LIGHT_MODE_FULL_V67"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260318_TF_PIN_V78"></script>
 

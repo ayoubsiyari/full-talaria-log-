@@ -4814,43 +4814,109 @@ class OrderManager {
                 }
                 .order-tab:hover { filter: brightness(1.12); }
 
-                /* Light mode: force clear tab text colors (prevents washed-out labels) */
-                body.light-mode .order-tab.order-tab--buy,
-                body.light-mode .order-tab.order-tab--sell {
-                    color: #4b5563 !important;
-                    -webkit-text-fill-color: #4b5563 !important;
+                /* ── LIGHT MODE: full variable + hardcoded color swap ───────── */
+                body.light-mode .order-panel {
+                    --op-bg: #f0f2f5 !important;
+                    --op-surface: #e4e8ee !important;
+                    --op-text: #1a1d26 !important;
+                    --op-text-muted: #5c6370 !important;
+                    --op-border: rgba(0,0,0,0.10) !important;
+                    --op-soft-accent: rgba(var(--op-accent-rgb), 0.12) !important;
+                    background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(0,0,0,0.03)), var(--op-bg) !important;
+                    border-left: 1px solid rgba(0,0,0,0.10) !important;
+                    box-shadow: -4px 0 20px rgba(0,0,0,0.08) !important;
+                    color: var(--op-text) !important;
                 }
-                body.light-mode .order-tab:hover:not(.active) {
-                    color: #1f2937 !important;
-                    -webkit-text-fill-color: #1f2937 !important;
-                }
+                body.light-mode .order-panel * { outline: none !important; }
+                body.light-mode .order-panel__header { background: rgba(0,0,0,0.03) !important; }
+                body.light-mode .order-panel__close { color: #5c6370 !important; }
+                body.light-mode .order-panel__close:hover { background: rgba(var(--op-accent-rgb),0.12) !important; color: #1a1d26 !important; }
+                body.light-mode .order-panel__edge-handle { box-shadow: -3px 0 10px rgba(0,0,0,0.10) !important; }
+                body.light-mode .order-panel__content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12) !important; }
+                body.light-mode .order-panel__content::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22) !important; }
+                body.light-mode .order-panel-backdrop { background: rgba(0,0,0,0.10) !important; }
+
+                body.light-mode .order-tab { background: rgba(0,0,0,0.03) !important; color: #5c6370 !important; -webkit-text-fill-color: #5c6370 !important; border-color: rgba(0,0,0,0.10) !important; }
+                body.light-mode .order-tab:hover:not(.active) { background: rgba(0,0,0,0.06) !important; color: #1a1d26 !important; -webkit-text-fill-color: #1a1d26 !important; }
                 body.light-mode .order-tab.active.order-tab--buy,
-                body.light-mode .order-tab.active.order-tab--sell,
-                body.light-mode .order-tab.active:hover {
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
-                }
-                body.light-mode .order-type-btn:not(.active),
-                body.light-mode .position-mode-tab:not(.active),
-                body.light-mode .breakeven-mode-tab:not(.active) {
-                    color: #4b5563 !important;
-                    -webkit-text-fill-color: #4b5563 !important;
-                }
+                body.light-mode .order-tab.active.order-tab--sell { color: #fff !important; -webkit-text-fill-color: #fff !important; }
+                body.light-mode .order-tab.active:hover { color: #fff !important; -webkit-text-fill-color: #fff !important; }
+
+                body.light-mode .order-button-group { background: rgba(0,0,0,0.06) !important; border-color: rgba(0,0,0,0.10) !important; }
+                body.light-mode .order-type-btn,
+                body.light-mode .position-mode-tab,
+                body.light-mode .breakeven-mode-tab { color: #5c6370 !important; -webkit-text-fill-color: #5c6370 !important; }
                 body.light-mode .order-type-btn:hover:not(.active),
                 body.light-mode .position-mode-tab:hover:not(.active),
-                body.light-mode .breakeven-mode-tab:hover:not(.active) {
-                    color: #1f2937 !important;
-                    -webkit-text-fill-color: #1f2937 !important;
-                }
+                body.light-mode .breakeven-mode-tab:hover:not(.active) { background: rgba(var(--op-accent-rgb),0.10) !important; color: #1a1d26 !important; -webkit-text-fill-color: #1a1d26 !important; }
                 body.light-mode .order-type-btn.active,
                 body.light-mode .position-mode-tab.active,
-                body.light-mode .breakeven-mode-tab.active,
-                body.light-mode .order-type-btn.active:hover,
-                body.light-mode .position-mode-tab.active:hover,
-                body.light-mode .breakeven-mode-tab.active:hover {
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
-                }
+                body.light-mode .breakeven-mode-tab.active { color: #fff !important; -webkit-text-fill-color: #fff !important; }
+
+                body.light-mode .order-input-wrapper { background: linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.3) 100%), var(--op-surface) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5) !important; border-color: rgba(0,0,0,0.10) !important; }
+                body.light-mode .order-input-wrapper:focus-within { background: linear-gradient(180deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 100%), var(--op-surface) !important; }
+                body.light-mode .order-input { color: #1a1d26 !important; }
+                body.light-mode .order-input::placeholder { color: rgba(92,99,112,0.5) !important; }
+                body.light-mode .order-input-prefix,
+                body.light-mode .order-input-suffix { color: #5c6370 !important; }
+                body.light-mode .order-label { color: #5c6370 !important; }
+                body.light-mode .order-hint { color: #8b919e !important; }
+                body.light-mode .order-input--compact { color: #1a1d26 !important; }
+
+                body.light-mode .input-stepper { background: rgba(0,0,0,0.05) !important; color: #1a1d26 !important; border-color: rgba(0,0,0,0.10) !important; }
+                body.light-mode .input-stepper:hover { background: rgba(var(--op-accent-rgb),0.12) !important; border-color: rgba(var(--op-accent-rgb),0.5) !important; }
+
+                body.light-mode .risk-btn { background: rgba(0,0,0,0.03) !important; border-color: rgba(0,0,0,0.08) !important; color: #5c6370 !important; }
+                body.light-mode .risk-btn:hover:not(.active) { background: rgba(var(--op-accent-rgb),0.10) !important; border-color: rgba(var(--op-accent-rgb),0.4) !important; color: var(--op-accent) !important; }
+                body.light-mode .risk-btn.active { background: rgba(var(--op-accent-rgb),0.18) !important; border-color: var(--op-accent) !important; color: var(--op-accent) !important; }
+
+                body.light-mode .order-calculation { background: rgba(var(--op-accent-rgb),0.08) !important; border-color: rgba(0,0,0,0.08) !important; }
+                body.light-mode .order-calculation-label { color: #5c6370 !important; }
+                body.light-mode .order-calculation-value { color: var(--op-accent) !important; }
+
+                body.light-mode .toggle-switch__track { background: rgba(0,0,0,0.14) !important; }
+                body.light-mode .order-toggle-label,
+                body.light-mode .order-radio-label { color: #5c6370 !important; }
+                body.light-mode .order-toggle-label:hover,
+                body.light-mode .order-radio-label:hover { color: #1a1d26 !important; }
+                body.light-mode .order-panel input[type="checkbox"] { accent-color: var(--op-accent, #2962ff) !important; }
+
+                body.light-mode .order-collapse { border-color: rgba(0,0,0,0.08) !important; background: rgba(0,0,0,0.02) !important; }
+                body.light-mode .order-collapse:hover { border-color: rgba(0,0,0,0.14) !important; }
+                body.light-mode .order-collapse__header { color: #8b919e !important; background: rgba(0,0,0,0.03) !important; }
+                body.light-mode .order-collapse__header:hover { background: rgba(0,0,0,0.05) !important; color: #1a1d26 !important; }
+                body.light-mode .order-collapse--open .order-collapse__header { color: #1a1d26 !important; background: rgba(var(--op-accent-rgb),0.06) !important; border-bottom-color: rgba(0,0,0,0.06) !important; }
+                body.light-mode .order-collapse__chevron { color: #8b919e !important; }
+                body.light-mode .order-collapse--open .order-collapse__chevron { color: #1a1d26 !important; }
+                body.light-mode .order-collapse__content { background: rgba(0,0,0,0.02) !important; }
+
+                body.light-mode .order-summary { background: linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.2) 100%), var(--op-surface) !important; border-color: rgba(0,0,0,0.08) !important; }
+                body.light-mode .order-summary-label { color: #5c6370 !important; }
+                body.light-mode .order-summary-label--positive { color: #16a34a !important; }
+                body.light-mode .order-summary-label--negative { color: #dc2626 !important; }
+                body.light-mode .order-summary-value { color: #1a1d26 !important; }
+                body.light-mode .order-summary-value--positive { color: #16a34a !important; }
+                body.light-mode .order-summary-value--negative { color: #dc2626 !important; }
+                body.light-mode .order-summary-value--warning { color: #d97706 !important; }
+                body.light-mode .order-summary-value--danger { color: #dc2626 !important; }
+                body.light-mode .order-summary-divider { border-top-color: rgba(0,0,0,0.06) !important; }
+
+                body.light-mode .order-card-soft { background: linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.2) 100%), var(--op-surface) !important; border-color: rgba(0,0,0,0.08) !important; }
+                body.light-mode .order-info-card { background: rgba(var(--op-accent-rgb),0.06) !important; border-color: rgba(var(--op-accent-rgb),0.25) !important; }
+                body.light-mode .order-info-body { color: #5c6370 !important; }
+
+                body.light-mode .order-validation--error { background: rgba(239,68,68,0.08) !important; border-color: rgba(239,68,68,0.3) !important; color: #dc2626 !important; }
+
+                body.light-mode .order-btn-icon { background: rgba(0,0,0,0.05) !important; border-color: rgba(0,0,0,0.10) !important; color: #1a1d26 !important; }
+                body.light-mode .order-btn-icon:hover { background: rgba(var(--op-accent-rgb),0.12) !important; border-color: rgba(var(--op-accent-rgb),0.5) !important; }
+
+                body.light-mode .order-select { background: linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.3) 100%), var(--op-surface) !important; color: #1a1d26 !important; border-color: rgba(0,0,0,0.10) !important; }
+                body.light-mode .order-utility-btn { background: rgba(0,0,0,0.05) !important; color: #1a1d26 !important; border-color: rgba(0,0,0,0.10) !important; }
+                body.light-mode .order-utility-btn:hover { background: rgba(var(--op-accent-rgb),0.12) !important; border-color: rgba(var(--op-accent-rgb),0.5) !important; }
+                body.light-mode .order-status-card { background: rgba(0,0,0,0.04) !important; border-color: rgba(0,0,0,0.08) !important; }
+
+                body.light-mode .order-panel .market-type-badge,
+                body.light-mode .order-panel .symbol-badge { background: rgba(0,0,0,0.05) !important; border-color: rgba(0,0,0,0.08) !important; color: #1a1d26 !important; }
 
                 /* ── ORDER TYPE BUTTONS ──────────────────────────────────────────── */
                 .order-section {
@@ -5336,18 +5402,18 @@ class OrderManager {
                 <div style="height:4px;"></div>
 
                 <!-- Market Type Selector (hidden when symbol is auto-detected) -->
-                <div id="marketTypeSectionPanel" class="order-section" style="padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <div id="marketTypeSectionPanel" class="order-section" style="padding-bottom: 8px; border-bottom: 1px solid var(--op-border);">
                     <div id="marketTypeSelectorPanel" class="market-type-selector" style="position: relative;">
-                        <button id="marketTypeBtnPanel" type="button" style="
+                        <button id="marketTypeBtnPanel" type="button" class="order-market-type-btn" style="
                             width: 100%;
                             display: flex;
                             align-items: center;
                             gap: 8px;
                             padding: 10px 12px;
-                            background: rgba(42, 46, 57, 0.6);
-                            border: 1px solid #363a45;
+                            background: var(--op-surface);
+                            border: 1px solid var(--op-border);
                             border-radius: 6px;
-                            color: #d1d4dc;
+                            color: var(--op-text);
                             font-size: 13px;
                             font-weight: 600;
                             cursor: pointer;
@@ -5357,19 +5423,19 @@ class OrderManager {
                             <span id="marketTypeName">Forex</span>
                             <span style="margin-left: auto; font-size: 10px; opacity: 0.7;">▼</span>
                         </button>
-                        <div id="marketTypeDropdownPanel" style="
+                        <div id="marketTypeDropdownPanel" class="order-market-dropdown" style="
                             position: absolute;
                             top: 100%;
                             left: 0;
                             right: 0;
                             margin-top: 4px;
-                            background: #1a1d26;
-                            border: 1px solid #363a45;
+                            background: var(--op-bg);
+                            border: 1px solid var(--op-border);
                             border-radius: 8px;
                             padding: 6px;
                             z-index: 10001;
                             display: none;
-                            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+                            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
                         "></div>
                     </div>
                 </div>
