@@ -7805,11 +7805,11 @@
             height: 24px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid rgba(0,0,0,0.18);
+            border: 2px solid rgba(255,255,255,0.35);
             background: #2a2e39;
             box-shadow:
-                0 1.5px 4px rgba(0,0,0,0.35),
-                0 0 0 0.5px rgba(255,255,255,0.12) inset;
+                0 1.5px 4px rgba(0,0,0,0.5),
+                0 0 0 0.5px rgba(255,255,255,0.15) inset;
             transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
         .ssd-flag-base {
@@ -7823,14 +7823,14 @@
             z-index: 1;
         }
         .ssd-item:hover .ssd-flag {
-            border-color: rgba(0,0,0,0.25);
+            border-color: rgba(255,255,255,0.5);
             transform: scale(1.08);
             box-shadow:
-                0 2px 7px rgba(0,0,0,0.4),
-                0 0 0 0.5px rgba(255,255,255,0.18) inset;
+                0 2px 7px rgba(0,0,0,0.55),
+                0 0 0 0.5px rgba(255,255,255,0.22) inset;
         }
         .ssd-item.active .ssd-flag {
-            border-color: #1a2744;
+            border-color: rgba(255,255,255,0.55);
         }
 
         
@@ -8026,38 +8026,38 @@
         }
 
         body.light-mode .ssd-flag {
-            border-color: rgba(255,255,255,0.85);
+            border: 2px solid rgba(15,23,42,0.25) !important;
             background: #e2e8f0;
             box-shadow:
-                0 1.5px 5px rgba(15,23,42,0.22),
-                0 0.5px 2px rgba(15,23,42,0.12),
-                0 0 0 0.5px rgba(255,255,255,0.7) inset;
+                0 1.5px 5px rgba(15,23,42,0.35),
+                0 0.5px 2px rgba(15,23,42,0.2),
+                0 0 0 0.5px rgba(0,0,0,0.06) inset !important;
         }
 
         body.light-mode .ssd-item:hover .ssd-flag {
-            border-color: rgba(255,255,255,0.9);
+            border-color: rgba(15,23,42,0.35) !important;
             box-shadow:
-                0 3px 8px rgba(15,23,42,0.25),
-                0 1px 3px rgba(15,23,42,0.15),
-                0 0 0 0.5px rgba(255,255,255,0.8) inset;
+                0 3px 8px rgba(15,23,42,0.4),
+                0 1px 3px rgba(15,23,42,0.22),
+                0 0 0 0.5px rgba(0,0,0,0.1) inset !important;
         }
 
         body.light-mode .ssd-item.active .ssd-flag {
-            border-color: rgba(255,255,255,0.9);
+            border-color: rgba(15,23,42,0.4) !important;
         }
 
         body.light-mode .ohlc-dot-flag {
-            border-color: rgba(255,255,255,0.85);
+            border: 1.5px solid rgba(15,23,42,0.3) !important;
             box-shadow:
-                0 1px 4px rgba(15,23,42,0.22),
-                0 0.5px 2px rgba(15,23,42,0.12),
-                0 0 0 0.5px rgba(255,255,255,0.7) inset;
+                0 1px 4px rgba(15,23,42,0.35),
+                0 0.5px 1px rgba(15,23,42,0.2),
+                0 0 0 0.5px rgba(0,0,0,0.08) inset !important;
         }
         body.light-mode .ohlc-dot-flag:hover {
             box-shadow:
-                0 2px 8px rgba(15,23,42,0.28),
-                0 1px 3px rgba(15,23,42,0.15),
-                0 0 0 0.5px rgba(255,255,255,0.8) inset;
+                0 2px 8px rgba(15,23,42,0.4),
+                0 1px 3px rgba(15,23,42,0.25),
+                0 0 0 0.5px rgba(0,0,0,0.12) inset !important;
         }
 
         body.light-mode .ssd-empty {
@@ -25147,17 +25147,17 @@
             height: 18px;
             border-radius: 50%;
             object-fit: cover;
-            border: 1.5px solid rgba(0,0,0,0.25);
+            border: 1.5px solid rgba(255,255,255,0.45);
             box-shadow:
-                0 1px 3px rgba(0,0,0,0.35),
-                0 0 0 0.5px rgba(255,255,255,0.15) inset;
+                0 1px 3px rgba(0,0,0,0.5),
+                0 0 0 0.5px rgba(255,255,255,0.18) inset;
             transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
         .ohlc-dot-flag:hover {
             transform: scale(1.12);
             box-shadow:
-                0 2px 6px rgba(0,0,0,0.4),
-                0 0 0 0.5px rgba(255,255,255,0.2) inset;
+                0 2px 6px rgba(0,0,0,0.55),
+                0 0 0 0.5px rgba(255,255,255,0.25) inset;
         }
         .ohlc-dot-flag-base {
             left: 0;
