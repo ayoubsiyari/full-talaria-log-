@@ -86,6 +86,11 @@ class ReplaySystem {
         this.cutLineLabel = null;
         this.pickModeOverlay = null;
 
+        /** When true, go-back pick UI spans every panel (multi-layout). */
+        this._goBackMultiPanel = false;
+        /** @type {Array<{chart: *, wrapper: HTMLElement, pickModeOverlay: HTMLElement, clickCaptureLayer: HTMLElement, cutLine: *, cutLineLabel: HTMLElement|null}>|null} */
+        this._goBackEntries = null;
+
         this.init();
     }
 
@@ -1154,7 +1159,28 @@ class ReplaySystem {
      */
     handlePickModeMouseMove(e) {
         if (!this.isPickingPoint) return;
-        
+
+        if (this.isGoingBack && this._goBackMultiPanel) {
+            const chart = e.currentTarget && e.currentTarget._goBackChart;
+            if (!chart || !chart.canvas) return;
+            const wrapper = chart.canvas.parentElement;
+            if (!wrapper) return;
+            const rect = wrapper.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            if (x < chart.margin.l || x > chart.w - chart.margin.r) {
+                this.hideAllGoBackVisualsMulti();
+                return;
+            }
+            const candleIndex = this.getCandleIndexAtXForChart(chart, x);
+            if (candleIndex < 0 || !chart.data[candleIndex]) {
+                this.hideAllGoBackVisualsMulti();
+                return;
+            }
+            const targetTime = chart.data[candleIndex].t;
+            this.applyGoBackVisualsForTimestamp(targetTime);
+            return;
+        }
+
         const wrapper = this.chartWrapper || document.getElementById('chartWrapper') || this.chart.canvas?.parentElement;
         if (!wrapper) return;
         
@@ -1244,26 +1270,237 @@ class ReplaySystem {
      * Get candle index at x position
      */
     getCandleIndexAtX(x) {
-        if (!this.chart.data) return -1;
-        
-        // Use the chart's pixelToDataIndex method for accurate conversion
-        if (this.chart.pixelToDataIndex) {
-            let index = Math.round(this.chart.pixelToDataIndex(x));
-            index = Math.max(0, Math.min(this.chart.data.length - 1, index));
+        return this.getCandleIndexAtXForChart(this.chart, x);
+    }
+
+    getCandleIndexAtXForChart(chart, x) {
+        if (!chart || !chart.data) return -1;
+
+        if (chart.pixelToDataIndex) {
+            let index = Math.round(chart.pixelToDataIndex(x));
+            index = Math.max(0, Math.min(chart.data.length - 1, index));
             return index;
         }
-        
-        // Fallback: Use xScale if pixelToDataIndex not available
-        if (!this.chart.xScale) return -1;
-        
-        const chartX = x - this.chart.margin.l;
-        const candleWidth = this.chart.xScale.bandwidth ? this.chart.xScale.bandwidth() : 
-            (this.chart.w - this.chart.margin.l - this.chart.margin.r) / this.chart.data.length;
-        
-        let index = Math.floor(chartX / candleWidth) + (this.chart.startIndex || 0);
-        index = Math.max(0, Math.min(this.chart.data.length - 1, index));
-        
+
+        if (!chart.xScale) return -1;
+
+        const chartX = x - chart.margin.l;
+        const candleWidth = chart.xScale.bandwidth ? chart.xScale.bandwidth() :
+            (chart.w - chart.margin.l - chart.margin.r) / chart.data.length;
+
+        let index = Math.floor(chartX / candleWidth) + (chart.startIndex || 0);
+        index = Math.max(0, Math.min(chart.data.length - 1, index));
+
         return index;
+    }
+
+    collectGoBackPanelEntries() {
+        const out = [];
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (pm && Array.isArray(pm.panels) && pm.panels.length > 1) {
+            pm.panels.forEach((panel, i) => {
+                const c = panel.chartInstance;
+                if (!c || !c.canvas) return;
+                const wrapper = c.canvas.parentElement;
+                if (!wrapper) return;
+                out.push({ chart: c, wrapper, panelIndex: i });
+            });
+            if (out.length > 0) {
+                return out;
+            }
+        }
+        const w = document.getElementById('chartWrapper') ||
+            document.querySelector('.chart-wrapper') ||
+            this.chart?.canvas?.parentElement;
+        if (this.chart && w) {
+            out.push({ chart: this.chart, wrapper: w, panelIndex: 0 });
+        }
+        return out;
+    }
+
+    findLastDataIndexAtOrBefore(chart, ts) {
+        if (!chart || !chart.data || chart.data.length === 0) return -1;
+        let idx = -1;
+        for (let i = 0; i < chart.data.length; i++) {
+            if (chart.data[i].t <= ts) idx = i;
+            else break;
+        }
+        return idx;
+    }
+
+    /** Used by pick / go-back hover labels (timezone manager when available). */
+    formatDateTime(date) {
+        const d = date instanceof Date ? date : new Date(date);
+        if (Number.isNaN(d.getTime())) return '—';
+        if (typeof window !== 'undefined' && window.timezoneManager &&
+            typeof window.timezoneManager.formatTime === 'function') {
+            return window.timezoneManager.formatTime(d.getTime(), 'full');
+        }
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayName = days[d.getDay()];
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const seconds = String(d.getSeconds()).padStart(2, '0');
+        return `(${dayName}) ${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
+
+    hideAllGoBackVisualsMulti() {
+        if (!this._goBackEntries) return;
+        this._goBackEntries.forEach((entry) => {
+            if (entry.cutLine) entry.cutLine.attr('opacity', 0);
+            if (entry.pickModeOverlay) entry.pickModeOverlay.style.width = '0';
+            if (entry.cutLineLabel) entry.cutLineLabel.style.opacity = '0';
+        });
+    }
+
+    applyGoBackVisualsForTimestamp(ts) {
+        if (!this._goBackEntries) return;
+        this._goBackEntries.forEach((entry) => {
+            const { chart, pickModeOverlay, cutLine, cutLineLabel } = entry;
+            if (!chart.data || chart.data.length === 0) {
+                if (cutLine) cutLine.attr('opacity', 0);
+                if (pickModeOverlay) pickModeOverlay.style.width = '0';
+                if (cutLineLabel) cutLineLabel.style.opacity = '0';
+                return;
+            }
+            const idx = this.findLastDataIndexAtOrBefore(chart, ts);
+            if (idx < 0) {
+                if (cutLine) cutLine.attr('opacity', 0);
+                if (pickModeOverlay) pickModeOverlay.style.width = '0';
+                if (cutLineLabel) cutLineLabel.style.opacity = '0';
+                return;
+            }
+            let x;
+            if (typeof chart.dataIndexToPixel === 'function') {
+                x = chart.dataIndexToPixel(idx);
+            } else {
+                return;
+            }
+            if (x < chart.margin.l || x > chart.w - chart.margin.r) {
+                if (cutLine) cutLine.attr('opacity', 0);
+                if (pickModeOverlay) pickModeOverlay.style.width = '0';
+                if (cutLineLabel) cutLineLabel.style.opacity = '0';
+                return;
+            }
+            if (cutLine) {
+                cutLine.attr('x1', x).attr('x2', x).attr('opacity', 1);
+            }
+            if (pickModeOverlay) {
+                const rightWidth = chart.w - x;
+                pickModeOverlay.style.left = 'auto';
+                pickModeOverlay.style.right = '0';
+                pickModeOverlay.style.width = `${rightWidth}px`;
+            }
+            if (cutLineLabel) {
+                const dateStr = this.formatDateTime(new Date(ts));
+                cutLineLabel.textContent = `⏪ Go back to: ${dateStr}`;
+                cutLineLabel.style.left = `${x + 10}px`;
+                cutLineLabel.style.opacity = '1';
+            }
+        });
+    }
+
+    setupGoBackMultiPanelUI(entries) {
+        this._goBackMultiPanel = true;
+        this._goBackEntries = [];
+
+        const isLightMode = document.body.classList.contains('light-mode');
+        const overlayColor = isLightMode ? 'rgba(244, 246, 250, 0.10)' : 'rgba(236, 240, 246, 0.10)';
+
+        document.querySelectorAll('.indicator-icon, .drawing-tool, .chart-annotation, [class*="indicator"], .svg-overlay, .drawings-layer').forEach(el => {
+            el.dataset.originalPointerEvents = el.style.pointerEvents;
+            el.style.pointerEvents = 'none';
+        });
+
+        entries.forEach((entry, i) => {
+            const { chart, wrapper } = entry;
+            const pickModeOverlay = document.createElement('div');
+            pickModeOverlay.id = `replayPickOverlay-${i}`;
+            pickModeOverlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                right: 0;
+                width: 0;
+                height: 100%;
+                background: ${overlayColor};
+                pointer-events: none;
+                z-index: 40;
+            `;
+            wrapper.appendChild(pickModeOverlay);
+
+            const clickCaptureLayer = document.createElement('div');
+            clickCaptureLayer.id = `replayClickCapture-${i}`;
+            clickCaptureLayer.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                z-index: 50;
+                cursor: crosshair;
+            `;
+            clickCaptureLayer._goBackChart = chart;
+            wrapper.appendChild(clickCaptureLayer);
+
+            clickCaptureLayer.addEventListener('mousemove', this.onPickModeMouseMove);
+            clickCaptureLayer.addEventListener('click', this.onGoBackClick);
+
+            const svgElement = chart.svgOverlay || chart.svg;
+            let cutLine = null;
+            if (svgElement) {
+                cutLine = svgElement.append('line')
+                    .attr('id', `replayCutLine-${i}`)
+                    .attr('class', 'replay-cut-line')
+                    .attr('y1', chart.margin.t)
+                    .attr('y2', chart.h - chart.margin.b)
+                    .attr('stroke', '#2196f3')
+                    .attr('stroke-width', 1)
+                    .attr('stroke-dasharray', '6,3')
+                    .attr('opacity', 0)
+                    .style('pointer-events', 'none');
+            }
+
+            let cutLineLabel = null;
+            if (i === 0) {
+                cutLineLabel = document.createElement('div');
+                cutLineLabel.id = 'replayCutLineLabel';
+                cutLineLabel.style.cssText = `
+                    position: absolute;
+                    top: 10px;
+                    background: #2196f3;
+                    color: white;
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    white-space: nowrap;
+                    pointer-events: none;
+                    z-index: 45;
+                    opacity: 0;
+                    transition: opacity 0.1s;
+                `;
+                wrapper.appendChild(cutLineLabel);
+            }
+
+            wrapper.style.cursor = 'crosshair';
+
+            this._goBackEntries.push({
+                chart,
+                wrapper,
+                pickModeOverlay,
+                clickCaptureLayer,
+                cutLine,
+                cutLineLabel
+            });
+        });
+
+        this.pickModeOverlay = this._goBackEntries[0] ? this._goBackEntries[0].pickModeOverlay : null;
+        this.clickCaptureLayer = this._goBackEntries[0] ? this._goBackEntries[0].clickCaptureLayer : null;
+        this.cutLine = this._goBackEntries[0] ? this._goBackEntries[0].cutLine : null;
+        this.cutLineLabel = this._goBackEntries[0] ? this._goBackEntries[0].cutLineLabel : null;
     }
     
     /**
@@ -1352,21 +1589,22 @@ class ReplaySystem {
             this.replayBtn.style.borderColor = '#2196f3';
         }
         
-        // Get the chart wrapper element
-        this.chartWrapper = document.getElementById('chartWrapper') || 
-                           document.querySelector('.chart-wrapper') ||
-                           this.chart.canvas?.parentElement;
-        
         // Bind handlers FIRST before creating overlay
         this.onGoBackClick = this.handleGoBackClick.bind(this);
         this.onPickModeMouseMove = this.handlePickModeMouseMove.bind(this);
-        
-        // Create overlay for pick mode (but only on visible area)
-        this.createGoBackOverlay();
-        
-        // Create cut line elements
-        this.createCutLine();
-        
+
+        const goBackEntries = this.collectGoBackPanelEntries();
+        if (goBackEntries.length > 1) {
+            this.chartWrapper = goBackEntries[0].wrapper;
+            this.setupGoBackMultiPanelUI(goBackEntries);
+        } else {
+            this.chartWrapper = document.getElementById('chartWrapper') ||
+                document.querySelector('.chart-wrapper') ||
+                this.chart.canvas?.parentElement;
+            this.createGoBackOverlay();
+            this.createCutLine();
+        }
+
         // Show instruction
         this.showGoBackInstruction();
     }
@@ -1516,28 +1754,30 @@ class ReplaySystem {
             this.exitGoBackMode();
             return;
         }
-        
-        const wrapper = this.chartWrapper || document.getElementById('chartWrapper') || this.chart.canvas?.parentElement;
+
+        const sourceChart = (this._goBackMultiPanel && e.currentTarget && e.currentTarget._goBackChart)
+            ? e.currentTarget._goBackChart
+            : this.chart;
+        if (!sourceChart || !sourceChart.canvas) return;
+
+        const wrapper = sourceChart.canvas.parentElement;
         if (!wrapper) return;
-        
+
         const rect = wrapper.getBoundingClientRect();
         const x = e.clientX - rect.left;
-        
-        // Only accept clicks in chart area
-        if (x < this.chart.margin.l || x > this.chart.w - this.chart.margin.r) {
+
+        if (x < sourceChart.margin.l || x > sourceChart.w - sourceChart.margin.r) {
             return;
         }
-        
-        // Find the candle index at click position
-        const candleIndex = this.getCandleIndexAtX(x);
-        
+
+        const candleIndex = this.getCandleIndexAtXForChart(sourceChart, x);
+
         if (candleIndex < 0) {
             console.warn('Could not find candle at click position');
             return;
         }
-        
-        // Get the candle time from current visible data
-        const candle = this.chart.data[candleIndex];
+
+        const candle = sourceChart.data[candleIndex];
         if (!candle) return;
         
         const targetTime = candle.t;
@@ -1556,12 +1796,18 @@ class ReplaySystem {
         newRawIndex = newRawIndex + 1;
         
         
-        // Flash effect on the cut line before transitioning
-        if (this.cutLine) {
-            this.cutLine
-                .attr('stroke', '#4caf50')
-                .attr('stroke-width', 2);
-        }
+        const flashCutLines = () => {
+            if (this._goBackMultiPanel && this._goBackEntries) {
+                this._goBackEntries.forEach((ent) => {
+                    if (ent.cutLine) {
+                        ent.cutLine.attr('stroke', '#4caf50').attr('stroke-width', 2);
+                    }
+                });
+            } else if (this.cutLine) {
+                this.cutLine.attr('stroke', '#4caf50').attr('stroke-width', 2);
+            }
+        };
+        flashCutLines();
         
         // Brief delay for visual feedback then update
         setTimeout(() => {
@@ -1593,11 +1839,14 @@ class ReplaySystem {
             this.replayBtn.style.borderColor = '';
         }
         
-        // Reset cursor
-        if (this.chartWrapper) {
+        if (this._goBackMultiPanel && this._goBackEntries) {
+            this._goBackEntries.forEach((ent) => {
+                if (ent.wrapper) ent.wrapper.style.cursor = '';
+            });
+        } else if (this.chartWrapper) {
             this.chartWrapper.style.cursor = '';
         }
-        
+
         // Remove overlay, cut line and capture layer
         this.removePickModeElements();
     }
@@ -1606,30 +1855,51 @@ class ReplaySystem {
      * Remove pick mode elements
      */
     removePickModeElements() {
-        // Remove cut line
-        if (this.cutLine) {
-            this.cutLine.remove();
+        if (this._goBackMultiPanel && this._goBackEntries) {
+            this._goBackEntries.forEach((entry) => {
+                if (entry.cutLine) {
+                    entry.cutLine.remove();
+                }
+                if (entry.cutLineLabel) {
+                    entry.cutLineLabel.remove();
+                }
+                if (entry.pickModeOverlay) {
+                    entry.pickModeOverlay.remove();
+                }
+                if (entry.clickCaptureLayer) {
+                    entry.clickCaptureLayer.removeEventListener('mousemove', this.onPickModeMouseMove);
+                    entry.clickCaptureLayer.removeEventListener('click', this.onGoBackClick);
+                    entry.clickCaptureLayer.remove();
+                }
+            });
+            this._goBackEntries = null;
+            this._goBackMultiPanel = false;
             this.cutLine = null;
-        }
-        
-        // Remove cut line label
-        if (this.cutLineLabel) {
-            this.cutLineLabel.remove();
             this.cutLineLabel = null;
-        }
-        
-        // Remove overlay
-        if (this.pickModeOverlay) {
-            this.pickModeOverlay.remove();
             this.pickModeOverlay = null;
-        }
-        
-        // Remove click capture layer
-        if (this.clickCaptureLayer) {
-            this.clickCaptureLayer.removeEventListener('mousemove', this.onPickModeMouseMove);
-            this.clickCaptureLayer.removeEventListener('click', this.onGoBackClick);
-            this.clickCaptureLayer.remove();
             this.clickCaptureLayer = null;
+        } else {
+            if (this.cutLine) {
+                this.cutLine.remove();
+                this.cutLine = null;
+            }
+
+            if (this.cutLineLabel) {
+                this.cutLineLabel.remove();
+                this.cutLineLabel = null;
+            }
+
+            if (this.pickModeOverlay) {
+                this.pickModeOverlay.remove();
+                this.pickModeOverlay = null;
+            }
+
+            if (this.clickCaptureLayer) {
+                this.clickCaptureLayer.removeEventListener('mousemove', this.onPickModeMouseMove);
+                this.clickCaptureLayer.removeEventListener('click', this.onGoBackClick);
+                this.clickCaptureLayer.remove();
+                this.clickCaptureLayer = null;
+            }
         }
         
         // Restore pointer-events on indicators/drawings
