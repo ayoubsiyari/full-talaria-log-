@@ -55864,10 +55864,13 @@ if(!window.__tplPreviewCommitHookBound){
 
     document.addEventListener('click',function(e){
         var t=e&&e.target;
-        if(!t||!t.id) return;
-        if(t.id==='confirmApplyTemplate'||t.id==='confirmCancelTemplate'||t.id==='confirmCloseTemplate'){
+        if(!t||typeof t.closest!=='function') return;
+        var applyBtn=t.closest('#confirmApplyTemplate');
+        var cancelBtn=t.closest('#confirmCancelTemplate');
+        var closeBtn=t.closest('#confirmCloseTemplate');
+        if(applyBtn||cancelBtn||closeBtn){
             window._templatePreviewMode=false;
-            if(t.id==='confirmApplyTemplate'){
+            if(applyBtn){
                 setTimeout(function(){
                     var c=ch(); if(!c) return;
                     var cs=c.chartSettings||{};
@@ -55880,20 +55883,23 @@ if(!window.__tplPreviewCommitHookBound){
                     window.__templatePreviewOriginal=null;
                 },0);
             }else{
-                var c=ch();
-                var snap=window.__templatePreviewOriginal;
-                if(c&&snap&&snap.chartSettings){
-                    c.chartSettings=JSON.parse(JSON.stringify(snap.chartSettings));
-                    c._lastChartOnlyTemplate=snap.lastChart;
-                    c._lastPanelOnlyTemplate=snap.lastPanel;
-                    c.chartSettings.activeChartOnlyTemplate=snap.activeChart;
-                    c.chartSettings.activePanelOnlyTemplate=snap.activePanel;
-                    c.chartSettings.activeUnifiedTheme=snap.activeUnified;
-                    if(c.applyChartSettings)c.applyChartSettings();
-                    if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render();
-                    if(typeof tlRefreshTemplateDropdownChrome==='function') tlRefreshTemplateDropdownChrome();
-                }
-                window.__templatePreviewOriginal=null;
+                // Run after existing modal handlers to guarantee final state is restored.
+                setTimeout(function(){
+                    var c=ch();
+                    var snap=window.__templatePreviewOriginal;
+                    if(c&&snap&&snap.chartSettings){
+                        c.chartSettings=JSON.parse(JSON.stringify(snap.chartSettings));
+                        c._lastChartOnlyTemplate=snap.lastChart;
+                        c._lastPanelOnlyTemplate=snap.lastPanel;
+                        c.chartSettings.activeChartOnlyTemplate=snap.activeChart;
+                        c.chartSettings.activePanelOnlyTemplate=snap.activePanel;
+                        c.chartSettings.activeUnifiedTheme=snap.activeUnified;
+                        if(c.applyChartSettings)c.applyChartSettings();
+                        if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render();
+                        if(typeof tlRefreshTemplateDropdownChrome==='function') tlRefreshTemplateDropdownChrome();
+                    }
+                    window.__templatePreviewOriginal=null;
+                },0);
             }
         }
     },true);
