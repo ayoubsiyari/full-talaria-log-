@@ -4814,6 +4814,14 @@ class OrderManager {
                 }
                 .order-tab:hover { filter: brightness(1.12); }
 
+                /* Light mode: force clear tab text colors (prevents washed-out labels) */
+                body.light-mode .order-tab.order-tab--buy,
+                body.light-mode .order-tab.order-tab--sell { color: #4b5563 !important; }
+                body.light-mode .order-tab:hover:not(.active) { color: #1f2937 !important; }
+                body.light-mode .order-tab.active.order-tab--buy,
+                body.light-mode .order-tab.active.order-tab--sell,
+                body.light-mode .order-tab.active:hover { color: #ffffff !important; }
+
                 /* ── ORDER TYPE BUTTONS ──────────────────────────────────────────── */
                 .order-section {
                     display: flex;
