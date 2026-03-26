@@ -34117,7 +34117,7 @@
             border-color: #e2e8f0 !important;
             color: #64748b !important;
         }
-        body.light-mode .order-tab:hover { background: #e2e8f0 !important; color: #334155 !important; }
+        body.light-mode .order-tab:hover:not(.active) { background: #e8ecf1 !important; color: #334155 !important; }
         body.light-mode .order-tab.active.order-tab--buy,
         body.light-mode .order-tab.active.order-tab--sell {
             background: linear-gradient(135deg, #2962ff, #1e50e6) !important;
@@ -34125,8 +34125,11 @@
             color: #ffffff !important;
             box-shadow: 0 3px 12px rgba(41,98,255,0.25) !important;
         }
+        body.light-mode .order-tab.active:hover {
+            filter: brightness(1.08) !important;
+        }
 
-        /* Order type buttons (Market/Limit/Stop) */
+        /* Order type buttons (Market/Limit/Stop) + Position sizing tabs */
         body.light-mode .order-button-group {
             background: #f1f5f9 !important;
             border-color: #e2e8f0 !important;
@@ -34136,11 +34139,11 @@
         body.light-mode .breakeven-mode-tab {
             color: #64748b !important;
         }
-        body.light-mode .order-type-btn:hover,
-        body.light-mode .position-mode-tab:hover,
-        body.light-mode .breakeven-mode-tab:hover {
-            background: rgba(41,98,255,0.08) !important;
-            color: #1e293b !important;
+        body.light-mode .order-type-btn:hover:not(.active),
+        body.light-mode .position-mode-tab:hover:not(.active),
+        body.light-mode .breakeven-mode-tab:hover:not(.active) {
+            background: rgba(41,98,255,0.06) !important;
+            color: #334155 !important;
         }
         body.light-mode .order-type-btn.active,
         body.light-mode .position-mode-tab.active,
@@ -34149,61 +34152,94 @@
             color: #ffffff !important;
             box-shadow: 0 2px 8px rgba(41,98,255,0.25) !important;
         }
+        body.light-mode .order-type-btn.active:hover,
+        body.light-mode .position-mode-tab.active:hover,
+        body.light-mode .breakeven-mode-tab.active:hover {
+            filter: brightness(1.08) !important;
+        }
 
-        /* Input wrappers */
+        /* ── Input fields — redesigned ── */
         body.light-mode .order-input-wrapper {
+            background: #f8fafc !important;
+            border: 1.5px solid #d1d5db !important;
+            border-radius: 10px !important;
+            box-shadow: inset 0 1px 2px rgba(15,23,42,0.04) !important;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s !important;
+        }
+        body.light-mode .order-input-wrapper:hover {
+            border-color: #94a3b8 !important;
             background: #ffffff !important;
-            border-color: #d1d5db !important;
-            box-shadow: 0 1px 2px rgba(15,23,42,0.05) !important;
         }
         body.light-mode .order-input-wrapper:focus-within {
             border-color: #2962ff !important;
             background: #ffffff !important;
-            box-shadow: 0 0 0 3px rgba(41,98,255,0.12) !important;
+            box-shadow: 0 0 0 3px rgba(41,98,255,0.1), inset 0 1px 2px rgba(15,23,42,0.02) !important;
         }
-        body.light-mode .order-input { color: #1e293b !important; }
+        body.light-mode .order-input {
+            color: #0f172a !important;
+            font-weight: 600 !important;
+        }
         body.light-mode .order-input::placeholder { color: #94a3b8 !important; }
-        body.light-mode .order-input-prefix,
-        body.light-mode .order-input-suffix { color: #64748b !important; }
-        body.light-mode .order-label { color: #475569 !important; }
+        body.light-mode .order-input-prefix {
+            color: #94a3b8 !important;
+            font-weight: 500 !important;
+        }
+        body.light-mode .order-input-suffix {
+            color: #64748b !important;
+            font-weight: 600 !important;
+            background: #f1f5f9 !important;
+            padding: 4px 8px !important;
+            border-radius: 6px !important;
+            font-size: 10px !important;
+        }
+        body.light-mode .order-label {
+            color: #334155 !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.06em !important;
+        }
         body.light-mode .order-hint { color: #94a3b8 !important; }
 
         /* Stepper buttons (+/-) */
         body.light-mode .input-stepper {
-            background: #f1f5f9 !important;
-            border-color: #d1d5db !important;
+            background: #ffffff !important;
+            border: 1.5px solid #d1d5db !important;
             color: #334155 !important;
+            border-radius: 10px !important;
         }
         body.light-mode .input-stepper:hover {
-            background: rgba(41,98,255,0.08) !important;
-            border-color: rgba(41,98,255,0.4) !important;
-            color: #1e293b !important;
+            background: #f1f5f9 !important;
+            border-color: #2962ff !important;
+            color: #2962ff !important;
         }
 
-        /* Risk buttons */
+        /* Risk shortcut buttons */
         body.light-mode .risk-btn {
             background: #f8fafc !important;
             border-color: #e2e8f0 !important;
             color: #64748b !important;
         }
-        body.light-mode .risk-btn:hover {
-            background: rgba(41,98,255,0.06) !important;
-            border-color: rgba(41,98,255,0.3) !important;
+        body.light-mode .risk-btn:hover:not(.active) {
+            background: rgba(41,98,255,0.04) !important;
+            border-color: rgba(41,98,255,0.25) !important;
             color: #2962ff !important;
         }
         body.light-mode .risk-btn.active {
-            background: rgba(41,98,255,0.1) !important;
+            background: rgba(41,98,255,0.08) !important;
             border-color: #2962ff !important;
             color: #2962ff !important;
+        }
+        body.light-mode .risk-btn.active:hover {
+            background: rgba(41,98,255,0.12) !important;
         }
 
         /* Calculation row (Position Size) */
         body.light-mode .order-calculation {
-            background: rgba(41,98,255,0.04) !important;
-            border-color: #e2e8f0 !important;
+            background: #f8fafc !important;
+            border: 1.5px solid #e2e8f0 !important;
+            border-radius: 8px !important;
         }
         body.light-mode .order-calculation-label { color: #64748b !important; }
-        body.light-mode .order-calculation-value { color: #2962ff !important; }
+        body.light-mode .order-calculation-value { color: #2962ff !important; font-weight: 800 !important; }
 
         /* Toggle switches */
         body.light-mode .toggle-switch__track { background: #cbd5e1 !important; }
@@ -34216,80 +34252,98 @@
         /* Checkbox overrides */
         body.light-mode .order-panel input[type="checkbox"] { accent-color: #2962ff; }
 
-        /* Collapse sections (Protection, Multi-TP) */
+        /* Collapse sections (Protection, Multi-TP, MFE/MAE) */
         body.light-mode .order-collapse {
-            border-color: #e2e8f0 !important;
-            background: #fafbfc !important;
+            border: 1.5px solid #e2e8f0 !important;
+            background: #ffffff !important;
+            border-radius: 10px !important;
         }
         body.light-mode .order-collapse:hover { border-color: #cbd5e1 !important; }
         body.light-mode .order-collapse__header {
-            color: #475569 !important;
+            color: #334155 !important;
             background: #f8fafc !important;
+            border-radius: 9px !important;
         }
         body.light-mode .order-collapse__header:hover { background: #f1f5f9 !important; color: #1e293b !important; }
         body.light-mode .order-collapse--open .order-collapse__header {
             color: #1e293b !important;
             border-bottom-color: #e2e8f0 !important;
-            background: rgba(41,98,255,0.04) !important;
+            background: rgba(41,98,255,0.03) !important;
+            border-radius: 9px 9px 0 0 !important;
         }
         body.light-mode .order-collapse__chevron { color: #94a3b8 !important; }
-        body.light-mode .order-collapse--open .order-collapse__chevron { color: #1e293b !important; }
-        body.light-mode .order-collapse__content { background: #f8fafc !important; }
+        body.light-mode .order-collapse--open .order-collapse__chevron { color: #2962ff !important; }
+        body.light-mode .order-collapse__content {
+            background: #fafbfd !important;
+            border-top: 1px solid #e2e8f0 !important;
+        }
 
         /* Summary footer (Reward/Risk/Margin) */
         body.light-mode .order-summary {
-            background: #f8fafc !important;
-            border-color: #e2e8f0 !important;
+            background: #ffffff !important;
+            border: 1.5px solid #e2e8f0 !important;
+            border-radius: 12px !important;
         }
         body.light-mode .order-summary-label { color: #64748b !important; }
-        body.light-mode .order-summary-value { color: #1e293b !important; }
-        body.light-mode .order-summary-divider { border-top-color: #e2e8f0 !important; }
+        body.light-mode .order-summary-value { color: #0f172a !important; font-weight: 700 !important; }
+        body.light-mode .order-summary-divider { border-top-color: #f1f5f9 !important; }
 
         /* Submit button */
         body.light-mode .order-submit-btn {
             background: linear-gradient(135deg, #2962ff 0%, #1e50e6 100%) !important;
-            box-shadow: 0 2px 12px rgba(41,98,255,0.25) !important;
+            box-shadow: 0 4px 14px rgba(41,98,255,0.3) !important;
+            border-radius: 12px !important;
         }
-        body.light-mode .order-submit-btn:hover { box-shadow: 0 4px 18px rgba(41,98,255,0.35) !important; }
+        body.light-mode .order-submit-btn:hover {
+            filter: brightness(1.06) !important;
+            box-shadow: 0 6px 20px rgba(41,98,255,0.4) !important;
+        }
         body.light-mode .order-submit-btn.sell-mode {
             background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
-            box-shadow: 0 2px 12px rgba(220,38,38,0.25) !important;
+            box-shadow: 0 4px 14px rgba(220,38,38,0.3) !important;
+        }
+        body.light-mode .order-submit-btn.sell-mode:hover {
+            box-shadow: 0 6px 20px rgba(220,38,38,0.4) !important;
         }
 
         /* Card / info card */
         body.light-mode .order-card-soft {
             background: #f8fafc !important;
-            border-color: #e2e8f0 !important;
+            border: 1.5px solid #e2e8f0 !important;
+            border-radius: 12px !important;
         }
         body.light-mode .order-info-card {
-            background: rgba(41,98,255,0.04) !important;
-            border-color: rgba(41,98,255,0.2) !important;
+            background: rgba(41,98,255,0.03) !important;
+            border: 1.5px solid rgba(41,98,255,0.15) !important;
+            border-radius: 12px !important;
         }
         body.light-mode .order-info-body { color: #475569 !important; }
 
         /* Validation errors */
         body.light-mode .order-validation--error {
-            background: rgba(239,68,68,0.06) !important;
-            border-color: rgba(239,68,68,0.2) !important;
+            background: rgba(239,68,68,0.05) !important;
+            border: 1.5px solid rgba(239,68,68,0.15) !important;
             color: #dc2626 !important;
+            border-radius: 8px !important;
         }
 
         /* Icon buttons */
         body.light-mode .order-btn-icon {
-            background: #f1f5f9 !important;
-            border-color: #e2e8f0 !important;
+            background: #ffffff !important;
+            border: 1.5px solid #e2e8f0 !important;
             color: #334155 !important;
         }
         body.light-mode .order-btn-icon:hover {
-            background: rgba(41,98,255,0.08) !important;
-            border-color: rgba(41,98,255,0.3) !important;
+            background: #f8fafc !important;
+            border-color: #2962ff !important;
+            color: #2962ff !important;
         }
 
         /* Market type badge */
         body.light-mode .order-panel .market-type-badge,
         body.light-mode .order-panel .symbol-badge {
             background: #f1f5f9 !important;
-            border-color: #e2e8f0 !important;
+            border: 1px solid #e2e8f0 !important;
             color: #475569 !important;
         }
 
