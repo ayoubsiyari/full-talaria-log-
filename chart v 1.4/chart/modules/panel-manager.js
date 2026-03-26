@@ -1630,9 +1630,21 @@ class PanelManager {
         this.refreshMultiPanelChrome();
 
         this.savePanelState();
-        
-        // Resize functionality disabled - panels are fixed size
-        // setTimeout(() => this.createResizeHandles(), 200);
+
+        // Load any saved custom panel sizes, then create drag-to-resize handles
+        setTimeout(() => {
+            const restored = this._loadPanelSizes();
+            if (restored) {
+                this.panels.forEach(panel => {
+                    if (panel.chartInstance && panel.chartInstance.resize) {
+                        panel.chartInstance._lastResizeDpr = 0;
+                        panel.chartInstance.resize();
+                        if (panel.chartInstance.render) panel.chartInstance.render();
+                    }
+                });
+            }
+            this.createResizeHandles();
+        }, 300);
     }
     
     /**
@@ -2315,254 +2327,316 @@ class PanelManager {
     }
     
     /**
-     * Create resize handles between panels
+     * Create resize handles between panels (percentage-based)
      */
     createResizeHandles() {
-        // Remove existing handles
-        this.resizeHandles.forEach(h => h.remove());
+        this.resizeHandles.forEach(h => { if (h && h.parentNode) h.parentNode.removeChild(h); });
         this.resizeHandles = [];
-        
+
         if (this.panels.length < 2 || this.maximizedPanelIndex !== null) return;
-        
-        // Use chart-container as the parent for handles (includes main chart)
+
         const chartContainer = document.getElementById('chart-container');
         if (!chartContainer) return;
-        
-        const containerRect = chartContainer.getBoundingClientRect();
-        
-        // Find panel boundaries and create handles
-        this.panels.forEach((panel, i) => {
-            if (!panel.element) return;
-            const rect = panel.element.getBoundingClientRect();
-            
-            // Create vertical handle on right edge (if not last column)
-            const rightEdge = rect.right - containerRect.left;
-            if (rightEdge < containerRect.width - 10) {
-                const handle = this.createHandle('vertical', rightEdge, rect.top - containerRect.top, rect.height, i, 'right');
-                if (handle) this.resizeHandles.push(handle);
+
+        const SNAP = 1.5;
+        const panelRects = this.panels.map((panel, idx) => {
+            if (!panel.element) return null;
+            const s = panel.element.style;
+            return {
+                idx,
+                left:   parseFloat(s.left)   || 0,
+                top:    parseFloat(s.top)    || 0,
+                width:  parseFloat(s.width)  || 100,
+                height: parseFloat(s.height) || 100,
+            };
+        }).filter(Boolean);
+
+        const vBounds = new Map();
+        const hBounds = new Map();
+
+        panelRects.forEach(r => {
+            const rightEdge = Math.round((r.left + r.width) * 100) / 100;
+            if (rightEdge > SNAP && rightEdge < 100 - SNAP) {
+                if (!vBounds.has(rightEdge)) vBounds.set(rightEdge, { left: [], right: [] });
+                vBounds.get(rightEdge).left.push(r);
             }
-            
-            // Create horizontal handle on bottom edge (if not last row)
-            const bottomEdge = rect.bottom - containerRect.top;
-            if (bottomEdge < containerRect.height - 10) {
-                const handle = this.createHandle('horizontal', rect.left - containerRect.left, bottomEdge, rect.width, i, 'bottom');
-                if (handle) this.resizeHandles.push(handle);
+            const leftEdge = Math.round(r.left * 100) / 100;
+            if (leftEdge > SNAP && leftEdge < 100 - SNAP) {
+                if (!vBounds.has(leftEdge)) vBounds.set(leftEdge, { left: [], right: [] });
+                vBounds.get(leftEdge).right.push(r);
+            }
+            const bottomEdge = Math.round((r.top + r.height) * 100) / 100;
+            if (bottomEdge > SNAP && bottomEdge < 100 - SNAP) {
+                if (!hBounds.has(bottomEdge)) hBounds.set(bottomEdge, { top: [], bottom: [] });
+                hBounds.get(bottomEdge).top.push(r);
+            }
+            const topEdge = Math.round(r.top * 100) / 100;
+            if (topEdge > SNAP && topEdge < 100 - SNAP) {
+                if (!hBounds.has(topEdge)) hBounds.set(topEdge, { top: [], bottom: [] });
+                hBounds.get(topEdge).bottom.push(r);
             }
         });
+
+        vBounds.forEach((sides, pct) => {
+            if (sides.left.length === 0 || sides.right.length === 0) return;
+            const all = [...sides.left, ...sides.right];
+            const minTop = Math.min(...all.map(r => r.top));
+            const maxBot = Math.max(...all.map(r => r.top + r.height));
+            const handle = this._createPercentHandle('vertical', pct, minTop, maxBot - minTop, {
+                boundary: pct,
+                leftPanels: sides.left.map(r => r.idx),
+                rightPanels: sides.right.map(r => r.idx),
+            });
+            if (handle) this.resizeHandles.push(handle);
+        });
+
+        hBounds.forEach((sides, pct) => {
+            if (sides.top.length === 0 || sides.bottom.length === 0) return;
+            const all = [...sides.top, ...sides.bottom];
+            const minLeft = Math.min(...all.map(r => r.left));
+            const maxRight = Math.max(...all.map(r => r.left + r.width));
+            const handle = this._createPercentHandle('horizontal', minLeft, pct, maxRight - minLeft, {
+                boundary: pct,
+                topPanels: sides.top.map(r => r.idx),
+                bottomPanels: sides.bottom.map(r => r.idx),
+            });
+            if (handle) this.resizeHandles.push(handle);
+        });
     }
-    
-    /**
-     * Create a single resize handle
-     */
-    createHandle(type, x, y, size, panelIndex, edge) {
+
+    _createPercentHandle(type, xPct, yPct, sizePct, meta) {
         const handle = document.createElement('div');
         handle.className = `panel-resize-handle ${type}`;
-        handle.dataset.panelIndex = panelIndex;
-        handle.dataset.edge = edge;
-        
-        const thickness = 10; // Wider hit area for easier grabbing
-        
+
         if (type === 'vertical') {
-            handle.style.cssText = `
-                position: absolute;
-                left: ${x - thickness/2}px;
-                top: ${y}px;
-                width: ${thickness}px;
-                height: ${size}px;
-                cursor: col-resize;
-                background: transparent;
-                z-index: 150;
-                pointer-events: auto;
-                transition: background 0.15s ease;
-            `;
+            handle.style.cssText = `position:absolute;left:${xPct}%;top:${yPct}%;width:10px;height:${sizePct}%;transform:translateX(-50%);cursor:col-resize;background:transparent;z-index:200;pointer-events:auto;`;
         } else {
-            handle.style.cssText = `
-                position: absolute;
-                left: ${x}px;
-                top: ${y - thickness/2}px;
-                width: ${size}px;
-                height: ${thickness}px;
-                cursor: row-resize;
-                background: transparent;
-                z-index: 150;
-                pointer-events: auto;
-                transition: background 0.15s ease;
-            `;
+            handle.style.cssText = `position:absolute;left:${xPct}%;top:${yPct}%;width:${sizePct}%;height:10px;transform:translateY(-50%);cursor:row-resize;background:transparent;z-index:200;pointer-events:auto;`;
         }
-        
-        // Hover effect - subtle blue line
+
+        handle._resizeMeta = meta;
+        handle._resizeType = type;
+
         handle.addEventListener('mouseenter', () => {
-            handle.style.background = 'rgba(var(--sp-accent-rgb), 0.6)';
+            if (!this.isResizing) {
+                handle.style.background = type === 'vertical'
+                    ? 'linear-gradient(90deg, transparent 20%, rgba(41,98,255,0.55) 50%, transparent 80%)'
+                    : 'linear-gradient(180deg, transparent 20%, rgba(41,98,255,0.55) 50%, transparent 80%)';
+            }
         });
         handle.addEventListener('mouseleave', () => {
-            if (!this.isResizing) {
-                handle.style.background = 'transparent';
-            }
+            if (!this.isResizing) handle.style.background = 'transparent';
         });
-        
-        // Drag start
+
         handle.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            this.startResize(e, handle, type, panelIndex);
+            e.stopPropagation();
+            this._startPercentResize(e, handle);
         });
-        
-        // Append to chart-container so handles work with main chart too
+
+        handle.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._resetPanelSizes();
+            this.applyLayout(this.currentLayout);
+        });
+
         const chartContainer = document.getElementById('chart-container');
-        if (chartContainer) {
-            chartContainer.appendChild(handle);
-        } else {
-            this.container.appendChild(handle);
-        }
+        (chartContainer || this.container).appendChild(handle);
         return handle;
     }
-    
-    /**
-     * Start resize drag
-     */
-    startResize(e, handle, type, panelIndex) {
+
+    _startPercentResize(e, handle) {
         this.isResizing = true;
         this.resizeHandle = handle;
-        this.resizeStartX = e.clientX;
-        this.resizeStartY = e.clientY;
-        this.resizeType = type;
-        this.resizePanelIndex = panelIndex;
         this._resizeRAF = null;
-        
-        // Store initial sizes
-        this.initialPanelSizes = this.panels.map(p => {
-            if (p.element) {
-                const rect = p.element.getBoundingClientRect();
-                // Add GPU acceleration hint
-                p.element.style.willChange = 'width, height, left, top';
-                return { width: rect.width, height: rect.height, left: rect.left, top: rect.top };
-            }
-            return null;
-        });
-        
-        handle.style.background = 'rgba(var(--sp-accent-rgb), 0.7)';
+
+        const chartContainer = document.getElementById('chart-container');
+        const containerRect = chartContainer.getBoundingClientRect();
+        const meta = handle._resizeMeta;
+        const type = handle._resizeType;
+
+        this._resizeState = {
+            type, meta, containerRect,
+            startX: e.clientX, startY: e.clientY,
+            startBoundary: meta.boundary,
+            panelSnapshots: this.panels.map((panel, idx) => {
+                if (!panel.element) return null;
+                const s = panel.element.style;
+                return {
+                    idx,
+                    left:   parseFloat(s.left)   || 0,
+                    top:    parseFloat(s.top)    || 0,
+                    width:  parseFloat(s.width)  || 100,
+                    height: parseFloat(s.height) || 100,
+                };
+            }),
+        };
+
+        handle.style.background = type === 'vertical'
+            ? 'linear-gradient(90deg, transparent 15%, rgba(41,98,255,0.75) 50%, transparent 85%)'
+            : 'linear-gradient(180deg, transparent 15%, rgba(41,98,255,0.75) 50%, transparent 85%)';
         document.body.style.cursor = type === 'vertical' ? 'col-resize' : 'row-resize';
         document.body.style.userSelect = 'none';
-        
-        // Add move and up handlers
-        this._resizeMove = (e) => this.handleResizeMove(e);
-        this._resizeEnd = (e) => this.endResize(e);
-        
-        document.addEventListener('mousemove', this._resizeMove);
-        document.addEventListener('mouseup', this._resizeEnd);
+
+        const overlay = document.createElement('div');
+        overlay.id = '_panelResizeOverlay';
+        overlay.style.cssText = `position:fixed;inset:0;z-index:9999;cursor:${document.body.style.cursor};`;
+        document.body.appendChild(overlay);
+        this._resizeOverlay = overlay;
+
+        this._resizeMove = (ev) => {
+            this._lastResizeX = ev.clientX;
+            this._lastResizeY = ev.clientY;
+            if (!this._resizeRAF) {
+                this._resizeRAF = requestAnimationFrame(() => {
+                    this._resizeRAF = null;
+                    this._applyPercentResize();
+                });
+            }
+        };
+        this._resizeEnd = () => this._endPercentResize();
+
+        document.addEventListener('mousemove', this._resizeMove, true);
+        document.addEventListener('mouseup', this._resizeEnd, true);
     }
-    
-    /**
-     * Handle resize drag move
-     */
-    handleResizeMove(e) {
-        if (!this.isResizing) return;
-        
-        // Store latest mouse position
-        this._lastResizeX = e.clientX;
-        this._lastResizeY = e.clientY;
-        
-        // Use requestAnimationFrame for smooth updates
-        if (!this._resizeRAF) {
-            this._resizeRAF = requestAnimationFrame(() => {
-                this._resizeRAF = null;
-                this.applyResize();
-            });
-        }
-    }
-    
-    /**
-     * Apply resize changes (called via RAF for smoothness)
-     */
-    applyResize() {
-        if (!this.isResizing) return;
-        
-        const deltaX = this._lastResizeX - this.resizeStartX;
-        const deltaY = this._lastResizeY - this.resizeStartY;
-        
-        const chartContainer = document.getElementById('chart-container');
-        const containerRect = chartContainer ? chartContainer.getBoundingClientRect() : this.container.getBoundingClientRect();
-        
-        if (this.resizeType === 'vertical') {
-            this.panels.forEach((panel, i) => {
-                if (!panel.element || !this.initialPanelSizes[i]) return;
-                const initial = this.initialPanelSizes[i];
-                
-                if (i === this.resizePanelIndex) {
-                    const newWidth = Math.max(100, initial.width + deltaX);
-                    panel.element.style.width = newWidth + 'px';
-                } else if (initial.left > this.initialPanelSizes[this.resizePanelIndex]?.left) {
-                    const leftPanel = this.initialPanelSizes[this.resizePanelIndex];
-                    if (leftPanel && Math.abs(initial.left - (leftPanel.left + leftPanel.width)) < 15) {
-                        const newLeft = initial.left - containerRect.left + deltaX;
-                        const newWidth = Math.max(100, initial.width - deltaX);
-                        panel.element.style.left = newLeft + 'px';
-                        panel.element.style.width = newWidth + 'px';
-                    }
-                }
-            });
+
+    _applyPercentResize() {
+        if (!this.isResizing || !this._resizeState) return;
+        const { type, meta, containerRect, startX, startY, startBoundary, panelSnapshots } = this._resizeState;
+        const MIN_PCT = 8;
+
+        let deltaPct;
+        if (type === 'vertical') {
+            deltaPct = ((this._lastResizeX - startX) / containerRect.width) * 100;
         } else {
-            this.panels.forEach((panel, i) => {
-                if (!panel.element || !this.initialPanelSizes[i]) return;
-                const initial = this.initialPanelSizes[i];
-                
-                if (i === this.resizePanelIndex) {
-                    const newHeight = Math.max(80, initial.height + deltaY);
-                    panel.element.style.height = newHeight + 'px';
-                } else if (initial.top > this.initialPanelSizes[this.resizePanelIndex]?.top) {
-                    const topPanel = this.initialPanelSizes[this.resizePanelIndex];
-                    if (topPanel && Math.abs(initial.top - (topPanel.top + topPanel.height)) < 15) {
-                        const newTop = initial.top - containerRect.top + deltaY;
-                        const newHeight = Math.max(80, initial.height - deltaY);
-                        panel.element.style.top = newTop + 'px';
-                        panel.element.style.height = newHeight + 'px';
-                    }
+            deltaPct = ((this._lastResizeY - startY) / containerRect.height) * 100;
+        }
+
+        let newBoundary = startBoundary + deltaPct;
+
+        if (type === 'vertical') {
+            const leftSnaps = panelSnapshots.filter(s => s && meta.leftPanels.includes(s.idx));
+            const rightSnaps = panelSnapshots.filter(s => s && meta.rightPanels.includes(s.idx));
+            const minAllowed = Math.max(...leftSnaps.map(r => r.left + MIN_PCT));
+            const maxAllowed = Math.min(...rightSnaps.map(r => r.left + r.width - MIN_PCT));
+            newBoundary = Math.max(minAllowed, Math.min(maxAllowed, newBoundary));
+        } else {
+            const topSnaps = panelSnapshots.filter(s => s && meta.topPanels.includes(s.idx));
+            const botSnaps = panelSnapshots.filter(s => s && meta.bottomPanels.includes(s.idx));
+            const minAllowed = Math.max(...topSnaps.map(r => r.top + MIN_PCT));
+            const maxAllowed = Math.min(...botSnaps.map(r => r.top + r.height - MIN_PCT));
+            newBoundary = Math.max(minAllowed, Math.min(maxAllowed, newBoundary));
+        }
+
+        panelSnapshots.forEach(snap => {
+            if (!snap) return;
+            const panel = this.panels[snap.idx];
+            if (!panel || !panel.element) return;
+
+            if (type === 'vertical') {
+                if (meta.leftPanels.includes(snap.idx)) {
+                    panel.element.style.width = (newBoundary - snap.left) + '%';
+                } else if (meta.rightPanels.includes(snap.idx)) {
+                    const originalRight = snap.left + snap.width;
+                    panel.element.style.left = newBoundary + '%';
+                    panel.element.style.width = (originalRight - newBoundary) + '%';
                 }
-            });
-        }
-    }
-    
-    /**
-     * End resize drag
-     */
-    endResize(e) {
-        if (!this.isResizing) return;
-        
-        this.isResizing = false;
-        
-        // Cancel any pending RAF
-        if (this._resizeRAF) {
-            cancelAnimationFrame(this._resizeRAF);
-            this._resizeRAF = null;
-        }
-        
-        // Clean up GPU hints
-        this.panels.forEach(p => {
-            if (p.element) {
-                p.element.style.willChange = 'auto';
+            } else {
+                if (meta.topPanels.includes(snap.idx)) {
+                    panel.element.style.height = (newBoundary - snap.top) + '%';
+                } else if (meta.bottomPanels.includes(snap.idx)) {
+                    const originalBottom = snap.top + snap.height;
+                    panel.element.style.top = newBoundary + '%';
+                    panel.element.style.height = (originalBottom - newBoundary) + '%';
+                }
             }
         });
-        
+
         if (this.resizeHandle) {
-            this.resizeHandle.style.background = 'transparent';
+            if (type === 'vertical') this.resizeHandle.style.left = newBoundary + '%';
+            else this.resizeHandle.style.top = newBoundary + '%';
         }
+
+        this._resizeState.currentBoundary = newBoundary;
+
+        // Throttled live chart resize for visual feedback (~5 fps)
+        const now = performance.now();
+        if (!this._lastLiveResize || now - this._lastLiveResize > 200) {
+            this._lastLiveResize = now;
+            panelSnapshots.forEach(snap => {
+                if (!snap) return;
+                const panel = this.panels[snap.idx];
+                if (!panel || !panel.chartInstance || !panel.chartInstance.resize) return;
+                panel.chartInstance._lastResizeDpr = 0;
+                panel.chartInstance.resize();
+            });
+        }
+    }
+
+    _endPercentResize() {
+        if (!this.isResizing) return;
+        this.isResizing = false;
+
+        if (this._resizeRAF) { cancelAnimationFrame(this._resizeRAF); this._resizeRAF = null; }
+        if (this._resizeOverlay) { this._resizeOverlay.remove(); this._resizeOverlay = null; }
+        if (this.resizeHandle) this.resizeHandle.style.background = 'transparent';
+
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        
-        document.removeEventListener('mousemove', this._resizeMove);
-        document.removeEventListener('mouseup', this._resizeEnd);
-        
-        // Resize all charts to fit new panel sizes (use Chart.resize() for proper DPR)
-        setTimeout(() => {
-            this.panels.forEach(panel => {
-                if (panel.element && panel.element.style.display !== 'none' && panel.chartInstance && panel.chartInstance.resize) {
+        document.removeEventListener('mousemove', this._resizeMove, true);
+        document.removeEventListener('mouseup', this._resizeEnd, true);
+
+        this.panels.forEach(panel => {
+            if (panel.element && panel.element.style.display !== 'none' && panel.chartInstance) {
+                if (panel.chartInstance.resize) {
                     panel.chartInstance._lastResizeDpr = 0;
                     panel.chartInstance.resize();
-                    panel.chartInstance.render();
                 }
+                if (panel.chartInstance.render) panel.chartInstance.render();
+            }
+        });
+
+        setTimeout(() => this.createResizeHandles(), 30);
+        this._savePanelSizes();
+    }
+
+    _savePanelSizes() {
+        try {
+            const sizes = this.panels.map(panel => {
+                if (!panel.element) return null;
+                return { left: panel.element.style.left, top: panel.element.style.top, width: panel.element.style.width, height: panel.element.style.height };
             });
-        }, 50);
-        
-        console.log('📐 Panel resize complete');
+            localStorage.setItem('chart_panel_sizes_' + this.currentLayout, JSON.stringify(sizes));
+        } catch (e) { /* ignore */ }
+    }
+
+    _loadPanelSizes() {
+        try {
+            const saved = localStorage.getItem('chart_panel_sizes_' + this.currentLayout);
+            if (!saved) return false;
+            const sizes = JSON.parse(saved);
+            if (!Array.isArray(sizes) || sizes.length !== this.panels.length) return false;
+            let valid = true;
+            sizes.forEach((size, i) => {
+                if (!size || !this.panels[i] || !this.panels[i].element) { valid = false; return; }
+                const w = parseFloat(size.width), h = parseFloat(size.height);
+                if (isNaN(w) || isNaN(h) || w < 5 || h < 5) { valid = false; return; }
+            });
+            if (!valid) return false;
+            sizes.forEach((size, i) => {
+                const el = this.panels[i].element;
+                el.style.left = size.left;
+                el.style.top = size.top;
+                el.style.width = size.width;
+                el.style.height = size.height;
+            });
+            return true;
+        } catch (e) { return false; }
+    }
+
+    _resetPanelSizes() {
+        try { localStorage.removeItem('chart_panel_sizes_' + this.currentLayout); } catch (e) { /* ignore */ }
     }
 }
 

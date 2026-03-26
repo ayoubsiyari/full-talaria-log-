@@ -41469,7 +41469,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260325_PANEL_APPEARANCE_SYNC_V79"></script>
+    <script defer src="modules/panel-manager.js?v=20260326_PANEL_DRAG_RESIZE_V80"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -56103,7 +56103,7 @@ P['symbol']={title:'Symbol',build:function(){
 
     var baselineSec=(type==='baseline')?sec(st('BASELINE COLOR')+clr('Baseline color','blClr',blC)):'';
 
-    return sec(st('CHART TYPE')+selDD('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
+    return templateSec+sec(st('CHART TYPE')+selDD('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
 
     selDD('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
 
@@ -56121,7 +56121,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         selDD('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+
 
-        clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc'))+extraSec+templateSec;
+        clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc'))+extraSec;
 
 },wire:function(){
 
