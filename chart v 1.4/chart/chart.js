@@ -5746,7 +5746,9 @@ class Chart {
         if (!template) return;
         this._lastPanelOnlyTemplate = templateName;
         this.chartSettings.activePanelOnlyTemplate = templateName;
-        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
+        // Keep panel/sidebar theme selection synchronized with unified-theme state.
+        this.chartSettings.activeUnifiedTheme = templateName;
+        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
         const hasPanelKeys = PANEL_KEYS.some(k => template[k] !== undefined);
         if (hasPanelKeys) {
             PANEL_KEYS.forEach(key => {
@@ -5840,7 +5842,11 @@ class Chart {
     }
 
     getPanelTemplateSwatches() {
-        return this.getUnifiedThemeSwatches();
+        const all = this.getUnifiedThemeSwatches() || [];
+        return all.filter((tpl) => {
+            const name = String((tpl && tpl.name) || '').trim().toLowerCase();
+            return name === 'dark' || name === 'light';
+        });
     }
 
     getTalariaTemplateSwatches() {

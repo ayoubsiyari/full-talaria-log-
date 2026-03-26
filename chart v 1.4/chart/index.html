@@ -41752,7 +41752,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_INDEX_CLEAN_V215"></script>
+    <script defer src="chart.js?v=20260326_INDEX_CLEAN_V217"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V78"></script>
 
@@ -55972,6 +55972,25 @@ function tlRefreshTemplateDropdownChrome(){
 
     var ddc=tlDdChromeFromChart(c.chartSettings||{});
 
+    function getSelectedTplId(ddid){
+        if(ddid==='tl_chart_dd') return c._lastChartOnlyTemplate||null;
+        if(ddid==='tl_talaria_dd') return c._lastTemplateSelected||null;
+        if(ddid==='tl_panel_dd'){
+            var panelList=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():[];
+            var panelIds=new Set(panelList.map(function(t){return t.id;}));
+            var cs=c.chartSettings||{};
+            var picked=null;
+            if(cs.activePanelOnlyTemplate&&panelIds.has(cs.activePanelOnlyTemplate)) picked=cs.activePanelOnlyTemplate;
+            else if(cs.activeUnifiedTheme&&panelIds.has(cs.activeUnifiedTheme)) picked=cs.activeUnifiedTheme;
+            else if(c._lastPanelOnlyTemplate&&panelIds.has(c._lastPanelOnlyTemplate)) picked=c._lastPanelOnlyTemplate;
+            else if(c._lastTemplateSelected&&panelIds.has(c._lastTemplateSelected)) picked=c._lastTemplateSelected;
+            else if(c._lastChartOnlyTemplate&&panelIds.has(c._lastChartOnlyTemplate)) picked=c._lastChartOnlyTemplate;
+            if(picked) c._lastPanelOnlyTemplate=picked;
+            return picked;
+        }
+        return null;
+    }
+
     document.querySelectorAll('.tl-dd-panel').forEach(function(p){
 
         p.style.background=ddc.panelBg;
@@ -55996,6 +56015,26 @@ function tlRefreshTemplateDropdownChrome(){
 
         if(svg)svg.setAttribute('stroke',ddc.chevron);
 
+        var ddid=(trig.id||'').replace(/_trig$/,'');
+        var selectedId=getSelectedTplId(ddid);
+        if(!selectedId) return;
+        var panel=document.getElementById(ddid+'_panel');
+        if(!panel) return;
+        var selectedOpt=panel.querySelector('.tl-dd-opt[data-tplid="'+selectedId+'"]');
+        if(!selectedOpt) return;
+        var lbl=selectedOpt.querySelector('span');
+        if(!lbl) return;
+        var dotsWrap=selectedOpt.querySelectorAll('span')[1];
+        var dotsHtml='';
+        if(dotsWrap&&dotsWrap.children&&dotsWrap.children.length){
+            Array.from(dotsWrap.children).forEach(function(dot){
+                var bg=dot.style.background||'#2962ff';
+                dotsHtml+='<span style="width:9px;height:9px;border-radius:50%;background:'+bg+';display:inline-block;"></span>';
+            });
+            dotsHtml='<span style="display:flex;gap:3px;flex-shrink:0;">'+dotsHtml+'</span>';
+        }
+        trig.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:'+ddc.textPrimary+';">'+lbl.textContent+'</span>'+dotsHtml+'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.chevron+'" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';
+
     });
 
     document.querySelectorAll('.tl-dd-opt').forEach(function(opt){
@@ -56004,11 +56043,11 @@ function tlRefreshTemplateDropdownChrome(){
 
         var isSel=false;
 
-        if(ddid==='tl_chart_dd')isSel=c._lastChartOnlyTemplate===tid;
+        if(ddid==='tl_chart_dd')isSel=getSelectedTplId('tl_chart_dd')===tid;
 
-        else if(ddid==='tl_panel_dd')isSel=c._lastPanelOnlyTemplate===tid;
+        else if(ddid==='tl_panel_dd')isSel=getSelectedTplId('tl_panel_dd')===tid;
 
-        else if(ddid==='tl_talaria_dd')isSel=c._lastTemplateSelected===tid;
+        else if(ddid==='tl_talaria_dd')isSel=getSelectedTplId('tl_talaria_dd')===tid;
 
         opt.style.background=isSel?ddc.optActive:'transparent';
 
