@@ -16840,117 +16840,68 @@
         /* Floating Follow Button - positioned inside chart-wrapper */
 
         #replayFollow {
-
             position: absolute;
-
             bottom: 70px;
-
             right: 120px;
-
             z-index: 100;
-
             display: none;
-
             align-items: center;
-
             justify-content: center;
-
             width: 44px;
-
             height: 44px;
-
             padding: 0;
-
-            background: rgba(45, 55, 72, 0.85);
-
+            background: rgba(45, 55, 72, 0.45);
             backdrop-filter: blur(12px);
-
             -webkit-backdrop-filter: blur(12px);
-
-            border: 2px solid rgba(160, 174, 192, 0.3);
-
+            border: 1.5px solid rgba(160, 174, 192, 0.2);
             border-radius: 50%;
-
-            color: #a0aec0;
-
-            cursor: default;
-
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-
-            transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
-
-            animation: followPulse 2s ease-in-out infinite;
-
+            color: rgba(160, 174, 192, 0.7);
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+            animation: followPulse 2.5s ease-in-out infinite;
         }
-
-
 
         @keyframes followPulse {
-
             0%, 100% {
-
-                border-color: rgba(160, 174, 192, 0.3);
-
-                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-
+                opacity: 0.7;
             }
-
             50% {
-
-                border-color: rgba(160, 174, 192, 0.6);
-
-                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 20px rgba(160, 174, 192, 0.2);
-
+                opacity: 1;
             }
-
         }
-
-
 
         #replayFollow:hover {
-
-            background: rgba(55, 65, 81, 0.95);
-
-            border-color: rgba(160, 174, 192, 0.7);
-
+            background: rgba(45, 55, 72, 0.7);
+            border-color: rgba(160, 174, 192, 0.4);
             color: #e2e8f0;
-
-            transform: scale(1.08);
-
+            transform: scale(1.1);
             animation: none;
-
+            opacity: 1;
         }
-
-
 
         #replayFollow svg {
-
             width: 20px;
-
             height: 20px;
-
         }
 
-
-
-        /* Light mode — stronger contrast for visibility */
-
+        /* Light mode */
         body.light-mode #replayFollow,
         body.light-mode .panel-follow-btn {
-            background: rgba(15, 23, 42, 0.75);
-            border-color: rgba(15, 23, 42, 0.25);
-            color: #ffffff;
-            box-shadow: 0 4px 15px rgba(15, 23, 42, 0.2);
+            background: rgba(15, 23, 42, 0.35);
+            border-color: rgba(15, 23, 42, 0.12);
+            color: rgba(15, 23, 42, 0.6);
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
         }
-
         body.light-mode #replayFollow:hover,
         body.light-mode .panel-follow-btn:hover {
-            background: rgba(15, 23, 42, 0.9);
-            border-color: rgba(15, 23, 42, 0.4);
+            background: rgba(15, 23, 42, 0.55);
+            border-color: rgba(15, 23, 42, 0.25);
             color: #ffffff;
+            opacity: 1;
         }
 
-        /* Panel follow button — inherits same look as main follow button */
+        /* Panel follow button */
         .panel-follow-btn {
             position: absolute;
             bottom: 50px;
@@ -16962,23 +16913,24 @@
             width: 38px;
             height: 38px;
             padding: 0;
-            background: rgba(45, 55, 72, 0.85);
+            background: rgba(45, 55, 72, 0.45);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border: 2px solid rgba(160, 174, 192, 0.3);
+            border: 1.5px solid rgba(160, 174, 192, 0.2);
             border-radius: 50%;
-            color: #a0aec0;
-            cursor: default;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
-            animation: followPulse 2s ease-in-out infinite;
+            color: rgba(160, 174, 192, 0.7);
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+            animation: followPulse 2.5s ease-in-out infinite;
         }
         .panel-follow-btn:hover {
-            background: rgba(55, 65, 81, 0.95);
-            border-color: rgba(160, 174, 192, 0.7);
+            background: rgba(45, 55, 72, 0.7);
+            border-color: rgba(160, 174, 192, 0.4);
             color: #e2e8f0;
-            transform: scale(1.08);
+            transform: scale(1.1);
             animation: none;
+            opacity: 1;
         }
         .panel-follow-btn svg {
             width: 16px;
@@ -34129,6 +34081,216 @@
         body.light-mode #templateConfirmationModal #confirmCancelTemplate:hover {
             background: #cbd5e1 !important;
             color: #0f172a !important;
+        }
+
+        /* ── Order panel: light-mode overrides ── */
+        body.light-mode .order-panel {
+            --op-bg: #ffffff;
+            --op-surface: #f8fafc;
+            --op-text: #1e293b;
+            --op-text-muted: #64748b;
+            --op-border: rgba(15, 23, 42, 0.1);
+            --op-soft-accent: rgba(var(--op-accent-rgb), 0.08);
+            background: #ffffff !important;
+            border-left: 1px solid #e2e8f0 !important;
+            box-shadow: -8px 0 40px rgba(15, 23, 42, 0.08) !important;
+        }
+        body.light-mode .order-panel__header {
+            background: #f8fafc !important;
+            border-bottom-color: #e2e8f0 !important;
+        }
+        body.light-mode .order-panel__title { color: #1e293b !important; }
+        body.light-mode .order-panel__close { color: #94a3b8 !important; }
+        body.light-mode .order-panel__close:hover { background: rgba(15,23,42,0.06) !important; color: #1e293b !important; }
+        body.light-mode .order-panel__edge-handle {
+            box-shadow: -3px 0 10px rgba(15,23,42,0.1) !important;
+        }
+
+        body.light-mode .order-panel__content::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.1) !important; }
+        body.light-mode .order-panel__content::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.2) !important; }
+
+        body.light-mode .order-panel-backdrop { background: rgba(15,23,42,0.06) !important; }
+
+        /* Buy/Sell tabs */
+        body.light-mode .order-tab {
+            background: #f1f5f9 !important;
+            border-color: #e2e8f0 !important;
+            color: #64748b !important;
+        }
+        body.light-mode .order-tab:hover { background: #e2e8f0 !important; color: #334155 !important; }
+        body.light-mode .order-tab.active.order-tab--buy,
+        body.light-mode .order-tab.active.order-tab--sell {
+            background: linear-gradient(135deg, #2962ff, #1e50e6) !important;
+            border-color: #2962ff !important;
+            color: #ffffff !important;
+            box-shadow: 0 3px 12px rgba(41,98,255,0.25) !important;
+        }
+
+        /* Order type buttons (Market/Limit/Stop) */
+        body.light-mode .order-button-group {
+            background: #f1f5f9 !important;
+            border-color: #e2e8f0 !important;
+        }
+        body.light-mode .order-type-btn,
+        body.light-mode .position-mode-tab,
+        body.light-mode .breakeven-mode-tab {
+            color: #64748b !important;
+        }
+        body.light-mode .order-type-btn:hover,
+        body.light-mode .position-mode-tab:hover,
+        body.light-mode .breakeven-mode-tab:hover {
+            background: rgba(41,98,255,0.08) !important;
+            color: #1e293b !important;
+        }
+        body.light-mode .order-type-btn.active,
+        body.light-mode .position-mode-tab.active,
+        body.light-mode .breakeven-mode-tab.active {
+            background: #2962ff !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 8px rgba(41,98,255,0.25) !important;
+        }
+
+        /* Input wrappers */
+        body.light-mode .order-input-wrapper {
+            background: #ffffff !important;
+            border-color: #d1d5db !important;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.05) !important;
+        }
+        body.light-mode .order-input-wrapper:focus-within {
+            border-color: #2962ff !important;
+            background: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(41,98,255,0.12) !important;
+        }
+        body.light-mode .order-input { color: #1e293b !important; }
+        body.light-mode .order-input::placeholder { color: #94a3b8 !important; }
+        body.light-mode .order-input-prefix,
+        body.light-mode .order-input-suffix { color: #64748b !important; }
+        body.light-mode .order-label { color: #475569 !important; }
+        body.light-mode .order-hint { color: #94a3b8 !important; }
+
+        /* Stepper buttons (+/-) */
+        body.light-mode .input-stepper {
+            background: #f1f5f9 !important;
+            border-color: #d1d5db !important;
+            color: #334155 !important;
+        }
+        body.light-mode .input-stepper:hover {
+            background: rgba(41,98,255,0.08) !important;
+            border-color: rgba(41,98,255,0.4) !important;
+            color: #1e293b !important;
+        }
+
+        /* Risk buttons */
+        body.light-mode .risk-btn {
+            background: #f8fafc !important;
+            border-color: #e2e8f0 !important;
+            color: #64748b !important;
+        }
+        body.light-mode .risk-btn:hover {
+            background: rgba(41,98,255,0.06) !important;
+            border-color: rgba(41,98,255,0.3) !important;
+            color: #2962ff !important;
+        }
+        body.light-mode .risk-btn.active {
+            background: rgba(41,98,255,0.1) !important;
+            border-color: #2962ff !important;
+            color: #2962ff !important;
+        }
+
+        /* Calculation row (Position Size) */
+        body.light-mode .order-calculation {
+            background: rgba(41,98,255,0.04) !important;
+            border-color: #e2e8f0 !important;
+        }
+        body.light-mode .order-calculation-label { color: #64748b !important; }
+        body.light-mode .order-calculation-value { color: #2962ff !important; }
+
+        /* Toggle switches */
+        body.light-mode .toggle-switch__track { background: #cbd5e1 !important; }
+        body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: #2962ff !important; }
+        body.light-mode .order-toggle-label { color: #475569 !important; }
+        body.light-mode .order-toggle-label:hover { color: #1e293b !important; }
+        body.light-mode .order-radio-label { color: #475569 !important; }
+        body.light-mode .order-radio-label:hover { color: #1e293b !important; }
+
+        /* Checkbox overrides */
+        body.light-mode .order-panel input[type="checkbox"] { accent-color: #2962ff; }
+
+        /* Collapse sections (Protection, Multi-TP) */
+        body.light-mode .order-collapse {
+            border-color: #e2e8f0 !important;
+            background: #fafbfc !important;
+        }
+        body.light-mode .order-collapse:hover { border-color: #cbd5e1 !important; }
+        body.light-mode .order-collapse__header {
+            color: #475569 !important;
+            background: #f8fafc !important;
+        }
+        body.light-mode .order-collapse__header:hover { background: #f1f5f9 !important; color: #1e293b !important; }
+        body.light-mode .order-collapse--open .order-collapse__header {
+            color: #1e293b !important;
+            border-bottom-color: #e2e8f0 !important;
+            background: rgba(41,98,255,0.04) !important;
+        }
+        body.light-mode .order-collapse__chevron { color: #94a3b8 !important; }
+        body.light-mode .order-collapse--open .order-collapse__chevron { color: #1e293b !important; }
+        body.light-mode .order-collapse__content { background: #f8fafc !important; }
+
+        /* Summary footer (Reward/Risk/Margin) */
+        body.light-mode .order-summary {
+            background: #f8fafc !important;
+            border-color: #e2e8f0 !important;
+        }
+        body.light-mode .order-summary-label { color: #64748b !important; }
+        body.light-mode .order-summary-value { color: #1e293b !important; }
+        body.light-mode .order-summary-divider { border-top-color: #e2e8f0 !important; }
+
+        /* Submit button */
+        body.light-mode .order-submit-btn {
+            background: linear-gradient(135deg, #2962ff 0%, #1e50e6 100%) !important;
+            box-shadow: 0 2px 12px rgba(41,98,255,0.25) !important;
+        }
+        body.light-mode .order-submit-btn:hover { box-shadow: 0 4px 18px rgba(41,98,255,0.35) !important; }
+        body.light-mode .order-submit-btn.sell-mode {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+            box-shadow: 0 2px 12px rgba(220,38,38,0.25) !important;
+        }
+
+        /* Card / info card */
+        body.light-mode .order-card-soft {
+            background: #f8fafc !important;
+            border-color: #e2e8f0 !important;
+        }
+        body.light-mode .order-info-card {
+            background: rgba(41,98,255,0.04) !important;
+            border-color: rgba(41,98,255,0.2) !important;
+        }
+        body.light-mode .order-info-body { color: #475569 !important; }
+
+        /* Validation errors */
+        body.light-mode .order-validation--error {
+            background: rgba(239,68,68,0.06) !important;
+            border-color: rgba(239,68,68,0.2) !important;
+            color: #dc2626 !important;
+        }
+
+        /* Icon buttons */
+        body.light-mode .order-btn-icon {
+            background: #f1f5f9 !important;
+            border-color: #e2e8f0 !important;
+            color: #334155 !important;
+        }
+        body.light-mode .order-btn-icon:hover {
+            background: rgba(41,98,255,0.08) !important;
+            border-color: rgba(41,98,255,0.3) !important;
+        }
+
+        /* Market type badge */
+        body.light-mode .order-panel .market-type-badge,
+        body.light-mode .order-panel .symbol-badge {
+            background: #f1f5f9 !important;
+            border-color: #e2e8f0 !important;
+            color: #475569 !important;
         }
 
         /* ── Replay toolbar + bottom panels: neutral light overrides ── */
