@@ -3121,6 +3121,7 @@ body.light-mode .tv-tab-btn {
 body.light-mode .tv-tab-btn:hover {
 
     background: #d1d4dc;
+    color: #0f172a;
 
 }
 
@@ -3141,6 +3142,7 @@ body.light-mode .tv-tab-btn.active {
 body.light-mode .tv-tab-content {
 
     background: #ffffff;
+    color: #1f2937;
 
 }
 
@@ -4361,8 +4363,8 @@ body.light-mode .tv-side-tab-btn.active:hover .front {
 body.light-mode .tv-collapsible-tab-btn {
 
     background: #e0e3eb;
-
-    color: #131722;
+    border-color: #cbd5e1;
+    color: #334155;
 
 }
 
@@ -4374,7 +4376,7 @@ body.light-mode .tv-collapsible-tab-btn:hover {
 
     border-color: rgba(41, 98, 255, 0.6);
 
-    color: #131722;
+    color: #0f172a;
 
 }
 
@@ -4382,11 +4384,9 @@ body.light-mode .tv-collapsible-tab-btn:hover {
 
 body.light-mode .tv-collapsible-tab-btn.active {
 
-    background: rgba(41, 98, 255, 0.14);
-
-    border-color: rgba(41, 98, 255, 0.75);
-
-    color: #131722;
+    background: linear-gradient(135deg, rgba(41, 98, 255, 0.92), rgba(41, 98, 255, 0.62));
+    border-color: rgba(41, 98, 255, 0.95);
+    color: #ffffff;
 
 }
 

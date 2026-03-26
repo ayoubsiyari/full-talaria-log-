@@ -33802,6 +33802,96 @@
             border-bottom-color: rgba(15, 23, 42, 0.08) !important;
         }
 
+        /* Settings + drawing editor contrast fixes */
+        body.light-mode .settings-panel-header h2,
+        body.light-mode .settings-section-title,
+        body.light-mode .settings-item,
+        body.light-mode .settings-menu-item,
+        body.light-mode .settings-label,
+        body.light-mode .settings-radio-content h4,
+        body.light-mode .settings-checkbox-label {
+            color: #1f2937 !important;
+        }
+
+        body.light-mode .settings-radio-content p,
+        body.light-mode .settings-panel-close,
+        body.light-mode .settings-menu-item svg {
+            color: #64748b !important;
+        }
+
+        body.light-mode .settings-menu-item:hover,
+        body.light-mode .settings-item:hover {
+            color: #0f172a !important;
+            background: rgba(var(--sp-accent-rgb), 0.08) !important;
+        }
+
+        body.light-mode .drawing-style-editor,
+        body.light-mode .drawing-style-editor .settings-header,
+        body.light-mode .tv-tab-content,
+        body.light-mode .tv-collapsible-tabs-container {
+            color: #1f2937 !important;
+        }
+
+        body.light-mode .drawing-style-editor label,
+        body.light-mode .drawing-style-editor .tv-group-label,
+        body.light-mode .drawing-style-editor .tv-align-label,
+        body.light-mode .drawing-style-editor .tv-checkbox-label {
+            color: #334155 !important;
+        }
+
+        body.light-mode .drawing-style-editor input[type="text"],
+        body.light-mode .drawing-style-editor input[type="number"],
+        body.light-mode .drawing-style-editor textarea,
+        body.light-mode .drawing-style-editor select {
+            background: #f8fafc !important;
+            border-color: #cbd5e1 !important;
+            color: #1f2937 !important;
+        }
+
+        body.light-mode .drawing-style-editor input::placeholder,
+        body.light-mode .drawing-style-editor textarea::placeholder {
+            color: #64748b !important;
+        }
+
+        body.light-mode .drawing-style-editor input:focus,
+        body.light-mode .drawing-style-editor textarea:focus,
+        body.light-mode .drawing-style-editor select:focus {
+            border-color: rgba(var(--sp-accent-rgb), 0.7) !important;
+            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16) !important;
+        }
+
+        body.light-mode .tv-collapsible-tab-btn {
+            color: #334155 !important;
+            background: #e2e8f0 !important;
+            border-color: #cbd5e1 !important;
+        }
+
+        body.light-mode .tv-collapsible-tab-btn:hover {
+            color: #0f172a !important;
+            background: rgba(var(--sp-accent-rgb), 0.12) !important;
+            border-color: rgba(var(--sp-accent-rgb), 0.45) !important;
+        }
+
+        body.light-mode .tv-collapsible-tab-btn.active {
+            color: #ffffff !important;
+            background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.92), rgba(var(--sp-accent-rgb), 0.62)) !important;
+            border-color: rgba(var(--sp-accent-rgb), 0.95) !important;
+        }
+
+        body.light-mode .tv-collapsible-tab-btn .tab-arrow,
+        body.light-mode .tv-collapsible-tab-btn:hover .tab-arrow {
+            color: currentColor !important;
+            opacity: 0.92 !important;
+        }
+
+        body.light-mode .drawing-style-editor button {
+            color: #1f2937 !important;
+        }
+
+        body.light-mode .drawing-style-editor button:hover {
+            color: #0f172a !important;
+        }
+
     </style>
 
 </head>
@@ -40866,7 +40956,7 @@
 
     <script defer src="modules/drawing-tools-channels.js?v=20260321_PEARSONR_V6"></script>
 
-    <script defer src="modules/drawing-tools-ui.js?v=20260323_VERT_ALIGN_V1"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260323_VERT_ALIGN_V2"></script>
 
     <script defer src="modules/color-picker.js?v=20260318_TF_PIN_V60"></script>
 
