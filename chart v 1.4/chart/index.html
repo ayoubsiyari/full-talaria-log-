@@ -34085,21 +34085,21 @@
 
         /* ── Order panel: light-mode overrides ── */
         body.light-mode .order-panel {
-            --op-bg: #ffffff;
-            --op-surface: #f8fafc;
+            --op-bg: #f8fafc;
+            --op-surface: #eef2f7;
             --op-text: #1e293b;
             --op-text-muted: #64748b;
-            --op-border: rgba(15, 23, 42, 0.1);
+            --op-border: rgba(15, 23, 42, 0.08);
             --op-soft-accent: rgba(var(--op-accent-rgb), 0.08);
-            background: #ffffff !important;
+            background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
             border-left: 1px solid #e2e8f0 !important;
-            box-shadow: -8px 0 40px rgba(15, 23, 42, 0.08) !important;
+            box-shadow: -8px 0 40px rgba(15, 23, 42, 0.1) !important;
         }
         body.light-mode .order-panel__header {
-            background: #f8fafc !important;
-            border-bottom-color: #e2e8f0 !important;
+            background: rgba(241,245,249,0.8) !important;
+            border-bottom: 1px solid #e2e8f0 !important;
         }
-        body.light-mode .order-panel__title { color: #1e293b !important; }
+        body.light-mode .order-panel__title { color: #0f172a !important; }
         body.light-mode .order-panel__close { color: #94a3b8 !important; }
         body.light-mode .order-panel__close:hover { background: rgba(15,23,42,0.06) !important; color: #1e293b !important; }
         body.light-mode .order-panel__edge-handle {
@@ -34111,240 +34111,219 @@
 
         body.light-mode .order-panel-backdrop { background: rgba(15,23,42,0.06) !important; }
 
-        /* Buy/Sell tabs */
+        /* Buy/Sell tabs — mirroring dark mode structure */
         body.light-mode .order-tab {
-            background: #f1f5f9 !important;
-            border-color: #e2e8f0 !important;
+            background: rgba(15,23,42,0.03) !important;
+            border: 1px solid #e2e8f0 !important;
             color: #64748b !important;
         }
-        body.light-mode .order-tab:hover:not(.active) { background: #e8ecf1 !important; color: #334155 !important; }
+        body.light-mode .order-tab:hover:not(.active) { background: rgba(15,23,42,0.06) !important; color: #334155 !important; }
         body.light-mode .order-tab.active.order-tab--buy,
         body.light-mode .order-tab.active.order-tab--sell {
-            background: linear-gradient(135deg, #2962ff, #1e50e6) !important;
-            border-color: #2962ff !important;
+            background: linear-gradient(135deg, rgba(var(--op-accent-rgb),0.9), rgba(var(--op-accent-rgb),0.7)) !important;
+            border-color: rgba(var(--op-accent-rgb),0.9) !important;
             color: #ffffff !important;
-            box-shadow: 0 3px 12px rgba(41,98,255,0.25) !important;
+            box-shadow: 0 3px 14px rgba(var(--op-accent-rgb),0.3) !important;
         }
-        body.light-mode .order-tab.active:hover {
-            filter: brightness(1.08) !important;
-        }
+        body.light-mode .order-tab.active:hover { filter: brightness(1.06) !important; }
 
         /* Order type buttons (Market/Limit/Stop) + Position sizing tabs */
         body.light-mode .order-button-group {
-            background: #f1f5f9 !important;
-            border-color: #e2e8f0 !important;
+            background: rgba(15,23,42,0.04) !important;
+            border: 1px solid #e2e8f0 !important;
         }
         body.light-mode .order-type-btn,
         body.light-mode .position-mode-tab,
         body.light-mode .breakeven-mode-tab {
             color: #64748b !important;
+            background: transparent !important;
         }
         body.light-mode .order-type-btn:hover:not(.active),
         body.light-mode .position-mode-tab:hover:not(.active),
         body.light-mode .breakeven-mode-tab:hover:not(.active) {
-            background: rgba(41,98,255,0.06) !important;
+            background: rgba(var(--op-accent-rgb),0.06) !important;
             color: #334155 !important;
         }
         body.light-mode .order-type-btn.active,
         body.light-mode .position-mode-tab.active,
         body.light-mode .breakeven-mode-tab.active {
-            background: #2962ff !important;
+            background: var(--op-accent, #2962ff) !important;
             color: #ffffff !important;
-            box-shadow: 0 2px 8px rgba(41,98,255,0.25) !important;
+            box-shadow: 0 3px 14px rgba(var(--op-accent-rgb),0.3) !important;
         }
         body.light-mode .order-type-btn.active:hover,
         body.light-mode .position-mode-tab.active:hover,
         body.light-mode .breakeven-mode-tab.active:hover {
-            filter: brightness(1.08) !important;
+            filter: brightness(1.06) !important;
         }
 
-        /* ── Input fields — redesigned ── */
+        /* ── Input fields — dark-mode mirror with light palette ── */
         body.light-mode .order-input-wrapper {
-            background: #f8fafc !important;
-            border: 1.5px solid #d1d5db !important;
-            border-radius: 10px !important;
-            box-shadow: inset 0 1px 2px rgba(15,23,42,0.04) !important;
-            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s !important;
+            background: linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%) !important;
+            border: 1px solid rgba(15,23,42,0.08) !important;
+            border-radius: 8px !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.6) !important;
+            transition: border-color 0.15s, background 0.15s, box-shadow 0.15s !important;
         }
         body.light-mode .order-input-wrapper:hover {
-            border-color: #94a3b8 !important;
-            background: #ffffff !important;
+            border-color: rgba(15,23,42,0.15) !important;
         }
         body.light-mode .order-input-wrapper:focus-within {
-            border-color: #2962ff !important;
-            background: #ffffff !important;
-            box-shadow: 0 0 0 3px rgba(41,98,255,0.1), inset 0 1px 2px rgba(15,23,42,0.02) !important;
+            border-color: rgba(var(--op-accent-rgb),0.8) !important;
+            background: linear-gradient(180deg, #f1f5f9 0%, #e8ecf1 100%) !important;
+            box-shadow: 0 0 0 2px rgba(var(--op-accent-rgb),0.15) !important;
         }
         body.light-mode .order-input {
             color: #0f172a !important;
             font-weight: 600 !important;
         }
-        body.light-mode .order-input::placeholder { color: #94a3b8 !important; }
+        body.light-mode .order-input::placeholder { color: rgba(100,116,139,0.6) !important; }
         body.light-mode .order-input-prefix {
             color: #94a3b8 !important;
-            font-weight: 500 !important;
         }
         body.light-mode .order-input-suffix {
             color: #64748b !important;
             font-weight: 600 !important;
-            background: #f1f5f9 !important;
-            padding: 4px 8px !important;
-            border-radius: 6px !important;
-            font-size: 10px !important;
         }
         body.light-mode .order-label {
             color: #334155 !important;
-            font-weight: 700 !important;
-            letter-spacing: 0.06em !important;
         }
         body.light-mode .order-hint { color: #94a3b8 !important; }
 
-        /* Stepper buttons (+/-) */
+        /* Compact inputs (TP/SL price fields) */
+        body.light-mode .order-input--compact { color: #0f172a !important; }
+
+        /* Stepper buttons (+/-) — mirrors dark mode */
         body.light-mode .input-stepper {
-            background: #ffffff !important;
-            border: 1.5px solid #d1d5db !important;
+            background: rgba(15,23,42,0.04) !important;
+            border: 1px solid rgba(15,23,42,0.08) !important;
             color: #334155 !important;
-            border-radius: 10px !important;
         }
         body.light-mode .input-stepper:hover {
-            background: #f1f5f9 !important;
-            border-color: #2962ff !important;
-            color: #2962ff !important;
+            border-color: rgba(var(--op-accent-rgb),0.5) !important;
+            background: rgba(var(--op-accent-rgb),0.06) !important;
+            color: #1e293b !important;
         }
 
         /* Risk shortcut buttons */
         body.light-mode .risk-btn {
-            background: #f8fafc !important;
-            border-color: #e2e8f0 !important;
+            background: rgba(15,23,42,0.02) !important;
+            border: 1px solid rgba(15,23,42,0.06) !important;
             color: #64748b !important;
         }
         body.light-mode .risk-btn:hover:not(.active) {
-            background: rgba(41,98,255,0.04) !important;
-            border-color: rgba(41,98,255,0.25) !important;
+            background: rgba(var(--op-accent-rgb),0.06) !important;
+            border-color: rgba(var(--op-accent-rgb),0.3) !important;
             color: #2962ff !important;
         }
         body.light-mode .risk-btn.active {
-            background: rgba(41,98,255,0.08) !important;
-            border-color: #2962ff !important;
+            background: rgba(var(--op-accent-rgb),0.1) !important;
+            border-color: var(--op-accent,#2962ff) !important;
             color: #2962ff !important;
         }
-        body.light-mode .risk-btn.active:hover {
-            background: rgba(41,98,255,0.12) !important;
-        }
+        body.light-mode .risk-btn.active:hover { background: rgba(var(--op-accent-rgb),0.14) !important; }
 
-        /* Calculation row (Position Size) */
+        /* Calculation row (Position Size) — mirrors dark mode soft accent bg */
         body.light-mode .order-calculation {
-            background: #f8fafc !important;
-            border: 1.5px solid #e2e8f0 !important;
-            border-radius: 8px !important;
+            background: rgba(var(--op-accent-rgb),0.05) !important;
+            border: 1px solid rgba(15,23,42,0.06) !important;
         }
         body.light-mode .order-calculation-label { color: #64748b !important; }
-        body.light-mode .order-calculation-value { color: #2962ff !important; font-weight: 800 !important; }
+        body.light-mode .order-calculation-value { color: var(--op-accent,#2962ff) !important; }
 
         /* Toggle switches */
         body.light-mode .toggle-switch__track { background: #cbd5e1 !important; }
-        body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: #2962ff !important; }
+        body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: var(--op-accent,#2962ff) !important; }
         body.light-mode .order-toggle-label { color: #475569 !important; }
         body.light-mode .order-toggle-label:hover { color: #1e293b !important; }
         body.light-mode .order-radio-label { color: #475569 !important; }
         body.light-mode .order-radio-label:hover { color: #1e293b !important; }
 
         /* Checkbox overrides */
-        body.light-mode .order-panel input[type="checkbox"] { accent-color: #2962ff; }
+        body.light-mode .order-panel input[type="checkbox"] { accent-color: var(--op-accent,#2962ff); }
 
-        /* Collapse sections (Protection, Multi-TP, MFE/MAE) */
+        /* Collapse sections (Protection, Multi-TP, MFE/MAE) — mirrors dark mode collapse */
         body.light-mode .order-collapse {
-            border: 1.5px solid #e2e8f0 !important;
-            background: #ffffff !important;
-            border-radius: 10px !important;
+            border: 1px solid rgba(15,23,42,0.06) !important;
+            background: rgba(15,23,42,0.015) !important;
         }
-        body.light-mode .order-collapse:hover { border-color: #cbd5e1 !important; }
+        body.light-mode .order-collapse:hover { border-color: rgba(15,23,42,0.1) !important; }
         body.light-mode .order-collapse__header {
-            color: #334155 !important;
-            background: #f8fafc !important;
-            border-radius: 9px !important;
+            color: #475569 !important;
+            background: rgba(15,23,42,0.02) !important;
         }
-        body.light-mode .order-collapse__header:hover { background: #f1f5f9 !important; color: #1e293b !important; }
+        body.light-mode .order-collapse__header:hover { background: rgba(15,23,42,0.04) !important; color: #1e293b !important; }
         body.light-mode .order-collapse--open .order-collapse__header {
             color: #1e293b !important;
-            border-bottom-color: #e2e8f0 !important;
-            background: rgba(41,98,255,0.03) !important;
-            border-radius: 9px 9px 0 0 !important;
+            border-bottom-color: rgba(15,23,42,0.06) !important;
+            background: rgba(var(--op-accent-rgb),0.04) !important;
         }
         body.light-mode .order-collapse__chevron { color: #94a3b8 !important; }
-        body.light-mode .order-collapse--open .order-collapse__chevron { color: #2962ff !important; }
-        body.light-mode .order-collapse__content {
-            background: #fafbfd !important;
-            border-top: 1px solid #e2e8f0 !important;
-        }
+        body.light-mode .order-collapse--open .order-collapse__chevron { color: #1e293b !important; }
+        body.light-mode .order-collapse__content { background: rgba(15,23,42,0.02) !important; }
 
-        /* Summary footer (Reward/Risk/Margin) */
+        /* Summary footer (Reward/Risk/Margin) — mirrors dark mode gradient surface */
         body.light-mode .order-summary {
-            background: #ffffff !important;
-            border: 1.5px solid #e2e8f0 !important;
-            border-radius: 12px !important;
+            background: linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%) !important;
+            border: 1px solid rgba(15,23,42,0.06) !important;
+            border-radius: 10px !important;
         }
         body.light-mode .order-summary-label { color: #64748b !important; }
-        body.light-mode .order-summary-value { color: #0f172a !important; font-weight: 700 !important; }
-        body.light-mode .order-summary-divider { border-top-color: #f1f5f9 !important; }
+        body.light-mode .order-summary-value { color: #0f172a !important; }
+        body.light-mode .order-summary-divider { border-top-color: rgba(15,23,42,0.06) !important; }
 
-        /* Submit button */
+        /* Submit button — same as dark mode */
         body.light-mode .order-submit-btn {
-            background: linear-gradient(135deg, #2962ff 0%, #1e50e6 100%) !important;
-            box-shadow: 0 4px 14px rgba(41,98,255,0.3) !important;
-            border-radius: 12px !important;
+            background: linear-gradient(135deg, rgba(var(--op-accent-rgb),0.95) 0%, rgba(var(--op-accent-rgb),0.75) 100%) !important;
+            box-shadow: 0 2px 14px rgba(var(--op-accent-rgb),0.3) !important;
         }
         body.light-mode .order-submit-btn:hover {
-            filter: brightness(1.06) !important;
-            box-shadow: 0 6px 20px rgba(41,98,255,0.4) !important;
+            filter: brightness(1.08) !important;
+            box-shadow: 0 3px 18px rgba(var(--op-accent-rgb),0.4) !important;
         }
         body.light-mode .order-submit-btn.sell-mode {
-            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
-            box-shadow: 0 4px 14px rgba(220,38,38,0.3) !important;
+            background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%) !important;
+            box-shadow: 0 2px 14px rgba(220,38,38,0.3) !important;
         }
         body.light-mode .order-submit-btn.sell-mode:hover {
-            box-shadow: 0 6px 20px rgba(220,38,38,0.4) !important;
+            box-shadow: 0 3px 18px rgba(220,38,38,0.4) !important;
         }
 
         /* Card / info card */
         body.light-mode .order-card-soft {
-            background: #f8fafc !important;
-            border: 1.5px solid #e2e8f0 !important;
-            border-radius: 12px !important;
+            background: linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%) !important;
+            border: 1px solid rgba(15,23,42,0.06) !important;
         }
         body.light-mode .order-info-card {
-            background: rgba(41,98,255,0.03) !important;
-            border: 1.5px solid rgba(41,98,255,0.15) !important;
-            border-radius: 12px !important;
+            background: rgba(var(--op-accent-rgb),0.05) !important;
+            border: 1px solid rgba(var(--op-accent-rgb),0.2) !important;
         }
         body.light-mode .order-info-body { color: #475569 !important; }
 
         /* Validation errors */
         body.light-mode .order-validation--error {
-            background: rgba(239,68,68,0.05) !important;
-            border: 1.5px solid rgba(239,68,68,0.15) !important;
+            background: rgba(239,68,68,0.06) !important;
+            border: 1px solid rgba(239,68,68,0.2) !important;
             color: #dc2626 !important;
-            border-radius: 8px !important;
         }
 
         /* Icon buttons */
         body.light-mode .order-btn-icon {
-            background: #ffffff !important;
-            border: 1.5px solid #e2e8f0 !important;
+            background: rgba(15,23,42,0.04) !important;
+            border: 1px solid rgba(15,23,42,0.06) !important;
             color: #334155 !important;
         }
         body.light-mode .order-btn-icon:hover {
-            background: #f8fafc !important;
-            border-color: #2962ff !important;
-            color: #2962ff !important;
+            border-color: rgba(var(--op-accent-rgb),0.4) !important;
+            background: rgba(var(--op-accent-rgb),0.06) !important;
         }
 
-        /* Market type badge */
+        /* Market type / symbol badges in header */
         body.light-mode .order-panel .market-type-badge,
         body.light-mode .order-panel .symbol-badge {
-            background: #f1f5f9 !important;
-            border: 1px solid #e2e8f0 !important;
-            color: #475569 !important;
+            background: rgba(15,23,42,0.06) !important;
+            border: 1px solid rgba(15,23,42,0.08) !important;
+            color: #334155 !important;
         }
 
         /* ── Replay toolbar + bottom panels: neutral light overrides ── */
