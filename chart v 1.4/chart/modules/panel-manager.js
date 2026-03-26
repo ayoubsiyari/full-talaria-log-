@@ -1093,17 +1093,13 @@ class PanelManager {
      */
     refreshMultiPanelChrome() {
         if (!this.container || this.currentLayout === '1') return;
-        const { bg, border } = this.getMultiPanelChromeFromMain();
+        const { bg } = this.getMultiPanelChromeFromMain();
         this.container.querySelectorAll('.chart-panel').forEach((el) => {
             el.style.background = bg;
-            el.style.borderRight = `1px solid ${border}`;
-            el.style.borderBottom = `1px solid ${border}`;
         });
         const ow = document.getElementById('chartWrapper');
         if (ow && this.container.contains(ow)) {
             ow.style.background = bg;
-            ow.style.borderRight = `1px solid ${border}`;
-            ow.style.borderBottom = `1px solid ${border}`;
         }
     }
 
@@ -1662,12 +1658,7 @@ class PanelManager {
             height: ${config.height};
             left: ${config.left || '0'};
             top: ${config.top || '0'};
-            border: none;
-            border-right: 1px solid ${chrome.border};
-            border-bottom: 1px solid ${chrome.border};
             background: ${chrome.bg};
-            box-sizing: border-box;
-            overflow: hidden;
             z-index: 100;
         `;
         
