@@ -34159,73 +34159,73 @@
             color: #0f172a !important;
         }
 
-        /* ── Order panel: light-mode overrides ── */
+        /* ── Order panel: light-mode overrides (mirrors dark-mode structure) ── */
         body.light-mode .order-panel {
-            --op-bg: #f8fafc;
-            --op-surface: #eef2f7;
-            --op-text: #1e293b;
-            --op-text-muted: #64748b;
-            --op-border: rgba(15, 23, 42, 0.08);
-            --op-soft-accent: rgba(var(--op-accent-rgb), 0.08);
-            background: var(--sp-ui-sidebar-bg, #f0f0f0) !important;
-            border-left: 1px solid #e2e8f0 !important;
+            --op-bg: #f4f5f7;
+            --op-surface: #eaecf0;
+            --op-text: #1a1d26;
+            --op-text-muted: #6b7280;
+            --op-border: rgba(0, 0, 0, 0.08);
+            --op-soft-accent: rgba(var(--op-accent-rgb), 0.10);
+            background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(0,0,0,0.03)), var(--op-bg) !important;
+            border-left: 1px solid rgba(0,0,0,0.08) !important;
             box-shadow: none !important;
         }
         body.light-mode .order-panel__header {
-            background: #f9fafb !important;
-            border-bottom: 1px solid #e5e7eb !important;
+            background: rgba(0,0,0,0.03) !important;
+            border-bottom: 1px solid var(--op-border) !important;
         }
-        body.light-mode .order-panel__title { color: #0f172a !important; }
-        body.light-mode .order-panel__close { color: #94a3b8 !important; }
-        body.light-mode .order-panel__close:hover { background: rgba(15,23,42,0.06) !important; color: #1e293b !important; }
+        body.light-mode .order-panel__title { color: var(--op-text) !important; }
+        body.light-mode .order-panel__close { color: var(--op-text-muted) !important; }
+        body.light-mode .order-panel__close:hover { background: var(--op-soft-accent) !important; color: var(--op-text) !important; }
         body.light-mode .order-panel__edge-handle {
-            box-shadow: none !important;
+            box-shadow: -3px 0 10px rgba(0,0,0,0.1) !important;
         }
 
-        body.light-mode .order-panel__content::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.1) !important; }
-        body.light-mode .order-panel__content::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.2) !important; }
+        body.light-mode .order-panel__content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1) !important; }
+        body.light-mode .order-panel__content::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2) !important; }
 
-        body.light-mode .order-panel-backdrop { background: rgba(15,23,42,0.06) !important; }
+        body.light-mode .order-panel-backdrop { background: rgba(0,0,0,0.08) !important; }
 
         /* Buy/Sell tabs */
         body.light-mode .order-tab {
-            background: #f3f4f6 !important;
-            border: 1px solid #d1d5db !important;
-            color: #6b7280 !important;
+            background: rgba(0,0,0,0.02) !important;
+            border: 1px solid var(--op-border) !important;
+            color: var(--op-text-muted) !important;
         }
-        body.light-mode .order-tab:hover:not(.active) { background: #e5e7eb !important; color: #1f2937 !important; }
+        body.light-mode .order-tab:hover:not(.active) { filter: brightness(0.96) !important; color: var(--op-text) !important; }
         body.light-mode .order-tab.active.order-tab--buy,
         body.light-mode .order-tab.active.order-tab--sell {
-            background: var(--op-accent, #2962ff) !important;
-            border-color: var(--op-accent, #2962ff) !important;
-            color: #ffffff !important;
-            box-shadow: none !important;
+            background: linear-gradient(135deg, rgba(var(--op-accent-rgb),0.9), rgba(var(--op-accent-rgb),0.7)) !important;
+            border-color: rgba(var(--op-accent-rgb),0.9) !important;
+            color: #fff !important;
+            box-shadow: 0 3px 14px rgba(var(--op-accent-rgb),0.35) !important;
         }
         body.light-mode .order-tab.active:hover { filter: brightness(1.06) !important; }
 
         /* Order type buttons (Market/Limit/Stop) + Position sizing tabs */
         body.light-mode .order-button-group {
-            background: #f3f4f6 !important;
-            border: 1px solid #d1d5db !important;
+            background: rgba(0,0,0,0.04) !important;
+            border: 1px solid var(--op-border) !important;
         }
         body.light-mode .order-type-btn,
         body.light-mode .position-mode-tab,
         body.light-mode .breakeven-mode-tab {
-            color: #6b7280 !important;
+            color: var(--op-text-muted) !important;
             background: transparent !important;
         }
         body.light-mode .order-type-btn:hover:not(.active),
         body.light-mode .position-mode-tab:hover:not(.active),
         body.light-mode .breakeven-mode-tab:hover:not(.active) {
-            background: #e5e7eb !important;
-            color: #1f2937 !important;
+            background: var(--op-soft-accent) !important;
+            color: var(--op-text) !important;
         }
         body.light-mode .order-type-btn.active,
         body.light-mode .position-mode-tab.active,
         body.light-mode .breakeven-mode-tab.active {
             background: var(--op-accent, #2962ff) !important;
-            color: #ffffff !important;
-            box-shadow: none !important;
+            color: #fff !important;
+            box-shadow: 0 3px 14px rgba(var(--op-accent-rgb),0.35) !important;
         }
         body.light-mode .order-type-btn.active:hover,
         body.light-mode .position-mode-tab.active:hover,
@@ -34235,177 +34235,177 @@
 
         /* ── Input fields ── */
         body.light-mode .order-input-wrapper {
-            background: #ffffff !important;
-            border: 1px solid #d1d5db !important;
+            background: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(0,0,0,0.03) 100%), var(--op-surface) !important;
+            border: 1px solid var(--op-border) !important;
             border-radius: 8px !important;
-            box-shadow: none !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.6) !important;
             transition: border-color 0.15s, background 0.15s, box-shadow 0.15s !important;
         }
         body.light-mode .order-input-wrapper:hover {
-            border-color: #9ca3af !important;
+            border-color: rgba(0,0,0,0.15) !important;
         }
         body.light-mode .order-input-wrapper:focus-within {
-            border-color: var(--op-accent, #2962ff) !important;
-            background: #ffffff !important;
-            box-shadow: 0 0 0 2px rgba(var(--op-accent-rgb),0.12) !important;
+            border-color: rgba(var(--op-accent-rgb),0.95) !important;
+            background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(0,0,0,0.01) 100%), var(--op-surface) !important;
+            box-shadow: 0 0 0 2px rgba(var(--op-accent-rgb),0.2) !important;
         }
         body.light-mode .order-input {
-            color: #0f172a !important;
+            color: var(--op-text) !important;
             font-weight: 600 !important;
         }
-        body.light-mode .order-input::placeholder { color: rgba(100,116,139,0.6) !important; }
+        body.light-mode .order-input::placeholder { color: rgba(107,114,128,0.6) !important; }
         body.light-mode .order-input-prefix {
-            color: #94a3b8 !important;
+            color: var(--op-text-muted) !important;
         }
         body.light-mode .order-input-suffix {
-            color: #64748b !important;
+            color: var(--op-text-muted) !important;
             font-weight: 600 !important;
         }
         body.light-mode .order-label {
-            color: #334155 !important;
+            color: var(--op-text-muted) !important;
         }
-        body.light-mode .order-hint { color: #94a3b8 !important; }
+        body.light-mode .order-hint { color: #9ca3af !important; }
 
         /* Compact inputs (TP/SL price fields) */
-        body.light-mode .order-input--compact { color: #0f172a !important; }
+        body.light-mode .order-input--compact { color: var(--op-text) !important; }
 
         /* Stepper buttons (+/-) */
         body.light-mode .input-stepper {
-            background: #f3f4f6 !important;
-            border: 1px solid #d1d5db !important;
-            color: #374151 !important;
+            background: rgba(0,0,0,0.04) !important;
+            border: 1px solid var(--op-border) !important;
+            color: var(--op-text) !important;
         }
         body.light-mode .input-stepper:hover {
-            border-color: #9ca3af !important;
-            background: #e5e7eb !important;
-            color: #1f2937 !important;
+            border-color: rgba(var(--op-accent-rgb),0.7) !important;
+            background: var(--op-soft-accent) !important;
+            color: var(--op-text) !important;
         }
 
         /* Risk shortcut buttons */
         body.light-mode .risk-btn {
-            background: #ffffff !important;
-            border: 1px solid #d1d5db !important;
+            background: rgba(0,0,0,0.02) !important;
+            border: 1px solid rgba(0,0,0,0.07) !important;
             color: #6b7280 !important;
         }
         body.light-mode .risk-btn:hover:not(.active) {
-            background: #f3f4f6 !important;
-            border-color: #9ca3af !important;
-            color: #1f2937 !important;
+            background: rgba(var(--op-accent-rgb),0.08) !important;
+            border-color: rgba(var(--op-accent-rgb),0.4) !important;
+            color: var(--op-accent,#2962ff) !important;
         }
         body.light-mode .risk-btn.active {
-            background: rgba(var(--op-accent-rgb),0.08) !important;
+            background: rgba(var(--op-accent-rgb),0.15) !important;
             border-color: var(--op-accent,#2962ff) !important;
             color: var(--op-accent,#2962ff) !important;
         }
-        body.light-mode .risk-btn.active:hover { background: rgba(var(--op-accent-rgb),0.12) !important; }
+        body.light-mode .risk-btn.active:hover { background: rgba(var(--op-accent-rgb),0.2) !important; }
 
         /* Calculation row (Position Size) */
         body.light-mode .order-calculation {
-            background: #f9fafb !important;
-            border: 1px solid #e5e7eb !important;
+            background: var(--op-soft-accent) !important;
+            border: 1px solid var(--op-border) !important;
         }
         body.light-mode .order-calculation-label { color: #6b7280 !important; }
         body.light-mode .order-calculation-value { color: var(--op-accent,#2962ff) !important; }
 
         /* Toggle switches */
-        body.light-mode .toggle-switch__track { background: #cbd5e1 !important; }
+        body.light-mode .toggle-switch__track { background: rgba(0,0,0,0.12) !important; }
         body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: var(--op-accent,#2962ff) !important; }
-        body.light-mode .order-toggle-label { color: #475569 !important; }
-        body.light-mode .order-toggle-label:hover { color: #1e293b !important; }
-        body.light-mode .order-radio-label { color: #475569 !important; }
-        body.light-mode .order-radio-label:hover { color: #1e293b !important; }
+        body.light-mode .order-toggle-label { color: #6b7280 !important; }
+        body.light-mode .order-toggle-label:hover { color: var(--op-text) !important; }
+        body.light-mode .order-radio-label { color: #6b7280 !important; }
+        body.light-mode .order-radio-label:hover { color: var(--op-text) !important; }
 
         /* Checkbox overrides */
         body.light-mode .order-panel input[type="checkbox"] { accent-color: var(--op-accent,#2962ff); }
 
         /* Collapse sections (Protection, Multi-TP, MFE/MAE) */
         body.light-mode .order-collapse {
-            border: 1px solid #e5e7eb !important;
-            background: #ffffff !important;
+            border: 1px solid rgba(0,0,0,0.07) !important;
+            background: rgba(0,0,0,0.01) !important;
         }
-        body.light-mode .order-collapse:hover { border-color: #d1d5db !important; }
+        body.light-mode .order-collapse:hover { border-color: rgba(0,0,0,0.12) !important; }
         body.light-mode .order-collapse__header {
-            color: #374151 !important;
-            background: #f9fafb !important;
+            color: #9ca3af !important;
+            background: rgba(0,0,0,0.02) !important;
         }
-        body.light-mode .order-collapse__header:hover { background: #f3f4f6 !important; color: #1f2937 !important; }
+        body.light-mode .order-collapse__header:hover { background: rgba(0,0,0,0.04) !important; color: var(--op-text) !important; }
         body.light-mode .order-collapse--open .order-collapse__header {
-            color: #1f2937 !important;
-            border-bottom-color: #e5e7eb !important;
-            background: #f3f4f6 !important;
+            color: var(--op-text) !important;
+            border-bottom-color: rgba(0,0,0,0.06) !important;
+            background: rgba(var(--op-accent-rgb),0.06) !important;
         }
         body.light-mode .order-collapse__chevron { color: #9ca3af !important; }
-        body.light-mode .order-collapse--open .order-collapse__chevron { color: #1f2937 !important; }
-        body.light-mode .order-collapse__content { background: #ffffff !important; }
+        body.light-mode .order-collapse--open .order-collapse__chevron { color: var(--op-text) !important; }
+        body.light-mode .order-collapse__content { background: rgba(0,0,0,0.02) !important; }
 
         /* Summary footer (Reward/Risk/Margin) */
         body.light-mode .order-summary {
-            background: #f9fafb !important;
-            border: 1px solid #e5e7eb !important;
+            background: linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(0,0,0,0.04) 100%), var(--op-surface) !important;
+            border: 1px solid var(--op-border) !important;
             border-radius: 10px !important;
         }
-        body.light-mode .order-summary-label { color: #64748b !important; }
+        body.light-mode .order-summary-label { color: var(--op-text-muted) !important; }
         body.light-mode .order-summary-label--positive { color: #16a34a !important; }
         body.light-mode .order-summary-label--negative { color: #dc2626 !important; }
-        body.light-mode .order-summary-value { color: #0f172a !important; }
+        body.light-mode .order-summary-value { color: var(--op-text) !important; }
         body.light-mode .order-summary-value--positive { color: #16a34a !important; }
         body.light-mode .order-summary-value--negative { color: #dc2626 !important; }
         body.light-mode .order-summary-value--warning { color: #d97706 !important; }
         body.light-mode .order-summary-value--danger { color: #dc2626 !important; }
-        body.light-mode .order-summary-divider { border-top-color: rgba(15,23,42,0.06) !important; }
+        body.light-mode .order-summary-divider { border-top-color: rgba(0,0,0,0.06) !important; }
 
         /* Submit button */
         body.light-mode .order-submit-btn {
-            background: var(--op-accent, #2962ff) !important;
-            box-shadow: none !important;
+            background: linear-gradient(135deg, rgba(var(--op-accent-rgb),0.95) 0%, rgba(var(--op-accent-rgb),0.75) 100%) !important;
+            box-shadow: 0 2px 14px rgba(var(--op-accent-rgb),0.3) !important;
         }
         body.light-mode .order-submit-btn:hover {
             filter: brightness(1.08) !important;
-            box-shadow: none !important;
+            box-shadow: 0 3px 18px rgba(var(--op-accent-rgb),0.45) !important;
         }
         body.light-mode .order-submit-btn.sell-mode {
-            background: #dc2626 !important;
-            box-shadow: none !important;
+            background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%) !important;
+            box-shadow: 0 2px 14px rgba(220,38,38,0.3) !important;
         }
         body.light-mode .order-submit-btn.sell-mode:hover {
-            box-shadow: none !important;
+            box-shadow: 0 3px 18px rgba(220,38,38,0.45) !important;
         }
 
         /* Card / info card */
         body.light-mode .order-card-soft {
-            background: #f9fafb !important;
-            border: 1px solid #e5e7eb !important;
+            background: linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(0,0,0,0.03) 100%), var(--op-surface) !important;
+            border: 1px solid var(--op-border) !important;
         }
         body.light-mode .order-info-card {
             background: rgba(var(--op-accent-rgb),0.05) !important;
             border: 1px solid rgba(var(--op-accent-rgb),0.2) !important;
         }
-        body.light-mode .order-info-body { color: #475569 !important; }
+        body.light-mode .order-info-body { color: #6b7280 !important; }
 
         /* Validation errors */
         body.light-mode .order-validation--error {
-            background: rgba(239,68,68,0.06) !important;
-            border: 1px solid rgba(239,68,68,0.2) !important;
+            background: rgba(239,68,68,0.08) !important;
+            border: 1px solid rgba(239,68,68,0.3) !important;
             color: #dc2626 !important;
         }
 
         /* Icon buttons */
         body.light-mode .order-btn-icon {
-            background: #f3f4f6 !important;
-            border: 1px solid #d1d5db !important;
-            color: #374151 !important;
+            background: rgba(0,0,0,0.04) !important;
+            border: 1px solid var(--op-border) !important;
+            color: var(--op-text) !important;
         }
         body.light-mode .order-btn-icon:hover {
-            border-color: #9ca3af !important;
-            background: #e5e7eb !important;
+            border-color: rgba(var(--op-accent-rgb),0.4) !important;
+            background: var(--op-soft-accent) !important;
         }
 
         /* Market type / symbol badges in header */
         body.light-mode .order-panel .market-type-badge,
         body.light-mode .order-panel .symbol-badge {
-            background: rgba(15,23,42,0.06) !important;
-            border: 1px solid rgba(15,23,42,0.08) !important;
-            color: #334155 !important;
+            background: rgba(0,0,0,0.04) !important;
+            border: 1px solid rgba(0,0,0,0.08) !important;
+            color: var(--op-text) !important;
         }
 
         /* ── Replay toolbar + bottom panels: neutral light overrides ── */
