@@ -56003,7 +56003,6 @@ function tlRefreshTemplateDropdownChrome(){
             var pickedChart=null;
             if(cs.activeChartOnlyTemplate&&chartIds.has(cs.activeChartOnlyTemplate)) pickedChart=cs.activeChartOnlyTemplate;
             else if(c._lastChartOnlyTemplate&&chartIds.has(c._lastChartOnlyTemplate)) pickedChart=c._lastChartOnlyTemplate;
-            else if(c._lastTemplateSelected&&chartIds.has(c._lastTemplateSelected)) pickedChart=c._lastTemplateSelected;
             var inferredChart=inferDarkLightId(chartList,cs.backgroundColor||cs.settingsPanelBgColor||cs.settingsPanelSidebarBgColor);
             if(!pickedChart&&inferredChart) pickedChart=inferredChart;
             if(pickedChart) c._lastChartOnlyTemplate=pickedChart;
