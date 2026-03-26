@@ -41744,7 +41744,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260326_CRISP_RESIZE_V89"></script>
+    <script defer src="modules/panel-manager.js?v=20260326_DATE_RANGE_SCROLL_V90"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -41760,7 +41760,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_INDEX_CLEAN_V220"></script>
+    <script defer src="chart.js?v=20260326_SCROLL_SYNC_TS_V221"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_MULTI_PANEL_GOBACK_V80"></script>
 
@@ -45929,27 +45929,7 @@
 
             
 
-            // Listen for chart scroll/zoom events for panel sync
-
-            window.addEventListener('chartScrolled', (event) => {
-
-                const { panel, offsetX, candleWidth } = event.detail;
-
-                
-
-                if (!window.panelManager || window.panelManager.getCurrentLayout() === '1') return;
-
-                if (!panel) return;
-
-                
-
-                if (window.panelManager.syncSettings.time || window.panelManager.syncSettings.dateRange) {
-
-                    window.panelManager.syncScroll(panel, offsetX, candleWidth);
-
-                }
-
-            });
+            // chartScrolled → panel sync is handled in modules/panel-manager.js (time vs date-range).
 
             
 

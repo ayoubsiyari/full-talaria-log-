@@ -6988,15 +6988,16 @@ class Chart {
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
         
-        // Calculate visible range
-        const spacing = this.getCandleSpacing();
-        const visibleCandles = Math.floor((this.w - this.margin.l - this.margin.r) / spacing);
-        const endIndex = Math.min(this.data.length - 1, Math.floor(-this.offsetX / spacing) + visibleCandles);
-        const startIndex = Math.max(0, endIndex - visibleCandles);
-        
-        // Get timestamps for visible range (use .t property)
-        const startTimestamp = this.data[startIndex]?.t || 0;
-        const endTimestamp = this.data[endIndex]?.t || 0;
+        // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
+        const startIndex = typeof this.getVisibleStartIndex === 'function'
+            ? this.getVisibleStartIndex()
+            : 0;
+        const endIndex = typeof this.getVisibleEndIndex === 'function'
+            ? this.getVisibleEndIndex()
+            : Math.max(0, this.data.length - 1);
+
+        const startTimestamp = this.data[startIndex]?.t ?? 0;
+        const endTimestamp = this.data[endIndex]?.t ?? 0;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
