@@ -6586,9 +6586,11 @@ class Chart {
 	        this.w = nextW;
 	        this.h = nextH;
 
-	        // Batch SVG size update — avoid D3 attr calls during drag resize
+	        const isPanelDragResize = !!(window.panelManager && window.panelManager.isResizing);
+
+	        // Defer SVG resize during drag to avoid layout thrashing
 	        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
-	        if (svgNode) {
+	        if (svgNode && !isPanelDragResize) {
 	            svgNode.setAttribute('width', this.w);
 	            svgNode.setAttribute('height', this.h);
 	            svgNode.style.width = this.w + 'px';
@@ -6597,7 +6599,7 @@ class Chart {
 	        
 	        if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
-	            this.offsetX += deltaW * 0.5;
+	            this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
 	            this.constrainOffset();
 	        } else {
 	            this.fitToView();
@@ -6606,8 +6608,16 @@ class Chart {
 	        this.render();
 	        this.renderPending = false;
 	        
-	        if (this.replaySystem && this.replaySystem.isActive) {
-	            this.replaySystem.updateAutoScrollIndicator();
+	        if (!isPanelDragResize) {
+	            if (svgNode) {
+	                svgNode.setAttribute('width', this.w);
+	                svgNode.setAttribute('height', this.h);
+	                svgNode.style.width = this.w + 'px';
+	                svgNode.style.height = this.h + 'px';
+	            }
+	            if (this.replaySystem && this.replaySystem.isActive) {
+	                this.replaySystem.updateAutoScrollIndicator();
+	            }
 	        }
 	    }
     
