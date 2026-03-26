@@ -7334,8 +7334,7 @@ class OrderManager {
         const enableSL = document.getElementById('enableSL')?.checked;
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         
-        // Get current symbol from chart
-        const symbol = this.chart?.currentSymbol || '';
+        const symbol = this._getSymbol() || '';
         
         if (placeBtn) {
             placeBtn.classList.toggle('sell-mode', this.orderSide === 'SELL');
@@ -11863,7 +11862,23 @@ class OrderManager {
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
         
-        const closePrice = currentCandle.c;
+        // Resolve correct close price — if the position belongs to a different pair,
+        // use its background mark price instead of the active chart's candle.
+        const posTicker = this._positionTicker(position);
+        const activeTicker = this._getActiveTicker();
+        let closePrice;
+        if (posTicker && activeTicker && posTicker !== activeTicker) {
+            const mark = this._resolveUnrealizedMarkPrice(position, currentCandle);
+            if (Number.isFinite(mark)) {
+                closePrice = mark;
+            } else if (Number.isFinite(position._miLastMarkPrice)) {
+                closePrice = position._miLastMarkPrice;
+            } else {
+                closePrice = position.openPrice;
+            }
+        } else {
+            closePrice = currentCandle.c;
+        }
         const closeTime = currentCandle.t;
         
         // Calculate P&L via MarketCalculationEngine (correct formula per asset class)
@@ -12606,23 +12621,21 @@ class OrderManager {
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
                     !(position.trailingStop && position.trailingStop.activated)) {
                     let shouldTrigger = false;
+                    const posPipSize = this._getPositionPipSize(position);
                     
                     if (position.breakevenSettings.mode === 'pips') {
-                        // Calculate required profit in pips
-                        const currentPipsProfit = (high - position.openPrice) / this.pipSize;
+                        const currentPipsProfit = (high - position.openPrice) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
-                        // Check if profit amount reached
                         shouldTrigger = position.unrealizedPnL >= position.breakevenSettings.value;
                     }
                     
                     if (shouldTrigger) {
                         console.log(`   ⚡⚡⚡ BE TRIGGER - MOVING SL ONLY, NOT CLOSING! ⚡⚡⚡`);
                         const oldSL = position.stopLoss;
-                        // Move SL to breakeven (entry price) + pip offset
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
-                        const pipOffsetPrice = pipOffset * this.pipSize;
-                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, this.pipSize: ${this.pipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
+                        const pipOffsetPrice = pipOffset * posPipSize;
+                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
                         position.stopLoss = position.openPrice + pipOffsetPrice;
                         console.log(`      New SL = ${position.openPrice.toFixed(5)} + ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
                         position.breakevenSettings.triggered = true;
@@ -12694,7 +12707,7 @@ class OrderManager {
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                breakevenSL = position.openPrice + (pipOffset * this.pipSize);
+                                breakevenSL = position.openPrice + (pipOffset * this._getPositionPipSize(position));
                             }
                             const minSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
                                 ? Math.max(position.stopLoss, breakevenSL) 
@@ -12798,23 +12811,21 @@ class OrderManager {
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
                     !(position.trailingStop && position.trailingStop.activated)) {
                     let shouldTrigger = false;
+                    const posPipSize = this._getPositionPipSize(position);
                     
                     if (position.breakevenSettings.mode === 'pips') {
-                        // Calculate required profit in pips (for SELL, profit is entry - low)
-                        const currentPipsProfit = (position.openPrice - low) / this.pipSize;
+                        const currentPipsProfit = (position.openPrice - low) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
-                        // Check if profit amount reached
                         shouldTrigger = position.unrealizedPnL >= position.breakevenSettings.value;
                     }
                     
                     if (shouldTrigger) {
                         console.log(`   ⚡⚡⚡ BE TRIGGER - MOVING SL ONLY, NOT CLOSING! ⚡⚡⚡`);
                         const oldSL = position.stopLoss;
-                        // Move SL to breakeven (entry price) - pip offset (for SELL, offset goes down)
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
-                        const pipOffsetPrice = pipOffset * this.pipSize;
-                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, this.pipSize: ${this.pipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
+                        const pipOffsetPrice = pipOffset * posPipSize;
+                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
                         position.stopLoss = position.openPrice - pipOffsetPrice;
                         console.log(`      New SL = ${position.openPrice.toFixed(5)} - ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
                         position.breakevenSettings.triggered = true;
@@ -12886,7 +12897,7 @@ class OrderManager {
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                breakevenSL = position.openPrice - (pipOffset * this.pipSize);
+                                breakevenSL = position.openPrice - (pipOffset * this._getPositionPipSize(position));
                             }
                             const maxSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
                                 ? Math.min(position.stopLoss, breakevenSL) 
@@ -13042,17 +13053,18 @@ class OrderManager {
         
         console.log(`   isPartialClose=${isPartialClose}, closeQuantity=${closeQuantity}, position.quantity=${position.quantity}`);
         
-        // Calculate P&L using pip values
-        // P&L = (Price Difference in Pips) × Close Quantity (Lots) × Pip Value per Lot
-        let priceDiff;
-        if (position.type === 'BUY') {
-            priceDiff = closePrice - position.openPrice;
-        } else {
-            priceDiff = position.openPrice - closePrice;
-        }
-        
-        const pipsMove = priceDiff / this.pipSize;
-        const pnl = pipsMove * closeQuantity * this.pipValuePerLot;
+        // Calculate P&L using per-position instrument settings (safe across pair switches)
+        const posTicker = position.ticker || position.symbol || this._getActiveTicker();
+        const posSettings = position.instrument_settings || null;
+        const pnl = this._enginePnL(
+            position.type,
+            position.openPrice,
+            closePrice,
+            closeQuantity,
+            closePrice,
+            posTicker,
+            posSettings
+        );
         
         // Update balance
         this.balance += pnl;
