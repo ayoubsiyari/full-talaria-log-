@@ -1782,14 +1782,19 @@ class ReplaySystem {
         
         const targetTime = candle.t;
         
-        // Find corresponding index in fullRawData - need exact match
-        let newRawIndex = this.fullRawData.findIndex(c => c.t === targetTime);
-        
-        // If no exact match, find closest
-        if (newRawIndex < 0) {
-            newRawIndex = this.fullRawData.findIndex(c => c.t >= targetTime);
+        // Map clicked timestamp to main replay series.
+        // Important for multi-symbol layouts: timestamps won't match 1:1 across pairs.
+        let newRawIndex = 0;
+        if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
+            // Start from closest index, then clamp to candle at-or-before targetTime
+            let idx = (typeof this._bsearchTimestamp === 'function')
+                ? this._bsearchTimestamp(this.fullRawData, targetTime)
+                : this.fullRawData.findIndex(c => (c && c.t) >= targetTime);
+            if (idx < 0) idx = this.fullRawData.length - 1;
+            idx = Math.max(0, Math.min(idx, this.fullRawData.length - 1));
+            while (idx > 0 && (this.fullRawData[idx]?.t || 0) > targetTime) idx--;
+            newRawIndex = idx;
         }
-        if (newRawIndex < 0) newRawIndex = 0;
         
         // We want to KEEP this candle and remove everything after
         // So we set currentIndex to newRawIndex + 1 (to include the clicked candle)
