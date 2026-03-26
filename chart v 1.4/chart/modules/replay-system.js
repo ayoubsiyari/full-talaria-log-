@@ -313,6 +313,11 @@ class ReplaySystem {
 
         if (isOpen) return;
 
+        // Keep replay dropdowns and interval panels mutually exclusive.
+        if (typeof window !== 'undefined' && typeof window._replayCloseIntervalPanels === 'function') {
+            window._replayCloseIntervalPanels();
+        }
+
         dropdown.classList.add('show');
         dropdown.style.display = 'flex';
 

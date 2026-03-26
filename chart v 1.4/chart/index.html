@@ -15947,9 +15947,9 @@
 
         body.light-mode #speedSliderClone .replay-mode-trigger {
 
-            background: transparent !important;
+            background: rgba(0,0,0,0.04) !important;
 
-            border-color: #e0e3eb;
+            border-color: rgba(0,0,0,0.15);
 
             color: #050028;
 
@@ -15961,7 +15961,7 @@
 
         body.light-mode #speedSliderClone .replay-mode-trigger:hover {
 
-            background: rgba(0, 0, 0, 0.1) !important;
+            background: rgba(0,0,0,0.08) !important;
 
             color: #000000;
 
@@ -41709,7 +41709,7 @@
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
     <script defer src="chart.js?v=20260326_INDEX_CLEAN_V213"></script>
 
-    <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V77"></script>
+    <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V78"></script>
 
     <script defer src="modules/order-event-bus.js"></script>
 
@@ -59692,6 +59692,8 @@ setTimeout(function(){
 
         }
 
+        window._replayCloseIntervalPanels = closeAllReplayIntervalPanels;
+
 
 
         function toggleMainIntervalPanel() {
@@ -59707,6 +59709,14 @@ setTimeout(function(){
             } else {
 
                 closeAllReplayIntervalPanels();
+
+                var rs = window.chart && window.chart.replaySystem;
+
+                if (rs && typeof rs.closePlaybackModeDropdowns === 'function') {
+
+                    rs.closePlaybackModeDropdowns();
+
+                }
 
                 rebuildIntervals();
 
