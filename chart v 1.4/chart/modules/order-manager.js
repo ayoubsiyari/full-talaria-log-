@@ -4816,11 +4816,41 @@ class OrderManager {
 
                 /* Light mode: force clear tab text colors (prevents washed-out labels) */
                 body.light-mode .order-tab.order-tab--buy,
-                body.light-mode .order-tab.order-tab--sell { color: #4b5563 !important; }
-                body.light-mode .order-tab:hover:not(.active) { color: #1f2937 !important; }
+                body.light-mode .order-tab.order-tab--sell {
+                    color: #4b5563 !important;
+                    -webkit-text-fill-color: #4b5563 !important;
+                }
+                body.light-mode .order-tab:hover:not(.active) {
+                    color: #1f2937 !important;
+                    -webkit-text-fill-color: #1f2937 !important;
+                }
                 body.light-mode .order-tab.active.order-tab--buy,
                 body.light-mode .order-tab.active.order-tab--sell,
-                body.light-mode .order-tab.active:hover { color: #ffffff !important; }
+                body.light-mode .order-tab.active:hover {
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                }
+                body.light-mode .order-type-btn:not(.active),
+                body.light-mode .position-mode-tab:not(.active),
+                body.light-mode .breakeven-mode-tab:not(.active) {
+                    color: #4b5563 !important;
+                    -webkit-text-fill-color: #4b5563 !important;
+                }
+                body.light-mode .order-type-btn:hover:not(.active),
+                body.light-mode .position-mode-tab:hover:not(.active),
+                body.light-mode .breakeven-mode-tab:hover:not(.active) {
+                    color: #1f2937 !important;
+                    -webkit-text-fill-color: #1f2937 !important;
+                }
+                body.light-mode .order-type-btn.active,
+                body.light-mode .position-mode-tab.active,
+                body.light-mode .breakeven-mode-tab.active,
+                body.light-mode .order-type-btn.active:hover,
+                body.light-mode .position-mode-tab.active:hover,
+                body.light-mode .breakeven-mode-tab.active:hover {
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                }
 
                 /* ── ORDER TYPE BUTTONS ──────────────────────────────────────────── */
                 .order-section {
