@@ -24138,96 +24138,62 @@
             position: absolute;
             z-index: 200;
             pointer-events: auto;
-            background: transparent;
-            border: none;
-            box-sizing: border-box;
+            transition: background-color 0.15s ease;
         }
-        /* TradingView-style: 2px line; wider invisible hit area; hover = soft blue glow ~4.5px */
+        /* Full-length overlay divider line — always visible */
         .panel-resize-handle.vertical {
             cursor: col-resize;
-            width: 10px;
-            transform: translateX(-5px);
-        }
-        .panel-resize-handle.vertical::before {
-            content: '';
-            position: absolute;
-            left: 50%;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            transform: translateX(-50%);
-            background-color: #3a3f4a;
-            border-radius: 1px;
-            transition: background-color 0.18s ease, box-shadow 0.18s ease;
-            pointer-events: none;
-        }
-        .panel-resize-handle.vertical:hover::before {
-            background-color: #2962FF;
-            box-shadow:
-                0 0 0 1px rgba(41, 98, 255, 0.35),
-                0 0 4px 2px rgba(41, 98, 255, 0.45),
-                0 0 10px rgba(41, 98, 255, 0.22);
-        }
-        .panel-resize-handle.vertical.dragging::before {
-            background-color: #2962FF !important;
-            box-shadow:
-                0 0 0 1px rgba(41, 98, 255, 0.45),
-                0 0 5px 2.5px rgba(41, 98, 255, 0.5),
-                0 0 12px rgba(41, 98, 255, 0.28);
+            width: 5px;
+            transform: translateX(-2.5px);
+            background: transparent;
+            border-left: 2px solid transparent;
+            border-right: 2px solid transparent;
+            border-top: none;
+            border-bottom: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #2a2e39;
         }
         .panel-resize-handle.horizontal {
             cursor: row-resize;
-            height: 10px;
-            transform: translateY(-5px);
+            height: 5px;
+            transform: translateY(-2.5px);
+            background: transparent;
+            border-top: 2px solid transparent;
+            border-bottom: 2px solid transparent;
+            border-left: none;
+            border-right: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #2a2e39;
         }
-        .panel-resize-handle.horizontal::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 2px;
-            transform: translateY(-50%);
-            background-color: #3a3f4a;
-            border-radius: 1px;
-            transition: background-color 0.18s ease, box-shadow 0.18s ease;
-            pointer-events: none;
+        /* Hover — line brightens */
+        .panel-resize-handle.vertical:hover {
+            background-color: #3b4050;
         }
-        .panel-resize-handle.horizontal:hover::before {
-            background-color: #2962FF;
-            box-shadow:
-                0 0 0 1px rgba(41, 98, 255, 0.35),
-                0 0 4px 2px rgba(41, 98, 255, 0.45),
-                0 0 10px rgba(41, 98, 255, 0.22);
+        .panel-resize-handle.horizontal:hover {
+            background-color: #3b4050;
         }
-        .panel-resize-handle.horizontal.dragging::before {
+        /* Dragging — accent blue */
+        .panel-resize-handle.vertical.dragging {
             background-color: #2962FF !important;
-            box-shadow:
-                0 0 0 1px rgba(41, 98, 255, 0.45),
-                0 0 5px 2.5px rgba(41, 98, 255, 0.5),
-                0 0 12px rgba(41, 98, 255, 0.28);
+        }
+        .panel-resize-handle.horizontal.dragging {
+            background-color: #2962FF !important;
         }
 
         /* Light mode */
-        body.light-mode .panel-resize-handle.vertical::before,
-        body.light-mode .panel-resize-handle.horizontal::before {
-            background-color: #c5ccd6;
+        body.light-mode .panel-resize-handle.vertical,
+        body.light-mode .panel-resize-handle.horizontal {
+            background-color: #d6dce6;
         }
-        body.light-mode .panel-resize-handle.vertical:hover::before,
-        body.light-mode .panel-resize-handle.horizontal:hover::before {
-            background-color: #2962FF;
-            box-shadow:
-                0 0 0 1px rgba(41, 98, 255, 0.3),
-                0 0 4px 2px rgba(41, 98, 255, 0.4),
-                0 0 10px rgba(41, 98, 255, 0.18);
+        body.light-mode .panel-resize-handle.vertical:hover,
+        body.light-mode .panel-resize-handle.horizontal:hover {
+            background-color: #b0b8c5;
         }
-        body.light-mode .panel-resize-handle.vertical.dragging::before,
-        body.light-mode .panel-resize-handle.horizontal.dragging::before {
+        body.light-mode .panel-resize-handle.vertical.dragging,
+        body.light-mode .panel-resize-handle.horizontal.dragging {
             background-color: #2962FF !important;
-            box-shadow:
-                0 0 0 1px rgba(41, 98, 255, 0.4),
-                0 0 5px 2.5px rgba(41, 98, 255, 0.45),
-                0 0 12px rgba(41, 98, 255, 0.22);
         }
 
         .panel-loading-overlay {
