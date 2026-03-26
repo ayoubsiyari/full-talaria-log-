@@ -33884,12 +33884,28 @@
             opacity: 0.92 !important;
         }
 
-        body.light-mode .drawing-style-editor button {
+        body.light-mode .drawing-style-editor button:not(.tv-btn-apply):not(.tv-collapsible-tab-btn):not(.tv-tab-btn):not(.tv-align-btn):not(.tv-style-btn):not(.tv-ending-btn):not(.tv-modal-close) {
             color: #1f2937 !important;
         }
 
-        body.light-mode .drawing-style-editor button:hover {
+        body.light-mode .drawing-style-editor button:not(.tv-btn-apply):not(.tv-collapsible-tab-btn):not(.tv-tab-btn):not(.tv-align-btn):not(.tv-style-btn):not(.tv-ending-btn):not(.tv-modal-close):hover {
             color: #0f172a !important;
+            background: rgba(var(--sp-accent-rgb), 0.08) !important;
+        }
+
+        body.light-mode .drawing-style-editor .tv-collapsible-tab-btn.active,
+        body.light-mode .drawing-style-editor .tv-collapsible-tab-btn.active:hover,
+        body.light-mode .drawing-style-editor .tv-tab-btn.active,
+        body.light-mode .drawing-style-editor .tv-tab-btn.active:hover,
+        body.light-mode .drawing-style-editor .tv-btn-apply,
+        body.light-mode .drawing-style-editor .tv-btn-apply:hover,
+        body.light-mode .drawing-style-editor .tv-align-btn.active,
+        body.light-mode .drawing-style-editor .tv-align-btn.active:hover,
+        body.light-mode .drawing-style-editor .tv-style-btn.active,
+        body.light-mode .drawing-style-editor .tv-style-btn.active:hover,
+        body.light-mode .drawing-style-editor .tv-ending-btn.active,
+        body.light-mode .drawing-style-editor .tv-ending-btn.active:hover {
+            color: #ffffff !important;
         }
 
         body.light-mode .tv-prop-dropdown-btn {
@@ -34019,15 +34035,21 @@
             color: #1f2937 !important;
         }
 
-        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow),
+        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow):not(.replay-primary):not(.replay-danger),
         body.light-mode .replay-toolbar select:hover {
             background: rgba(var(--sp-accent-rgb), 0.08) !important;
             color: #0f172a !important;
         }
 
-        body.light-mode .replay-toolbar button.replay-primary {
+        body.light-mode .replay-toolbar button.replay-primary,
+        body.light-mode .replay-toolbar button.replay-primary:hover {
             background: var(--sp-accent) !important;
             color: #ffffff !important;
+        }
+
+        body.light-mode .replay-toolbar button.replay-danger,
+        body.light-mode .replay-toolbar button.replay-danger:hover {
+            color: #dc2626 !important;
         }
 
         body.light-mode .replay-toolbar-divider {
@@ -41379,7 +41401,7 @@
 
     <script defer src="modules/drawing-tools-channels.js?v=20260321_PEARSONR_V6"></script>
 
-    <script defer src="modules/drawing-tools-ui.js?v=20260326_FULL_LIGHT_SWEEP_V7"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260326_HOVER_TEXT_FIX_V8"></script>
 
     <script defer src="modules/color-picker.js?v=20260318_TF_PIN_V60"></script>
 
