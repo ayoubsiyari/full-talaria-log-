@@ -7941,6 +7941,103 @@
 
         }
 
+        /* Symbol switcher - light mode */
+        body.light-mode .symbol-search-icon,
+        body.light-mode .symbol-search-group .symbol-display {
+            color: var(--sp-text, #1f2937);
+        }
+
+        body.light-mode .symbol-plus-btn {
+            color: var(--sp-text, #1f2937);
+        }
+
+        body.light-mode .symbol-plus-btn:hover {
+            background: rgba(0, 0, 0, 0.06);
+            color: var(--sp-text-active, #111111);
+        }
+
+        body.light-mode .symbol-switcher-dropdown {
+            background: var(--tv-panel-bg, #ffffff);
+            border-color: var(--sp-ui-border, #d7dde8);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14), 0 1px 3px rgba(15, 23, 42, 0.1);
+        }
+
+        body.light-mode .ssd-search-wrapper {
+            background: var(--sp-ui-chrome-bg, #f8fafc);
+            border-bottom-color: var(--sp-ui-border, #d7dde8);
+        }
+
+        body.light-mode .ssd-search-icon {
+            color: #64748b;
+        }
+
+        body.light-mode .ssd-search-input {
+            color: var(--sp-text, #1f2937);
+        }
+
+        body.light-mode .ssd-search-input::placeholder {
+            color: #94a3b8;
+        }
+
+        body.light-mode .ssd-header {
+            color: #64748b;
+        }
+
+        body.light-mode .ssd-list::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.35);
+        }
+
+        body.light-mode .ssd-item {
+            color: #334155;
+        }
+
+        body.light-mode .ssd-item:hover {
+            background: rgba(var(--sp-accent-rgb), 0.08);
+        }
+
+        body.light-mode .ssd-item.active {
+            background: rgba(var(--sp-accent-rgb), 0.14);
+        }
+
+        body.light-mode .ssd-item-icon {
+            background: rgba(15, 23, 42, 0.04);
+            border-color: rgba(15, 23, 42, 0.12);
+            color: #64748b;
+        }
+
+        body.light-mode .ssd-item-name {
+            color: var(--sp-text, #1f2937);
+        }
+
+        body.light-mode .ssd-item.active .ssd-item-name {
+            color: var(--sp-text-active, #111111);
+        }
+
+        body.light-mode .ssd-item-sub {
+            color: #64748b;
+        }
+
+        body.light-mode .ssd-flag {
+            border-color: #f8fafc;
+            background: #e2e8f0;
+        }
+
+        body.light-mode .ssd-item:hover .ssd-flag {
+            border-color: #e2e8f0;
+        }
+
+        body.light-mode .ssd-item.active .ssd-flag {
+            border-color: #dbeafe;
+        }
+
+        body.light-mode .ssd-empty {
+            color: #94a3b8;
+        }
+
+        body.light-mode .ssd-highlight {
+            background: rgba(var(--sp-accent-rgb), 0.16);
+        }
+
         
 
         /* Legacy classes kept for compatibility */
@@ -10947,7 +11044,7 @@
 
         body.light-mode .compare-modal-header {
 
-            background: #050028;
+            background: var(--sp-ui-chrome-bg, #f8fafc);
 
             border-bottom-color: rgba(0, 0, 0, 0.06);
 
@@ -10979,6 +11076,10 @@
 
             color: #1f2937;
 
+        }
+
+        body.light-mode .compare-search-icon {
+            color: #94a3b8;
         }
 
 
@@ -11083,6 +11184,16 @@
 
             color: var(--sp-accent);
 
+        }
+
+        body.light-mode .compare-added-pill .pill-remove {
+            background: rgba(0, 0, 0, 0.08);
+            color: #64748b;
+        }
+
+        body.light-mode .compare-added-pill .pill-remove:hover {
+            background: rgba(239, 68, 68, 0.16);
+            color: #dc2626;
         }
 
 
@@ -21625,6 +21736,18 @@
 
         }
 
+        body.light-mode .tool-dropdown::-webkit-scrollbar-track {
+            background: rgba(148, 163, 184, 0.16);
+        }
+
+        body.light-mode .tool-dropdown::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.4);
+        }
+
+        body.light-mode .tool-dropdown::-webkit-scrollbar-thumb:hover {
+            background: rgba(100, 116, 139, 0.58);
+        }
+
 
 
         .tool-dropdown .tool-btn {
@@ -21673,6 +21796,21 @@
 
             color: #ffffff;
 
+        }
+
+        body.light-mode .tool-dropdown .tool-btn {
+            border-bottom-color: rgba(15, 23, 42, 0.08);
+            color: var(--sp-text, #1f2937);
+        }
+
+        body.light-mode .tool-dropdown .tool-btn:hover {
+            background: rgba(var(--sp-accent-rgb), 0.08);
+            color: var(--sp-text-active, #111111);
+        }
+
+        body.light-mode .tool-dropdown .tool-btn.active {
+            background: rgba(var(--sp-accent-rgb), 0.15);
+            color: var(--sp-accent);
         }
 
 
