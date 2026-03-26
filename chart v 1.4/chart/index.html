@@ -24015,81 +24015,62 @@
             position: absolute;
             z-index: 200;
             pointer-events: auto;
-            background: transparent;
-            transition: background 0.15s ease;
+            transition: background-color 0.15s ease;
         }
-        /* Always-visible divider line */
-        .panel-resize-handle::before {
-            content: '';
-            position: absolute;
-            background: #2a2e39;
-            transition: background 0.15s ease;
-        }
-        .panel-resize-handle.vertical::before {
-            top: 0;
-            bottom: 0;
-            left: 50%;
-            width: 2px;
-            transform: translateX(-1px);
-        }
-        .panel-resize-handle.horizontal::before {
-            left: 0;
-            right: 0;
-            top: 50%;
-            height: 2px;
-            transform: translateY(-1px);
-        }
+        /* Full-length overlay divider line — always visible */
         .panel-resize-handle.vertical {
             cursor: col-resize;
+            width: 8px;
+            transform: translateX(-4px);
+            background: transparent;
+            border-left: 3px solid transparent;
+            border-right: 3px solid transparent;
+            border-top: none;
+            border-bottom: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #2a2e39;
         }
         .panel-resize-handle.horizontal {
             cursor: row-resize;
+            height: 8px;
+            transform: translateY(-4px);
+            background: transparent;
+            border-top: 3px solid transparent;
+            border-bottom: 3px solid transparent;
+            border-left: none;
+            border-right: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #2a2e39;
         }
         /* Hover — line brightens */
-        .panel-resize-handle:hover::before {
-            background: #3b4050;
-        }
-        .panel-resize-handle:hover {
-            background: transparent;
-        }
         .panel-resize-handle.vertical:hover {
-            background: linear-gradient(90deg, transparent 25%, rgba(59, 64, 80, 0.25) 50%, transparent 75%);
+            background-color: #3b4050;
         }
         .panel-resize-handle.horizontal:hover {
-            background: linear-gradient(180deg, transparent 25%, rgba(59, 64, 80, 0.25) 50%, transparent 75%);
+            background-color: #3b4050;
         }
         /* Dragging — accent blue */
-        .panel-resize-handle.dragging::before {
-            background: #2962FF !important;
-        }
         .panel-resize-handle.vertical.dragging {
-            background: linear-gradient(90deg, transparent 20%, rgba(41, 98, 255, 0.15) 50%, transparent 80%) !important;
+            background-color: #2962FF !important;
         }
         .panel-resize-handle.horizontal.dragging {
-            background: linear-gradient(180deg, transparent 20%, rgba(41, 98, 255, 0.15) 50%, transparent 80%) !important;
+            background-color: #2962FF !important;
         }
 
         /* Light mode */
-        body.light-mode .panel-resize-handle::before {
-            background: #d6dce6;
+        body.light-mode .panel-resize-handle.vertical,
+        body.light-mode .panel-resize-handle.horizontal {
+            background-color: #d6dce6;
         }
-        body.light-mode .panel-resize-handle:hover::before {
-            background: #b0b8c5;
-        }
-        body.light-mode .panel-resize-handle.vertical:hover {
-            background: linear-gradient(90deg, transparent 25%, rgba(176, 184, 197, 0.2) 50%, transparent 75%);
-        }
+        body.light-mode .panel-resize-handle.vertical:hover,
         body.light-mode .panel-resize-handle.horizontal:hover {
-            background: linear-gradient(180deg, transparent 25%, rgba(176, 184, 197, 0.2) 50%, transparent 75%);
+            background-color: #b0b8c5;
         }
-        body.light-mode .panel-resize-handle.dragging::before {
-            background: #2962FF !important;
-        }
-        body.light-mode .panel-resize-handle.vertical.dragging {
-            background: linear-gradient(90deg, transparent 20%, rgba(41, 98, 255, 0.1) 50%, transparent 80%) !important;
-        }
+        body.light-mode .panel-resize-handle.vertical.dragging,
         body.light-mode .panel-resize-handle.horizontal.dragging {
-            background: linear-gradient(180deg, transparent 20%, rgba(41, 98, 255, 0.1) 50%, transparent 80%) !important;
+            background-color: #2962FF !important;
         }
 
         .panel-loading-overlay {
@@ -41838,7 +41819,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260326_ALIGNED_DIVIDER_V87"></script>
+    <script defer src="modules/panel-manager.js?v=20260326_OVERLAY_LINE_V88"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 

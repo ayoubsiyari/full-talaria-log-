@@ -2443,9 +2443,9 @@ class PanelManager {
         handle.className = `panel-resize-handle ${type}`;
 
         if (type === 'vertical') {
-            handle.style.cssText = `left:${xPct}%;top:${yPct}%;width:8px;height:${sizePct}%;transform:translateX(-50%);`;
+            handle.style.cssText = `left:${xPct}%;top:${yPct}%;height:${sizePct}%;`;
         } else {
-            handle.style.cssText = `left:${xPct}%;top:${yPct}%;width:${sizePct}%;height:8px;transform:translateY(-50%);`;
+            handle.style.cssText = `left:${xPct}%;top:${yPct}%;width:${sizePct}%;`;
         }
 
         handle._resizeMeta = meta;
