@@ -7805,21 +7805,29 @@
             height: 24px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid #1e222d;
+            border: 2px solid rgba(0,0,0,0.18);
             background: #2a2e39;
+            box-shadow:
+                0 1.5px 4px rgba(0,0,0,0.35),
+                0 0 0 0.5px rgba(255,255,255,0.12) inset;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
         .ssd-flag-base {
             left: 0;
             top: 2px;
-            z-index: 1;
+            z-index: 2;
         }
         .ssd-flag-quote {
             left: 14px;
             top: 2px;
-            z-index: 2;
+            z-index: 1;
         }
         .ssd-item:hover .ssd-flag {
-            border-color: #262a35;
+            border-color: rgba(0,0,0,0.25);
+            transform: scale(1.08);
+            box-shadow:
+                0 2px 7px rgba(0,0,0,0.4),
+                0 0 0 0.5px rgba(255,255,255,0.18) inset;
         }
         .ssd-item.active .ssd-flag {
             border-color: #1a2744;
@@ -8018,16 +8026,38 @@
         }
 
         body.light-mode .ssd-flag {
-            border-color: #f8fafc;
+            border-color: rgba(255,255,255,0.85);
             background: #e2e8f0;
+            box-shadow:
+                0 1.5px 5px rgba(15,23,42,0.22),
+                0 0.5px 2px rgba(15,23,42,0.12),
+                0 0 0 0.5px rgba(255,255,255,0.7) inset;
         }
 
         body.light-mode .ssd-item:hover .ssd-flag {
-            border-color: #e2e8f0;
+            border-color: rgba(255,255,255,0.9);
+            box-shadow:
+                0 3px 8px rgba(15,23,42,0.25),
+                0 1px 3px rgba(15,23,42,0.15),
+                0 0 0 0.5px rgba(255,255,255,0.8) inset;
         }
 
         body.light-mode .ssd-item.active .ssd-flag {
-            border-color: #dbeafe;
+            border-color: rgba(255,255,255,0.9);
+        }
+
+        body.light-mode .ohlc-dot-flag {
+            border-color: rgba(255,255,255,0.85);
+            box-shadow:
+                0 1px 4px rgba(15,23,42,0.22),
+                0 0.5px 2px rgba(15,23,42,0.12),
+                0 0 0 0.5px rgba(255,255,255,0.7) inset;
+        }
+        body.light-mode .ohlc-dot-flag:hover {
+            box-shadow:
+                0 2px 8px rgba(15,23,42,0.28),
+                0 1px 3px rgba(15,23,42,0.15),
+                0 0 0 0.5px rgba(255,255,255,0.8) inset;
         }
 
         body.light-mode .ssd-empty {
@@ -25117,17 +25147,27 @@
             height: 18px;
             border-radius: 50%;
             object-fit: cover;
-            border: 1.5px solid #131722;
+            border: 1.5px solid rgba(0,0,0,0.25);
+            box-shadow:
+                0 1px 3px rgba(0,0,0,0.35),
+                0 0 0 0.5px rgba(255,255,255,0.15) inset;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .ohlc-dot-flag:hover {
+            transform: scale(1.12);
+            box-shadow:
+                0 2px 6px rgba(0,0,0,0.4),
+                0 0 0 0.5px rgba(255,255,255,0.2) inset;
         }
         .ohlc-dot-flag-base {
             left: 0;
             top: 0;
-            z-index: 1;
+            z-index: 2;
         }
         .ohlc-dot-flag-quote {
             left: 12px;
             top: 0;
-            z-index: 2;
+            z-index: 1;
         }
 
         .ohlc-symbol-text {
