@@ -4894,8 +4894,8 @@ class OrderManager {
                 body.light-mode .order-tab.active.order-tab--buy:hover {
                     background: linear-gradient(135deg, #22c55e, #16a34a) !important;
                     border-color: #15803d !important;
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
+                    
+                    
                     box-shadow: 0 3px 12px rgba(34,197,94,0.35) !important;
                 }
                 body.light-mode .order-tab.active.order-tab--sell:hover {
