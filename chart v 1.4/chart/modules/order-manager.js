@@ -4895,14 +4895,14 @@ class OrderManager {
                     background: linear-gradient(135deg, #22c55e, #16a34a) !important;
                     border-color: #15803d !important;
                     
-                    
+                    -webkit-text-fill-color:rgb(3, 3, 3) !important;
                     box-shadow: 0 3px 12px rgba(34,197,94,0.35) !important;
                 }
                 body.light-mode .order-tab.active.order-tab--sell:hover {
                     background: linear-gradient(135deg, #ef4444, #dc2626) !important;
                     border-color: #b91c1c !important;
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
+                    color:rgb(16, 16, 16) !important;
+                    -webkit-text-fill-color:rgb(2, 2, 2) !important;
                     box-shadow: 0 3px 12px rgba(239,68,68,0.35) !important;
                 }
 
