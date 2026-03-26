@@ -1247,8 +1247,10 @@ class OrderManager {
         const q = Number(quantity) || 0;
         if (!Number.isFinite(entryPrice) || !Number.isFinite(levelPrice) || q <= 0) return 0;
         const sym = symbolOverride || this._getSymbol();
-        const cc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
-        const mark = cc && Number.isFinite(Number.parseFloat(cc.c)) ? Number.parseFloat(cc.c) : levelPrice;
+        // Pip value for JPY-cross / USD-base uses currentPrice in quote — must be a price for
+        // *this* symbol. getCurrentCandle() can be another pair's tick (multi-chart / focus),
+        // which blows up USD pip value (e.g. 1000/1.08 instead of 1000/126).
+        const mark = Number.isFinite(levelPrice) ? levelPrice : entryPrice;
         return this._enginePnL(side, entryPrice, levelPrice, q, mark, sym, null);
     }
 
