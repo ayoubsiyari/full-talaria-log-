@@ -23913,22 +23913,26 @@
 
         }
 
-        /* Panel selection — top-bar only (TradingView style), no full outline */
+        /* Panel selection — subtle top-left accent (TradingView / FXReplay style) */
         .panel-select-bar {
             position: absolute;
             top: 0;
             left: 0;
-            right: 0;
-            height: 2px;
-            background: #2962FF;
+            width: 3px;
+            height: 32px;
+            border-radius: 0 3px 3px 0;
+            background: var(--sp-accent, #2962FF);
             z-index: 200;
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.12s ease;
+            transform: scaleY(0);
+            transform-origin: top;
+            transition: opacity 0.18s ease, transform 0.18s ease;
         }
         .panel-selected > .panel-select-bar,
         .panel-selected .panel-select-bar {
             opacity: 1;
+            transform: scaleY(1);
         }
 
         .chart-panel .ohlc-info {
