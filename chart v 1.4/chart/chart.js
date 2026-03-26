@@ -1522,11 +1522,13 @@ class Chart {
             if (this.priceScale) this.priceScale.autoScale = true;
             this.manualCenterPrice = null;
             this.manualRange = null;
+            this._chartViewRestored = false;
 
             if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (e) {}
             }
 
+            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
             this.resize();
 
             const pm = window.panelManager;
@@ -1548,6 +1550,14 @@ class Chart {
             }
 
             this.render();
+
+            requestAnimationFrame(() => {
+                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                this.resize();
+                this._chartViewRestored = false;
+                this.fitToView();
+                this.render();
+            });
             this._hidePanelLoadingOverlay();
 
             if (window.panelManager && typeof window.panelManager.savePanelState === 'function') {
@@ -9282,7 +9292,9 @@ class Chart {
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
-        this.fitToView(); // position to last candle after timeframe change
+        this._chartViewRestored = false;
+        this.resize();
+        this.fitToView();
         this.scheduleRender();
         this._fireChartDataLoaded();
     }
@@ -9294,7 +9306,7 @@ class Chart {
     async _loadTimeframeFromServer(timeframe) {
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
-            
+
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
 
@@ -9310,14 +9322,24 @@ class Chart {
                 hasMoreRight: result.has_more_right
             };
             this._panLoading = false;
+            this._chartViewRestored = false;
+
+            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+            this.resize();
 
             this._ingestSmartWindowResult(result, {});
-            // NOTE: _commitLoadedBars resamples this.data to currentTimeframe
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
             if (this.hideLoader) this.hideLoader();
-            // NOTE: _commitLoadedBars dispatches chartDataLoaded; do not call _fireChartDataLoaded() here.
+
+            requestAnimationFrame(() => {
+                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                this.resize();
+                this._chartViewRestored = false;
+                this.fitToView();
+                this.render();
+            });
 
         } catch (error) {
             console.error('❌ Timeframe change failed:', error);
