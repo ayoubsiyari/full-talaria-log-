@@ -6417,19 +6417,17 @@ class OrderManager {
         const placeBtn = document.getElementById('placeOrderButton');
 
         if (buyTab && sellTab && placeBtn) {
-            if ((order.direction || 'BUY') === 'BUY') {
-                buyTab.style.background = '#22c55e';
-                buyTab.style.color = 'white';
-                sellTab.style.background = 'rgba(239, 68, 68, 0.2)';
-                sellTab.style.color = '#ef4444';
-                placeBtn.style.background = '#22c55e';
-            } else {
-                sellTab.style.background = '#ef4444';
-                sellTab.style.color = 'white';
-                buyTab.style.background = 'rgba(34, 197, 94, 0.2)';
-                buyTab.style.color = '#22c55e';
-                placeBtn.style.background = '#ef4444';
-            }
+            const isBuy = (order.direction || 'BUY') === 'BUY';
+            this.orderSide = isBuy ? 'BUY' : 'SELL';
+
+            // Use the same class-based behavior as normal mode (no inline tab colors)
+            buyTab.style.cssText = '';
+            sellTab.style.cssText = '';
+            buyTab.classList.toggle('active', isBuy);
+            sellTab.classList.toggle('active', !isBuy);
+
+            // Keep place button side color while editing pending order.
+            placeBtn.style.background = isBuy ? '#22c55e' : '#ef4444';
         }
 
         const orderTypeButtons = document.querySelectorAll('.order-type-btn');
@@ -6725,13 +6723,23 @@ class OrderManager {
         const sellTab = document.getElementById('sellTab');
         const placeBtn = document.getElementById('placeOrderButton');
         
-        buyTab.onclick = () => {
-            buyTab.classList.add('active');
-            sellTab.classList.remove('active');
+        const applyOrderSideTabs = (side) => {
+            if (!buyTab || !sellTab) return;
+            this.orderSide = side;
+            const isBuy = side === 'BUY';
+            buyTab.classList.toggle('active', isBuy);
+            sellTab.classList.toggle('active', !isBuy);
+            // Always clear inline tab styles to avoid stale colors.
             buyTab.style.cssText = '';
             sellTab.style.cssText = '';
             if (placeBtn) { placeBtn.style.background = ''; placeBtn.style.boxShadow = ''; }
-            this.orderSide = 'BUY';
+        };
+
+        // Initial tab state follows current side and theme classes.
+        applyOrderSideTabs(this.orderSide === 'SELL' ? 'SELL' : 'BUY');
+
+        buyTab.onclick = () => {
+            applyOrderSideTabs('BUY');
             // Reset TP/SL positioning flags when switching sides
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
@@ -6742,12 +6750,7 @@ class OrderManager {
         };
         
         sellTab.onclick = () => {
-            sellTab.classList.add('active');
-            buyTab.classList.remove('active');
-            sellTab.style.cssText = '';
-            buyTab.style.cssText = '';
-            if (placeBtn) { placeBtn.style.background = ''; placeBtn.style.boxShadow = ''; }
-            this.orderSide = 'SELL';
+            applyOrderSideTabs('SELL');
             // Reset TP/SL positioning flags when switching sides
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
