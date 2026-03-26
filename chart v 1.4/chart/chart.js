@@ -5028,13 +5028,13 @@ class Chart {
 
             // Secondary accent + text colors
             const secondaryColor = targetChart.chartSettings.settingsPanelSecondaryColor || '#7b61ff';
-            const textColor = targetChart.chartSettings.settingsPanelTextColor || '#e0e3ea';
+            const textColor = targetChart.chartSettings.settingsPanelTextColor || (isLightPanel ? '#1f2937' : '#e0e3ea');
             const secondaryRgb = toRgbArray(secondaryColor, [123, 97, 255]);
             const textRgb = toRgbArray(textColor, [224, 227, 234]);
 
             // Derive muted text (mix text toward panel bg)
-            // Light panels need less mixing to keep labels readable
-            const textMutedRgb = mixRgb(textRgb, panelRgb, isLightPanel ? 0.22 : 0.52);
+            // Keep stronger contrast on light backgrounds.
+            const textMutedRgb = mixRgb(textRgb, panelRgb, isLightPanel ? 0.12 : 0.52);
             // Input/button bg: slightly darker for light themes, slightly lighter for dark themes
             const inputBgRgb = isLightPanel
                 ? mixRgb(surfaceBg, [0, 0, 0], 0.06)
