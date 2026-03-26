@@ -14834,7 +14834,7 @@ class Chart {
             this.hideCrosshair();
             this.currentCrosshairTimestamp = null;
             // Broadcast hide to other panels
-            if (this.syncCrosshair) {
+            if (this._crosshairPanelSyncAllowed()) {
                 this.broadcastCrosshairSync(null, null);
             }
             return;
@@ -15025,7 +15025,7 @@ class Chart {
                 
                 // Store and broadcast timestamp for panel sync
                 this.currentCrosshairTimestamp = candle.t;
-                if (this.syncCrosshair && this.yScale) {
+                if (this._crosshairPanelSyncAllowed() && this.yScale) {
                     const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
                     this.broadcastCrosshairSync(candle.t, price);
                 }
@@ -17151,12 +17151,53 @@ class Chart {
         this.hideContextMenu();
         this.scheduleRender();
     }
+
+    /**
+     * Multi-panel: sync crosshair when either "Crosshair" or "Date range" sync is enabled.
+     * Date-range mode aligns charts by time; crosshair must follow the same wall-clock time on every TF.
+     */
+    _crosshairPanelSyncAllowed() {
+        const pm = window.panelManager;
+        if (!pm || pm.currentLayout === '1') return false;
+        const s = pm.syncSettings;
+        if (!s) return false;
+        if (!s.crosshair && !s.dateRange) return false;
+        if (s.dateRange) return true;
+        return !!this.syncCrosshair;
+    }
+
+    /**
+     * Last bar index with candle time <= timestamp (ms). Used so 1m/5m/30m bars share one crosshair moment.
+     */
+    findLastDataIndexAtOrBeforeTime(timestamp) {
+        if (!this.data || this.data.length === 0) return -1;
+        const ts = this.normalizeTimestampMs ? this.normalizeTimestampMs(timestamp) : Number(timestamp);
+        if (!Number.isFinite(ts)) return -1;
+        let lo = 0;
+        let hi = this.data.length - 1;
+        let ans = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            const rawT = this.data[mid]?.t;
+            const mt = this.normalizeTimestampMs ? this.normalizeTimestampMs(rawT) : rawT;
+            if (!Number.isFinite(mt)) {
+                lo = mid + 1;
+                continue;
+            }
+            if (mt <= ts) {
+                ans = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return ans >= 0 ? ans : 0;
+    }
     
     /**
      * Broadcast crosshair position to all other panels and main chart
      */
     broadcastCrosshairSync(timestamp, price = null) {
-        if (!this.syncCrosshair) return;
         if (!window.panelManager) return;
         
         // If single panel layout, no need to broadcast
@@ -17164,16 +17205,22 @@ class Chart {
         
         // Check if there are any panels to sync to
         if (!window.panelManager.panels || window.panelManager.panels.length <= 1) return;
-        
-        // Check if crosshair sync is enabled in panel manager settings
-        if (!window.panelManager.syncSettings.crosshair) return;
+
+        if (!this._crosshairPanelSyncAllowed()) return;
         
         // Find the candle at this timestamp to pass its data
         let candleData = null;
         if (this.data && this.data.length > 0) {
-            const dataIdx = this.data.findIndex(c => c.t === timestamp);
+            const dataIdx = this.data.findIndex(c => {
+                const ct = this.normalizeTimestampMs ? this.normalizeTimestampMs(c.t) : c.t;
+                const ts = this.normalizeTimestampMs ? this.normalizeTimestampMs(timestamp) : timestamp;
+                return ct === ts;
+            });
             if (dataIdx >= 0) {
                 candleData = this.data[dataIdx];
+            } else {
+                const idx = this.findLastDataIndexAtOrBeforeTime(timestamp);
+                if (idx >= 0 && this.data[idx]) candleData = this.data[idx];
             }
         }
         
@@ -17207,7 +17254,7 @@ class Chart {
      * @param {object} sourceCandle - Candle data from source chart (for OHLC display)
      */
     receiveCrosshairSync(timestamp, price = null, sourceCandle = null) {
-        if (!this.syncCrosshair) return;
+        if (!this._crosshairPanelSyncAllowed()) return;
         
         const container = this.isPanel ? this.canvas.parentElement : document;
         const vLine = container.querySelector('.crosshair-vertical');
@@ -17225,31 +17272,15 @@ class Chart {
             return;
         }
         
-        // Find the candle closest to this timestamp in this chart's data
+        // Same wall-clock moment on every TF: use last bar with open time <= synced timestamp
         let candle = null;
         let candleIndex = -1;
         
         if (this.data && this.data.length > 0) {
-            // Binary search for closest candle (faster for large datasets)
-            let left = 0, right = this.data.length - 1;
-            candleIndex = 0;
-            
-            while (left <= right) {
-                const mid = Math.floor((left + right) / 2);
-                if (this.data[mid].t === timestamp) {
-                    candleIndex = mid;
-                    break;
-                } else if (this.data[mid].t < timestamp) {
-                    left = mid + 1;
-                } else {
-                    right = mid - 1;
-                }
-                // Keep track of closest
-                if (Math.abs(this.data[mid].t - timestamp) < Math.abs(this.data[candleIndex].t - timestamp)) {
-                    candleIndex = mid;
-                }
+            candleIndex = this.findLastDataIndexAtOrBeforeTime(timestamp);
+            if (candleIndex >= 0) {
+                candle = this.getDisplayCandle(candleIndex);
             }
-            candle = this.getDisplayCandle(candleIndex);
         }
         
         // If no local candle but we have source candle, use it for OHLC display
@@ -17338,31 +17369,44 @@ class Chart {
             }
         }
         
-        // Time label with proper styling
-        if (timeLabel && isXVisible) {
-            const date = new Date(candle.t);
+        // Time label — same wall-clock string on every panel (synced timestamp, not higher-TF bar open)
+        if (timeLabel && isXVisible && Number.isFinite(timestamp) && timestamp > 0) {
+            let timeframeMs = 60000;
+            if (this.data && this.data.length >= 2) {
+                timeframeMs = this.data[1].t - this.data[0].t;
+            } else {
+                const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
+                timeframeMs = tfMap[this.currentTimeframe || '1m'] || 60000;
+            }
+            const tzDate = this.convertToTimezone(timestamp);
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const month = months[tzDate.getMonth()];
+            const day = tzDate.getDate();
+            const year = tzDate.getFullYear();
+            const hours = String(tzDate.getHours()).padStart(2, '0');
+            const minutes = String(tzDate.getMinutes()).padStart(2, '0');
+            const seconds = String(tzDate.getSeconds()).padStart(2, '0');
+            let timeStr;
+            if (timeframeMs >= 86400000) {
+                timeStr = `${month} ${day}`;
+            } else {
+                timeStr = `${month} ${day}, ${year}, ${hours}:${minutes}:${seconds}`;
+            }
             const timeLabelBottom = Math.max(2, Math.floor(m.b * 0.2));
-            const timeStr = date.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            });
             timeLabel.textContent = timeStr;
-            timeLabel.style.cssText = `
-                position: absolute;
-                left: ${x - 50}px;
-                bottom: ${timeLabelBottom}px;
-                background: #363a45;
-                color: #d1d4dc;
-                padding: 2px 6px;
-                font-size: 11px;
-                border-radius: 2px;
-                white-space: nowrap;
-                z-index: 101;
-                display: block;
-            `;
+            timeLabel.style.left = `${x}px`;
+            timeLabel.style.top = 'auto';
+            timeLabel.style.bottom = `${timeLabelBottom}px`;
+            timeLabel.style.transform = 'translateX(-50%)';
+            timeLabel.style.position = 'absolute';
+            timeLabel.style.background = this.chartSettings?.cursorLabelBgColor || '#363a45';
+            timeLabel.style.color = this.chartSettings?.cursorLabelTextColor || '#d1d4dc';
+            timeLabel.style.padding = '2px 6px';
+            timeLabel.style.fontSize = '11px';
+            timeLabel.style.borderRadius = '2px';
+            timeLabel.style.whiteSpace = 'nowrap';
+            timeLabel.style.zIndex = '101';
+            timeLabel.style.display = 'block';
         } else if (timeLabel) {
             timeLabel.style.display = 'none';
         }
