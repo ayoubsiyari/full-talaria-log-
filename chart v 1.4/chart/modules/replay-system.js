@@ -2099,6 +2099,18 @@ class ReplaySystem {
         if (this.currentIndex < 0) this.currentIndex = 0;
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
 
+        // Keep virtual replay time aligned with the current bar. Without this, multi-panel charts
+        // that load a different pair (_panelFullRawData) still use a stale replayTimestamp in
+        // syncPanelCharts() until the next play/tick advances it — so "go back" looked correct on
+        // the main chart but other pairs kept future candles until play.
+        const midTickAnimation = !!(this.animatingCandle && (this.tickProgress || 0) > 0);
+        if (!midTickAnimation) {
+            const curBar = this.fullRawData[this.currentIndex];
+            if (curBar && Number.isFinite(curBar.t)) {
+                this.replayTimestamp = curBar.t;
+            }
+        }
+
         this.updateSliderRange();
         
         // Slice rawData to current position (minimum 1 candle)
