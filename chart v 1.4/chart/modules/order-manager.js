@@ -5120,27 +5120,90 @@ class OrderManager {
                     color: #374151 !important;
                 }
 
-                /* Hard stop: no hover background changes on order-panel buttons */
+                /* Hard stop: no hover visual changes on order-panel buttons */
                 body.light-mode .order-panel button:hover {
                     filter: none !important;
                     transform: none !important;
                 }
-                body.light-mode .order-panel .order-tab:hover:not(.active) { background: #ffffff !important; }
-                body.light-mode .order-panel .order-tab.active.order-tab--buy:hover { background: linear-gradient(135deg, #22c55e, #16a34a) !important; }
-                body.light-mode .order-panel .order-tab.active.order-tab--sell:hover { background: linear-gradient(135deg, #ef4444, #dc2626) !important; }
+                body.light-mode .order-panel .order-tab:hover:not(.active) {
+                    background: #ffffff !important;
+                    border-color: #d5dae2 !important;
+                    color: #6b7280 !important;
+                    -webkit-text-fill-color: #6b7280 !important;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+                }
+                body.light-mode .order-panel .order-tab.active.order-tab--buy:hover {
+                    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+                    border-color: #16a34a !important;
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                    box-shadow: 0 3px 12px rgba(34,197,94,0.35) !important;
+                }
+                body.light-mode .order-panel .order-tab.active.order-tab--sell:hover {
+                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+                    border-color: #dc2626 !important;
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                    box-shadow: 0 3px 12px rgba(239,68,68,0.35) !important;
+                }
                 body.light-mode .order-panel .order-type-btn:hover:not(.active),
                 body.light-mode .order-panel .position-mode-tab:hover:not(.active),
-                body.light-mode .order-panel .breakeven-mode-tab:hover:not(.active) { background: transparent !important; }
+                body.light-mode .order-panel .breakeven-mode-tab:hover:not(.active) {
+                    background: transparent !important;
+                    border-color: transparent !important;
+                    color: #6b7280 !important;
+                    -webkit-text-fill-color: #6b7280 !important;
+                    box-shadow: none !important;
+                }
                 body.light-mode .order-panel .order-type-btn.active:hover,
                 body.light-mode .order-panel .position-mode-tab.active:hover,
-                body.light-mode .order-panel .breakeven-mode-tab.active:hover { background: var(--op-accent, #2962ff) !important; }
-                body.light-mode .order-panel .risk-btn:hover:not(.active) { background: #ffffff !important; }
-                body.light-mode .order-panel .risk-btn.active:hover { background: rgba(var(--op-accent-rgb), 0.12) !important; }
-                body.light-mode .order-panel .input-stepper:hover { background: #e8ebf0 !important; }
-                body.light-mode .order-panel .order-btn-icon:hover { background: #ffffff !important; }
-                body.light-mode .order-panel .order-utility-btn:hover { background: #ffffff !important; }
-                body.light-mode .order-panel .order-submit-btn:hover { background: linear-gradient(135deg, rgba(var(--op-accent-rgb), 0.95) 0%, rgba(var(--op-accent-rgb), 0.75) 100%) !important; }
-                body.light-mode .order-panel .order-submit-btn.sell-mode:hover { background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%) !important; }
+                body.light-mode .order-panel .breakeven-mode-tab.active:hover {
+                    background: var(--op-accent, #2962ff) !important;
+                    border-color: transparent !important;
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                    box-shadow: 0 2px 8px rgba(var(--op-accent-rgb), 0.30) !important;
+                }
+                body.light-mode .order-panel .risk-btn:hover:not(.active) {
+                    background: #ffffff !important;
+                    border-color: #d5dae2 !important;
+                    color: #6b7280 !important;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important;
+                }
+                body.light-mode .order-panel .risk-btn.active:hover {
+                    background: rgba(var(--op-accent-rgb), 0.12) !important;
+                    border-color: var(--op-accent, #2962ff) !important;
+                    color: var(--op-accent, #2962ff) !important;
+                    box-shadow: 0 1px 4px rgba(var(--op-accent-rgb), 0.18) !important;
+                }
+                body.light-mode .order-panel .input-stepper:hover {
+                    background: #e8ebf0 !important;
+                    border-color: #d5dae2 !important;
+                    color: #374151 !important;
+                    box-shadow: none !important;
+                }
+                body.light-mode .order-panel .order-btn-icon:hover {
+                    background: #ffffff !important;
+                    border-color: #d5dae2 !important;
+                    color: #374151 !important;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+                }
+                body.light-mode .order-panel .order-utility-btn:hover {
+                    background: #ffffff !important;
+                    border-color: #d5dae2 !important;
+                    color: #374151 !important;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+                }
+                body.light-mode .order-panel .order-submit-btn:hover {
+                    background: linear-gradient(135deg, rgba(var(--op-accent-rgb), 0.95) 0%, rgba(var(--op-accent-rgb), 0.75) 100%) !important;
+                    box-shadow: 0 2px 10px rgba(var(--op-accent-rgb), 0.28) !important;
+                    color: #ffffff !important;
+                }
+                body.light-mode .order-panel .order-submit-btn.sell-mode:hover {
+                    background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%) !important;
+                    box-shadow: 0 2px 14px rgba(220,38,38,0.3) !important;
+                    color: #ffffff !important;
+                }
 
                 /* ── ORDER TYPE BUTTONS ──────────────────────────────────────────── */
                 .order-section {
