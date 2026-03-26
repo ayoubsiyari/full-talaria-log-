@@ -34459,6 +34459,16 @@
             border-color: rgba(0,0,0,0.15) !important;
         }
 
+        /* Keep Tick and Interval identical on light-mode hover/open */
+        body.light-mode #intervalTriggerBtn:hover,
+        body.light-mode .interval-slider-wrapper.interval-panel-open #intervalTriggerBtn,
+        body.light-mode .replay-mode-trigger:hover,
+        body.light-mode #speedSliderClone .replay-mode-trigger:hover,
+        body.light-mode .replay-mode-trigger.replay-open,
+        body.light-mode #speedSliderClone .replay-mode-trigger.replay-open {
+            background: rgba(0,0,0,0.08) !important;
+        }
+
         body.light-mode .replay-mode-dropdown-arrow {
             color: #64748b !important;
         }
@@ -41722,7 +41732,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_INDEX_CLEAN_V214"></script>
+    <script defer src="chart.js?v=20260326_INDEX_CLEAN_V215"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_PAIR_SWITCH_REPLAY_V78"></script>
 
@@ -56080,7 +56090,7 @@ P['template']={title:'Template',build:function(){
 
             +'</div>'
 
-            +'<div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:fixed;top:calc(100% + 4px);left:0;right:0;background:'+ddc.panelBg+';border:1px solid '+ddc.panelBorder+';border-radius:8px;box-shadow:'+ddc.panelShadow+';z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'
+            +'<div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:'+ddc.panelBg+';border:1px solid '+ddc.panelBorder+';border-radius:8px;box-shadow:'+ddc.panelShadow+';z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'
 
             +opts
 
@@ -56152,20 +56162,9 @@ P['template']={title:'Template',build:function(){
 
             document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});
 
-            if(!isOpen){
-                // Position dropdown below the trigger
-                var rect = trig.getBoundingClientRect();
-                panel.style.position = 'fixed';
-                panel.style.top = (rect.bottom + 4) + 'px';
-                panel.style.left = rect.left + 'px';
-                panel.style.right = 'auto';
-                panel.style.width = Math.max(rect.width, 200) + 'px';
-                panel.style.display = 'block';
-                
-                if(typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();
-            } else {
-                panel.style.display = 'none';
-            }
+            panel.style.display=isOpen?'none':'block';
+
+            if(!isOpen&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();
 
         });
 
