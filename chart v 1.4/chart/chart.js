@@ -6555,10 +6555,8 @@ class Chart {
 	        const oldW = this.w;
 	        const oldH = this.h;
 	        
-	        // Get dimensions from PARENT container (chart-wrapper), not canvas itself
 	        const container = this.canvas.parentElement;
 	        if (!container) return;
-	        void container.offsetHeight; // Force reflow
 
 	        const dpr = window.devicePixelRatio || 1;
 	        const rect = container.getBoundingClientRect();
@@ -6567,57 +6565,48 @@ class Chart {
 	        const dprChanged = this._lastResizeDpr !== dpr;
 	        const sizeChanged = oldW !== nextW || oldH !== nextH;
 
-	        // Browser minimize/restore can temporarily report 0x0; keep last valid size.
 	        if (nextW < 2 || nextH < 2) {
 	            return;
 	        }
 
-	        // Skip redundant resizes to avoid unnecessary canvas clears/flicker.
 	        if (!sizeChanged && !dprChanged) {
 	            return;
 	        }
 
 	        this._lastResizeDpr = dpr;
 	        
-	        // Set canvas physical size
 	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
 	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
 	        
-	        // Set canvas display size
 	        this.canvas.style.width = nextW + 'px';
 	        this.canvas.style.height = nextH + 'px';
 	        
-	        // Scale context for high DPI displays
 	        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 	        this.ctx.scale(dpr, dpr);
 	        
-	        // Update chart dimensions
 	        this.w = nextW;
 	        this.h = nextH;
-	        this.svg.attr('width', this.w).attr('height', this.h);
-	        this.svg.style('width', this.w + 'px').style('height', this.h + 'px');
+
+	        // Batch SVG size update — avoid D3 attr calls during drag resize
+	        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
+	        if (svgNode) {
+	            svgNode.setAttribute('width', this.w);
+	            svgNode.setAttribute('height', this.h);
+	            svgNode.style.width = this.w + 'px';
+	            svgNode.style.height = this.h + 'px';
+	        }
 	        
-	        // Adjust offsetX to keep the visible center point the same
 	        if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
-	            
-	            // Adjust horizontal offset to keep the center of the chart view stable
 	            this.offsetX += deltaW * 0.5;
-	            
 	            this.constrainOffset();
 	        } else {
-	            // Initial load
 	            this.fitToView();
 	        }
 	        
-	        this.scheduleRender();
-
-	        // Paint immediately after canvas resize to avoid one-frame blank flashes
-	        // during animated layout transitions (settings panel open/close).
 	        this.render();
 	        this.renderPending = false;
 	        
-	        // Update follow button position after resize
 	        if (this.replaySystem && this.replaySystem.isActive) {
 	            this.replaySystem.updateAutoScrollIndicator();
 	        }
