@@ -2122,7 +2122,7 @@
 
         
 
-        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow),
+        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow),
 
         body.light-mode .replay-toolbar select:hover {
 
@@ -15243,7 +15243,7 @@
 
 
 
-        .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow),
+        .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow),
 
         .replay-toolbar select:hover {
 
@@ -16185,6 +16185,112 @@
 
         }
 
+        .interval-slider-wrapper .interval-dropdown-arrow {
+
+            width: 32px;
+
+            height: 10px !important;
+
+            min-height: 10px !important;
+
+            max-height: 10px !important;
+
+            border: none;
+
+            background: var(--sp-ui-chrome-bg, rgba(19, 23, 34, 0.96));
+
+            color: var(--sp-text-muted, #a0aec0);
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            position: absolute;
+
+            left: 0;
+
+            right: 0;
+
+            margin: 0 auto;
+
+            top: -10px;
+
+            bottom: auto;
+
+            border-radius: 4px 4px 0 0;
+
+            padding: 0 !important;
+
+            line-height: 1;
+
+            cursor: default !important;
+
+            pointer-events: none !important;
+
+            opacity: 0;
+
+            z-index: 100000;
+
+            transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+
+            border: 1px solid var(--sp-ui-border, rgba(63, 84, 124, 0.35));
+
+            border-bottom: none;
+
+            backdrop-filter: blur(20px);
+
+            -webkit-backdrop-filter: blur(20px);
+
+        }
+
+        .interval-slider-wrapper:hover .interval-dropdown-arrow,
+        .interval-slider-wrapper .interval-dropdown-arrow:hover,
+        .interval-slider-wrapper .interval-dropdown-arrow.dropdown-open {
+
+            opacity: 1;
+
+            pointer-events: auto !important;
+
+        }
+
+        .interval-slider-wrapper .interval-dropdown-arrow svg {
+
+            width: 12px;
+
+            height: 8px;
+
+            display: block;
+
+            transform: rotate(180deg);
+
+            transition: transform 0.2s ease;
+
+        }
+
+        .interval-slider-wrapper .interval-dropdown-arrow:hover {
+
+            background: rgba(var(--sp-accent-rgb), 0.15);
+
+            color: #a0aec0;
+
+        }
+
+        .interval-slider-wrapper .interval-dropdown-arrow.dropdown-open {
+
+            background: rgba(0, 0, 0, 0.92);
+
+            color: #a0aec0;
+
+        }
+
+        .interval-slider-wrapper .interval-dropdown-arrow.dropdown-open svg {
+
+            transform: rotate(0deg);
+
+        }
+
         /* The slider panel — toggled open via .interval-panel-open (click), not hover */
 
         .interval-slider-panel {
@@ -16498,6 +16604,12 @@
         body.light-mode #intervalTriggerBtn { color: #131722; border-color: rgba(0,0,0,0.15); background: rgba(0,0,0,0.04); }
 
         body.light-mode #intervalTriggerBtn:hover { background: rgba(0,0,0,0.08); }
+
+        body.light-mode .interval-slider-wrapper .interval-dropdown-arrow { background: #f0f3fa; border-color: rgba(0,0,0,0.15); color: #4a5568; }
+
+        body.light-mode .interval-slider-wrapper .interval-dropdown-arrow:hover { background: rgba(var(--sp-accent-rgb), 0.16); color: #334155; }
+
+        body.light-mode .interval-slider-wrapper .interval-dropdown-arrow.dropdown-open { background: #dbe3f0; color: #334155; }
 
         body.light-mode .interval-slider-panel { background: #f0f3fa; border-color: rgba(0,0,0,0.1); }
 
@@ -20505,7 +20617,7 @@
 
         /* Unified hover effect for all buttons */
 
-        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.tv-color-btn):not(.dropdown-arrow):not(.cursor-dropdown-arrow):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.sidebar-timeframe-arrow):hover {
+        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.tv-color-btn):not(.dropdown-arrow):not(.cursor-dropdown-arrow):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow):not(.sidebar-timeframe-arrow):hover {
 
             background: rgba(255, 255, 255, 0.12) !important;
 
@@ -20527,7 +20639,7 @@
 
         /* Unified active/click effect */
 
-        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.sidebar-timeframe-arrow):active {
+        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow):not(.sidebar-timeframe-arrow):active {
 
             transform: translateY(0) scale(0.98);
 
@@ -34185,7 +34297,7 @@
             color: #1f2937 !important;
         }
 
-        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow):not(.replay-primary):not(.replay-danger),
+        body.light-mode .replay-toolbar button:not(:disabled):hover:not(.speed-clone-close-btn):not(.replay-mode-trigger):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow):not(.replay-primary):not(.replay-danger),
         body.light-mode .replay-toolbar select:hover {
             background: rgba(var(--sp-accent-rgb), 0.08) !important;
             color: #0f172a !important;
@@ -38839,7 +38951,17 @@
 
                 <div class="interval-slider-wrapper" id="intervalSliderWrapper">
 
-                    <button type="button" id="intervalTriggerBtn"><span id="intervalValueDisplay">1m</span></button>
+                    <button type="button" id="intervalTriggerBtn" aria-haspopup="true" aria-expanded="false"><span id="intervalValueDisplay">1m</span></button>
+
+                    <button type="button" id="intervalDropdownArrow" class="interval-dropdown-arrow" aria-label="Open Interval menu" aria-expanded="false">
+
+                        <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+
+                            <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
+
+                        </svg>
+
+                    </button>
 
                     <div class="interval-slider-panel">
 
@@ -41595,7 +41717,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260325_JPY_HEURISTIC_ONLY_V3"></script>
 
-    <script defer src="modules/order-manager.js?v=20260326_FORCE_LOCK_VISUAL_V79"></script>
+    <script defer src="modules/order-manager.js?v=20260326_CLASS_STATE_V80"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260318_TF_PIN_V78"></script>
 
@@ -59538,11 +59660,31 @@ setTimeout(function(){
 
         var intervalTriggerBtn = document.getElementById('intervalTriggerBtn');
 
+        var intervalDropdownArrow = document.getElementById('intervalDropdownArrow');
+
+        function setMainIntervalOpenState(open) {
+
+            if (!intervalSliderWrapper) return;
+
+            intervalSliderWrapper.classList.toggle('interval-panel-open', !!open);
+
+            if (intervalTriggerBtn) intervalTriggerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+            if (intervalDropdownArrow) {
+
+                intervalDropdownArrow.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+                intervalDropdownArrow.classList.toggle('dropdown-open', !!open);
+
+            }
+
+        }
+
 
 
         function closeAllReplayIntervalPanels() {
 
-            if (intervalSliderWrapper) intervalSliderWrapper.classList.remove('interval-panel-open');
+            setMainIntervalOpenState(false);
 
             var cloneWrap = document.querySelector('#speedSliderClone .interval-clone-wrapper');
 
@@ -59560,7 +59702,7 @@ setTimeout(function(){
 
             if (open) {
 
-                intervalSliderWrapper.classList.remove('interval-panel-open');
+                setMainIntervalOpenState(false);
 
             } else {
 
@@ -59568,7 +59710,7 @@ setTimeout(function(){
 
                 rebuildIntervals();
 
-                intervalSliderWrapper.classList.add('interval-panel-open');
+                setMainIntervalOpenState(true);
 
             }
 
@@ -59588,6 +59730,18 @@ setTimeout(function(){
 
         }
 
+        if (intervalDropdownArrow && intervalSliderWrapper) {
+
+            intervalDropdownArrow.addEventListener('click', function(ev) {
+
+                ev.stopPropagation();
+
+                toggleMainIntervalPanel();
+
+            });
+
+        }
+
 
 
         document.addEventListener('click', function(ev) {
@@ -59596,7 +59750,7 @@ setTimeout(function(){
 
                 if (!intervalSliderWrapper.contains(ev.target)) {
 
-                    intervalSliderWrapper.classList.remove('interval-panel-open');
+                    setMainIntervalOpenState(false);
 
                 }
 
