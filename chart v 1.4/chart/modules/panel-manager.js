@@ -1072,9 +1072,9 @@ class PanelManager {
 
     _dividerColorForChartBackground(bgColor) {
         const rgb = this._parseCssColorToRgb(bgColor);
-        if (!rgb) return 'rgba(255, 255, 255, 0.06)';
+        if (!rgb) return '#2a2e39';
         const lum = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114;
-        return lum > 195 ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
+        return lum > 195 ? '#d6dce6' : '#2a2e39';
     }
 
     getMultiPanelChromeFromMain() {

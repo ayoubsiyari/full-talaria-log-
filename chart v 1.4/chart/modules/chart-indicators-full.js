@@ -2407,11 +2407,10 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.rect(m.l, panelTop, this.w - m.l, totalPanelHeight);
     ctx.clip();
     
-    // Outer top separator — soft divider line
+    // Outer top separator — solid divider line matching panel borders
     const _isLightBg = document.body.classList.contains('light-mode');
-    const _sepColor = _isLightBg ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
-    const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.18)' : 'rgba(120, 123, 134, 0.35)';
-    const _gripHoverColor = _isLightBg ? 'rgba(0, 0, 0, 0.3)' : 'rgba(120, 123, 134, 0.55)';
+    const _sepColor = _isLightBg ? '#d6dce6' : '#2a2e39';
+    const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.22)' : 'rgba(120, 123, 134, 0.45)';
     ctx.strokeStyle = _sepColor;
     ctx.lineWidth = 1;
     ctx.setLineDash([]);

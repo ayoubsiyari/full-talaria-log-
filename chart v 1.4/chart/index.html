@@ -23998,16 +23998,20 @@
 
         /* ── Multi-Panel Dividers & Resize Handles ── */
         .chart-panel {
-            border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
-            transition: border-color 0.2s ease;
+            border-right: 1px solid #2a2e39 !important;
+            border-bottom: 1px solid #2a2e39 !important;
         }
         body.light-mode .chart-panel {
-            border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+            border-right: 1px solid #d6dce6 !important;
+            border-bottom: 1px solid #d6dce6 !important;
         }
         #chartWrapper {
-            transition: border-color 0.2s ease;
+            border-right: 1px solid #2a2e39 !important;
+            border-bottom: 1px solid #2a2e39 !important;
+        }
+        body.light-mode #chartWrapper {
+            border-right: 1px solid #d6dce6 !important;
+            border-bottom: 1px solid #d6dce6 !important;
         }
 
         .panel-resize-handle {
@@ -24015,13 +24019,14 @@
             z-index: 200;
             pointer-events: auto;
             background: transparent;
-            transition: background 0.2s ease;
+            transition: background 0.15s ease;
         }
         /* Always-visible divider line */
         .panel-resize-handle::before {
             content: '';
             position: absolute;
-            background: rgba(255, 255, 255, 0.07);
+            background: #2a2e39;
+            transition: background 0.15s ease;
         }
         .panel-resize-handle.vertical::before {
             top: 0;
@@ -24037,71 +24042,57 @@
             height: 1px;
             transform: translateY(-0.5px);
         }
-        /* Small grip pill (center) */
-        .panel-resize-handle::after {
-            content: '';
-            position: absolute;
-            border-radius: 2px;
-            background: rgba(120, 123, 134, 0.25);
-            transition: background 0.2s ease, box-shadow 0.2s ease;
-        }
         .panel-resize-handle.vertical {
             cursor: col-resize;
         }
         .panel-resize-handle.horizontal {
             cursor: row-resize;
         }
-        .panel-resize-handle.vertical::after {
-            top: 50%;
-            left: 50%;
-            width: 2px;
-            height: 28px;
-            transform: translate(-50%, -50%);
-        }
-        .panel-resize-handle.horizontal::after {
-            top: 50%;
-            left: 50%;
-            width: 28px;
-            height: 2px;
-            transform: translate(-50%, -50%);
-        }
         /* Hover — line brightens */
         .panel-resize-handle:hover::before {
-            background: rgba(120, 123, 134, 0.3);
+            background: #3b4050;
         }
-        .panel-resize-handle:hover::after {
-            background: rgba(120, 123, 134, 0.55);
-            box-shadow: 0 0 6px rgba(120, 123, 134, 0.15);
+        .panel-resize-handle:hover {
+            background: transparent;
+        }
+        .panel-resize-handle.vertical:hover {
+            background: linear-gradient(90deg, transparent 25%, rgba(59, 64, 80, 0.25) 50%, transparent 75%);
+        }
+        .panel-resize-handle.horizontal:hover {
+            background: linear-gradient(180deg, transparent 25%, rgba(59, 64, 80, 0.25) 50%, transparent 75%);
         }
         /* Dragging — accent blue */
         .panel-resize-handle.dragging::before {
-            background: rgba(41, 98, 255, 0.25);
+            background: #2962FF !important;
         }
-        .panel-resize-handle.dragging::after {
-            background: rgba(41, 98, 255, 0.55);
-            box-shadow: 0 0 8px rgba(41, 98, 255, 0.2);
+        .panel-resize-handle.vertical.dragging {
+            background: linear-gradient(90deg, transparent 20%, rgba(41, 98, 255, 0.15) 50%, transparent 80%) !important;
+        }
+        .panel-resize-handle.horizontal.dragging {
+            background: linear-gradient(180deg, transparent 20%, rgba(41, 98, 255, 0.15) 50%, transparent 80%) !important;
         }
 
         /* Light mode */
         body.light-mode .panel-resize-handle::before {
-            background: rgba(0, 0, 0, 0.09);
-        }
-        body.light-mode .panel-resize-handle::after {
-            background: rgba(0, 0, 0, 0.12);
+            background: #d6dce6;
         }
         body.light-mode .panel-resize-handle:hover::before {
-            background: rgba(0, 0, 0, 0.18);
+            background: #b0b8c5;
         }
-        body.light-mode .panel-resize-handle:hover::after {
-            background: rgba(0, 0, 0, 0.25);
-            box-shadow: 0 0 6px rgba(0, 0, 0, 0.06);
+        body.light-mode .panel-resize-handle.vertical:hover {
+            background: linear-gradient(90deg, transparent 25%, rgba(176, 184, 197, 0.2) 50%, transparent 75%);
+        }
+        body.light-mode .panel-resize-handle.horizontal:hover {
+            background: linear-gradient(180deg, transparent 25%, rgba(176, 184, 197, 0.2) 50%, transparent 75%);
         }
         body.light-mode .panel-resize-handle.dragging::before {
-            background: rgba(41, 98, 255, 0.18);
+            background: #2962FF !important;
         }
-        body.light-mode .panel-resize-handle.dragging::after {
-            background: rgba(41, 98, 255, 0.45);
-            box-shadow: 0 0 8px rgba(41, 98, 255, 0.12);
+        body.light-mode .panel-resize-handle.vertical.dragging {
+            background: linear-gradient(90deg, transparent 20%, rgba(41, 98, 255, 0.1) 50%, transparent 80%) !important;
+        }
+        body.light-mode .panel-resize-handle.horizontal.dragging {
+            background: linear-gradient(180deg, transparent 20%, rgba(41, 98, 255, 0.1) 50%, transparent 80%) !important;
         }
 
         .panel-loading-overlay {
@@ -41850,7 +41841,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260326_SOFT_RESIZE_V83"></script>
+    <script defer src="modules/panel-manager.js?v=20260326_SOLID_DIVIDER_V84"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -42102,7 +42093,7 @@
 
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
 
-    <script defer src="modules/chart-indicators-full.js?v=20260326_SOFT_SEPARATORS_V75"></script>
+    <script defer src="modules/chart-indicators-full.js?v=20260326_SOLID_DIVIDER_V76"></script>
 
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
 
