@@ -1878,6 +1878,8 @@ class PanelManager {
                 const h = Math.floor(rect.height);
                 canvas.width = Math.max(1, w * dpr);
                 canvas.height = Math.max(1, h * dpr);
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
                     ctx.setTransform(1, 0, 0, 1, 0, 0);

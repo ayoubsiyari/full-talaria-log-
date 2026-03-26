@@ -6575,10 +6575,10 @@ class Chart {
 
 	        this._lastResizeDpr = dpr;
 	        
-	        // Update pixel buffer only — let CSS width:100%/height:100% handle display sizing
-	        // so the canvas always fills its container with zero gap during drag resize.
 	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
 	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
+	        this.canvas.style.width = nextW + 'px';
+	        this.canvas.style.height = nextH + 'px';
 	        
 	        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 	        this.ctx.scale(dpr, dpr);
