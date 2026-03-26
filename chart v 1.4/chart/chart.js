@@ -1307,24 +1307,28 @@ class Chart {
             this.updateChartTitle(this.currentSymbol);
 
             this.resize();
-            if (!replayActiveBefore) {
-                this.fitToView();
-            }
+            this.fitToView();
             this.render();
 
             if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                // Clear partial-tick animation state BEFORE pause() to prevent
+                // pause() → updateChartData() from overwriting the new pair's rawData
+                // with stale sliced data from the old pair's fullRawData.
+                replay.animatingCandle = null;
+                replay.tickProgress = 0;
+                replay.tickElapsedMs = 0;
+
                 if (replay.isPlaying && typeof replay.pause === 'function') {
                     replay.pause();
                 }
+
+                // Now safe to seed replay with the new pair's data
                 replay.fullRawData = [...this.rawData];
                 replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
                 replay.rawTimeframe = requestTimeframe;
                 replay._fullRawDataMatchesTF = false;
-                // Tick path cache is keyed by bar timestamp — same wall time on another pair would reuse wrong prices.
                 replay.tickPathCache = {};
                 replay.tickPathCacheBuilt = false;
-                replay.animatingCandle = null;
-                replay.tickProgress = 0;
 
                 const sessionTime = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
                 const targetTs = Number.isFinite(replayTargetTs)
@@ -1345,8 +1349,13 @@ class Chart {
                     if (typeof replay.updateTimeDisplay === 'function') replay.updateTimeDisplay();
                 }
 
-                // Resume playback if it was already playing so the session clock keeps advancing
-                // (background instrument processing depends on replay ticks).
+                // Ensure Y-axis auto-scales for the new pair's price range
+                this.priceZoom = 1;
+                this.priceOffset = 0;
+                this.autoScale = true;
+                if (this.priceScale) this.priceScale.autoScale = true;
+                this.render();
+
                 if (replayWasPlayingBefore && typeof replay.play === 'function') {
                     replay.play();
                 }

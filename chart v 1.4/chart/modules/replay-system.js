@@ -3279,6 +3279,12 @@ class ReplaySystem {
                         pc.currentSymbol = mainSymbol;
                         if (mainChart) pc.currentFileId = mainChart.currentFileId;
                         if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
+                        pc.priceZoom = 1;
+                        pc.priceOffset = 0;
+                        pc.autoScale = true;
+                        if (pc.priceScale) pc.priceScale.autoScale = true;
+                        pc.manualCenterPrice = null;
+                        pc.manualRange = null;
                     }
                     pc.rawData = [...slicedRaw];
                     pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
@@ -4145,6 +4151,14 @@ class ReplaySystem {
                         pc.currentFileId = mainFileId;
                         if (typeof pc.updateChartTitle === 'function') pc.updateChartTitle(mainSymbol);
                         if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
+                        // Reset Y-axis scale for the new pair's price range
+                        pc.priceZoom = 1;
+                        pc.priceOffset = 0;
+                        pc.autoScale = true;
+                        if (pc.priceScale) pc.priceScale.autoScale = true;
+                        pc.manualCenterPrice = null;
+                        pc.manualRange = null;
+                        pc._chartViewRestored = false;
                     }
                     pc.rawData = slicedRawData;
                     pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
