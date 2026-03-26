@@ -6782,6 +6782,9 @@ class OrderManager {
             // Keep place button side color while editing pending order.
             placeBtn.style.background = isBuy ? '#22c55e' : '#ef4444';
         }
+        if (typeof this.lockOrderPanelButtonsVisual === 'function') {
+            this.lockOrderPanelButtonsVisual();
+        }
 
         const orderTypeButtons = document.querySelectorAll('.order-type-btn');
         orderTypeButtons.forEach(btn => {
@@ -7072,8 +7075,54 @@ class OrderManager {
             if (placeBtn) { placeBtn.style.background = ''; placeBtn.style.boxShadow = ''; }
         };
 
+        const lockOrderPanelButtonsVisual = () => {
+            if (!document.body.classList.contains('light-mode')) return;
+            const panel = document.getElementById('orderPanel');
+            if (!panel) return;
+
+            // BUY/SELL tabs
+            if (buyTab && sellTab) {
+                if (buyTab.classList.contains('active')) {
+                    buyTab.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+                    buyTab.style.borderColor = '#16a34a';
+                    buyTab.style.color = '#ffffff';
+                    buyTab.style.webkitTextFillColor = '#ffffff';
+                    sellTab.style.background = '#ffffff';
+                    sellTab.style.borderColor = '#d5dae2';
+                    sellTab.style.color = '#6b7280';
+                    sellTab.style.webkitTextFillColor = '#6b7280';
+                } else {
+                    sellTab.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+                    sellTab.style.borderColor = '#dc2626';
+                    sellTab.style.color = '#ffffff';
+                    sellTab.style.webkitTextFillColor = '#ffffff';
+                    buyTab.style.background = '#ffffff';
+                    buyTab.style.borderColor = '#d5dae2';
+                    buyTab.style.color = '#6b7280';
+                    buyTab.style.webkitTextFillColor = '#6b7280';
+                }
+            }
+
+            // Market/Limit/Stop + mode tabs
+            panel.querySelectorAll('.order-type-btn, .position-mode-tab, .breakeven-mode-tab').forEach((btn) => {
+                if (btn.classList.contains('active')) {
+                    btn.style.background = 'var(--op-accent, #2962ff)';
+                    btn.style.color = '#ffffff';
+                    btn.style.webkitTextFillColor = '#ffffff';
+                    btn.style.boxShadow = '0 2px 8px rgba(var(--op-accent-rgb), 0.30)';
+                } else {
+                    btn.style.background = 'transparent';
+                    btn.style.color = '#6b7280';
+                    btn.style.webkitTextFillColor = '#6b7280';
+                    btn.style.boxShadow = 'none';
+                }
+            });
+        };
+        this.lockOrderPanelButtonsVisual = lockOrderPanelButtonsVisual;
+
         // Initial tab state follows current side and theme classes.
         applyOrderSideTabs(this.orderSide === 'SELL' ? 'SELL' : 'BUY');
+        lockOrderPanelButtonsVisual();
 
         buyTab.onclick = () => {
             applyOrderSideTabs('BUY');
@@ -7084,6 +7133,7 @@ class OrderManager {
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
             this.updateScalingCheckboxAvailability(); // Update scaling checkbox
+            lockOrderPanelButtonsVisual();
         };
         
         sellTab.onclick = () => {
@@ -7095,6 +7145,7 @@ class OrderManager {
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
             this.updateScalingCheckboxAvailability(); // Update scaling checkbox
+            lockOrderPanelButtonsVisual();
         };
         
         // Order type buttons
@@ -7110,6 +7161,7 @@ class OrderManager {
                     b.classList.remove('active');
                 });
                 btn.classList.add('active');
+                lockOrderPanelButtonsVisual();
                 
                 // Show entry price warning for market orders
                 if (this.orderType === 'market') {
@@ -7132,6 +7184,7 @@ class OrderManager {
                     t.style.cssText = '';
                     t.classList.toggle('active', t === tab);
                 });
+                lockOrderPanelButtonsVisual();
                 
                 // Show/hide appropriate input by toggling is-hidden class
                 const riskUSDInput = document.getElementById('riskUSDInput');
@@ -7321,6 +7374,7 @@ class OrderManager {
                     b.classList.remove('active');
                 });
                 btn.classList.add('active');
+                lockOrderPanelButtonsVisual();
                 
                 // Update preview lines
                 this.updatePreviewLines();
@@ -7480,6 +7534,7 @@ class OrderManager {
                         }
                     });
                     tab.classList.add('active');
+                    lockOrderPanelButtonsVisual();
                     
                     // Toggle inputs
                     const pipsInput = document.getElementById('breakevenPipsInput');
@@ -7525,6 +7580,12 @@ class OrderManager {
                     }
                 }
             };
+        });
+
+        // Keep styles locked on hover events (guards against external/global hover rules)
+        document.querySelectorAll('#orderPanel .order-tab, #orderPanel .order-type-btn, #orderPanel .position-mode-tab, #orderPanel .breakeven-mode-tab').forEach((btn) => {
+            btn.addEventListener('mouseenter', lockOrderPanelButtonsVisual);
+            btn.addEventListener('mouseleave', lockOrderPanelButtonsVisual);
         });
         
         // Trailing SL toggle
