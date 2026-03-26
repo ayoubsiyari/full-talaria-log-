@@ -5693,7 +5693,12 @@ class Chart {
         if (!template) return;
         this._lastChartOnlyTemplate = templateName;
         this.chartSettings.activeChartOnlyTemplate = templateName;
-        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || null, chartOnly: templateName, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
+        // Keep chart-color template selection synchronized with unified-theme state.
+        this.chartSettings.activeUnifiedTheme = templateName;
+        const isPreview = (typeof window !== 'undefined' && window._templatePreviewMode === true);
+        if (!isPreview) {
+            try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: templateName, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
+        }
         const chartKeys = Object.keys(template).filter(k => k !== 'name' && !PANEL_KEYS.has(k));
         if (chartKeys.length > 0) {
             chartKeys.forEach(key => { this.chartSettings[key] = template[key]; });
@@ -5748,7 +5753,10 @@ class Chart {
         this.chartSettings.activePanelOnlyTemplate = templateName;
         // Keep panel/sidebar theme selection synchronized with unified-theme state.
         this.chartSettings.activeUnifiedTheme = templateName;
-        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
+        const isPreview = (typeof window !== 'undefined' && window._templatePreviewMode === true);
+        if (!isPreview) {
+            try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
+        }
         const hasPanelKeys = PANEL_KEYS.some(k => template[k] !== undefined);
         if (hasPanelKeys) {
             PANEL_KEYS.forEach(key => {
@@ -5842,6 +5850,14 @@ class Chart {
     }
 
     getPanelTemplateSwatches() {
+        const all = this.getUnifiedThemeSwatches() || [];
+        return all.filter((tpl) => {
+            const name = String((tpl && tpl.name) || '').trim().toLowerCase();
+            return name === 'dark' || name === 'light';
+        });
+    }
+
+    getChartColorTemplateSwatches() {
         const all = this.getUnifiedThemeSwatches() || [];
         return all.filter((tpl) => {
             const name = String((tpl && tpl.name) || '').trim().toLowerCase();
