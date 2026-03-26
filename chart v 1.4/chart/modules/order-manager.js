@@ -5120,6 +5120,28 @@ class OrderManager {
                     color: #374151 !important;
                 }
 
+                /* Hard stop: no hover background changes on order-panel buttons */
+                body.light-mode .order-panel button:hover {
+                    filter: none !important;
+                    transform: none !important;
+                }
+                body.light-mode .order-panel .order-tab:hover:not(.active) { background: #ffffff !important; }
+                body.light-mode .order-panel .order-tab.active.order-tab--buy:hover { background: linear-gradient(135deg, #22c55e, #16a34a) !important; }
+                body.light-mode .order-panel .order-tab.active.order-tab--sell:hover { background: linear-gradient(135deg, #ef4444, #dc2626) !important; }
+                body.light-mode .order-panel .order-type-btn:hover:not(.active),
+                body.light-mode .order-panel .position-mode-tab:hover:not(.active),
+                body.light-mode .order-panel .breakeven-mode-tab:hover:not(.active) { background: transparent !important; }
+                body.light-mode .order-panel .order-type-btn.active:hover,
+                body.light-mode .order-panel .position-mode-tab.active:hover,
+                body.light-mode .order-panel .breakeven-mode-tab.active:hover { background: var(--op-accent, #2962ff) !important; }
+                body.light-mode .order-panel .risk-btn:hover:not(.active) { background: #ffffff !important; }
+                body.light-mode .order-panel .risk-btn.active:hover { background: rgba(var(--op-accent-rgb), 0.12) !important; }
+                body.light-mode .order-panel .input-stepper:hover { background: #e8ebf0 !important; }
+                body.light-mode .order-panel .order-btn-icon:hover { background: #ffffff !important; }
+                body.light-mode .order-panel .order-utility-btn:hover { background: #ffffff !important; }
+                body.light-mode .order-panel .order-submit-btn:hover { background: linear-gradient(135deg, rgba(var(--op-accent-rgb), 0.95) 0%, rgba(var(--op-accent-rgb), 0.75) 100%) !important; }
+                body.light-mode .order-panel .order-submit-btn.sell-mode:hover { background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%) !important; }
+
                 /* ── ORDER TYPE BUTTONS ──────────────────────────────────────────── */
                 .order-section {
                     display: flex;
