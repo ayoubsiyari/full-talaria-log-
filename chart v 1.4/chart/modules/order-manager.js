@@ -4848,7 +4848,7 @@ class OrderManager {
                 }
                 body.light-mode .order-panel__title { color: #111827 !important; }
                 body.light-mode .order-panel__close { color: #9ca3af !important; }
-                body.light-mode .order-panel__close:hover { background: #d5dae2 !important; color: #111827 !important; }
+                body.light-mode .order-panel__close:hover { background: transparent !important; border: 1px solid #9ca3af !important; color: #111827 !important; }
 
                 /* ── BUY / SELL tabs ── */
                 body.light-mode .order-tab {
@@ -4859,8 +4859,8 @@ class OrderManager {
                     box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
                 }
                 body.light-mode .order-tab:hover:not(.active) {
-                    background: #f3f5f8 !important;
-                    border-color: #b8bfc9 !important;
+                    background: #ffffff !important;
+                    border-color: #9ca3af !important;
                     color: #374151 !important;
                     -webkit-text-fill-color: #374151 !important;
                 }
@@ -4879,12 +4879,12 @@ class OrderManager {
                     box-shadow: 0 3px 12px rgba(239,68,68,0.35) !important;
                 }
                 body.light-mode .order-tab.active.order-tab--buy:hover {
-                    background: linear-gradient(135deg, #2dd968, #1db954) !important;
+                    border-color: #15803d !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                 }
                 body.light-mode .order-tab.active.order-tab--sell:hover {
-                    background: linear-gradient(135deg, #f87171, #ef4444) !important;
+                    border-color: #b91c1c !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                 }
@@ -4904,7 +4904,7 @@ class OrderManager {
                 body.light-mode .order-type-btn:hover:not(.active),
                 body.light-mode .position-mode-tab:hover:not(.active),
                 body.light-mode .breakeven-mode-tab:hover:not(.active) {
-                    background: rgba(255,255,255,0.7) !important;
+                    background: transparent !important;
                     color: #374151 !important;
                     -webkit-text-fill-color: #374151 !important;
                 }
@@ -4924,7 +4924,7 @@ class OrderManager {
                     box-shadow: inset 0 1px 2px rgba(0,0,0,0.04) !important;
                 }
                 body.light-mode .order-input-wrapper:hover {
-                    border-color: #b8bfc9 !important;
+                    border-color: #9ca3af !important;
                 }
                 body.light-mode .order-input-wrapper:focus-within {
                     border-color: var(--op-accent, #2962ff) !important;
@@ -4949,9 +4949,9 @@ class OrderManager {
                     color: #374151 !important;
                 }
                 body.light-mode .input-stepper:hover {
-                    background: rgba(var(--op-accent-rgb), 0.10) !important;
-                    border-color: rgba(var(--op-accent-rgb), 0.40) !important;
-                    color: var(--op-accent, #2962ff) !important;
+                    background: #e8ebf0 !important;
+                    border-color: #9ca3af !important;
+                    color: #374151 !important;
                 }
 
                 /* ── Risk shortcut buttons ── */
@@ -4962,9 +4962,9 @@ class OrderManager {
                     box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important;
                 }
                 body.light-mode .risk-btn:hover:not(.active) {
-                    background: rgba(var(--op-accent-rgb), 0.06) !important;
-                    border-color: rgba(var(--op-accent-rgb), 0.35) !important;
-                    color: var(--op-accent, #2962ff) !important;
+                    background: #ffffff !important;
+                    border-color: #9ca3af !important;
+                    color: #6b7280 !important;
                 }
                 body.light-mode .risk-btn.active {
                     background: rgba(var(--op-accent-rgb), 0.12) !important;
@@ -4996,13 +4996,13 @@ class OrderManager {
                     background: #f3f5f8 !important;
                     border-radius: 8px !important;
                 }
-                body.light-mode .order-collapse:hover { border-color: #b8bfc9 !important; }
+                body.light-mode .order-collapse:hover { border-color: #9ca3af !important; }
                 body.light-mode .order-collapse__header {
                     color: #6b7280 !important;
                     background: transparent !important;
                 }
                 body.light-mode .order-collapse__header:hover {
-                    background: #e8ebf0 !important;
+                    background: transparent !important;
                     color: #374151 !important;
                 }
                 body.light-mode .order-collapse--open .order-collapse__header {
@@ -5067,9 +5067,9 @@ class OrderManager {
                     box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
                 }
                 body.light-mode .order-btn-icon:hover {
-                    background: rgba(var(--op-accent-rgb), 0.06) !important;
-                    border-color: rgba(var(--op-accent-rgb), 0.40) !important;
-                    color: var(--op-accent, #2962ff) !important;
+                    background: #ffffff !important;
+                    border-color: #9ca3af !important;
+                    color: #374151 !important;
                 }
                 body.light-mode .order-select {
                     background: #ffffff !important;
@@ -5084,8 +5084,8 @@ class OrderManager {
                     box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
                 }
                 body.light-mode .order-utility-btn:hover {
-                    background: rgba(var(--op-accent-rgb), 0.06) !important;
-                    border-color: rgba(var(--op-accent-rgb), 0.40) !important;
+                    background: #ffffff !important;
+                    border-color: #9ca3af !important;
                 }
                 body.light-mode .order-status-card {
                     background: #f3f5f8 !important;
