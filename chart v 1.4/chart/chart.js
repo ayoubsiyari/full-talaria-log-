@@ -5858,11 +5858,7 @@ class Chart {
     }
 
     getChartColorTemplateSwatches() {
-        const all = this.getUnifiedThemeSwatches() || [];
-        return all.filter((tpl) => {
-            const name = String((tpl && tpl.name) || '').trim().toLowerCase();
-            return name === 'dark' || name === 'light';
-        });
+        return this.getUnifiedThemeSwatches();
     }
 
     getTalariaTemplateSwatches() {
