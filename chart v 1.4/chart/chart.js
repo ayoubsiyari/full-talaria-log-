@@ -5671,7 +5671,8 @@ class Chart {
         
         // Apply settings to chart
         this.applyChartSettings();
-        
+        this.syncTemplateToAllPanelCharts();
+
         // Show notification
         this.showNotification(`Template "${template.name}" applied ✓`);
     }
@@ -5731,6 +5732,7 @@ class Chart {
         }
         if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
         this.applyChartSettings();
+        this.syncTemplateToAllPanelCharts();
         this.showNotification(`Chart template "${template.name}" applied ✓`);
     }
 
@@ -5778,7 +5780,53 @@ class Chart {
         }
         if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
         this.applyChartSettings();
+        this.syncTemplateToAllPanelCharts();
         this.showNotification(`Panel template "${template.name}" applied ✓`);
+    }
+
+    /**
+     * Multi-panel: after a template is applied on one chart instance, copy the same
+     * chartSettings (and template id fields) to every other chart so all panels match immediately.
+     */
+    syncTemplateToAllPanelCharts() {
+        if (typeof window === 'undefined' || !window.panelManager) return;
+        const pm = window.panelManager;
+        if (typeof pm.getCurrentLayout === 'function' && pm.getCurrentLayout() === '1') return;
+
+        const source = this;
+        if (!source.chartSettings) return;
+
+        const snapshot = JSON.parse(JSON.stringify(source.chartSettings));
+        const tplFields = ['_lastTemplateSelected', '_lastChartOnlyTemplate', '_lastPanelOnlyTemplate'];
+        const copyTplFields = (dest) => {
+            tplFields.forEach((k) => {
+                if (source[k] !== undefined && source[k] !== null) {
+                    dest[k] = source[k];
+                }
+            });
+        };
+
+        const panels = typeof pm.getPanels === 'function' ? pm.getPanels() : [];
+        const toUpdate = [];
+        panels.forEach((panel) => {
+            const pc = panel.chartInstance;
+            if (pc && pc !== source) toUpdate.push(pc);
+        });
+        const main = window.chart;
+        if (main && main !== source) toUpdate.push(main);
+
+        toUpdate.forEach((pc) => {
+            pc.chartSettings = JSON.parse(JSON.stringify(snapshot));
+            copyTplFields(pc);
+            if (pc.canvas && snapshot.backgroundColor) {
+                pc.canvas.style.backgroundColor = snapshot.backgroundColor;
+            }
+            if (typeof pc.applyChartSettings === 'function') {
+                pc.applyChartSettings();
+            } else if (typeof pc.render === 'function') {
+                pc.render();
+            }
+        });
     }
 
     /** Chart templates — chart + panel stay in sync. */

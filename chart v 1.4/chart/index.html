@@ -41760,7 +41760,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_SCROLL_SYNC_TS_V221"></script>
+    <script defer src="chart.js?v=20260326_SYNC_TEMPLATE_ALL_PANELS_V222"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -45226,6 +45226,16 @@
 
                         panel.chartInstance.chartSettings = JSON.parse(JSON.stringify(chart.chartSettings));
 
+                        ['_lastTemplateSelected', '_lastChartOnlyTemplate', '_lastPanelOnlyTemplate'].forEach(function (k) {
+
+                            if (chart[k] !== undefined && chart[k] !== null) {
+
+                                panel.chartInstance[k] = chart[k];
+
+                            }
+
+                        });
+
                         
 
                         // Apply background color immediately
@@ -45244,9 +45254,15 @@
 
                     
 
-                    // Re-render the panel
+                    if (typeof panel.chartInstance.applyChartSettings === 'function') {
 
-                    panel.chartInstance.render();
+                        panel.chartInstance.applyChartSettings();
+
+                    } else if (typeof panel.chartInstance.render === 'function') {
+
+                        panel.chartInstance.render();
+
+                    }
 
                 });
 
