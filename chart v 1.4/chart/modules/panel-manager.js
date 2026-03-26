@@ -1801,6 +1801,21 @@ class PanelManager {
             }
         }, 100);
         
+        // Add follow button for this panel
+        const followBtn = document.createElement('button');
+        followBtn.className = 'panel-follow-btn';
+        followBtn.id = `panelFollow${index}`;
+        followBtn.title = 'Follow Latest Candle';
+        followBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v16" fill="none" stroke-width="2"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>`;
+        followBtn.style.display = 'none';
+        followBtn.addEventListener('click', () => {
+            const replay = window.chart && window.chart.replaySystem;
+            if (replay && typeof replay.enableAutoScroll === 'function') {
+                replay.enableAutoScroll();
+            }
+        });
+        chartContainer.appendChild(followBtn);
+
         panel.appendChild(chartContainer);
         
         // Add selection indicator bar

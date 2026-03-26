@@ -3826,27 +3826,35 @@ class ReplaySystem {
      * Update visual indicator for auto-scroll status
      */
     updateAutoScrollIndicator() {
-        if (!this.followBtn) {
-            return;
+        const showFollow = this.isActive && !this.isLastCandleVisible();
+
+        if (this.followBtn) {
+            if (!this.isActive) {
+                this.followBtn.style.display = 'none';
+            } else if (showFollow) {
+                this.followBtn.style.display = 'flex';
+                this.followBtn.style.opacity = '1';
+            } else {
+                this.followBtn.style.display = 'none';
+            }
         }
-        const followBtn = this.followBtn;
-        
-        // Only show during replay mode
-        if (!this.isActive) {
-            followBtn.style.display = 'none';
-            return;
-        }
-        
-        // Check if last candle is visible
-        const lastCandleVisible = this.isLastCandleVisible();
-        
-        // Hide button when last candle is visible, show when scrolled away
-        if (lastCandleVisible) {
-            followBtn.style.display = 'none';
-        } else {
-            followBtn.style.display = 'flex';
-            followBtn.style.opacity = '1';
-            // Position is handled by CSS (absolute positioning inside chart-wrapper)
+
+        // Update panel follow buttons
+        const pm = window.panelManager;
+        if (pm && pm.panels) {
+            pm.panels.forEach((panel, idx) => {
+                const btn = document.getElementById(`panelFollow${idx}`);
+                if (!btn) return;
+                if (!this.isActive) { btn.style.display = 'none'; return; }
+                const pc = panel.chartInstance;
+                if (!pc || !pc.data || pc.data.length === 0) { btn.style.display = 'none'; return; }
+                const m = pc.margin || { l: 0, r: 0 };
+                const spacing = typeof pc.getCandleSpacing === 'function' ? pc.getCandleSpacing() : (pc.candleWidth + 2);
+                const lastX = m.l + (pc.data.length - 1) * spacing + (pc.offsetX || 0);
+                const visible = lastX >= 0 && lastX <= (pc.w || 0) + spacing * 2;
+                btn.style.display = visible ? 'none' : 'flex';
+                if (!visible) btn.style.opacity = '1';
+            });
         }
     }
 
