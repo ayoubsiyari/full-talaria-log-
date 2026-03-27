@@ -101,8 +101,8 @@ class PanelManager {
         // Don't call applyLayout - original chart is already visible
         this.currentLayout = '1';
 
-        // Restore saved multi-panel state after refresh (layout + selected panel + per-panel pair/timeframe)
-        this.restoreSavedStateOnInit();
+        // Keep startup stable: do not auto-apply saved multi-panel state during init.
+        // Manual layout selection still works and state is still saved.
     }
 
     restoreSavedStateOnInit() {
