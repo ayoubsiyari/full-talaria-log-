@@ -1843,12 +1843,14 @@ class PanelManager {
                 ? panel.chartInstance.currentTimeframe
                 : panel.timeframe;
 
-            // Clear drawing tools and hide crosshairs on non-selected panels
+            // Clear drawing tools and hide crosshairs on non-selected panels.
+            // Use _mirrored=true to avoid the mirror cascade clearing the
+            // selected panel's tool as well.
             this.panels.forEach((p, i) => {
                 if (i === index) return;
                 const dm = p && p.chartInstance && p.chartInstance.drawingManager;
                 if (dm && dm.currentTool && typeof dm.clearTool === 'function') {
-                    dm.clearTool();
+                    dm.clearTool(true);
                 }
                 if (p && p.chartInstance && typeof p.chartInstance.hideCrosshair === 'function') {
                     p.chartInstance.hideCrosshair();
@@ -1857,7 +1859,7 @@ class PanelManager {
             if (window.chart && window.chart.drawingManager && window.chart.drawingManager.currentTool) {
                 const isMainSelected = panel.chartInstance === window.chart;
                 if (!isMainSelected) {
-                    window.chart.drawingManager.clearTool();
+                    window.chart.drawingManager.clearTool(true);
                 }
             }
 

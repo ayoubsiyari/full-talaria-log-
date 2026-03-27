@@ -14859,6 +14859,17 @@ class Chart {
         if (!this.canvas) return;
         if (!Number.isFinite(this.mouseX) || !Number.isFinite(this.mouseY)) return;
 
+        // Only refresh if the mouse is actually inside this chart's canvas area.
+        // In multi-panel mode every chart registers a document keydown listener,
+        // so without this guard a Ctrl press would fire updateCrosshair on charts
+        // whose mouseX/mouseY are stale, causing them to hide the crosshair.
+        const m = this.margin || {};
+        const ml = m.l || 0, mr = m.r || 0, mt = m.t || 0, mb = m.b || 0;
+        if (this.mouseX < ml || this.mouseX > this.w - mr ||
+            this.mouseY < mt || this.mouseY > this.h - mb) {
+            return;
+        }
+
         const rect = this.canvas.getBoundingClientRect();
         const syntheticEvent = {
             clientX: rect.left + this.mouseX,
