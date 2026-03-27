@@ -2019,25 +2019,19 @@ class PanelManager {
                 ? panel.chartInstance.currentTimeframe
                 : panel.timeframe;
 
-            // If any chart currently has an active drawing tool, transfer it to the selected panel
-            // so user can draw immediately after switching panels (no deselect/reselect required).
-            let activeToolName = null;
-            if (window.chart && window.chart.drawingManager && window.chart.drawingManager.currentTool) {
-                activeToolName = window.chart.drawingManager.currentTool;
-            }
-            if (!activeToolName) {
-                for (const p of this.panels) {
-                    const dm = p && p.chartInstance && p.chartInstance.drawingManager;
-                    if (dm && dm.currentTool) {
-                        activeToolName = dm.currentTool;
-                        break;
-                    }
+            // Clear any active drawing tool on all panels so clicking to
+            // switch panels doesn't accidentally start drawing on the new one.
+            this.panels.forEach((p, i) => {
+                if (i === index) return;
+                const dm = p && p.chartInstance && p.chartInstance.drawingManager;
+                if (dm && dm.currentTool && typeof dm.clearTool === 'function') {
+                    dm.clearTool();
                 }
-            }
-            if (activeToolName && panel.chartInstance && panel.chartInstance.drawingManager) {
-                const dm = panel.chartInstance.drawingManager;
-                if (dm.currentTool !== activeToolName && typeof dm.setTool === 'function') {
-                    dm.setTool(activeToolName);
+            });
+            if (window.chart && window.chart.drawingManager && window.chart.drawingManager.currentTool) {
+                const isMainSelected = panel.chartInstance === window.chart;
+                if (!isMainSelected) {
+                    window.chart.drawingManager.clearTool();
                 }
             }
             

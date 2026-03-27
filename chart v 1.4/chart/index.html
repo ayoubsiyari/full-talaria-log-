@@ -24052,23 +24052,9 @@
 
         }
 
-        /* Panel selection marker */
+        /* Panel selection marker — hidden; replaced by the full-border overlay. */
         .panel-select-bar {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 2px;
-            height: 20px;
-            border-radius: 0 2px 2px 0;
-            background: var(--sp-accent, #2962FF);
-            z-index: 200;
-            pointer-events: none;
-            opacity: 0.85;
-            transition: opacity 0.15s ease;
-        }
-        .panel-selected > .panel-select-bar,
-        .panel-selected .panel-select-bar {
-            opacity: 1;
+            display: none;
         }
 
         /* Selected-panel frame: inset ring above chart content. */
@@ -41782,7 +41768,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V105"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V106"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -57468,10 +57454,7 @@ P['panellayout']={
 
         function chk(v){ return v?' checked':''; }
 
-        function syncRow(label,id,enabled){
-
-            return '<div class="pl-sync-row"><span>'+label+'</span><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
-
+        function syncRow(label,id,enabled){return '<div class="pl-sync-row"><label class="pl-sync-label" for="'+id+'">'+label+'</label><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
         }
 
         return '<div class="sp-embedded" style="padding:20px 24px;min-height:100%;box-sizing:border-box;">'+
