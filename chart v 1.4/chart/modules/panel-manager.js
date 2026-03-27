@@ -100,6 +100,28 @@ class PanelManager {
         // Default: show original chart (layout '1')
         // Don't call applyLayout - original chart is already visible
         this.currentLayout = '1';
+
+        // Restore saved multi-panel state after refresh (layout + selected panel + per-panel pair/timeframe)
+        this.restoreSavedStateOnInit();
+    }
+
+    restoreSavedStateOnInit() {
+        const saved = this.loadPanelState();
+        if (!saved || !saved.layout || saved.layout === '1') return;
+        this._isRestoringSavedState = true;
+        requestAnimationFrame(() => {
+            this.applyLayout(saved.layout);
+            const desired = Number.isFinite(saved.selectedPanelIndex) ? saved.selectedPanelIndex : 0;
+            requestAnimationFrame(() => {
+                const maxIndex = Math.max(0, this.panels.length - 1);
+                this.selectPanel(Math.max(0, Math.min(maxIndex, desired)));
+            });
+            // Release restore guard after panel init/restore has had time to complete.
+            setTimeout(() => {
+                this._isRestoringSavedState = false;
+                this.savePanelState();
+            }, 1800);
+        });
     }
     
     /**
@@ -2197,6 +2219,7 @@ class PanelManager {
     }
 
     _doSavePanelState() {
+        if (this._isRestoringSavedState) return;
         try {
             const state = {
                 layout: this.currentLayout,
@@ -2204,13 +2227,12 @@ class PanelManager {
                 panels: this.panels.map((panel, idx) => {
                     const pc = panel.chartInstance;
                     if (!pc) return { index: idx, isMainChart: panel.isMainChart };
-                    const hasOwn = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
                     return {
                         index: idx,
                         isMainChart: panel.isMainChart,
                         timeframe: pc.currentTimeframe || '1m',
-                        fileId: hasOwn ? pc.currentFileId : null,
-                        symbol: hasOwn ? pc.currentSymbol : null,
+                        fileId: pc.currentFileId || null,
+                        symbol: pc.currentSymbol || null,
                         offsetX: pc.offsetX,
                         candleWidth: pc.candleWidth
                     };
