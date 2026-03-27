@@ -41768,7 +41768,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V108"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V109"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -46143,6 +46143,20 @@
             });
 
             
+
+            // Restore saved panel layout on first data load
+            let _panelLayoutRestored = false;
+            window.addEventListener('chartDataLoaded', (event) => {
+                if (!_panelLayoutRestored && window.panelManager) {
+                    _panelLayoutRestored = true;
+                    const saved = window.panelManager.loadPanelState();
+                    if (saved && saved.layout && saved.layout !== '1') {
+                        console.log('🔄 Restoring saved panel layout:', saved.layout);
+                        window.panelManager.applyLayout(saved.layout);
+                        return;
+                    }
+                }
+            });
 
             // Listen for data loaded event to render panels
 

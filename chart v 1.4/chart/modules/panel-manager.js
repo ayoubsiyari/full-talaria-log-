@@ -1188,6 +1188,14 @@ class PanelManager {
     applyLayout(layout) {
         console.log('Applying layout:', layout);
         this.currentLayout = layout;
+
+        // Keep dropdown active state in sync
+        const dropdown = document.getElementById('panel-layout-dropdown');
+        if (dropdown) {
+            dropdown.querySelectorAll('.layout-option').forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.layout === layout);
+            });
+        }
         
         // Get original chart wrapper
         const originalChart = document.getElementById('chartWrapper');
