@@ -45846,16 +45846,54 @@
                         const mapped = toTargetIdx(ts);
                         if (mapped !== null) obj[key] = mapped;
                     };
+                    const snapYToTargetCandle = (y, idx) => {
+                        if (!Number.isFinite(y) || !Number.isFinite(idx)) return y;
+                        const i = Math.max(0, Math.min(targetChart.data.length - 1, Math.round(idx)));
+                        const c = targetChart.data[i];
+                        if (!c) return y;
+                        const levels = [c.o, c.h, c.l, c.c].filter(Number.isFinite);
+                        if (!levels.length) return y;
+                        let best = levels[0];
+                        let bestDiff = Math.abs(y - best);
+                        for (let j = 1; j < levels.length; j++) {
+                            const diff = Math.abs(y - levels[j]);
+                            if (diff < bestDiff) {
+                                best = levels[j];
+                                bestDiff = diff;
+                            }
+                        }
+                        return best;
+                    };
 
                     remapX(drawing, 'x');
                     remapX(drawing, 'x1');
                     remapX(drawing, 'x2');
+                    if (drawing.y1 !== undefined && Number.isFinite(drawing.x1)) {
+                        drawing.y1 = snapYToTargetCandle(Number(drawing.y1), Number(drawing.x1));
+                    }
+                    if (drawing.y2 !== undefined && Number.isFinite(drawing.x2)) {
+                        drawing.y2 = snapYToTargetCandle(Number(drawing.y2), Number(drawing.x2));
+                    }
+                    if (drawing.y !== undefined && Number.isFinite(drawing.x)) {
+                        drawing.y = snapYToTargetCandle(Number(drawing.y), Number(drawing.x));
+                    }
+                    if (drawing.price !== undefined && Number.isFinite(drawing.x)) {
+                        drawing.price = snapYToTargetCandle(Number(drawing.price), Number(drawing.x));
+                    }
                     if (Array.isArray(drawing.points)) {
                         drawing.points.forEach((p) => {
                             if (p && p.x !== undefined && p.x !== null) {
                                 const ts = toTs(p.x);
                                 const mapped = toTargetIdx(ts);
-                                if (mapped !== null) p.x = mapped;
+                                if (mapped !== null) {
+                                    p.x = mapped;
+                                    if (p.y !== undefined) {
+                                        p.y = snapYToTargetCandle(Number(p.y), Number(mapped));
+                                    }
+                                    if (p.price !== undefined) {
+                                        p.price = snapYToTargetCandle(Number(p.price), Number(mapped));
+                                    }
+                                }
                             }
                         });
                     }
@@ -45888,9 +45926,11 @@
 
                         
 
-                        // Replace all drawings
-
-                        targetPanel.chartInstance.drawings = JSON.parse(JSON.stringify(sourceDrawings));
+                        // Replace all drawings (normalized for target timeframe/candles)
+                        targetPanel.chartInstance.drawings = sourceDrawings.map((d) => {
+                            const clone = JSON.parse(JSON.stringify(d));
+                            return this.normalizeDrawingForTarget(clone, sourcePanel.chartInstance, targetPanel.chartInstance);
+                        });
 
                         if (typeof targetPanel.chartInstance.redrawDrawings === 'function') {
                             targetPanel.chartInstance.redrawDrawings();
