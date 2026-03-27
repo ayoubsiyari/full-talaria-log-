@@ -1331,6 +1331,18 @@ class DrawingToolsManager {
             return;
         }
 
+        // Multi-panel UX: if user clicks another panel while a tool is active,
+        // switch selection first, but continue this same click as draw-start.
+        if (this.currentTool && window.panelManager && window.panelManager.currentLayout !== '1') {
+            const chartPanelIndex = Number(this.chart && this.chart.panelIndex);
+            const selectedPanelIndex = Number(window.panelManager.selectedPanelIndex);
+            if (Number.isFinite(chartPanelIndex) && Number.isFinite(selectedPanelIndex) && chartPanelIndex !== selectedPanelIndex) {
+                if (typeof window.panelManager.selectPanel === 'function') {
+                    window.panelManager.selectPanel(chartPanelIndex);
+                }
+            }
+        }
+
         // If user is clicking on a resize handle, do not run drawing-mode logic.
         // This ensures Path/Polyline (point-by-point tools) can resize/move the last point
         // even when a tool remains active.
