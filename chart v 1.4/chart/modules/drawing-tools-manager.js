@@ -1304,10 +1304,11 @@ class DrawingToolsManager {
         if (!drawing || !this.chart || !this.chart.broadcastDrawingChange) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
         if (window.panelManager.currentLayout === '1') return;
+        const ensuredId = this._ensureDrawingId(drawing);
         const payload = (typeof drawing.toJSON === 'function')
             ? drawing.toJSON()
             : JSON.parse(JSON.stringify(drawing));
-        payload.id = drawing.id || payload.id;
+        payload.id = drawing.id || payload.id || ensuredId;
         if (!payload.id) return;
         if (Array.isArray(pointsOverride)) payload.points = pointsOverride.map(p => ({ ...p }));
         this.chart.broadcastDrawingChange('update', payload);
@@ -4441,6 +4442,7 @@ class DrawingToolsManager {
      * Start dragging entire drawing (or multiple drawings if multi-selected)
      */
     startDrag(drawing, event) {
+        this._ensureDrawingId(drawing);
         this.isDragging = true;
         this.draggingDrawing = drawing;
         this.dragStartPoint = this.getDataPoint(event);
@@ -4475,7 +4477,9 @@ class DrawingToolsManager {
         if (this.selectedDrawings.length > 1 && this.selectedDrawings.includes(drawing)) {
             this.draggingMultiple = true;
             // Store initial positions for all selected drawings
-            this.multiDragStartPositions = this.selectedDrawings.map(d => ({
+            this.multiDragStartPositions = this.selectedDrawings.map(d => {
+                this._ensureDrawingId(d);
+                return ({
                 drawing: d,
                 points: d.points.map(p => ({ ...p })),
                 startTransform: (() => {
@@ -4487,7 +4491,7 @@ class DrawingToolsManager {
                     };
                     return parseTranslate(d.group ? d.group.attr('transform') : null);
                 })()
-            }));
+            })});
         } else {
             this.draggingMultiple = false;
             this.singleDragStartPoints = drawing && Array.isArray(drawing.points)
