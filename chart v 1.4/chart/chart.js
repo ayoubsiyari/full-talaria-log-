@@ -17425,7 +17425,7 @@ class Chart {
             }
         }
         
-        // Time label — same wall-clock string on every panel (synced timestamp, not higher-TF bar open)
+        // Time label — use this panel candle time (target TF bucket), not source panel timestamp.
         if (timeLabel && isXVisible && Number.isFinite(timestamp) && timestamp > 0) {
             let timeframeMs = 60000;
             if (this.data && this.data.length >= 2) {
@@ -17434,7 +17434,8 @@ class Chart {
                 const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
                 timeframeMs = tfMap[this.currentTimeframe || '1m'] || 60000;
             }
-            const tzDate = this.convertToTimezone(timestamp);
+            const labelTimestamp = (candle && Number.isFinite(candle.t)) ? candle.t : timestamp;
+            const tzDate = this.convertToTimezone(labelTimestamp);
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const month = months[tzDate.getMonth()];
             const day = tzDate.getDate();
@@ -17702,6 +17703,16 @@ class Chart {
         drawingData.points = tsPoints.map((p) => ({ timestamp: p.timestamp, price: p.price }));
     }
 
+    _pointsFromTimestampBuckets(points) {
+        if (!Array.isArray(points)) return points;
+        return points.map((p) => {
+            const ts = p && Number.isFinite(Number(p.timestamp)) ? Number(p.timestamp) : NaN;
+            const x = Number.isFinite(ts) ? this._findTargetIndexForTimestamp(ts) : 0;
+            const y = p && Number.isFinite(Number(p.price)) ? Number(p.price) : (p && Number.isFinite(Number(p.y)) ? Number(p.y) : null);
+            return { x, y };
+        });
+    }
+
     _isLiveSyncDrawingId(id) {
         return typeof id === 'string' && id.startsWith('live_');
     }
@@ -17786,7 +17797,15 @@ class Chart {
                             if (tsPoints) existingById.timestampPoints = tsPoints;
                         }
                     } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                        if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
+                        if (Array.isArray(drawingData.__syncPointAnchors)) {
+                            const originalTimestampPoints = drawingData.points.map(p => ({
+                                timestamp: p.timestamp,
+                                price: p.price || p.y
+                            }));
+                            drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
+                            existingById.points = drawingData.points;
+                            existingById.timestampPoints = originalTimestampPoints;
+                        } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                             const originalTimestampPoints = drawingData.points.map(p => ({
                                 timestamp: p.timestamp,
                                 price: p.price || p.y
@@ -17807,7 +17826,14 @@ class Chart {
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
                 if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                    if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
+                    if (Array.isArray(drawingData.__syncPointAnchors)) {
+                        const originalTimestampPoints = drawingData.points.map(p => ({
+                            timestamp: p.timestamp,
+                            price: p.price || p.y
+                        }));
+                        drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
+                        drawingData._originalTimestampPoints = originalTimestampPoints;
+                    } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                         // Preserve original timestamp points for storage
                         const originalTimestampPoints = drawingData.points.map(p => ({
                             timestamp: p.timestamp,
@@ -17902,7 +17928,15 @@ class Chart {
                             if (tsPoints) existingDrawing.timestampPoints = tsPoints;
                         }
                     } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                        if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
+                        if (Array.isArray(drawingData.__syncPointAnchors)) {
+                            const originalTimestampPoints = drawingData.points.map(p => ({
+                                timestamp: p.timestamp,
+                                price: p.price || p.y
+                            }));
+                            drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
+                            existingDrawing.points = drawingData.points;
+                            existingDrawing.timestampPoints = originalTimestampPoints;
+                        } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                             // Preserve original timestamp points
                             const originalTimestampPoints = drawingData.points.map(p => ({
                                 timestamp: p.timestamp,
