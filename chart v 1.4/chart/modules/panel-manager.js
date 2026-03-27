@@ -1640,13 +1640,6 @@ class PanelManager {
                         return;
                     }
                     
-                    // Don't interfere with active drawing tools
-                    const activeChart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : null;
-                    if (activeChart && activeChart.drawingManager && activeChart.drawingManager.currentTool) {
-                        console.log('⏭️ Skipping - drawing tool active');
-                        return;
-                    }
-                    
                     if (this.selectedPanelIndex !== 0) {
                         console.log('✅ Selecting main chart (panel 0)');
                         this.selectPanel(0);
@@ -1907,13 +1900,6 @@ class PanelManager {
             }
             if (e.target.closest('button')) {
                 console.log('⏭️ Skipping - button');
-                return;
-            }
-            
-            // Don't interfere with active drawing tools
-            const activeChart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : null;
-            if (activeChart && activeChart.drawingManager && activeChart.drawingManager.currentTool) {
-                console.log('⏭️ Skipping - drawing tool active');
                 return;
             }
             
