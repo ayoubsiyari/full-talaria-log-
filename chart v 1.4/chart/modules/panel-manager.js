@@ -1635,6 +1635,7 @@ class PanelManager {
                 bar.className = 'panel-select-bar';
                 originalChart.appendChild(bar);
             }
+            this._ensurePanelSelectionRing(originalChart);
             
             // Mark main chart as a panel for drawing sync
             if (window.chart) {
@@ -1905,6 +1906,7 @@ class PanelManager {
         const selectBar = document.createElement('div');
         selectBar.className = 'panel-select-bar';
         panel.appendChild(selectBar);
+        this._ensurePanelSelectionRing(panel);
         
         // Click anywhere on panel to select it (like TradingView)
         panel.addEventListener('mousedown', (e) => {
@@ -1990,6 +1992,18 @@ class PanelManager {
     }
     
     /**
+     * Selection ring is a real div.panel-selection-ring (not ::after) so it is not affected by
+     * #chart-container * { box-shadow: none !important } on .chart-panel.
+     */
+    _ensurePanelSelectionRing(el) {
+        if (!el || el.querySelector('.panel-selection-ring')) return;
+        const ring = document.createElement('div');
+        ring.className = 'panel-selection-ring';
+        ring.setAttribute('aria-hidden', 'true');
+        el.appendChild(ring);
+    }
+
+    /**
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
@@ -2008,6 +2022,9 @@ class PanelManager {
             const panel = this.panels[index];
             
             if (panel.element) {
+                this.panels.forEach((p) => {
+                    if (p.element) this._ensurePanelSelectionRing(p.element);
+                });
                 panel.element.classList.add('panel-selected');
                 // Above .panel-resize-handle so the selection frame draws over divider lines (TradingView-style). Same for main #chartWrapper (panel 0) and .chart-panel.
                 panel.element.style.zIndex = '350';

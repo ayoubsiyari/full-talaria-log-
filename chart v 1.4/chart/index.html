@@ -6055,7 +6055,7 @@
 
 
 
-        .pl-sync-row > span:first-child {
+        .pl-sync-row .pl-sync-label {
 
             display: flex;
 
@@ -6064,6 +6064,12 @@
             min-height: 24px;
 
             font-weight: 400;
+
+            margin: 0;
+
+            cursor: pointer;
+
+            user-select: none;
 
         }
 
@@ -24032,7 +24038,8 @@
 
         #chart-container canvas,
 
-        #chart-container *:not(.panel-selection-ring) {
+        /* Exclude .chart-panel / #chartWrapper so panel shell isn’t stripped of shadows (extra panels use div.panel-selection-ring). */
+        #chart-container *:not(.panel-selection-ring):not(.chart-panel):not(#chartWrapper) {
 
             user-select: none;
 
@@ -24048,6 +24055,14 @@
 
             box-shadow: none !important;
 
+        }
+
+        #chart-container .chart-panel,
+        #chart-container #chartWrapper {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-user-drag: none;
+            -webkit-touch-callout: none;
         }
 
         /* Panel selection marker */
@@ -24069,38 +24084,27 @@
             opacity: 1;
         }
 
-        /* Panel selection ring: align with resize-handle centerline (handles use ~1.875px centered on the seam).
-           Border+inset:0 drew inside the cell and left a gap vs the white divider; outer box-shadow + overflow visible fixes it. */
+        /* Panel selection ring: real div.panel-selection-ring (not ::after) — global #chart-container * { box-shadow:none } hit .chart-panel and hid pseudo rings on extra panels. */
         #chart-container #chartWrapper.panel-selected,
         #chart-container .chart-panel.panel-selected {
             position: relative;
             overflow: visible !important;
         }
-        #chart-container #chartWrapper.panel-selected::after,
-        #chart-container .chart-panel.panel-selected::after {
-            content: '';
+        #chart-container .panel-selection-ring {
+            display: none;
             position: absolute;
             inset: 0;
             box-sizing: border-box;
-            border: none !important;
             border-radius: 2px;
-            /* Stroke centered on panel edge (same “midline” as .panel-resize-handle); glow sits outside the cell */
+            pointer-events: none;
+            z-index: 10000;
             box-shadow:
                 0 0 0 2px rgba(65, 154, 255, 0.92),
                 inset 0 0 0 1px rgba(65, 154, 255, 0.22),
                 0 0 12px rgba(41, 98, 255, 0.38) !important;
-            pointer-events: none;
-            z-index: 5000;
         }
-        /* Settings UI uses `.settings-panel.open ~ * *::after { opacity:0 }` — must override with higher specificity
-           so multi-panel selection rings stay visible when Panel Layouts (or any settings mode) is open. */
-        body.settings-open #chart-container #chartWrapper.panel-selected::after,
-        body.settings-open #chart-container .chart-panel.panel-selected::after,
-        .settings-panel.open ~ * #chart-container #chartWrapper.panel-selected::after,
-        .settings-panel.open ~ * #chart-container .chart-panel.panel-selected::after {
-            opacity: 1 !important;
-            visibility: visible !important;
-            pointer-events: none !important;
+        #chart-container .panel-selected > .panel-selection-ring {
+            display: block !important;
         }
 
         .chart-panel .ohlc-info {
@@ -41786,7 +41790,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_MAIN_PANEL_RING_Z350_V105"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_PANEL_SELECTION_RING_DIV_V106"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -57497,7 +57501,7 @@ P['panellayout']={
 
         function syncRow(label,id,enabled){
 
-            return '<div class="pl-sync-row"><span>'+label+'</span><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
+            return '<div class="pl-sync-row"><label class="pl-sync-label" for="'+id+'">'+label+'</label><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
 
         }
 
@@ -57587,23 +57591,7 @@ P['panellayout']={
 
         });
 
-        ctx.querySelectorAll('.pl-sync-row').forEach(function(row){
-
-            row.addEventListener('click',function(){
-
-                var checkbox=this.querySelector('input[type="checkbox"]');
-
-                if(checkbox){
-
-                    checkbox.checked=!checkbox.checked;
-
-                    checkbox.dispatchEvent(new Event('change',{bubbles:true}));
-
-                }
-
-            });
-
-        });
+        /* Row toggling is handled by <label for="…"> on each row (clicking text or box updates once). */
 
         if(pm&&typeof pm.setupSyncToggles==='function'){
 
