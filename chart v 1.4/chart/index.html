@@ -24150,7 +24150,7 @@
             position: absolute;
             z-index: 200;
             pointer-events: auto;
-            transition: background-color 0.15s ease;
+            transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
         }
         /* Full-length overlay divider line — always visible */
         .panel-resize-handle.vertical {
@@ -24182,11 +24182,13 @@
         /* Hover — line brightens */
         .panel-resize-handle.vertical:hover {
             background-color: #ffffff;
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0 10px rgba(255,255,255,0.55);
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.45), 0 0 14px rgba(255,255,255,0.8) !important;
+            filter: drop-shadow(0 0 8px rgba(255,255,255,0.75)) !important;
         }
         .panel-resize-handle.horizontal:hover {
             background-color: #ffffff;
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0 10px rgba(255,255,255,0.55);
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.45), 0 0 14px rgba(255,255,255,0.8) !important;
+            filter: drop-shadow(0 0 8px rgba(255,255,255,0.75)) !important;
         }
         /* Dragging — accent blue */
         .panel-resize-handle.vertical.dragging {
