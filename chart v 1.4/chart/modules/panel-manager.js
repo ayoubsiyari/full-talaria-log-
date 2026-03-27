@@ -2444,8 +2444,10 @@ class PanelManager {
             this.applyLayout(this.currentLayout);
         });
 
-        const chartContainer = document.getElementById('chart-container');
-        (chartContainer || this.container).appendChild(handle);
+        /* Parent must be #panels-container so z-index stacks with .chart-panel (100/350) vs handle (160).
+           When handles were siblings of #panels-container at z 140, only #chartWrapper (350) could paint above — extra panels stayed under dividers. */
+        const parent = this.container || document.getElementById('panels-container') || document.getElementById('chart-container');
+        if (parent) parent.appendChild(handle);
         return handle;
     }
 

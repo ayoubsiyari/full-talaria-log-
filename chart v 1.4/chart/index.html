@@ -24171,10 +24171,14 @@
 
         .panel-resize-handle {
             position: absolute;
-            /* Below selected panel (350) so selection border overlaps divider; above non-selected panels (100) */
+            /* Default; when handles live inside #panels-container, rule below uses 160 vs panels 100 / selected 350 */
             z-index: 140;
             pointer-events: auto;
             transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+        }
+        /* Stacked with .chart-panel siblings so selection ring can draw above the gutter (was broken when handle was sibling of #panels-container at z 140). */
+        #panels-container .panel-resize-handle {
+            z-index: 160;
         }
         /* Full-length overlay divider line — always visible */
         .panel-resize-handle.vertical {
@@ -41790,7 +41794,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_PANEL_SELECTION_RING_DIV_V106"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_HANDLES_IN_PANELS_CONTAINER_V107"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
