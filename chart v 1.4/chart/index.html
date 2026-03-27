@@ -24069,10 +24069,12 @@
             opacity: 1;
         }
 
-        /* Panel selection ring: main chart is #chartWrapper (panel 0); extra panels use .chart-panel. z-index set in panel-manager (350) > .panel-resize-handle. */
+        /* Panel selection ring: align with resize-handle centerline (handles use ~1.875px centered on the seam).
+           Border+inset:0 drew inside the cell and left a gap vs the white divider; outer box-shadow + overflow visible fixes it. */
         #chart-container #chartWrapper.panel-selected,
         #chart-container .chart-panel.panel-selected {
             position: relative;
+            overflow: visible !important;
         }
         #chart-container #chartWrapper.panel-selected::after,
         #chart-container .chart-panel.panel-selected::after {
@@ -24080,9 +24082,13 @@
             position: absolute;
             inset: 0;
             box-sizing: border-box;
-            border: 2px solid rgba(65, 154, 255, 0.84) !important;
-            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
+            border: none !important;
             border-radius: 2px;
+            /* Stroke centered on panel edge (same “midline” as .panel-resize-handle); glow sits outside the cell */
+            box-shadow:
+                0 0 0 2px rgba(65, 154, 255, 0.92),
+                inset 0 0 0 1px rgba(65, 154, 255, 0.22),
+                0 0 12px rgba(41, 98, 255, 0.38) !important;
             pointer-events: none;
             z-index: 5000;
         }

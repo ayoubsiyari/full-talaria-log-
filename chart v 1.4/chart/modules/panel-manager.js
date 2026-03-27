@@ -1196,9 +1196,6 @@ class PanelManager {
         if (layout === '1') {
             console.log('🔄 Returning to single layout - cleaning up panels...');
 
-            // Logo must leave panels-container before innerHTML clears it
-            this.syncChartBrandPlacement('1');
-            
             // FIRST: Remove ALL resize handles
             if (this.resizeHandles && this.resizeHandles.length > 0) {
                 this.resizeHandles.forEach(h => {
@@ -1212,6 +1209,14 @@ class PanelManager {
             
             // Also remove any orphaned resize handles by class name
             document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
+
+            // Main chart must leave #panels-container before we clear it (multi-panel reparent)
+            const chartContSingle = document.getElementById('chart-container');
+            if (originalChart && chartContSingle && this.container && this.container.contains(originalChart)) {
+                chartContSingle.insertBefore(originalChart, this.container.nextSibling);
+            }
+
+            this.syncChartBrandPlacement('1');
             
             // Hide panels container
             this.container.style.display = 'none';
