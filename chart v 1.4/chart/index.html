@@ -45639,7 +45639,7 @@
 
                 
 
-                // Sync a drawing to all panels with same timeframe
+                // Sync a drawing to all panels
 
                 syncDrawing(sourcePanel, drawing, action = 'add') {
 
@@ -45669,25 +45669,13 @@
 
                     const panels = window.panelManager.getPanels();
 
-                    const sourceTimeframe = sourcePanel.timeframe;
-
-                    
-
-                    
-
                     panels.forEach(targetPanel => {
 
                         
 
-                        // Skip source panel and panels with different timeframes
+                        // Skip source panel
 
                         if (targetPanel.index === sourcePanel.index) {
-
-                            return;
-
-                        }
-
-                        if (targetPanel.timeframe !== sourceTimeframe) {
 
                             return;
 
@@ -45789,7 +45777,7 @@
 
                 
 
-                // Sync all drawings from source to targets with same timeframe
+                // Sync all drawings from source to all targets
 
                 syncAllDrawings(sourcePanel) {
 
@@ -45798,8 +45786,6 @@
                     
 
                     const panels = window.panelManager.getPanels();
-
-                    const sourceTimeframe = sourcePanel.timeframe;
 
                     const sourceDrawings = sourcePanel.chartInstance?.drawings || [];
 
@@ -45810,8 +45796,6 @@
                     panels.forEach(targetPanel => {
 
                         if (targetPanel.index === sourcePanel.index) return;
-
-                        if (targetPanel.timeframe !== sourceTimeframe) return;
 
                         if (!targetPanel.chartInstance) return;
 
