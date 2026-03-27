@@ -17775,6 +17775,7 @@ class Chart {
                 if (existingById) {
                     if (isLiveId && drawingData.points) {
                         existingById.points = drawingData.points;
+                        existingById.coordinateSystem = 'index';
                         if (Array.isArray(drawingData.__syncPointAnchors)) {
                             const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
                             if (tsPoints) existingById.timestampPoints = tsPoints;
@@ -17823,12 +17824,15 @@ class Chart {
                 const toolInfo = dm.toolRegistry ? dm.toolRegistry[drawingData.type] : null;
                 
                 if (toolInfo && toolInfo.class && toolInfo.class.fromJSON) {
+                    if (isLiveId) {
+                        drawingData.coordinateSystem = 'index';
+                    }
                     const drawingObj = toolInfo.class.fromJSON(drawingData, this);
                     drawingObj.chart = this;
                     drawingObj.id = drawingData.id; // Keep same ID for sync
                     
                     // Restore timestamp points for proper multi-timeframe support
-                    if (drawingData._originalTimestampPoints) {
+                    if (!isLiveId && drawingData._originalTimestampPoints) {
                         drawingObj.timestampPoints = drawingData._originalTimestampPoints;
                         drawingObj.coordinateSystem = 'timestamp';
                     }
@@ -17887,6 +17891,7 @@ class Chart {
                     // Convert timestamp points to indices for THIS panel's data
                     if (isLiveId && drawingData.points) {
                         existingDrawing.points = drawingData.points;
+                        existingDrawing.coordinateSystem = 'index';
                         if (Array.isArray(drawingData.__syncPointAnchors)) {
                             const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
                             if (tsPoints) existingDrawing.timestampPoints = tsPoints;
