@@ -1331,6 +1331,23 @@ class DrawingToolsManager {
             return;
         }
 
+        // First-click draw in multi-panel mode:
+        // if this panel has no active tool yet, adopt the currently active tool
+        // from main/selected chart and continue this same click as draw-start.
+        if (!this.currentTool && window.panelManager && window.panelManager.currentLayout !== '1') {
+            let inheritedTool = null;
+            const mainDm = window.chart && window.chart.drawingManager;
+            if (mainDm && mainDm.currentTool) inheritedTool = mainDm.currentTool;
+            if (!inheritedTool && typeof window.panelManager.getSelectedPanel === 'function') {
+                const sp = window.panelManager.getSelectedPanel();
+                const sdm = sp && sp.chartInstance && sp.chartInstance.drawingManager;
+                if (sdm && sdm.currentTool) inheritedTool = sdm.currentTool;
+            }
+            if (inheritedTool && typeof this.setTool === 'function') {
+                this.setTool(inheritedTool, true);
+            }
+        }
+
         // Multi-panel UX: if user clicks another panel while a tool is active,
         // switch selection first, but continue this same click as draw-start.
         if (this.currentTool && window.panelManager && window.panelManager.currentLayout !== '1') {
