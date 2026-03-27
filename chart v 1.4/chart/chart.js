@@ -17578,7 +17578,8 @@ class Chart {
 
     _nearestOhlcKeyAtIndex(idx, y) {
         if (!this.data || this.data.length === 0 || !Number.isFinite(y)) return null;
-        const i = Math.max(0, Math.min(this.data.length - 1, Math.round(idx)));
+        // Use floor (at-or-before) so cross-timeframe mapping uses containing candle semantics.
+        const i = Math.max(0, Math.min(this.data.length - 1, Math.floor(idx)));
         const c = this.data[i];
         if (!c) return null;
         const levels = [['o', c.o], ['h', c.h], ['l', c.l], ['c', c.c]].filter((x) => Number.isFinite(x[1]));
@@ -17608,7 +17609,8 @@ class Chart {
         const out = JSON.parse(JSON.stringify(drawingData));
         const mk = (x, y) => {
             if (!Number.isFinite(Number(x))) return null;
-            const idx = Math.max(0, Math.min(this.data.length - 1, Math.round(Number(x))));
+            // At-or-before source candle index (avoid nearest-candle drift on timeframe aggregation).
+            const idx = Math.max(0, Math.min(this.data.length - 1, Math.floor(Number(x))));
             const c = this.data[idx];
             if (!c || !Number.isFinite(c.t)) return null;
             return {
