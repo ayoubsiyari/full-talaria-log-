@@ -109,6 +109,8 @@ class UndoRedoManager {
             
             this.redoStack.push(action);
             this.showNotification('Undo');
+
+            this._broadcastAfterUndoRedo(action, 'undo');
             
         } catch (error) {
             console.error('❌ Undo failed:', error);
@@ -151,6 +153,8 @@ class UndoRedoManager {
             
             this.undoStack.push(action);
             this.showNotification('Redo');
+
+            this._broadcastAfterUndoRedo(action, 'redo');
             
         } catch (error) {
             console.error('❌ Redo failed:', error);
@@ -205,6 +209,34 @@ class UndoRedoManager {
         }
     }
     
+    _broadcastAfterUndoRedo(action, direction) {
+        const chart = this.drawingManager && this.drawingManager.chart;
+        if (!chart || typeof chart.broadcastDrawingChange !== 'function') return;
+
+        const data = action.data;
+        if (direction === 'undo') {
+            if (action.type === 'add') {
+                chart.broadcastDrawingChange('remove', { id: data.drawingId });
+            } else if (action.type === 'delete') {
+                const restored = this.findDrawingById(data.drawingJSON.id || data.drawingId);
+                if (restored) chart.broadcastDrawingChange('add', restored);
+            } else if (action.type === 'modify') {
+                const drawing = this.findDrawingById(data.drawingId);
+                if (drawing) chart.broadcastDrawingChange('update', drawing);
+            }
+        } else {
+            if (action.type === 'add') {
+                const restored = this.findDrawingById(data.drawingJSON?.id || data.drawingId);
+                if (restored) chart.broadcastDrawingChange('add', restored);
+            } else if (action.type === 'delete') {
+                chart.broadcastDrawingChange('remove', { id: data.drawingId });
+            } else if (action.type === 'modify') {
+                const drawing = this.findDrawingById(data.drawingId);
+                if (drawing) chart.broadcastDrawingChange('update', drawing);
+            }
+        }
+    }
+
     // ===== HELPER METHODS =====
     
     findDrawingById(id) {

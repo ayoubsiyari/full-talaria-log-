@@ -41756,19 +41756,19 @@
 
     <script defer src="modules/drawing-toolbar.js?v=20260322_RULER_STATS_V9"></script>
 
-    <script defer src="modules/undo-redo-manager.js?v=20260318_TF_PIN_V59"></script>
+    <script defer src="modules/undo-redo-manager.js?v=20260327_DRAWING_SYNC_V60"></script>
 
     <script defer src="modules/preferences-sync.js?v=20260318_TF_PIN_V59"></script>
 
     <script defer src="modules/preferences-init.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=20260327_PANEL_FIRST_CLICK_GLOBAL_TOOL_V22"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260327_PANEL_FIRST_CLICK_GLOBAL_TOOL_V23"></script>
 
     <script defer src="modules/favorites-manager.js?v=20260318_TF_PIN_V59"></script>
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V109"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_CROSSHAIR_FIX_V110"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -41784,7 +41784,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260327_CLEAR_ALL_SYNC_V247"></script>
+    <script defer src="chart.js?v=20260327_CROSSHAIR_FIX_V249"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -45687,402 +45687,16 @@
 
             
 
+            // Legacy panelDrawingSync removed — drawing sync is handled by
+            // Chart.broadcastDrawingChange / Chart.receiveDrawingChange directly.
             window.panelDrawingSync = {
-
                 enabled: true,
-
-                normalizeSymbol(symbol) {
-                    if (symbol === undefined || symbol === null) return '';
-                    return String(symbol).replace(/\s+/g, '').replace(/\//g, '').toUpperCase();
-                },
-
-                hasSameSymbol(sourceChart, targetChart) {
-                    const source = this.normalizeSymbol(sourceChart && (sourceChart.currentSymbol || sourceChart.symbol || sourceChart.currentFileId));
-                    const target = this.normalizeSymbol(targetChart && (targetChart.currentSymbol || targetChart.symbol || targetChart.currentFileId));
-                    if (!source || !target) return true;
-                    return source === target;
-                },
-
-                
-
-                // Sync a drawing to all panels
-
-                syncDrawing(sourcePanel, drawing, action = 'add') {
-
-                    console.log(`🔄 syncDrawing called:`, {
-
-                        enabled: this.enabled,
-
-                        hasManager: !!window.panelManager,
-
-                        sourcePanel: sourcePanel.index,
-
-                        sourceTimeframe: sourcePanel.timeframe,
-
-                        action: action
-
-                    });
-
-                    
-
-                    if (!this.enabled || !window.panelManager) {
-
-                        return;
-
-                    }
-
-                    
-
-                    const panels = window.panelManager.getPanels();
-
-                    panels.forEach(targetPanel => {
-
-                        
-
-                        // Skip source panel
-
-                        if (targetPanel.index === sourcePanel.index) {
-
-                            return;
-
-                        }
-
-                        if (!targetPanel.chartInstance) {
-
-                            return;
-
-                        }
-
-                        const sourceChart = sourcePanel && sourcePanel.chartInstance ? sourcePanel.chartInstance : null;
-                        const targetChart = targetPanel.chartInstance;
-                        if (!this.hasSameSymbol(sourceChart, targetChart)) {
-                            return;
-                        }
-
-                        
-
-                        
-
-                        if (action === 'add' || action === 'update') {
-
-                            // Clone the drawing
-
-                            const clonedDrawing = JSON.parse(JSON.stringify(drawing));
-                            const normalizedDrawing = this.normalizeDrawingForTarget(clonedDrawing, sourceChart, targetChart);
-
-                            
-
-                            // Check if drawing already exists (by comparing points)
-
-                            const existingIdx = targetPanel.chartInstance.drawings.findIndex(d => 
-
-                                this.isSameDrawing(d, normalizedDrawing)
-
-                            );
-
-                            
-
-                            if (existingIdx >= 0) {
-
-                                // Update existing
-
-                                targetPanel.chartInstance.drawings[existingIdx] = normalizedDrawing;
-
-                            } else {
-
-                                // Add new
-
-                                targetPanel.chartInstance.drawings.push(normalizedDrawing);
-
-                            }
-
-                        } else if (action === 'delete') {
-
-                            // Find and remove matching drawing
-
-                            const idx = targetPanel.chartInstance.drawings.findIndex(d => 
-
-                                this.isSameDrawing(d, drawing)
-
-                            );
-
-                            if (idx >= 0) {
-
-                                targetPanel.chartInstance.drawings.splice(idx, 1);
-
-                            }
-
-                        }
-
-                        
-
-                        // Re-render target panel drawings immediately
-                        if (typeof targetPanel.chartInstance.redrawDrawings === 'function') {
-                            targetPanel.chartInstance.redrawDrawings();
-                        }
-                        if (typeof targetPanel.chartInstance.render === 'function') {
-                            targetPanel.chartInstance.render();
-                        }
-
-                    });
-
-                },
-
-                
-
-                // Check if two drawings are the same (compare key properties)
-
-                isSameDrawing(d1, d2) {
-
-                    if (d1.type !== d2.type) return false;
-
-                    if (d1.id && d2.id && d1.id === d2.id) return true;
-
-                    // Stable id path for live preview/update sync
-                    if (d1.__syncId && d2.__syncId) {
-                        return d1.__syncId === d2.__syncId;
-                    }
-
-                    // Compare timestamps (drawings created at same time are likely the same)
-                    if (d1.x1 === d2.x1 && d1.y1 === d2.y1) {
-                        if (d1.x2 === d2.x2 && d1.y2 === d2.y2) {
-                            return true;
-                        }
-                    }
-
-                    return false;
-
-                },
-
-                // Convert drawing X/index coordinates through timestamp so multi-timeframe panels align correctly.
-                normalizeDrawingForTarget(drawing, sourceChart, targetChart) {
-                    if (!drawing || !sourceChart || !targetChart) return drawing;
-                    if (!sourceChart.data || !targetChart.data || sourceChart.data.length === 0 || targetChart.data.length === 0) return drawing;
-
-                    const clampSourceIdx = (idx) => Math.max(0, Math.min(sourceChart.data.length - 1, Math.floor(Number(idx) || 0)));
-                    const clampTargetIdx = (idx) => Math.max(0, Math.min(targetChart.data.length - 1, Math.round(Number(idx) || 0)));
-                    const toTs = (idx) => {
-                        const i = clampSourceIdx(idx);
-                        const bar = sourceChart.data[i];
-                        return bar && Number.isFinite(bar.t) ? bar.t : null;
-                    };
-                    const toTargetIdx = (ts) => {
-                        if (!Number.isFinite(ts)) return null;
-                        if (typeof targetChart.findLastDataIndexAtOrBeforeTime === 'function') {
-                            const i = targetChart.findLastDataIndexAtOrBeforeTime(ts);
-                            return Number.isFinite(i) ? clampTargetIdx(i) : null;
-                        }
-                        if (typeof targetChart.findGoToTargetIndex === 'function') {
-                            const i = targetChart.findGoToTargetIndex(targetChart.data, ts);
-                            return Number.isFinite(i) ? clampTargetIdx(i) : null;
-                        }
-                        let best = 0;
-                        for (let i = 0; i < targetChart.data.length; i++) {
-                            if (targetChart.data[i] && targetChart.data[i].t <= ts) best = i;
-                            else if (targetChart.data[i] && targetChart.data[i].t > ts) break;
-                        }
-                        return clampTargetIdx(best);
-                    };
-                    const remapX = (obj, key) => {
-                        if (!obj || obj[key] === undefined || obj[key] === null) return;
-                        const ts = toTs(obj[key]);
-                        const mapped = toTargetIdx(ts);
-                        if (mapped !== null) obj[key] = mapped;
-                    };
-                    const nearestSourceOhlcKey = (sourceY, sourceIdx) => {
-                        if (!Number.isFinite(sourceY) || !Number.isFinite(sourceIdx)) return null;
-                        const si = clampSourceIdx(sourceIdx);
-                        const sc = sourceChart.data[si];
-                        if (!sc) return null;
-                        const pairs = [
-                            ['o', sc.o],
-                            ['h', sc.h],
-                            ['l', sc.l],
-                            ['c', sc.c]
-                        ].filter((x) => Number.isFinite(x[1]));
-                        if (!pairs.length) return null;
-                        let bestKey = pairs[0][0];
-                        let bestDiff = Math.abs(sourceY - pairs[0][1]);
-                        for (let j = 1; j < pairs.length; j++) {
-                            const diff = Math.abs(sourceY - pairs[j][1]);
-                            if (diff < bestDiff) {
-                                bestDiff = diff;
-                                bestKey = pairs[j][0];
-                            }
-                        }
-                        const hi = Number.isFinite(sc.h) ? sc.h : pairs[0][1];
-                        const lo = Number.isFinite(sc.l) ? sc.l : pairs[0][1];
-                        const op = Number.isFinite(sc.o) ? sc.o : pairs[0][1];
-                        const cl = Number.isFinite(sc.c) ? sc.c : pairs[0][1];
-                        const rangeTol = Math.abs(hi - lo) * 0.2;
-                        const bodyTol = Math.abs(op - cl) * 0.2;
-                        const priceTol = Math.max(...pairs.map(([, v]) => Math.abs(v))) * 1e-6;
-                        const snapTol = Math.max(rangeTol, bodyTol, priceTol, 1e-8);
-                        return bestDiff <= snapTol ? bestKey : null;
-                    };
-                    const mapYWithSourceSemantics = (sourceY, sourceIdx, targetIdx) => {
-                        if (!Number.isFinite(sourceY) || !Number.isFinite(targetIdx)) return sourceY;
-                        const ti = clampTargetIdx(targetIdx);
-                        const tc = targetChart.data[ti];
-                        if (!tc) return sourceY;
-                        const key = nearestSourceOhlcKey(sourceY, sourceIdx);
-                        if (key && Number.isFinite(tc[key])) return tc[key];
-                        return sourceY;
-                    };
-                    const applyAnchorToTarget = (anchor) => {
-                        if (!anchor || !Number.isFinite(anchor.timestamp)) return null;
-                        const ti = toTargetIdx(anchor.timestamp);
-                        if (!Number.isFinite(ti)) return null;
-                        const tc = targetChart.data[ti];
-                        if (!tc) return null;
-                        let y = Number.isFinite(anchor.y) ? anchor.y : null;
-                        if (anchor.ohlcKey && Number.isFinite(tc[anchor.ohlcKey])) y = tc[anchor.ohlcKey];
-                        return { x: ti, y };
-                    };
-                    const ensureAnchor = (srcX, srcY) => {
-                        const ts = toTs(srcX);
-                        if (!Number.isFinite(ts)) return null;
-                        return {
-                            timestamp: ts,
-                            ohlcKey: nearestSourceOhlcKey(Number(srcY), Number(srcX)),
-                            y: Number.isFinite(Number(srcY)) ? Number(srcY) : null
-                        };
-                    };
-
-                    // Prefer stable anchors created by chart-level sync to avoid drift across panel-to-panel remaps.
-                    if (!drawing.__syncAnchors) drawing.__syncAnchors = {};
-                    if (drawing.x1 !== undefined && !drawing.__syncAnchors.x1) drawing.__syncAnchors.x1 = ensureAnchor(drawing.x1, drawing.y1);
-                    if (drawing.x2 !== undefined && !drawing.__syncAnchors.x2) drawing.__syncAnchors.x2 = ensureAnchor(drawing.x2, drawing.y2);
-                    if (drawing.x !== undefined && !drawing.__syncAnchors.x) drawing.__syncAnchors.x = ensureAnchor(drawing.x, (drawing.y !== undefined ? drawing.y : drawing.price));
-
-                    // Point anchors: use existing timestampPoints first (most accurate for multi-timeframe).
-                    if (Array.isArray(drawing.points)) {
-                        if (!Array.isArray(drawing.__syncPointAnchors)) drawing.__syncPointAnchors = [];
-                        drawing.points.forEach((p, i) => {
-                            if (drawing.__syncPointAnchors[i]) return;
-                            const tp = Array.isArray(drawing.timestampPoints) ? drawing.timestampPoints[i] : null;
-                            if (tp && Number.isFinite(tp.timestamp)) {
-                                const srcIdx = Number.isFinite(Number(p && p.x)) ? Number(p.x) : 0;
-                                drawing.__syncPointAnchors[i] = {
-                                    timestamp: tp.timestamp,
-                                    ohlcKey: nearestSourceOhlcKey(Number(tp.price), srcIdx),
-                                    y: Number.isFinite(Number(tp.price)) ? Number(tp.price) : null
-                                };
-                            } else if (p) {
-                                drawing.__syncPointAnchors[i] = ensureAnchor(p.x, (p.y !== undefined ? p.y : p.price));
-                            }
-                        });
-                    }
-
-                    const sx = Number(drawing.x);
-                    const sx1 = Number(drawing.x1);
-                    const sx2 = Number(drawing.x2);
-                    remapX(drawing, 'x');
-                    remapX(drawing, 'x1');
-                    remapX(drawing, 'x2');
-                    const ax1 = applyAnchorToTarget(drawing.__syncAnchors.x1);
-                    if (ax1) {
-                        drawing.x1 = ax1.x;
-                        if (drawing.y1 !== undefined && ax1.y !== null) drawing.y1 = ax1.y;
-                    } else if (drawing.y1 !== undefined && Number.isFinite(drawing.x1)) {
-                        drawing.y1 = mapYWithSourceSemantics(Number(drawing.y1), sx1, Number(drawing.x1));
-                    }
-                    const ax2 = applyAnchorToTarget(drawing.__syncAnchors.x2);
-                    if (ax2) {
-                        drawing.x2 = ax2.x;
-                        if (drawing.y2 !== undefined && ax2.y !== null) drawing.y2 = ax2.y;
-                    } else if (drawing.y2 !== undefined && Number.isFinite(drawing.x2)) {
-                        drawing.y2 = mapYWithSourceSemantics(Number(drawing.y2), sx2, Number(drawing.x2));
-                    }
-                    const ax = applyAnchorToTarget(drawing.__syncAnchors.x);
-                    if (ax) {
-                        drawing.x = ax.x;
-                        if (drawing.y !== undefined && ax.y !== null) drawing.y = ax.y;
-                        if (drawing.price !== undefined && ax.y !== null) drawing.price = ax.y;
-                    } else if (drawing.y !== undefined && Number.isFinite(drawing.x)) {
-                        drawing.y = mapYWithSourceSemantics(Number(drawing.y), sx, Number(drawing.x));
-                    }
-                    if (!ax && drawing.price !== undefined && Number.isFinite(drawing.x)) {
-                        drawing.price = mapYWithSourceSemantics(Number(drawing.price), sx, Number(drawing.x));
-                    }
-                    if (Array.isArray(drawing.points)) {
-                        drawing.points.forEach((p, i) => {
-                            if (p && p.x !== undefined && p.x !== null) {
-                                const anchored = applyAnchorToTarget(Array.isArray(drawing.__syncPointAnchors) ? drawing.__syncPointAnchors[i] : null);
-                                if (anchored) {
-                                    p.x = anchored.x;
-                                    if (p.y !== undefined && anchored.y !== null) p.y = anchored.y;
-                                    if (p.price !== undefined && anchored.y !== null) p.price = anchored.y;
-                                    return;
-                                }
-                                const sourcePointX = Number(p.x);
-                                const ts = toTs(p.x);
-                                const mapped = toTargetIdx(ts);
-                                if (mapped !== null) {
-                                    p.x = mapped;
-                                    if (p.y !== undefined) {
-                                        p.y = mapYWithSourceSemantics(Number(p.y), sourcePointX, Number(mapped));
-                                    }
-                                    if (p.price !== undefined) {
-                                        p.price = mapYWithSourceSemantics(Number(p.price), sourcePointX, Number(mapped));
-                                    }
-                                }
-                            }
-                        });
-                    }
-                    return drawing;
-                },
-
-                
-
-                // Sync all drawings from source to all targets
-
-                syncAllDrawings(sourcePanel) {
-
-                    if (!this.enabled || !window.panelManager) return;
-
-                    
-
-                    const panels = window.panelManager.getPanels();
-
-                    const sourceDrawings = sourcePanel.chartInstance?.drawings || [];
-
-                    
-
-                    
-
-                    panels.forEach(targetPanel => {
-
-                        if (targetPanel.index === sourcePanel.index) return;
-
-                        if (!targetPanel.chartInstance) return;
-
-                        if (!this.hasSameSymbol(sourcePanel.chartInstance, targetPanel.chartInstance)) return;
-
-                        
-
-                        // Replace all drawings (normalized for target timeframe/candles)
-                        targetPanel.chartInstance.drawings = sourceDrawings.map((d) => {
-                            const clone = JSON.parse(JSON.stringify(d));
-                            return this.normalizeDrawingForTarget(clone, sourcePanel.chartInstance, targetPanel.chartInstance);
-                        });
-
-                        if (typeof targetPanel.chartInstance.redrawDrawings === 'function') {
-                            targetPanel.chartInstance.redrawDrawings();
-                        }
-                        if (typeof targetPanel.chartInstance.render === 'function') {
-                            targetPanel.chartInstance.render();
-                        }
-
-                        
-
-                    });
-
-                }
-
+                hasSameSymbol() { return true; },
+                syncDrawing() {},
+                syncAllDrawings() {},
+                isSameDrawing() { return false; },
+                normalizeDrawingForTarget(d) { return d; }
             };
-
-            
 
             // Make functions available globally
 

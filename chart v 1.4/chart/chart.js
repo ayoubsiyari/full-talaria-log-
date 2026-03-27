@@ -14878,6 +14878,16 @@ class Chart {
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
 
+        // Auto-fix stale dimensions: if the canvas container is larger than
+        // this.w/this.h, a layout change happened without resize() catching up.
+        const containerW = Math.floor(rect.width || 0);
+        const containerH = Math.floor(rect.height || 0);
+        if (containerW > 2 && containerH > 2 &&
+            (Math.abs(containerW - this.w) > 4 || Math.abs(containerH - this.h) > 4)) {
+            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+            if (typeof this.resize === 'function') this.resize();
+        }
+
         this.mouseX = x;
         this.mouseY = y;
         this._lastCrosshairCtrlKey = !!e.ctrlKey;
@@ -17754,6 +17764,11 @@ class Chart {
             return;
         }
         
+        // Don't re-broadcast while applying a received sync change
+        if (this._receivingDrawingSync) {
+            return;
+        }
+        
         // Allow syncing from both panel charts and the main/original chart in multi-panel layout.
         if (window.panelManager.currentLayout === '1') {
             return;
@@ -17783,11 +17798,8 @@ class Chart {
             return;
         }
         
-        // Temporarily disable sync to prevent infinite loop
-        const originalSetting = window.panelManager?.syncSettings?.drawings;
-        if (window.panelManager?.syncSettings) {
-            window.panelManager.syncSettings.drawings = false;
-        }
+        // Per-chart flag to prevent re-broadcast while applying a received change
+        this._receivingDrawingSync = true;
         
         try {
             const dm = this.drawingManager;
@@ -17999,10 +18011,7 @@ class Chart {
             }
             
         } finally {
-            // Re-enable sync
-            if (window.panelManager?.syncSettings) {
-                window.panelManager.syncSettings.drawings = originalSetting;
-            }
+            this._receivingDrawingSync = false;
         }
     }
 }

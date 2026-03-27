@@ -5377,8 +5377,10 @@ class DrawingToolsManager {
         if (drawing.group) {
             drawing.group.raise();
         }
-        
-        // [debug removed]
+
+        if (this.chart && typeof this.chart.broadcastDrawingChange === 'function') {
+            this.chart.broadcastDrawingChange('update', drawing);
+        }
     }
 
     /**
@@ -5397,8 +5399,10 @@ class DrawingToolsManager {
         if (drawing.group) {
             drawing.group.lower();
         }
-        
-        // [debug removed]
+
+        if (this.chart && typeof this.chart.broadcastDrawingChange === 'function') {
+            this.chart.broadcastDrawingChange('update', drawing);
+        }
     }
 
     /**

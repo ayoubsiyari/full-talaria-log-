@@ -1303,70 +1303,83 @@ class PanelManager {
             document.body.style.userSelect = '';
             
             // Comprehensive restore of main chart functionality (next frame, no artificial delay)
-            requestAnimationFrame(() => {
-                if (window.chart) {
-                    const chart = window.chart;
-                    
-                    // Resize and render
-                    if (chart.resize) chart.resize();
-                    if (chart.render) chart.render();
-                    
-                    // Force cursor type to 'cross' if not set, and apply it
-                    if (!chart.cursorType) {
-                        chart.cursorType = 'cross';
-                    }
-                    
-                    // Force enable crosshair lines based on cursor type
-                    chart.showCrosshairLines = (chart.cursorType === 'cross' || chart.cursorType === 'eraser');
-                    
-                    // Re-apply cursor type (includes crosshair visibility)
-                    chart.setCursorType(chart.cursorType, true);
-                    
-                    // Restore cursor style on canvas and SVG
-                    const cursorStyle = chart.getCurrentCursorStyle ? chart.getCurrentCursorStyle() : 'crosshair';
-                    if (chart.canvas) chart.canvas.style.cursor = cursorStyle;
-                    if (chart.svg && chart.svg.node()) chart.svg.node().style.cursor = cursorStyle;
-                    
-                    // Restore chart wrapper cursor
-                    const chartWrapper = document.querySelector('.chart-wrapper');
-                    if (chartWrapper) chartWrapper.style.cursor = cursorStyle;
-                    
-                    // Re-enable SVG pointer events
-                    if (chart.updateSVGPointerEvents) {
-                        chart.updateSVGPointerEvents();
-                    }
-                    
-                    // Redraw drawings
-                    if (chart.redrawDrawings) {
-                        chart.redrawDrawings();
-                    }
-                    
-                    // Reset crosshair elements - they will appear on mouse hover
-                    // Don't hide them if cursor type is cross
-                    const crosshairV = document.querySelector('.crosshair-vertical');
-                    const crosshairH = document.querySelector('.crosshair-horizontal');
-                    const priceLabel = document.querySelector('.price-label');
-                    const timeLabel = document.querySelector('.time-label');
-                    
-                    // Just reset display to none - updateCrosshair will show them on mouse move
-                    if (crosshairV) crosshairV.style.display = 'none';
-                    if (crosshairH) crosshairH.style.display = 'none';
-                    if (priceLabel) priceLabel.style.display = 'none';
-                    if (timeLabel) timeLabel.style.display = 'none';
-                    
-                    // Ensure tooltip is hidden
-                    if (chart.hideTooltip) chart.hideTooltip();
-                    
-                    // Update OHLC display with last candle
-                    if (chart.data && chart.data.length > 0) {
-                        const lastCandle = chart.data[chart.data.length - 1];
-                        if (chart.updateOHLCFromCandle) {
-                            chart.updateOHLCFromCandle(lastCandle);
-                        }
-                    }
-                    
-                    console.log('✅ Main chart fully restored - cursorType:', chart.cursorType, 'showLines:', chart.showCrosshairLines);
+            const _restoreMainChart = () => {
+                if (!window.chart) return;
+                const chart = window.chart;
+
+                // Invalidate cached DPR so resize() always recalculates
+                if (chart._lastResizeDpr !== undefined) chart._lastResizeDpr = 0;
+                
+                // Resize and render
+                if (chart.resize) chart.resize();
+                if (chart.render) chart.render();
+                
+                // Force cursor type to 'cross' if not set, and apply it
+                if (!chart.cursorType) {
+                    chart.cursorType = 'cross';
                 }
+                
+                // Force enable crosshair lines based on cursor type
+                chart.showCrosshairLines = (chart.cursorType === 'cross' || chart.cursorType === 'eraser');
+                
+                // Re-apply cursor type (includes crosshair visibility)
+                chart.setCursorType(chart.cursorType, true);
+                
+                // Restore cursor style on canvas and SVG
+                const cursorStyle = chart.getCurrentCursorStyle ? chart.getCurrentCursorStyle() : 'crosshair';
+                if (chart.canvas) chart.canvas.style.cursor = cursorStyle;
+                if (chart.svg && chart.svg.node()) chart.svg.node().style.cursor = cursorStyle;
+                
+                // Restore chart wrapper cursor
+                const chartWrapper = document.querySelector('.chart-wrapper');
+                if (chartWrapper) chartWrapper.style.cursor = cursorStyle;
+                
+                // Re-enable SVG pointer events
+                if (chart.updateSVGPointerEvents) {
+                    chart.updateSVGPointerEvents();
+                }
+                
+                // Redraw drawings
+                if (chart.redrawDrawings) {
+                    chart.redrawDrawings();
+                }
+                
+                // Reset crosshair elements - they will appear on mouse hover
+                const crosshairV = document.querySelector('.crosshair-vertical');
+                const crosshairH = document.querySelector('.crosshair-horizontal');
+                const priceLabel = document.querySelector('.price-label');
+                const timeLabel = document.querySelector('.time-label');
+                
+                if (crosshairV) crosshairV.style.display = 'none';
+                if (crosshairH) crosshairH.style.display = 'none';
+                if (priceLabel) priceLabel.style.display = 'none';
+                if (timeLabel) timeLabel.style.display = 'none';
+                
+                // Ensure tooltip is hidden
+                if (chart.hideTooltip) chart.hideTooltip();
+                
+                // Update OHLC display with last candle
+                if (chart.data && chart.data.length > 0) {
+                    const lastCandle = chart.data[chart.data.length - 1];
+                    if (chart.updateOHLCFromCandle) {
+                        chart.updateOHLCFromCandle(lastCandle);
+                    }
+                }
+                
+                console.log('✅ Main chart fully restored - cursorType:', chart.cursorType, 'showLines:', chart.showCrosshairLines);
+            };
+
+            // First pass: after DOM settles
+            requestAnimationFrame(() => {
+                _restoreMainChart();
+                // Second pass: catch late reflows where container size wasn't final yet
+                requestAnimationFrame(() => {
+                    if (window.chart) {
+                        if (window.chart._lastResizeDpr !== undefined) window.chart._lastResizeDpr = 0;
+                        if (window.chart.resize) window.chart.resize();
+                        if (window.chart.render) window.chart.render();
+                    }
+                });
             });
             
             // Dispatch event when returning to single panel mode
