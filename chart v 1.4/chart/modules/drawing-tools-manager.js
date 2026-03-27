@@ -2589,7 +2589,13 @@ class DrawingToolsManager {
         }
 
         point = this.clampPointToCandleRange(point, activeToolType);
-        
+
+        // Keep panel/original behavior consistent for non-freehand tools:
+        // anchor X to candle indices so points cannot land between candles.
+        if (!isContinuousTool) {
+            point = this.snapPointXToNearestCandle(point);
+        }
+
         return point;
     }
 
@@ -2647,6 +2653,14 @@ class DrawingToolsManager {
         }
 
         drawing.points = drawing.points.map(point => this.clampPointToCandleRange(point, drawing.type));
+    }
+
+    snapPointXToNearestCandle(point) {
+        if (!point || !Number.isFinite(point.x)) return point;
+        return {
+            ...point,
+            x: Math.round(point.x)
+        };
     }
 
 
