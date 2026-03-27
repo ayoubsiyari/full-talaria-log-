@@ -24155,11 +24155,11 @@
         /* Full-length overlay divider line — always visible */
         .panel-resize-handle.vertical {
             cursor: col-resize;
-            width: 5px;
-            transform: translateX(-2.5px);
+            width: 3.75px;
+            transform: translateX(-1.875px);
             background: transparent;
-            border-left: 2px solid transparent;
-            border-right: 2px solid transparent;
+            border-left: 1.5px solid transparent;
+            border-right: 1.5px solid transparent;
             border-top: none;
             border-bottom: none;
             box-sizing: border-box;
@@ -24168,11 +24168,11 @@
         }
         .panel-resize-handle.horizontal {
             cursor: row-resize;
-            height: 5px;
-            transform: translateY(-2.5px);
+            height: 3.75px;
+            transform: translateY(-1.875px);
             background: transparent;
-            border-top: 2px solid transparent;
-            border-bottom: 2px solid transparent;
+            border-top: 1.5px solid transparent;
+            border-bottom: 1.5px solid transparent;
             border-left: none;
             border-right: none;
             box-sizing: border-box;
@@ -24182,9 +24182,11 @@
         /* Hover — line brightens */
         .panel-resize-handle.vertical:hover {
             background-color: #ffffff;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0 10px rgba(255,255,255,0.55);
         }
         .panel-resize-handle.horizontal:hover {
             background-color: #ffffff;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0 10px rgba(255,255,255,0.55);
         }
         /* Dragging — accent blue */
         .panel-resize-handle.vertical.dragging {
