@@ -108,20 +108,38 @@ class PanelManager {
     restoreSavedStateOnInit() {
         const saved = this.loadPanelState();
         if (!saved || !saved.layout || saved.layout === '1') return;
-        this._isRestoringSavedState = true;
-        requestAnimationFrame(() => {
-            this.applyLayout(saved.layout);
-            const desired = Number.isFinite(saved.selectedPanelIndex) ? saved.selectedPanelIndex : 0;
+        const isMainChartReady = () => {
+            const c = typeof window !== 'undefined' ? window.chart : null;
+            if (!c) return false;
+            if (!c.canvas) return false;
+            if (!Array.isArray(c.data) || c.data.length === 0) return false;
+            return true;
+        };
+        const desired = Number.isFinite(saved.selectedPanelIndex) ? saved.selectedPanelIndex : 0;
+        let attempts = 0;
+        const maxAttempts = 30; // ~9s
+        const tryRestore = () => {
+            if (!isMainChartReady()) {
+                attempts += 1;
+                if (attempts >= maxAttempts) return; // Keep original chart if not ready
+                setTimeout(tryRestore, 300);
+                return;
+            }
+            this._isRestoringSavedState = true;
             requestAnimationFrame(() => {
-                const maxIndex = Math.max(0, this.panels.length - 1);
-                this.selectPanel(Math.max(0, Math.min(maxIndex, desired)));
+                this.applyLayout(saved.layout);
+                requestAnimationFrame(() => {
+                    const maxIndex = Math.max(0, this.panels.length - 1);
+                    this.selectPanel(Math.max(0, Math.min(maxIndex, desired)));
+                });
+                // Release restore guard after panel init/restore has had time to complete.
+                setTimeout(() => {
+                    this._isRestoringSavedState = false;
+                    this.savePanelState();
+                }, 1800);
             });
-            // Release restore guard after panel init/restore has had time to complete.
-            setTimeout(() => {
-                this._isRestoringSavedState = false;
-                this.savePanelState();
-            }, 1800);
-        });
+        };
+        tryRestore();
     }
     
     /**
