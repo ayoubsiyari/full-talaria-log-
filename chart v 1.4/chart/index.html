@@ -1542,7 +1542,7 @@
 
         body.light-mode #chart-container canvas,
 
-        body.light-mode #chart-container *:not(.ohlc-dot-flag):not(.ssd-flag):not(.panel-resize-handle):not(.panel-follow-btn):not(#replayFollow):not(.chart-panel):not(#chartWrapper):not(.panel-selection-ring) {
+        body.light-mode #chart-container *:not(.ohlc-dot-flag):not(.ssd-flag):not(.panel-resize-handle):not(.panel-follow-btn):not(#replayFollow):not(.chart-panel):not(#chartWrapper) {
 
             border: none !important;
 
@@ -24032,7 +24032,7 @@
 
         #chart-container canvas,
 
-        #chart-container *:not(.panel-selection-ring) {
+        #chart-container * {
 
             user-select: none;
 
@@ -24063,30 +24063,26 @@
             pointer-events: none;
             opacity: 0.85;
             transition: opacity 0.15s ease;
-            display: none !important;
         }
         .panel-selected > .panel-select-bar,
         .panel-selected .panel-select-bar {
             opacity: 1;
         }
 
-        /* Selection frame: inner ring div (panel-manager) + higher z-index on selected panel so neighbors don't cover edges. */
-        #chart-container .chart-panel .panel-selection-ring {
-            display: none;
-            position: absolute;
-            inset: 0;
-            box-sizing: border-box;
-            pointer-events: none;
-            z-index: 35;
-            border-radius: 2px;
+        /* Selected-panel frame: inset ring above chart content (survives global reset rules). */
+        #chart-container .panel-selected {
+            position: relative;
+            z-index: 6;
         }
-        #chart-container .chart-panel.panel-selected .panel-selection-ring {
-            display: block !important;
+        #chart-container .panel-selected::after {
+            content: '';
+            position: absolute;
+            inset: 2px; /* keep ring inside panel so split borders remain clean */
             border: 2px solid rgba(65, 154, 255, 0.84) !important;
             box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
-        }
-        #chart-container .chart-panel.panel-selected::after {
-            content: none !important;
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 5000;
         }
 
         .chart-panel .ohlc-info {
@@ -41771,7 +41767,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_PANEL_RING_ZSTACK_V103"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V102"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
