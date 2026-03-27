@@ -24067,7 +24067,7 @@
             position: absolute;
             inset: 0;
             box-sizing: border-box;
-            border: 2px solid rgba(65, 154, 255, 0.84) !important;
+            border: 3px solid rgba(65, 154, 255, 0.84) !important;
             box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
             border-radius: 2px;
             pointer-events: none;
@@ -24078,7 +24078,7 @@
            always paints above the resize lines (z-index 250 > resize handle 200). */
         #chart-container > .panel-selection-frame {
             position: absolute;
-            border: 2px solid rgba(65, 154, 255, 0.84) !important;
+            border: 3px solid rgba(65, 154, 255, 0.84) !important;
             box-shadow: 0 0 10px rgba(41, 98, 255, 0.32) !important;
             border-radius: 2px;
             pointer-events: none;
@@ -44614,10 +44614,18 @@
                 _forEachChart(function(c) {
                     if (typeof c.clearOnlyDrawings === 'function') {
                         c.clearOnlyDrawings({ confirmPrompt: false });
+                    } else if (c.drawingManager && typeof c.drawingManager.clearDrawings === 'function') {
+                        c.drawingManager.clearDrawings({ confirmPrompt: false });
                     } else if (c.drawingManager) {
                         var all = (c.drawingManager.drawings || []).slice();
-                        all.forEach(function(d){ c.drawingManager.deleteDrawing(d); });
+                        all.forEach(function(d){ if (typeof d.destroy === 'function') d.destroy(); });
+                        c.drawingManager.drawings = [];
+                        c.drawingManager.selectedDrawing = null;
+                        if (c.drawingManager.drawingsGroup) c.drawingManager.drawingsGroup.selectAll('*').remove();
+                        if (typeof c.drawingManager.saveDrawings === 'function') c.drawingManager.saveDrawings();
                     }
+                    if (typeof c.redrawDrawings === 'function') c.redrawDrawings();
+                    if (typeof c.render === 'function') c.render();
                 });
 
                 document.querySelectorAll('.tool-dropdown').forEach(function(dd){ dd.classList.remove('show'); dd.style.display=''; });
@@ -44631,8 +44639,8 @@
                         c.clearOnlyIndicators({ confirmPrompt: false });
                     } else if (c.indicators && Array.isArray(c.indicators.active)) {
                         c.indicators.active = [];
-                        if (c.render) c.render();
                     }
+                    if (typeof c.render === 'function') c.render();
                 });
 
                 document.querySelectorAll('.tool-dropdown').forEach(function(dd){ dd.classList.remove('show'); dd.style.display=''; });
@@ -44647,17 +44655,17 @@
                     } else {
                         if (typeof c.clearOnlyDrawings === 'function') {
                             c.clearOnlyDrawings({ confirmPrompt: false });
-                        } else if (c.drawingManager) {
-                            var all = (c.drawingManager.drawings || []).slice();
-                            all.forEach(function(d){ c.drawingManager.deleteDrawing(d); });
+                        } else if (c.drawingManager && typeof c.drawingManager.clearDrawings === 'function') {
+                            c.drawingManager.clearDrawings({ confirmPrompt: false });
                         }
                         if (typeof c.clearOnlyIndicators === 'function') {
                             c.clearOnlyIndicators({ confirmPrompt: false });
                         } else if (c.indicators && Array.isArray(c.indicators.active)) {
                             c.indicators.active = [];
-                            if (c.render) c.render();
                         }
                     }
+                    if (typeof c.redrawDrawings === 'function') c.redrawDrawings();
+                    if (typeof c.render === 'function') c.render();
                 });
 
                 document.querySelectorAll('.tool-dropdown').forEach(function(dd){ dd.classList.remove('show'); dd.style.display=''; });
@@ -45500,7 +45508,7 @@
 
                     
 
-                    // Inherit cursor type and crosshair sync from main chart
+                    // Inherit cursor type, crosshair sync, and magnet mode from main chart
 
                     if (window.chart) {
 
@@ -45511,6 +45519,13 @@
                         panelChart.syncCrosshair = window.chart.syncCrosshair !== false;
 
                         panelChart.syncDrawings = window.chart.syncDrawings !== false;
+
+                        // Inherit magnet mode
+                        var mMode = window.chart.magnetMode || window.magnetMode || 'off';
+                        panelChart.magnetMode = mMode;
+                        if (panelChart.drawingManager) {
+                            panelChart.drawingManager.magnetMode = mMode;
+                        }
 
                         
 
@@ -48881,6 +48896,22 @@ function showIndicatorsMenu() {
 
                         window.chart.magnetMode = mode;
 
+                    }
+
+                    // Sync to all panel chart instances
+                    var pm = window.panelManager;
+                    if (pm && pm.panels) {
+                        pm.panels.forEach(function(p) {
+                            if (p && p.chartInstance && p.chartInstance !== window.chart) {
+                                p.chartInstance.magnetMode = mode;
+                                if (p.chartInstance.drawingManager) {
+                                    p.chartInstance.drawingManager.magnetMode = mode;
+                                    if (typeof p.chartInstance.drawingManager.setMagnetMode === 'function') {
+                                        p.chartInstance.drawingManager.setMagnetMode(mode);
+                                    }
+                                }
+                            }
+                        });
                     }
 
                     // Store globally as fallback
@@ -57549,7 +57580,9 @@ P['panellayout']={
 
         ctx.querySelectorAll('.pl-sync-row').forEach(function(row){
 
-            row.addEventListener('click',function(){
+            row.addEventListener('click',function(e){
+
+                if(e.target.tagName==='INPUT') return;
 
                 var checkbox=this.querySelector('input[type="checkbox"]');
 
