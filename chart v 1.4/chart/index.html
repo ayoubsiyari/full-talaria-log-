@@ -5761,13 +5761,13 @@
 
             display: grid;
 
-            grid-template-columns: 24px 1fr;
+            grid-template-columns: 16px 1fr;
 
             align-items: center;
 
-            gap: 12px;
+            gap: 8px;
 
-            padding: 12px 4px;
+            padding: 6px 4px;
 
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 
@@ -5785,11 +5785,11 @@
 
         .pl-layout-count {
 
-            font-size: 18px;
+            font-size: 12px;
 
             line-height: 1;
 
-            color: #9598a1;
+            color: #787b86;
 
             font-variant-numeric: tabular-nums;
 
@@ -5809,7 +5809,7 @@
 
             flex-wrap: wrap;
 
-            gap: 6px;
+            gap: 4px;
 
         }
 
@@ -5825,27 +5825,23 @@
 
             justify-content: center;
 
-            width: 42px;
+            width: 34px;
 
-            height: 28px;
+            height: 22px;
 
-            padding: 4px;
+            padding: 2px;
 
-            border: 1.5px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.12);
 
-            background: rgba(19, 23, 34, 0.4);
+            background: transparent;
 
-            border-radius: 4px;
+            border-radius: 3px;
 
             color: #787b86;
 
             cursor: pointer;
 
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-
-            backdrop-filter: blur(4px);
+            transition: all 0.15s ease;
 
             overflow: hidden;
 
@@ -5855,25 +5851,7 @@
 
         .pl-layout-btn::before {
 
-            content: '';
-
-            position: absolute;
-
-            inset: 0;
-
-            background: radial-gradient(circle at center, rgba(255,255,255,0.08) 0%, transparent 70%);
-
-            opacity: 0;
-
-            transition: opacity 0.3s ease;
-
-        }
-
-
-
-        .pl-layout-btn:hover::before {
-
-            opacity: 1;
+            display: none;
 
         }
 
@@ -5883,13 +5861,9 @@
 
             border-color: rgba(255, 255, 255, 0.25);
 
-            background: rgba(42, 46, 57, 0.6);
+            background: rgba(42, 46, 57, 0.5);
 
             color: #d1d4dc;
-
-            transform: translateY(-1px);
-
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 
         }
 
@@ -5899,11 +5873,9 @@
 
             border-color: #2962ff;
 
-            background: rgba(41, 98, 255, 0.15);
+            background: rgba(41, 98, 255, 0.12);
 
             color: #2962ff;
-
-            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.2), 0 2px 4px rgba(41, 98, 255, 0.1);
 
         }
 
@@ -5911,9 +5883,7 @@
 
         .pl-layout-btn.active:hover {
 
-            background: rgba(41, 98, 255, 0.22);
-
-            transform: translateY(-1px);
+            background: rgba(41, 98, 255, 0.2);
 
         }
 
@@ -5921,9 +5891,9 @@
 
         .pl-layout-btn svg {
 
-            width: 32px;
+            width: 26px;
 
-            height: 20px;
+            height: 16px;
 
         }
 
@@ -5957,13 +5927,11 @@
 
         body.light-mode .pl-layout-btn {
 
-            border-color: rgba(5, 0, 40, 0.18);
+            border-color: rgba(5, 0, 40, 0.15);
 
-            background: rgba(240, 243, 250, 0.8);
+            background: transparent;
 
             color: #787b86;
-
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 
         }
 
@@ -5973,13 +5941,9 @@
 
             border-color: rgba(5, 0, 40, 0.3);
 
-            background: rgba(226, 229, 240, 0.9);
+            background: rgba(226, 229, 240, 0.5);
 
             color: #131722;
-
-            transform: translateY(-1px);
-
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
         }
 
@@ -5989,11 +5953,9 @@
 
             border-color: #2962ff;
 
-            background: rgba(41, 98, 255, 0.1);
+            background: rgba(41, 98, 255, 0.08);
 
             color: #2962ff;
-
-            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.15), 0 2px 4px rgba(41, 98, 255, 0.08);
 
         }
 
@@ -6001,9 +5963,7 @@
 
         body.light-mode .pl-layout-btn.active:hover {
 
-            background: rgba(41, 98, 255, 0.15);
-
-            transform: translateY(-1px);
+            background: rgba(41, 98, 255, 0.14);
 
         }
 
@@ -56953,7 +56913,7 @@ P['watchlist']={
 
 P['panellayout']={
 
-    _options:['1','2v','2h','3v','3h','3l','4','4h','4v','4t','4b','4r','5a','5b','5c','5v','5h','6','6b','6v','6h','7a','7v','8','8b','8v','8h'],
+    _options:['1','2v','2h','3v','3h','3l','3r','3t','3b','4','4h','4v','4t','4b','4r','4l','4tl','5a','5b','5c','5v','5h','6','6b','6v','6h','7a','7v','8','8b','8v','8h'],
 
     _layoutGroups:[
 
@@ -56961,9 +56921,9 @@ P['panellayout']={
 
         { count:'2', codes:['2v','2h'] },
 
-        { count:'3', codes:['3v','3h','3l'] },
+        { count:'3', codes:['3v','3h','3l','3r','3t','3b'] },
 
-        { count:'4', codes:['4','4h','4v','4t','4b','4r'] },
+        { count:'4', codes:['4','4h','4v','4t','4b','4r','4l','4tl'] },
 
         { count:'5', codes:['5a','5b','5c','5v','5h'] },
 
@@ -56977,9 +56937,9 @@ P['panellayout']={
 
     _labels:{
 
-        '1':'Single panel','2v':'Two vertical','2h':'Two horizontal','3v':'Three vertical','3h':'Three horizontal','3l':'Left + two right',
+        '1':'Single panel','2v':'Two vertical','2h':'Two horizontal','3v':'Three vertical','3h':'Three horizontal','3l':'Left + two right','3r':'Two left + right','3t':'Top + two bottom','3b':'Two top + bottom',
 
-        '4':'2x2 grid','4v':'Four vertical','4h':'Four horizontal','4t':'Top + three bottom','4b':'Three top + bottom','4r':'Three left + right',
+        '4':'2x2 grid','4v':'Four vertical','4h':'Four horizontal','4t':'Top + three bottom','4b':'Three top + bottom','4r':'Three left + right','4l':'Left + three right','4tl':'Top-left large + 3',
 
         '5a':'Top 2 + bottom 3','5b':'Top 3 + bottom 2','5c':'Left 2 + right 3','5v':'Five vertical','5h':'Five horizontal',
 
@@ -57001,6 +56961,12 @@ P['panellayout']={
 
         '3l':[{l:0,t:0,w:50,h:100},{l:50,t:0,w:50,h:50},{l:50,t:50,w:50,h:50}],
 
+        '3r':[{l:0,t:0,w:50,h:50},{l:0,t:50,w:50,h:50},{l:50,t:0,w:50,h:100}],
+
+        '3t':[{l:0,t:0,w:100,h:50},{l:0,t:50,w:50,h:50},{l:50,t:50,w:50,h:50}],
+
+        '3b':[{l:0,t:0,w:50,h:50},{l:50,t:0,w:50,h:50},{l:0,t:50,w:100,h:50}],
+
         '4':[{l:0,t:0,w:50,h:50},{l:50,t:0,w:50,h:50},{l:0,t:50,w:50,h:50},{l:50,t:50,w:50,h:50}],
 
         '4v':[{l:0,t:0,w:25,h:100},{l:25,t:0,w:25,h:100},{l:50,t:0,w:25,h:100},{l:75,t:0,w:25,h:100}],
@@ -57012,6 +56978,10 @@ P['panellayout']={
         '4b':[{l:0,t:0,w:33.33,h:50},{l:33.33,t:0,w:33.33,h:50},{l:66.66,t:0,w:33.34,h:50},{l:0,t:50,w:100,h:50}],
 
         '4r':[{l:0,t:0,w:50,h:33.33},{l:0,t:33.33,w:50,h:33.33},{l:0,t:66.66,w:50,h:33.34},{l:50,t:0,w:50,h:100}],
+
+        '4l':[{l:0,t:0,w:50,h:100},{l:50,t:0,w:50,h:33.33},{l:50,t:33.33,w:50,h:33.33},{l:50,t:66.66,w:50,h:33.34}],
+
+        '4tl':[{l:0,t:0,w:66.66,h:66.66},{l:66.66,t:0,w:33.34,h:33.33},{l:66.66,t:33.33,w:33.34,h:33.33},{l:0,t:66.66,w:100,h:33.34}],
 
         '5a':[{l:0,t:0,w:50,h:50},{l:50,t:0,w:50,h:50},{l:0,t:50,w:33.33,h:50},{l:33.33,t:50,w:33.33,h:50},{l:66.66,t:50,w:33.34,h:50}],
 
@@ -57049,7 +57019,7 @@ P['panellayout']={
 
         var cells=this._iconLayouts[layoutCode]||this._iconLayouts['1'];
 
-        var w=40,h=26,pad=1.5;
+        var w=28,h=18,pad=1;
 
         var rects=cells.map(function(c){
 
@@ -57061,11 +57031,11 @@ P['panellayout']={
 
             var rh=(c.h/100)*h-pad;
 
-            return '<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+rw.toFixed(2)+'" height="'+rh.toFixed(2)+'" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>';
+            return '<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+rw.toFixed(2)+'" height="'+rh.toFixed(2)+'" rx="1" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>';
 
         }).join('');
 
-        return '<svg viewBox="0 0 42 28" width="40" height="26" fill="none" aria-hidden="true" style="display:block;">'+rects+'</svg>';
+        return '<svg viewBox="0 0 30 20" width="28" height="18" fill="none" aria-hidden="true" style="display:block;">'+rects+'</svg>';
 
     },
 
@@ -57120,13 +57090,13 @@ P['panellayout']={
         function syncRow(label,id,enabled){return '<div class="pl-sync-row"><label class="pl-sync-label" for="'+id+'">'+label+'</label><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
         }
 
-        return '<div class="sp-embedded" style="padding:20px 24px;min-height:100%;box-sizing:border-box;">'+
+        return '<div class="sp-embedded" style="padding:14px 18px;min-height:100%;box-sizing:border-box;">'+
 
-            '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);">Panel Layouts</div>'+
+            '<div style="font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">Panel Layouts</div>'+
 
             '<div class="pl-layout-rows">'+rows+'</div>'+
 
-            '<div style="font-size:11px;font-weight:700;color:#9598a1;text-transform:uppercase;letter-spacing:.08em;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);">Sync in Layout</div>'+
+            '<div style="font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">Sync in Layout</div>'+
 
             '<div class="pl-sync-list">'+
 
