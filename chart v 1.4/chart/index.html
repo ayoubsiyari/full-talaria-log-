@@ -24080,14 +24080,7 @@
             border-radius: 2px;
         }
         #chart-container .panel-selected::after {
-            content: '';
-            position: absolute;
-            inset: 2px; /* keep ring inside panel so split borders remain clean */
-            border: 2px solid rgba(65, 154, 255, 0.84) !important;
-            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
-            border-radius: 2px;
-            pointer-events: none;
-            z-index: 5000;
+            content: none !important;
         }
 
         .chart-panel .ohlc-info {
