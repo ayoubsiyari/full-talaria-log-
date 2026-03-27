@@ -10615,9 +10615,6 @@ class Chart {
             }
         }
 
-        // Draw current price indicator (latest close price)
-        this.drawCurrentPriceLabel(visible);
-        
         // Update logo for current theme
         this.updateLogoForTheme();
 
@@ -10658,6 +10655,9 @@ class Chart {
         // Draw axes LAST so the price/time axis always overlays candles and other chart content.
         // This makes candles hide behind the axis instead of drawing above it.
         this.drawAxes();
+
+        // Draw current price label AFTER axes so it isn't covered by the axis background fill
+        this.drawCurrentPriceLabel(visible);
         
         // Show loading indicator if loading data
         if (this.isLoadingChunk) {

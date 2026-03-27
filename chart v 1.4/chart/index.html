@@ -5761,13 +5761,13 @@
 
             display: grid;
 
-            grid-template-columns: 16px 1fr;
+            grid-template-columns: 18px 1fr;
 
             align-items: center;
 
-            gap: 8px;
+            gap: 10px;
 
-            padding: 6px 4px;
+            padding: 8px 4px;
 
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 
@@ -5785,7 +5785,7 @@
 
         .pl-layout-count {
 
-            font-size: 12px;
+            font-size: 14px;
 
             line-height: 1;
 
@@ -5809,7 +5809,7 @@
 
             flex-wrap: wrap;
 
-            gap: 4px;
+            gap: 5px;
 
         }
 
@@ -5825,11 +5825,11 @@
 
             justify-content: center;
 
-            width: 34px;
+            width: 38px;
 
-            height: 22px;
+            height: 24px;
 
-            padding: 2px;
+            padding: 3px;
 
             border: none;
 
@@ -5887,9 +5887,9 @@
 
         .pl-layout-btn svg {
 
-            width: 26px;
+            width: 30px;
 
-            height: 16px;
+            height: 18px;
 
         }
 
@@ -5983,15 +5983,15 @@
 
             align-items: center;
 
-            padding: 4px 6px;
+            padding: 5px 8px;
 
-            margin: 0 -6px;
+            margin: 0 -8px;
 
             min-height: 0;
 
             border-radius: 4px;
 
-            font-size: 12px;
+            font-size: 13px;
 
             color: #d1d4dc;
 
@@ -41738,7 +41738,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260327_CTRL_PANEL_FIX_V253"></script>
+    <script defer src="chart.js?v=20260327_PRICE_LABEL_FIX_V254"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -57013,7 +57013,7 @@ P['panellayout']={
 
         var cells=this._iconLayouts[layoutCode]||this._iconLayouts['1'];
 
-        var w=28,h=18,pad=1;
+        var w=32,h=20,pad=1.2;
 
         var rects=cells.map(function(c){
 
@@ -57029,7 +57029,7 @@ P['panellayout']={
 
         }).join('');
 
-        return '<svg viewBox="0 0 30 20" width="28" height="18" fill="none" aria-hidden="true" style="display:block;">'+rects+'</svg>';
+        return '<svg viewBox="0 0 34 22" width="32" height="20" fill="none" aria-hidden="true" style="display:block;">'+rects+'</svg>';
 
     },
 
@@ -57084,13 +57084,13 @@ P['panellayout']={
         function syncRow(label,id,enabled){return '<div class="pl-sync-row"><label class="pl-sync-label" for="'+id+'">'+label+'</label><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
         }
 
-        return '<div class="sp-embedded" style="padding:14px 18px;min-height:100%;box-sizing:border-box;">'+
+        return '<div class="sp-embedded" style="padding:16px 20px;min-height:100%;box-sizing:border-box;">'+
 
-            '<div style="font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">Panel Layouts</div>'+
+            '<div style="font-size:11px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">Panel Layouts</div>'+
 
             '<div class="pl-layout-rows">'+rows+'</div>'+
 
-            '<div style="font-size:10px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">Sync in Layout</div>'+
+            '<div style="font-size:11px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">Sync in Layout</div>'+
 
             '<div class="pl-sync-list">'+
 
