@@ -14914,19 +14914,28 @@ class Chart {
 
         let crosshairY = y;
         let crosshairPrice = this.yScale ? this.yScale.invert(y) : null;
-        const shouldCtrlSnapCrosshair = !!(
-            _dm
-            && _dm.currentTool
-            && (e.ctrlKey || e.metaKey)
-            && this.yScale
-            && hasSnappedCandle
-            && Number.isFinite(crosshairPrice)
-        );
-        if (shouldCtrlSnapCrosshair) {
-            const snappedPrice = this.snapToOHLC(dataIdx, crosshairPrice, { force: true });
-            if (Number.isFinite(snappedPrice)) {
-                crosshairPrice = snappedPrice;
-                crosshairY = this.yScale(snappedPrice);
+
+        // Snap horizontal crosshair to nearest OHLC when magnet is active or Ctrl+draw
+        const magnetMode = (this.drawingManager && this.drawingManager.magnetMode) || this.magnetMode || 'off';
+        const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
+        const ctrlHeld = e.ctrlKey || e.metaKey;
+        const shouldSnapCrosshair = this.yScale && hasSnappedCandle && Number.isFinite(crosshairPrice)
+            && (magnetActive || (ctrlHeld && _dm && _dm.currentTool));
+        if (shouldSnapCrosshair) {
+            const candle = snappedCandle;
+            const ohlc = [candle.o, candle.h, candle.l, candle.c];
+            let closest = ohlc[0], minDist = Math.abs(crosshairPrice - closest);
+            for (let i = 1; i < ohlc.length; i++) {
+                const dist = Math.abs(crosshairPrice - ohlc[i]);
+                if (dist < minDist) { minDist = dist; closest = ohlc[i]; }
+            }
+            const closestPx = this.yScale(closest);
+            const pxDist = Math.abs(y - closestPx);
+            // 'weak' only snaps within 20px, 'strong' / ctrl always snaps
+            const forceSnap = magnetMode === 'strong' || magnetMode === true || ctrlHeld;
+            if (forceSnap || pxDist <= 20) {
+                crosshairPrice = closest;
+                crosshairY = closestPx;
             }
         }
         
