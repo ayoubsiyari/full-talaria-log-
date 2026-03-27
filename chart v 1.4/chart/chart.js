@@ -14943,7 +14943,7 @@ class Chart {
             const pxDist = Math.abs(y - closestPx);
             // 'weak' only snaps within 20px, 'strong' / ctrl always snaps
             const forceSnap = magnetMode === 'strong' || magnetMode === true || ctrlHeld;
-            if (forceSnap || pxDist <= 20) {
+            if (forceSnap || pxDist <= 30) {
                 crosshairPrice = closest;
                 crosshairY = closestPx;
             }
