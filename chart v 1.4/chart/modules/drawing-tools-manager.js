@@ -1236,6 +1236,14 @@ class DrawingToolsManager {
         return `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     }
 
+    _ensureDrawingId(drawing) {
+        if (!drawing) return null;
+        if (!drawing.id) {
+            drawing.id = `dr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        }
+        return drawing.id;
+    }
+
     _syncLivePreviewDrawing(tempDrawing) {
         if (!tempDrawing || !this.chart || !this.chart.broadcastDrawingChange) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
@@ -2777,6 +2785,8 @@ class DrawingToolsManager {
         const drawing = new toolInfo.class(...args);
         if (this._liveSyncDrawingId) {
             drawing.id = this._liveSyncDrawingId;
+        } else {
+            this._ensureDrawingId(drawing);
         }
         
         // Apply saved style for this tool type
@@ -3079,6 +3089,7 @@ class DrawingToolsManager {
      * Add a completed drawing
      */
     addDrawing(drawing) {
+        this._ensureDrawingId(drawing);
         // Set chart reference for timestamp conversion
         drawing.chart = this.chart;
         
@@ -4880,6 +4891,7 @@ class DrawingToolsManager {
      * Delete a drawing
      */
     deleteDrawing(drawing) {
+        this._ensureDrawingId(drawing);
         const index = this.drawings.indexOf(drawing);
         if (index > -1) {
             if (this._rafRenderSet) {
@@ -5109,7 +5121,7 @@ class DrawingToolsManager {
             
             // Broadcast to other panels in real-time
             if (this.chart.broadcastDrawingChange) {
-                this.chart.broadcastDrawingChange('remove', drawing, index);
+                this.chart.broadcastDrawingChange('remove', { id: drawing.id }, index);
             }
             
             // Refresh object tree if available
@@ -5392,6 +5404,7 @@ class DrawingToolsManager {
     saveDrawings() {
         // Ensure all drawings have chart reference before saving
         this.drawings.forEach(d => {
+            this._ensureDrawingId(d);
             if (!d.chart) {
                 d.chart = this.chart;
                 // [debug removed]
