@@ -17664,6 +17664,21 @@ class Chart {
         return out;
     }
 
+    _buildTimestampPointsFromSyncAnchors(drawingData) {
+        if (!drawingData) return null;
+        const out = [];
+        if (Array.isArray(drawingData.__syncPointAnchors) && Array.isArray(drawingData.points)) {
+            for (let i = 0; i < drawingData.__syncPointAnchors.length; i++) {
+                const a = drawingData.__syncPointAnchors[i];
+                const p = drawingData.points[i];
+                if (!a || !Number.isFinite(a.timestamp)) continue;
+                const price = p && Number.isFinite(p.price) ? p.price : (p && Number.isFinite(p.y) ? p.y : (Number.isFinite(a.y) ? a.y : null));
+                out.push({ timestamp: a.timestamp, price });
+            }
+        }
+        return out.length ? out : null;
+    }
+
     _normalizeSymbolForDrawingSync(symbol) {
         if (symbol === undefined || symbol === null) return '';
         return String(symbol).replace(/\s+/g, '').replace(/\//g, '').toUpperCase();
@@ -17734,7 +17749,17 @@ class Chart {
                 const existingById = incomingId ? dm.drawings.find(d => d && d.id === incomingId) : null;
                 // Live preview path may send repeated "add" for the same temp id; update in place.
                 if (existingById) {
-                    if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+                    if (
+                        drawingData.coordinateSystem === 'timestamp' &&
+                        drawingData.points &&
+                        this.data &&
+                        this.data.length > 0 &&
+                        Array.isArray(drawingData.__syncPointAnchors)
+                    ) {
+                        existingById.points = drawingData.points;
+                        const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
+                        if (tsPoints) existingById.timestampPoints = tsPoints;
+                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
                         if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                             const originalTimestampPoints = drawingData.points.map(p => ({
                                 timestamp: p.timestamp,
@@ -17755,7 +17780,18 @@ class Chart {
                 } else {
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
-                if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+                if (
+                    drawingData.coordinateSystem === 'timestamp' &&
+                    drawingData.points &&
+                    this.data &&
+                    this.data.length > 0 &&
+                    Array.isArray(drawingData.__syncPointAnchors)
+                ) {
+                    const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
+                    if (tsPoints) {
+                        drawingData._originalTimestampPoints = tsPoints;
+                    }
+                } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
                     if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                         // Preserve original timestamp points for storage
                         const originalTimestampPoints = drawingData.points.map(p => ({
@@ -17838,7 +17874,17 @@ class Chart {
                     this._applyDrawingSyncAnchors(drawingData);
                     
                     // Convert timestamp points to indices for THIS panel's data
-                    if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+                    if (
+                        drawingData.coordinateSystem === 'timestamp' &&
+                        drawingData.points &&
+                        this.data &&
+                        this.data.length > 0 &&
+                        Array.isArray(drawingData.__syncPointAnchors)
+                    ) {
+                        existingDrawing.points = drawingData.points;
+                        const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
+                        if (tsPoints) existingDrawing.timestampPoints = tsPoints;
+                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
                         if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                             // Preserve original timestamp points
                             const originalTimestampPoints = drawingData.points.map(p => ({
