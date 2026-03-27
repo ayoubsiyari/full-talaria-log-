@@ -24050,29 +24050,26 @@
 
         }
 
-        /* Panel selection — subtle top-left accent (TradingView / FXReplay style) */
+        /* Panel selection marker */
         .panel-select-bar {
             position: absolute;
             top: 0;
             left: 0;
-            width: 3px;
-            height: 32px;
-            border-radius: 0 3px 3px 0;
+            width: 2px;
+            height: 20px;
+            border-radius: 0 2px 2px 0;
             background: var(--sp-accent, #2962FF);
             z-index: 200;
             pointer-events: none;
-            opacity: 0;
-            transform: scaleY(0);
-            transform-origin: top;
-            transition: opacity 0.18s ease, transform 0.18s ease;
+            opacity: 0.85;
+            transition: opacity 0.15s ease;
         }
         .panel-selected > .panel-select-bar,
         .panel-selected .panel-select-bar {
             opacity: 1;
-            transform: scaleY(1);
         }
 
-        /* Full panel selection outline (TradingView-like blue border) */
+        /* Subtle selected-panel outline (clean TradingView-like) */
         .panel-selected {
             position: relative;
         }
@@ -24080,7 +24077,8 @@
             content: '';
             position: absolute;
             inset: 0;
-            border: 1px solid #4da3ff;
+            border: 1px solid rgba(65, 154, 255, 0.55);
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.12);
             box-sizing: border-box;
             pointer-events: none;
             z-index: 180;
