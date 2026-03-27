@@ -6629,7 +6629,9 @@ class Chart {
         if (!this.currentFileId || this.totalCandles <= this.chunkSize) return;
         
         const m = this.margin;
-        const cw = this.w - m.l - m.r;
+        // Include the right-axis zone in horizontal visibility so candles can move under it
+        // before dropping from render (TradingView-like edge behavior).
+        const cw = this.w - m.l;
         const candleSpacing = this.getCandleSpacing();
         
         // Calculate visible range
@@ -11713,10 +11715,11 @@ class Chart {
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         const priceAreaBottom = this.h - m.b - volumeAreaHeight;
         
-        // Create clipping region to prevent drawing outside chart area
+        // Create clipping region for chart body.
+        // Include the right axis zone so the last candle can slide behind it (TradingView-like).
         this.ctx.save();
         this.ctx.beginPath();
-        this.ctx.rect(m.l, m.t, this.w - m.l - m.r, priceAreaBottom - m.t);
+        this.ctx.rect(m.l, m.t, this.w - m.l, priceAreaBottom - m.t);
         this.ctx.clip();
         
         // Transform data for Heikin Ashi if needed
@@ -12107,11 +12110,11 @@ class Chart {
             // Calculate X position using our helper method
             const x = this.dataIndexToPixel(idx);
             
-            // Extend left visible area to prevent popping, but stop at price axis on right
+            // Extend visible area to prevent popping on both edges.
             const extendedMargin = this.candleWidth * 2;
             
-            // Visibility check - don't draw candles in the price axis area
-            if (x < m.l - extendedMargin || x > this.w - m.r - this.candleWidth) {
+            // Allow drawing into right-axis zone so candles hide behind the axis instead of disappearing early.
+            if (x < m.l - extendedMargin || x > this.w + extendedMargin) {
                 skipped++;
                 return;
             }
@@ -12386,7 +12389,9 @@ class Chart {
      */
     getVisibleEndIndex() {
         if (!this.data || this.data.length === 0) return 0;
-        const endIdx = Math.ceil(this.pixelToDataIndex(this.w - this.margin.r));
+        // Treat the right-axis zone as part of the drawable viewport so the last candle
+        // remains rendered while moving behind the axis.
+        const endIdx = Math.ceil(this.pixelToDataIndex(this.w));
         return Math.min(this.data.length - 1, endIdx);
     }
     
