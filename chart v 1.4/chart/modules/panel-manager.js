@@ -100,51 +100,8 @@ class PanelManager {
         // Default: show original chart (layout '1')
         // Don't call applyLayout - original chart is already visible
         this.currentLayout = '1';
-
-        // Restore saved panel workspace safely (deferred until chart data is ready).
-        this.setupDeferredStateRestore();
     }
-
-    setupDeferredStateRestore() {
-        if (this._restoreHooked) return;
-        this._restoreHooked = true;
-
-        const tryRestore = () => {
-            if (this._restoredFromState) return;
-            const saved = this.loadPanelState();
-            if (!saved || !saved.layout || saved.layout === '1') return;
-
-            const c = typeof window !== 'undefined' ? window.chart : null;
-            const chartReady = !!(c && c.canvas && Array.isArray(c.data) && c.data.length > 0);
-            if (!chartReady) return;
-
-            this._restoredFromState = true;
-            this._isRestoringSavedState = true;
-            const desired = Number.isFinite(saved.selectedPanelIndex) ? saved.selectedPanelIndex : 0;
-
-            requestAnimationFrame(() => {
-                try {
-                    this.applyLayout(saved.layout);
-                    requestAnimationFrame(() => {
-                        const maxIndex = Math.max(0, this.panels.length - 1);
-                        this.selectPanel(Math.max(0, Math.min(maxIndex, desired)));
-                    });
-                } finally {
-                    setTimeout(() => {
-                        this._isRestoringSavedState = false;
-                        this.savePanelState();
-                    }, 1500);
-                }
-            });
-        };
-
-        // Try on common lifecycle points; restore runs once when chart is ready.
-        window.addEventListener('load', tryRestore);
-        window.addEventListener('chartDataLoaded', tryRestore);
-        setTimeout(tryRestore, 600);
-        setTimeout(tryRestore, 1500);
-    }
-
+    
     /**
      * Setup event listeners for panel synchronization
      */
@@ -1231,13 +1188,6 @@ class PanelManager {
     applyLayout(layout) {
         console.log('Applying layout:', layout);
         this.currentLayout = layout;
-
-        // Mirror-mode defaults in multi-panel: keep crosshair + drawings sync enabled.
-        if (layout !== '1') {
-            if (this.syncSettings.crosshair !== true) this.syncSettings.crosshair = true;
-            if (this.syncSettings.drawings !== true) this.syncSettings.drawings = true;
-            this.saveSyncSettings();
-        }
         
         // Get original chart wrapper
         const originalChart = document.getElementById('chartWrapper');
@@ -2247,7 +2197,6 @@ class PanelManager {
     }
 
     _doSavePanelState() {
-        if (this._isRestoringSavedState) return;
         try {
             const state = {
                 layout: this.currentLayout,
@@ -2255,12 +2204,13 @@ class PanelManager {
                 panels: this.panels.map((panel, idx) => {
                     const pc = panel.chartInstance;
                     if (!pc) return { index: idx, isMainChart: panel.isMainChart };
+                    const hasOwn = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
                     return {
                         index: idx,
                         isMainChart: panel.isMainChart,
                         timeframe: pc.currentTimeframe || '1m',
-                        fileId: pc.currentFileId || null,
-                        symbol: pc.currentSymbol || null,
+                        fileId: hasOwn ? pc.currentFileId : null,
+                        symbol: hasOwn ? pc.currentSymbol : null,
                         offsetX: pc.offsetX,
                         candleWidth: pc.candleWidth
                     };

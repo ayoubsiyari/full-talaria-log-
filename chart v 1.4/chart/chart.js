@@ -17366,7 +17366,7 @@ class Chart {
             top: ${m.t}px;
             width: ${crossWidth}px;
             height: ${this.h - m.t - m.b}px;
-            background: ${vBg};
+            background: repeating-linear-gradient(to bottom, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
             z-index: 100;
         `;
@@ -17386,7 +17386,7 @@ class Chart {
             left: ${m.l}px;
             width: ${this.w - m.l - m.r}px;
             height: ${crossWidth}px;
-            background: ${hBg};
+            background: repeating-linear-gradient(to right, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
             z-index: 100;
         `;
@@ -17410,8 +17410,8 @@ class Chart {
                         position: absolute;
                         right: 5px;
                         top: ${y - 10}px;
-                        background: ${this.chartSettings?.cursorLabelBgColor || '#363a45'};
-                        color: ${this.chartSettings?.cursorLabelTextColor || '#d1d4dc'};
+                        background: #363a45;
+                        color: #d1d4dc;
                         padding: 2px 6px;
                         font-size: 11px;
                         border-radius: 2px;

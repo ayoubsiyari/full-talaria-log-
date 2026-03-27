@@ -1109,7 +1109,7 @@ class DrawingToolsManager {
     /**
      * Set the current drawing tool
      */
-    setTool(toolName, _mirrored = false) {
+    setTool(toolName) {
         // [debug removed]
         // [debug removed]
         if (!this.toolRegistry[toolName]) {
@@ -1155,18 +1155,6 @@ class DrawingToolsManager {
             this.favoritesManager.syncActiveState(toolName);
         }
         this._updateAxisZonePointerEvents();
-
-        // If toolbar routed activation to main chart while a panel is selected,
-        // mirror tool activation to the selected panel manager too.
-        if (!_mirrored && this.chart === window.chart && window.panelManager && window.panelManager.currentLayout !== '1') {
-            const selected = window.panelManager.getSelectedPanel ? window.panelManager.getSelectedPanel() : null;
-            const targetDm = selected && selected.chartInstance && selected.chartInstance !== this.chart
-                ? selected.chartInstance.drawingManager
-                : null;
-            if (targetDm && targetDm.currentTool !== toolName && typeof targetDm.setTool === 'function') {
-                targetDm.setTool(toolName, true);
-            }
-        }
         
         // [debug removed]
     }
