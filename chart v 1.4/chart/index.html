@@ -24070,28 +24070,16 @@
             opacity: 1;
         }
 
-        /* Selected panel: full rectangle above chart (border on .chart-panel was clipped / covered; ring on ::after). */
+        /* Selected panel: single frame on the panel (no ::after — avoids double ring + global *::after opacity rules). */
         #chart-container .chart-panel.panel-selected {
             position: relative;
             z-index: 6;
-            border: none !important;
-            box-shadow: none !important;
+            border: 2px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
+            border-radius: 2px;
         }
         #chart-container .chart-panel.panel-selected::after {
-            content: '' !important;
-            position: absolute;
-            inset: 0;
-            box-sizing: border-box;
-            border: 2px solid rgba(65, 154, 255, 0.84);
-            border-radius: 2px;
-            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32);
-            pointer-events: none;
-            /* Above canvas/svg (1–10), below OHLC (30) and resize handles (200) */
-            z-index: 28;
-        }
-        /* Keep panel selection ring visible when settings drawer is open (global *::after opacity reset). */
-        body.settings-open #chart-container .chart-panel.panel-selected::after {
-            opacity: 1 !important;
+            content: none !important;
         }
 
         .chart-panel .ohlc-info {
