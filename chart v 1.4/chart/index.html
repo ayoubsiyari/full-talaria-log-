@@ -45729,6 +45729,9 @@
                             // Clone the drawing
 
                             const clonedDrawing = JSON.parse(JSON.stringify(drawing));
+                            const sourceChart = sourcePanel && sourcePanel.chartInstance ? sourcePanel.chartInstance : null;
+                            const targetChart = targetPanel.chartInstance;
+                            const normalizedDrawing = this.normalizeDrawingForTarget(clonedDrawing, sourceChart, targetChart);
 
                             
 
@@ -45736,7 +45739,7 @@
 
                             const existingIdx = targetPanel.chartInstance.drawings.findIndex(d => 
 
-                                this.isSameDrawing(d, drawing)
+                                this.isSameDrawing(d, normalizedDrawing)
 
                             );
 
@@ -45746,13 +45749,13 @@
 
                                 // Update existing
 
-                                targetPanel.chartInstance.drawings[existingIdx] = clonedDrawing;
+                                targetPanel.chartInstance.drawings[existingIdx] = normalizedDrawing;
 
                             } else {
 
                                 // Add new
 
-                                targetPanel.chartInstance.drawings.push(clonedDrawing);
+                                targetPanel.chartInstance.drawings.push(normalizedDrawing);
 
                             }
 
@@ -45796,6 +45799,8 @@
 
                     if (d1.type !== d2.type) return false;
 
+                    if (d1.id && d2.id && d1.id === d2.id) return true;
+
                     // Stable id path for live preview/update sync
                     if (d1.__syncId && d2.__syncId) {
                         return d1.__syncId === d2.__syncId;
@@ -45810,6 +45815,51 @@
 
                     return false;
 
+                },
+
+                // Convert drawing X/index coordinates through timestamp so multi-timeframe panels align correctly.
+                normalizeDrawingForTarget(drawing, sourceChart, targetChart) {
+                    if (!drawing || !sourceChart || !targetChart) return drawing;
+                    if (!sourceChart.data || !targetChart.data || sourceChart.data.length === 0 || targetChart.data.length === 0) return drawing;
+
+                    const toTs = (idx) => {
+                        const i = Math.max(0, Math.min(sourceChart.data.length - 1, Math.round(Number(idx) || 0)));
+                        const bar = sourceChart.data[i];
+                        return bar && Number.isFinite(bar.t) ? bar.t : null;
+                    };
+                    const toTargetIdx = (ts) => {
+                        if (!Number.isFinite(ts)) return null;
+                        if (typeof targetChart.findGoToTargetIndex === 'function') {
+                            const i = targetChart.findGoToTargetIndex(targetChart.data, ts);
+                            return Number.isFinite(i) ? i : null;
+                        }
+                        let best = 0;
+                        for (let i = 0; i < targetChart.data.length; i++) {
+                            if (targetChart.data[i] && targetChart.data[i].t <= ts) best = i;
+                            else if (targetChart.data[i] && targetChart.data[i].t > ts) break;
+                        }
+                        return best;
+                    };
+                    const remapX = (obj, key) => {
+                        if (!obj || obj[key] === undefined || obj[key] === null) return;
+                        const ts = toTs(obj[key]);
+                        const mapped = toTargetIdx(ts);
+                        if (mapped !== null) obj[key] = mapped;
+                    };
+
+                    remapX(drawing, 'x');
+                    remapX(drawing, 'x1');
+                    remapX(drawing, 'x2');
+                    if (Array.isArray(drawing.points)) {
+                        drawing.points.forEach((p) => {
+                            if (p && p.x !== undefined && p.x !== null) {
+                                const ts = toTs(p.x);
+                                const mapped = toTargetIdx(ts);
+                                if (mapped !== null) p.x = mapped;
+                            }
+                        });
+                    }
+                    return drawing;
                 },
 
                 
