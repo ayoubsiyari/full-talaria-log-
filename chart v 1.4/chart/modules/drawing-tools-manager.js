@@ -1236,6 +1236,10 @@ class DrawingToolsManager {
         return `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     }
 
+    _isLiveSyncId(id) {
+        return typeof id === 'string' && id.startsWith('live_');
+    }
+
     _ensureDrawingId(drawing) {
         if (!drawing) return null;
         if (!drawing.id) {
@@ -3103,7 +3107,14 @@ class DrawingToolsManager {
      * Add a completed drawing
      */
     addDrawing(drawing) {
-        this._ensureDrawingId(drawing);
+        const hadLivePreview = this._liveSyncBroadcasted && this._isLiveSyncId(drawing && drawing.id);
+        const livePreviewId = hadLivePreview ? drawing.id : null;
+        if (hadLivePreview) {
+            // Promote temporary live preview ID to a stable persisted drawing ID.
+            drawing.id = `dr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        } else {
+            this._ensureDrawingId(drawing);
+        }
         // Set chart reference for timestamp conversion
         drawing.chart = this.chart;
         
@@ -3119,10 +3130,11 @@ class DrawingToolsManager {
         
         // Broadcast to other panels in real-time
         if (this.chart.broadcastDrawingChange) {
-            // If live preview was already mirrored, finalize with update to preserve
-            // the same geometry seen during drawing (avoid re-add remap drift on release).
-            const syncAction = this._liveSyncBroadcasted ? 'update' : 'add';
-            this.chart.broadcastDrawingChange(syncAction, drawing);
+            // Finalize handoff: remove temp live preview, then add stable drawing.
+            if (hadLivePreview && livePreviewId) {
+                this.chart.broadcastDrawingChange('remove', { id: livePreviewId });
+            }
+            this.chart.broadcastDrawingChange('add', drawing);
         }
         
         // Refresh object tree if available
