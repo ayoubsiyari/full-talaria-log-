@@ -17697,6 +17697,10 @@ class Chart {
         drawingData.points = tsPoints.map((p) => ({ timestamp: p.timestamp, price: p.price }));
     }
 
+    _isLiveSyncDrawingId(id) {
+        return typeof id === 'string' && id.startsWith('live_');
+    }
+
     _normalizeSymbolForDrawingSync(symbol) {
         if (symbol === undefined || symbol === null) return '';
         return String(symbol).replace(/\s+/g, '').replace(/\//g, '').toUpperCase();
@@ -17763,12 +17767,19 @@ class Chart {
                 // Clone the drawing data
                 const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
                 this._applyDrawingSyncAnchors(drawingData);
-                this._prepareTimestampPayloadFromSyncAnchors(drawingData);
                 const incomingId = drawingData && drawingData.id;
                 const existingById = incomingId ? dm.drawings.find(d => d && d.id === incomingId) : null;
+                const isLiveId = this._isLiveSyncDrawingId(incomingId);
+                if (!isLiveId) this._prepareTimestampPayloadFromSyncAnchors(drawingData);
                 // Live preview path may send repeated "add" for the same temp id; update in place.
                 if (existingById) {
-                    if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+                    if (isLiveId && drawingData.points) {
+                        existingById.points = drawingData.points;
+                        if (Array.isArray(drawingData.__syncPointAnchors)) {
+                            const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
+                            if (tsPoints) existingById.timestampPoints = tsPoints;
+                        }
+                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
                         if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                             const originalTimestampPoints = drawingData.points.map(p => ({
                                 timestamp: p.timestamp,
@@ -17870,10 +17881,17 @@ class Chart {
                 if (existingDrawing) {
                     const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
                     this._applyDrawingSyncAnchors(drawingData);
-                    this._prepareTimestampPayloadFromSyncAnchors(drawingData);
+                    const isLiveId = this._isLiveSyncDrawingId(drawingId);
+                    if (!isLiveId) this._prepareTimestampPayloadFromSyncAnchors(drawingData);
                     
                     // Convert timestamp points to indices for THIS panel's data
-                    if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+                    if (isLiveId && drawingData.points) {
+                        existingDrawing.points = drawingData.points;
+                        if (Array.isArray(drawingData.__syncPointAnchors)) {
+                            const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
+                            if (tsPoints) existingDrawing.timestampPoints = tsPoints;
+                        }
+                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
                         if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                             // Preserve original timestamp points
                             const originalTimestampPoints = drawingData.points.map(p => ({
