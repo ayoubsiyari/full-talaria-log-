@@ -6055,7 +6055,7 @@
 
 
 
-        .pl-sync-row .pl-sync-label {
+        .pl-sync-row > span:first-child {
 
             display: flex;
 
@@ -6064,12 +6064,6 @@
             min-height: 24px;
 
             font-weight: 400;
-
-            margin: 0;
-
-            cursor: pointer;
-
-            user-select: none;
 
         }
 
@@ -24038,8 +24032,7 @@
 
         #chart-container canvas,
 
-        /* Exclude .chart-panel / #chartWrapper so panel shell isn’t stripped of shadows (extra panels use div.panel-selection-ring). */
-        #chart-container *:not(.panel-selection-ring):not(.chart-panel):not(#chartWrapper) {
+        #chart-container * {
 
             user-select: none;
 
@@ -24055,14 +24048,6 @@
 
             box-shadow: none !important;
 
-        }
-
-        #chart-container .chart-panel,
-        #chart-container #chartWrapper {
-            user-select: none;
-            -webkit-user-select: none;
-            -webkit-user-drag: none;
-            -webkit-touch-callout: none;
         }
 
         /* Panel selection marker */
@@ -24084,27 +24069,20 @@
             opacity: 1;
         }
 
-        /* Panel selection ring: real div.panel-selection-ring (not ::after) — global #chart-container * { box-shadow:none } hit .chart-panel and hid pseudo rings on extra panels. */
-        #chart-container #chartWrapper.panel-selected,
-        #chart-container .chart-panel.panel-selected {
+        /* Selected-panel frame: inset ring above chart content (survives global reset rules). */
+        #chart-container .panel-selected {
             position: relative;
-            overflow: visible !important;
+            z-index: 6;
         }
-        #chart-container .panel-selection-ring {
-            display: none;
+        #chart-container .panel-selected::after {
+            content: '';
             position: absolute;
-            inset: 0;
-            box-sizing: border-box;
+            inset: 2px; /* keep ring inside panel so split borders remain clean */
+            border: 2px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
             border-radius: 2px;
             pointer-events: none;
-            z-index: 10000;
-            box-shadow:
-                0 0 0 2px rgba(65, 154, 255, 0.92),
-                inset 0 0 0 1px rgba(65, 154, 255, 0.22),
-                0 0 12px rgba(41, 98, 255, 0.38) !important;
-        }
-        #chart-container .panel-selected > .panel-selection-ring {
-            display: block !important;
+            z-index: 5000;
         }
 
         .chart-panel .ohlc-info {
@@ -24171,14 +24149,9 @@
 
         .panel-resize-handle {
             position: absolute;
-            /* Default; when handles live inside #panels-container, rule below uses 160 vs panels 100 / selected 350 */
-            z-index: 140;
+            z-index: 200;
             pointer-events: auto;
             transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
-        }
-        /* Stacked with .chart-panel siblings so selection ring can draw above the gutter (was broken when handle was sibling of #panels-container at z 140). */
-        #panels-container .panel-resize-handle {
-            z-index: 160;
         }
         /* Full-length overlay divider line — always visible */
         .panel-resize-handle.vertical {
@@ -41788,13 +41761,13 @@
 
     <script defer src="modules/preferences-init.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=20260327_MAGNET_PANELS_MAIN_V23"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260327_PANEL_FIRST_CLICK_GLOBAL_TOOL_V21"></script>
 
     <script defer src="modules/favorites-manager.js?v=20260318_TF_PIN_V59"></script>
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_HANDLES_IN_PANELS_CONTAINER_V107"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V102"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -41810,7 +41783,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260327_MAGNET_PANEL_SYNC_V247"></script>
+    <script defer src="chart.js?v=20260327_CLEAR_ALL_SYNC_V246"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -45519,23 +45492,6 @@
                     // Store chart instance in panel
 
                     panel.chartInstance = panelChart;
-
-                    
-
-                    // Match main chart magnet (weak/strong) on panel drawing managers
-                    if (window.chart && window.chart.drawingManager && panelChart.drawingManager) {
-
-                        const mm = window.chart.drawingManager.magnetMode;
-
-                        panelChart.magnetMode = mm;
-
-                        if (typeof panelChart.drawingManager.setMagnetMode === 'function') {
-
-                            panelChart.drawingManager.setMagnetMode(mm);
-
-                        }
-
-                    }
 
                     
 
@@ -49447,12 +49403,6 @@ function showIndicatorsMenu() {
                         item.classList.toggle('active', item.getAttribute('data-magnet') === activeKey);
 
                     });
-
-                }
-
-                if (window.chart && typeof window.chart.syncMagnetModeToPanelCharts === 'function') {
-
-                    window.chart.syncMagnetModeToPanelCharts();
 
                 }
 
@@ -57505,7 +57455,7 @@ P['panellayout']={
 
         function syncRow(label,id,enabled){
 
-            return '<div class="pl-sync-row"><label class="pl-sync-label" for="'+id+'">'+label+'</label><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
+            return '<div class="pl-sync-row"><span>'+label+'</span><span class="pl-sync-check"><input type="checkbox" class="tv-native-checkbox" id="'+id+'"'+chk(enabled)+'></span></div>';
 
         }
 
@@ -57595,7 +57545,23 @@ P['panellayout']={
 
         });
 
-        /* Row toggling is handled by <label for="…"> on each row (clicking text or box updates once). */
+        ctx.querySelectorAll('.pl-sync-row').forEach(function(row){
+
+            row.addEventListener('click',function(){
+
+                var checkbox=this.querySelector('input[type="checkbox"]');
+
+                if(checkbox){
+
+                    checkbox.checked=!checkbox.checked;
+
+                    checkbox.dispatchEvent(new Event('change',{bubbles:true}));
+
+                }
+
+            });
+
+        });
 
         if(pm&&typeof pm.setupSyncToggles==='function'){
 

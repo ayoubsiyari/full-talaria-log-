@@ -1196,6 +1196,9 @@ class PanelManager {
         if (layout === '1') {
             console.log('🔄 Returning to single layout - cleaning up panels...');
 
+            // Logo must leave panels-container before innerHTML clears it
+            this.syncChartBrandPlacement('1');
+            
             // FIRST: Remove ALL resize handles
             if (this.resizeHandles && this.resizeHandles.length > 0) {
                 this.resizeHandles.forEach(h => {
@@ -1209,14 +1212,6 @@ class PanelManager {
             
             // Also remove any orphaned resize handles by class name
             document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
-
-            // Main chart must leave #panels-container before we clear it (multi-panel reparent)
-            const chartContSingle = document.getElementById('chart-container');
-            if (originalChart && chartContSingle && this.container && this.container.contains(originalChart)) {
-                chartContSingle.insertBefore(originalChart, this.container.nextSibling);
-            }
-
-            this.syncChartBrandPlacement('1');
             
             // Hide panels container
             this.container.style.display = 'none';
@@ -1613,7 +1608,7 @@ class PanelManager {
             originalChart.style.borderBottom = `1px solid ${mainChrome.border}`;
             originalChart.style.boxSizing = 'border-box';
             originalChart.style.overflow = 'hidden';
-            originalChart.style.zIndex = '100';
+            originalChart.style.zIndex = '10';
             
             // Add panel 0 info to panels array (reference to main chart)
             const mainPanel = {
@@ -1635,7 +1630,6 @@ class PanelManager {
                 bar.className = 'panel-select-bar';
                 originalChart.appendChild(bar);
             }
-            this._ensurePanelSelectionRing(originalChart);
             
             // Mark main chart as a panel for drawing sync
             if (window.chart) {
@@ -1906,7 +1900,6 @@ class PanelManager {
         const selectBar = document.createElement('div');
         selectBar.className = 'panel-select-bar';
         panel.appendChild(selectBar);
-        this._ensurePanelSelectionRing(panel);
         
         // Click anywhere on panel to select it (like TradingView)
         panel.addEventListener('mousedown', (e) => {
@@ -1992,18 +1985,6 @@ class PanelManager {
     }
     
     /**
-     * Selection ring is a real div.panel-selection-ring (not ::after) so it is not affected by
-     * #chart-container * { box-shadow: none !important } on .chart-panel.
-     */
-    _ensurePanelSelectionRing(el) {
-        if (!el || el.querySelector('.panel-selection-ring')) return;
-        const ring = document.createElement('div');
-        ring.className = 'panel-selection-ring';
-        ring.setAttribute('aria-hidden', 'true');
-        el.appendChild(ring);
-    }
-
-    /**
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
@@ -2012,7 +1993,6 @@ class PanelManager {
         this.panels.forEach((panel, i) => {
             if (panel.element) {
                 panel.element.classList.remove('panel-selected');
-                panel.element.style.zIndex = '100';
             }
         });
         
@@ -2022,12 +2002,7 @@ class PanelManager {
             const panel = this.panels[index];
             
             if (panel.element) {
-                this.panels.forEach((p) => {
-                    if (p.element) this._ensurePanelSelectionRing(p.element);
-                });
                 panel.element.classList.add('panel-selected');
-                // Above .panel-resize-handle so the selection frame draws over divider lines (TradingView-style). Same for main #chartWrapper (panel 0) and .chart-panel.
-                panel.element.style.zIndex = '350';
                 // Ensure selection bar exists
                 if (!panel.element.querySelector('.panel-select-bar')) {
                     const bar = document.createElement('div');
@@ -2444,10 +2419,8 @@ class PanelManager {
             this.applyLayout(this.currentLayout);
         });
 
-        /* Parent must be #panels-container so z-index stacks with .chart-panel (100/350) vs handle (160).
-           When handles were siblings of #panels-container at z 140, only #chartWrapper (350) could paint above — extra panels stayed under dividers. */
-        const parent = this.container || document.getElementById('panels-container') || document.getElementById('chart-container');
-        if (parent) parent.appendChild(handle);
+        const chartContainer = document.getElementById('chart-container');
+        (chartContainer || this.container).appendChild(handle);
         return handle;
     }
 
