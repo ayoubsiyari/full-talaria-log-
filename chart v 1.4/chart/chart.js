@@ -10591,9 +10591,8 @@ class Chart {
             this.compareOverlay.updateLeftMargin();
         }
 
-        // Draw grid lines and axes
+        // Draw grid lines first
         this.drawGrid();
-        this.drawAxes();
 
         // Draw volume bars
         this.drawVolume(visible);
@@ -10655,6 +10654,10 @@ class Chart {
         if (typeof this.drawSecondaryIndicators === 'function') {
             this.drawSecondaryIndicators();
         }
+
+        // Draw axes LAST so the price/time axis always overlays candles and other chart content.
+        // This makes candles hide behind the axis instead of drawing above it.
+        this.drawAxes();
         
         // Show loading indicator if loading data
         if (this.isLoadingChunk) {
