@@ -1727,6 +1727,7 @@ class PanelManager {
                 });
             }
             this.createResizeHandles();
+            this._updateSelectionOverlay();
         });
     }
     
@@ -2010,6 +2011,8 @@ class PanelManager {
                     panel.element.appendChild(bar);
                 }
             }
+
+            this._updateSelectionOverlay();
             
             // Resolve the LIVE timeframe from the chart instance (not the stale snapshot)
             const liveTimeframe = (panel.chartInstance && panel.chartInstance.currentTimeframe)
@@ -2052,6 +2055,37 @@ class PanelManager {
         }
     }
     
+    _updateSelectionOverlay() {
+        const chartContainer = document.getElementById('chart-container');
+        if (!chartContainer) return;
+
+        let overlay = chartContainer.querySelector('.panel-selection-frame');
+
+        // In single-panel mode the ::after CSS handles the border; no overlay needed.
+        if (this.panels.length <= 1) {
+            if (overlay) overlay.remove();
+            return;
+        }
+
+        const panel = this.panels[this.selectedPanelIndex];
+        if (!panel || !panel.element) {
+            if (overlay) overlay.remove();
+            return;
+        }
+
+        const el = panel.element;
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'panel-selection-frame';
+            chartContainer.appendChild(overlay);
+        }
+
+        overlay.style.left   = el.style.left;
+        overlay.style.top    = el.style.top;
+        overlay.style.width  = el.style.width;
+        overlay.style.height = el.style.height;
+    }
+
     /**
      * Update timeframe of selected panel
      */
@@ -2535,6 +2569,7 @@ class PanelManager {
         }
 
         this._resizeState.currentBoundary = newBoundary;
+        this._updateSelectionOverlay();
 
         // Throttled canvas resize (~20fps) — panels clip via CSS overflow:hidden
         const now = performance.now();
@@ -2575,7 +2610,7 @@ class PanelManager {
             }
         });
 
-        setTimeout(() => this.createResizeHandles(), 30);
+        setTimeout(() => { this.createResizeHandles(); this._updateSelectionOverlay(); }, 30);
         this._savePanelSizes();
     }
 

@@ -24071,12 +24071,10 @@
             opacity: 1;
         }
 
-        /* Selected-panel frame: inset ring above chart content (survives global reset rules). */
+        /* Selected-panel frame: inset ring above chart content. */
         #chart-container .panel-selected {
             position: relative;
-            /* No z-index here — avoids creating a stacking context so the ::after
-               participates in chart-container's isolated context at z-index 5000,
-               which is above the resize handles (z-index 200). */
+            z-index: 6;
         }
         #chart-container .panel-selected::after {
             content: '';
@@ -24088,6 +24086,18 @@
             border-radius: 2px;
             pointer-events: none;
             z-index: 5000;
+        }
+
+        /* JS-driven overlay that sits as a sibling of panels/resize-handles so it
+           always paints above the resize lines (z-index 250 > resize handle 200). */
+        .panel-selection-frame {
+            position: absolute;
+            border: 2px solid rgba(65, 154, 255, 0.84);
+            box-shadow: 0 0 10px rgba(41, 98, 255, 0.32);
+            border-radius: 2px;
+            pointer-events: none;
+            box-sizing: border-box;
+            z-index: 250;
         }
 
         .chart-panel .ohlc-info {
@@ -41772,7 +41782,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V102"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V103"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
