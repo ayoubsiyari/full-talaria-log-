@@ -42136,6 +42136,12 @@
 
             if (wrapper && wrapper.contains(e.target)) return;
 
+            // Multi-panel charts live outside #chartWrapper — do not clear tools when drawing there
+
+            var panelsRoot = document.getElementById('panels-container');
+
+            if (panelsRoot && panelsRoot.contains(e.target)) return;
+
 
 
             // Ignore clicks inside the floating drawing toolbar
