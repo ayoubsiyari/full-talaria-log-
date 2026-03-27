@@ -1542,7 +1542,7 @@
 
         body.light-mode #chart-container canvas,
 
-        body.light-mode #chart-container *:not(.ohlc-dot-flag):not(.ssd-flag):not(.panel-resize-handle):not(.panel-follow-btn):not(#replayFollow):not(.chart-panel):not(#chartWrapper) {
+        body.light-mode #chart-container *:not(.ohlc-dot-flag):not(.ssd-flag):not(.panel-resize-handle):not(.panel-follow-btn):not(#replayFollow):not(.chart-panel):not(#chartWrapper):not(.panel-selection-ring) {
 
             border: none !important;
 
@@ -24032,7 +24032,7 @@
 
         #chart-container canvas,
 
-        #chart-container * {
+        #chart-container *:not(.panel-selection-ring) {
 
             user-select: none;
 
@@ -24081,9 +24081,9 @@
             border-radius: 2px;
         }
         #chart-container .chart-panel.panel-selected .panel-selection-ring {
-            display: block;
-            border: 2px solid rgba(65, 154, 255, 0.84);
-            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32);
+            display: block !important;
+            border: 2px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
         }
         #chart-container .chart-panel.panel-selected::after {
             content: none !important;
