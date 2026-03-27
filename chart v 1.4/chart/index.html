@@ -45822,8 +45822,10 @@
                     if (!drawing || !sourceChart || !targetChart) return drawing;
                     if (!sourceChart.data || !targetChart.data || sourceChart.data.length === 0 || targetChart.data.length === 0) return drawing;
 
+                    const clampSourceIdx = (idx) => Math.max(0, Math.min(sourceChart.data.length - 1, Math.round(Number(idx) || 0)));
+                    const clampTargetIdx = (idx) => Math.max(0, Math.min(targetChart.data.length - 1, Math.round(Number(idx) || 0)));
                     const toTs = (idx) => {
-                        const i = Math.max(0, Math.min(sourceChart.data.length - 1, Math.round(Number(idx) || 0)));
+                        const i = clampSourceIdx(idx);
                         const bar = sourceChart.data[i];
                         return bar && Number.isFinite(bar.t) ? bar.t : null;
                     };
@@ -45831,18 +45833,18 @@
                         if (!Number.isFinite(ts)) return null;
                         if (typeof targetChart.findLastDataIndexAtOrBeforeTime === 'function') {
                             const i = targetChart.findLastDataIndexAtOrBeforeTime(ts);
-                            return Number.isFinite(i) ? i : null;
+                            return Number.isFinite(i) ? clampTargetIdx(i) : null;
                         }
                         if (typeof targetChart.findGoToTargetIndex === 'function') {
                             const i = targetChart.findGoToTargetIndex(targetChart.data, ts);
-                            return Number.isFinite(i) ? i : null;
+                            return Number.isFinite(i) ? clampTargetIdx(i) : null;
                         }
                         let best = 0;
                         for (let i = 0; i < targetChart.data.length; i++) {
                             if (targetChart.data[i] && targetChart.data[i].t <= ts) best = i;
                             else if (targetChart.data[i] && targetChart.data[i].t > ts) break;
                         }
-                        return best;
+                        return clampTargetIdx(best);
                     };
                     const remapX = (obj, key) => {
                         if (!obj || obj[key] === undefined || obj[key] === null) return;
@@ -45852,7 +45854,7 @@
                     };
                     const nearestSourceOhlcKey = (sourceY, sourceIdx) => {
                         if (!Number.isFinite(sourceY) || !Number.isFinite(sourceIdx)) return null;
-                        const si = Math.max(0, Math.min(sourceChart.data.length - 1, Math.round(sourceIdx)));
+                        const si = clampSourceIdx(sourceIdx);
                         const sc = sourceChart.data[si];
                         if (!sc) return null;
                         const pairs = [
@@ -45875,13 +45877,57 @@
                     };
                     const mapYWithSourceSemantics = (sourceY, sourceIdx, targetIdx) => {
                         if (!Number.isFinite(sourceY) || !Number.isFinite(targetIdx)) return sourceY;
-                        const ti = Math.max(0, Math.min(targetChart.data.length - 1, Math.round(targetIdx)));
+                        const ti = clampTargetIdx(targetIdx);
                         const tc = targetChart.data[ti];
                         if (!tc) return sourceY;
                         const key = nearestSourceOhlcKey(sourceY, sourceIdx);
                         if (key && Number.isFinite(tc[key])) return tc[key];
                         return sourceY;
                     };
+                    const applyAnchorToTarget = (anchor) => {
+                        if (!anchor || !Number.isFinite(anchor.timestamp)) return null;
+                        const ti = toTargetIdx(anchor.timestamp);
+                        if (!Number.isFinite(ti)) return null;
+                        const tc = targetChart.data[ti];
+                        if (!tc) return null;
+                        let y = Number.isFinite(anchor.y) ? anchor.y : null;
+                        if (anchor.ohlcKey && Number.isFinite(tc[anchor.ohlcKey])) y = tc[anchor.ohlcKey];
+                        return { x: ti, y };
+                    };
+                    const ensureAnchor = (srcX, srcY) => {
+                        const ts = toTs(srcX);
+                        if (!Number.isFinite(ts)) return null;
+                        return {
+                            timestamp: ts,
+                            ohlcKey: nearestSourceOhlcKey(Number(srcY), Number(srcX)),
+                            y: Number.isFinite(Number(srcY)) ? Number(srcY) : null
+                        };
+                    };
+
+                    // Prefer stable anchors created by chart-level sync to avoid drift across panel-to-panel remaps.
+                    if (!drawing.__syncAnchors) drawing.__syncAnchors = {};
+                    if (drawing.x1 !== undefined && !drawing.__syncAnchors.x1) drawing.__syncAnchors.x1 = ensureAnchor(drawing.x1, drawing.y1);
+                    if (drawing.x2 !== undefined && !drawing.__syncAnchors.x2) drawing.__syncAnchors.x2 = ensureAnchor(drawing.x2, drawing.y2);
+                    if (drawing.x !== undefined && !drawing.__syncAnchors.x) drawing.__syncAnchors.x = ensureAnchor(drawing.x, (drawing.y !== undefined ? drawing.y : drawing.price));
+
+                    // Point anchors: use existing timestampPoints first (most accurate for multi-timeframe).
+                    if (Array.isArray(drawing.points)) {
+                        if (!Array.isArray(drawing.__syncPointAnchors)) drawing.__syncPointAnchors = [];
+                        drawing.points.forEach((p, i) => {
+                            if (drawing.__syncPointAnchors[i]) return;
+                            const tp = Array.isArray(drawing.timestampPoints) ? drawing.timestampPoints[i] : null;
+                            if (tp && Number.isFinite(tp.timestamp)) {
+                                const srcIdx = Number.isFinite(Number(p && p.x)) ? Number(p.x) : 0;
+                                drawing.__syncPointAnchors[i] = {
+                                    timestamp: tp.timestamp,
+                                    ohlcKey: nearestSourceOhlcKey(Number(tp.price), srcIdx),
+                                    y: Number.isFinite(Number(tp.price)) ? Number(tp.price) : null
+                                };
+                            } else if (p) {
+                                drawing.__syncPointAnchors[i] = ensureAnchor(p.x, (p.y !== undefined ? p.y : p.price));
+                            }
+                        });
+                    }
 
                     const sx = Number(drawing.x);
                     const sx1 = Number(drawing.x1);
@@ -45889,21 +45935,41 @@
                     remapX(drawing, 'x');
                     remapX(drawing, 'x1');
                     remapX(drawing, 'x2');
-                    if (drawing.y1 !== undefined && Number.isFinite(drawing.x1)) {
+                    const ax1 = applyAnchorToTarget(drawing.__syncAnchors.x1);
+                    if (ax1) {
+                        drawing.x1 = ax1.x;
+                        if (drawing.y1 !== undefined && ax1.y !== null) drawing.y1 = ax1.y;
+                    } else if (drawing.y1 !== undefined && Number.isFinite(drawing.x1)) {
                         drawing.y1 = mapYWithSourceSemantics(Number(drawing.y1), sx1, Number(drawing.x1));
                     }
-                    if (drawing.y2 !== undefined && Number.isFinite(drawing.x2)) {
+                    const ax2 = applyAnchorToTarget(drawing.__syncAnchors.x2);
+                    if (ax2) {
+                        drawing.x2 = ax2.x;
+                        if (drawing.y2 !== undefined && ax2.y !== null) drawing.y2 = ax2.y;
+                    } else if (drawing.y2 !== undefined && Number.isFinite(drawing.x2)) {
                         drawing.y2 = mapYWithSourceSemantics(Number(drawing.y2), sx2, Number(drawing.x2));
                     }
-                    if (drawing.y !== undefined && Number.isFinite(drawing.x)) {
+                    const ax = applyAnchorToTarget(drawing.__syncAnchors.x);
+                    if (ax) {
+                        drawing.x = ax.x;
+                        if (drawing.y !== undefined && ax.y !== null) drawing.y = ax.y;
+                        if (drawing.price !== undefined && ax.y !== null) drawing.price = ax.y;
+                    } else if (drawing.y !== undefined && Number.isFinite(drawing.x)) {
                         drawing.y = mapYWithSourceSemantics(Number(drawing.y), sx, Number(drawing.x));
                     }
-                    if (drawing.price !== undefined && Number.isFinite(drawing.x)) {
+                    if (!ax && drawing.price !== undefined && Number.isFinite(drawing.x)) {
                         drawing.price = mapYWithSourceSemantics(Number(drawing.price), sx, Number(drawing.x));
                     }
                     if (Array.isArray(drawing.points)) {
-                        drawing.points.forEach((p) => {
+                        drawing.points.forEach((p, i) => {
                             if (p && p.x !== undefined && p.x !== null) {
+                                const anchored = applyAnchorToTarget(Array.isArray(drawing.__syncPointAnchors) ? drawing.__syncPointAnchors[i] : null);
+                                if (anchored) {
+                                    p.x = anchored.x;
+                                    if (p.y !== undefined && anchored.y !== null) p.y = anchored.y;
+                                    if (p.price !== undefined && anchored.y !== null) p.price = anchored.y;
+                                    return;
+                                }
                                 const sourcePointX = Number(p.x);
                                 const ts = toTs(p.x);
                                 const mapped = toTargetIdx(ts);
