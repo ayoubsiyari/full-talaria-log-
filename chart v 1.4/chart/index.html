@@ -45829,6 +45829,10 @@
                     };
                     const toTargetIdx = (ts) => {
                         if (!Number.isFinite(ts)) return null;
+                        if (typeof targetChart.findLastDataIndexAtOrBeforeTime === 'function') {
+                            const i = targetChart.findLastDataIndexAtOrBeforeTime(ts);
+                            return Number.isFinite(i) ? i : null;
+                        }
                         if (typeof targetChart.findGoToTargetIndex === 'function') {
                             const i = targetChart.findGoToTargetIndex(targetChart.data, ts);
                             return Number.isFinite(i) ? i : null;
@@ -45846,52 +45850,70 @@
                         const mapped = toTargetIdx(ts);
                         if (mapped !== null) obj[key] = mapped;
                     };
-                    const snapYToTargetCandle = (y, idx) => {
-                        if (!Number.isFinite(y) || !Number.isFinite(idx)) return y;
-                        const i = Math.max(0, Math.min(targetChart.data.length - 1, Math.round(idx)));
-                        const c = targetChart.data[i];
-                        if (!c) return y;
-                        const levels = [c.o, c.h, c.l, c.c].filter(Number.isFinite);
-                        if (!levels.length) return y;
-                        let best = levels[0];
-                        let bestDiff = Math.abs(y - best);
-                        for (let j = 1; j < levels.length; j++) {
-                            const diff = Math.abs(y - levels[j]);
+                    const nearestSourceOhlcKey = (sourceY, sourceIdx) => {
+                        if (!Number.isFinite(sourceY) || !Number.isFinite(sourceIdx)) return null;
+                        const si = Math.max(0, Math.min(sourceChart.data.length - 1, Math.round(sourceIdx)));
+                        const sc = sourceChart.data[si];
+                        if (!sc) return null;
+                        const pairs = [
+                            ['o', sc.o],
+                            ['h', sc.h],
+                            ['l', sc.l],
+                            ['c', sc.c]
+                        ].filter((x) => Number.isFinite(x[1]));
+                        if (!pairs.length) return null;
+                        let bestKey = pairs[0][0];
+                        let bestDiff = Math.abs(sourceY - pairs[0][1]);
+                        for (let j = 1; j < pairs.length; j++) {
+                            const diff = Math.abs(sourceY - pairs[j][1]);
                             if (diff < bestDiff) {
-                                best = levels[j];
                                 bestDiff = diff;
+                                bestKey = pairs[j][0];
                             }
                         }
-                        return best;
+                        return bestKey;
+                    };
+                    const mapYWithSourceSemantics = (sourceY, sourceIdx, targetIdx) => {
+                        if (!Number.isFinite(sourceY) || !Number.isFinite(targetIdx)) return sourceY;
+                        const ti = Math.max(0, Math.min(targetChart.data.length - 1, Math.round(targetIdx)));
+                        const tc = targetChart.data[ti];
+                        if (!tc) return sourceY;
+                        const key = nearestSourceOhlcKey(sourceY, sourceIdx);
+                        if (key && Number.isFinite(tc[key])) return tc[key];
+                        return sourceY;
                     };
 
+                    const sx = Number(drawing.x);
+                    const sx1 = Number(drawing.x1);
+                    const sx2 = Number(drawing.x2);
                     remapX(drawing, 'x');
                     remapX(drawing, 'x1');
                     remapX(drawing, 'x2');
                     if (drawing.y1 !== undefined && Number.isFinite(drawing.x1)) {
-                        drawing.y1 = snapYToTargetCandle(Number(drawing.y1), Number(drawing.x1));
+                        drawing.y1 = mapYWithSourceSemantics(Number(drawing.y1), sx1, Number(drawing.x1));
                     }
                     if (drawing.y2 !== undefined && Number.isFinite(drawing.x2)) {
-                        drawing.y2 = snapYToTargetCandle(Number(drawing.y2), Number(drawing.x2));
+                        drawing.y2 = mapYWithSourceSemantics(Number(drawing.y2), sx2, Number(drawing.x2));
                     }
                     if (drawing.y !== undefined && Number.isFinite(drawing.x)) {
-                        drawing.y = snapYToTargetCandle(Number(drawing.y), Number(drawing.x));
+                        drawing.y = mapYWithSourceSemantics(Number(drawing.y), sx, Number(drawing.x));
                     }
                     if (drawing.price !== undefined && Number.isFinite(drawing.x)) {
-                        drawing.price = snapYToTargetCandle(Number(drawing.price), Number(drawing.x));
+                        drawing.price = mapYWithSourceSemantics(Number(drawing.price), sx, Number(drawing.x));
                     }
                     if (Array.isArray(drawing.points)) {
                         drawing.points.forEach((p) => {
                             if (p && p.x !== undefined && p.x !== null) {
+                                const sourcePointX = Number(p.x);
                                 const ts = toTs(p.x);
                                 const mapped = toTargetIdx(ts);
                                 if (mapped !== null) {
                                     p.x = mapped;
                                     if (p.y !== undefined) {
-                                        p.y = snapYToTargetCandle(Number(p.y), Number(mapped));
+                                        p.y = mapYWithSourceSemantics(Number(p.y), sourcePointX, Number(mapped));
                                     }
                                     if (p.price !== undefined) {
-                                        p.price = snapYToTargetCandle(Number(p.price), Number(mapped));
+                                        p.price = mapYWithSourceSemantics(Number(p.price), sourcePointX, Number(mapped));
                                     }
                                 }
                             }
