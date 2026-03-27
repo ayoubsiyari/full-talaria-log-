@@ -17758,7 +17758,8 @@ class Chart {
         // Get all panel chart instances
         window.panelManager.panels.forEach(panel => {
             if (panel.chartInstance && panel.chartInstance !== this) {
-                if (!this._shouldSyncDrawingToChart(panel.chartInstance)) return;
+                // "clear all drawings" should apply to all synced panels immediately.
+                if (action !== 'clear' && !this._shouldSyncDrawingToChart(panel.chartInstance)) return;
                 panel.chartInstance.receiveDrawingChange(action, drawingData, drawingIndex);
             }
         });

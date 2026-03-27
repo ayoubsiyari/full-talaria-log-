@@ -24072,16 +24072,13 @@
         /* Subtle selected-panel outline (clean TradingView-like) */
         .panel-selected {
             position: relative;
+            outline: 1px solid rgba(65, 154, 255, 0.65) !important;
+            outline-offset: -1px;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.14), 0 0 0 1px rgba(65, 154, 255, 0.35);
+            z-index: 5;
         }
         .panel-selected::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border: 1px solid rgba(65, 154, 255, 0.55);
-            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.12);
-            box-sizing: border-box;
-            pointer-events: none;
-            z-index: 180;
+            content: none !important;
         }
 
         .chart-panel .ohlc-info {
@@ -41782,7 +41779,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260327_MAIN_TO_PANEL_SYNC_FIX_V245"></script>
+    <script defer src="chart.js?v=20260327_CLEAR_ALL_SYNC_V246"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -49894,6 +49891,11 @@ function showIndicatorsMenu() {
             const panel = document.getElementById('sessionInfoPanel');
 
             if (!panel) return;
+
+            // Disabled per user request: keep this floating session widget hidden.
+            panel.classList.remove('active');
+            panel.style.display = 'none';
+            return;
 
 
 
