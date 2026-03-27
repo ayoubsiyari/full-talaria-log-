@@ -1993,6 +1993,7 @@ class PanelManager {
         this.panels.forEach((panel, i) => {
             if (panel.element) {
                 panel.element.classList.remove('panel-selected');
+                panel.element.style.zIndex = '100';
             }
         });
         
@@ -2003,6 +2004,8 @@ class PanelManager {
             
             if (panel.element) {
                 panel.element.classList.add('panel-selected');
+                // Above .panel-resize-handle (z-index 200) so the selection frame draws over divider lines (TradingView-style)
+                panel.element.style.zIndex = '260';
                 // Ensure selection bar exists
                 if (!panel.element.querySelector('.panel-select-bar')) {
                     const bar = document.createElement('div');

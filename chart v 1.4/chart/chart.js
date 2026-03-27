@@ -6646,6 +6646,25 @@ class Chart {
         this.loadDataRange(bufferStart, bufferEnd);
     }
 
+    /**
+     * Mirror magnet mode from the main chart onto every panel chart (toolbar only toggles main drawingManager).
+     */
+    syncMagnetModeToPanelCharts() {
+        if (this.isPanel) return;
+        const mode = this.drawingManager && this.drawingManager.magnetMode !== undefined
+            ? this.drawingManager.magnetMode
+            : this.magnetMode;
+        if (!window.panelManager || !Array.isArray(window.panelManager.panels)) return;
+        window.panelManager.panels.forEach((p) => {
+            const ch = p.chartInstance;
+            if (!ch || !ch.isPanel) return;
+            ch.magnetMode = mode;
+            if (ch.drawingManager && typeof ch.drawingManager.setMagnetMode === 'function') {
+                ch.drawingManager.setMagnetMode(mode);
+            }
+        });
+    }
+
     syncMagnetButton() {
         const magnetBtns = [document.getElementById('magnetMode'), document.getElementById('magnetModeToolbar')];
         let effectiveMode = this.magnetMode;
@@ -6669,6 +6688,7 @@ class Chart {
                 magnetBtn.setAttribute('title', `Magnet Mode (${modeLabel})`);
             }
         });
+        this.syncMagnetModeToPanelCharts();
     }
 
     // Get the current cursor style based on cursorType

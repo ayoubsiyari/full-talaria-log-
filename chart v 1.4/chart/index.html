@@ -24069,15 +24069,15 @@
             opacity: 1;
         }
 
-        /* Selected-panel frame: inset ring above chart content (survives global reset rules). */
-        #chart-container .panel-selected {
+        /* Selected panel: z-index set in panel-manager (260) > .panel-resize-handle (200) so the ring overlaps dividers. */
+        #chart-container .chart-panel.panel-selected {
             position: relative;
-            z-index: 6;
         }
-        #chart-container .panel-selected::after {
+        #chart-container .chart-panel.panel-selected::after {
             content: '';
             position: absolute;
-            inset: 2px; /* keep ring inside panel so split borders remain clean */
+            inset: 0;
+            box-sizing: border-box;
             border: 2px solid rgba(65, 154, 255, 0.84) !important;
             box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
             border-radius: 2px;
@@ -41761,13 +41761,13 @@
 
     <script defer src="modules/preferences-init.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=20260327_MAGNET_EDIT_RESIZE_V22"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260327_MAGNET_PANELS_MAIN_V23"></script>
 
     <script defer src="modules/favorites-manager.js?v=20260318_TF_PIN_V59"></script>
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V102"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_PANEL_SEL_ABOVE_DIVIDER_V104"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
@@ -41783,7 +41783,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260327_CLEAR_ALL_SYNC_V246"></script>
+    <script defer src="chart.js?v=20260327_MAGNET_PANEL_SYNC_V247"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -45492,6 +45492,23 @@
                     // Store chart instance in panel
 
                     panel.chartInstance = panelChart;
+
+                    
+
+                    // Match main chart magnet (weak/strong) on panel drawing managers
+                    if (window.chart && window.chart.drawingManager && panelChart.drawingManager) {
+
+                        const mm = window.chart.drawingManager.magnetMode;
+
+                        panelChart.magnetMode = mm;
+
+                        if (typeof panelChart.drawingManager.setMagnetMode === 'function') {
+
+                            panelChart.drawingManager.setMagnetMode(mm);
+
+                        }
+
+                    }
 
                     
 
@@ -49403,6 +49420,12 @@ function showIndicatorsMenu() {
                         item.classList.toggle('active', item.getAttribute('data-magnet') === activeKey);
 
                     });
+
+                }
+
+                if (window.chart && typeof window.chart.syncMagnetModeToPanelCharts === 'function') {
+
+                    window.chart.syncMagnetModeToPanelCharts();
 
                 }
 

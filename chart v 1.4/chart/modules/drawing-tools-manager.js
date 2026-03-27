@@ -2677,7 +2677,11 @@ class DrawingToolsManager {
         // Apply magnet mode only when explicitly active (not via stuck key flag)
         // Use event.metaKey/ctrlKey directly - never rely on potentially-stuck magnetKeyHeld flag
         const keyHeld = event && (event.metaKey || event.ctrlKey);
-        const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
+        // Panel charts: use main chart magnet (toolbar / M-key only update window.chart.drawingManager).
+        const baseMagnetMode = (this.chart && this.chart.isPanel && window.chart && window.chart.drawingManager)
+            ? window.chart.drawingManager.magnetMode
+            : this.magnetMode;
+        const effectiveMagnetMode = keyHeld ? 'strong' : baseMagnetMode;
         // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
         const dataLen = this.chart && this.chart.data ? this.chart.data.length : 0;
         const isOverCandleData = dataLen > 0 && point.x >= 0 && point.x <= dataLen - 1;
