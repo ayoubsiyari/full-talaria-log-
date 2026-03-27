@@ -1231,6 +1231,13 @@ class PanelManager {
     applyLayout(layout) {
         console.log('Applying layout:', layout);
         this.currentLayout = layout;
+
+        // Mirror-mode defaults in multi-panel: keep crosshair + drawings sync enabled.
+        if (layout !== '1') {
+            if (this.syncSettings.crosshair !== true) this.syncSettings.crosshair = true;
+            if (this.syncSettings.drawings !== true) this.syncSettings.drawings = true;
+            this.saveSyncSettings();
+        }
         
         // Get original chart wrapper
         const originalChart = document.getElementById('chartWrapper');
