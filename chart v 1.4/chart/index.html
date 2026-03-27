@@ -24070,13 +24070,20 @@
             opacity: 1;
         }
 
-        /* Selected panel: single frame on the panel (no ::after — avoids double ring + global *::after opacity rules). */
-        #chart-container .chart-panel.panel-selected {
-            position: relative;
-            z-index: 6;
-            border: 2px solid rgba(65, 154, 255, 0.84) !important;
-            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
+        /* Selection frame: inner ring div (panel-manager) + higher z-index on selected panel so neighbors don't cover edges. */
+        #chart-container .chart-panel .panel-selection-ring {
+            display: none;
+            position: absolute;
+            inset: 0;
+            box-sizing: border-box;
+            pointer-events: none;
+            z-index: 35;
             border-radius: 2px;
+        }
+        #chart-container .chart-panel.panel-selected .panel-selection-ring {
+            display: block;
+            border: 2px solid rgba(65, 154, 255, 0.84);
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32);
         }
         #chart-container .chart-panel.panel-selected::after {
             content: none !important;
@@ -41764,7 +41771,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_LAYOUT1_MAIN_HARD_SWITCH_V102"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_PANEL_RING_ZSTACK_V103"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 

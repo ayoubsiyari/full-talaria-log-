@@ -1895,6 +1895,12 @@ class PanelManager {
         chartContainer.appendChild(followBtn);
 
         panel.appendChild(chartContainer);
+
+        // Full-frame selection ring (DOM layer — survives sibling z-stacking; border on .chart-panel alone gets covered by adjacent panels).
+        const selectionRing = document.createElement('div');
+        selectionRing.className = 'panel-selection-ring';
+        selectionRing.setAttribute('aria-hidden', 'true');
+        panel.appendChild(selectionRing);
         
         // Add selection indicator bar
         const selectBar = document.createElement('div');
@@ -1993,6 +1999,7 @@ class PanelManager {
         this.panels.forEach((panel, i) => {
             if (panel.element) {
                 panel.element.classList.remove('panel-selected');
+                panel.element.style.zIndex = '100';
             }
         });
         
@@ -2003,6 +2010,16 @@ class PanelManager {
             
             if (panel.element) {
                 panel.element.classList.add('panel-selected');
+                panel.element.style.zIndex = '200';
+                // Ensure selection ring exists (older saved layouts)
+                if (!panel.element.querySelector('.panel-selection-ring')) {
+                    const ring = document.createElement('div');
+                    ring.className = 'panel-selection-ring';
+                    ring.setAttribute('aria-hidden', 'true');
+                    const bar = panel.element.querySelector('.panel-select-bar');
+                    if (bar) panel.element.insertBefore(ring, bar);
+                    else panel.element.appendChild(ring);
+                }
                 // Ensure selection bar exists
                 if (!panel.element.querySelector('.panel-select-bar')) {
                     const bar = document.createElement('div');
