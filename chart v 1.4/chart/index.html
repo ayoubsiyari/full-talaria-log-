@@ -24190,6 +24190,12 @@
             box-shadow: 0 0 0 1px rgba(41,98,255,0.55), 0 0 14px rgba(41,98,255,0.85) !important;
             filter: drop-shadow(0 0 8px rgba(41,98,255,0.8)) !important;
         }
+        /* Override global #chart-container * shadow reset */
+        #chart-container .panel-resize-handle.vertical:hover,
+        #chart-container .panel-resize-handle.horizontal:hover {
+            box-shadow: 0 0 0 1px rgba(41,98,255,0.55), 0 0 14px rgba(41,98,255,0.85) !important;
+            filter: drop-shadow(0 0 8px rgba(41,98,255,0.8)) !important;
+        }
         /* Dragging — accent blue */
         .panel-resize-handle.vertical.dragging {
             background-color: #2962FF !important;
