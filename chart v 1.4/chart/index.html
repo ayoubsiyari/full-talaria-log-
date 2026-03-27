@@ -5651,6 +5651,8 @@
 
             overflow: hidden;
 
+            position: relative;
+
         }
 
         .sp-content-header {
@@ -5726,6 +5728,44 @@
         /* Dedicated top-bar modes (Profile / Global Markets / Object Tree / Alerts / Help)
 
            should all open with the same full-bleed panel layout style. */
+
+        .sp-scroll-bottom-btn {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(30, 34, 45, 0.95);
+            color: #d1d4dc;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.15s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            padding: 0;
+        }
+        .sp-scroll-bottom-btn:hover {
+            background: rgba(41, 98, 255, 0.8);
+            border-color: #2962ff;
+            color: #fff;
+        }
+        .sp-scroll-bottom-btn.visible { display: flex; }
+        body.light-mode .sp-scroll-bottom-btn {
+            background: rgba(240, 243, 250, 0.95);
+            border-color: rgba(5,0,40,0.15);
+            color: #131722;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        body.light-mode .sp-scroll-bottom-btn:hover {
+            background: #2962ff;
+            border-color: #2962ff;
+            color: #fff;
+        }
 
         #settingsPanel.sp-mode .sp-content-body {
 
@@ -35430,6 +35470,10 @@
 
             </div>
 
+            <button class="sp-scroll-bottom-btn" id="spScrollBottomBtn" title="Scroll to bottom">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
         </div>
 
     </div>
@@ -59105,13 +59149,29 @@ function _spWireDom(){
 
 
 
+function _spInitScrollBtn(){
+    var body=document.getElementById('settingsPanelContent');
+    var arrow=document.getElementById('spScrollBottomBtn');
+    if(!body||!arrow)return;
+    function checkScroll(){
+        var gap=body.scrollHeight-body.scrollTop-body.clientHeight;
+        if(gap>60) arrow.classList.add('visible');
+        else arrow.classList.remove('visible');
+    }
+    body.addEventListener('scroll',checkScroll);
+    var obs=new MutationObserver(function(){setTimeout(checkScroll,50);});
+    obs.observe(body,{childList:true,subtree:true});
+    arrow.addEventListener('click',function(){body.scrollTo({top:body.scrollHeight,behavior:'smooth'});});
+}
+
 if(document.readyState==='loading'){
 
-    document.addEventListener('DOMContentLoaded',_spWireDom);
+    document.addEventListener('DOMContentLoaded',function(){_spWireDom();_spInitScrollBtn();});
 
 }else{
 
     _spWireDom();
+    _spInitScrollBtn();
 
 }
 
