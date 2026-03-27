@@ -17967,16 +17967,11 @@ class Chart {
                             existingDrawing.points = drawingData.points;
                             existingDrawing.timestampPoints = originalTimestampPoints;
                         } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
-                            // Preserve original timestamp points
                             const originalTimestampPoints = drawingData.points.map(p => ({
                                 timestamp: p.timestamp,
                                 price: p.price || p.y
                             }));
-                            
-                            // Convert to index-based points for rendering (with correct timeframe)
                             drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
-                            
-                            // Update drawing with new points
                             existingDrawing.points = drawingData.points;
                             existingDrawing.timestampPoints = originalTimestampPoints;
                         }
@@ -17990,7 +17985,13 @@ class Chart {
                     }
                     
                     dm.renderDrawing(existingDrawing);
-                    dm.saveDrawings();
+
+                    // Debounce save during rapid live updates (drag/resize) to
+                    // avoid serialising all drawings to localStorage on every frame.
+                    clearTimeout(this._syncUpdateSaveTimer);
+                    this._syncUpdateSaveTimer = setTimeout(() => {
+                        dm.saveDrawings();
+                    }, 300);
                 } else {
                     // Robustness: if a panel missed the live "add", treat final update as add.
                     this.receiveDrawingChange('add', drawing, drawingIndex);

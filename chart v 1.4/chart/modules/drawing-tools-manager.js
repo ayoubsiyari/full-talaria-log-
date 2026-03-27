@@ -1179,8 +1179,7 @@ class DrawingToolsManager {
     /**
      * Clear current tool (cursor mode)
      */
-    clearTool() {
-        // [debug removed]
+    clearTool(_mirrored = false) {
         this._clearLiveSyncPreview();
         this.currentTool = null;
         this.drawingState.reset();
@@ -1247,6 +1246,22 @@ class DrawingToolsManager {
             this.chart.canvas.style.cursor = cursorStyle;
         }
         this._updateAxisZonePointerEvents();
+
+        // Mirror clear to all other panel drawing managers
+        if (!_mirrored && window.panelManager && window.panelManager.currentLayout !== '1') {
+            const allDms = [];
+            if (window.chart && window.chart.drawingManager) allDms.push(window.chart.drawingManager);
+            if (Array.isArray(window.panelManager.panels)) {
+                window.panelManager.panels.forEach((p) => {
+                    const dm = p && p.chartInstance && p.chartInstance.drawingManager;
+                    if (dm) allDms.push(dm);
+                });
+            }
+            allDms.forEach((dm) => {
+                if (!dm || dm === this) return;
+                if (dm.currentTool) dm.clearTool(true);
+            });
+        }
     }
 
     _nextLiveSyncId() {
@@ -1321,6 +1336,12 @@ class DrawingToolsManager {
         if (!drawing || !this.chart || !this.chart.broadcastDrawingChange) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
         if (window.panelManager.currentLayout === '1') return;
+
+        // Throttle: max ~60 fps for live edit broadcasts to keep UI responsive
+        const now = performance.now();
+        if (this._lastLiveEditBroadcast && (now - this._lastLiveEditBroadcast) < 16) return;
+        this._lastLiveEditBroadcast = now;
+
         const ensuredId = this._ensureDrawingId(drawing);
         const payload = (typeof drawing.toJSON === 'function')
             ? drawing.toJSON()
