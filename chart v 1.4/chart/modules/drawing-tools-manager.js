@@ -1276,6 +1276,42 @@ class DrawingToolsManager {
         this._liveSyncDrawingId = null;
         this._liveSyncBroadcasted = false;
     }
+
+    _translatePointsByPixels(points, pixelDx, pixelDy, drawingType = null) {
+        if (!Array.isArray(points) || !this.chart || !this.chart.yScale) return null;
+        return points.map((pt) => {
+            if (!pt) return pt;
+            const baseX = Number(pt.x);
+            const baseY = Number(pt.y);
+            if (!Number.isFinite(baseX) || !Number.isFinite(baseY)) return { ...pt };
+
+            let pxX = Number.isFinite(pixelDx) ? pixelDx : 0;
+            let pxY = Number.isFinite(pixelDy) ? pixelDy : 0;
+            if (typeof this.chart.dataIndexToPixel === 'function') pxX += this.chart.dataIndexToPixel(baseX);
+            else if (typeof this.chart.xScale === 'function') pxX += this.chart.xScale(baseX);
+            if (typeof this.chart.yScale === 'function') pxY += this.chart.yScale(baseY);
+
+            const x = (typeof this.chart.pixelToDataIndex === 'function')
+                ? this.chart.pixelToDataIndex(pxX)
+                : (this.chart.xScale && typeof this.chart.xScale.invert === 'function' ? this.chart.xScale.invert(pxX) : baseX);
+            const y = (typeof this.chart.yScale.invert === 'function') ? this.chart.yScale.invert(pxY) : baseY;
+            const out = { ...pt, x, y };
+            return this.clampPointToCandleRange(out, drawingType || this.currentTool);
+        });
+    }
+
+    _broadcastLiveEditUpdate(drawing, pointsOverride = null) {
+        if (!drawing || !this.chart || !this.chart.broadcastDrawingChange) return;
+        if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
+        if (window.panelManager.currentLayout === '1') return;
+        const payload = (typeof drawing.toJSON === 'function')
+            ? drawing.toJSON()
+            : JSON.parse(JSON.stringify(drawing));
+        payload.id = drawing.id || payload.id;
+        if (!payload.id) return;
+        if (Array.isArray(pointsOverride)) payload.points = pointsOverride.map(p => ({ ...p }));
+        this.chart.broadcastDrawingChange('update', payload);
+    }
     
     /**
      * Deactivate current drawing tool (used when switching panels)
@@ -2086,6 +2122,11 @@ class DrawingToolsManager {
                         const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
                         drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                     }
+                    const startEntry = this.multiDragStartPositions.find((m) => m.drawing === drawing);
+                    if (startEntry && Array.isArray(startEntry.points)) {
+                        const previewPoints = this._translatePointsByPixels(startEntry.points, pixelDx, pixelDy, drawing.type);
+                        this._broadcastLiveEditUpdate(drawing, previewPoints);
+                    }
                 });
             } else {
                 // Move single drawing with pixel-based transform
@@ -2093,6 +2134,10 @@ class DrawingToolsManager {
                     const newX = this.dragStartOriginalPos.x + pixelDx;
                     const newY = this.dragStartOriginalPos.y + pixelDy;
                     this.draggingDrawing.group.attr('transform', `translate(${newX}, ${newY})`);
+                }
+                if (Array.isArray(this.singleDragStartPoints)) {
+                    const previewPoints = this._translatePointsByPixels(this.singleDragStartPoints, pixelDx, pixelDy, this.draggingDrawing.type);
+                    this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                 }
             }
             return;
@@ -2125,6 +2170,7 @@ class DrawingToolsManager {
             }
 
             this.scheduleRenderDrawing(this.resizingDrawing);
+            this._broadcastLiveEditUpdate(this.resizingDrawing);
             return;
         }
         
@@ -2153,6 +2199,7 @@ class DrawingToolsManager {
                 );
                 if (handled) {
                     this.scheduleRenderDrawing(this.customHandleDraggingDrawing);
+                    this._broadcastLiveEditUpdate(this.customHandleDraggingDrawing);
                 }
             }
             return;
@@ -4017,6 +4064,7 @@ class DrawingToolsManager {
                 if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
                     item.drawing.showAxisHighlights();
                 }
+                this._broadcastLiveEditUpdate(item.drawing);
             });
         };
 
@@ -4223,6 +4271,7 @@ class DrawingToolsManager {
         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
             drawing.showAxisHighlights();
         }
+        this._broadcastLiveEditUpdate(drawing);
     }
 
     /**
@@ -4313,6 +4362,7 @@ class DrawingToolsManager {
 
         // Always re-render during drag
         this.scheduleRenderDrawing(drawing);
+        this._broadcastLiveEditUpdate(drawing);
         
         // Dispatch event to sync UI with drawing style changes (e.g., font size during text resize)
         window.dispatchEvent(new CustomEvent('drawingStyleChanged', { 
@@ -4417,6 +4467,9 @@ class DrawingToolsManager {
             return { x: parseFloat(m[1]) || 0, y: parseFloat(m[2]) || 0 };
         };
         this.dragStartOriginalPos = parseTranslate(drawing.group ? drawing.group.attr('transform') : null);
+        this.singleDragStartPoints = drawing && Array.isArray(drawing.points)
+            ? drawing.points.map(p => ({ ...p }))
+            : null;
         
         // If dragging a drawing that's part of a multi-selection, drag all selected drawings
         if (this.selectedDrawings.length > 1 && this.selectedDrawings.includes(drawing)) {
@@ -4437,6 +4490,9 @@ class DrawingToolsManager {
             }));
         } else {
             this.draggingMultiple = false;
+            this.singleDragStartPoints = drawing && Array.isArray(drawing.points)
+                ? drawing.points.map(p => ({ ...p }))
+                : null;
         }
     }
 
@@ -4528,6 +4584,7 @@ class DrawingToolsManager {
         this.dragStartOriginalPos = null;
         this.draggingMultiple = false;
         this.multiDragStartPositions = null;
+        this.singleDragStartPoints = null;
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
