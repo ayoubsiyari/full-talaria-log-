@@ -24002,6 +24002,8 @@
 
             overflow: hidden;
 
+            isolation: isolate;
+
             user-select: none;
 
             -webkit-user-select: none;
@@ -24072,12 +24074,15 @@
         /* Selected-panel frame: inset ring above chart content (survives global reset rules). */
         #chart-container .panel-selected {
             position: relative;
-            z-index: 6;
+            /* No z-index here — avoids creating a stacking context so the ::after
+               participates in chart-container's isolated context at z-index 5000,
+               which is above the resize handles (z-index 200). */
         }
         #chart-container .panel-selected::after {
             content: '';
             position: absolute;
-            inset: 2px; /* keep ring inside panel so split borders remain clean */
+            inset: 0;
+            box-sizing: border-box;
             border: 2px solid rgba(65, 154, 255, 0.84) !important;
             box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
             border-radius: 2px;
