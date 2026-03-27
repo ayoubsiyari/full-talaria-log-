@@ -3135,6 +3135,9 @@ class DrawingToolsManager {
                 this.chart.broadcastDrawingChange('remove', { id: livePreviewId });
             }
             this.chart.broadcastDrawingChange('add', drawing);
+            // Settle pass: immediately re-apply finalized geometry on targets.
+            // Helps panels that quantize/index-map differently on initial add.
+            this.chart.broadcastDrawingChange('update', drawing);
         }
         
         // Refresh object tree if available
