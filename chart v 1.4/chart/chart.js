@@ -16889,14 +16889,17 @@ class Chart {
      * Only works for panel instances
      */
     syncDrawingToOtherPanels(drawing, action = 'add') {
-        
-        // Only sync if this is a panel instance and sync system is available
-        if (!this.isPanel || !this.panel || !window.panelDrawingSync) {
+        // Use the chart-level sync pipeline as the single source of truth.
+        // Legacy window.panelDrawingSync causes duplicate/remap races.
+        if (typeof this.broadcastDrawingChange !== 'function') {
             return;
         }
-        
-        // Call the global sync system
-        window.panelDrawingSync.syncDrawing(this.panel, drawing, action);
+        if (!drawing || typeof drawing !== 'object') return;
+        if (!drawing.id) {
+            drawing.id = `dr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        }
+        const mappedAction = action === 'delete' ? 'remove' : action;
+        this.broadcastDrawingChange(mappedAction, drawing);
     }
     
     addQuickActionButton(container, icon, label, onClick) {
