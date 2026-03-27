@@ -17664,6 +17664,20 @@ class Chart {
         return out;
     }
 
+    _normalizeSymbolForDrawingSync(symbol) {
+        if (symbol === undefined || symbol === null) return '';
+        return String(symbol).replace(/\s+/g, '').replace(/\//g, '').toUpperCase();
+    }
+
+    _shouldSyncDrawingToChart(targetChart) {
+        if (!targetChart) return false;
+        const src = this._normalizeSymbolForDrawingSync(this.currentSymbol || this.symbol || this.currentFileId);
+        const dst = this._normalizeSymbolForDrawingSync(targetChart.currentSymbol || targetChart.symbol || targetChart.currentFileId);
+        // If either side has no symbol context, keep previous behavior (allow sync).
+        if (!src || !dst) return true;
+        return src === dst;
+    }
+
     broadcastDrawingChange(action, drawing, drawingIndex = null) {
         
         if (!window.panelManager || !window.panelManager.panels) {
@@ -17688,6 +17702,7 @@ class Chart {
         // Get all panel chart instances
         window.panelManager.panels.forEach(panel => {
             if (panel.chartInstance && panel.chartInstance !== this) {
+                if (!this._shouldSyncDrawingToChart(panel.chartInstance)) return;
                 panel.chartInstance.receiveDrawingChange(action, drawingData, drawingIndex);
             }
         });
