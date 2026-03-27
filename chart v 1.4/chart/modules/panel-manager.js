@@ -1212,6 +1212,10 @@ class PanelManager {
             
             // Also remove any orphaned resize handles by class name
             document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
+
+            // Remove selection overlay and clear selected class from everything
+            document.querySelectorAll('.panel-selection-frame').forEach(f => f.remove());
+            document.querySelectorAll('.panel-selected').forEach(el => el.classList.remove('panel-selected'));
             
             // Hide panels container
             this.container.style.display = 'none';
