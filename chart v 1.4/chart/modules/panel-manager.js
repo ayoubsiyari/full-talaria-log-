@@ -1997,6 +1997,28 @@ class PanelManager {
             const liveTimeframe = (panel.chartInstance && panel.chartInstance.currentTimeframe)
                 ? panel.chartInstance.currentTimeframe
                 : panel.timeframe;
+
+            // If any chart currently has an active drawing tool, transfer it to the selected panel
+            // so user can draw immediately after switching panels (no deselect/reselect required).
+            let activeToolName = null;
+            if (window.chart && window.chart.drawingManager && window.chart.drawingManager.currentTool) {
+                activeToolName = window.chart.drawingManager.currentTool;
+            }
+            if (!activeToolName) {
+                for (const p of this.panels) {
+                    const dm = p && p.chartInstance && p.chartInstance.drawingManager;
+                    if (dm && dm.currentTool) {
+                        activeToolName = dm.currentTool;
+                        break;
+                    }
+                }
+            }
+            if (activeToolName && panel.chartInstance && panel.chartInstance.drawingManager) {
+                const dm = panel.chartInstance.drawingManager;
+                if (dm.currentTool !== activeToolName && typeof dm.setTool === 'function') {
+                    dm.setTool(activeToolName);
+                }
+            }
             
             console.log(`📊 Panel ${index} selected (TF: ${liveTimeframe})`);
             

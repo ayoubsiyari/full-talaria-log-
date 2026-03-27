@@ -3117,6 +3117,30 @@ class DrawingToolsManager {
         }
         // Set chart reference for timestamp conversion
         drawing.chart = this.chart;
+
+        // Persist new drawings in timestamp space so timeframe switches keep them visible
+        // (same behavior expected from original chart).
+        if (
+            drawing &&
+            Array.isArray(drawing.points) &&
+            this.chart &&
+            Array.isArray(this.chart.data) &&
+            this.chart.data.length > 0 &&
+            typeof CoordinateUtils !== 'undefined' &&
+            typeof CoordinateUtils.pointsToTimestamps === 'function'
+        ) {
+            try {
+                const tsPoints = CoordinateUtils.pointsToTimestamps(
+                    drawing.points,
+                    this.chart.data,
+                    this.chart.currentTimeframe
+                );
+                if (Array.isArray(tsPoints) && tsPoints.length > 0) {
+                    drawing.timestampPoints = tsPoints;
+                    drawing.coordinateSystem = 'timestamp';
+                }
+            } catch (_) {}
+        }
         
         this.drawings.push(drawing);
         this.renderDrawing(drawing);
