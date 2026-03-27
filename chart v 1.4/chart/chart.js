@@ -17571,8 +17571,8 @@ class Chart {
             return;
         }
         
-        // Only sync from panel charts
-        if (!this.isPanel) {
+        // Allow syncing from both panel charts and the main/original chart in multi-panel layout.
+        if (window.panelManager.currentLayout === '1') {
             return;
         }
         
@@ -17698,7 +17698,7 @@ class Chart {
                 } else {
                 }
                 }
-            } else if (action === 'remove') {
+            } else if (action === 'remove' || action === 'delete') {
                 // Find and remove drawing by ID
                 const drawingId = drawing.id;
                 const existingDrawing = dm.drawings.find(d => d.id === drawingId);
