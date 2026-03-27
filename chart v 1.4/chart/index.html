@@ -24074,6 +24074,10 @@
         #chart-container .panel-selected {
             position: relative;
             z-index: 6;
+            /* Keep selection visible even when settings/menu applies global ::after suppression */
+            border: 2px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
+            border-radius: 2px;
         }
         #chart-container .panel-selected::after {
             content: '';
