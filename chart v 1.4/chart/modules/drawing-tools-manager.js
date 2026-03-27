@@ -1238,8 +1238,8 @@ class DrawingToolsManager {
 
     _syncLivePreviewDrawing(tempDrawing) {
         if (!tempDrawing || !this.chart || !this.chart.broadcastDrawingChange) return;
-        if (!this.chart.isPanel || !this.chart.panel) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
+        if (window.panelManager.currentLayout === '1') return;
 
         if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
         tempDrawing.id = this._liveSyncDrawingId;
