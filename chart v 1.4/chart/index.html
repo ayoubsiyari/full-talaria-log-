@@ -24328,9 +24328,9 @@
 
             position: absolute;
 
-            left: 14px;
+            left: 8px;
 
-            bottom: 48px;
+            bottom: 34px;
 
             display: flex;
 
@@ -24338,7 +24338,7 @@
 
             align-items: center;
 
-            gap: 6px;
+            gap: 4px;
 
             pointer-events: auto;
 
@@ -24348,9 +24348,11 @@
 
             text-decoration: none;
 
-            opacity: 0.6;
+            opacity: 0.85;
 
-            transition: opacity 0.2s ease;
+            transition: opacity 0.2s ease, filter 0.2s ease;
+
+            filter: brightness(1.1);
 
         }
 
@@ -24359,6 +24361,8 @@
         .chart-brand:hover {
 
             opacity: 1;
+
+            filter: brightness(1.5) drop-shadow(0 0 6px rgba(255,255,255,0.4));
 
         }
 
@@ -24372,13 +24376,15 @@
 
             opacity: 1;
 
+            filter: brightness(1.8) saturate(0);
+
         }
 
 
 
         .chart-brand .logo-top {
 
-            height: 40px;
+            height: 24px;
 
             width: auto;
 
@@ -24390,7 +24396,7 @@
 
         .chart-brand .logo-bottom {
 
-            height: 40px;
+            height: 24px;
 
             width: auto;
 
@@ -24403,6 +24409,8 @@
             opacity: 0;
 
             transition: max-width 0.3s ease, opacity 0.25s ease;
+
+            filter: brightness(2) saturate(0);
 
         }
 
