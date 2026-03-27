@@ -101,8 +101,48 @@ class PanelManager {
         // Don't call applyLayout - original chart is already visible
         this.currentLayout = '1';
 
-        // Keep startup stable: do not auto-apply saved multi-panel state during init.
-        // Manual layout selection still works and state is still saved.
+        // Restore saved panel workspace safely (deferred until chart data is ready).
+        this.setupDeferredStateRestore();
+    }
+
+    setupDeferredStateRestore() {
+        if (this._restoreHooked) return;
+        this._restoreHooked = true;
+
+        const tryRestore = () => {
+            if (this._restoredFromState) return;
+            const saved = this.loadPanelState();
+            if (!saved || !saved.layout || saved.layout === '1') return;
+
+            const c = typeof window !== 'undefined' ? window.chart : null;
+            const chartReady = !!(c && c.canvas && Array.isArray(c.data) && c.data.length > 0);
+            if (!chartReady) return;
+
+            this._restoredFromState = true;
+            this._isRestoringSavedState = true;
+            const desired = Number.isFinite(saved.selectedPanelIndex) ? saved.selectedPanelIndex : 0;
+
+            requestAnimationFrame(() => {
+                try {
+                    this.applyLayout(saved.layout);
+                    requestAnimationFrame(() => {
+                        const maxIndex = Math.max(0, this.panels.length - 1);
+                        this.selectPanel(Math.max(0, Math.min(maxIndex, desired)));
+                    });
+                } finally {
+                    setTimeout(() => {
+                        this._isRestoringSavedState = false;
+                        this.savePanelState();
+                    }, 1500);
+                }
+            });
+        };
+
+        // Try on common lifecycle points; restore runs once when chart is ready.
+        window.addEventListener('load', tryRestore);
+        window.addEventListener('chartDataLoaded', tryRestore);
+        setTimeout(tryRestore, 600);
+        setTimeout(tryRestore, 1500);
     }
 
     /**
@@ -2200,6 +2240,7 @@ class PanelManager {
     }
 
     _doSavePanelState() {
+        if (this._isRestoringSavedState) return;
         try {
             const state = {
                 layout: this.currentLayout,
