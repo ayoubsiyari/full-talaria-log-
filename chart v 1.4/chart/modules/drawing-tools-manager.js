@@ -43,6 +43,8 @@ class DrawingToolsManager {
         this.isDraggingFirstTwo = false;
         this.dragFirstTwoStart = null;
         this.dragFirstTwoStartScreen = null;
+        this._liveSyncDrawingId = null;
+        this._liveSyncBroadcasted = false;
         
         // Rectangular selection
         this.isRectSelecting = false;
@@ -1162,6 +1164,7 @@ class DrawingToolsManager {
      */
     clearTool() {
         // [debug removed]
+        this._clearLiveSyncPreview();
         this.currentTool = null;
         this.drawingState.reset();
         this.svg.style('cursor', 'default');
@@ -1227,6 +1230,39 @@ class DrawingToolsManager {
             this.chart.canvas.style.cursor = cursorStyle;
         }
         this._updateAxisZonePointerEvents();
+    }
+
+    _nextLiveSyncId() {
+        return `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    _syncLivePreviewDrawing(tempDrawing) {
+        if (!tempDrawing || !this.chart || !this.chart.broadcastDrawingChange) return;
+        if (!this.chart.isPanel || !this.chart.panel) return;
+        if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
+
+        if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
+        tempDrawing.id = this._liveSyncDrawingId;
+
+        const payload = (typeof tempDrawing.toJSON === 'function')
+            ? tempDrawing.toJSON()
+            : JSON.parse(JSON.stringify(tempDrawing));
+        payload.id = this._liveSyncDrawingId;
+
+        this.chart.broadcastDrawingChange(this._liveSyncBroadcasted ? 'update' : 'add', payload);
+        this._liveSyncBroadcasted = true;
+    }
+
+    _clearLiveSyncPreview() {
+        if (!this._liveSyncDrawingId) {
+            this._liveSyncBroadcasted = false;
+            return;
+        }
+        if (this._liveSyncBroadcasted && this.chart && this.chart.broadcastDrawingChange) {
+            this.chart.broadcastDrawingChange('remove', { id: this._liveSyncDrawingId });
+        }
+        this._liveSyncDrawingId = null;
+        this._liveSyncBroadcasted = false;
     }
     
     /**
@@ -1685,6 +1721,8 @@ class DrawingToolsManager {
             // [debug removed]
             this.drawingState.startDrawing(this.currentTool, toolInfo.points);
             this.riskRewardPreview = null;
+            this._liveSyncDrawingId = this._nextLiveSyncId();
+            this._liveSyncBroadcasted = false;
             
             // Enable continuous drawing mode for freehand tools
             if (this.currentTool === 'brush' || this.currentTool === 'highlighter') {
@@ -2708,6 +2746,7 @@ class DrawingToolsManager {
                     chart: this.chart  // Pass chart for dataIndexToPixel
                 }, isPreview);
             }
+            this._syncLivePreviewDrawing(tempDrawing);
             
             // Disable pointer-events on preview so clicks pass through to SVG for adding more points
             this.tempGroup.selectAll('*').style('pointer-events', 'none');
@@ -2736,6 +2775,9 @@ class DrawingToolsManager {
         }
 
         const drawing = new toolInfo.class(...args);
+        if (this._liveSyncDrawingId) {
+            drawing.id = this._liveSyncDrawingId;
+        }
         
         // Apply saved style for this tool type
         this.applySavedStyle(drawing);
@@ -2859,6 +2901,8 @@ class DrawingToolsManager {
         this.isDraggingFirstTwo = false;  // Reset for next drawing
         this.dragFirstTwoStart = null;
         this.dragFirstTwoStartScreen = null;
+        this._liveSyncDrawingId = null;
+        this._liveSyncBroadcasted = false;
         
         // Auto-deselect tool after drawing, with exceptions:
         // - Keep Drawing Mode: keep any tool active
@@ -2885,6 +2929,7 @@ class DrawingToolsManager {
      * Cancel current drawing
      */
     cancelDrawing() {
+        this._clearLiveSyncPreview();
         this.tempGroup.selectAll('*').remove();
         this.drawingState.reset();
         this.riskRewardPreview = null;

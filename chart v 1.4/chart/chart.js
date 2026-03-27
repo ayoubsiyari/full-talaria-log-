@@ -17609,6 +17609,29 @@ class Chart {
             if (action === 'add') {
                 // Clone the drawing data
                 const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
+                const incomingId = drawingData && drawingData.id;
+                const existingById = incomingId ? dm.drawings.find(d => d && d.id === incomingId) : null;
+                // Live preview path may send repeated "add" for the same temp id; update in place.
+                if (existingById) {
+                    if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+                        if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
+                            const originalTimestampPoints = drawingData.points.map(p => ({
+                                timestamp: p.timestamp,
+                                price: p.price || p.y
+                            }));
+                            drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
+                            existingById.points = drawingData.points;
+                            existingById.timestampPoints = originalTimestampPoints;
+                        }
+                    } else if (drawingData.points) {
+                        existingById.points = drawingData.points;
+                    }
+                    if (drawingData.style) {
+                        existingById.style = { ...(existingById.style || {}), ...drawingData.style };
+                    }
+                    dm.renderDrawing(existingById);
+                    dm.saveDrawings();
+                } else {
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
                 if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
@@ -17673,6 +17696,7 @@ class Chart {
                     dm.saveDrawings();
                     
                 } else {
+                }
                 }
             } else if (action === 'remove') {
                 // Find and remove drawing by ID

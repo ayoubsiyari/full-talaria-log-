@@ -41738,7 +41738,7 @@
 
     <script defer src="modules/preferences-init.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=20260325_PANEL_SVG_ZINDEX_V5"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260326_LIVE_DRAW_PREVIEW_SYNC_V6"></script>
 
     <script defer src="modules/favorites-manager.js?v=20260318_TF_PIN_V59"></script>
 
@@ -41760,7 +41760,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_LIVE_DRAW_SYNC_V228"></script>
+    <script defer src="chart.js?v=20260326_LIVE_DRAW_SYNC_V229"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -45426,6 +45426,17 @@
 
                         }
 
+                        // Carry over existing drawings when entering multi-panel layout.
+                        // Prefer chart.drawings; fall back to drawingManager JSON if needed.
+                        try {
+                            let seedDrawings = Array.isArray(chart.drawings) ? chart.drawings : [];
+                            if ((!seedDrawings || seedDrawings.length === 0) && chart.drawingManager && Array.isArray(chart.drawingManager.drawings)) {
+                                seedDrawings = chart.drawingManager.drawings.map(function(d){ return d && typeof d.toJSON === 'function' ? d.toJSON() : null; }).filter(Boolean);
+                            }
+                            panelChart.drawings = JSON.parse(JSON.stringify(seedDrawings || []));
+                            if (typeof panelChart.redrawDrawings === 'function') panelChart.redrawDrawings();
+                        } catch (_drawSyncErr) {}
+
                     }
 
                     
@@ -45743,9 +45754,13 @@
 
                         
 
-                        // Re-render target panel
-
-                        targetPanel.chartInstance.render();
+                        // Re-render target panel drawings immediately
+                        if (typeof targetPanel.chartInstance.redrawDrawings === 'function') {
+                            targetPanel.chartInstance.redrawDrawings();
+                        }
+                        if (typeof targetPanel.chartInstance.render === 'function') {
+                            targetPanel.chartInstance.render();
+                        }
 
                     });
 
@@ -45805,7 +45820,12 @@
 
                         targetPanel.chartInstance.drawings = JSON.parse(JSON.stringify(sourceDrawings));
 
-                        targetPanel.chartInstance.render();
+                        if (typeof targetPanel.chartInstance.redrawDrawings === 'function') {
+                            targetPanel.chartInstance.redrawDrawings();
+                        }
+                        if (typeof targetPanel.chartInstance.render === 'function') {
+                            targetPanel.chartInstance.render();
+                        }
 
                         
 
