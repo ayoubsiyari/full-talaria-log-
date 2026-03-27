@@ -41760,7 +41760,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260326_AXIS_OVERLAY_ON_TOP_V227"></script>
+    <script defer src="chart.js?v=20260326_LIVE_DRAW_SYNC_V228"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -45771,21 +45771,17 @@
 
                     if (d1.type !== d2.type) return false;
 
-                    
-
-                    // Compare timestamps (drawings created at same time are likely the same)
-
-                    if (d1.x1 === d2.x1 && d1.y1 === d2.y1) {
-
-                        if (d1.x2 === d2.x2 && d1.y2 === d2.y2) {
-
-                            return true;
-
-                        }
-
+                    // Stable id path for live preview/update sync
+                    if (d1.__syncId && d2.__syncId) {
+                        return d1.__syncId === d2.__syncId;
                     }
 
-                    
+                    // Compare timestamps (drawings created at same time are likely the same)
+                    if (d1.x1 === d2.x1 && d1.y1 === d2.y1) {
+                        if (d1.x2 === d2.x2 && d1.y2 === d2.y2) {
+                            return true;
+                        }
+                    }
 
                     return false;
 

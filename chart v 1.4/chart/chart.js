@@ -13657,6 +13657,8 @@ class Chart {
         }
 
                 let start = null, startData = null;
+                // Stable id used to live-sync an in-progress drawing across panels
+                let liveSyncDrawingId = null;
         
         // Handle SVG mousedown for drawing and selection
         this.svg.on('mousedown', (event) => {
@@ -13706,6 +13708,7 @@ class Chart {
                 // Store start points - use snapped X for pixel position
                 start = [snappedX, y];
                 startData = {idx: dataIdx, price};
+                liveSyncDrawingId = `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             }
         });
         
@@ -13825,6 +13828,24 @@ class Chart {
                         break;
                     }
                 }
+                // Live-sync the in-progress drawing to sibling panels (same TF)
+                if (liveSyncDrawingId) {
+                    let syncPreview = null;
+                    if (this.tool === 'trendline') {
+                        syncPreview = { type: 'trendline', x1: startData.idx, y1: startData.price, x2: snapIdx, y2: this.snapToOHLC(snapIdx, this.yScale.invert(y)), __syncId: liveSyncDrawingId };
+                    } else if (this.tool === 'horizontal') {
+                        syncPreview = { type: 'horizontal', price: startData.price, __syncId: liveSyncDrawingId };
+                    } else if (this.tool === 'vertical') {
+                        syncPreview = { type: 'vertical', x: snapIdx, __syncId: liveSyncDrawingId };
+                    } else if (this.tool === 'rectangle') {
+                        syncPreview = { type: 'rectangle', x1: startData.idx, y1: startData.price, x2: snapIdx, y2: this.snapToOHLC(snapIdx, this.yScale.invert(y)), __syncId: liveSyncDrawingId };
+                    } else if (this.tool === 'fibonacci') {
+                        syncPreview = { type: 'fibonacci', x1: startData.idx, y1: startData.price, x2: snapIdx, y2: this.snapToOHLC(snapIdx, this.yScale.invert(y)), __syncId: liveSyncDrawingId };
+                    }
+                    if (syncPreview && typeof this.syncDrawingToOtherPanels === 'function') {
+                        this.syncDrawingToOtherPanels(syncPreview, 'update');
+                    }
+                }
             } catch (error) {
                 console.error('Error drawing preview:', error);
                 // Clean up on error
@@ -13921,6 +13942,7 @@ class Chart {
                     }
                     
                     if (newDrawing) {
+                        if (liveSyncDrawingId) newDrawing.__syncId = liveSyncDrawingId;
                         
                         // Apply saved tool defaults for this tool type
                         const defaults = this.toolDefaults[newDrawing.type] || {};
@@ -13984,6 +14006,7 @@ class Chart {
                 // Reset drawing start points
                 start = null;
                 startData = null;
+                liveSyncDrawingId = null;
             }
         });
         
