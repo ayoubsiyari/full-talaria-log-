@@ -5438,20 +5438,17 @@ class DrawingToolsManager {
     /**
      * Get storage key for current symbol
      * SHARED across all timeframes - drawings appear on all timeframes
-     * SEPARATE for each panel - each panel has its own drawings
+     * SHARED across all panels of the same pair/session (mirror behavior)
      */
     getStorageKey() {
         const fileId = this.chart.currentFileId || 'default';
-        const panelId = (this.chart.panelIndex !== undefined && this.chart.panelIndex !== 0) 
-            ? `_p${this.chart.panelIndex}` 
-            : '';
         const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
             ? this.chart.getActiveTradingSessionId()
             : null;
         if (sessionId) {
-            return `chart_drawings_s${sessionId}_${fileId}${panelId}`;
+            return `chart_drawings_s${sessionId}_${fileId}`;
         }
-        return `chart_drawings_${fileId}${panelId}`;
+        return `chart_drawings_${fileId}`;
     }
 
     /**
