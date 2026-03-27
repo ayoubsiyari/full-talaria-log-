@@ -1608,7 +1608,7 @@ class PanelManager {
             originalChart.style.borderBottom = `1px solid ${mainChrome.border}`;
             originalChart.style.boxSizing = 'border-box';
             originalChart.style.overflow = 'hidden';
-            originalChart.style.zIndex = '10';
+            originalChart.style.zIndex = '100';
             
             // Add panel 0 info to panels array (reference to main chart)
             const mainPanel = {
@@ -2004,8 +2004,8 @@ class PanelManager {
             
             if (panel.element) {
                 panel.element.classList.add('panel-selected');
-                // Above .panel-resize-handle (z-index 200) so the selection frame draws over divider lines (TradingView-style)
-                panel.element.style.zIndex = '260';
+                // Above .panel-resize-handle so the selection frame draws over divider lines (TradingView-style). Same for main #chartWrapper (panel 0) and .chart-panel.
+                panel.element.style.zIndex = '350';
                 // Ensure selection bar exists
                 if (!panel.element.querySelector('.panel-select-bar')) {
                     const bar = document.createElement('div');

@@ -24032,7 +24032,7 @@
 
         #chart-container canvas,
 
-        #chart-container * {
+        #chart-container *:not(.panel-selection-ring) {
 
             user-select: none;
 
@@ -24069,10 +24069,12 @@
             opacity: 1;
         }
 
-        /* Selected panel: z-index set in panel-manager (260) > .panel-resize-handle (200) so the ring overlaps dividers. */
+        /* Panel selection ring: main chart is #chartWrapper (panel 0); extra panels use .chart-panel. z-index set in panel-manager (350) > .panel-resize-handle. */
+        #chart-container #chartWrapper.panel-selected,
         #chart-container .chart-panel.panel-selected {
             position: relative;
         }
+        #chart-container #chartWrapper.panel-selected::after,
         #chart-container .chart-panel.panel-selected::after {
             content: '';
             position: absolute;
@@ -24083,6 +24085,12 @@
             border-radius: 2px;
             pointer-events: none;
             z-index: 5000;
+        }
+        /* Global settings drawer hides *::after — keep panel selection rings visible */
+        body.settings-open #chart-container #chartWrapper.panel-selected::after,
+        body.settings-open #chart-container .chart-panel.panel-selected::after {
+            opacity: 1 !important;
+            pointer-events: none !important;
         }
 
         .chart-panel .ohlc-info {
@@ -24149,7 +24157,8 @@
 
         .panel-resize-handle {
             position: absolute;
-            z-index: 200;
+            /* Below selected panel (350) so selection border overlaps divider; above non-selected panels (100) */
+            z-index: 140;
             pointer-events: auto;
             transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
         }
@@ -41767,7 +41776,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260318_TF_PIN_V60"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260327_PANEL_SEL_ABOVE_DIVIDER_V104"></script>
+    <script defer src="modules/panel-manager.js?v=20260327_MAIN_PANEL_RING_Z350_V105"></script>
 
     <script defer src="settings-panel.js?v=20260321_CLR_ALIGN_V1"></script>
 
