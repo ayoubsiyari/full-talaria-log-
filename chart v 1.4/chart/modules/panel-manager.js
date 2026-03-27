@@ -1285,8 +1285,8 @@ class PanelManager {
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
             
-            // Comprehensive restore of main chart functionality
-            setTimeout(() => {
+            // Comprehensive restore of main chart functionality (next frame, no artificial delay)
+            requestAnimationFrame(() => {
                 if (window.chart) {
                     const chart = window.chart;
                     
@@ -1350,7 +1350,7 @@ class PanelManager {
                     
                     console.log('✅ Main chart fully restored - cursorType:', chart.cursorType, 'showLines:', chart.showCrosshairLines);
                 }
-            }, 100);
+            });
             
             // Dispatch event when returning to single panel mode
             window.dispatchEvent(new CustomEvent('returnedToSinglePanel', {
@@ -1653,12 +1653,12 @@ class PanelManager {
             console.log(`📊 Panel 0: Main chart positioned at ${firstConfig.width} x ${firstConfig.height}`);
             
             // Trigger resize for main chart after positioning
-            setTimeout(() => {
+            requestAnimationFrame(() => {
                 if (window.chart && window.chart.resize) {
                     window.chart.resize();
                     window.chart.render();
                 }
-            }, 150);
+            });
         }
         
         // Create additional panels (starting from index 1)
@@ -1675,18 +1675,18 @@ class PanelManager {
         
         console.log(`✅ ${this.panels.length} panels total (1 main + ${this.panels.length - 1} additional)`);
         
-        // Auto-select first panel (main chart)
+        // Auto-select first panel (main chart) immediately
         if (this.panels.length > 0) {
-            setTimeout(() => this.selectPanel(0), 100);
+            this.selectPanel(0);
         }
         
         // Sync cursor type from main chart to all panels
-        setTimeout(() => {
+        requestAnimationFrame(() => {
             if (window.chart && window.chart.cursorType) {
                 window.chart.syncCursorTypeToAllCharts(window.chart.cursorType);
                 console.log(`🖱️ Synced cursor type '${window.chart.cursorType}' to all panels`);
             }
-        }, 200);
+        });
         
         window.dispatchEvent(new CustomEvent('panelsCreated', {
             detail: { panels: this.panels, layout: layout }
@@ -1697,7 +1697,7 @@ class PanelManager {
         this.savePanelState();
 
         // Load any saved custom panel sizes, then create drag-to-resize handles
-        setTimeout(() => {
+        requestAnimationFrame(() => {
             const restored = this._loadPanelSizes();
             if (restored) {
                 this.panels.forEach(panel => {
@@ -1709,7 +1709,7 @@ class PanelManager {
                 });
             }
             this.createResizeHandles();
-        }, 300);
+        });
     }
     
     /**
@@ -1848,20 +1848,18 @@ class PanelManager {
         chartContainer.appendChild(ohlcInfo);
         
         // Setup collapse button for this panel's OHLC
-        setTimeout(() => {
-            const collapseBtn = document.getElementById(`ohlcCollapseBtn${index}`);
-            if (collapseBtn) {
-                collapseBtn.addEventListener('click', () => {
-                    ohlcInfo.classList.toggle('collapsed');
-                    const svg = collapseBtn.querySelector('svg polyline');
-                    if (ohlcInfo.classList.contains('collapsed')) {
-                        svg.setAttribute('points', '18 15 12 9 6 15');
-                    } else {
-                        svg.setAttribute('points', '6 9 12 15 18 9');
-                    }
-                });
-            }
-        }, 100);
+        const collapseBtn = ohlcInfo.querySelector(`#ohlcCollapseBtn${index}`);
+        if (collapseBtn) {
+            collapseBtn.addEventListener('click', () => {
+                ohlcInfo.classList.toggle('collapsed');
+                const svg = collapseBtn.querySelector('svg polyline');
+                if (ohlcInfo.classList.contains('collapsed')) {
+                    svg.setAttribute('points', '18 15 12 9 6 15');
+                } else {
+                    svg.setAttribute('points', '6 9 12 15 18 9');
+                }
+            });
+        }
         
         // Add follow button for this panel
         const followBtn = document.createElement('button');
@@ -1928,7 +1926,7 @@ class PanelManager {
         console.log(`✅ Panel ${index} added to DOM`);
         
         // Trigger resize for canvas with proper DPR scaling
-        setTimeout(() => {
+        requestAnimationFrame(() => {
             const rect = panel.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0 && rect.height < 10000) {
                 const dpr = window.devicePixelRatio || 1;
@@ -1951,7 +1949,7 @@ class PanelManager {
             } else {
                 console.error(`❌ Panel ${index} invalid size: ${rect.width}x${rect.height}`);
             }
-        }, 100);
+        });
     }
     
     /**
@@ -2258,7 +2256,7 @@ class PanelManager {
             pc._chartViewRestored = false;
             if (typeof pc.fitToView === 'function') pc.fitToView();
             if (typeof pc.render === 'function') pc.render();
-            setTimeout(() => {
+            requestAnimationFrame(() => {
                 if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
                 if (typeof pc.resize === 'function') pc.resize();
                 // Ensure last candle is visible after final resize
@@ -2273,7 +2271,7 @@ class PanelManager {
                     }
                 }
                 if (typeof pc.render === 'function') pc.render();
-            }, 500);
+            });
         });
     }
     
