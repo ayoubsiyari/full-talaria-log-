@@ -17922,6 +17922,9 @@ class Chart {
                     
                     dm.renderDrawing(existingDrawing);
                     dm.saveDrawings();
+                } else {
+                    // Robustness: if a panel missed the live "add", treat final update as add.
+                    this.receiveDrawingChange('add', drawing, drawingIndex);
                 }
             } else if (action === 'clear') {
                 // Clear all drawings (manager + legacy chart.drawings mirror store)
