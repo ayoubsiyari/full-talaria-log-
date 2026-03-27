@@ -17747,8 +17747,9 @@ class OrderManager {
         `;
         dock.style.cssText = `
             position: fixed;
-            right: 12px;
-            top: 86px;
+            left: 12px;
+            right: auto;
+            top: auto;
             width: 420px;
             background: rgba(10,15,30,0.95);
             border: 1px solid rgba(148,163,184,0.25);
@@ -17757,7 +17758,7 @@ class OrderManager {
             z-index: 9996;
             backdrop-filter: blur(5px);
             color: #e5e7eb;
-            max-height: calc(100vh - 170px);
+            max-height: min(420px, calc(100vh - 120px));
             overflow: hidden;
         `;
         document.body.appendChild(dock);
@@ -17768,14 +17769,61 @@ class OrderManager {
         const dockPosKey = 'miDockPosition';
         const dockMinKey = 'miDockMinimized';
 
-        // Restore last position (if user moved it)
+        /** Sit just above the fixed replay toolbar (bottom of chart area). */
+        const getReplayToolbarHeight = () => {
+            const rt = document.getElementById('replayToolbar');
+            if (!rt) return 100;
+            const h = rt.getBoundingClientRect().height;
+            return Number.isFinite(h) && h > 0 ? Math.round(h) : 100;
+        };
+
+        let miDockAnchoredAboveReplay = true;
+
+        const applyMiDockAnchorAboveReplay = () => {
+            if (!miDockAnchoredAboveReplay) return;
+            const h = getReplayToolbarHeight();
+            const gap = 10;
+            dock.style.left = '12px';
+            dock.style.right = 'auto';
+            dock.style.top = 'auto';
+            dock.style.bottom = `${h + gap}px`;
+            const headerApprox = 52;
+            const avail = window.innerHeight - h - gap - headerApprox - 24;
+            dock.style.maxHeight = `${Math.max(160, Math.min(480, avail))}px`;
+            if (body) {
+                const inner = Math.max(120, Math.min(320, avail - headerApprox));
+                body.style.maxHeight = `${inner}px`;
+            }
+        };
+
+        // Restore last position (if user moved it) — otherwise anchor above replay bar
         try {
             const savedPos = JSON.parse(localStorage.getItem(dockPosKey) || 'null');
             if (savedPos && Number.isFinite(savedPos.left) && Number.isFinite(savedPos.top)) {
+                miDockAnchoredAboveReplay = false;
                 dock.style.left = `${savedPos.left}px`;
                 dock.style.top = `${savedPos.top}px`;
                 dock.style.right = 'auto';
+                dock.style.bottom = 'auto';
+            } else {
+                applyMiDockAnchorAboveReplay();
             }
+        } catch (_) {
+            applyMiDockAnchorAboveReplay();
+        }
+
+        let miDockResizeT = null;
+        const onReplayDockResize = () => {
+            if (!miDockAnchoredAboveReplay) return;
+            clearTimeout(miDockResizeT);
+            miDockResizeT = setTimeout(() => applyMiDockAnchorAboveReplay(), 80);
+        };
+        window.addEventListener('resize', onReplayDockResize);
+        window.addEventListener('orientationchange', onReplayDockResize);
+        try {
+            const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onReplayDockResize) : null;
+            const rtEl = document.getElementById('replayToolbar');
+            if (ro && rtEl) ro.observe(rtEl);
         } catch (_) {}
 
         // Restore minimized state
@@ -17809,12 +17857,14 @@ class OrderManager {
             header.addEventListener('mousedown', (e) => {
                 if (e.target && e.target.closest && e.target.closest('#miDockToggleBtn')) return;
                 dragging = true;
+                miDockAnchoredAboveReplay = false;
                 startX = e.clientX;
                 startY = e.clientY;
                 const rect = dock.getBoundingClientRect();
                 startLeft = rect.left;
                 startTop = rect.top;
                 dock.style.right = 'auto';
+                dock.style.bottom = 'auto';
                 e.preventDefault();
             });
 
@@ -17822,8 +17872,11 @@ class OrderManager {
                 if (!dragging) return;
                 const dx = e.clientX - startX;
                 const dy = e.clientY - startY;
-                const nextLeft = Math.max(8, Math.min(window.innerWidth - dock.offsetWidth - 8, startLeft + dx));
-                const nextTop = Math.max(8, Math.min(window.innerHeight - dock.offsetHeight - 8, startTop + dy));
+                const replayH = getReplayToolbarHeight();
+                const edge = 8;
+                const nextLeft = Math.max(edge, Math.min(window.innerWidth - dock.offsetWidth - edge, startLeft + dx));
+                const maxTop = window.innerHeight - dock.offsetHeight - replayH - edge;
+                const nextTop = Math.max(edge, Math.min(maxTop, startTop + dy));
                 dock.style.left = `${nextLeft}px`;
                 dock.style.top = `${nextTop}px`;
             };
