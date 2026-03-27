@@ -24086,10 +24086,14 @@
             pointer-events: none;
             z-index: 5000;
         }
-        /* Global settings drawer hides *::after — keep panel selection rings visible */
+        /* Settings UI uses `.settings-panel.open ~ * *::after { opacity:0 }` — must override with higher specificity
+           so multi-panel selection rings stay visible when Panel Layouts (or any settings mode) is open. */
         body.settings-open #chart-container #chartWrapper.panel-selected::after,
-        body.settings-open #chart-container .chart-panel.panel-selected::after {
+        body.settings-open #chart-container .chart-panel.panel-selected::after,
+        .settings-panel.open ~ * #chart-container #chartWrapper.panel-selected::after,
+        .settings-panel.open ~ * #chart-container .chart-panel.panel-selected::after {
             opacity: 1 !important;
+            visibility: visible !important;
             pointer-events: none !important;
         }
 
