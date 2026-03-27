@@ -14936,19 +14936,7 @@ class Chart {
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
-        const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
-        const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
         const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
-        const vBg = crossPattern === 'solid'
-            ? crossColor
-            : crossPattern === 'dotted'
-                ? `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
-                : `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
-        const hBg = crossPattern === 'solid'
-            ? crossColor
-            : crossPattern === 'dotted'
-                ? `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
-                : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
         const vBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
