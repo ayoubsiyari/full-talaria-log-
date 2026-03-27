@@ -17730,6 +17730,21 @@ class OrderManager {
 
     createCrossInstrumentPositionsDock() {
         if (document.getElementById('multiInstrumentOpenPositionsDock')) return;
+
+        let host = document.getElementById('openPositionsDockHost');
+        if (!host) {
+            host = document.createElement('div');
+            host.id = 'openPositionsDockHost';
+            host.className = 'open-positions-dock-host';
+            host.setAttribute('aria-label', 'Open positions panel');
+            const rt = document.getElementById('replayToolbar');
+            if (rt && rt.parentNode) {
+                rt.parentNode.insertBefore(host, rt);
+            } else {
+                document.body.appendChild(host);
+            }
+        }
+
         const dock = document.createElement('div');
         dock.id = 'multiInstrumentOpenPositionsDock';
         dock.innerHTML = `
@@ -17746,27 +17761,25 @@ class OrderManager {
             <div id="miDockBody" style="max-height:260px;overflow:auto;"></div>
         `;
         dock.style.cssText = `
-            position: fixed;
-            left: 12px;
-            right: auto;
+            position: relative;
+            left: auto;
             top: auto;
-            width: 420px;
+            width: 100%;
             background: rgba(10,15,30,0.95);
             border: 1px solid rgba(148,163,184,0.25);
             border-radius: 10px;
             box-shadow: 0 8px 30px rgba(0,0,0,0.45);
-            z-index: 9996;
             backdrop-filter: blur(5px);
             color: #e5e7eb;
             max-height: min(420px, calc(100vh - 120px));
             overflow: hidden;
         `;
-        document.body.appendChild(dock);
+        host.appendChild(dock);
 
         const header = dock.querySelector('#miDockHeader');
         const body = dock.querySelector('#miDockBody');
         const toggleBtn = dock.querySelector('#miDockToggleBtn');
-        const dockPosKey = 'miDockPosition';
+        const dockPosKey = 'miDockPositionV2';
         const dockMinKey = 'miDockMinimized';
 
         /** Sit just above the fixed replay toolbar (bottom of chart area). */
@@ -17780,13 +17793,13 @@ class OrderManager {
         let miDockAnchoredAboveReplay = true;
 
         const applyMiDockAnchorAboveReplay = () => {
-            if (!miDockAnchoredAboveReplay) return;
+            if (!miDockAnchoredAboveReplay || !host) return;
             const h = getReplayToolbarHeight();
             const gap = 10;
-            dock.style.left = '12px';
-            dock.style.right = 'auto';
-            dock.style.top = 'auto';
-            dock.style.bottom = `${h + gap}px`;
+            host.style.left = '12px';
+            host.style.right = 'auto';
+            host.style.top = 'auto';
+            host.style.bottom = `${h + gap}px`;
             const headerApprox = 52;
             const avail = window.innerHeight - h - gap - headerApprox - 24;
             dock.style.maxHeight = `${Math.max(160, Math.min(480, avail))}px`;
@@ -17796,21 +17809,24 @@ class OrderManager {
             }
         };
 
-        // Restore last position (if user moved it) — otherwise anchor above replay bar
+        // Restore custom position only from V2 (ignore legacy miDockPosition so old floats don't apply)
         try {
             const savedPos = JSON.parse(localStorage.getItem(dockPosKey) || 'null');
             if (savedPos && Number.isFinite(savedPos.left) && Number.isFinite(savedPos.top)) {
                 miDockAnchoredAboveReplay = false;
-                dock.style.left = `${savedPos.left}px`;
-                dock.style.top = `${savedPos.top}px`;
-                dock.style.right = 'auto';
-                dock.style.bottom = 'auto';
+                host.style.left = `${savedPos.left}px`;
+                host.style.top = `${savedPos.top}px`;
+                host.style.right = 'auto';
+                host.style.bottom = 'auto';
             } else {
                 applyMiDockAnchorAboveReplay();
             }
         } catch (_) {
             applyMiDockAnchorAboveReplay();
         }
+
+        setTimeout(() => applyMiDockAnchorAboveReplay(), 0);
+        setTimeout(() => applyMiDockAnchorAboveReplay(), 400);
 
         let miDockResizeT = null;
         const onReplayDockResize = () => {
@@ -17860,11 +17876,11 @@ class OrderManager {
                 miDockAnchoredAboveReplay = false;
                 startX = e.clientX;
                 startY = e.clientY;
-                const rect = dock.getBoundingClientRect();
+                const rect = host.getBoundingClientRect();
                 startLeft = rect.left;
                 startTop = rect.top;
-                dock.style.right = 'auto';
-                dock.style.bottom = 'auto';
+                host.style.right = 'auto';
+                host.style.bottom = 'auto';
                 e.preventDefault();
             });
 
@@ -17874,16 +17890,18 @@ class OrderManager {
                 const dy = e.clientY - startY;
                 const replayH = getReplayToolbarHeight();
                 const edge = 8;
-                const nextLeft = Math.max(edge, Math.min(window.innerWidth - dock.offsetWidth - edge, startLeft + dx));
-                const maxTop = window.innerHeight - dock.offsetHeight - replayH - edge;
+                const w = host.offsetWidth || dock.offsetWidth || 420;
+                const h = host.offsetHeight || dock.offsetHeight || 120;
+                const nextLeft = Math.max(edge, Math.min(window.innerWidth - w - edge, startLeft + dx));
+                const maxTop = window.innerHeight - h - replayH - edge;
                 const nextTop = Math.max(edge, Math.min(maxTop, startTop + dy));
-                dock.style.left = `${nextLeft}px`;
-                dock.style.top = `${nextTop}px`;
+                host.style.left = `${nextLeft}px`;
+                host.style.top = `${nextTop}px`;
             };
             const onMouseUp = () => {
                 if (!dragging) return;
                 dragging = false;
-                const rect = dock.getBoundingClientRect();
+                const rect = host.getBoundingClientRect();
                 try {
                     localStorage.setItem(dockPosKey, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
                 } catch (_) {}

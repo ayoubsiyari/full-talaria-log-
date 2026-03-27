@@ -13765,6 +13765,36 @@
 
 
 
+        /* Open positions — docked above replay toolbar (host is positioned; inner panel is relative) */
+
+        .open-positions-dock-host {
+
+            position: fixed;
+
+            left: 12px;
+
+            right: auto;
+
+            top: auto;
+
+            z-index: 150;
+
+            width: 420px;
+
+            max-width: calc(100vw - 24px);
+
+            pointer-events: none;
+
+        }
+
+        .open-positions-dock-host > * {
+
+            pointer-events: auto;
+
+        }
+
+
+
         /* Replay toolbar */
 
         body.replay-tabs-collapsed {
@@ -38720,6 +38750,12 @@
 
 
 
+        <!-- Open positions dock: fixed strip above replay bar (not over chart center) -->
+
+        <div id="openPositionsDockHost" class="open-positions-dock-host" aria-label="Open positions panel"></div>
+
+
+
         <!-- Floating Replay Toolbar -->
 
         <div id="replayToolbar" class="replay-toolbar" data-drag-handle="replayToolbarHandle">
@@ -41802,7 +41838,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260325_JPY_HEURISTIC_ONLY_V3"></script>
 
-    <script defer src="modules/order-manager.js?v=20260328_OPEN_POS_DOCK_V81"></script>
+    <script defer src="modules/order-manager.js?v=20260328_OPEN_POS_DOCK_HOST_V83"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260318_TF_PIN_V78"></script>
 
