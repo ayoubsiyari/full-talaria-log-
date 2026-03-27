@@ -17744,10 +17744,23 @@ class Chart {
                     dm.saveDrawings();
                 }
             } else if (action === 'clear') {
-                // Clear all drawings
-                dm.drawings.forEach(d => d.destroy());
+                // Clear all drawings (manager + legacy chart.drawings mirror store)
+                dm.drawings.forEach(d => {
+                    try { d.destroy(); } catch (_) {}
+                });
                 dm.drawings = [];
                 dm.saveDrawings();
+
+                // Legacy fallback drawings array used by older panel sync paths
+                if (Array.isArray(this.drawings) && this.drawings.length > 0) {
+                    this.drawings = [];
+                    if (typeof this.redrawDrawings === 'function') {
+                        try { this.redrawDrawings(); } catch (_) {}
+                    }
+                }
+                if (typeof this.render === 'function') {
+                    this.render();
+                }
             }
             
         } finally {
