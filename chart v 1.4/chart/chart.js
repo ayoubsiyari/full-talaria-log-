@@ -14874,19 +14874,24 @@ class Chart {
     }
 
     updateCrosshair(e) {
+        // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
+        // already expanded) against the canvas/chart internal w/h.  When they
+        // diverge a layout change happened and resize() hasn't caught up yet.
+        const _ctrEl = this.canvas.parentElement;
+        if (_ctrEl) {
+            const _cR = _ctrEl.getBoundingClientRect();
+            const _cW = Math.floor(_cR.width || 0);
+            const _cH = Math.floor(_cR.height || 0);
+            if (_cW > 2 && _cH > 2 &&
+                (Math.abs(_cW - this.w) > 4 || Math.abs(_cH - this.h) > 4)) {
+                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                if (typeof this.resize === 'function') this.resize();
+            }
+        }
+
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
-
-        // Auto-fix stale dimensions: if the canvas container is larger than
-        // this.w/this.h, a layout change happened without resize() catching up.
-        const containerW = Math.floor(rect.width || 0);
-        const containerH = Math.floor(rect.height || 0);
-        if (containerW > 2 && containerH > 2 &&
-            (Math.abs(containerW - this.w) > 4 || Math.abs(containerH - this.h) > 4)) {
-            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-            if (typeof this.resize === 'function') this.resize();
-        }
 
         this.mouseX = x;
         this.mouseY = y;
