@@ -1838,7 +1838,8 @@ class OrderManager {
         this.createOrderButtons();
         this.setupTradingPanel();
         this.createNotificationContainer();
-        this.createCrossInstrumentPositionsDock();
+        // Open Positions (All Instruments) floating dock — disabled (hidden globally)
+        // this.createCrossInstrumentPositionsDock();
         
         // Update panel with initial values
         setTimeout(() => {

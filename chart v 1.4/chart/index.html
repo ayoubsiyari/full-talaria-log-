@@ -13767,29 +13767,20 @@
 
         /* Open positions — docked above replay toolbar (host is positioned; inner panel is relative) */
 
-        .open-positions-dock-host {
+        .open-positions-dock-host,
+        #multiInstrumentOpenPositionsDock {
 
-            position: fixed;
+            display: none !important;
 
-            left: 12px;
+            visibility: hidden !important;
 
-            right: auto;
-
-            top: auto;
-
-            z-index: 150;
-
-            width: 420px;
-
-            max-width: calc(100vw - 24px);
-
-            pointer-events: none;
+            pointer-events: none !important;
 
         }
 
         .open-positions-dock-host > * {
 
-            pointer-events: auto;
+            pointer-events: none !important;
 
         }
 
@@ -41838,7 +41829,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260325_JPY_HEURISTIC_ONLY_V3"></script>
 
-    <script defer src="modules/order-manager.js?v=20260328_OPEN_POS_DOCK_HOST_V83"></script>
+    <script defer src="modules/order-manager.js?v=20260328_HIDE_OPEN_POS_DOCK_V84"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260318_TF_PIN_V78"></script>
 
