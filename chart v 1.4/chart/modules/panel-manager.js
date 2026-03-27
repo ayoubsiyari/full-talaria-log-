@@ -2023,13 +2023,15 @@ class PanelManager {
                 ? panel.chartInstance.currentTimeframe
                 : panel.timeframe;
 
-            // Clear any active drawing tool on all panels so clicking to
-            // switch panels doesn't accidentally start drawing on the new one.
+            // Clear drawing tools and hide crosshairs on non-selected panels
             this.panels.forEach((p, i) => {
                 if (i === index) return;
                 const dm = p && p.chartInstance && p.chartInstance.drawingManager;
                 if (dm && dm.currentTool && typeof dm.clearTool === 'function') {
                     dm.clearTool();
+                }
+                if (p && p.chartInstance && typeof p.chartInstance.hideCrosshair === 'function') {
+                    p.chartInstance.hideCrosshair();
                 }
             });
             if (window.chart && window.chart.drawingManager && window.chart.drawingManager.currentTool) {
@@ -2037,6 +2039,15 @@ class PanelManager {
                 if (!isMainSelected) {
                     window.chart.drawingManager.clearTool();
                 }
+            }
+
+            // Force resize + render on the selected panel so internal
+            // dimensions (this.w / this.h) are up-to-date for crosshair bounds.
+            if (panel.chartInstance) {
+                const ci = panel.chartInstance;
+                if (ci._lastResizeDpr !== undefined) ci._lastResizeDpr = 0;
+                if (typeof ci.resize === 'function') ci.resize();
+                if (typeof ci.render === 'function') ci.render();
             }
             
             console.log(`📊 Panel ${index} selected (TF: ${liveTimeframe})`);
