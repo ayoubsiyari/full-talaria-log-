@@ -17589,7 +17589,15 @@ class Chart {
                 bestKey = levels[k][0];
             }
         }
-        return bestKey;
+        const hi = Number.isFinite(c.h) ? c.h : levels[0][1];
+        const lo = Number.isFinite(c.l) ? c.l : levels[0][1];
+        const op = Number.isFinite(c.o) ? c.o : levels[0][1];
+        const cl = Number.isFinite(c.c) ? c.c : levels[0][1];
+        const rangeTol = Math.abs(hi - lo) * 0.2;
+        const bodyTol = Math.abs(op - cl) * 0.2;
+        const priceTol = Math.max(...levels.map(([, v]) => Math.abs(v))) * 1e-6;
+        const snapTol = Math.max(rangeTol, bodyTol, priceTol, 1e-8);
+        return bestDiff <= snapTol ? bestKey : null;
     }
 
     _buildDrawingSyncAnchors(drawingData) {

@@ -41782,7 +41782,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260327_DRAW_RELEASE_NO_HIDE_V235"></script>
+    <script defer src="chart.js?v=20260327_DRAW_OHLC_SNAP_THRESHOLD_V236"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -45889,7 +45889,15 @@
                                 bestKey = pairs[j][0];
                             }
                         }
-                        return bestKey;
+                        const hi = Number.isFinite(sc.h) ? sc.h : pairs[0][1];
+                        const lo = Number.isFinite(sc.l) ? sc.l : pairs[0][1];
+                        const op = Number.isFinite(sc.o) ? sc.o : pairs[0][1];
+                        const cl = Number.isFinite(sc.c) ? sc.c : pairs[0][1];
+                        const rangeTol = Math.abs(hi - lo) * 0.2;
+                        const bodyTol = Math.abs(op - cl) * 0.2;
+                        const priceTol = Math.max(...pairs.map(([, v]) => Math.abs(v))) * 1e-6;
+                        const snapTol = Math.max(rangeTol, bodyTol, priceTol, 1e-8);
+                        return bestDiff <= snapTol ? bestKey : null;
                     };
                     const mapYWithSourceSemantics = (sourceY, sourceIdx, targetIdx) => {
                         if (!Number.isFinite(sourceY) || !Number.isFinite(targetIdx)) return sourceY;
