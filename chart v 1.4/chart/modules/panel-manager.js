@@ -154,421 +154,193 @@ class PanelManager {
             top: 56px;
             right: auto;
             left: auto;
-            background: #131722;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 8px;
-            padding: 16px;
+            background: #1e222d;
+            border: 1px solid #2a2e39;
+            border-radius: 6px;
+            padding: 0;
             display: none;
             z-index: 10000;
-            min-width: 280px;
+            width: 330px;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
             color: #d1d4dc;
         `;
-        
+
+        // SVG icon helper: w=28 h=20 viewBox, stroke-width 1.5, rx=1
+        const S = (inner) => `<svg width="28" height="20" viewBox="0 0 28 20">${inner}</svg>`;
+        const R = (x,y,w,h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>`;
+
         dropdown.innerHTML = `
-            <div class="layout-dropdown-title" style="font-weight: 500; margin-bottom: 16px; font-size: 13px; color: #787b86; text-transform: uppercase; letter-spacing: 0.5px;">Layout</div>
-            
-            <!-- Single Panel -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">1</div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="layout-option active" data-layout="1" title="Single panel">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="26" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                        </svg>
-                    </button>
+            <div class="pld-body">
+            <!-- Row 1 -->
+            <div class="pld-row">
+                <span class="pld-num">1</span>
+                <div class="pld-icons">
+                    <button class="layout-option active" data-layout="1" title="Single">${S(R(1,1,26,18))}</button>
                 </div>
             </div>
-            
-            <!-- 2 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">2</div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="layout-option" data-layout="2v" title="Vertical split">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                            <rect x="21" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="2h" title="Horizontal split">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="12" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                            <rect x="2" y="16" width="36" height="12" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 2 -->
+            <div class="pld-row">
+                <span class="pld-num">2</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="2v" title="2 vertical">${S(R(1,1,12,18)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="2h" title="2 horizontal">${S(R(1,1,26,8)+R(1,11,26,8))}</button>
                 </div>
             </div>
-            
-            <!-- 3 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">3</div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="layout-option" data-layout="3v" title="3 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="3h" title="3 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="11" width="36" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="20" width="36" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="3l" title="Left + 2 right">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 3 -->
+            <div class="pld-row">
+                <span class="pld-num">3</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="3v" title="3 vertical">${S(R(1,1,8,18)+R(10,1,8,18)+R(19,1,8,18))}</button>
+                    <button class="layout-option" data-layout="3h" title="3 horizontal">${S(R(1,1,26,5)+R(1,7.5,26,5)+R(1,14,26,5))}</button>
+                    <button class="layout-option" data-layout="3l" title="1 left + 2 right">${S(R(1,1,12,18)+R(15,1,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="3r" title="2 left + 1 right">${S(R(1,1,12,8)+R(1,11,12,8)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="3t" title="1 top + 2 bottom">${S(R(1,1,26,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="3b" title="2 top + 1 bottom">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,26,8))}</button>
                 </div>
             </div>
-            
-            <!-- 4 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">4</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="4" title="2x2 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4v" title="4 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="11" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="20" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="29" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4h" title="4 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="9" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="23" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4t" title="Top 1 + bottom 3">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4b" title="Top 3 + bottom 1">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="36" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4r" title="Left 3 + right 1">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 4 -->
+            <div class="pld-row">
+                <span class="pld-num">4</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="4" title="2×2 grid">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="4h" title="4 horizontal">${S(R(1,1,26,3.5)+R(1,5.5,26,3.5)+R(1,10,26,3.5)+R(1,14.5,26,3.5))}</button>
+                    <button class="layout-option" data-layout="4v" title="4 vertical">${S(R(1,1,5.5,18)+R(8,1,5.5,18)+R(15,1,5.5,18)+R(22,1,5.5,18))}</button>
+                    <button class="layout-option" data-layout="4t" title="1 top + 3 bottom">${S(R(1,1,26,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="4b" title="3 top + 1 bottom">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,26,8))}</button>
+                    <button class="layout-option" data-layout="4r" title="3 left + 1 right">${S(R(1,1,12,5)+R(1,7.5,12,5)+R(1,14,12,5)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="4l" title="1 left + 3 right">${S(R(1,1,12,18)+R(15,1,12,5)+R(15,7.5,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="4tl" title="1 big + 3 small">${S(R(1,1,18,12)+R(21,1,6,12)+R(1,15,8,4)+R(10.5,15,8,4)+R(20,15,7,4))}</button>
                 </div>
             </div>
-            
-            <!-- 5 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">5</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="5a" title="Top 2 + bottom 3">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5b" title="Top 3 + bottom 2">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5c" title="Left 2 + right 3">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5v" title="5 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="9.5" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="17" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="24.5" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="32" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5h" title="5 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="7.6" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="13.2" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="18.8" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="24.4" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 5 -->
+            <div class="pld-row">
+                <span class="pld-num">5</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="5a" title="2 top + 3 bottom">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="5b" title="3 top + 2 bottom">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="5c" title="2 left + 3 right">${S(R(1,1,12,8)+R(1,11,12,8)+R(15,1,12,5)+R(15,7.5,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="5v" title="5 vertical">${S(R(1,1,4.4,18)+R(6.6,1,4.4,18)+R(12.2,1,4.4,18)+R(17.8,1,4.4,18)+R(23.4,1,4.4,18))}</button>
+                    <button class="layout-option" data-layout="5h" title="5 horizontal">${S(R(1,1,26,2.8)+R(1,4.8,26,2.8)+R(1,8.6,26,2.8)+R(1,12.4,26,2.8)+R(1,16.2,26,2.8))}</button>
                 </div>
             </div>
-            
-            <!-- 6 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">6</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="6" title="2x3 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="6b" title="3x2 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="6v" title="6 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="8.2" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.4" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="20.6" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="26.8" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="33" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="6h" title="6 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="6.5" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="11" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="15.5" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="20" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="24.5" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
+            <!-- Row 6 -->
+            <div class="pld-row">
+                <span class="pld-num">6</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="6" title="2×3 grid">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="6b" title="3×2 grid">${S(R(1,1,12,5)+R(15,1,12,5)+R(1,7.5,12,5)+R(15,7.5,12,5)+R(1,14,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="6v" title="6 vertical">${S(R(1,1,3.5,18)+R(5.5,1,3.5,18)+R(10,1,3.5,18)+R(14.5,1,3.5,18)+R(19,1,3.5,18)+R(23.5,1,3.5,18))}</button>
+                    <button class="layout-option" data-layout="6h" title="6 horizontal">${S(R(1,1,26,2.2)+R(1,4.2,26,2.2)+R(1,7.4,26,2.2)+R(1,10.6,26,2.2)+R(1,13.8,26,2.2)+R(1,17,26,2.2))}</button>
                 </div>
             </div>
-            
-            <!-- 7 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">7</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="7v" title="7 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="7.3" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="12.6" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="17.9" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="23.2" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="28.5" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="33.8" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="7a" title="Top 3 + middle 3 + bottom 1">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="14.5" y="2" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="27" y="2" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="11.5" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="14.5" y="11.5" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="27" y="11.5" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="21" width="36" height="7" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
+            <!-- Row 7 -->
+            <div class="pld-row">
+                <span class="pld-num">7</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="7a" title="3+3+1">${S(R(1,1,8,5)+R(10,1,8,5)+R(19,1,8,5)+R(1,7.5,8,5)+R(10,7.5,8,5)+R(19,7.5,8,5)+R(1,14,26,5))}</button>
+                    <button class="layout-option" data-layout="7v" title="7 vertical">${S(R(1,1,3,18)+R(4.8,1,3,18)+R(8.6,1,3,18)+R(12.4,1,3,18)+R(16.2,1,3,18)+R(20,1,3,18)+R(23.8,1,3.2,18))}</button>
                 </div>
             </div>
-            
-            <!-- 8 Panels -->
-            <div class="layout-row">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">8</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="8" title="2x4 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="11" y="2" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="20" y="2" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="29" y="2" width="9" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="16" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="11" y="16" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="20" y="16" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="29" y="16" width="9" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="8b" title="4x2 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="2" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="9" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="9" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="16" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="16" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="23" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="23" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="8v" title="8 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="6.5" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="11" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="15.5" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="20" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="24.5" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="29" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="33.5" y="2" width="4" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="8h" title="8 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="5.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="9" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="12.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="16" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="19.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="23" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="26.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                        </svg>
-                    </button>
+            <!-- Row 8 -->
+            <div class="pld-row">
+                <span class="pld-num">8</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="8" title="2×4 grid">${S(R(1,1,5.5,8)+R(8,1,5.5,8)+R(15,1,5.5,8)+R(22,1,5.5,8)+R(1,11,5.5,8)+R(8,11,5.5,8)+R(15,11,5.5,8)+R(22,11,5.5,8))}</button>
+                    <button class="layout-option" data-layout="8b" title="4×2 grid">${S(R(1,1,12,3.5)+R(15,1,12,3.5)+R(1,5.5,12,3.5)+R(15,5.5,12,3.5)+R(1,10,12,3.5)+R(15,10,12,3.5)+R(1,14.5,12,3.5)+R(15,14.5,12,3.5))}</button>
+                    <button class="layout-option" data-layout="8v" title="8 vertical">${S(R(1,1,2.5,18)+R(4.3,1,2.5,18)+R(7.6,1,2.5,18)+R(10.9,1,2.5,18)+R(14.2,1,2.5,18)+R(17.5,1,2.5,18)+R(20.8,1,2.5,18)+R(24.1,1,2.9,18))}</button>
+                    <button class="layout-option" data-layout="8h" title="8 horizontal">${S(R(1,1,26,1.5)+R(1,3.3,26,1.5)+R(1,5.6,26,1.5)+R(1,7.9,26,1.5)+R(1,10.2,26,1.5)+R(1,12.5,26,1.5)+R(1,14.8,26,1.5)+R(1,17.1,26,1.5))}</button>
                 </div>
             </div>
-            
+            </div>
+
             <!-- Sync Settings -->
             <div class="sync-settings-section sync-section">
                 <div class="sync-title">SYNC IN LAYOUT</div>
-                
-                <!-- Symbol Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Symbol</span>
-                        <div class="sync-info" title="When enabled, changing symbol in one panel changes it in all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="symbol-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Symbol</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="symbol-sync-toggle"></label>
                 </div>
-                
-                <!-- Interval Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Interval</span>
-                        <div class="sync-info" title="When enabled, changing timeframe in one panel changes it in all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="interval-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Interval</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="interval-sync-toggle"></label>
                 </div>
-                
-                <!-- Crosshair Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Crosshair</span>
-                        <div class="sync-info" title="Synchronize crosshair position across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="crosshair-sync-toggle" checked>
-                    </label>
+                    <div class="sync-label"><span>Crosshair</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="crosshair-sync-toggle" checked></label>
                 </div>
-                
-                <!-- Time Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Time</span>
-                        <div class="sync-info" title="Synchronize scroll position (time) across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked>
-                    </label>
+                    <div class="sync-label"><span>Time</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked></label>
                 </div>
-                
-                <!-- Date Range Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Date range</span>
-                        <div class="sync-info" title="Synchronize visible date range across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Date range</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle"></label>
                 </div>
-                
-                <!-- Drawings Toggle -->
                 <div class="sync-row sync-row-border">
-                    <div class="sync-label">
-                        <span>Drawings</span>
-                        <div class="sync-info" title="Synchronize drawings and shapes across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="drawings-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Drawings</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="drawings-sync-toggle"></label>
                 </div>
             </div>
         `;
-        
+
         // Add styles
         const style = document.createElement('style');
         style.textContent = `
+            .layout-dropdown .pld-body {
+                padding: 8px 10px 4px;
+            }
+            .layout-dropdown .pld-row {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 5px 0;
+                border-bottom: 1px solid rgba(255,255,255,0.04);
+            }
+            .layout-dropdown .pld-row:last-child { border-bottom: none; }
+            .layout-dropdown .pld-num {
+                flex-shrink: 0;
+                width: 16px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #787b86;
+                line-height: 28px;
+                text-align: center;
+            }
+            .layout-dropdown .pld-icons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+            }
             .layout-option {
-                background: #0d0f14;
+                background: transparent;
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 6px;
-                padding: 8px;
+                border-radius: 4px;
+                padding: 3px;
                 cursor: default;
-                transition: all 0.15s ease;
+                transition: all 0.12s ease;
+                line-height: 0;
             }
             .layout-option:hover {
-                border-color: rgba(var(--sp-accent-rgb), 0.5);
-                background: rgba(var(--sp-accent-rgb), 0.1);
+                border-color: rgba(41, 98, 255, 0.5);
+                background: rgba(41, 98, 255, 0.08);
             }
             .layout-option.active {
-                border-color: var(--sp-accent);
-                background: rgba(var(--sp-accent-rgb), 0.2);
+                border-color: #2962ff;
+                background: rgba(41, 98, 255, 0.15);
             }
             .layout-option svg {
                 display: block;
-                stroke: #787b86;
+                color: #636978;
             }
-            .layout-option:hover svg,
+            .layout-option:hover svg {
+                color: #b2b5be;
+            }
             .layout-option.active svg {
-                stroke: #d1d4dc;
+                color: #d1d4dc;
             }
-            
-            /* Sync checkbox styling (match trendline settings) */
             .sync-toggle {
                 display: inline-flex;
                 align-items: center;
@@ -576,7 +348,7 @@ class PanelManager {
                 min-width: 16px;
             }
             .sync-toggle input[type="checkbox"] {
-                cursor: default;
+                cursor: pointer;
             }
         `;
         document.head.appendChild(style);
@@ -1446,6 +1218,21 @@ class PanelManager {
                 { width: '50%', height: '50%', left: '50%', top: '0' },
                 { width: '50%', height: '50%', left: '50%', top: '50%' }
             ],
+            '3r': [
+                { width: '50%', height: '50%', left: '0', top: '0' },
+                { width: '50%', height: '50%', left: '0', top: '50%' },
+                { width: '50%', height: '100%', left: '50%', top: '0' }
+            ],
+            '3t': [
+                { width: '100%', height: '50%', left: '0', top: '0' },
+                { width: '50%', height: '50%', left: '0', top: '50%' },
+                { width: '50%', height: '50%', left: '50%', top: '50%' }
+            ],
+            '3b': [
+                { width: '50%', height: '50%', left: '0', top: '0' },
+                { width: '50%', height: '50%', left: '50%', top: '0' },
+                { width: '100%', height: '50%', left: '0', top: '50%' }
+            ],
             '4': [
                 { width: '50%', height: '50%', left: '0', top: '0' },
                 { width: '50%', height: '50%', left: '50%', top: '0' },
@@ -1481,6 +1268,18 @@ class PanelManager {
                 { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
                 { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
                 { width: '50%', height: '100%', left: '50%', top: '0' }
+            ],
+            '4l': [ // 1 left + 3 right
+                { width: '50%', height: '100%', left: '0', top: '0' },
+                { width: '50%', height: '33.33%', left: '50%', top: '0' },
+                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+            ],
+            '4tl': [ // 1 big top-left + 1 right + 2 bottom
+                { width: '66.66%', height: '60%', left: '0', top: '0' },
+                { width: '33.33%', height: '60%', left: '66.66%', top: '0' },
+                { width: '50%', height: '40%', left: '0', top: '60%' },
+                { width: '50%', height: '40%', left: '50%', top: '60%' }
             ],
             '5a': [ // Top 2 + bottom 3
                 { width: '50%', height: '50%', left: '0', top: '0' },

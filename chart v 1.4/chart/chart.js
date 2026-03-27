@@ -14935,7 +14935,7 @@ class Chart {
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
         const shouldSnapCrosshair = this.yScale && hasSnappedCandle && Number.isFinite(crosshairPrice)
-            && (magnetActive || (ctrlHeld && _dm && _dm.currentTool));
+            && (magnetActive || ctrlHeld);
         if (shouldSnapCrosshair) {
             const candle = snappedCandle;
             const ohlc = [candle.o, candle.h, candle.l, candle.c];
