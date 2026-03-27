@@ -3119,7 +3119,10 @@ class DrawingToolsManager {
         
         // Broadcast to other panels in real-time
         if (this.chart.broadcastDrawingChange) {
-            this.chart.broadcastDrawingChange('add', drawing);
+            // If live preview was already mirrored, finalize with update to preserve
+            // the same geometry seen during drawing (avoid re-add remap drift on release).
+            const syncAction = this._liveSyncBroadcasted ? 'update' : 'add';
+            this.chart.broadcastDrawingChange(syncAction, drawing);
         }
         
         // Refresh object tree if available
