@@ -1343,6 +1343,15 @@ class DrawingToolsManager {
                 const sdm = sp && sp.chartInstance && sp.chartInstance.drawingManager;
                 if (sdm && sdm.currentTool) inheritedTool = sdm.currentTool;
             }
+            if (!inheritedTool && Array.isArray(window.panelManager.panels)) {
+                for (const p of window.panelManager.panels) {
+                    const dm = p && p.chartInstance && p.chartInstance.drawingManager;
+                    if (dm && dm.currentTool) {
+                        inheritedTool = dm.currentTool;
+                        break;
+                    }
+                }
+            }
             if (inheritedTool && typeof this.setTool === 'function') {
                 this.setTool(inheritedTool, true);
             }

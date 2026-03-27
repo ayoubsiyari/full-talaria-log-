@@ -17724,11 +17724,14 @@ class Chart {
 
     _shouldSyncDrawingToChart(targetChart) {
         if (!targetChart) return false;
-        const src = this._normalizeSymbolForDrawingSync(this.currentSymbol || this.symbol || this.currentFileId);
-        const dst = this._normalizeSymbolForDrawingSync(targetChart.currentSymbol || targetChart.symbol || targetChart.currentFileId);
+        const srcFile = this._normalizeSymbolForDrawingSync(this.currentFileId);
+        const dstFile = this._normalizeSymbolForDrawingSync(targetChart.currentFileId);
+        if (srcFile && dstFile) return srcFile === dstFile;
+        const srcSym = this._normalizeSymbolForDrawingSync(this.currentSymbol || this.symbol);
+        const dstSym = this._normalizeSymbolForDrawingSync(targetChart.currentSymbol || targetChart.symbol);
         // If either side has no symbol context, keep previous behavior (allow sync).
-        if (!src || !dst) return true;
-        return src === dst;
+        if (!srcSym || !dstSym) return true;
+        return srcSym === dstSym;
     }
 
     broadcastDrawingChange(action, drawing, drawingIndex = null) {
