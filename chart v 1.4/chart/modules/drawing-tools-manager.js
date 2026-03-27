@@ -1109,7 +1109,7 @@ class DrawingToolsManager {
     /**
      * Set the current drawing tool
      */
-    setTool(toolName) {
+    setTool(toolName, _mirrored = false) {
         // [debug removed]
         // [debug removed]
         if (!this.toolRegistry[toolName]) {
@@ -1155,6 +1155,23 @@ class DrawingToolsManager {
             this.favoritesManager.syncActiveState(toolName);
         }
         this._updateAxisZonePointerEvents();
+
+        // Multi-panel: arm the same drawing tool on all visible charts so first click
+        // can draw immediately without pre-selecting a panel.
+        if (!_mirrored && window.panelManager && window.panelManager.currentLayout !== '1') {
+            const managers = [];
+            if (window.chart && window.chart.drawingManager) managers.push(window.chart.drawingManager);
+            if (Array.isArray(window.panelManager.panels)) {
+                window.panelManager.panels.forEach((p) => {
+                    const dm = p && p.chartInstance && p.chartInstance.drawingManager;
+                    if (dm) managers.push(dm);
+                });
+            }
+            managers.forEach((dm) => {
+                if (!dm || dm === this || typeof dm.setTool !== 'function') return;
+                if (dm.currentTool !== toolName) dm.setTool(toolName, true);
+            });
+        }
         
         // [debug removed]
     }

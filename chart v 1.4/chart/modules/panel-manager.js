@@ -1269,6 +1269,11 @@ class PanelManager {
             // Reset panel tracking
             this.panels = [];
             this.selectedPanelIndex = 0;
+            // Keep container fully turned off in single-layout mode
+            if (this.container) {
+                this.container.style.display = 'none';
+                this.container.innerHTML = '';
+            }
             
             // Reset resize state and remove any active resize listeners
             this.isResizing = false;
@@ -1356,6 +1361,19 @@ class PanelManager {
             window.dispatchEvent(new CustomEvent('returnedToSinglePanel', {
                 detail: { layout: '1' }
             }));
+
+            // Ensure global "active panel" context points to main chart immediately.
+            window.dispatchEvent(new CustomEvent('panelSelected', {
+                detail: {
+                    panelIndex: 0,
+                    timeframe: window.chart && window.chart.currentTimeframe ? window.chart.currentTimeframe : '1m',
+                    panel: { index: 0, chartInstance: window.chart, isMainChart: true },
+                    isMainChart: true
+                }
+            }));
+
+            // Persist that user is now in single layout (panels stay off until explicitly re-selected).
+            this.savePanelState();
             
             return;
         }
