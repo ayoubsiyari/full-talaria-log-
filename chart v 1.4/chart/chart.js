@@ -17560,6 +17560,110 @@ class Chart {
     /**
      * Broadcast drawing change to all other panels
      */
+    _findTargetIndexForTimestamp(ts) {
+        if (!Number.isFinite(ts) || !this.data || this.data.length === 0) return 0;
+        if (typeof this.findLastDataIndexAtOrBeforeTime === 'function') {
+            const i = this.findLastDataIndexAtOrBeforeTime(ts);
+            if (Number.isFinite(i)) return Math.max(0, Math.min(i, this.data.length - 1));
+        }
+        if (typeof this.findGoToTargetIndex === 'function') {
+            const i = this.findGoToTargetIndex(this.data, ts);
+            if (Number.isFinite(i)) return Math.max(0, Math.min(i, this.data.length - 1));
+        }
+        return 0;
+    }
+
+    _nearestOhlcKeyAtIndex(idx, y) {
+        if (!this.data || this.data.length === 0 || !Number.isFinite(y)) return null;
+        const i = Math.max(0, Math.min(this.data.length - 1, Math.round(idx)));
+        const c = this.data[i];
+        if (!c) return null;
+        const levels = [['o', c.o], ['h', c.h], ['l', c.l], ['c', c.c]].filter((x) => Number.isFinite(x[1]));
+        if (!levels.length) return null;
+        let bestKey = levels[0][0];
+        let bestDiff = Math.abs(y - levels[0][1]);
+        for (let k = 1; k < levels.length; k++) {
+            const diff = Math.abs(y - levels[k][1]);
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                bestKey = levels[k][0];
+            }
+        }
+        return bestKey;
+    }
+
+    _buildDrawingSyncAnchors(drawingData) {
+        if (!drawingData || !this.data || this.data.length === 0) return drawingData;
+        const out = JSON.parse(JSON.stringify(drawingData));
+        const mk = (x, y) => {
+            if (!Number.isFinite(Number(x))) return null;
+            const idx = Math.max(0, Math.min(this.data.length - 1, Math.round(Number(x))));
+            const c = this.data[idx];
+            if (!c || !Number.isFinite(c.t)) return null;
+            return {
+                timestamp: c.t,
+                ohlcKey: this._nearestOhlcKeyAtIndex(idx, Number(y)),
+                y: Number.isFinite(Number(y)) ? Number(y) : null
+            };
+        };
+        out.__syncAnchors = out.__syncAnchors || {};
+        if (out.x1 !== undefined) out.__syncAnchors.x1 = mk(out.x1, out.y1);
+        if (out.x2 !== undefined) out.__syncAnchors.x2 = mk(out.x2, out.y2);
+        if (out.x !== undefined) out.__syncAnchors.x = mk(out.x, (out.y !== undefined ? out.y : out.price));
+        if (Array.isArray(out.points)) {
+            out.__syncPointAnchors = out.points.map((p) => mk(p && p.x, p && (p.y !== undefined ? p.y : p.price)));
+        }
+        return out;
+    }
+
+    _applyDrawingSyncAnchors(drawingData) {
+        if (!drawingData || !this.data || this.data.length === 0) return drawingData;
+        const out = drawingData;
+        const readY = (anchor, idx) => {
+            if (!anchor) return null;
+            const i = Math.max(0, Math.min(this.data.length - 1, Math.round(idx)));
+            const c = this.data[i];
+            if (!c) return (Number.isFinite(anchor.y) ? anchor.y : null);
+            const key = anchor.ohlcKey;
+            if (key && Number.isFinite(c[key])) return c[key];
+            return (Number.isFinite(anchor.y) ? anchor.y : null);
+        };
+        const applyAnchor = (keyX, keyY) => {
+            const a = out.__syncAnchors && out.__syncAnchors[keyX];
+            if (!a || !Number.isFinite(a.timestamp)) return;
+            const idx = this._findTargetIndexForTimestamp(a.timestamp);
+            out[keyX] = idx;
+            const yVal = readY(a, idx);
+            if (keyY && yVal !== null) out[keyY] = yVal;
+        };
+        applyAnchor('x1', 'y1');
+        applyAnchor('x2', 'y2');
+        if (out.__syncAnchors && out.__syncAnchors.x) {
+            const a = out.__syncAnchors.x;
+            const idx = this._findTargetIndexForTimestamp(a.timestamp);
+            out.x = idx;
+            const yVal = readY(a, idx);
+            if (yVal !== null) {
+                if (out.y !== undefined) out.y = yVal;
+                if (out.price !== undefined) out.price = yVal;
+            }
+        }
+        if (Array.isArray(out.points) && Array.isArray(out.__syncPointAnchors)) {
+            out.points.forEach((p, i) => {
+                const a = out.__syncPointAnchors[i];
+                if (!p || !a || !Number.isFinite(a.timestamp)) return;
+                const idx = this._findTargetIndexForTimestamp(a.timestamp);
+                p.x = idx;
+                const yVal = readY(a, idx);
+                if (yVal !== null) {
+                    if (p.y !== undefined) p.y = yVal;
+                    if (p.price !== undefined) p.price = yVal;
+                }
+            });
+        }
+        return out;
+    }
+
     broadcastDrawingChange(action, drawing, drawingIndex = null) {
         
         if (!window.panelManager || !window.panelManager.panels) {
@@ -17578,7 +17682,8 @@ class Chart {
         
         
         // Serialize the drawing for sync
-        const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : drawing;
+        const rawDrawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : drawing;
+        const drawingData = this._buildDrawingSyncAnchors(rawDrawingData);
         
         // Get all panel chart instances
         window.panelManager.panels.forEach(panel => {
@@ -17609,6 +17714,7 @@ class Chart {
             if (action === 'add') {
                 // Clone the drawing data
                 const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
+                this._applyDrawingSyncAnchors(drawingData);
                 const incomingId = drawingData && drawingData.id;
                 const existingById = incomingId ? dm.drawings.find(d => d && d.id === incomingId) : null;
                 // Live preview path may send repeated "add" for the same temp id; update in place.
@@ -17714,6 +17820,7 @@ class Chart {
                 const existingDrawing = dm.drawings.find(d => d.id === drawingId);
                 if (existingDrawing) {
                     const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
+                    this._applyDrawingSyncAnchors(drawingData);
                     
                     // Convert timestamp points to indices for THIS panel's data
                     if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
