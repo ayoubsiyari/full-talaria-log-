@@ -24069,16 +24069,20 @@
             opacity: 1;
         }
 
-        /* Subtle selected-panel outline (clean TradingView-like) */
-        .panel-selected {
+        /* Selected-panel frame: inset ring above chart content (survives global reset rules). */
+        #chart-container .panel-selected {
             position: relative;
-            outline: 1px solid rgba(65, 154, 255, 0.65) !important;
-            outline-offset: -1px;
-            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.14), 0 0 0 1px rgba(65, 154, 255, 0.35);
-            z-index: 5;
+            z-index: 6;
         }
-        .panel-selected::after {
-            content: none !important;
+        #chart-container .panel-selected::after {
+            content: '';
+            position: absolute;
+            inset: 2px; /* keep ring inside panel so split borders remain clean */
+            border: 1px solid rgba(65, 154, 255, 0.78) !important;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.2), 0 0 10px rgba(41, 98, 255, 0.28) !important;
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 5000;
         }
 
         .chart-panel .ohlc-info {
