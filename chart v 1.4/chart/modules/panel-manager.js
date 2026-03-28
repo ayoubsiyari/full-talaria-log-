@@ -1516,7 +1516,6 @@ class PanelManager {
         // After panels exist: park logo on #chart-container (above #chartWrapper paint order)
         this.syncChartBrandPlacement(layout);
         const brandNode = document.querySelector('.chart-brand');
-        const chartCont = document.getElementById('chart-container');
         if (brandNode && chartCont) {
             chartCont.appendChild(brandNode);
         }
