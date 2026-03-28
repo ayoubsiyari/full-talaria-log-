@@ -115,12 +115,16 @@ class ScreenshotManager {
             img.style.visibility = 'visible';
         });
 
-        clonedDoc.querySelectorAll('.chart-brand .logo-bottom').forEach((img) => {
-            img.setAttribute('src', wordmarkSrc);
-            img.setAttribute('crossorigin', 'anonymous');
-            img.style.setProperty('filter', 'none', 'important');
-            img.style.opacity = '1';
-            img.style.visibility = 'visible';
+        clonedDoc.querySelectorAll('.chart-brand .logo-bottom').forEach((el) => {
+            if (el.tagName === 'IMG') {
+                el.setAttribute('src', wordmarkSrc);
+                el.setAttribute('crossorigin', 'anonymous');
+                el.style.setProperty('filter', 'none', 'important');
+            }
+            el.style.opacity = '1';
+            el.style.visibility = 'visible';
+            el.style.maxWidth = 'none';
+            el.style.overflow = 'visible';
         });
 
         clonedDoc.querySelectorAll('.chart-brand .logo-bottom-wrap').forEach((wrap) => {

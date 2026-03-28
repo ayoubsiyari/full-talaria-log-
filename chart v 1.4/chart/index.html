@@ -24345,7 +24345,7 @@
 
 
 
-        /* Shared Talaria lockup: chart corner + top toolbar (icon + Zain wordmark on hover) */
+        /* Shared Talaria lockup: toolbar = row + wordmark on hover; chart corner = column, icon above text (screenshot style) */
 
         .brand-lockup {
 
@@ -24429,15 +24429,7 @@
 
             display: block;
 
-            max-width: 0;
-
-            overflow: hidden;
-
-            opacity: 0;
-
             margin: 0;
-
-            margin-left: 0;
 
             padding: 0;
 
@@ -24451,11 +24443,9 @@
 
             font-weight: 900;
 
-            letter-spacing: -0.02em;
+            letter-spacing: 0.02em;
 
             line-height: 1;
-
-            transition: max-width 0.3s ease, opacity 0.25s ease, margin-left 0.3s ease;
 
             -webkit-font-smoothing: antialiased;
 
@@ -24467,23 +24457,21 @@
 
 
 
-        /* Toolbar: same Zain lockup, slightly smaller type (icon is 28px vs 38px in corner) */
+        /* Toolbar only: horizontal lockup; reveal wordmark on hover */
 
         .toolbar-logo.brand-lockup .logo-bottom {
 
             font-size: 18px;
 
-        }
+            max-width: 0;
 
+            overflow: hidden;
 
+            opacity: 0;
 
-        .brand-lockup:hover .logo-bottom {
+            margin-left: 0;
 
-            max-width: 300px;
-
-            opacity: 1;
-
-            margin-left: 0px;
+            transition: max-width 0.3s ease, opacity 0.25s ease, margin-left 0.3s ease;
 
         }
 
@@ -24492,6 +24480,10 @@
         .toolbar-logo.brand-lockup:hover .logo-bottom {
 
             max-width: 260px;
+
+            opacity: 1;
+
+            margin-left: 0;
 
         }
 
@@ -24523,11 +24515,35 @@
 
             left: 8px;
 
-            bottom: 36px;
+            bottom: 32px;
 
             z-index: 2;
 
             cursor: pointer;
+
+            flex-direction: column;
+
+            align-items: center;
+
+            justify-content: flex-start;
+
+            gap: 6px;
+
+        }
+
+
+
+        .chart-brand.brand-lockup .logo-bottom {
+
+            max-width: none;
+
+            opacity: 1;
+
+            overflow: visible;
+
+            text-align: center;
+
+            text-transform: uppercase;
 
         }
 
@@ -41925,7 +41941,7 @@
 
     <script defer src="modules/order-manager.js?v=20260328"></script>
 
-    <script defer src="modules/screenshot-manager.js?v=20260328"></script>
+    <script defer src="modules/screenshot-manager.js?v=20260329"></script>
 
     <script defer src="modules/alert-system.js?v=20260328"></script>
 
