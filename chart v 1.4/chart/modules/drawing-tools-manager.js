@@ -5457,9 +5457,15 @@ class DrawingToolsManager {
      * @param {boolean} [options.confirmPrompt=true]
      * @returns {boolean} - True if drawings were cleared
      */
-    clearDrawings({ confirmPrompt = true } = {}) {
+    clearDrawings({ confirmPrompt = true, skipBroadcast = false } = {}) {
         const count = this.drawings.length;
         if (count === 0) {
+            if (this.drawingsGroup) {
+                this.drawingsGroup.selectAll('*').remove();
+            }
+            try {
+                this.saveDrawings();
+            } catch (_) {}
             return false;
         }
 
@@ -5495,8 +5501,8 @@ class DrawingToolsManager {
         }
         this.saveDrawings();
         
-        // Broadcast to other panels in real-time
-        if (this.chart.broadcastDrawingChange) {
+        // Broadcast to other panels in real-time (skip when toolbar clears all charts explicitly)
+        if (!skipBroadcast && this.chart.broadcastDrawingChange) {
             this.chart.broadcastDrawingChange('clear');
         }
         

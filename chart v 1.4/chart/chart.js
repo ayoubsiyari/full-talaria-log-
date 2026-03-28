@@ -2855,10 +2855,10 @@ class Chart {
         }
     }
 
-    clearOnlyDrawings({ confirmPrompt = false } = {}) {
+    clearOnlyDrawings({ confirmPrompt = false, skipBroadcast = false } = {}) {
         let cleared = false;
         if (this.drawingManager && typeof this.drawingManager.clearDrawings === 'function') {
-            cleared = this.drawingManager.clearDrawings({ confirmPrompt });
+            cleared = this.drawingManager.clearDrawings({ confirmPrompt, skipBroadcast });
         } else if (Array.isArray(this.drawings) && this.drawings.length > 0) {
             this.svg.selectAll('*').remove();
             this.drawings = [];
@@ -2904,8 +2904,8 @@ class Chart {
         return true;
     }
 
-    clearDrawingsAndIndicators({ confirmPrompt = false } = {}) {
-        const drawingsCleared = this.clearOnlyDrawings({ confirmPrompt });
+    clearDrawingsAndIndicators({ confirmPrompt = false, skipBroadcast = false } = {}) {
+        const drawingsCleared = this.clearOnlyDrawings({ confirmPrompt, skipBroadcast });
         const indicatorsCleared = this.clearOnlyIndicators({ confirmPrompt });
         return { drawingsCleared, indicatorsCleared };
     }
@@ -18008,14 +18008,19 @@ class Chart {
                     this.receiveDrawingChange('add', drawing, drawingIndex);
                 }
             } else if (action === 'clear') {
-                // Clear all drawings (manager + legacy chart.drawings mirror store)
-                dm.drawings.forEach(d => {
-                    try { d.destroy(); } catch (_) {}
-                });
-                dm.drawings = [];
-                dm.saveDrawings();
+                // Use full clear path (SVG + storage) without re-broadcasting sync storms
+                if (typeof dm.clearDrawings === 'function') {
+                    dm.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
+                } else {
+                    dm.drawings.forEach(d => {
+                        try { d.destroy(); } catch (_) {}
+                    });
+                    dm.drawings = [];
+                    dm.selectedDrawing = null;
+                    if (dm.drawingsGroup) dm.drawingsGroup.selectAll('*').remove();
+                    dm.saveDrawings();
+                }
 
-                // Legacy fallback drawings array used by older panel sync paths
                 if (Array.isArray(this.drawings) && this.drawings.length > 0) {
                     this.drawings = [];
                     if (typeof this.redrawDrawings === 'function') {

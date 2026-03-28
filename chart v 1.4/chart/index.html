@@ -41797,7 +41797,7 @@
 
     <script defer src="modules/preferences-init.js?v=20260318_TF_PIN_V59"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=20260327_LIVE_DRAG_SYNC_V25"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260328_DELETE_ALL_PANELS_V26"></script>
 
     <script defer src="modules/favorites-manager.js?v=20260318_TF_PIN_V59"></script>
 
@@ -41819,7 +41819,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260327_PRICE_LABEL_FIX_V254"></script>
+    <script defer src="chart.js?v=20260328_DELETE_ALL_PANELS_V255"></script>
 
     <script defer src="modules/replay-system.js?v=20260326_GOBACK_ALIGN_ALL_PAIRS_V82"></script>
 
@@ -44640,23 +44640,31 @@
             // ── Delete toolbar button handlers ──
 
             function _forEachChart(fn) {
-                var c = window.chart || window.mainChart;
-                if (c) fn(c);
+                var seen = typeof Set !== 'undefined' ? new Set() : null;
+                function run(ch) {
+                    if (!ch) return;
+                    if (seen) {
+                        if (seen.has(ch)) return;
+                        seen.add(ch);
+                    }
+                    fn(ch);
+                }
                 var pm = window.panelManager;
-                if (pm && pm.panels) {
+                if (pm && pm.panels && pm.panels.length) {
                     pm.panels.forEach(function(p) {
-                        if (p && p.chartInstance && p.chartInstance !== c) fn(p.chartInstance);
+                        run(p && p.chartInstance);
                     });
                 }
+                run(window.chart || window.mainChart);
             }
 
             window.selectDeleteDrawings = function() {
 
                 _forEachChart(function(c) {
                     if (typeof c.clearOnlyDrawings === 'function') {
-                        c.clearOnlyDrawings({ confirmPrompt: false });
+                        c.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });
                     } else if (c.drawingManager && typeof c.drawingManager.clearDrawings === 'function') {
-                        c.drawingManager.clearDrawings({ confirmPrompt: false });
+                        c.drawingManager.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
                     } else if (c.drawingManager) {
                         var all = (c.drawingManager.drawings || []).slice();
                         all.forEach(function(d){ if (typeof d.destroy === 'function') d.destroy(); });
@@ -44692,12 +44700,12 @@
 
                 _forEachChart(function(c) {
                     if (typeof c.clearDrawingsAndIndicators === 'function') {
-                        c.clearDrawingsAndIndicators({ confirmPrompt: false });
+                        c.clearDrawingsAndIndicators({ confirmPrompt: false, skipBroadcast: true });
                     } else {
                         if (typeof c.clearOnlyDrawings === 'function') {
-                            c.clearOnlyDrawings({ confirmPrompt: false });
+                            c.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });
                         } else if (c.drawingManager && typeof c.drawingManager.clearDrawings === 'function') {
-                            c.drawingManager.clearDrawings({ confirmPrompt: false });
+                            c.drawingManager.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
                         }
                         if (typeof c.clearOnlyIndicators === 'function') {
                             c.clearOnlyIndicators({ confirmPrompt: false });
