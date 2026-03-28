@@ -15768,7 +15768,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; ${wrapperStyle}; display: flex; align-items: center; justify-content: flex-end;">
 
-                <button class="tv-fontsize-dropdown-btn" type="button" style="width: 100%; height: 28px; padding: 0 22px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; line-height: 28px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box; text-transform: capitalize;">
+                <button class="tv-fontsize-dropdown-btn" type="button" style="width: auto; max-width: 100%; height: 28px; padding: 0 22px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; line-height: 28px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box; text-transform: capitalize; white-space: nowrap;">
 
                     <span>${currentSource}</span>
 
@@ -15776,9 +15776,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 </button>
 
-                <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); min-width: 80px; overflow-y: auto;">
+                <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;">
 
-                    ${sourceOptions.map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap; text-transform: capitalize;">${s}</div>`).join('')}
+                    ${sourceOptions.map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: left; color: #d1d4dc; font-size: 12px; white-space: nowrap; text-transform: capitalize;">${s}</div>`).join('')}
 
                 </div>
 
