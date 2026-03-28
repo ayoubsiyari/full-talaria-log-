@@ -20363,9 +20363,19 @@ body.light-mode .template-save-dialog .dialog-title {
 
             textInput.addEventListener('input', () => {
 
-                this.pendingChanges.text = textInput.value;
+                const v = textInput.value;
 
-                drawing.text = textInput.value;
+                this.pendingChanges.text = v;
+
+                this.pendingChanges.textContent = v;
+
+                drawing.text = v;
+
+                queryAll('.tv-text-content-input').forEach(ta => {
+
+                    if (ta !== textInput) ta.value = v;
+
+                });
 
                 self.renderPreview(drawing);
 
@@ -20797,9 +20807,19 @@ body.light-mode .template-save-dialog .dialog-title {
 
             textContentInput.addEventListener('input', () => {
 
-                this.pendingChanges.textContent = textContentInput.value;
+                const v = textContentInput.value;
 
-                drawing.text = textContentInput.value;
+                this.pendingChanges.textContent = v;
+
+                this.pendingChanges.text = v;
+
+                drawing.text = v;
+
+                queryAll('.tv-text-input').forEach(ta => {
+
+                    if (ta !== textContentInput) ta.value = v;
+
+                });
 
                 self.renderPreview(drawing);
 
@@ -22703,15 +22723,21 @@ body.light-mode .template-save-dialog .dialog-title {
 
         
 
-        // Text changes
+        // Text changes (tv-text-input + tv-text-content-input must stay one pending value)
 
-        if (this.pendingChanges.text !== undefined) {
+        const pendingBodyText = this.pendingChanges.textContent !== undefined
 
-            drawing.text = this.pendingChanges.text;
+            ? this.pendingChanges.textContent
+
+            : this.pendingChanges.text;
+
+        if (pendingBodyText !== undefined) {
+
+            drawing.text = pendingBodyText;
 
             if (typeof drawing.setText === 'function') {
 
-                drawing.setText(this.pendingChanges.text);
+                drawing.setText(pendingBodyText);
 
             }
 
@@ -27448,7 +27474,15 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            this.addTextInput(styleSection, 'Text', drawing.text || 'add text', (value) => {
+            const sp2Placeholder = (t) => {
+
+                const s = (t == null ? '' : String(t)).trim();
+
+                return !s || /^add text$/i.test(s);
+
+            };
+
+            this.addTextInput(styleSection, 'Text', sp2Placeholder(drawing.text) ? '' : drawing.text, (value) => {
 
                 drawing.setText(value);
 
