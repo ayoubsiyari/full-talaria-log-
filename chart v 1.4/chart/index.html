@@ -24351,7 +24351,7 @@
 
 
 
-        /* TradingView-style brand: icon + wordmark always visible, flat, geometric sans */
+        /* Brand: icon always visible; “Talaria” wordmark reveals on hover (TradingView-like type) */
 
         .chart-brand {
 
@@ -24367,7 +24367,7 @@
 
             align-items: center;
 
-            gap: 8px;
+            gap: 0;
 
             pointer-events: auto;
 
@@ -24433,13 +24433,15 @@
 
             display: block;
 
-            max-width: none;
+            max-width: 0;
 
-            overflow: visible;
+            overflow: hidden;
 
-            opacity: 1;
+            opacity: 0;
 
             margin: 0;
+
+            margin-left: 0;
 
             padding: 0;
 
@@ -24457,11 +24459,25 @@
 
             line-height: 1;
 
+            transition: max-width 0.3s ease, opacity 0.25s ease, margin-left 0.3s ease;
+
             -webkit-font-smoothing: antialiased;
 
             -moz-osx-font-smoothing: grayscale;
 
             text-rendering: geometricPrecision;
+
+        }
+
+
+
+        .chart-brand:hover .logo-bottom {
+
+            max-width: 200px;
+
+            opacity: 1;
+
+            margin-left: 8px;
 
         }
 
