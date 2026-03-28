@@ -1144,6 +1144,7 @@ class FlatTopBottomTool extends BaseDrawing {
         this.style.strokeDasharray = style.strokeDasharray || '0';
         this.style.extendLeft = style.extendLeft || false;
         this.style.extendRight = style.extendRight || false;
+        if (this.style.showHandlePrices === undefined) this.style.showHandlePrices = true;
         this.ensureTextDefaults();
     }
 
@@ -1376,7 +1377,63 @@ class FlatTopBottomTool extends BaseDrawing {
             // Clear virtual points if we don't have 3 points
             this.virtualPoints = null;
         }
+        this.renderHandlePriceLabels(scales);
         this.createHandles(this.group, scales);
+    }
+
+    /**
+     * Price labels next to each anchor (TradingView-style), toggled via style.showHandlePrices.
+     * Indices 0,2: label to the left of the handle; 1,3: to the right.
+     */
+    renderHandlePriceLabels(scales) {
+        if (this.style.showHandlePrices === false) return;
+        if (!this.virtualPoints || this.virtualPoints.length !== 4 || !this.group) return;
+
+        let priceDecimals = 5;
+        const ch = this.chart;
+        if (ch) {
+            const _precisionSetting = ch.chartSettings && ch.chartSettings.precision;
+            if (_precisionSetting && _precisionSetting !== 'Default') {
+                priceDecimals = Math.max(0, Math.min(8, parseInt(_precisionSetting, 10) || 5));
+            } else if (typeof ch.getPriceDecimals === 'function' && scales && scales.yScale) {
+                const _d = scales.yScale.domain();
+                const _range = Math.abs((Array.isArray(_d) && _d.length === 2) ? (_d[1] - _d[0]) : 0);
+                priceDecimals = ch.getPriceDecimals(_range);
+            } else {
+                priceDecimals = ch.priceDecimals || 5;
+            }
+        }
+
+        const fill = this.style.stroke || '#ff9800';
+        const fontSize = 11;
+        const dx = 8;
+
+        this.virtualPoints.forEach((point, index) => {
+            const price = point.y;
+            if (price === undefined || price === null || !Number.isFinite(Number(price))) return;
+
+            const cx = scales.chart && scales.chart.dataIndexToPixel ?
+                scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
+            const cy = scales.yScale(point.y);
+            const label = Number(price).toFixed(priceDecimals);
+            const anchorRight = index === 1 || index === 3;
+            const textAnchor = anchorRight ? 'start' : 'end';
+            const x = anchorRight ? cx + dx : cx - dx;
+
+            this.group.append('text')
+                .attr('class', 'flat-top-bottom-handle-price')
+                .attr('x', x)
+                .attr('y', cy)
+                .attr('text-anchor', textAnchor)
+                .attr('dominant-baseline', 'middle')
+                .attr('fill', fill)
+                .attr('font-size', fontSize)
+                .attr('font-weight', '500')
+                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
+                .style('pointer-events', 'none')
+                .style('user-select', 'none')
+                .text(label);
+        });
     }
 
     renderTextLabel(scales) {

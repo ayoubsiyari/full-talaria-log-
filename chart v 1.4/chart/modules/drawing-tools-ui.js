@@ -6421,6 +6421,40 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
+            if (drawing.type === 'flat-top-bottom') {
+
+                const handlePricesRow = document.createElement('div');
+
+                handlePricesRow.className = 'tv-prop-row';
+
+                handlePricesRow.style.cssText = 'padding-top: 12px; border-top: 1px solid #2a2e39; margin-top: 8px; display: flex; align-items: center; gap: 8px; min-height: 36px;';
+
+                const handlePricesChecked = drawing.style.showHandlePrices !== false;
+
+                handlePricesRow.innerHTML = `
+
+                    <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
+
+                        <div class="tv-checkbox ${handlePricesChecked ? 'checked' : ''}" data-prop="showHandlePrices">
+
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+
+                                <polyline points="20 6 9 17 4 12"/>
+
+                            </svg>
+
+                        </div>
+
+                        <span class="tv-checkbox-label" style="white-space: nowrap;">Prices</span>
+
+                    </div>`;
+
+                flatTopSection.appendChild(handlePricesRow);
+
+            }
+
+
+
             container.appendChild(flatTopSection);
 
         }
@@ -18470,6 +18504,26 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
+                if (prop === 'showHandlePrices') {
+
+                    drawing.style.showHandlePrices = isChecked;
+
+                    this.pendingChanges.showHandlePrices = isChecked;
+
+                    this.applyChanges(drawing);
+
+                    if (window.drawingManager) {
+
+                        window.drawingManager.renderDrawing(drawing);
+
+                        window.drawingManager.saveDrawings();
+
+                    }
+
+                }
+
+
+
                 // Live preview for time labels toggle
 
                 if (prop === 'showTimeLabel') {
@@ -22295,6 +22349,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (this.pendingChanges.extendRight !== undefined) drawing.style.extendRight = this.pendingChanges.extendRight;
 
+        if (this.pendingChanges.showHandlePrices !== undefined) drawing.style.showHandlePrices = this.pendingChanges.showHandlePrices;
+
         
 
         // Background properties
@@ -22628,6 +22684,8 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.extendLeft !== undefined) drawing.style.extendLeft = this.pendingChanges.extendLeft;
 
         if (this.pendingChanges.extendRight !== undefined) drawing.style.extendRight = this.pendingChanges.extendRight;
+
+        if (this.pendingChanges.showHandlePrices !== undefined) drawing.style.showHandlePrices = this.pendingChanges.showHandlePrices;
 
         
 
