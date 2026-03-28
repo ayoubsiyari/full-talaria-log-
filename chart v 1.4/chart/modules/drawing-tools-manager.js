@@ -8108,6 +8108,21 @@ class DrawingToolsManager {
             // [debug removed]
         }
 
+        // Arrow mark up/down: use one marker size across both tools (avoid smaller saved size on one only)
+        if (drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down') {
+            const stUp = this.getSavedToolStyle('arrow-mark-up');
+            const stDown = this.getSavedToolStyle('arrow-mark-down');
+            const nUp = stUp && Number(stUp.markerSize);
+            const nDown = stDown && Number(stDown.markerSize);
+            const pool = [Number(drawing.style.markerSize), Number(drawing.markerSize), nUp, nDown]
+                .filter((n) => Number.isFinite(n) && n > 0);
+            if (pool.length > 0) {
+                const unified = Math.max(...pool);
+                drawing.style.markerSize = unified;
+                drawing.markerSize = unified;
+            }
+        }
+
         // Apply persisted risk inputs for long/short position tools
         if ((drawing.type === 'long-position' || drawing.type === 'short-position') && typeof drawing.ensureRiskSettings === 'function') {
             const savedRiskSettings = this.getSavedToolRiskSettings(drawing.type);

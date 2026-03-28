@@ -293,7 +293,7 @@ class ArrowMarkerTool extends BaseDrawing {
     }
 }
 
-/** Layout + single "up" path; down arrow reuses this path inside a Y-mirror transform (identical pixel size). */
+/** Layout + paths for arrow mark up/down (same outer dimensions). */
 function arrowMarkUpLayout(size) {
     const arrowWidth = size * 0.85;
     const shaftWidth = size * 0.4;
@@ -312,9 +312,29 @@ function arrowMarkUpPathD(cx, cy, size) {
     return `M ${cx} ${topY} L ${cx + arrowWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${bottomY} L ${cx - shaftWidth / 2} ${bottomY} L ${cx - shaftWidth / 2} ${headBaseY} L ${cx - arrowWidth / 2} ${headBaseY} Z`;
 }
 
+/** Explicit down path (same width/height as up; no SVG mirror transform). */
+function arrowMarkDownPathD(cx, cy, size) {
+    const { arrowWidth, shaftWidth, headHeight, totalHeight } = arrowMarkUpLayout(size);
+    const topY = cy - totalHeight / 2;
+    const bottomY = cy + totalHeight / 2;
+    const headBaseY = bottomY - headHeight;
+    return `M ${cx} ${bottomY} L ${cx + arrowWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${headBaseY} L ${cx - arrowWidth / 2} ${headBaseY} Z`;
+}
+
 function normalizeArrowMarkSize(drawing) {
-    let s = Number(drawing.markerSize) || Number(drawing.style && drawing.style.markerSize) || 24;
-    if (!Number.isFinite(s) || s < 1) s = 24;
+    let s = Number(drawing.markerSize);
+    if (!Number.isFinite(s) || s <= 0) s = Number(drawing.style && drawing.style.markerSize);
+    if (!Number.isFinite(s) || s <= 0) s = 24;
+    const chart = drawing.chart;
+    const dm = chart && chart.drawingManager;
+    if (dm && typeof dm.getSavedToolStyle === 'function') {
+        const up = dm.getSavedToolStyle('arrow-mark-up');
+        const down = dm.getSavedToolStyle('arrow-mark-down');
+        const n1 = up && Number(up.markerSize);
+        const n2 = down && Number(down.markerSize);
+        const pool = [s, n1, n2].filter((n) => Number.isFinite(n) && n > 0);
+        if (pool.length > 0) s = Math.max(...pool);
+    }
     s = Math.max(12, Math.min(60, s));
     drawing.markerSize = s;
     if (!drawing.style) drawing.style = {};
@@ -483,9 +503,7 @@ class ArrowMarkDownTool extends BaseDrawing {
         const y = scales.yScale(p.y);
         const size = normalizeArrowMarkSize(this);
         const layout = arrowMarkUpLayout(size);
-        const arrowPath = arrowMarkUpPathD(x, y, size);
-        // Same geometry as arrow-up; flip vertically around anchor (x,y) so dimensions match exactly.
-        const mirrorT = `translate(${x},${y}) scale(1,-1) translate(${-x},${-y})`;
+        const arrowPath = arrowMarkDownPathD(x, y, size);
 
         // Add invisible larger hitbox for easier selection (render FIRST so it's behind the arrow)
         const hitboxPadding = size * 0.5;
@@ -499,12 +517,8 @@ class ArrowMarkDownTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
-        const mirrored = this.group.append('g')
-            .attr('class', 'arrow-mark-down-mirror')
-            .attr('transform', mirrorT);
-
         // Fill hit area (interactive) - allows select/move/hover by fill
-        mirrored.append('path')
+        this.group.append('path')
             .attr('class', 'arrow-fill-hit')
             .attr('d', arrowPath)
             .attr('fill', 'transparent')
@@ -513,7 +527,7 @@ class ArrowMarkDownTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Stroke-only hit area (interactive)
-        mirrored.append('path')
+        this.group.append('path')
             .attr('class', 'shape-border-hit')
             .attr('d', arrowPath)
             .attr('fill', 'none')
@@ -522,7 +536,7 @@ class ArrowMarkDownTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        mirrored.append('path')
+        this.group.append('path')
             .attr('class', 'shape-border')
             .attr('d', arrowPath)
             .attr('fill', 'none')
@@ -532,7 +546,7 @@ class ArrowMarkDownTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        mirrored.append('path')
+        this.group.append('path')
             .attr('class', 'shape-fill')
             .attr('d', arrowPath)
             .attr('fill', this.style.fill)
