@@ -5557,11 +5557,85 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     const typeDropdown = brushLineRow.querySelector('.tv-linetype-dropdown[data-prop="lineType"]');
 
-                    if (typeDropdown) { typeDropdown.style.width = '80px'; typeDropdown.style.minWidth = '80px'; typeDropdown.style.flex = '0 0 80px'; }
-
                     const widthDropdown = brushLineRow.querySelector('.tv-linewidth-dropdown[data-prop="lineWidth"]');
 
-                    if (widthDropdown) { widthDropdown.style.width = '60px'; widthDropdown.style.minWidth = '60px'; widthDropdown.style.flex = '0 0 60px'; }
+                    if (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') {
+
+                        if (typeDropdown) {
+
+                            typeDropdown.style.cssText = 'position: relative; width: max-content; max-width: 100%; flex: 0 0 auto; min-width: 0;';
+
+                            const tBtn = typeDropdown.querySelector('button');
+
+                            if (tBtn) {
+
+                                tBtn.style.width = 'auto';
+
+                                tBtn.style.maxWidth = '100%';
+
+                                tBtn.style.minWidth = '0';
+
+                                tBtn.style.padding = '0 22px 0 6px';
+
+                                tBtn.style.position = 'relative';
+
+                                tBtn.style.boxSizing = 'border-box';
+
+                                tBtn.style.justifyContent = 'flex-start';
+
+                            }
+
+                            const tChev = typeDropdown.querySelector('button > svg:last-of-type');
+
+                            if (tChev) {
+
+                                tChev.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);flex-shrink:0;pointer-events:none;';
+
+                            }
+
+                        }
+
+                        if (widthDropdown) {
+
+                            widthDropdown.style.cssText = 'position: relative; width: max-content; max-width: 100%; flex: 0 0 auto; min-width: 0;';
+
+                            const wBtn = widthDropdown.querySelector('button');
+
+                            if (wBtn) {
+
+                                wBtn.style.width = 'auto';
+
+                                wBtn.style.maxWidth = '100%';
+
+                                wBtn.style.minWidth = '0';
+
+                                wBtn.style.padding = '0 22px 0 8px';
+
+                                wBtn.style.position = 'relative';
+
+                                wBtn.style.boxSizing = 'border-box';
+
+                                wBtn.style.justifyContent = 'flex-start';
+
+                            }
+
+                            const wChev = widthDropdown.querySelector('button > svg:last-of-type');
+
+                            if (wChev) {
+
+                                wChev.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);flex-shrink:0;pointer-events:none;';
+
+                            }
+
+                        }
+
+                    } else {
+
+                        if (typeDropdown) { typeDropdown.style.width = '80px'; typeDropdown.style.minWidth = '80px'; typeDropdown.style.flex = '0 0 80px'; }
+
+                        if (widthDropdown) { widthDropdown.style.width = '60px'; widthDropdown.style.minWidth = '60px'; widthDropdown.style.flex = '0 0 60px'; }
+
+                    }
 
                 }
 
@@ -8531,21 +8605,21 @@ body.light-mode .template-save-dialog .dialog-title {
 
         ddWrapper.dataset.prop = 'pitchforkStyle';
 
-        ddWrapper.style.cssText = 'position: relative; width: 130px;';
+        ddWrapper.style.cssText = 'position: relative; width: max-content; max-width: 100%; flex-shrink: 0;';
 
         ddWrapper.innerHTML = `
 
-            <button class="tv-fontsize-dropdown-btn tv-ending-dropdown-btn" style="width: 100%; height: 26px; padding: 0 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
+            <button type="button" class="tv-fontsize-dropdown-btn tv-ending-dropdown-btn" style="width: auto; max-width: 100%; height: 26px; padding: 0 22px 0 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box; white-space: nowrap;">
 
                 <span>${currentLabel}</span>
 
-                <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink: 0;"><path d="M6 9l6 6 6-6"/></svg>
+                <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); flex-shrink: 0; pointer-events: none;"><path d="M6 9l6 6 6-6"/></svg>
 
             </button>
 
             <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;">
 
-                ${styleOptions.map(s => `<div class="tv-fontsize-option" data-value="${s.value}" style="padding: 7px 14px; cursor: default; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s.label}</div>`).join('')}
+                ${styleOptions.map(s => `<div class="tv-fontsize-option" data-value="${s.value}" style="padding: 7px 12px; cursor: default; color: #d1d4dc; font-size: 12px; white-space: nowrap; text-align: left;">${s.label}</div>`).join('')}
 
             </div>`;
 
