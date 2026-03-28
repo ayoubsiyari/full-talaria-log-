@@ -293,6 +293,32 @@ class ArrowMarkerTool extends BaseDrawing {
     }
 }
 
+/**
+ * Shared metrics and path for arrow mark up / down so both have identical size and mirrored shape.
+ */
+function arrowMarkChevronMetrics(size) {
+    const arrowWidth = size * 0.85;
+    const shaftWidth = size * 0.4;
+    const headHeight = size * 0.6;
+    const legHeight = size * 0.45;
+    const totalHeight = headHeight + legHeight;
+    const outerW = Math.max(arrowWidth, shaftWidth);
+    return { arrowWidth, shaftWidth, headHeight, legHeight, totalHeight, outerW };
+}
+
+function arrowMarkChevronPath(cx, cy, size, pointUp) {
+    const m = arrowMarkChevronMetrics(size);
+    const { arrowWidth, shaftWidth, headHeight, totalHeight } = m;
+    const topY = cy - totalHeight / 2;
+    const bottomY = cy + totalHeight / 2;
+    if (pointUp) {
+        const headBaseY = topY + headHeight;
+        return `M ${cx} ${topY} L ${cx + arrowWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${bottomY} L ${cx - shaftWidth / 2} ${bottomY} L ${cx - shaftWidth / 2} ${headBaseY} L ${cx - arrowWidth / 2} ${headBaseY} Z`;
+    }
+    const headBaseY = bottomY - headHeight;
+    return `M ${cx} ${bottomY} L ${cx + arrowWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${headBaseY} L ${cx - arrowWidth / 2} ${headBaseY} Z`;
+}
+
 // ============================================================================
 // Arrow Mark Up Tool (Upward pointing arrow)
 // ============================================================================
@@ -323,33 +349,17 @@ class ArrowMarkUpTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
         const size = this.markerSize || this.style.markerSize || 24;
-
-        // Draw upward arrow marker (chevron/arrow shape pointing up)
-        const arrowWidth = size * 0.85; // Wider head
-        const shaftWidth = size * 0.4;  // Wider shaft
-        const headHeight = size * 0.6;  // Bigger head
-        const legHeight = size * 0.45;  // Shorter leg
-        const totalHeight = headHeight + legHeight;
-        const topY = y - totalHeight / 2;
-        const bottomY = y + totalHeight / 2;
-        const headBaseY = topY + headHeight;
-        
-        const arrowPath = `M ${x} ${topY} 
-            L ${x + arrowWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${bottomY} 
-            L ${x - shaftWidth/2} ${bottomY} 
-            L ${x - shaftWidth/2} ${headBaseY} 
-            L ${x - arrowWidth/2} ${headBaseY} Z`;
+        const metrics = arrowMarkChevronMetrics(size);
+        const arrowPath = arrowMarkChevronPath(x, y, size, true);
 
         // Add invisible larger hitbox for easier selection (render FIRST so it's behind the arrow)
         const hitboxPadding = size * 0.5;
         this.group.append('rect')
             .attr('class', 'arrow-marker-hitbox')
-            .attr('x', x - size/2 - hitboxPadding)
-            .attr('y', y - size/2 - hitboxPadding)
-            .attr('width', size + hitboxPadding * 2)
-            .attr('height', size + hitboxPadding * 2)
+            .attr('x', x - metrics.outerW / 2 - hitboxPadding)
+            .attr('y', y - metrics.totalHeight / 2 - hitboxPadding)
+            .attr('width', metrics.outerW + hitboxPadding * 2)
+            .attr('height', metrics.totalHeight + hitboxPadding * 2)
             .attr('fill', 'transparent')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -399,7 +409,7 @@ class ArrowMarkUpTool extends BaseDrawing {
             const fontStyle = this.style.fontStyle || 'normal';
             
             // Position text below the arrow
-            const textOffsetY = size/2 + 8;
+            const textOffsetY = metrics.totalHeight / 2 + 8;
             
             this.group.append('text')
                 .attr('x', x)
@@ -469,33 +479,17 @@ class ArrowMarkDownTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
         const size = this.markerSize || this.style.markerSize || 24;
-
-        // Draw downward arrow marker (chevron/arrow shape pointing down)
-        const arrowWidth = size * 0.85; // Wider head
-        const shaftWidth = size * 0.4;  // Wider shaft
-        const headHeight = size * 0.6;  // Bigger head
-        const legHeight = size * 0.45;  // Shorter leg
-        const totalHeight = headHeight + legHeight;
-        const topY = y - totalHeight / 2;
-        const bottomY = y + totalHeight / 2;
-        const headBaseY = bottomY - headHeight;
-        
-        const arrowPath = `M ${x} ${bottomY} 
-            L ${x + arrowWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${topY} 
-            L ${x - shaftWidth/2} ${topY} 
-            L ${x - shaftWidth/2} ${headBaseY} 
-            L ${x - arrowWidth/2} ${headBaseY} Z`;
+        const metrics = arrowMarkChevronMetrics(size);
+        const arrowPath = arrowMarkChevronPath(x, y, size, false);
 
         // Add invisible larger hitbox for easier selection (render FIRST so it's behind the arrow)
         const hitboxPadding = size * 0.5;
         this.group.append('rect')
             .attr('class', 'arrow-marker-hitbox')
-            .attr('x', x - size/2 - hitboxPadding)
-            .attr('y', y - size/2 - hitboxPadding)
-            .attr('width', size + hitboxPadding * 2)
-            .attr('height', size + hitboxPadding * 2)
+            .attr('x', x - metrics.outerW / 2 - hitboxPadding)
+            .attr('y', y - metrics.totalHeight / 2 - hitboxPadding)
+            .attr('width', metrics.outerW + hitboxPadding * 2)
+            .attr('height', metrics.totalHeight + hitboxPadding * 2)
             .attr('fill', 'transparent')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -545,7 +539,7 @@ class ArrowMarkDownTool extends BaseDrawing {
             const fontStyle = this.style.fontStyle || 'normal';
             
             // Position text above the arrow
-            const textOffsetY = -size/2 - 8;
+            const textOffsetY = -metrics.totalHeight / 2 - 8;
             
             this.group.append('text')
                 .attr('x', x)

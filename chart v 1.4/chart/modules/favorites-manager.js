@@ -159,12 +159,12 @@ class FavoritesManager {
             },
             'arrow-mark-up': {
                 name: 'Arrow Mark Up',
-                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#089981" stroke-width="1.5"><path d="M12 4 L20 18 L4 18 Z" fill="rgba(8,153,129,0.3)"/></svg>',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#089981" stroke-width="1.5" stroke-linejoin="round"><path d="M12 5 L19 17 H5 Z" fill="rgba(8,153,129,0.25)"/></svg>',
                 tooltip: 'Arrow Mark Up'
             },
             'arrow-mark-down': {
                 name: 'Arrow Mark Down',
-                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#F23645" stroke-width="1.5"><path d="M12 20 L20 6 L4 6 Z" fill="rgba(242,54,69,0.3)"/></svg>',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#F23645" stroke-width="1.5" stroke-linejoin="round"><path d="M12 19 L19 7 H5 Z" fill="rgba(242,54,69,0.25)"/></svg>',
                 tooltip: 'Arrow Mark Down'
             },
             'rotated-rectangle': {
