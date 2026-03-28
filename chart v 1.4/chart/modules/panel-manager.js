@@ -872,11 +872,17 @@ class PanelManager {
     /**
      * Keep the Talaria logo at the bottom-left of the full chart area in multi-panel mode
      * (not clipped to panel 0). Single-panel: logo stays inside #chartWrapper.
+     *
+     * Multi-panel: the logo must live under #chart-container, not #panels-container.
+     * #chartWrapper is a sibling of #panels-container with the same z-index but painted
+     * later, so it covers the whole panels layer — a logo inside panels-container would
+     * sit underneath the main chart (invisible in the bottom-left).
      */
     syncChartBrandPlacement(layout) {
         const brand = document.querySelector('.chart-brand');
         const wrapper = document.getElementById('chartWrapper');
         const pc = this.container || document.getElementById('panels-container');
+        const chartCont = document.getElementById('chart-container');
         if (!brand || !wrapper || !pc) return;
 
         if (layout === '1') {
@@ -885,12 +891,11 @@ class PanelManager {
             }
             brand.classList.remove('chart-brand--multi');
             brand.style.zIndex = '';
-        } else {
-            if (brand.parentElement !== pc) {
-                pc.appendChild(brand);
+        } else if (chartCont) {
+            if (brand.parentElement !== chartCont) {
+                chartCont.appendChild(brand);
             }
             brand.classList.add('chart-brand--multi');
-            /* Above .chart-panel (z-index 100) so watermark is visible */
             brand.style.zIndex = '5000';
         }
     }
@@ -1508,11 +1513,12 @@ class PanelManager {
             this.createPanel(panelConfig[i], i);
         }
 
-        // After panels exist: logo must stack above .chart-panel (z-index 100) and be last child for paint order
+        // After panels exist: park logo on #chart-container (above #chartWrapper paint order)
         this.syncChartBrandPlacement(layout);
         const brandNode = document.querySelector('.chart-brand');
-        if (brandNode && this.container.contains(brandNode)) {
-            this.container.appendChild(brandNode);
+        const chartCont = document.getElementById('chart-container');
+        if (brandNode && chartCont) {
+            chartCont.appendChild(brandNode);
         }
         
         console.log(`✅ ${this.panels.length} panels total (1 main + ${this.panels.length - 1} additional)`);
