@@ -16,7 +16,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 
-    <!-- Zain ExtraBold: same files as homepage (homepage/font/Zain) -->
+    <!-- Zain: same files as homepage (homepage/font/Zain); wordmark uses Black for maximum weight -->
     <style>
         @font-face {
             font-family: 'Zain';
@@ -24,6 +24,13 @@
             font-weight: 800;
             font-display: swap;
             src: url('../../homepage/font/Zain/Zain-ExtraBold.ttf') format('truetype');
+        }
+        @font-face {
+            font-family: 'Zain';
+            font-style: normal;
+            font-weight: 900;
+            font-display: swap;
+            src: url('../../homepage/font/Zain/Zain-Black.ttf') format('truetype');
         }
     </style>
 
@@ -24462,11 +24469,11 @@
 
             font-family: 'Zain', 'Roboto', 'Trebuchet MS', 'Segoe UI', sans-serif;
 
-            font-size: 15px;
+            font-size: 20px;
 
-            font-weight: 800;
+            font-weight: 900;
 
-            letter-spacing: -0.01em;
+            letter-spacing: -0.02em;
 
             line-height: 1;
 
@@ -24484,7 +24491,7 @@
 
         .chart-brand:hover .logo-bottom {
 
-            max-width: 220px;
+            max-width: 280px;
 
             opacity: 1;
 
