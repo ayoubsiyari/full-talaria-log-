@@ -24425,13 +24425,13 @@
 
         .chart-brand .logo-bottom {
 
-            height: 95px;
+            height: auto;
 
             width: auto;
 
             display: block;
 
-            max-width: 2;
+            max-width: 2px;
 
             overflow: hidden;
 
@@ -24439,7 +24439,49 @@
 
             transition: max-width 0.3s ease, opacity 0.25s ease;
 
-            filter: brightness(2) saturate(0);
+            filter: none;
+
+            margin-left: -8px;
+
+            padding: 0;
+
+            align-self: center;
+
+            white-space: nowrap;
+
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, sans-serif;
+
+            font-size: 16px;
+
+            font-weight: 900;
+
+            letter-spacing: 0.04em;
+
+            line-height: 1;
+
+            -webkit-font-smoothing: antialiased;
+
+            text-rendering: geometricPrecision;
+
+        }
+
+
+
+        .chart-brand .logo-bottom.logo-dark {
+
+            color: rgba(245, 248, 250, 0.95);
+
+            text-shadow: 0 0 0.5px rgba(245, 248, 250, 0.9), 0 1px 2px rgba(0, 0, 0, 0.35);
+
+        }
+
+
+
+        .chart-brand .logo-bottom.logo-light {
+
+            color: rgba(18, 22, 28, 0.96);
+
+            text-shadow: none;
 
         }
 
@@ -40505,9 +40547,9 @@
 
                 <img src="modules/logo-09.png" alt="Talaria logo symbol" class="logo-top logo-light">
 
-                <img src="modules/logo-05.png" alt="Talaria logo wordmark" class="logo-bottom logo-dark">
+                <span class="logo-bottom logo-dark" aria-hidden="true">TALARIA</span>
 
-                <img src="modules/logo-14.png" alt="Talaria logo wordmark" class="logo-bottom logo-light">
+                <span class="logo-bottom logo-light" aria-hidden="true">TALARIA</span>
 
             </a>
 
