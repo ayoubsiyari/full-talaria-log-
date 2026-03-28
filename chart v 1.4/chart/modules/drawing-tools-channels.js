@@ -1383,7 +1383,7 @@ class FlatTopBottomTool extends BaseDrawing {
 
     /**
      * Price labels next to each anchor (TradingView-style), toggled via style.showHandlePrices.
-     * Indices 0,2: label to the left of the handle; 1,3: to the right.
+     * Placed along the outward direction from the shape centroid so text does not sit on the edges.
      */
     renderHandlePriceLabels(scales) {
         if (this.style.showHandlePrices === false) return;
@@ -1404,27 +1404,44 @@ class FlatTopBottomTool extends BaseDrawing {
             }
         }
 
+        const toSX = (p) => (scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x));
+        const toSY = (p) => scales.yScale(p.y);
+
+        const screen = this.virtualPoints.map((p) => ({ sx: toSX(p), sy: toSY(p) }));
+        const centX = screen.reduce((s, c) => s + c.sx, 0) / 4;
+        const centY = screen.reduce((s, c) => s + c.sy, 0) / 4;
+
         const fill = this.style.stroke || '#ff9800';
         const fontSize = 11;
-        const dx = 8;
+        const labelDist = 18;
 
         this.virtualPoints.forEach((point, index) => {
             const price = point.y;
             if (price === undefined || price === null || !Number.isFinite(Number(price))) return;
 
-            const cx = scales.chart && scales.chart.dataIndexToPixel ?
-                scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
-            const cy = scales.yScale(point.y);
+            const cx = screen[index].sx;
+            const cy = screen[index].sy;
             const label = Number(price).toFixed(priceDecimals);
-            const anchorRight = index === 1 || index === 3;
-            const textAnchor = anchorRight ? 'start' : 'end';
-            const x = anchorRight ? cx + dx : cx - dx;
+
+            let ox = cx;
+            let oy = cy;
+            const rdx = cx - centX;
+            const rdy = cy - centY;
+            const rlen = Math.hypot(rdx, rdy);
+            if (rlen > 1e-6) {
+                ox = cx + (rdx / rlen) * labelDist;
+                oy = cy + (rdy / rlen) * labelDist;
+            } else {
+                const fallback = index === 1 || index === 3 ? labelDist : -labelDist;
+                ox = cx + fallback;
+            }
 
             this.group.append('text')
                 .attr('class', 'flat-top-bottom-handle-price')
-                .attr('x', x)
-                .attr('y', cy)
-                .attr('text-anchor', textAnchor)
+                .attr('x', ox)
+                .attr('y', oy)
+                .attr('text-anchor', 'middle')
                 .attr('dominant-baseline', 'middle')
                 .attr('fill', fill)
                 .attr('font-size', fontSize)
