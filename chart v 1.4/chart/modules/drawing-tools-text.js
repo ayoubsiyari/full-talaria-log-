@@ -15,6 +15,7 @@ class TextTool extends BaseDrawing {
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
         this.style.textAlign = style.textAlign || 'left';
         // Store base scale for chart zoom scaling
         this.baseScale = null;
@@ -52,6 +53,7 @@ class TextTool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight)
+            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
@@ -526,6 +528,8 @@ class NoteBoxTool extends BaseDrawing {
         this.style.padding = style.padding || 8;
         this.style.borderRadius = style.borderRadius || 4;
         this.style.maxWidth = style.maxWidth || 200;
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -551,6 +555,8 @@ class NoteBoxTool extends BaseDrawing {
         const tempText = container.append('text')
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .text(this.text);
         
         const textBBox = tempText.node().getBBox();
@@ -593,6 +599,8 @@ class NoteBoxTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('dominant-baseline', 'alphabetic')
             .style('pointer-events', 'none')
             .style('user-select', 'none');
@@ -608,6 +616,8 @@ class NoteBoxTool extends BaseDrawing {
             const testText = container.append('text')
                 .attr('font-size', `${this.style.fontSize}px`)
                 .attr('font-family', this.style.fontFamily)
+                .attr('font-weight', this.style.fontWeight || 'normal')
+                .attr('font-style', this.style.fontStyle || 'normal')
                 .text(testLine);
             const testWidth = testText.node().getBBox().width;
             testText.remove();
@@ -906,6 +916,8 @@ class AnchoredTextTool extends BaseDrawing {
         this.style.backgroundColor = style.backgroundColor || 'rgba(41, 98, 255, 0.9)';
         this.style.borderColor = style.borderColor || '#B2B5BE';
         this.style.anchorLength = style.anchorLength || 30;
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -938,6 +950,9 @@ class AnchoredTextTool extends BaseDrawing {
         const padding = 6;
         const tempText = container.append('text')
             .attr('font-size', `${this.style.fontSize}px`)
+            .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .text(this.text);
         const bbox = tempText.node().getBBox();
         tempText.remove();
@@ -975,6 +990,9 @@ class AnchoredTextTool extends BaseDrawing {
             .attr('y', y - this.style.anchorLength - padding)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
+            .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'all')
             .style('cursor', 'move')
@@ -1051,6 +1069,7 @@ class AnchoredTextTool extends BaseDrawing {
                     fontSize: `${self.style.fontSize || 12}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
+                    fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'center',
                     hideSelector: `.drawing[data-id="${self.id}"] text`
@@ -1129,6 +1148,8 @@ class NoteTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -1187,7 +1208,7 @@ class NoteTool extends BaseDrawing {
         // Helper: measure single-line text width via canvas (reliable, no DOM dependency)
         const _nCanvas = document.createElement('canvas');
         const _nCtx = _nCanvas.getContext('2d');
-        _nCtx.font = `${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Arial, sans-serif'}`;
+        _nCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Arial, sans-serif'}`;
         const measureWidth = (str) => {
             try { return _nCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch(e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -1248,6 +1269,8 @@ class NoteTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
@@ -1557,6 +1580,8 @@ class PriceNoteTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -1617,6 +1642,8 @@ class PriceNoteTool extends BaseDrawing {
         const tempText = container.append('text')
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .text(priceText);
         let textBbox;
         try {
@@ -1708,6 +1735,8 @@ class PriceNoteTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(priceText);
@@ -1762,6 +1791,8 @@ class PinTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#d1d4dc';
         this.style.fontSize = style.fontSize || 14;
         this.style.fontFamily = style.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -1891,6 +1922,8 @@ class PinTool extends BaseDrawing {
                 .attr('fill', this.style.textColor)
                 .attr('font-size', `${scaledFontSize}px`)
                 .attr('font-family', this.style.fontFamily)
+                .attr('font-weight', this.style.fontWeight || 'normal')
+                .attr('font-style', this.style.fontStyle || 'normal')
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move')
@@ -2279,6 +2312,9 @@ class CalloutTool extends BaseDrawing {
         this.style.borderColor = style.borderColor || '#B2B5BE';
         this.style.textColor = style.textColor || '#F23645';
         this.style.fontSize = style.fontSize || 14;
+        this.style.fontFamily = style.fontFamily || 'Arial, sans-serif';
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -2312,9 +2348,10 @@ class CalloutTool extends BaseDrawing {
         const _cFontSize = this.style.fontSize || 14;
         const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
+        const _cFontStyle = this.style.fontStyle || 'normal';
         const _measCanvas = document.createElement('canvas');
         const _measCtx = _measCanvas.getContext('2d');
-        _measCtx.font = `${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
+        _measCtx.font = `${_cFontStyle} ${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
         const measureW = (str) => {
             try { return _measCtx.measureText(str || '').width || (str.length * _cFontSize * 0.6); }
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
@@ -2421,6 +2458,9 @@ class CalloutTool extends BaseDrawing {
             .attr('text-anchor', 'start')
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
+            .attr('font-family', _cFontFamily)
+            .attr('font-weight', _cFontWeight)
+            .attr('font-style', _cFontStyle)
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
@@ -2502,6 +2542,7 @@ class CalloutTool extends BaseDrawing {
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
+                    fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
                     noWrap: true,
@@ -2664,9 +2705,10 @@ class CommentTool extends BaseDrawing {
         const _cFontSize = this.style.fontSize || 14;
         const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
+        const _cFontStyle = this.style.fontStyle || 'normal';
         const _measCanvas = document.createElement('canvas');
         const _measCtx = _measCanvas.getContext('2d');
-        _measCtx.font = `${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
+        _measCtx.font = `${_cFontStyle} ${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
         const measureW = (str) => {
             try { return _measCtx.measureText(str || '').width || ((str || '').length * _cFontSize * 0.6); }
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
@@ -2935,6 +2977,8 @@ class PriceLabelTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -2972,6 +3016,8 @@ class PriceLabelTool extends BaseDrawing {
         const tempText = container.append('text')
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .text(priceText);
         let textBbox;
         try {
@@ -3020,6 +3066,8 @@ class PriceLabelTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(priceText);
@@ -3079,6 +3127,7 @@ class PriceLabel2Tool extends BaseDrawing {
         this.style.fontSize = style.fontSize || 14;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
         this.style.fontWeight = style.fontWeight || 'bold';
+        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -3113,6 +3162,7 @@ class PriceLabel2Tool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight)
+            .attr('font-style', this.style.fontStyle || 'normal')
             .text(priceText);
         let textBbox;
         try {
@@ -3177,6 +3227,7 @@ class PriceLabel2Tool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight)
+            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(priceText);
@@ -3238,6 +3289,8 @@ class Signpost2Tool extends BaseDrawing {
         this.style.textColor = style.textColor || '#d1d4dc';
         this.style.fontSize = style.fontSize || 13;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontWeight = style.fontWeight || 'normal';
+        this.style.fontStyle = style.fontStyle || 'normal';
         this.style.lineLength = style.lineLength || 100;
     }
 
@@ -3348,6 +3401,8 @@ class Signpost2Tool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(displayText);
@@ -3424,6 +3479,7 @@ class Signpost2Tool extends BaseDrawing {
                     fontSize: `${self.style.fontSize || 12}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
+                    fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'center',
                     hideSelector: `.drawing[data-id="${self.id}"] text`

@@ -19764,7 +19764,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         queryAll('.tv-style-btn').forEach(btn => {
 
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', (e) => {
+
+                e.stopPropagation();
+
+                e.preventDefault();
 
                 btn.classList.toggle('active');
 
