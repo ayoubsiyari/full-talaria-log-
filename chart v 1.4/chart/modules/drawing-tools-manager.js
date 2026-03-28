@@ -3596,6 +3596,10 @@ class DrawingToolsManager {
             drawing.group.selectAll('.volume-profile-values-label')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
+
+            drawing.group.selectAll('.volume-profile-hitbox')
+                .style('pointer-events', 'none')
+                .style('cursor', 'inherit');
         }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled

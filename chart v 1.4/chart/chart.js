@@ -13119,6 +13119,29 @@ class Chart {
                         }
                     });
                 }
+
+                // VP fill uses pointer-events none so pan reaches the canvas; treat a short click as
+                // select when the topmost hit at the release point is an unlocked volume profile.
+                const panClickThresholdPx = 5;
+                const panDx = e.clientX - (this.drag.startX ?? e.clientX);
+                const panDy = e.clientY - (this.drag.startY ?? e.clientY);
+                if (e.button === 0
+                    && Math.hypot(panDx, panDy) < panClickThresholdPx
+                    && !this.tool
+                    && this.drawingManager
+                    && !this.drawingManager.currentTool) {
+                    const svgNode = this.svg && this.svg.node();
+                    if (svgNode) {
+                        const svgRect = svgNode.getBoundingClientRect();
+                        const mouseX = e.clientX - svgRect.left;
+                        const mouseY = e.clientY - svgRect.top;
+                        const hits = this.drawingManager.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
+                        const top = hits && hits.length ? hits[0] : null;
+                        if (top && !top.locked && this.drawingManager.isVolumeProfileToolType(top.type)) {
+                            this.drawingManager.selectDrawing(top, false);
+                        }
+                    }
+                }
             }
             // Persist separate panel sizes once drag ends
             else if (dragType === 'separatePanelResize' && wasDragging) {

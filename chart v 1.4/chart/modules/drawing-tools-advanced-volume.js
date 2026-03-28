@@ -1162,6 +1162,8 @@ class VolumeProfileTool extends BaseDrawing {
         }
 
         // Full-area hit target (pointer-events: stroke on a transparent rect misses interior clicks).
+        // Full-area geometry helper only — pointer-events none so chart pan works through the fill;
+        // selection from the body is handled via findDrawingsAtPoint + canvas click-release (chart.js).
         this.group.append('rect')
             .attr('class', 'volume-profile-hitbox')
             .attr('x', left)
@@ -1169,8 +1171,8 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('width', width)
             .attr('height', Math.max(1, height))
             .attr('fill', 'transparent')
-            .style('pointer-events', 'all')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'inherit');
 
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
         [
