@@ -24317,41 +24317,17 @@
 
 
 
-        .toolbar-logo {
+        /* Toolbar: same lockup as chart corner; cursor stays default (not a “homepage” link affordance) */
 
-            display: flex;
+        .toolbar-logo.brand-lockup {
 
-            align-items: center;
+            cursor: default;
+
+            flex-shrink: 0;
 
             padding: 0;
 
             margin: 0;
-
-            text-decoration: none;
-
-            cursor: default;
-
-            transition: opacity 0.2s;
-
-        }
-
-
-
-        .toolbar-logo:hover {
-
-            opacity: 0.8;
-
-        }
-
-
-
-        .toolbar-logo img {
-
-            height: 24px;
-
-            width: auto;
-
-            display: block;
 
         }
 
@@ -24369,15 +24345,9 @@
 
 
 
-        /* Brand: icon always visible; “Talaria” wordmark reveals on hover (TradingView-like type) */
+        /* Shared Talaria lockup: chart corner + top toolbar (icon + Zain wordmark on hover) */
 
-        .chart-brand {
-
-            position: absolute;
-
-            left: 8px;
-
-            bottom: 36px;
+        .brand-lockup {
 
             display: flex;
 
@@ -24388,10 +24358,6 @@
             gap: 0;
 
             pointer-events: auto;
-
-            z-index: 2;
-
-            cursor: pointer;
 
             text-decoration: none;
 
@@ -24405,7 +24371,7 @@
 
 
 
-        .chart-brand:hover {
+        .brand-lockup:hover {
 
             opacity: 1;
 
@@ -24415,11 +24381,9 @@
 
 
 
-        .chart-brand img {
+        .brand-lockup img {
 
             width: auto;
-
-            height: 38px;
 
             display: block;
 
@@ -24431,9 +24395,7 @@
 
 
 
-        .chart-brand .logo-top {
-
-            height: 38px;
+        .brand-lockup .logo-top {
 
             width: auto;
 
@@ -24443,7 +24405,23 @@
 
 
 
-        .chart-brand .logo-bottom {
+        .chart-brand .logo-top {
+
+            height: 38px;
+
+        }
+
+
+
+        .toolbar-logo .logo-top {
+
+            height: 28px;
+
+        }
+
+
+
+        .brand-lockup .logo-bottom {
 
             height: auto;
 
@@ -24489,7 +24467,17 @@
 
 
 
-        .chart-brand:hover .logo-bottom {
+        /* Toolbar: same Zain lockup, slightly smaller type (icon is 28px vs 38px in corner) */
+
+        .toolbar-logo.brand-lockup .logo-bottom {
+
+            font-size: 18px;
+
+        }
+
+
+
+        .brand-lockup:hover .logo-bottom {
 
             max-width: 300px;
 
@@ -24501,7 +24489,15 @@
 
 
 
-        .chart-brand .logo-bottom.logo-dark {
+        .toolbar-logo.brand-lockup:hover .logo-bottom {
+
+            max-width: 260px;
+
+        }
+
+
+
+        .brand-lockup .logo-bottom.logo-dark {
 
             color: #ffffff;
 
@@ -24511,7 +24507,7 @@
 
 
 
-        .chart-brand .logo-bottom.logo-light {
+        .brand-lockup .logo-bottom.logo-light {
 
             color: #131722;
 
@@ -24521,7 +24517,23 @@
 
 
 
-        .chart-brand .logo-dark {
+        .chart-brand.brand-lockup {
+
+            position: absolute;
+
+            left: 8px;
+
+            bottom: 36px;
+
+            z-index: 2;
+
+            cursor: pointer;
+
+        }
+
+
+
+        .brand-lockup .logo-dark {
 
             display: block;
 
@@ -24529,7 +24541,7 @@
 
 
 
-        .chart-brand .logo-light {
+        .brand-lockup .logo-light {
 
             display: none;
 
@@ -24537,7 +24549,7 @@
 
 
 
-        body.light-theme .chart-brand .logo-dark {
+        body.light-theme .brand-lockup .logo-dark {
 
             display: none;
 
@@ -24545,7 +24557,7 @@
 
 
 
-        body.light-theme .chart-brand .logo-light {
+        body.light-theme .brand-lockup .logo-light {
 
             display: block;
 
@@ -32815,7 +32827,7 @@
 
             /* Logo smaller */
 
-            .toolbar-logo img {
+            .toolbar-logo .logo-top {
 
                 height: 22px !important;
 
@@ -35737,9 +35749,15 @@
 
                 <!-- Logo -->
 
-                <a href="/dashboard/" class="toolbar-logo" title="Go to Sessions">
+                <a href="/dashboard/" class="toolbar-logo brand-lockup" title="Go to Sessions">
 
-                    <img src="modules/logo-04.png" alt="Logo" style="height: 28px; width: auto;">
+                    <img src="modules/logo-08.png" alt="Talaria logo symbol" class="logo-top logo-dark">
+
+                    <img src="modules/logo-09.png" alt="Talaria logo symbol" class="logo-top logo-light">
+
+                    <span class="logo-bottom logo-dark">Talaria-Log</span>
+
+                    <span class="logo-bottom logo-light">Talaria-Log</span>
 
                 </a>
 
@@ -40565,7 +40583,7 @@
 
             </button>
 
-            <a class="chart-brand" href="/" title="Talaria Homepage">
+            <a class="chart-brand brand-lockup" href="/" title="Talaria Homepage">
 
                 <img src="modules/logo-08.png" alt="Talaria logo symbol" class="logo-top logo-dark">
 
