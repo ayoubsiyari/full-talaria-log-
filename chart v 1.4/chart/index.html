@@ -24345,7 +24345,7 @@
 
 
 
-        /* Shared Talaria lockup: toolbar = row + wordmark on hover; chart corner = column, icon above text (screenshot style) */
+        /* Shared Talaria lockup: chart corner + toolbar (row; wordmark reveals on hover) */
 
         .brand-lockup {
 
@@ -24429,7 +24429,15 @@
 
             display: block;
 
+            max-width: 0;
+
+            overflow: hidden;
+
+            opacity: 0;
+
             margin: 0;
+
+            margin-left: 0;
 
             padding: 0;
 
@@ -24443,9 +24451,11 @@
 
             font-weight: 900;
 
-            letter-spacing: 0.02em;
+            letter-spacing: -0.02em;
 
             line-height: 1;
+
+            transition: max-width 0.3s ease, opacity 0.25s ease, margin-left 0.3s ease;
 
             -webkit-font-smoothing: antialiased;
 
@@ -24457,21 +24467,21 @@
 
 
 
-        /* Toolbar only: horizontal lockup; reveal wordmark on hover */
-
         .toolbar-logo.brand-lockup .logo-bottom {
 
             font-size: 18px;
 
-            max-width: 0;
+        }
 
-            overflow: hidden;
 
-            opacity: 0;
+
+        .brand-lockup:hover .logo-bottom {
+
+            max-width: 300px;
+
+            opacity: 1;
 
             margin-left: 0;
-
-            transition: max-width 0.3s ease, opacity 0.25s ease, margin-left 0.3s ease;
 
         }
 
@@ -24480,10 +24490,6 @@
         .toolbar-logo.brand-lockup:hover .logo-bottom {
 
             max-width: 260px;
-
-            opacity: 1;
-
-            margin-left: 0;
 
         }
 
@@ -24515,35 +24521,11 @@
 
             left: 8px;
 
-            bottom: 32px;
+            bottom: 36px;
 
             z-index: 2;
 
             cursor: pointer;
-
-            flex-direction: column;
-
-            align-items: center;
-
-            justify-content: flex-start;
-
-            gap: 6px;
-
-        }
-
-
-
-        .chart-brand.brand-lockup .logo-bottom {
-
-            max-width: none;
-
-            opacity: 1;
-
-            overflow: visible;
-
-            text-align: center;
-
-            text-transform: uppercase;
 
         }
 
