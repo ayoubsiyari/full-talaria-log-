@@ -15758,19 +15758,25 @@ body.light-mode .template-save-dialog .dialog-title {
 
         sourceRow.innerHTML = `
 
-            <span class="tv-prop-label">Source</span>
+            <div class="tv-checkbox-wrapper" style="${cbWrapStyle}">
 
-            <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; width: 72px; min-width: 72px;">
+                <span style="width:18px;height:18px;flex-shrink:0;" aria-hidden="true"></span>
 
-                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box; text-transform: capitalize;">
+                <span class="tv-checkbox-label" style="white-space: nowrap;">Source</span>
+
+            </div>
+
+            <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; ${wrapperStyle}; display: flex; align-items: center; justify-content: flex-end;">
+
+                <button class="tv-fontsize-dropdown-btn" type="button" style="width: 100%; height: 28px; padding: 0 22px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; line-height: 28px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box; text-transform: capitalize;">
 
                     <span>${currentSource}</span>
 
-                    <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px;"><path d="M6 9l6 6 6-6"/></svg>
+                    <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%);"><path d="M6 9l6 6 6-6"/></svg>
 
                 </button>
 
-                <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); min-width: 72px; overflow-y: auto;">
+                <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); min-width: 80px; overflow-y: auto;">
 
                     ${sourceOptions.map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap; text-transform: capitalize;">${s}</div>`).join('')}
 
