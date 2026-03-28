@@ -3,9 +3,10 @@
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
  * 
- * @version 1.5.9
- * @updated 2026-03-18
+ * @version 1.5.10
+ * @updated 2026-03-27
  * @changelog
+ *   - Fixed: Selecting another panel’s chart deselects drawings and hides the floating toolbar from the previous panel
  *   - Fixed: Magnet mode now disabled when resizing shapes - allows free resizing outside chart area
  *   - Fixed: Shapes behind Y-axis can no longer be detected/moved when mouse is over axis
  *   - Added boundary check in findDrawingsAtPoint() to exclude axis regions from hit detection
@@ -70,6 +71,7 @@ class DrawingToolsManager {
         this._handleClickTimes = {};
         this._handleMouseDownCaptureHandler = null;
         this._setupHandleMouseDownCapture();
+        this._setupCrossPanelDeselect();
         
         // Undo/Redo manager
         this.history = null; // Will be initialized after manager is ready
@@ -275,6 +277,86 @@ class DrawingToolsManager {
         };
 
         document.addEventListener('mousedown', this._handleMouseDownCaptureHandler, true);
+    }
+
+    /**
+     * When a drawing is selected on one panel, mousedown on a *different* chart’s canvas/SVG
+     * must clear that selection and hide its toolbar (same UX as clicking empty space on the source chart).
+     */
+    _setupCrossPanelDeselect() {
+        if (window.__drawingCrossPanelDeselectWired) return;
+        window.__drawingCrossPanelDeselectWired = true;
+
+        const collectCharts = () => {
+            const out = [];
+            const add = (ch) => {
+                if (ch && out.indexOf(ch) === -1) out.push(ch);
+            };
+            try {
+                add(window.chart);
+                add(window.mainChart);
+                const pm = window.panelManager;
+                if (pm && Array.isArray(pm.panels)) {
+                    pm.panels.forEach((p) => add(p && p.chartInstance));
+                }
+            } catch (e) {
+                /* ignore */
+            }
+            return out;
+        };
+
+        const chartContainsTarget = (chart, target) => {
+            if (!chart || !target) return false;
+            const c = chart.canvas;
+            if (c && (c === target || (c.contains && c.contains(target)))) return true;
+            let svgNode = null;
+            try {
+                if (chart.svg && typeof chart.svg.node === 'function') svgNode = chart.svg.node();
+            } catch (e) {
+                /* ignore */
+            }
+            if (svgNode && (svgNode === target || (svgNode.contains && svgNode.contains(target)))) return true;
+            return false;
+        };
+
+        const shouldIgnore = (t) => {
+            if (!t || typeof t.closest !== 'function') return true;
+            return !!(
+                t.closest('.drawing-toolbar') ||
+                t.closest('.tv-settings-modal') ||
+                t.closest('.inline-text-editor') ||
+                t.closest('.tv-context-menu') ||
+                t.closest('#custom-color-picker')
+            );
+        };
+
+        document.addEventListener(
+            'mousedown',
+            (e) => {
+                if (e.button !== 0) return;
+                const t = e.target;
+                if (shouldIgnore(t)) return;
+
+                const charts = collectCharts();
+                let hitChart = null;
+                for (let i = 0; i < charts.length; i++) {
+                    if (chartContainsTarget(charts[i], t)) {
+                        hitChart = charts[i];
+                        break;
+                    }
+                }
+                if (!hitChart) return;
+
+                for (let i = 0; i < charts.length; i++) {
+                    const ch = charts[i];
+                    if (!ch || ch === hitChart) continue;
+                    const dm = ch.drawingManager;
+                    if (!dm || !dm.selectedDrawings || dm.selectedDrawings.length === 0) continue;
+                    dm.deselectAll();
+                }
+            },
+            true
+        );
     }
 
     scheduleRenderDrawing(drawing) {
