@@ -252,6 +252,32 @@ const DRAWING_COLOR_UTILS = (() => {
 
 // ============================================================================
 
+/**
+
+ * Factory-default drawing.text values: settings UI should show an empty field with placeholder only,
+
+ * not these strings as real content (Callout "Add text", Signpost "add text", Comment "text", etc.).
+
+ */
+
+function getSettingsTextInputDisplayValue(text) {
+
+    const raw = String(text == null ? '' : text);
+
+    const t = raw.trim();
+
+    if (!t) return '';
+
+    if (/^add text$/i.test(t)) return '';
+
+    if (t === 'text') return '';
+
+    return raw;
+
+}
+
+
+
 class DrawingSettingsPanel {
 
     constructor() {
@@ -13692,11 +13718,15 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     resize: vertical;
 
-                " placeholder="Enter text...">${drawing.text || ''}</textarea>
+                " placeholder="Enter text..."></textarea>
 
             `;
 
             container.appendChild(textContentRow);
+
+            const _tc = textContentRow.querySelector('.tv-text-content-input');
+
+            if (_tc) _tc.value = getSettingsTextInputDisplayValue(drawing.text);
 
         }
 
@@ -13736,11 +13766,15 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     resize: vertical;
 
-                " placeholder="Enter text...">${drawing.text || ''}</textarea>
+                " placeholder="Enter text..."></textarea>
 
             `;
 
             container.appendChild(textContentRow);
+
+            const _tc2 = textContentRow.querySelector('.tv-text-content-input');
+
+            if (_tc2) _tc2.value = getSettingsTextInputDisplayValue(drawing.text);
 
             
 
@@ -14545,7 +14579,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 	        textArea.placeholder = 'Enter text...';
 
-	        textArea.value = drawing.text || '';
+	        textArea.value = getSettingsTextInputDisplayValue(drawing.text);
 
 	        textArea.dataset.prop = 'text';
 
@@ -14621,7 +14655,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             textArea.placeholder = placeholder;
 
-            textArea.value = drawing.text || '';
+            textArea.value = getSettingsTextInputDisplayValue(drawing.text);
 
             textArea.dataset.prop = 'text';
 
@@ -27360,7 +27394,7 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            this.addTextInput(styleSection, 'Callout Text', drawing.text || '', (value) => {
+            this.addTextInput(styleSection, 'Callout Text', getSettingsTextInputDisplayValue(drawing.text), (value) => {
 
                 drawing.setText(value);
 
@@ -27474,15 +27508,7 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            const sp2Placeholder = (t) => {
-
-                const s = (t == null ? '' : String(t)).trim();
-
-                return !s || /^add text$/i.test(s);
-
-            };
-
-            this.addTextInput(styleSection, 'Text', sp2Placeholder(drawing.text) ? '' : drawing.text, (value) => {
+            this.addTextInput(styleSection, 'Text', getSettingsTextInputDisplayValue(drawing.text), (value) => {
 
                 drawing.setText(value);
 

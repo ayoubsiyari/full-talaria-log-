@@ -3344,9 +3344,18 @@ class DrawingToolsManager {
             'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note',
             'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2', 'flag-mark'
         ]);
+        const isFactoryPlaceholderTitle = (raw) => {
+            const t = String(raw == null ? '' : raw).trim();
+            if (!t) return true;
+            if (/^add text$/i.test(t)) return true;
+            if (t === 'text') return true;
+            return false;
+        };
         if (preferTextTypes.has(drawing.type) && drawing.text && String(drawing.text).trim()) {
             const t = String(drawing.text).trim();
-            return t.length > 30 ? t.substring(0, 30) + '...' : t;
+            if (!isFactoryPlaceholderTitle(t)) {
+                return t.length > 30 ? t.substring(0, 30) + '...' : t;
+            }
         }
 
         return autoTitle;
