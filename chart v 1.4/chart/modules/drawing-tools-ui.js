@@ -15572,7 +15572,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const cbWrapStyle = 'flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
 
-        const wrapperStyle = 'width: 80px; flex-shrink: 0; min-width: 0;';
+        const numberInputColStyle = 'width: max-content; flex-shrink: 0; min-width: 0;';
+
+        const sourceColStyle = 'width: 80px; flex-shrink: 0; min-width: 0;';
 
         const svgCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
 
@@ -15596,7 +15598,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             </div>
 
-            <div class="number-input-wrapper" style="${wrapperStyle}">
+            <div class="number-input-wrapper" style="${numberInputColStyle}">
 
                 <input type="number" class="tv-number-input" data-prop="upperDeviation"
 
@@ -15636,7 +15638,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             </div>
 
-            <div class="number-input-wrapper" style="${wrapperStyle}">
+            <div class="number-input-wrapper" style="${numberInputColStyle}">
 
                 <input type="number" class="tv-number-input" data-prop="lowerDeviation"
 
@@ -15744,7 +15746,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             </div>
 
-            <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; ${wrapperStyle}; display: flex; align-items: center; justify-content: flex-end;">
+            <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; ${sourceColStyle}; display: flex; align-items: center; justify-content: flex-end;">
 
                 <button class="tv-fontsize-dropdown-btn" type="button" style="width: auto; max-width: 100%; height: 28px; padding: 0 22px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; line-height: 28px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box; text-transform: capitalize; white-space: nowrap;">
 

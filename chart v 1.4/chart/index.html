@@ -6895,6 +6895,10 @@
 
             align-items: stretch;
 
+            width: fit-content;
+
+            max-width: 100%;
+
             background: var(--sp-ui-surface-bg, var(--sp-bg));
 
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -6939,11 +6943,13 @@
 
             justify-content: center;
 
-            align-items: flex-end;
+            align-items: center;
 
-            flex: 1;
+            flex: 0 0 auto;
 
-            min-width: 0;
+            width: fit-content;
+
+            box-sizing: border-box;
 
             background: transparent;
 
@@ -6951,7 +6957,7 @@
 
             border-left: 1px solid rgba(255, 255, 255, 0.1);
 
-            padding: 1px 2px 1px 4px;
+            padding: 1px 3px 1px 4px;
 
             gap: 0;
 
@@ -41789,7 +41795,7 @@
 
     <script defer src="modules/drawing-tools-channels.js?v=20260328"></script>
 
-    <script defer src="modules/drawing-tools-ui.js?v=20260328_REG_HIDE_EXTEND_LEFT"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260328_REG_NUMBER_FIT"></script>
 
     <script defer src="modules/color-picker.js?v=20260328"></script>
 
