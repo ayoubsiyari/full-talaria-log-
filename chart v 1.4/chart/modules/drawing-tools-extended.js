@@ -321,20 +321,12 @@ function arrowMarkDownPathD(cx, cy, size) {
     return `M ${cx} ${bottomY} L ${cx + arrowWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${headBaseY} L ${cx - arrowWidth / 2} ${headBaseY} Z`;
 }
 
+const ARROW_MARK_DEFAULT_PX = 24;
+
 function normalizeArrowMarkSize(drawing) {
     let s = Number(drawing.markerSize);
     if (!Number.isFinite(s) || s <= 0) s = Number(drawing.style && drawing.style.markerSize);
-    if (!Number.isFinite(s) || s <= 0) s = 24;
-    const chart = drawing.chart;
-    const dm = chart && chart.drawingManager;
-    if (dm && typeof dm.getSavedToolStyle === 'function') {
-        const up = dm.getSavedToolStyle('arrow-mark-up');
-        const down = dm.getSavedToolStyle('arrow-mark-down');
-        const n1 = up && Number(up.markerSize);
-        const n2 = down && Number(down.markerSize);
-        const pool = [s, n1, n2].filter((n) => Number.isFinite(n) && n > 0);
-        if (pool.length > 0) s = Math.max(...pool);
-    }
+    if (!Number.isFinite(s) || s <= 0) s = ARROW_MARK_DEFAULT_PX;
     s = Math.max(12, Math.min(60, s));
     drawing.markerSize = s;
     if (!drawing.style) drawing.style = {};
@@ -352,7 +344,9 @@ class ArrowMarkUpTool extends BaseDrawing {
         this.style.fill = style.fill || '#089981';
         this.style.stroke = style.stroke || '#089981';
         this.style.strokeWidth = style.strokeWidth || 0;
-        this.markerSize = style.markerSize || 24;
+        const ms = Number(style.markerSize);
+        this.markerSize = Number.isFinite(ms) && ms > 0 ? Math.max(12, Math.min(60, ms)) : ARROW_MARK_DEFAULT_PX;
+        this.style.markerSize = this.markerSize;
     }
 
     render(container, scales) {
@@ -461,7 +455,9 @@ class ArrowMarkUpTool extends BaseDrawing {
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
         tool.chart = chart;
-        tool.markerSize = data.style?.markerSize || 24;
+        const jms = Number(data.style && data.style.markerSize);
+        tool.markerSize = Number.isFinite(jms) && jms > 0 ? Math.max(12, Math.min(60, jms)) : ARROW_MARK_DEFAULT_PX;
+        tool.style.markerSize = tool.markerSize;
         if (data.coordinateSystem === 'timestamp' && data.points) {
             tool.timestampPoints = data.points.map(p => ({
                 timestamp: p.timestamp,
@@ -482,7 +478,9 @@ class ArrowMarkDownTool extends BaseDrawing {
         this.style.fill = style.fill || '#F23645';
         this.style.stroke = style.stroke || '#F23645';
         this.style.strokeWidth = style.strokeWidth || 0;
-        this.markerSize = style.markerSize || 24;
+        const ms = Number(style.markerSize);
+        this.markerSize = Number.isFinite(ms) && ms > 0 ? Math.max(12, Math.min(60, ms)) : ARROW_MARK_DEFAULT_PX;
+        this.style.markerSize = this.markerSize;
     }
 
     render(container, scales) {
@@ -591,7 +589,9 @@ class ArrowMarkDownTool extends BaseDrawing {
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
         tool.chart = chart;
-        tool.markerSize = data.style?.markerSize || 24;
+        const jms = Number(data.style && data.style.markerSize);
+        tool.markerSize = Number.isFinite(jms) && jms > 0 ? Math.max(12, Math.min(60, jms)) : ARROW_MARK_DEFAULT_PX;
+        tool.style.markerSize = tool.markerSize;
         if (data.coordinateSystem === 'timestamp' && data.points) {
             tool.timestampPoints = data.points.map(p => ({
                 timestamp: p.timestamp,
