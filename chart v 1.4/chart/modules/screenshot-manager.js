@@ -9,6 +9,8 @@ class ScreenshotManager {
         this._brandLogoImage = null;
         this._brandLogoLoadPromise = null;
         this._brandLogoBounds = null;
+        /** @type {Promise<boolean>|null} */
+        this._zainFontLoadPromise = null;
         this.init();
     }
 
@@ -115,12 +117,18 @@ class ScreenshotManager {
             img.style.visibility = 'visible';
         });
 
-        clonedDoc.querySelectorAll('.chart-brand .logo-bottom').forEach((img) => {
-            img.setAttribute('src', wordmarkSrc);
-            img.setAttribute('crossorigin', 'anonymous');
-            img.style.setProperty('filter', 'none', 'important');
-            img.style.opacity = '1';
-            img.style.visibility = 'visible';
+        clonedDoc.querySelectorAll('.chart-brand .logo-bottom').forEach((el) => {
+            if (el.tagName === 'IMG') {
+                el.setAttribute('src', wordmarkSrc);
+                el.setAttribute('crossorigin', 'anonymous');
+                el.style.setProperty('filter', 'none', 'important');
+            } else {
+                el.style.setProperty('max-width', '300px', 'important');
+                el.style.setProperty('opacity', '1', 'important');
+                el.style.setProperty('overflow', 'visible', 'important');
+            }
+            el.style.opacity = '1';
+            el.style.visibility = 'visible';
         });
 
         clonedDoc.querySelectorAll('.chart-brand .logo-bottom-wrap').forEach((wrap) => {
@@ -293,6 +301,32 @@ class ScreenshotManager {
         return bounds;
     }
 
+    /**
+     * Load Zain Black (900) for canvas text — same file as index.html / homepage.
+     */
+    async ensureZainFontForScreenshot() {
+        if (this._zainFontLoadPromise) {
+            return this._zainFontLoadPromise;
+        }
+        if (typeof FontFace === 'undefined' || !document.fonts) {
+            this._zainFontLoadPromise = Promise.resolve(false);
+            return this._zainFontLoadPromise;
+        }
+        this._zainFontLoadPromise = (async () => {
+            try {
+                const url = this.resolveAssetUrl('../../homepage/font/Zain/Zain-Black.ttf');
+                const face = new FontFace('Zain', `url("${url}")`, { style: 'normal', weight: '900' });
+                await face.load();
+                document.fonts.add(face);
+                return true;
+            } catch (e) {
+                console.warn('📸 Zain font not loaded for screenshot logo; using fallback.', e);
+                return false;
+            }
+        })();
+        return this._zainFontLoadPromise;
+    }
+
     async addBrandLogo(canvas, sourceElement = null) {
         if (!canvas) return false;
         if (canvas.__talariaLogoStamped) return true;
@@ -303,68 +337,64 @@ class ScreenshotManager {
         const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
         const isDark = !this.isLightColor(backgroundColor);
 
-        // Same images the live chart HTML always uses
-        const iconSrc     = this.resolveAssetUrl('modules/logo-09.png');
-        const wordmarkSrc = this.resolveAssetUrl('modules/logo-14.png');
+        // Match index.html .chart-brand: logo-08 (dark) / logo-09 (light), row + Zain wordmark
+        const iconSrc = isDark
+            ? this.resolveAssetUrl('modules/logo-08.png')
+            : this.resolveAssetUrl('modules/logo-09.png');
 
         const loadImg = (src) => new Promise((resolve) => {
             const img = new Image();
             img.crossOrigin = 'anonymous';
-            img.onload  = () => resolve(img);
+            img.onload = () => resolve(img);
             img.onerror = () => resolve(null);
             img.src = src;
         });
 
-        const [iconImg, wordmarkImg] = await Promise.all([loadImg(iconSrc), loadImg(wordmarkSrc)]);
-        if (!iconImg && !wordmarkImg) {
-            console.warn('📸 Logo stamp skipped: logo images could not be loaded');
+        const [iconImg, zainOk] = await Promise.all([
+            loadImg(iconSrc),
+            this.ensureZainFontForScreenshot()
+        ]);
+
+        if (!iconImg) {
+            console.warn('📸 Logo stamp skipped: icon image could not be loaded');
             return false;
         }
 
-        // Derive pixel scale from canvas vs. actual container size
-        const containerEl   = sourceElement || document.getElementById('chart-container');
+        const containerEl = sourceElement || document.getElementById('chart-container');
         const containerRect = containerEl?.getBoundingClientRect();
         const s = (containerRect && containerRect.height > 0)
             ? canvas.height / containerRect.height
             : 2;
 
-        // Exact CSS values from .chart-brand in index.html, scaled by s:
-        //   .logo-top   { height: 60px; transform: translateX(38px); }
-        //   .logo-bottom{ height: 70px; margin-top: -16px; transform: translateX(-2px); }
-        //   .chart-brand{ bottom: 18px; left: 0; }
-        const iconH      = Math.round(60 * s);
-        const iconOffX   = Math.round(38 * s);
-        const wmH        = Math.round(70 * s);
-        const wmOffX     = Math.round(-2 * s);   // translateX(-2px) on wordmark
-        const overlap    = Math.round(16 * s);   // margin-top: -16px
-        const bottomGap  = Math.round(18 * s);   // bottom: 18px
+        // index.html: .chart-brand { left: 8px; bottom: 36px } — .logo-top { height: 38px } — .logo-bottom { font-size: 22px }
+        const leftPad = Math.round(8 * s);
+        const bottomPad = Math.round(36 * s);
+        const iconH = Math.round(38 * s);
+        const gap = Math.round(4 * s);
+        const fontSize = Math.round(22 * s);
 
-        const iconW = iconImg     ? Math.round((iconImg.naturalWidth     / iconImg.naturalHeight)     * iconH) : 0;
-        const wmW   = wordmarkImg ? Math.round((wordmarkImg.naturalWidth / wordmarkImg.naturalHeight) * wmH)   : 0;
+        const iconW = Math.round((iconImg.naturalWidth / iconImg.naturalHeight) * iconH);
+        const iconTopY = canvas.height - bottomPad - iconH;
 
-        // Total visual height = iconH + wmH - overlap
-        const totalH = iconH + wmH - overlap;
-        // Wordmark top y = canvas.height - bottomGap - totalH + iconH - overlap
-        const logoTop = canvas.height - bottomGap - totalH;
+        const wordmark = 'Talaria-Log';
 
         ctx.save();
         ctx.globalAlpha = 0.98;
 
-        // Dark theme: brightness(0) invert(1) turns colored pixels white
-        // (matches .chart-brand .logo-dark img { filter: brightness(0) invert(1) })
-        if (isDark) {
-            ctx.filter = 'brightness(0) invert(1)';
-        }
+        // Same filter as .brand-lockup img in index.html
+        ctx.filter = 'brightness(1.85) saturate(0)';
+        ctx.drawImage(iconImg, leftPad, iconTopY, iconW, iconH);
+        ctx.restore();
 
-        // Draw wordmark first (visually behind icon)
-        if (wordmarkImg && wmW > 0) {
-            ctx.drawImage(wordmarkImg, wmOffX, logoTop + iconH - overlap, wmW, wmH);
-        }
-        // Draw icon on top, shifted right by iconOffX
-        if (iconImg && iconW > 0) {
-            ctx.drawImage(iconImg, iconOffX, logoTop, iconW, iconH);
-        }
-
+        ctx.save();
+        const fontFamily = zainOk ? 'Zain, Roboto, sans-serif' : 'Roboto, "Segoe UI", sans-serif';
+        ctx.font = `900 ${fontSize}px ${fontFamily}`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.98)' : 'rgba(19, 23, 34, 0.96)';
+        const textX = leftPad + iconW + gap;
+        const textY = iconTopY + iconH / 2;
+        ctx.fillText(wordmark, textX, textY);
         ctx.restore();
 
         canvas.__talariaLogoStamped = true;
