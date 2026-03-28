@@ -41819,7 +41819,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260328"></script>
+    <script defer src="chart.js?v=20260328_CANDLE_GAP"></script>
 
     <script defer src="modules/replay-system.js?v=20260328"></script>
 
@@ -57365,9 +57365,13 @@ P['objecttree']={
 
             var typeLabels={trendline:'Trend Line',line:'Trend Line','extended-line':'Extended Line',ray:'Ray','horizontal-ray':'Horizontal Ray',horizontal:'Horizontal Line',hline:'Horizontal Line',vertical:'Vertical Line',vline:'Vertical Line','cross-line':'Cross Line',rectangle:'Rectangle',rect:'Rectangle',ellipse:'Ellipse',circle:'Circle',triangle:'Triangle','rotated-rectangle':'Rotated Rectangle','parallel-channel':'Parallel Channel','disjoint-channel':'Disjoint Channel',pitchfork:'Pitchfork','fib-retracement':'Fibonacci Retracement','fib-extension':'Fibonacci Extension','fibonacci-retracement':'Fibonacci Retracement','fibonacci-extension':'Fibonacci Extension','fib-channel':'Fib Channel','fib-timezone':'Fib Time Zones','gann-box':'Gann Box','gann-fan':'Gann Fan',text:'Text',arrow:'Arrow',arc:'Arc',polyline:'Polyline',path:'Path',brush:'Brush',highlighter:'Highlighter',notebox:'Note Box',label:'Label',emoji:'Emoji','long-position':'Long Position','short-position':'Short Position','anchored-vwap':'Anchored VWAP','volume-profile':'Volume Profile',ruler:'Ruler','date-price-range':'Range Tool'};
 
+            var dm=c&&c.drawingManager;
+
             var rows=drawings.map(function(d,i){
 
-                var label=d.name||d.text||d.label||typeLabels[d.type]||d.type||'Drawing';
+                var label=(dm&&typeof dm.getDrawingDisplayTitle==='function')?dm.getDrawingDisplayTitle(d):(d.name||d.text||d.label||typeLabels[d.type]||d.type||'Drawing');
+
+                label=String(label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
                 var vis=d.visible!==false;
 

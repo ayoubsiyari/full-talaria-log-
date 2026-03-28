@@ -1564,9 +1564,11 @@ class Chart {
 
             if (alignScrollToMain) {
                 const sourceSpacing = mainChart.getCandleSpacing
-                    ? mainChart.getCandleSpacing() : (mainChart.candleWidth + 2);
+                    ? mainChart.getCandleSpacing()
+                    : mainChart._getSpacingForCandleWidth(mainChart.candleWidth);
                 const targetSpacing = this.getCandleSpacing
-                    ? this.getCandleSpacing() : (this.candleWidth + 2);
+                    ? this.getCandleSpacing()
+                    : this._getSpacingForCandleWidth(this.candleWidth);
                 const ratio = sourceSpacing > 0 ? (targetSpacing / sourceSpacing) : 1;
                 this.offsetX = mainChart.offsetX * ratio;
                 if (this.constrainOffset) this.constrainOffset();
@@ -7444,7 +7446,7 @@ class Chart {
     constrainZoomTargets() {
         const m = this.margin;
         const cw = this.w - m.l - m.r;
-        const targetCandleSpacing = this.zoomAnimation.targetCandleWidth + 2;
+        const targetCandleSpacing = this._getSpacingForCandleWidth(this.zoomAnimation.targetCandleWidth);
         const totalDataWidth = this.data.length * targetCandleSpacing;
         
         const maxOffset = targetCandleSpacing * 2;
@@ -10212,15 +10214,24 @@ class Chart {
 
 
     /**
+     * Pixels between bar centers for a nominal candle width (used for layout, hit-testing, zoom animation).
+     */
+    _getSpacingForCandleWidth(cw) {
+        const w = Number(cw);
+        if (!Number.isFinite(w)) return 8 + 2;
+        const MIN_GAP_PX = 2;
+        const narrowBoost = w <= 4 ? 1 : 0;
+        return w + MIN_GAP_PX + narrowBoost;
+    }
+
+    /**
      * Get effective candle spacing based on zoom level
      * This ensures consistent spacing calculations throughout the chart
      */
     getCandleSpacing() {
         // Memoize by candleWidth — called 10+ times per render frame
         if (this._candleWidthAtCache === this.candleWidth) return this._candleSpacingCache;
-        const FIXED_SPACING = 0;
-        const effectiveSpacing = this.candleWidth <= 5 ? 0 : FIXED_SPACING;
-        this._candleSpacingCache = this.candleWidth + effectiveSpacing;
+        this._candleSpacingCache = this._getSpacingForCandleWidth(this.candleWidth);
         this._candleWidthAtCache = this.candleWidth;
         return this._candleSpacingCache;
     }
