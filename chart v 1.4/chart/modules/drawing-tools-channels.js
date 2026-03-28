@@ -1383,7 +1383,8 @@ class FlatTopBottomTool extends BaseDrawing {
 
     /**
      * Price labels next to each anchor (TradingView-style), toggled via style.showHandlePrices.
-     * Placed along the outward direction from the shape centroid so text does not sit on the edges.
+     * Uses exterior-angle bisectors at corners, then enforces clearance from all four edges
+     * (diagonal, bottom, left/right verticals) so text does not overlap strokes.
      */
     renderHandlePriceLabels(scales) {
         if (this.style.showHandlePrices === false) return;
@@ -1412,9 +1413,74 @@ class FlatTopBottomTool extends BaseDrawing {
         const centX = screen.reduce((s, c) => s + c.sx, 0) / 4;
         const centY = screen.reduce((s, c) => s + c.sy, 0) / 4;
 
+        const outwardNormalEdge = (ax, ay, bx, by) => {
+            const ex = bx - ax, ey = by - ay;
+            const elen = Math.hypot(ex, ey) || 1;
+            let nx = -ey / elen, ny = ex / elen;
+            const mx = (ax + bx) / 2, my = (ay + by) / 2;
+            if (nx * (centX - mx) + ny * (centY - my) > 0) {
+                nx = -nx; ny = -ny;
+            }
+            return { nx, ny };
+        };
+
+        // CCW boundary order: TL(0) -> TR(1) -> BR(3) -> BL(2)
+        const boundaryOrder = [0, 1, 3, 2];
+        const cornerBisector = (i) => {
+            const k = boundaryOrder.indexOf(i);
+            const iPrev = boundaryOrder[(k + 3) % 4];
+            const iNext = boundaryOrder[(k + 1) % 4];
+            const A = screen[iPrev], P = screen[i], B = screen[iNext];
+            const n1 = outwardNormalEdge(A.sx, A.sy, P.sx, P.sy);
+            const n2 = outwardNormalEdge(P.sx, P.sy, B.sx, B.sy);
+            let bx = n1.nx + n2.nx, by = n1.ny + n2.ny;
+            const bl = Math.hypot(bx, by);
+            if (bl > 1e-6) {
+                bx /= bl; by /= bl;
+            } else {
+                bx = n1.nx; by = n1.ny;
+            }
+            return { bx, by };
+        };
+
+        const minClear = 16;
+        const baseDist = 22;
+
+        const pushClearOfSegment = (px, py, ax, ay, bx, by) => {
+            const abx = bx - ax, aby = by - ay;
+            const abLen = Math.hypot(abx, aby);
+            if (abLen < 1e-12) return { x: px, y: py };
+            const ux = abx / abLen, uy = aby / abLen;
+            let t = ((px - ax) * ux + (py - ay) * uy);
+            t = Math.max(0, Math.min(abLen, t));
+            const qx = ax + ux * t, qy = ay + uy * t;
+            const dx = px - qx, dy = py - qy;
+            const d = Math.hypot(dx, dy);
+            if (d >= minClear) return { x: px, y: py };
+            let nx, ny;
+            if (d > 0.5) {
+                nx = dx / d; ny = dy / d;
+            } else {
+                nx = -uy; ny = ux;
+                const mx = (ax + bx) / 2, my = (ay + by) / 2;
+                if (nx * (centX - mx) + ny * (centY - my) > 0) {
+                    nx = -nx; ny = -ny;
+                }
+            }
+            const target = minClear + 4;
+            return { x: qx + nx * target, y: qy + ny * target };
+        };
+
+        const s = screen;
+        const obstacleSegs = [
+            [s[0].sx, s[0].sy, s[1].sx, s[1].sy],
+            [s[2].sx, s[2].sy, s[3].sx, s[3].sy],
+            [s[0].sx, s[0].sy, s[2].sx, s[2].sy],
+            [s[1].sx, s[1].sy, s[3].sx, s[3].sy]
+        ];
+
         const fill = this.style.stroke || '#ff9800';
         const fontSize = 11;
-        const labelDist = 18;
 
         this.virtualPoints.forEach((point, index) => {
             const price = point.y;
@@ -1424,17 +1490,16 @@ class FlatTopBottomTool extends BaseDrawing {
             const cy = screen[index].sy;
             const label = Number(price).toFixed(priceDecimals);
 
-            let ox = cx;
-            let oy = cy;
-            const rdx = cx - centX;
-            const rdy = cy - centY;
-            const rlen = Math.hypot(rdx, rdy);
-            if (rlen > 1e-6) {
-                ox = cx + (rdx / rlen) * labelDist;
-                oy = cy + (rdy / rlen) * labelDist;
-            } else {
-                const fallback = index === 1 || index === 3 ? labelDist : -labelDist;
-                ox = cx + fallback;
+            const { bx, by } = cornerBisector(index);
+            let ox = cx + bx * baseDist;
+            let oy = cy + by * baseDist;
+
+            for (let pass = 0; pass < 3; pass++) {
+                for (let si = 0; si < obstacleSegs.length; si++) {
+                    const seg = obstacleSegs[si];
+                    const r = pushClearOfSegment(ox, oy, seg[0], seg[1], seg[2], seg[3]);
+                    ox = r.x; oy = r.y;
+                }
             }
 
             this.group.append('text')
