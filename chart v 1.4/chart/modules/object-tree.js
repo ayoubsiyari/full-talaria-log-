@@ -405,17 +405,15 @@ class ObjectTreeManager {
      * Get label for drawing
      */
     getDrawingLabel(drawing, index) {
-        // If drawing has a custom name, use it
+        if (this.drawingManager && typeof this.drawingManager.getDrawingDisplayTitle === 'function') {
+            return this.drawingManager.getDrawingDisplayTitle(drawing);
+        }
         if (drawing.name) {
             return drawing.name;
         }
-        
-        // If drawing has a custom label/text, use it
         if (drawing.text) {
             return drawing.text.substring(0, 30) + (drawing.text.length > 30 ? '...' : '');
         }
-        
-        // Otherwise use type + index
         return this.formatTypeName(drawing.type);
     }
 
@@ -423,7 +421,14 @@ class ObjectTreeManager {
      * Update drawing name in object tree
      */
     updateDrawingName(drawing, newName) {
-        drawing.name = newName;
+        drawing.meta = drawing.meta || {};
+        const trimmed = typeof newName === 'string' ? newName.trim() : '';
+        if (trimmed) {
+            drawing.meta.customDisplayName = trimmed;
+        } else {
+            delete drawing.meta.customDisplayName;
+        }
+        delete drawing.name;
         this.refresh();
     }
 

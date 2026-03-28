@@ -4698,6 +4698,17 @@ body.light-mode .template-save-dialog .dialog-title {
 
     }
 
+    /**
+     * Resolved title for modal header (numbered when multiple of same type, custom name from meta).
+     */
+    getResolvedModalTitle(drawing) {
+        const dm = this.drawingManager || (typeof window !== 'undefined' && (window.chart && window.chart.drawingManager)) || (typeof window !== 'undefined' && window.drawingManager);
+        if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
+            return dm.getDrawingDisplayTitle(drawing);
+        }
+        return (drawing && drawing.name) || this.getDrawingDisplayName(drawing && drawing.type);
+    }
+
 
 
     /**
@@ -4874,7 +4885,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 </svg>
 
-                <h2 class="tv-modal-title" style="cursor: text; margin: 0;" title="Double-click to edit">${drawing.name || this.getDrawingDisplayName(drawing.type)}</h2>
+                <h2 class="tv-modal-title" style="cursor: text; margin: 0;" title="Double-click to edit">${this.getResolvedModalTitle(drawing)}</h2>
 
             </div>
 
@@ -24486,7 +24497,7 @@ applyTemplate(drawing, templateId, modal) {
 
         input.type = 'text';
 
-        input.value = drawing.name || currentTitle;
+        input.value = this.getResolvedModalTitle(drawing);
 
         input.className = 'tv-title-edit-input';
 
@@ -24520,11 +24531,21 @@ applyTemplate(drawing, templateId, modal) {
 
         const saveTitle = () => {
 
-            const newTitle = input.value.trim() || currentTitle;
+            const raw = input.value.trim();
+            drawing.meta = drawing.meta || {};
+            if (!raw) {
+                delete drawing.meta.customDisplayName;
+                delete drawing.name;
+            } else {
+                drawing.meta.customDisplayName = raw;
+                delete drawing.name;
+            }
 
-            drawing.name = newTitle;
-
-            titleElement.textContent = newTitle;
+            const dm = this.drawingManager || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager) || (typeof window !== 'undefined' && window.drawingManager);
+            const resolved = dm && typeof dm.getDrawingDisplayTitle === 'function'
+                ? dm.getDrawingDisplayTitle(drawing)
+                : (raw || currentTitle);
+            titleElement.textContent = resolved;
 
             
 
@@ -24532,7 +24553,13 @@ applyTemplate(drawing, templateId, modal) {
 
             if (window.objectTree && window.objectTree.updateDrawingName) {
 
-                window.objectTree.updateDrawingName(drawing, newTitle);
+                window.objectTree.updateDrawingName(drawing, raw);
+
+            }
+
+            if (typeof window !== 'undefined' && window.chart && window.chart.objectTreeManager && typeof window.chart.objectTreeManager.refresh === 'function') {
+
+                window.chart.objectTreeManager.refresh();
 
             }
 
@@ -24552,7 +24579,10 @@ applyTemplate(drawing, templateId, modal) {
 
         const cancelEdit = () => {
 
-            titleElement.textContent = drawing.name || currentTitle;
+            const dm = this.drawingManager || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager) || (typeof window !== 'undefined' && window.drawingManager);
+            titleElement.textContent = (dm && typeof dm.getDrawingDisplayTitle === 'function')
+                ? dm.getDrawingDisplayTitle(drawing)
+                : (drawing.name || currentTitle);
 
         };
 

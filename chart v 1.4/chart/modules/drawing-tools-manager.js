@@ -3,9 +3,10 @@
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
  * 
- * @version 1.5.10
- * @updated 2026-03-27
+ * @version 1.5.11
+ * @updated 2026-03-28
  * @changelog
+ *   - Drawing titles: same tool type is numbered when multiple exist (e.g. Path 1, Path 2); single instance shows base name only. Custom names stored in meta.customDisplayName.
  *   - Fixed: Selecting another panel’s chart deselects drawings and hides the floating toolbar from the previous panel
  *   - Fixed: Magnet mode now disabled when resizing shapes - allows free resizing outside chart area
  *   - Fixed: Shapes behind Y-axis can no longer be detected/moved when mouse is over axis
@@ -54,6 +55,7 @@ class DrawingToolsManager {
         
         // UI components
         this.settingsPanel = new DrawingSettingsPanel();
+        this.settingsPanel.drawingManager = this;
         this.textEditor = new InlineTextEditor();
         this.contextMenu = new DrawingContextMenu();
         this.toolbar = new DrawingToolbar();
@@ -3303,6 +3305,51 @@ class DrawingToolsManager {
             y: stopPrice,
             rewardRatio: positionDefaults.rewardRatio
         };
+    }
+
+    /**
+     * Human-readable title for lists, settings modal, and object tree.
+     * Same tool type is numbered when there are 2+ instances (e.g. Path 1, Path 2).
+     * A single instance uses the base name only (e.g. Path).
+     */
+    getDrawingDisplayTitle(drawing) {
+        if (!drawing) return '';
+        const meta = drawing.meta || {};
+        if (typeof meta.customDisplayName === 'string' && meta.customDisplayName.trim()) {
+            return meta.customDisplayName.trim();
+        }
+
+        const base = this.settingsPanel && typeof this.settingsPanel.getDrawingDisplayName === 'function'
+            ? this.settingsPanel.getDrawingDisplayName(drawing.type)
+            : (drawing.type || 'Drawing').replace(/-/g, ' ');
+
+        const sameType = (this.drawings || []).filter(d => d && d.type === drawing.type);
+        const ordinal = sameType.length <= 1 ? null : sameType.indexOf(drawing) + 1;
+        const autoTitle = ordinal == null ? base : `${base} ${ordinal}`;
+
+        const legacyName = typeof drawing.name === 'string' && drawing.name.trim();
+        if (legacyName) {
+            const legacyTrim = legacyName.trim();
+            if (ordinal == null) {
+                const m = legacyTrim.match(/^(.+?)\s+(\d+)$/);
+                if (m && m[1].trim() === base) {
+                    return base;
+                }
+            }
+            if (legacyTrim === autoTitle) return autoTitle;
+            return legacyTrim;
+        }
+
+        const preferTextTypes = new Set([
+            'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note',
+            'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2', 'flag-mark'
+        ]);
+        if (preferTextTypes.has(drawing.type) && drawing.text && String(drawing.text).trim()) {
+            const t = String(drawing.text).trim();
+            return t.length > 30 ? t.substring(0, 30) + '...' : t;
+        }
+
+        return autoTitle;
     }
 
     /**
