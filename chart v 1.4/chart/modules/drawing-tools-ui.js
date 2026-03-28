@@ -276,6 +276,18 @@ function getSettingsTextInputDisplayValue(text) {
 
 }
 
+/** Chart image tool: match defaults in drawing-tools-image.js (IMAGE_TOOL_DEFAULT_*) */
+const IMAGE_TOOL_CHART_DEFAULT_WIDTH = 200;
+const IMAGE_TOOL_CHART_DEFAULT_HEIGHT = 150;
+
+function applyImageToolUploadDisplayDefaults(drawing) {
+    if (!drawing || !drawing.style) return;
+    drawing.style.width = IMAGE_TOOL_CHART_DEFAULT_WIDTH;
+    drawing.style.height = IMAGE_TOOL_CHART_DEFAULT_HEIGHT;
+    drawing.style.widthInDataUnits = null;
+    drawing.style.heightInDataUnits = null;
+}
+
 
 
 class DrawingSettingsPanel {
@@ -6943,6 +6955,14 @@ body.light-mode .template-save-dialog .dialog-title {
 
         container.appendChild(vwapRow);
 
+        const vwapSepAfterMain = document.createElement('div');
+
+        vwapSepAfterMain.setAttribute('role', 'presentation');
+
+        vwapSepAfterMain.style.cssText = 'border-top: 1px solid #2a2e39; margin: 4px 0 12px 0;';
+
+        container.appendChild(vwapSepAfterMain);
+
 
 
         for (let bandNumber = 1; bandNumber <= 3; bandNumber++) {
@@ -7061,6 +7081,18 @@ body.light-mode .template-save-dialog .dialog-title {
 
             container.appendChild(backgroundRow);
 
+            if (bandNumber < 3) {
+
+                const vwapSepBetweenBands = document.createElement('div');
+
+                vwapSepBetweenBands.setAttribute('role', 'presentation');
+
+                vwapSepBetweenBands.style.cssText = 'border-top: 1px solid #2a2e39; margin: 10px 0 12px 0;';
+
+                container.appendChild(vwapSepBetweenBands);
+
+            }
+
         }
 
 
@@ -7075,7 +7107,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const labelsSection = document.createElement('div');
 
-        labelsSection.style.cssText = 'margin-top: 12px; display: flex; flex-direction: column; gap: 6px;';
+        labelsSection.style.cssText = 'margin-top: 4px; padding-top: 12px; border-top: 1px solid #2a2e39; display: flex; flex-direction: column; gap: 6px;';
 
         labelsSection.innerHTML = `
 
@@ -13010,6 +13042,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
                             drawing.style.imageUrl = compressedDataUrl;
+
+                            applyImageToolUploadDisplayDefaults(drawing);
 
                             if (window.drawingManager) {
 
@@ -26444,6 +26478,8 @@ applyTemplate(drawing, templateId, modal) {
 
                             drawing.style.imageUrl = imageDataUrl;
 
+                            applyImageToolUploadDisplayDefaults(drawing);
+
                             this.onUpdate(drawing);
 
                             // Refresh settings panel to show updated preview and controls
@@ -26459,6 +26495,8 @@ applyTemplate(drawing, templateId, modal) {
                             drawing.style.originalAspectRatio = null;
 
                             drawing.style.imageUrl = imageDataUrl;
+
+                            applyImageToolUploadDisplayDefaults(drawing);
 
                             this.onUpdate(drawing);
 
@@ -26907,6 +26945,8 @@ applyTemplate(drawing, templateId, modal) {
                         reader.onload = (event) => {
 
                             drawing.style.imageUrl = event.target.result;
+
+                            applyImageToolUploadDisplayDefaults(drawing);
 
                             this.onUpdate(drawing);
 

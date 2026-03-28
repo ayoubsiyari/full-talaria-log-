@@ -3,6 +3,11 @@
  * Provides a single-point drawing that renders uploaded images.
  * Supports resizing via corner handles and scales with chart zoom.
  */
+
+/** Default on-screen size (px) used to seed data-unit sizing — matches placeholder box, larger than legacy 100×100. */
+const IMAGE_TOOL_DEFAULT_WIDTH = 200;
+const IMAGE_TOOL_DEFAULT_HEIGHT = 150;
+
 class ImageTool extends BaseDrawing {
     constructor(points = [], options = {}) {
         const resolved = ImageTool.resolveOptions(options);
@@ -15,8 +20,8 @@ class ImageTool extends BaseDrawing {
 
     static resolveOptions(options = {}) {
         const imageUrl = options.imageUrl || '';
-        const width = options.width || 100;
-        const height = options.height || 100;
+        const width = options.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        const height = options.height || IMAGE_TOOL_DEFAULT_HEIGHT;
         const opacity = options.opacity != null ? options.opacity : 1;
         const widthInDataUnits = options.widthInDataUnits || null;
         const heightInDataUnits = options.heightInDataUnits || null;
@@ -40,8 +45,8 @@ class ImageTool extends BaseDrawing {
 
     ensureDefaults() {
         if (!this.style.imageUrl) this.style.imageUrl = '';
-        if (!this.style.width) this.style.width = 100;
-        if (!this.style.height) this.style.height = 100;
+        if (!this.style.width) this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+        if (!this.style.height) this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
         if (typeof this.style.opacity !== 'number') this.style.opacity = 1;
         if (typeof this.style.maintainAspectRatio !== 'boolean') {
             this.style.maintainAspectRatio = true;
@@ -62,8 +67,8 @@ class ImageTool extends BaseDrawing {
         const isPlaceholder = !this.style.imageUrl;
 
         let x, y;
-        let width = this.style.width || 100;
-        let height = this.style.height || 100;
+        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
 
         if (isPlaceholder) {
             // Position from anchor — placed at click position
@@ -72,8 +77,8 @@ class ImageTool extends BaseDrawing {
                 : scales.xScale(point.x);
             y = scales.yScale(point.y);
             // Fixed pixel size — does not scale with zoom
-            width = 200;
-            height = 150;
+            width = IMAGE_TOOL_DEFAULT_WIDTH;
+            height = IMAGE_TOOL_DEFAULT_HEIGHT;
             // Do NOT set widthInDataUnits — image render will initialise it after upload
         } else {
             x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
@@ -362,8 +367,8 @@ class ImageTool extends BaseDrawing {
         this._dragStartHeightInDataUnits = this.style.heightInDataUnits || 0;
         this._dragStartCenter = { x: this._screenX, y: this._screenY };
         this._dragStartCenterPx = { x: this._screenX || 0, y: this._screenY || 0 };
-        this._dragStartWidthPx = this._currentWidth || this.style.width || 100;
-        this._dragStartHeightPx = this._currentHeight || this.style.height || 100;
+        this._dragStartWidthPx = this._currentWidth || this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        this._dragStartHeightPx = this._currentHeight || this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
         this._dragStartPoint = this.points && this.points[0] ? { x: this.points[0].x, y: this.points[0].y } : null;
         const screenX = context.screen?.x || 0;
         const screenY = context.screen?.y || 0;
@@ -387,8 +392,8 @@ class ImageTool extends BaseDrawing {
             const chart = this._scales.chart;
             const point = this.points[0];
 
-            const startWidthPx = this._dragStartWidthPx || 100;
-            const startHeightPx = this._dragStartHeightPx || 100;
+            const startWidthPx = this._dragStartWidthPx || IMAGE_TOOL_DEFAULT_WIDTH;
+            const startHeightPx = this._dragStartHeightPx || IMAGE_TOOL_DEFAULT_HEIGHT;
             let newWidthPx = startWidthPx;
             let newHeightPx = startHeightPx;
 
@@ -478,8 +483,8 @@ class ImageTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
         const cy = scales.yScale(point.y);
         
-        let width = this.style.width || 100;
-        let height = this.style.height || 100;
+        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
         
         if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
             const x1Pixel = cx;
@@ -585,6 +590,10 @@ class ImageTool extends BaseDrawing {
                         }
 
                         this.style.imageUrl = imageDataUrl;
+                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                        this.style.widthInDataUnits = null;
+                        this.style.heightInDataUnits = null;
                         this.meta.updatedAt = Date.now();
 
                         if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
@@ -606,6 +615,10 @@ class ImageTool extends BaseDrawing {
                     try {
                         this.style.originalAspectRatio = null;
                         this.style.imageUrl = imageDataUrl;
+                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                        this.style.widthInDataUnits = null;
+                        this.style.heightInDataUnits = null;
                         this.meta.updatedAt = Date.now();
 
                         if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
