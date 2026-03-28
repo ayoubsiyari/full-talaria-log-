@@ -791,7 +791,7 @@ class DrawingToolsManager {
 
             let fallbackVolumeProfileDrawing = null;
             if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && rawTargetNode && rawTargetNode.closest) {
-                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line');
+                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line, .volume-profile-hitbox, .volume-profile-range');
                 const domDrawingGroup = rawTargetNode.closest('.drawing');
                 if (volumeProfileHitNode && domDrawingGroup) {
                     const domDrawingId = d3.select(domDrawingGroup).attr('data-id');
@@ -919,8 +919,7 @@ class DrawingToolsManager {
                 const svgRect = svgNode.getBoundingClientRect();
                 const mouseX = event.clientX - svgRect.left;
                 const mouseY = event.clientY - svgRect.top;
-                const includeVolumeProfileBodyHit = event.detail >= 2;
-                let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit });
+                let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
                 const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
                 if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                     drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
@@ -949,7 +948,7 @@ class DrawingToolsManager {
                 const isVolumeProfileExplicitTarget = !!(
                     rawTarget
                     && rawTarget.closest
-                    && rawTarget.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group')
+                    && rawTarget.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .volume-profile-hitbox, .volume-profile-range, .resize-handle, .resize-handle-hit, .resize-handle-group')
                 );
 
                 const now = Date.now();
@@ -1545,8 +1544,7 @@ class DrawingToolsManager {
             }
             
             // Find all drawings at this point using geometric hit test
-            const includeVolumeProfileBodyHit = event.detail >= 2;
-            let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit });
+            let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
             const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
             if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                 drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
@@ -1754,7 +1752,7 @@ class DrawingToolsManager {
             // Fallback for volume-profile labels/boundaries/levels when geometric hit-testing misses
             // (notably anchored profiles where only edge/label clicks should select).
             if (!drawing && rawTargetNode && rawTargetNode.closest) {
-                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line');
+                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line, .volume-profile-hitbox, .volume-profile-range');
                 const domDrawingGroup = rawTargetNode.closest('.drawing');
                 if (volumeProfileHitNode && domDrawingGroup) {
                     const domDrawingId = d3.select(domDrawingGroup).attr('data-id');
@@ -6689,12 +6687,11 @@ class DrawingToolsManager {
      * @param {number} mouseX - X coordinate in SVG space
      * @param {number} mouseY - Y coordinate in SVG space
      * @param {Object} options
-     * @param {boolean} options.includeVolumeProfileBodyHit - include VP bar-rect hits (level/boundary hits are always checked)
+     * @param {boolean} [options.includeVolumeProfileBodyHit] - legacy option (ignored); VP body/bar hits are always evaluated
      * @returns {Array} - Array of drawings at this point, sorted by z-order (topmost first)
      */
     findDrawingsAtPoint(mouseX, mouseY, options = {}) {
         const baseHitTolerance = 10; // pixels - how close to a line to consider it a hit
-        const includeVolumeProfileBodyHit = !!options.includeVolumeProfileBodyHit;
         const hitsById = new Map(); // drawingId -> { drawing, distance, z }
         
         // Check if mouse is outside the chart's visible area (in axis regions)
@@ -6942,8 +6939,9 @@ class DrawingToolsManager {
             // Volume Profile tools: select from boundaries/levels/labels.
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
-                    const allowProfileBodyZoneHit = false;
-                    const allowProfileBarHit = includeVolumeProfileBodyHit;
+                    // Allow clicking anywhere inside the profile body (not only near 1px boundaries).
+                    const allowProfileBodyZoneHit = true;
+                    const allowProfileBarHit = true;
                     let bestBoundaryDistance = Infinity;
                     const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
 
