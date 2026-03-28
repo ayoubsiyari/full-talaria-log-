@@ -15668,28 +15668,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        // Extend Left
-
-        const extendLeftRow = document.createElement('div');
-
-        extendLeftRow.className = 'tv-prop-row';
-
-        extendLeftRow.style.cssText = rowStyle;
-
-        extendLeftRow.innerHTML = `
-
-            <div class="tv-checkbox-wrapper" style="${cbWrapStyle}">
-
-                <div class="tv-checkbox ${drawing.style.extendLeft ? 'checked' : ''}" data-prop="extendLeft">${svgCheck}</div>
-
-                <span class="tv-checkbox-label" style="white-space: nowrap;">Extend Left</span>
-
-            </div>`;
-
-        container.appendChild(extendLeftRow);
-
-
-
         // Extend Right
 
         const extendRightRow = document.createElement('div');
