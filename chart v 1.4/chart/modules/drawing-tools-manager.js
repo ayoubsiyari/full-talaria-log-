@@ -1522,7 +1522,8 @@ class DrawingToolsManager {
             }
         }
         const isVolumeProfileBoundaryHandle = !!(handleNode && handleNode.classList && handleNode.classList.contains('volume-profile-boundary-hit'));
-        const allowActiveToolHandleBypass = this.currentTool === 'polyline' || this.currentTool === 'path';
+        const allowActiveToolHandleBypass = this.currentTool === 'polyline' || this.currentTool === 'path'
+            || this.currentTool === 'brush' || this.currentTool === 'highlighter';
         if (handleNode && !isVolumeProfileBoundaryHandle && (!this.currentTool || allowActiveToolHandleBypass)) {
             return;
         }
@@ -4315,6 +4316,14 @@ class DrawingToolsManager {
      */
     setupHandleDrag(drawing) {
         const self = this;
+
+        const allowResizeHandleDragWhenToolActive = function (event) {
+            if (!self.currentTool) return true;
+            if (self.currentTool !== 'brush' && self.currentTool !== 'highlighter') return false;
+            const src = (event && event.sourceEvent) ? event.sourceEvent : event;
+            const t = src && src.target;
+            return !!(t && t.closest && t.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
+        };
         
         const applyPointHandleDrag = (point, drawing, index) => {
             if (typeof drawing.onPointHandleDrag === 'function') {
@@ -4344,7 +4353,7 @@ class DrawingToolsManager {
         
         handles.call(
             d3.drag()
-                .filter(() => !self.currentTool)
+                .filter(allowResizeHandleDragWhenToolActive)
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
                     const handleRole = d3.select(this).attr('data-handle-role');
@@ -4407,7 +4416,7 @@ class DrawingToolsManager {
 
         drawing.group.selectAll('.custom-handle').call(
             d3.drag()
-                .filter(() => !self.currentTool)
+                .filter(allowResizeHandleDragWhenToolActive)
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
                     const role = d3.select(this).attr('data-handle-role');

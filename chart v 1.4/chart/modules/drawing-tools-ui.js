@@ -1860,6 +1860,8 @@ class DrawingSettingsPanel {
 
     font-size: 12px;
 
+    text-align: center;
+
     cursor: default;
 
     -webkit-appearance: none;
@@ -1921,6 +1923,8 @@ class DrawingSettingsPanel {
     color: var(--sp-text, #d1d4dc);
 
     padding: 8px;
+
+    text-align: center;
 
 }
 
