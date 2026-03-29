@@ -5417,7 +5417,7 @@ class OrderManager {
                     border: none;
                     color: var(--op-text);
                     font-size: 13px;
-                    padding: 9px 0;
+                    padding: 9px 12px;
                     outline: none;
                     font-family: inherit;
                     font-weight: 600;
@@ -5426,7 +5426,7 @@ class OrderManager {
                     align-self: center;
                 }
                 .order-input::placeholder { color: rgba(127, 135, 158, 0.65); font-weight: 500; }
-                .order-input--compact { padding: 8px 0; font-size: 12px; line-height: 1.25; }
+                .order-input--compact { padding: 8px 12px; font-size: 12px; line-height: 1.25; }
                 /* Hide native number spinners — custom +/- steppers only */
                 .order-panel input.order-input[type="number"] {
                     -moz-appearance: textfield;
