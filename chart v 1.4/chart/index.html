@@ -5821,7 +5821,7 @@
 
             display: grid;
 
-            grid-template-columns: 22px minmax(0, 1fr);
+            grid-template-columns: 18px minmax(0, 1fr);
 
             align-items: center;
 
@@ -5866,6 +5866,18 @@
             display: flex;
 
             align-items: center;
+
+            flex-wrap: wrap;
+
+            gap: 5px;
+
+        }
+
+
+
+        /* Row “4” only: spread layout icons across full menu width */
+
+        .pl-layout-row--spread-icons .pl-layout-row-icons {
 
             flex-wrap: nowrap;
 
@@ -57268,7 +57280,7 @@ P['panellayout']={
 
             }).join('');
 
-            return '<div class="pl-layout-row'+(idx===groups.length-1?' is-last':'')+'"><div class="pl-layout-count">'+group.count+'</div><div class="pl-layout-row-icons">'+buttons+'</div></div>';
+            return '<div class="pl-layout-row'+(idx===groups.length-1?' is-last':'')+(group.count===4?' pl-layout-row--spread-icons':'')+'"><div class="pl-layout-count">'+group.count+'</div><div class="pl-layout-row-icons">'+buttons+'</div></div>';
 
         }).join('');
 
