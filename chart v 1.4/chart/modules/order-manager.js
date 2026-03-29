@@ -4827,37 +4827,54 @@ class OrderManager {
                 }
                 .order-tab {
                     padding: 9px 6px;
-                    border: 1px solid var(--op-border);
+                    border: 1px solid rgba(255,255,255,0.12);
                     border-radius: 5px;
                     font-weight: 700;
                     font-size: 12px;
                     letter-spacing: 0.04em;
                     cursor: pointer;
-                    transition: all 0.15s ease;
+                    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+                    background: var(--op-surface);
+                    box-shadow: none;
                 }
-                .order-tab--buy {
-                    background: rgba(255,255,255,0.04);
-                    border-color: var(--op-border);
-                    color: var(--tv-buy, #089981);
+                /* Inactive: green / red text on surface — same idea as light (colored labels, neutral box) */
+                .order-tab.order-tab--buy:not(.active) {
+                    color: #089981;
+                    -webkit-text-fill-color: #089981;
+                    background: var(--op-surface);
+                    border-color: rgba(255,255,255,0.12);
                 }
-                .order-tab--sell {
-                    background: rgba(255,255,255,0.04);
-                    border-color: var(--op-border);
-                    color: var(--tv-sell, #f23645);
+                .order-tab.order-tab--sell:not(.active) {
+                    color: #f23645;
+                    -webkit-text-fill-color: #f23645;
+                    background: var(--op-surface);
+                    border-color: rgba(255,255,255,0.12);
                 }
                 .order-tab.active.order-tab--buy {
                     background: #089981;
                     border-color: #089981;
                     color: #fff;
+                    -webkit-text-fill-color: #fff;
                     box-shadow: none;
                 }
                 .order-tab.active.order-tab--sell {
                     background: #f23645;
                     border-color: #f23645;
                     color: #fff;
+                    -webkit-text-fill-color: #fff;
                     box-shadow: none;
                 }
                 .order-tab:hover:not(.active) { filter: none; }
+                .order-panel .order-tab.order-tab--buy:not(.active):hover {
+                    color: #089981;
+                    -webkit-text-fill-color: #089981;
+                    background: var(--op-surface);
+                }
+                .order-panel .order-tab.order-tab--sell:not(.active):hover {
+                    color: #f23645;
+                    -webkit-text-fill-color: #f23645;
+                    background: var(--op-surface);
+                }
                 .order-panel .order-tab.active.order-tab--buy:hover {
                     background: #07806d;
                     border-color: #07806d;
@@ -5348,14 +5365,14 @@ class OrderManager {
                     min-width: 0;
                     gap: 20px;
                     border-bottom: 1px solid rgba(255,255,255,0.12);
-                    padding: 0 0 2px;
+                    padding: 0;
                 }
                 .order-button-group--inline:not(:has(.risk-btn)) {
                     flex-wrap: wrap;
                     align-items: stretch;
                     gap: 16px;
                     border-bottom: 1px solid rgba(255,255,255,0.12);
-                    padding: 0 0 2px;
+                    padding: 0;
                 }
                 .order-button-group--inline:has(.risk-btn) {
                     flex-wrap: wrap;
@@ -5369,37 +5386,50 @@ class OrderManager {
                     border-right: none;
                     border-top: none;
                 }
+                /* Market / Limit / Stop — text + bottom rule only (matches light: gray → blue underline) */
                 .order-type-btn,
                 .position-mode-tab,
                 .breakeven-mode-tab {
                     flex: 1;
                     border: none;
                     border-radius: 0;
-                    padding: 8px 6px 10px;
+                    padding: 10px 2px;
                     font-size: 11px;
-                    font-weight: 600;
+                    font-weight: 500;
                     cursor: pointer;
                     color: var(--op-text-muted);
+                    -webkit-text-fill-color: var(--op-text-muted);
                     background: transparent;
-                    transition: color 0.15s ease, border-color 0.15s ease;
+                    transition: color 0.15s ease, border-color 0.15s ease, font-weight 0.15s ease;
                     letter-spacing: 0.015em;
                     border-bottom: 2px solid transparent;
-                    margin-bottom: -2px;
+                    margin-bottom: -1px;
                     min-width: 0;
+                    box-shadow: none;
                 }
                 .order-type-btn:hover,
                 .position-mode-tab:hover,
                 .breakeven-mode-tab:hover {
                     background: transparent;
                     color: var(--op-text);
+                    -webkit-text-fill-color: var(--op-text);
                 }
                 .order-type-btn.active,
                 .position-mode-tab.active,
                 .breakeven-mode-tab.active {
                     background: transparent;
-                    color: var(--op-accent);
-                    border-bottom-color: var(--op-accent);
+                    color: #2962ff;
+                    -webkit-text-fill-color: #2962ff;
+                    border-bottom-color: #2962ff;
+                    font-weight: 600;
                     box-shadow: none;
+                }
+                .order-type-btn.active:hover,
+                .position-mode-tab.active:hover,
+                .breakeven-mode-tab.active:hover {
+                    color: #2962ff;
+                    -webkit-text-fill-color: #2962ff;
+                    border-bottom-color: #2962ff;
                 }
 
                 /* ── RISK SHORTCUT BUTTONS ───────────────────────────────────────── */
