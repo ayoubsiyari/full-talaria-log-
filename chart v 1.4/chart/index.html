@@ -5736,7 +5736,7 @@
 
 
 
-        /* Settings panel – horizontal top tab bar */
+        /* Settings panel – horizontal top tab bar (same chrome as Object Tree embedded header: gradient strip + .sp-panel-tab pills) */
 
         #settingsPanel .sp-sidebar {
 
@@ -5744,15 +5744,15 @@
 
             min-width: unset;
 
-            background: var(--sp-ui-sidebar-bg, var(--sp-sidebar-bg));
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.08)), var(--sp-ui-sidebar-bg, #0b1227);
 
             border-right: none;
 
-            border-bottom: 1px solid var(--sp-ui-border, rgba(255,255,255,0.06));
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 
             flex-direction: row;
 
-            align-items: stretch;
+            align-items: center;
 
             overflow-y: unset;
 
@@ -5766,39 +5766,7 @@
 
         #settingsPanel .sp-nav { padding: 8px !important; flex-direction: row !important; gap: 8px !important; align-items: center !important; justify-content: center !important; flex: 1; overflow-x: auto; }
 
-        #settingsPanel .sp-nav-item {
-
-            padding: 0 14px;
-
-            border-radius: 8px;
-
-            white-space: nowrap;
-
-            height: 28px;
-
-            flex-shrink: 0;
-
-            font-size: 13px;
-
-            font-weight: 500;
-
-            color: rgba(209,212,220,0.65);
-
-            background: rgba(255,255,255,0.06);
-
-            border: 1px solid rgba(255,255,255,0.08);
-
-            cursor: pointer;
-
-            transition: all 0.18s ease;
-
-        }
-
-        #settingsPanel .sp-nav-item:hover { color: var(--sp-text, #d1d4dc); border-color: rgba(var(--sp-accent-rgb,41,98,255),0.9); background: rgba(var(--sp-accent-rgb,41,98,255),0.18); box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb,41,98,255),0.14); }
-
-        #settingsPanel .sp-nav-item.active { background: linear-gradient(135deg,rgba(var(--sp-accent-rgb,41,98,255),0.55),rgba(var(--sp-accent-rgb,41,98,255),0.30)); border-color: rgba(var(--sp-accent-rgb,41,98,255),0.9); color: var(--sp-text-active, #fff); box-shadow: 0 6px 14px rgba(var(--sp-accent-rgb,41,98,255),0.14); }
-
-        #settingsPanel .sp-nav-item svg { display: none; }
+        #settingsPanel .sp-nav-item.sp-panel-tab svg { display: none; }
 
 
 
@@ -6460,103 +6428,6 @@
             background: var(--sp-ui-surface-bg, #f0f0f0);
             border-left: 1px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
             box-shadow: none;
-        }
-
-        /* Help + Settings (light): one style — gray strip (#f0f3fa), white chips, solid blue active (#739af0) — beats #settingsPanel base gradients */
-        body.light-mode #helpPanel .sp-sidebar,
-        body.light-mode #settingsPanel .sp-sidebar {
-            background: #f0f3fa !important;
-            border-bottom: 1px solid #e0e3eb !important;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
-            align-items: center !important;
-        }
-
-        body.light-mode #helpPanel .sp-nav,
-        body.light-mode #settingsPanel .sp-nav {
-            padding: 10px 12px !important;
-            gap: 8px !important;
-            align-items: center !important;
-            justify-content: flex-start !important;
-            flex: 1 !important;
-        }
-
-        body.light-mode #helpPanel .sp-nav-item,
-        body.light-mode #settingsPanel .sp-nav-item {
-            min-height: 30px !important;
-            height: auto !important;
-            padding: 6px 14px !important;
-            border-radius: 8px !important;
-            font-size: 13px !important;
-            font-weight: 500 !important;
-            border: 1px solid #e0e3eb !important;
-            background: #ffffff !important;
-            color: #131722 !important;
-            box-shadow: none !important;
-            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
-        }
-
-        body.light-mode #helpPanel .sp-nav-item:hover,
-        body.light-mode #settingsPanel .sp-nav-item:hover {
-            background: #eef2f7 !important;
-            color: #131722 !important;
-            border-color: #d1d4dc !important;
-            box-shadow: none !important;
-        }
-
-        body.light-mode #helpPanel .sp-nav-item.active,
-        body.light-mode #settingsPanel .sp-nav-item.active {
-            background: #739af0 !important;
-            border-color: #5b82e8 !important;
-            color: #ffffff !important;
-            font-weight: 600 !important;
-            box-shadow: none !important;
-        }
-
-        /* Dark: same layout as light — strip + pills (overrides base gradients on #settingsPanel) */
-        body:not(.light-mode) #helpPanel .sp-sidebar,
-        body:not(.light-mode) #settingsPanel .sp-sidebar {
-            background: rgba(255, 255, 255, 0.04) !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-            box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35) !important;
-            align-items: center !important;
-        }
-
-        body:not(.light-mode) #helpPanel .sp-nav,
-        body:not(.light-mode) #settingsPanel .sp-nav {
-            padding: 10px 12px !important;
-            gap: 8px !important;
-            justify-content: flex-start !important;
-            align-items: center !important;
-        }
-
-        body:not(.light-mode) #helpPanel .sp-nav-item,
-        body:not(.light-mode) #settingsPanel .sp-nav-item {
-            min-height: 30px !important;
-            height: auto !important;
-            padding: 6px 14px !important;
-            border-radius: 8px !important;
-            font-weight: 500 !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
-            background: rgba(0, 0, 0, 0.2) !important;
-            color: #d1d4dc !important;
-            box-shadow: none !important;
-        }
-
-        body:not(.light-mode) #helpPanel .sp-nav-item:hover,
-        body:not(.light-mode) #settingsPanel .sp-nav-item:hover {
-            background: rgba(255, 255, 255, 0.08) !important;
-            border-color: rgba(255, 255, 255, 0.2) !important;
-            color: #f0f3fa !important;
-            box-shadow: none !important;
-        }
-
-        body:not(.light-mode) #helpPanel .sp-nav-item.active,
-        body:not(.light-mode) #settingsPanel .sp-nav-item.active {
-            background: rgba(41, 98, 255, 0.35) !important;
-            border-color: rgba(41, 98, 255, 0.85) !important;
-            color: #ffffff !important;
-            font-weight: 600 !important;
-            box-shadow: none !important;
         }
 
         .side-panel-title {
@@ -35885,7 +35756,7 @@
 
             <nav class="sp-nav">
 
-                <div class="sp-nav-item active" data-settings="canvas" onclick="event.stopPropagation();window._spLoad&&window._spLoad('canvas',this);">
+                <div class="sp-nav-item sp-panel-tab active" data-settings="canvas" onclick="event.stopPropagation();window._spLoad&&window._spLoad('canvas',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
 
@@ -35893,7 +35764,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="symbol" onclick="event.stopPropagation();window._spLoad&&window._spLoad('symbol',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="symbol" onclick="event.stopPropagation();window._spLoad&&window._spLoad('symbol',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M18 3H6a1 1 0 0 0-1 1v4l-2 4 2 4v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4l2-4-2-4V4a1 1 0 0 0-1-1z"/></svg>
 
@@ -35901,7 +35772,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="trading" onclick="event.stopPropagation();window._spLoad&&window._spLoad('trading',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="trading" onclick="event.stopPropagation();window._spLoad&&window._spLoad('trading',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
 
@@ -35909,7 +35780,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="template" onclick="event.stopPropagation();window._spLoad&&window._spLoad('template',this);" style="display:none;">
+                <div class="sp-nav-item sp-panel-tab" data-settings="template" onclick="event.stopPropagation();window._spLoad&&window._spLoad('template',this);" style="display:none;">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
 
@@ -35917,7 +35788,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="statusline" onclick="event.stopPropagation();window._spLoad&&window._spLoad('statusline',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="statusline" onclick="event.stopPropagation();window._spLoad&&window._spLoad('statusline',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
 
@@ -35925,7 +35796,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="watchlist" onclick="event.stopPropagation();window._spLoad&&window._spLoad('watchlist',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="watchlist" onclick="event.stopPropagation();window._spLoad&&window._spLoad('watchlist',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
 
@@ -35933,7 +35804,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="news" onclick="event.stopPropagation();window._spLoad&&window._spLoad('news',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="news" onclick="event.stopPropagation();window._spLoad&&window._spLoad('news',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
 
@@ -35943,7 +35814,7 @@
 
                 <div class="sp-nav-divider"></div>
 
-                <div class="sp-nav-item" data-settings="alerts" onclick="event.stopPropagation();window._spLoad&&window._spLoad('alerts',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="alerts" onclick="event.stopPropagation();window._spLoad&&window._spLoad('alerts',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
 
@@ -35951,7 +35822,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="help" onclick="event.stopPropagation();window._spLoad&&window._spLoad('help',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="help" onclick="event.stopPropagation();window._spLoad&&window._spLoad('help',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
 
@@ -35959,7 +35830,7 @@
 
                 </div>
 
-                <div class="sp-nav-item" data-settings="profile" onclick="event.stopPropagation();window._spLoad&&window._spLoad('profile',this);">
+                <div class="sp-nav-item sp-panel-tab" data-settings="profile" onclick="event.stopPropagation();window._spLoad&&window._spLoad('profile',this);">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 
