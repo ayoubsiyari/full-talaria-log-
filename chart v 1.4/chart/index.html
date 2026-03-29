@@ -4252,6 +4252,185 @@
             color: #ffffff !important;
         }
 
+        /* Order panel — same WebKit fill fix: #orderPanel + IDs beat generic button:hover / inheritance. */
+        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active),
+        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):hover,
+        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):focus,
+        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):focus-visible {
+            color: #089981 !important;
+            -webkit-text-fill-color: #089981 !important;
+            background: #ffffff !important;
+        }
+
+        body.light-mode #orderPanel #buyTab.order-tab--buy.active,
+        body.light-mode #orderPanel #buyTab.order-tab--buy.active:hover,
+        body.light-mode #orderPanel #buyTab.order-tab--buy.active:focus,
+        body.light-mode #orderPanel #buyTab.order-tab--buy.active:focus-visible {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            background: #089981 !important;
+            border-color: #089981 !important;
+        }
+
+        body.light-mode #orderPanel #buyTab.order-tab--buy.active:hover {
+            background: #07806d !important;
+            border-color: #07806d !important;
+        }
+
+        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active),
+        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):hover,
+        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):focus,
+        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):focus-visible {
+            color: #f23645 !important;
+            -webkit-text-fill-color: #f23645 !important;
+            background: #ffffff !important;
+        }
+
+        body.light-mode #orderPanel #sellTab.order-tab--sell.active,
+        body.light-mode #orderPanel #sellTab.order-tab--sell.active:hover,
+        body.light-mode #orderPanel #sellTab.order-tab--sell.active:focus,
+        body.light-mode #orderPanel #sellTab.order-tab--sell.active:focus-visible {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            background: #f23645 !important;
+            border-color: #f23645 !important;
+        }
+
+        body.light-mode #orderPanel #sellTab.order-tab--sell.active:hover {
+            background: #d91e32 !important;
+            border-color: #d91e32 !important;
+        }
+
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode),
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):hover,
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus,
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus-visible {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode,
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:hover,
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus,
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus-visible {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        body.light-mode #orderPanel #closeOrderPanel.order-panel__close,
+        body.light-mode #orderPanel #closeOrderPanel.order-panel__close:focus,
+        body.light-mode #orderPanel #closeOrderPanel.order-panel__close:focus-visible {
+            color: #787b86 !important;
+            -webkit-text-fill-color: #787b86 !important;
+        }
+
+        body.light-mode #orderPanel #closeOrderPanel.order-panel__close:hover {
+            color: #131722 !important;
+            -webkit-text-fill-color: #131722 !important;
+        }
+
+        body.light-mode #orderPanel #orderPanelEdgeHandle,
+        body.light-mode #orderPanel #orderPanelEdgeHandle:hover,
+        body.light-mode #orderPanel #orderPanelEdgeHandle:focus {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        body.light-mode #orderPanel #orderPanelEdgeHandle svg {
+            stroke: #ffffff !important;
+            color: #ffffff !important;
+        }
+
+        body.light-mode #orderPanel #marketTypeBtnPanel.order-market-type-btn,
+        body.light-mode #orderPanel #marketTypeBtnPanel.order-market-type-btn:hover,
+        body.light-mode #orderPanel #marketTypeBtnPanel.order-market-type-btn:focus,
+        body.light-mode #orderPanel #marketTypeBtnPanel.order-market-type-btn:focus-visible {
+            color: #131722 !important;
+            -webkit-text-fill-color: #131722 !important;
+        }
+
+        body.light-mode #orderPanel .order-type-btn:not(.active),
+        body.light-mode #orderPanel .order-type-btn:not(.active):hover,
+        body.light-mode #orderPanel .order-type-btn:not(.active):focus {
+            color: #787b86 !important;
+            -webkit-text-fill-color: #787b86 !important;
+        }
+
+        body.light-mode #orderPanel .order-type-btn.active,
+        body.light-mode #orderPanel .order-type-btn.active:hover,
+        body.light-mode #orderPanel .order-type-btn.active:focus {
+            color: #2962ff !important;
+            -webkit-text-fill-color: #2962ff !important;
+        }
+
+        body.light-mode #orderPanel .position-mode-tab:not(.active),
+        body.light-mode #orderPanel .position-mode-tab:not(.active):hover,
+        body.light-mode #orderPanel .position-mode-tab:not(.active):focus,
+        body.light-mode #orderPanel .breakeven-mode-tab:not(.active),
+        body.light-mode #orderPanel .breakeven-mode-tab:not(.active):hover,
+        body.light-mode #orderPanel .breakeven-mode-tab:not(.active):focus {
+            color: #787b86 !important;
+            -webkit-text-fill-color: #787b86 !important;
+        }
+
+        body.light-mode #orderPanel .position-mode-tab.active,
+        body.light-mode #orderPanel .position-mode-tab.active:hover,
+        body.light-mode #orderPanel .position-mode-tab.active:focus,
+        body.light-mode #orderPanel .breakeven-mode-tab.active,
+        body.light-mode #orderPanel .breakeven-mode-tab.active:hover,
+        body.light-mode #orderPanel .breakeven-mode-tab.active:focus {
+            color: #2962ff !important;
+            -webkit-text-fill-color: #2962ff !important;
+        }
+
+        body.light-mode #orderPanel .risk-btn:not(.active),
+        body.light-mode #orderPanel .risk-btn:not(.active):hover,
+        body.light-mode #orderPanel .risk-btn:not(.active):focus {
+            color: #787b86 !important;
+            -webkit-text-fill-color: #787b86 !important;
+        }
+
+        body.light-mode #orderPanel .risk-btn.active,
+        body.light-mode #orderPanel .risk-btn.active:hover,
+        body.light-mode #orderPanel .risk-btn.active:focus {
+            color: #2962ff !important;
+            -webkit-text-fill-color: #2962ff !important;
+        }
+
+        body.light-mode #orderPanel .order-btn-icon:not(.order-btn-icon--accent),
+        body.light-mode #orderPanel .order-btn-icon:not(.order-btn-icon--accent):hover,
+        body.light-mode #orderPanel .order-btn-icon:not(.order-btn-icon--accent):focus {
+            color: #131722 !important;
+            -webkit-text-fill-color: #131722 !important;
+        }
+
+        body.light-mode #orderPanel .order-btn-icon--accent,
+        body.light-mode #orderPanel .order-btn-icon--accent:hover,
+        body.light-mode #orderPanel .order-btn-icon--accent:focus {
+            color: #2962ff !important;
+            -webkit-text-fill-color: #2962ff !important;
+        }
+
+        body.light-mode #orderPanel .order-utility-btn,
+        body.light-mode #orderPanel .order-utility-btn:hover,
+        body.light-mode #orderPanel .order-utility-btn:focus {
+            color: #131722 !important;
+            -webkit-text-fill-color: #131722 !important;
+        }
+
+        body.light-mode #orderPanel .order-collapse__header,
+        body.light-mode #orderPanel .order-collapse__header:hover,
+        body.light-mode #orderPanel .order-collapse__header:focus {
+            color: #787b86 !important;
+            -webkit-text-fill-color: #787b86 !important;
+        }
+
+        body.light-mode #orderPanel .order-collapse--open .order-collapse__header,
+        body.light-mode #orderPanel .order-collapse--open .order-collapse__header:hover {
+            color: #131722 !important;
+            -webkit-text-fill-color: #131722 !important;
+        }
+
 
 
         .new-order-btn svg {
@@ -42020,7 +42199,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260328"></script>
 
-    <script defer src="modules/order-manager.js?v=20260328_ORDER_HOVER_TEXT"></script>
+    <script defer src="modules/order-manager.js?v=20260328_ORDER_PANEL_IDS"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260328"></script>
 
