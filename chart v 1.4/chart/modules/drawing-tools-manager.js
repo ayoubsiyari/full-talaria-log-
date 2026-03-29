@@ -4356,6 +4356,23 @@ class DrawingToolsManager {
                 .filter(allowResizeHandleDragWhenToolActive)
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
+                    const isFreehandStroke = drawing.type === 'brush' || drawing.type === 'highlighter';
+                    if (isFreehandStroke) {
+                        if (!drawing.selected) {
+                            self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                        }
+                        self._freehandHandleWholeMove = {
+                            drawing,
+                            startPoints: drawing.points.map(p => ({ ...p })),
+                            startDataPoint: self.getDataPoint(event.sourceEvent, drawing.type),
+                            beforeState: self.history ? self.history.captureState(drawing) : null
+                        };
+                        const cvs = (self.chart && self.chart.canvas) || document.getElementById('chartCanvas');
+                        if (cvs) cvs.style.cursor = 'move';
+                        self.svg.style('cursor', 'move');
+                        d3.select(this).style('cursor', 'move');
+                        return;
+                    }
                     const handleRole = d3.select(this).attr('data-handle-role');
                     const index = parseInt(d3.select(this).attr('data-point-index'));
                     
@@ -4382,6 +4399,26 @@ class DrawingToolsManager {
                 })
                 .on('drag', function(event) {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) self.chart.updateCrosshair(event.sourceEvent);
+                    const fm = self._freehandHandleWholeMove;
+                    if (fm && fm.drawing === drawing) {
+                        const cur = self.getDataPoint(event.sourceEvent, drawing.type);
+                        const rawDx = cur.x - fm.startDataPoint.x;
+                        const rawDy = cur.y - fm.startDataPoint.y;
+                        const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(drawing, rawDx, rawDy);
+                        drawing.points = fm.startPoints.map(p => ({
+                            x: p.x + constrainedDx,
+                            y: p.y + constrainedDy
+                        }));
+                        self.clampDrawingPointsToCandleRange(drawing);
+                        self._skipHandleSetup = true;
+                        self.renderDrawing(drawing);
+                        self._skipHandleSetup = false;
+                        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+                            drawing.showAxisHighlights();
+                        }
+                        self._broadcastLiveEditUpdate(drawing);
+                        return;
+                    }
                     // Check if we're in custom handle drag mode
                     if (self.isCustomHandleDrag) {
                         self.handleCustomHandleDrag(event);
@@ -4404,6 +4441,32 @@ class DrawingToolsManager {
                     }
                 })
                 .on('end', function(event) {
+                    const fm = self._freehandHandleWholeMove;
+                    if (fm && fm.drawing === drawing) {
+                        if (self.history && fm.beforeState) {
+                            const moved = drawing.points.some((p, i) =>
+                                p.x !== fm.startPoints[i].x || p.y !== fm.startPoints[i].y
+                            );
+                            if (moved) {
+                                self.history.recordModify(drawing, fm.beforeState);
+                            }
+                        }
+                        if (typeof drawing.recalculateTimestamps === 'function') {
+                            drawing.recalculateTimestamps();
+                        }
+                        self.persistPositionToolDefaults(drawing);
+                        self.saveDrawings();
+                        const di = self.drawings.indexOf(drawing);
+                        if (self.chart && self.chart.broadcastDrawingChange && di > -1) {
+                            self.chart.broadcastDrawingChange('update', drawing, di);
+                        }
+                        self._freehandHandleWholeMove = null;
+                        const cvs = (self.chart && self.chart.canvas) || document.getElementById('chartCanvas');
+                        if (cvs) cvs.style.cursor = '';
+                        self.svg.style('cursor', '');
+                        d3.select(this).style('cursor', null);
+                        return;
+                    }
                     d3.select(this).style('cursor', 'ew-resize');
                     // Check if we're ending a custom handle drag
                     if (self.isCustomHandleDrag) {

@@ -2321,7 +2321,7 @@ class BrushTool extends BaseDrawing {
                 .attr('fill', handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'nwse-resize')
+                .style('cursor', 'move')
                 .style('pointer-events', 'all')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-point-index', index);
