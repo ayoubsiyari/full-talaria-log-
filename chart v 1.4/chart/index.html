@@ -24840,6 +24840,59 @@
 
         }
 
+        /* Same logo swap when theme uses body.light-mode (toolbar + chart use this class) */
+        body.light-mode .brand-lockup .logo-dark {
+
+            display: none;
+
+        }
+
+        body.light-mode .brand-lockup .logo-light {
+
+            display: block;
+
+        }
+
+        body.light-mode .brand-lockup img {
+
+            filter: none;
+
+        }
+
+        /* No hover “motion”: keep wordmark from sliding open; no brightness flash */
+        .brand-lockup:hover {
+
+            opacity: 0.95;
+
+            filter: none;
+
+        }
+
+        .brand-lockup:hover .logo-bottom,
+
+        .toolbar-logo.brand-lockup:hover .logo-bottom {
+
+            max-width: 0 !important;
+
+            opacity: 0 !important;
+
+            margin-left: 0 !important;
+
+        }
+
+        .brand-lockup .logo-bottom {
+
+            transition: none;
+
+        }
+
+        /* Symbol switcher pair flags — no scale nudge on hover */
+        .ssd-item:hover .ssd-flag {
+
+            transform: none !important;
+
+        }
+
 
 
         /* Layout Dropdown - Compact TradingView Style */
