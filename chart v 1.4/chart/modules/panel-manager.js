@@ -154,8 +154,8 @@ class PanelManager {
             top: 56px;
             right: auto;
             left: auto;
-            background: #1e222d;
-            border: 1px solid #2a2e39;
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, #1e222d));
+            border: 1px solid var(--sp-ui-border, #2a2e39);
             border-radius: 6px;
             padding: 0;
             display: none;
@@ -164,7 +164,7 @@ class PanelManager {
             max-height: 80vh;
             overflow-y: auto;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            color: #d1d4dc;
+            color: var(--sp-text, #d1d4dc);
         `;
 
         // SVG icon helper: w=28 h=20 viewBox, stroke-width 1.5, rx=1
@@ -339,6 +339,18 @@ class PanelManager {
             }
             .layout-option.active svg {
                 color: #d1d4dc;
+            }
+            body.light-mode .layout-option {
+                border-color: rgba(0, 0, 0, 0.12);
+            }
+            body.light-mode .layout-option svg {
+                color: #444444;
+            }
+            body.light-mode .layout-option:hover svg {
+                color: #000000;
+            }
+            body.light-mode .layout-option.active svg {
+                color: var(--sp-accent, #2962ff);
             }
             .sync-toggle {
                 display: inline-flex;
@@ -936,7 +948,9 @@ class PanelManager {
         const mc = typeof window !== 'undefined' ? window.chart : null;
         const bg = (mc && mc.chartSettings && mc.chartSettings.backgroundColor)
             ? mc.chartSettings.backgroundColor
-            : '#131722';
+            : (typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode')
+                ? '#ffffff'
+                : '#131722');
         return {
             bg,
             border: this._dividerColorForChartBackground(bg)
@@ -1586,11 +1600,14 @@ class PanelManager {
         // Chart container within panel (same structure as main chart)
         const chartContainer = document.createElement('div');
         chartContainer.className = 'panel-chart-container';
+        const _panelBg = (typeof window !== 'undefined' && window.chart && window.chart.chartSettings && window.chart.chartSettings.backgroundColor)
+            ? window.chart.chartSettings.backgroundColor
+            : (typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode') ? '#ffffff' : '#131722');
         chartContainer.style.cssText = `
             width: 100%;
             height: 100%;
             position: relative;
-            background: #131722;
+            background: ${_panelBg};
         `;
         
         // Add placeholder text

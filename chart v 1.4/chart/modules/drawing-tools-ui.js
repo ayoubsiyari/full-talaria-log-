@@ -40,7 +40,7 @@ const DRAWING_COLOR_UTILS = (() => {
 
 
 
-    const RECENTS = ['#131722', '#787b86', '#1E3A5F', '#262B3E'];
+    const RECENTS = ['#000000', '#787b86', '#1E3A5F', '#262B3E'];
 
 
 
@@ -3284,7 +3284,7 @@ body.light-mode .tv-settings-modal {
 
     background: #ffffff;
 
-    border-color: #e0e3eb;
+    border-color: rgba(0, 0, 0, 0.12);
 
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 
@@ -3302,7 +3302,7 @@ body.light-mode .tv-modal-header {
 
 body.light-mode .tv-modal-title {
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -3310,7 +3310,7 @@ body.light-mode .tv-modal-title {
 
 body.light-mode .tv-modal-close {
 
-    color: #787b86;
+    color: var(--sp-text-muted, #444444);
 
 }
 
@@ -3318,9 +3318,9 @@ body.light-mode .tv-modal-close {
 
 body.light-mode .tv-modal-close:hover {
 
-    color: #131722;
+    color: #000000;
 
-    background: #f0f3fa;
+    background: #ffffff;
 
 }
 
@@ -3328,7 +3328,7 @@ body.light-mode .tv-modal-close:hover {
 
 body.light-mode .tv-tab-header {
 
-    background: #e0e3eb;
+    background: #ffffff;
 
 }
 
@@ -3340,7 +3340,7 @@ body.light-mode .tv-tab-btn {
 
     border-color: transparent;
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -3348,8 +3348,8 @@ body.light-mode .tv-tab-btn {
 
 body.light-mode .tv-tab-btn:hover {
 
-    background: #d1d4dc;
-    color: #0f172a;
+    background: rgba(0, 0, 0, 0.08);
+    color: #000000;
 
 }
 
@@ -3370,7 +3370,7 @@ body.light-mode .tv-tab-btn.active {
 body.light-mode .tv-tab-content {
 
     background: #ffffff;
-    color: #1f2937;
+    color: #000000;
 
 }
 
@@ -3396,11 +3396,11 @@ body.light-mode .tv-description-input,
 
 body.light-mode .tv-text-input {
 
-    background: #f0f3fa;
+    background: #ffffff;
 
-    border-color: #e0e3eb;
+    border-color: rgba(0, 0, 0, 0.12);
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -3420,7 +3420,7 @@ body.light-mode .tv-checkbox-label,
 
 body.light-mode .tv-align-label {
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -3428,9 +3428,9 @@ body.light-mode .tv-align-label {
 
 body.light-mode .tv-checkbox {
 
-    border-color: #d1d4dc;
+    border-color: rgba(0, 0, 0, 0.15);
 
-    background: #f0f3fa;
+    background: #ffffff;
 
 }
 
@@ -3450,11 +3450,11 @@ body.light-mode .tv-select {
 
     background: #ffffff;
 
-    border: 1px solid #e0e3eb;
+    border: 1px solid rgba(0, 0, 0, 0.12);
 
-    color: #131722;
+    color: #000000;
 
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23131722' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
     background-repeat: no-repeat;
 
@@ -3470,7 +3470,7 @@ body.light-mode .tv-select {
 
 body.light-mode .tv-select:hover {
 
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23131722' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
     background-repeat: no-repeat;
 
@@ -3490,7 +3490,7 @@ body.light-mode .tv-select:hover {
 
 body.light-mode .tv-color-btn {
 
-    border-color: #d1d4dc;
+    border-color: rgba(0, 0, 0, 0.15);
 
 }
 
@@ -3530,11 +3530,11 @@ body.light-mode .tv-checkbox.checked:hover {
 
 body.light-mode .tv-style-btn {
 
-    border-color: #d1d4dc;
+    border-color: rgba(0, 0, 0, 0.15);
 
     color: #787b86;
 
-    background: #f0f3fa;
+    background: #ffffff;
 
 }
 
@@ -3546,7 +3546,7 @@ body.light-mode .tv-style-btn:hover {
 
     background: #e8ebf0;
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -3570,7 +3570,7 @@ body.light-mode .tv-coords-input {
 
     border-color: #b2b5be;
 
-    color: #131722;
+    color: #000000;
 
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
 
@@ -3602,7 +3602,7 @@ body.light-mode .tv-align-btn {
 
     background: #ffffff;
 
-    border: 1px solid #e0e3eb;
+    border: 1px solid rgba(0, 0, 0, 0.12);
 
     color: #787b86;
 
@@ -3614,9 +3614,9 @@ body.light-mode .tv-align-btn:hover {
 
     background: #f5f5f5;
 
-    border-color: #d1d4dc;
+    border-color: rgba(0, 0, 0, 0.15);
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -3658,7 +3658,7 @@ body.light-mode .tv-align-btn.active:hover {
 
 body.light-mode .tv-align-buttons {
 
-    background: #e0e3eb;
+    background: #ffffff;
 
 }
 
@@ -3668,11 +3668,11 @@ body.light-mode .tv-align-select {
 
     background-color: var(--sp-select-bg, var(--sp-input-bg, #ffffff)) !important;
 
-    border: 1px solid var(--sp-input-border, #e0e3eb);
+    border: 1px solid var(--sp-input-border, rgba(0, 0, 0, 0.15));
 
-    color: var(--sp-text, #131722);
+    color: var(--sp-text, #000000);
 
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23131722' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
     background-repeat: no-repeat;
 
@@ -3688,7 +3688,7 @@ body.light-mode .tv-align-select {
 
 body.light-mode .tv-align-select:hover {
 
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23131722' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
     background-repeat: no-repeat;
 
@@ -3710,7 +3710,7 @@ body.light-mode .tv-align-select option {
 
     background-color: var(--sp-bg, #ffffff) !important;
 
-    color: var(--sp-text, #131722);
+    color: var(--sp-text, #000000);
 
     padding: 8px;
 
@@ -3726,7 +3726,7 @@ body.light-mode .tv-align-select option:focus {
 
     background-color: #e8ebf0 !important;
 
-    color: var(--sp-text, #131722) !important;
+    color: var(--sp-text, #000000) !important;
 
 }
 
@@ -3736,7 +3736,7 @@ body.light-mode .tv-ending-btn {
 
     background: #ffffff !important;
 
-    border: 1px solid #e0e3eb !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
 
     color: #787b86 !important;
 
@@ -3748,9 +3748,9 @@ body.light-mode .tv-ending-btn:hover {
 
     background: #f5f5f5 !important;
 
-    border-color: #d1d4dc !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -3796,7 +3796,7 @@ body.light-mode .tv-ending-dropdown-btn {
 
     background: #ffffff !important;
 
-    border: 1px solid #e0e3eb !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
 
 }
 
@@ -3806,7 +3806,7 @@ body.light-mode .tv-ending-dropdown-btn:hover {
 
     background: #f5f5f5 !important;
 
-    border-color: #d1d4dc !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
 
 }
 
@@ -3818,7 +3818,7 @@ body.light-mode .tv-ending-dropdown-btn svg path,
 
 body.light-mode .tv-ending-dropdown-btn svg circle {
 
-    stroke: #131722 !important;
+    stroke: #000000 !important;
 
 }
 
@@ -3826,7 +3826,7 @@ body.light-mode .tv-ending-dropdown-btn svg circle {
 
 body.light-mode .tv-ending-dropdown-btn svg path[fill] {
 
-    fill: #131722 !important;
+    fill: #000000 !important;
 
 }
 
@@ -3836,7 +3836,7 @@ body.light-mode .tv-ending-dropdown-menu {
 
     background: #ffffff !important;
 
-    border-color: #e0e3eb !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
 
     box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
 
@@ -3846,7 +3846,7 @@ body.light-mode .tv-ending-dropdown-menu {
 
 body.light-mode .tv-ending-option {
 
-    border-color: #e0e3eb !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
 
 }
 
@@ -3854,7 +3854,7 @@ body.light-mode .tv-ending-option {
 
 body.light-mode .tv-ending-option span {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -3866,9 +3866,9 @@ body.light-mode .tv-ending-option svg path,
 
 body.light-mode .tv-ending-option svg circle {
 
-    stroke: #131722 !important;
+    stroke: #000000 !important;
 
-    fill: #131722 !important;
+    fill: #000000 !important;
 
 }
 
@@ -3876,7 +3876,7 @@ body.light-mode .tv-ending-option svg circle {
 
 body.light-mode .tv-ending-option svg path[fill] {
 
-    fill: #131722 !important;
+    fill: #000000 !important;
 
 }
 
@@ -3894,9 +3894,9 @@ body.light-mode .tv-info-dropdown-btn {
 
     background: #ffffff !important;
 
-    border: 1px solid #e0e3eb !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -3906,7 +3906,7 @@ body.light-mode .tv-info-dropdown-btn:hover {
 
     background: #f5f5f5 !important;
 
-    border-color: #d1d4dc !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
 
 }
 
@@ -3914,7 +3914,7 @@ body.light-mode .tv-info-dropdown-btn:hover {
 
 body.light-mode .tv-info-dropdown-btn svg {
 
-    stroke: #131722 !important;
+    stroke: #000000 !important;
 
 }
 
@@ -3924,7 +3924,7 @@ body.light-mode .tv-info-dropdown-menu {
 
     background: #ffffff !important;
 
-    border-color: #e0e3eb !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
 
 }
 
@@ -3932,7 +3932,7 @@ body.light-mode .tv-info-dropdown-menu {
 
 body.light-mode .tv-info-option {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -3940,7 +3940,7 @@ body.light-mode .tv-info-option {
 
 body.light-mode .tv-info-option span {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -3956,7 +3956,7 @@ body.light-mode .tv-info-option:hover {
 
 body.light-mode .tv-modal-footer {
 
-    border-top-color: #e0e3eb;
+    border-top-color: rgba(0, 0, 0, 0.12);
 
 }
 
@@ -3966,9 +3966,9 @@ body.light-mode .tv-template-btn {
 
     background: #ffffff !important;
 
-    border: 1px solid #e0e3eb !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -3978,7 +3978,7 @@ body.light-mode .tv-template-btn:hover {
 
     background: #f5f5f5 !important;
 
-    border-color: #d1d4dc !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
 
 }
 
@@ -4020,7 +4020,7 @@ body.light-mode .tv-color-picker {
 
     background: #ffffff;
 
-    border-color: #e0e3eb;
+    border-color: rgba(0, 0, 0, 0.12);
 
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 
@@ -4030,7 +4030,7 @@ body.light-mode .tv-color-picker {
 
 body.light-mode .tv-opacity-label {
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -4038,11 +4038,11 @@ body.light-mode .tv-opacity-label {
 
 body.light-mode .tv-opacity-input {
 
-    background: #f0f3fa;
+    background: #ffffff;
 
-    border-color: #e0e3eb;
+    border-color: rgba(0, 0, 0, 0.12);
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -4058,7 +4058,7 @@ body.light-mode .tv-opacity-percent {
 
 body.light-mode .tv-extend-section {
 
-    border-top-color: #e0e3eb;
+    border-top-color: rgba(0, 0, 0, 0.12);
 
 }
 
@@ -4066,7 +4066,7 @@ body.light-mode .tv-extend-section {
 
 body.light-mode .tv-timeframe-item {
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -4074,7 +4074,7 @@ body.light-mode .tv-timeframe-item {
 
 body.light-mode .tv-prop-row {
 
-    border-bottom-color: #e0e3eb;
+    border-bottom-color: rgba(0, 0, 0, 0.12);
 
 }
 
@@ -4100,7 +4100,7 @@ body.light-mode .tv-select option {
 
     background: #ffffff;
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -4108,7 +4108,7 @@ body.light-mode .tv-prop-dropdown-btn {
 
     background: #f1f5f9;
     border: 1px solid #cbd5e1;
-    color: #1f2937;
+    color: #000000;
 
 }
 
@@ -4117,7 +4117,7 @@ body.light-mode .tv-prop-dropdown-btn:hover {
     background: rgba(41, 98, 255, 0.10);
     border-color: rgba(41, 98, 255, 0.55);
     box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.14);
-    color: #0f172a;
+    color: #000000;
 
 }
 
@@ -4131,7 +4131,7 @@ body.light-mode .tv-prop-dropdown-menu {
 
 body.light-mode .tv-prop-dropdown-option {
 
-    color: #1f2937;
+    color: #000000;
     font-weight: 500;
 
 }
@@ -4139,7 +4139,7 @@ body.light-mode .tv-prop-dropdown-option {
 body.light-mode .tv-prop-dropdown-option:hover {
 
     background: #eff6ff;
-    color: #0f172a;
+    color: #000000;
 
 }
 
@@ -4156,9 +4156,9 @@ body.light-mode .tv-input {
 
     background: #ffffff;
 
-    border: 1px solid #e0e3eb;
+    border: 1px solid rgba(0, 0, 0, 0.12);
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -4168,7 +4168,7 @@ body.light-mode .tv-input:hover {
 
     background: #f5f5f5;
 
-    border-color: #d1d4dc;
+    border-color: rgba(0, 0, 0, 0.15);
 
 }
 
@@ -4178,7 +4178,7 @@ body.light-mode .settings-template-dropdown {
 
     background: #ffffff !important;
 
-    border: 1px solid #e0e3eb !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
 
 }
 
@@ -4186,7 +4186,7 @@ body.light-mode .settings-template-dropdown {
 
 body.light-mode .settings-template-dropdown .template-dropdown-item {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -4204,7 +4204,7 @@ body.light-mode .settings-info-dropdown {
 
     background: #ffffff !important;
 
-    border: 1px solid #e0e3eb !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
 
 }
 
@@ -4212,7 +4212,7 @@ body.light-mode .settings-info-dropdown {
 
 body.light-mode .settings-info-dropdown .tv-info-option {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -4228,7 +4228,7 @@ body.light-mode .settings-info-dropdown .tv-info-option:hover {
 
 body.light-mode .settings-info-dropdown .tv-info-option span {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -4236,11 +4236,11 @@ body.light-mode .settings-info-dropdown .tv-info-option span {
 
 body.light-mode .tv-line-type-select {
 
-    background: #f0f3fa;
+    background: #ffffff;
 
-    border-color: #e0e3eb;
+    border-color: rgba(0, 0, 0, 0.12);
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -4248,7 +4248,7 @@ body.light-mode .tv-line-type-select {
 
 body.light-mode .tv-line-type-select:hover {
 
-    border-color: #d1d4dc;
+    border-color: rgba(0, 0, 0, 0.15);
 
 }
 
@@ -4384,7 +4384,7 @@ body.light-mode .tv-side-tab-btn .front {
 
 body.light-mode .tv-side-tab-btn:hover .front {
 
-    color: #131722;
+    color: #000000;
 
     background: rgba(0, 0, 0, 0.04);
 
@@ -4704,9 +4704,9 @@ body.light-mode .tv-side-tab-btn.active:hover .front {
 
 body.light-mode .tv-collapsible-tab-btn {
 
-    background: #e0e3eb;
+    background: #ffffff;
     border-color: #cbd5e1;
-    color: #334155;
+    color: #000000;
 
 }
 
@@ -4718,7 +4718,7 @@ body.light-mode .tv-collapsible-tab-btn:hover {
 
     border-color: rgba(41, 98, 255, 0.6);
 
-    color: #0f172a;
+    color: #000000;
 
 }
 
@@ -4758,7 +4758,7 @@ body.light-mode .tv-external-dropdown {
 
     background: #ffffff;
 
-    border-color: #e0e3eb;
+    border-color: rgba(0, 0, 0, 0.12);
 
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 
@@ -4794,7 +4794,7 @@ body.light-mode .tv-external-dropdown {
 
     background: #0a0a0a;
 
-    color: #d1d4dc;
+    color: var(--sp-text,#d1d4dc);
 
     font-size: 13px;
 
@@ -4840,9 +4840,9 @@ body.light-mode .tv-external-dropdown {
 
 body.light-mode .tv-template-item {
 
-    background: #e0e3eb;
+    background: #ffffff;
 
-    color: #131722;
+    color: #000000;
 
 }
 
@@ -4850,7 +4850,7 @@ body.light-mode .tv-template-item {
 
 body.light-mode .tv-template-item:hover {
 
-    background: #d1d4dc;
+    background: rgba(0, 0, 0, 0.08);
 
 }
 
@@ -4870,7 +4870,7 @@ body.light-mode .settings-template-dropdown {
 
 body.light-mode .settings-template-dropdown .template-dropdown-item {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -4878,7 +4878,7 @@ body.light-mode .settings-template-dropdown .template-dropdown-item {
 
 body.light-mode .settings-template-dropdown .template-dropdown-item:hover {
 
-    background: #f0f3fa !important;
+    background: #ffffff !important;
 
 }
 
@@ -4886,7 +4886,7 @@ body.light-mode .settings-template-dropdown .template-dropdown-item:hover {
 
 body.light-mode .settings-template-dropdown .template-divider {
 
-    background: #e0e3eb !important;
+    background: rgba(0, 0, 0, 0.1) !important;
 
 }
 
@@ -4904,11 +4904,11 @@ body.light-mode .template-save-dialog {
 
 body.light-mode .template-save-dialog input {
 
-    background: #f0f3fa !important;
+    background: #ffffff !important;
 
-    border-color: #e0e3eb !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -4916,7 +4916,7 @@ body.light-mode .template-save-dialog input {
 
 body.light-mode .template-save-dialog .dialog-title {
 
-    color: #131722 !important;
+    color: #000000 !important;
 
 }
 
@@ -6083,7 +6083,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const _mlDaAttr = _mlDa ? `stroke-dasharray="${_mlDa}"` : '';
 
-            const _mlInitSvg = `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${_mlDaAttr}/></svg>`;
+            const _mlInitSvg = `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" ${_mlDaAttr}/></svg>`;
 
             const middleRow = document.createElement('div');
 
@@ -6119,13 +6119,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         <div class="tv-linetype-dropdown-menu" style="${_mlMenu}">
 
-                            <div class="tv-ending-option" data-value="" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
+                            <div class="tv-ending-option" data-value="" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5"/></svg></div>
 
-                            <div class="tv-ending-option" data-value="10,6" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
+                            <div class="tv-ending-option" data-value="10,6" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
 
-                            <div class="tv-ending-option" data-value="2,2" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
+                            <div class="tv-ending-option" data-value="2,2" style="${_mlOpt} ${_mlOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
 
-                            <div class="tv-ending-option" data-value="8,4,2,4" style="${_mlOpt}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
+                            <div class="tv-ending-option" data-value="8,4,2,4" style="${_mlOpt}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
 
                         </div>
 
@@ -6135,7 +6135,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         <button class="tv-ending-dropdown-btn" style="width: 100%; height: 30px; padding: 0 6px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
 
-                            <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${mlWidth}px</span>
+                            <span class="tv-linewidth-current" style="color:var(--sp-text,#d1d4dc);font-size:11px;">${mlWidth}px</span>
 
                             ${_mlChevron}
 
@@ -6143,13 +6143,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         <div class="tv-linewidth-dropdown-menu" style="${_mlMenu}">
 
-                            <div class="tv-ending-option" data-value="1" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:#d1d4dc;font-size:11px;">1px</span></div>
+                            <div class="tv-ending-option" data-value="1" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">1px</span></div>
 
-                            <div class="tv-ending-option" data-value="2" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:#d1d4dc;font-size:11px;">2px</span></div>
+                            <div class="tv-ending-option" data-value="2" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">2px</span></div>
 
-                            <div class="tv-ending-option" data-value="3" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:#d1d4dc;font-size:11px;">3px</span></div>
+                            <div class="tv-ending-option" data-value="3" style="${_mlOpt} padding: 6px 12px; ${_mlOptB}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">3px</span></div>
 
-                            <div class="tv-ending-option" data-value="4" style="${_mlOpt} padding: 6px 12px;"><span style="color:#d1d4dc;font-size:11px;">4px</span></div>
+                            <div class="tv-ending-option" data-value="4" style="${_mlOpt} padding: 6px 12px;"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">4px</span></div>
 
                         </div>
 
@@ -6517,7 +6517,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-prop-controls">
 
-                    <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 11px; display: flex; align-items: center; gap: 6px;">
+                    <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 11px; display: flex; align-items: center; gap: 6px;">
 
                         <span>${this.getInfoSummaryText(drawing)}</span>
 
@@ -7638,7 +7638,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
         const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
         const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
-        const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
+        const _ddOptStyle = 'padding:5px 10px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;';
         const _lvlMenus = [];
         const _makeDD = (wrap, btn, menu, onSelect) => {
             _lvlMenus.push(menu);
@@ -8369,7 +8369,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
         const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
         const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
-        const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
+        const _ddOptStyle = 'padding:5px 10px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;';
         const _lvlMenus = [];
         const _makeDD = (wrap, btn, menu, onSelect) => {
             _lvlMenus.push(menu);
@@ -8935,7 +8935,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;">
 
-                ${styleOptions.map(s => `<div class="tv-fontsize-option" data-value="${s.value}" style="padding: 7px 12px; cursor: default; color: #d1d4dc; font-size: 12px; white-space: nowrap; text-align: left;">${s.label}</div>`).join('')}
+                ${styleOptions.map(s => `<div class="tv-fontsize-option" data-value="${s.value}" style="padding: 7px 12px; cursor: default; color: var(--sp-text,#d1d4dc); font-size: 12px; white-space: nowrap; text-align: left;">${s.label}</div>`).join('')}
 
             </div>`;
 
@@ -9209,7 +9209,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
 
-                color: #d1d4dc; padding: 5px 8px; font-size: 11px; width: 60px;
+                color: var(--sp-text,#d1d4dc); padding: 5px 8px; font-size: 11px; width: 60px;
 
                 outline: none; transition: border-color 0.15s; box-sizing: border-box;
 
@@ -9980,7 +9980,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const _lvlMode = drawing.style.levelsLabelMode === 'percent' ? 'Percent' : 'Values';
             const levelsDropWrap = document.createElement('div');
             levelsDropWrap.style.cssText = `position:relative;width:${levelsModeSelectWidth}px;min-width:${levelsModeSelectWidth}px;`;
-            levelsDropWrap.innerHTML = `<button style="width:100%;height:26px;padding:0 20px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;">${_lvlMode}${_lvlChev}</button><div style="display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);min-width:${levelsModeSelectWidth}px;overflow:hidden;"><div data-value="values" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Values</div><div data-value="percent" style="padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;">Percent</div></div>`;
+            levelsDropWrap.innerHTML = `<button style="width:100%;height:26px;padding:0 20px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;">${_lvlMode}${_lvlChev}</button><div style="display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);min-width:${levelsModeSelectWidth}px;overflow:hidden;"><div data-value="values" style="padding:5px 10px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;">Values</div><div data-value="percent" style="padding:5px 10px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;">Percent</div></div>`;
             _lvlBtn = levelsDropWrap.querySelector('button');
             const _lvlMenu = levelsDropWrap.querySelector('div');
             _lvlBtn.addEventListener('click', e => { e.stopPropagation(); const open = _lvlMenu.style.display !== 'none'; _lvlMenu.style.display = open ? 'none' : 'block'; if (!open) { const r = _lvlBtn.getBoundingClientRect(); _lvlMenu.style.top = r.bottom + 2 + 'px'; _lvlMenu.style.left = r.left + 'px'; } });
@@ -10503,7 +10503,7 @@ body.light-mode .template-save-dialog .dialog-title {
             const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
             const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
             const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
-            const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
+            const _ddOptStyle = 'padding:5px 10px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;';
             const _allMenus = [];
             const _makeCustomDD = (wrap, btn, menu, opts, onSelect) => {
                 _allMenus.push(menu);
@@ -10633,7 +10633,7 @@ body.light-mode .template-save-dialog .dialog-title {
             input.step = isTimeZone ? '1' : (_isPct ? '0.1' : '0.001');
             input.value = _isPct ? String(parseFloat((level.value * 100).toFixed(4))) : String(level.value);
 
-            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+            input.style.cssText = 'color: var(--sp-text,#d1d4dc); font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
 
 
 
@@ -11119,7 +11119,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const _chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:6px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
         const _ddBtnStyle = 'height:26px;border:1px solid var(--sp-input-border,#363a45);border-radius:4px;background:var(--sp-input-bg,rgba(255,255,255,0.08));color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;justify-content:flex-start;position:relative;box-sizing:border-box;padding:0 20px 0 8px;';
         const _ddMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
-        const _ddOptStyle = 'padding:5px 10px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;';
+        const _ddOptStyle = 'padding:5px 10px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;';
         const _gannMenus = [];
         const _makeDD = (wrap, btn, menu, onSelect) => {
             _gannMenus.push(menu);
@@ -11800,7 +11800,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
 
-                color: #d1d4dc; padding: 5px 8px; font-size: 11px; width: 60px;
+                color: var(--sp-text,#d1d4dc); padding: 5px 8px; font-size: 11px; width: 60px;
 
                 outline: none; transition: border-color 0.15s; box-sizing: border-box;
 
@@ -11876,7 +11876,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const dAttr = da ? `stroke-dasharray="${da}"` : '';
 
-                return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dAttr}/></svg>`;
+                return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" ${dAttr}/></svg>`;
 
             };
 
@@ -11918,13 +11918,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-linetype-dropdown-menu" style="${_menuCss}">
 
-                    <div class="tv-ending-option" data-value=""     style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
+                    <div class="tv-ending-option" data-value=""     style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5"/></svg></div>
 
-                    <div class="tv-ending-option" data-value="10,6" style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
+                    <div class="tv-ending-option" data-value="10,6" style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
 
-                    <div class="tv-ending-option" data-value="2,2"  style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
+                    <div class="tv-ending-option" data-value="2,2"  style="${_optBase}${_optB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
 
-                    <div class="tv-ending-option" data-value="8,4,2,4" style="${_optBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
+                    <div class="tv-ending-option" data-value="8,4,2,4" style="${_optBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
 
                 </div>`;
 
@@ -11998,13 +11998,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
             widthDropdownEl.style.cssText = 'position:relative;flex:1 1 0;min-width:40px;';
 
-            const _wItems = [1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_optBase}padding:6px 12px;${s!==4?_optB:''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('');
+            const _wItems = [1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_optBase}padding:6px 12px;${s!==4?_optB:''}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">${s}px</span></div>`).join('');
 
             widthDropdownEl.innerHTML = `
 
                 <button class="tv-ending-dropdown-btn" style="${_btnCss}">
 
-                    <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${currentW}px</span>
+                    <span class="tv-linewidth-current" style="color:var(--sp-text,#d1d4dc);font-size:11px;">${currentW}px</span>
 
                     ${_chev}
 
@@ -12198,7 +12198,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; width: 92px; min-width: 92px;">
 
-                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
 
                     <span>${labelSize}</span>
 
@@ -12208,7 +12208,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
 
-                    ${[8,9,10,11,12,14,16,18,20,24].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
+                    ${[8,9,10,11,12,14,16,18,20,24].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: var(--sp-text,#d1d4dc); font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
 
                 </div>
 
@@ -12434,7 +12434,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const _bMenu = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:80px;box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
         const _bOptB = `border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));`;
         const _bOptBase = `padding:8px;cursor:default;display:flex;align-items:center;justify-content:center;`;
-        const _getBTypeSvg = (lt) => { const da = (lt === '10,6' || lt === '5,5') ? '12,7' : (lt === '2,2' || lt === '3,3') ? '2,4' : lt === '8,4,2,4' ? '10,4,2,4' : ''; const daAttr = da ? `stroke-dasharray="${da}"` : ''; return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${daAttr}/></svg>`; };
+        const _getBTypeSvg = (lt) => { const da = (lt === '10,6' || lt === '5,5') ? '12,7' : (lt === '2,2' || lt === '3,3') ? '2,4' : lt === '8,4,2,4' ? '10,4,2,4' : ''; const daAttr = da ? `stroke-dasharray="${da}"` : ''; return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" ${daAttr}/></svg>`; };
 
         borderRow.controls.innerHTML = `
 
@@ -12446,20 +12446,20 @@ body.light-mode .template-save-dialog .dialog-title {
                     ${_bChev}
                 </button>
                 <div class="tv-linetype-dropdown-menu" style="${_bMenu}">
-                    <div class="tv-ending-option" data-value="" style="${_bOptBase}${_bOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
-                    <div class="tv-ending-option" data-value="10,6" style="${_bOptBase}${_bOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
-                    <div class="tv-ending-option" data-value="2,2" style="${_bOptBase}${_bOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
-                    <div class="tv-ending-option" data-value="8,4,2,4" style="${_bOptBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
+                    <div class="tv-ending-option" data-value="" style="${_bOptBase}${_bOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5"/></svg></div>
+                    <div class="tv-ending-option" data-value="10,6" style="${_bOptBase}${_bOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
+                    <div class="tv-ending-option" data-value="2,2" style="${_bOptBase}${_bOptB}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
+                    <div class="tv-ending-option" data-value="8,4,2,4" style="${_bOptBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
                 </div>
             </div>
 
             <div class="tv-linewidth-dropdown" data-prop="borderWidth" style="position:relative;flex:1 1 0;min-width:40px;">
                 <button class="tv-ending-dropdown-btn" style="width:100%;height:30px;padding:0 6px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;">
-                    <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${borderWidth}px</span>
+                    <span class="tv-linewidth-current" style="color:var(--sp-text,#d1d4dc);font-size:11px;">${borderWidth}px</span>
                     ${_bChev}
                 </button>
                 <div class="tv-linewidth-dropdown-menu" style="${_bMenu}">
-                    ${[1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_bOptBase}padding:6px 12px;${s !== 4 ? _bOptB : ''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('')}
+                    ${[1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_bOptBase}padding:6px 12px;${s !== 4 ? _bOptB : ''}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">${s}px</span></div>`).join('')}
                 </div>
             </div>
 
@@ -12523,7 +12523,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             statsRow.controls.innerHTML = `
 
-                <button class="tv-info-dropdown-btn" style="width: fit-content; height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                <button class="tv-info-dropdown-btn" style="width: fit-content; height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
 
                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statsSummary}</span>
 
@@ -12551,7 +12551,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; width: 60px; min-width: 60px;">
 
-                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 30px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 11px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 30px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 11px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
 
                     <span>${parseInt(drawing.style.fontSize || 12, 10)}</span>
 
@@ -12561,7 +12561,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
 
-                    ${[8,9,10,11,12,14,16,18,20,24,28,32].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
+                    ${[8,9,10,11,12,14,16,18,20,24,28,32].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: var(--sp-text,#d1d4dc); font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
 
                 </div>
 
@@ -12783,7 +12783,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             >
 
-            <span class="tv-profile-width-value" style="color: #d1d4dc; font-size: 12px; min-width: 16px;">%</span>
+            <span class="tv-profile-width-value" style="color: var(--sp-text,#d1d4dc); font-size: 12px; min-width: 16px;">%</span>
 
         `;
 
@@ -12799,13 +12799,13 @@ body.light-mode .template-save-dialog .dialog-title {
             const cur = opts.find(o => o.v === curVal) || opts[0];
             const chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:8px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
             const btn = document.createElement('button'); btn.type = 'button';
-            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
+            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
             btn.innerHTML = `<span class="tv-csd-cur">${cur.l}</span>${chev}`;
             const menu = document.createElement('div');
             menu.style.cssText = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
             opts.forEach((opt, i) => {
                 const item = document.createElement('div');
-                item.style.cssText = `padding:6px 12px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
+                item.style.cssText = `padding:6px 12px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
                 item.textContent = opt.l;
                 item.addEventListener('mouseenter', () => { item.style.background = 'rgba(255,255,255,0.08)'; });
                 item.addEventListener('mouseleave', () => { item.style.background = ''; });
@@ -12853,7 +12853,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <input type="range" class="tv-slider" data-prop="backgroundOpacity" value="${zoneBackgroundOpacityPercent}" min="0" max="100" step="1" style="width: 92px; accent-color: #2962ff;">
 
-            <span class="tv-background-opacity-value" style="color: #d1d4dc; font-size: 12px; min-width: 38px; text-align: right;">${zoneBackgroundOpacityPercent}%</span>
+            <span class="tv-background-opacity-value" style="color: var(--sp-text,#d1d4dc); font-size: 12px; min-width: 38px; text-align: right;">${zoneBackgroundOpacityPercent}%</span>
 
         `;
 
@@ -13075,7 +13075,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         label.textContent = 'Image';
 
-        label.style.cssText = 'display: block; margin-bottom: 8px; color: #d1d4dc; font-size: 12px;';
+        label.style.cssText = 'display: block; margin-bottom: 8px; color: var(--sp-text,#d1d4dc); font-size: 12px;';
 
         imageGroup.appendChild(label);
 
@@ -13373,7 +13373,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 cursor: pointer;
 
-                                color: #d1d4dc;
+                                color: var(--sp-text,#d1d4dc);
 
                                 display: flex;
 
@@ -13529,7 +13529,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 cursor: pointer;
 
-                color: #d1d4dc;
+                color: var(--sp-text,#d1d4dc);
 
                 display: flex;
 
@@ -13629,7 +13629,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     style="width: 100px; accent-color: #2962ff;">
 
-                <span class="tv-transparency-value" style="color: #d1d4dc; font-size: 13px; min-width: 40px;">${Math.round((drawing.style.opacity || 1) * 100)}%</span>
+                <span class="tv-transparency-value" style="color: var(--sp-text,#d1d4dc); font-size: 13px; min-width: 40px;">${Math.round((drawing.style.opacity || 1) * 100)}%</span>
 
             </div>
 
@@ -13743,7 +13743,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     style="width: 100px; accent-color: #2962ff;">
 
-                <span class="tv-opacity-value" style="color: #d1d4dc; font-size: 13px; min-width: 40px;">${Math.round((drawing.style.opacity || 1) * 100)}%</span>
+                <span class="tv-opacity-value" style="color: var(--sp-text,#d1d4dc); font-size: 13px; min-width: 40px;">${Math.round((drawing.style.opacity || 1) * 100)}%</span>
 
             </div>
 
@@ -14004,7 +14004,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     border-radius: 4px;
 
-                    color: #d1d4dc;
+                    color: var(--sp-text,#d1d4dc);
 
                     font-size: 13px;
 
@@ -14052,7 +14052,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     border-radius: 4px;
 
-                    color: #d1d4dc;
+                    color: var(--sp-text,#d1d4dc);
 
                     font-size: 13px;
 
@@ -14156,7 +14156,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; min-width: 80px;">
 
-                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
 
                         <span>${drawing.style.fontSize || 14}</span>
 
@@ -14166,7 +14166,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 200px; overflow-y: auto;">
 
-                        ${[10,12,14,16,18,20,24,28,32,36].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
+                        ${[10,12,14,16,18,20,24,28,32,36].map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: var(--sp-text,#d1d4dc); font-size: 12px; white-space: nowrap;">${s}</div>`).join('')}
 
                     </div>
 
@@ -14374,7 +14374,7 @@ body.light-mode .template-save-dialog .dialog-title {
         const _prMenuStyle = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:80px;box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
         const _prOptBase = `padding:8px;cursor:default;display:flex;align-items:center;justify-content:center;`;
         const _prOptBorder = `border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));`;
-        const _prGetTypeSvg = (lt) => { const da = (lt === '10,6' || lt === '5,5') ? '12,7' : (lt === '2,2' || lt === '3,3') ? '2,4' : lt === '8,4,2,4' ? '10,4,2,4' : ''; const dasharrayAttr = da ? `stroke-dasharray="${da}"` : ''; return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`; };
+        const _prGetTypeSvg = (lt) => { const da = (lt === '10,6' || lt === '5,5') ? '12,7' : (lt === '2,2' || lt === '3,3') ? '2,4' : lt === '8,4,2,4' ? '10,4,2,4' : ''; const dasharrayAttr = da ? `stroke-dasharray="${da}"` : ''; return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block;flex:1;min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" ${dasharrayAttr}/></svg>`; };
 
         const typeControl = showType ? `
                 <div class="tv-linetype-dropdown" data-prop="${propKey}Type" style="position:relative;flex:1 1 0;min-width:40px;">
@@ -14383,10 +14383,10 @@ body.light-mode .template-save-dialog .dialog-title {
                         ${_prChev}
                     </button>
                     <div class="tv-linetype-dropdown-menu" style="${_prMenuStyle}">
-                        <div class="tv-ending-option" data-value="" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
-                        <div class="tv-ending-option" data-value="10,6" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
-                        <div class="tv-ending-option" data-value="2,2" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
-                        <div class="tv-ending-option" data-value="8,4,2,4" style="${_prOptBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
+                        <div class="tv-ending-option" data-value="" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5"/></svg></div>
+                        <div class="tv-ending-option" data-value="10,6" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
+                        <div class="tv-ending-option" data-value="2,2" style="${_prOptBase}${_prOptBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
+                        <div class="tv-ending-option" data-value="8,4,2,4" style="${_prOptBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
                     </div>
                 </div>
         ` : '';
@@ -14394,11 +14394,11 @@ body.light-mode .template-save-dialog .dialog-title {
         const widthControl = showWidth ? `
                 <div class="tv-linewidth-dropdown" data-prop="${propKey}Width" style="position:relative;flex:1 1 0;min-width:40px;">
                     <button class="tv-ending-dropdown-btn" style="width:100%;height:30px;padding:0 6px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;">
-                        <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${values.lineWidth || 1}px</span>
+                        <span class="tv-linewidth-current" style="color:var(--sp-text,#d1d4dc);font-size:11px;">${values.lineWidth || 1}px</span>
                         ${_prChev}
                     </button>
                     <div class="tv-linewidth-dropdown-menu" style="${_prMenuStyle}">
-                        ${[1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_prOptBase}padding:6px 12px;${s !== 4 ? _prOptBorder : ''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('')}
+                        ${[1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${_prOptBase}padding:6px 12px;${s !== 4 ? _prOptBorder : ''}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">${s}px</span></div>`).join('')}
                     </div>
                 </div>
         ` : '';
@@ -14557,7 +14557,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const dasharrayAttr = da ? `stroke-dasharray="${da}"` : '';
 
-            return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
+            return `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
 
         };
 
@@ -14587,13 +14587,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     <div class="tv-linetype-dropdown-menu" style="${menuStyle}">
 
-                        <div class="tv-ending-option" data-value="" style="${optionBase} ${optionBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5"/></svg></div>
+                        <div class="tv-ending-option" data-value="" style="${optionBase} ${optionBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5"/></svg></div>
 
-                        <div class="tv-ending-option" data-value="10,6" style="${optionBase} ${optionBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
+                        <div class="tv-ending-option" data-value="10,6" style="${optionBase} ${optionBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="12,7"/></svg></div>
 
-                        <div class="tv-ending-option" data-value="2,2" style="${optionBase} ${optionBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
+                        <div class="tv-ending-option" data-value="2,2" style="${optionBase} ${optionBorder}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="2,4"/></svg></div>
 
-                        <div class="tv-ending-option" data-value="8,4,2,4" style="${optionBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
+                        <div class="tv-ending-option" data-value="8,4,2,4" style="${optionBase}"><svg viewBox="0 0 100 20" width="54" height="12"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="10,4,2,4"/></svg></div>
 
                     </div>
 
@@ -14607,9 +14607,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const widthItems = isHighlighter ?
 
-            [8,12,20,32,48,64,80,96].map(s => `<div class="tv-ending-option" data-value="${s}" style="${optionBase} padding: 6px 12px; ${s !== 96 ? optionBorder : ''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('') :
+            [8,12,20,32,48,64,80,96].map(s => `<div class="tv-ending-option" data-value="${s}" style="${optionBase} padding: 6px 12px; ${s !== 96 ? optionBorder : ''}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">${s}px</span></div>`).join('') :
 
-            [1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${optionBase} padding: 6px 12px; ${s !== 4 ? optionBorder : ''}"><span style="color:#d1d4dc;font-size:11px;">${s}px</span></div>`).join('');
+            [1,2,3,4].map(s => `<div class="tv-ending-option" data-value="${s}" style="${optionBase} padding: 6px 12px; ${s !== 4 ? optionBorder : ''}"><span style="color:var(--sp-text,#d1d4dc);font-size:11px;">${s}px</span></div>`).join('');
 
         const lineWidthDropdown = `
 
@@ -14617,7 +14617,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     <button class="tv-ending-dropdown-btn" style="width: 100%; height: 30px; padding: 0 6px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); cursor: default; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; gap: 4px;">
 
-                        <span class="tv-linewidth-current" style="color:#d1d4dc;font-size:11px;">${currentWidthLabel}</span>
+                        <span class="tv-linewidth-current" style="color:var(--sp-text,#d1d4dc);font-size:11px;">${currentWidthLabel}</span>
 
                         ${chevronSvg}
 
@@ -14655,9 +14655,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 ${startStyle === 'arrow' ? 
 
-                                    '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/><path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>' : 
+                                    '<line x1="20" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="4"/><path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>' : 
 
-                                    '<circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/><line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="4"/>'}
+                                    '<circle cx="24" cy="50" r="7" fill="none" stroke="currentColor" stroke-width="4"/><line x1="33" y1="50" x2="88" y2="50" stroke="currentColor" stroke-width="4"/>'}
 
                             </svg>
 
@@ -14669,13 +14669,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 <svg viewBox="0 0 100 100" width="20" height="20">
 
-                                    <circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>
+                                    <circle cx="24" cy="50" r="7" fill="none" stroke="currentColor" stroke-width="4"/>
 
-                                    <line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="4"/>
+                                    <line x1="33" y1="50" x2="88" y2="50" stroke="currentColor" stroke-width="4"/>
 
                                 </svg>
 
-                                <span style="color: #d1d4dc; font-size: 11px;">Normal</span>
+                                <span style="color: var(--sp-text,#d1d4dc); font-size: 11px;">Normal</span>
 
                             </div>
 
@@ -14683,13 +14683,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 <svg viewBox="0 0 100 100" width="20" height="20">
 
-                                    <line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/>
+                                    <line x1="20" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="4"/>
 
                                     <path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>
 
                                 </svg>
 
-                                <span style="color: #d1d4dc; font-size: 11px;">Arrow</span>
+                                <span style="color: var(--sp-text,#d1d4dc); font-size: 11px;">Arrow</span>
 
                             </div>
 
@@ -14705,9 +14705,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 ${endStyle === 'arrow' ? 
 
-                                    '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/><path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>' : 
+                                    '<line x1="20" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="4"/><path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>' : 
 
-                                    '<line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/><circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>'}
+                                    '<line x1="12" y1="50" x2="67" y2="50" stroke="currentColor" stroke-width="4"/><circle cx="76" cy="50" r="7" fill="none" stroke="currentColor" stroke-width="4"/>'}
 
                             </svg>
 
@@ -14719,13 +14719,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 <svg viewBox="0 0 100 100" width="20" height="20">
 
-                                    <line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="4"/>
+                                    <line x1="12" y1="50" x2="67" y2="50" stroke="currentColor" stroke-width="4"/>
 
-                                    <circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="4"/>
+                                    <circle cx="76" cy="50" r="7" fill="none" stroke="currentColor" stroke-width="4"/>
 
                                 </svg>
 
-                                <span style="color: #d1d4dc; font-size: 11px;">Normal</span>
+                                <span style="color: var(--sp-text,#d1d4dc); font-size: 11px;">Normal</span>
 
                             </div>
 
@@ -14733,13 +14733,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 <svg viewBox="0 0 100 100" width="20" height="20">
 
-                                    <line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="4"/>
+                                    <line x1="20" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="4"/>
 
                                     <path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>
 
                                 </svg>
 
-                                <span style="color: #d1d4dc; font-size: 11px;">Arrow</span>
+                                <span style="color: var(--sp-text,#d1d4dc); font-size: 11px;">Arrow</span>
 
                             </div>
 
@@ -14831,7 +14831,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 	                <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; min-width: 60px;">
 
-	                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+	                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
 
 	                        <span>${drawing.style.fontSize || 14}</span>
 
@@ -14843,7 +14843,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 	                        ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map(s => 
 
-	                            `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`
+	                            `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: var(--sp-text,#d1d4dc); font-size: 12px; white-space: nowrap;">${s}</div>`
 
 	                        ).join('')}
 
@@ -14903,7 +14903,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-fontsize-dropdown" data-prop="fontSize" style="position: relative; min-width: 60px;">
 
-                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                    <button class="tv-fontsize-dropdown-btn" style="width: 100%; height: 28px; padding: 0 20px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
 
                         <span>${drawing.style.fontSize || 14}</span>
 
@@ -14915,7 +14915,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map(s => 
 
-                            `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: #d1d4dc; font-size: 12px; white-space: nowrap;">${s}</div>`
+                            `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: center; color: var(--sp-text,#d1d4dc); font-size: 12px; white-space: nowrap;">${s}</div>`
 
                         ).join('')}
 
@@ -15664,12 +15664,12 @@ body.light-mode .template-save-dialog .dialog-title {
         const _rmChev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
         const _rmMenuCss = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
         const _rmOptB = `border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));`;
-        const _rmOptBase = `padding:8px 12px;cursor:default;display:flex;align-items:center;color:#d1d4dc;font-size:12px;`;
+        const _rmOptBase = `padding:8px 12px;cursor:default;display:flex;align-items:center;color:var(--sp-text,#d1d4dc);font-size:12px;`;
 
         modeRow.controls.innerHTML = `
             <div class="tv-rangemode-dropdown" data-prop="rangeMode" style="position:relative;display:inline-flex;align-items:stretch;">
                 <button class="tv-ending-dropdown-btn" style="white-space:nowrap;height:30px;padding:0 8px 0 10px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:6px;">
-                    <span class="tv-rangemode-current" style="color:#d1d4dc;font-size:12px;">${_rmCurrent}</span>
+                    <span class="tv-rangemode-current" style="color:var(--sp-text,#d1d4dc);font-size:12px;">${_rmCurrent}</span>
                     ${_rmChev}
                 </button>
                 <div class="tv-rangemode-dropdown-menu" style="${_rmMenuCss}">
@@ -16001,12 +16001,12 @@ body.light-mode .template-save-dialog .dialog-title {
         const _lvlChev2 = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
         const _lvlMode2 = drawing.style.levelsLabelMode === 'percent' ? 'Percent' : 'Values';
         const _lvlMenuCss2 = `display:none;position:fixed;background:var(--sp-bg,#050028);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;min-width:80px;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
-        const _lvlOptBase2 = `padding:6px 12px;cursor:default;display:flex;align-items:center;color:#d1d4dc;font-size:12px;white-space:nowrap;`;
+        const _lvlOptBase2 = `padding:6px 12px;cursor:default;display:flex;align-items:center;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;`;
         const levelsDropWrap2 = document.createElement('div');
         levelsDropWrap2.style.cssText = `position:relative;display:inline-flex;align-items:stretch;`;
         levelsDropWrap2.innerHTML = `
             <button class="tv-ending-dropdown-btn" style="white-space:nowrap;height:30px;padding:0 8px 0 10px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;gap:6px;box-sizing:border-box;">
-                <span class="tv-lvlmode-current" style="color:#d1d4dc;font-size:12px;">${_lvlMode2}</span>
+                <span class="tv-lvlmode-current" style="color:var(--sp-text,#d1d4dc);font-size:12px;">${_lvlMode2}</span>
                 ${_lvlChev2}
             </button>
             <div class="tv-lvlmode-menu" style="${_lvlMenuCss2}">
@@ -16174,7 +16174,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                        value="${drawing.style.upperDeviation !== undefined ? drawing.style.upperDeviation : 2}"
 
-                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center; width: 44px;">
+                       step="0.1" style="color: var(--sp-text,#d1d4dc); font-size: 13px; text-align: center; width: 44px;">
 
                 <div class="custom-spinner" data-target="upperDeviation">
 
@@ -16214,7 +16214,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                        value="${drawing.style.lowerDeviation !== undefined ? drawing.style.lowerDeviation : -2}"
 
-                       step="0.1" style="color: #d1d4dc; font-size: 13px; text-align: center; width: 44px;">
+                       step="0.1" style="color: var(--sp-text,#d1d4dc); font-size: 13px; text-align: center; width: 44px;">
 
                 <div class="custom-spinner" data-target="lowerDeviation">
 
@@ -16318,7 +16318,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <div class="tv-fontsize-dropdown" data-prop="source" style="position: relative; ${sourceColStyle}; display: flex; align-items: center; justify-content: flex-end;">
 
-                <button class="tv-fontsize-dropdown-btn" type="button" style="width: auto; max-width: 100%; height: 28px; padding: 0 22px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: #d1d4dc; cursor: default; font-size: 12px; line-height: 28px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box; text-transform: capitalize; white-space: nowrap;">
+                <button class="tv-fontsize-dropdown-btn" type="button" style="width: auto; max-width: 100%; height: 28px; padding: 0 22px 0 8px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 12px; line-height: 28px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box; text-transform: capitalize; white-space: nowrap;">
 
                     <span>${currentSource}</span>
 
@@ -16328,7 +16328,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-fontsize-dropdown-menu" style="display: none; position: fixed; background: var(--sp-bg, #050028); border: 1px solid var(--sp-ui-border, rgba(60,60,72,0.95)); border-radius: 4px; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;">
 
-                    ${sourceOptions.map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: left; color: #d1d4dc; font-size: 12px; white-space: nowrap; text-transform: capitalize;">${s}</div>`).join('')}
+                    ${sourceOptions.map(s => `<div class="tv-fontsize-option" data-value="${s}" style="padding: 6px 12px; cursor: default; text-align: left; color: var(--sp-text,#d1d4dc); font-size: 12px; white-space: nowrap; text-transform: capitalize;">${s}</div>`).join('')}
 
                 </div>
 
@@ -16430,13 +16430,13 @@ body.light-mode .template-save-dialog .dialog-title {
             const cur = opts.find(o => o.v === curVal) || opts[0];
             const chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:8px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
             const btn = document.createElement('button'); btn.type = 'button';
-            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
+            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
             btn.innerHTML = `<span class="tv-csd-cur">${cur.l}</span>${chev}`;
             const menu = document.createElement('div');
             menu.style.cssText = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
             opts.forEach((opt, i) => {
                 const item = document.createElement('div');
-                item.style.cssText = `padding:6px 12px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
+                item.style.cssText = `padding:6px 12px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
                 item.textContent = opt.l;
                 item.addEventListener('mouseenter', () => { item.style.background = 'rgba(255,255,255,0.08)'; });
                 item.addEventListener('mouseleave', () => { item.style.background = ''; });
@@ -16561,7 +16561,7 @@ body.light-mode .template-save-dialog .dialog-title {
             input.min = '0.001';
             input.max = '1000';
             input.step = '0.1';
-            input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+            input.style.cssText = 'color: var(--sp-text,#d1d4dc); font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
             
             const updateValue = () => {
                 const parsed = parseFloat(input.value);
@@ -16785,13 +16785,13 @@ body.light-mode .template-save-dialog .dialog-title {
             const cur = opts.find(o => o.v === curVal) || opts[0];
             const chev = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#787b86" stroke-width="2" style="position:absolute;right:8px;flex-shrink:0;"><path d="M6 9l6 6 6-6"/></svg>`;
             const btn = document.createElement('button'); btn.type = 'button';
-            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
+            btn.style.cssText = `width:100%;height:30px;padding:0 24px 0 10px;border:1px solid rgba(120,123,134,0.35);border-radius:6px;background:rgba(255,255,255,0.08);color:var(--sp-text,#d1d4dc);cursor:default;font-size:12px;display:flex;align-items:center;position:relative;box-sizing:border-box;`;
             btn.innerHTML = `<span class="tv-csd-cur">${cur.l}</span>${chev}`;
             const menu = document.createElement('div');
             menu.style.cssText = `display:none;position:fixed;background:var(--sp-bg,#1e222d);border:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));border-radius:4px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;`;
             opts.forEach((opt, i) => {
                 const item = document.createElement('div');
-                item.style.cssText = `padding:6px 12px;cursor:default;color:#d1d4dc;font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
+                item.style.cssText = `padding:6px 12px;cursor:default;color:var(--sp-text,#d1d4dc);font-size:12px;white-space:nowrap;${i < opts.length - 1 ? 'border-bottom:1px solid var(--sp-ui-border,rgba(60,60,72,0.95));' : ''}`;
                 item.textContent = opt.l;
                 item.addEventListener('mouseenter', () => { item.style.background = 'rgba(255,255,255,0.08)'; });
                 item.addEventListener('mouseleave', () => { item.style.background = ''; });
@@ -16827,7 +16827,7 @@ body.light-mode .template-save-dialog .dialog-title {
         input.min = '1';
         input.max = '500';
         input.step = '1';
-        input.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+        input.style.cssText = 'color: var(--sp-text,#d1d4dc); font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
         
         const updateValue = () => {
             const parsed = parseInt(input.value);
@@ -16933,7 +16933,7 @@ body.light-mode .template-save-dialog .dialog-title {
         input2.min = '1';
         input2.max = '100';
         input2.step = '1';
-        input2.style.cssText = 'color: #d1d4dc; font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+        input2.style.cssText = 'color: var(--sp-text,#d1d4dc); font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
         
         const updateValue2 = () => {
             const parsed = parseInt(input2.value);
@@ -20372,15 +20372,15 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         (prop === 'startStyle' ? 
 
-                            '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="3"/><path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>' : 
+                            '<line x1="20" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="3"/><path d="M 20 50 L 40 30 L 40 70 Z" fill="#d1d4dc"/>' : 
 
-                            '<line x1="20" y1="50" x2="80" y2="50" stroke="#d1d4dc" stroke-width="3"/><path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>') :
+                            '<line x1="20" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="3"/><path d="M 80 50 L 60 30 L 60 70 Z" fill="#d1d4dc"/>') :
 
                         (prop === 'startStyle' ? 
 
-                            '<circle cx="24" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="3"/><line x1="33" y1="50" x2="88" y2="50" stroke="#d1d4dc" stroke-width="3"/>' : 
+                            '<circle cx="24" cy="50" r="7" fill="none" stroke="currentColor" stroke-width="3"/><line x1="33" y1="50" x2="88" y2="50" stroke="currentColor" stroke-width="3"/>' : 
 
-                            '<line x1="12" y1="50" x2="67" y2="50" stroke="#d1d4dc" stroke-width="3"/><circle cx="76" cy="50" r="7" fill="none" stroke="#d1d4dc" stroke-width="3"/>');
+                            '<line x1="12" y1="50" x2="67" y2="50" stroke="currentColor" stroke-width="3"/><circle cx="76" cy="50" r="7" fill="none" stroke="currentColor" stroke-width="3"/>');
 
                     
 
@@ -20523,7 +20523,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     const dasharrayAttr = da ? `stroke-dasharray="${da}"` : '';
 
-                    const newSvg = `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="#d1d4dc" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
+                    const newSvg = `<svg viewBox="0 0 100 20" width="100%" height="14" style="display:block; flex:1; min-width:0;"><line x1="5" y1="10" x2="95" y2="10" stroke="currentColor" stroke-width="2.5" ${dasharrayAttr}/></svg>`;
 
                     const currentSpan = btn.querySelector('.tv-linetype-current');
 
@@ -24017,7 +24017,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 </div>
 
-                <span style="color: #d1d4dc; font-size: 11px;">${option.label}</span>
+                <span style="color: var(--sp-text,#d1d4dc); font-size: 11px;">${option.label}</span>
 
             </label>
 
@@ -24361,7 +24361,7 @@ showTemplateDropdown(btn, drawing, modal) {
 
             cursor: default;
 
-            color: #d1d4dc;
+            color: var(--sp-text,#d1d4dc);
 
             font-size: 12px;
 
@@ -24379,7 +24379,7 @@ showTemplateDropdown(btn, drawing, modal) {
 
             cursor: default;
 
-            color: #d1d4dc;
+            color: var(--sp-text,#d1d4dc);
 
             font-size: 12px;
 
@@ -24405,7 +24405,7 @@ showTemplateDropdown(btn, drawing, modal) {
 
                     cursor: default;
 
-                    color: #d1d4dc;
+                    color: var(--sp-text,#d1d4dc);
 
                     font-size: 12px;
 
@@ -24601,7 +24601,7 @@ showSaveTemplateDialog(drawing, dropdown) {
 
     dialog.innerHTML = `
 
-        <div class="dialog-title" style="color: #d1d4dc; font-size: 14px; margin-bottom: 12px;">Save Template</div>
+        <div class="dialog-title" style="color: var(--sp-text,#d1d4dc); font-size: 14px; margin-bottom: 12px;">Save Template</div>
 
         <style>
 
@@ -24639,7 +24639,7 @@ showSaveTemplateDialog(drawing, dropdown) {
 
             border-radius: 4px;
 
-            color: #d1d4dc;
+            color: var(--sp-text,#d1d4dc);
 
             font-size: 13px;
 
@@ -24661,7 +24661,7 @@ showSaveTemplateDialog(drawing, dropdown) {
 
                 border-radius: 4px;
 
-                color: #d1d4dc;
+                color: var(--sp-text,#d1d4dc);
 
                 cursor: default;
 
@@ -25153,7 +25153,7 @@ applyTemplate(drawing, templateId, modal) {
 
             border-radius: 4px;
 
-            color: #d1d4dc;
+            color: var(--sp-text,#d1d4dc);
 
             font-size: 14px;
 
@@ -25728,7 +25728,7 @@ applyTemplate(drawing, templateId, modal) {
 
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 
-    color: #d1d4dc;
+    color: var(--sp-text,#d1d4dc);
 
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
 
@@ -25774,7 +25774,7 @@ applyTemplate(drawing, templateId, modal) {
 
     font-weight: 500;
 
-    color: #d1d4dc;
+    color: var(--sp-text,#d1d4dc);
 
 }
 
@@ -25884,7 +25884,7 @@ applyTemplate(drawing, templateId, modal) {
 
     border: 2px solid rgba(255,255,255,0.3);
 
-    color: #d1d4dc;
+    color: var(--sp-text,#d1d4dc);
 
 }
 
@@ -25978,7 +25978,7 @@ applyTemplate(drawing, templateId, modal) {
 
 .drawing-style-editor .drawing-settings-tab-header .tab-button:hover {
 
-    color: #d1d4dc;
+    color: var(--sp-text,#d1d4dc);
 
     background: rgba(145, 152, 171, 0.15);
 
@@ -26110,7 +26110,7 @@ applyTemplate(drawing, templateId, modal) {
 
 .drawing-style-editor .drawing-color-value {
 
-    color: #d1d4dc;
+    color: var(--sp-text,#d1d4dc);
 
     font-size: 13px;
 
@@ -27024,7 +27024,7 @@ applyTemplate(drawing, templateId, modal) {
 
                     cursor: pointer;
 
-                    color: #d1d4dc;
+                    color: var(--sp-text,#d1d4dc);
 
                     display: flex;
 
@@ -27150,7 +27150,7 @@ applyTemplate(drawing, templateId, modal) {
 
                     </div>
 
-                    <span style="color: #d1d4dc;">Maintain Aspect Ratio</span>
+                    <span style="color: var(--sp-text,#d1d4dc);">Maintain Aspect Ratio</span>
 
                 </div>
 
@@ -27296,7 +27296,7 @@ applyTemplate(drawing, templateId, modal) {
 
                     cursor: pointer;
 
-                    color: #d1d4dc;
+                    color: var(--sp-text,#d1d4dc);
 
                     display: flex;
 
@@ -27454,7 +27454,7 @@ applyTemplate(drawing, templateId, modal) {
 
                     </div>
 
-                    <span style="color: #d1d4dc;">Maintain Aspect Ratio</span>
+                    <span style="color: var(--sp-text,#d1d4dc);">Maintain Aspect Ratio</span>
 
                 </div>
 
@@ -28376,7 +28376,7 @@ applyTemplate(drawing, templateId, modal) {
 
 .drawing-style-editor .drawing-settings-tab-header .tab-button { background: transparent; border: none; color: #9aa1b5; font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 6px; cursor: default; transition: all 0.16s ease; }
 
-.drawing-style-editor .drawing-settings-tab-header .tab-button:hover { color: #d1d4dc; background: rgba(209, 212, 220, 0.08); }
+.drawing-style-editor .drawing-settings-tab-header .tab-button:hover { color: var(--sp-text,#d1d4dc); background: rgba(209, 212, 220, 0.08); }
 
 .drawing-style-editor .drawing-settings-tab-header .tab-button.active { color: #ffffff; background: linear-gradient(135deg, rgba(41,98,255,0.4), rgba(41,98,255,0.2)); box-shadow: 0 4px 10px rgba(41, 98, 255, 0.18); }
 
@@ -32676,7 +32676,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 .drawing-style-editor .drawing-color-value {
 
-                    color: #d1d4dc;
+                    color: var(--sp-text,#d1d4dc);
 
                     font-size: 12px;
 
@@ -32916,7 +32916,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 .drawing-color-palette .drawing-color-opacity-value {
 
-                    color: #d1d4dc;
+                    color: var(--sp-text,#d1d4dc);
 
                     font-size: 12px;
 
@@ -33466,7 +33466,7 @@ applyTemplate(drawing, templateId, modal) {
 
         coord1Section.append('div')
 
-            .html(`<span style="color: #9aa1b5;">Price:</span> <span style="color: #d1d4dc;">${point1.y ? point1.y.toFixed(5) : 'N/A'}</span>`);
+            .html(`<span style="color: #9aa1b5;">Price:</span> <span style="color: var(--sp-text,#d1d4dc);">${point1.y ? point1.y.toFixed(5) : 'N/A'}</span>`);
 
         
 
@@ -33492,7 +33492,7 @@ applyTemplate(drawing, templateId, modal) {
 
         coord2Section.append('div')
 
-            .html(`<span style="color: #9aa1b5;">Price:</span> <span style="color: #d1d4dc;">${point2.y ? point2.y.toFixed(5) : 'N/A'}</span>`);
+            .html(`<span style="color: #9aa1b5;">Price:</span> <span style="color: var(--sp-text,#d1d4dc);">${point2.y ? point2.y.toFixed(5) : 'N/A'}</span>`);
 
         
 
@@ -34408,7 +34408,7 @@ class DrawingContextMenu {
 
             .tv-context-menu-item:hover .tv-context-menu-icon {
 
-                color: #d1d4dc;
+                color: var(--sp-text,#d1d4dc);
 
             }
 
@@ -34470,7 +34470,7 @@ class DrawingContextMenu {
 
                 background: #ffffff;
 
-                border-color: #e0e3eb;
+                border-color: rgba(0, 0, 0, 0.12);
 
                 box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
 
@@ -34484,7 +34484,7 @@ class DrawingContextMenu {
 
             body.light-mode .tv-context-menu-item {
 
-                color: #131722;
+                color: #000000;
 
             }
 
@@ -34510,7 +34510,7 @@ class DrawingContextMenu {
 
             body.light-mode .tv-context-menu-item:hover .tv-context-menu-icon {
 
-                color: #131722;
+                color: #000000;
 
             }
 
@@ -34518,7 +34518,7 @@ class DrawingContextMenu {
 
             body.light-mode .tv-context-menu-divider {
 
-                background: #e0e3eb;
+                background: rgba(0, 0, 0, 0.12);
 
             }
 

@@ -866,13 +866,16 @@ class ScreenshotManager {
         const dataUrl = canvas.toDataURL('image/png');
         const newTab = window.open();
         if (newTab) {
+            const _bg = (typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode'))
+                ? '#ffffff'
+                : '#131722';
             newTab.document.write(`
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <title>Talaria Chart Screenshot</title>
                     <style>
-                        body { margin: 0; background: #131722; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+                        body { margin: 0; background: ${_bg}; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
                         img { max-width: 100%; max-height: 100vh; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
                     </style>
                 </head>
@@ -895,6 +898,19 @@ class ScreenshotManager {
         // Remove existing modal if any
         const existingModal = document.getElementById('screenshotModal');
         if (existingModal) existingModal.remove();
+
+        const isLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
+        const panelBg = isLight ? '#ffffff' : '#1a1d28';
+        const panelBorder = isLight ? 'rgba(0,0,0,0.12)' : '#2a2e39';
+        const textTitle = isLight ? '#000000' : '#ffffff';
+        const textBody = isLight ? '#000000' : '#d1d4dc';
+        const textSecondary = isLight ? '#444444' : '#787b86';
+        const textMuted = isLight ? '#64748b' : '#9ca3af';
+        const sectionBg = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.03)';
+        const closeBg = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
+        const closeBgHover = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+        const closeColor = isLight ? '#000000' : '#787b86';
+        const closeColorHover = isLight ? '#000000' : '#fff';
         
         const modal = document.createElement('div');
         modal.id = 'screenshotModal';
@@ -914,86 +930,86 @@ class ScreenshotManager {
         
         const modalContent = document.createElement('div');
         modalContent.style.cssText = `
-            background: #1a1d28;
+            background: ${panelBg};
             border-radius: 12px;
             padding: 24px;
             max-width: 450px;
             width: 90%;
             box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-            border: 1px solid #2a2e39;
+            border: 1px solid ${panelBorder};
         `;
         
         modalContent.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="color: #fff; margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                <h3 style="color: ${textTitle}; margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
                     📸 Take Screenshot
                 </h3>
                 <button id="closeScreenshotModal" style="
-                    background: rgba(255, 255, 255, 1);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    color: #787b86;
+                    background: ${closeBg};
+                    border: 1px solid ${panelBorder};
+                    color: ${closeColor};
                     font-size: 20px;
                     cursor: default;
                     padding: 4px 8px;
                     border-radius: 6px;
                     transition: all 0.2s;
-                " onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#fff';" 
-                   onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='#787b86';">×</button>
+                " onmouseover="this.style.background='${closeBgHover}'; this.style.color='${closeColorHover}';" 
+                   onmouseout="this.style.background='${closeBg}'; this.style.color='${closeColor}';">×</button>
             </div>
             
             <!-- Screenshot Options -->
             <div style="margin-bottom: 24px;">
-                <div style="color: #787b86; font-size: 12px; margin-bottom: 12px; font-weight: 600;">Screenshot Options</div>
+                <div style="color: ${textSecondary}; font-size: 12px; margin-bottom: 12px; font-weight: 600;">Screenshot Options</div>
                 
                 <!-- Include Elements -->
-                <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                    <div style="color: #9ca3af; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Include in Screenshot</div>
+                <div style="background: ${sectionBg}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="color: ${textMuted}; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Include in Screenshot</div>
                     
                     <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: default;">
                         <input type="checkbox" id="includeToolbar" checked style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: #d1d4dc; font-size: 13px;">Toolbar</span>
+                        <span style="color: ${textBody}; font-size: 13px;">Toolbar</span>
                     </label>
                     
                     <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: default;">
                         <input type="checkbox" id="includeSidebar" style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: #d1d4dc; font-size: 13px;">Sidebars</span>
+                        <span style="color: ${textBody}; font-size: 13px;">Sidebars</span>
                     </label>
                     
                     <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: default;">
                         <input type="checkbox" id="includeDrawings" checked style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: #d1d4dc; font-size: 13px;">Drawings & Indicators</span>
+                        <span style="color: ${textBody}; font-size: 13px;">Drawings & Indicators</span>
                     </label>
                     
                     <label style="display: flex; align-items: center; gap: 10px; cursor: default;">
                         <input type="checkbox" id="includeWatermark" checked style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: #d1d4dc; font-size: 13px;">Watermark (Talaria Chart)</span>
+                        <span style="color: ${textBody}; font-size: 13px;">Watermark (Talaria Chart)</span>
                     </label>
                 </div>
                 
                 <!-- Image Format -->
-                <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                    <div style="color: #9ca3af; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Format</div>
+                <div style="background: ${sectionBg}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="color: ${textMuted}; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Format</div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: default;">
                             <input type="radio" name="imageFormat" value="png" checked style="cursor: default;">
-                            <span style="color: #d1d4dc; font-size: 13px;">PNG</span>
+                            <span style="color: ${textBody}; font-size: 13px;">PNG</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: default;">
                             <input type="radio" name="imageFormat" value="jpg" style="cursor: default;">
-                            <span style="color: #d1d4dc; font-size: 13px;">JPG</span>
+                            <span style="color: ${textBody}; font-size: 13px;">JPG</span>
                         </label>
                     </div>
                 </div>
                 
                 <!-- Quality (for JPG) -->
-                <div id="qualitySection" style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; display: none;">
-                    <div style="color: #9ca3af; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Quality</div>
+                <div id="qualitySection" style="background: ${sectionBg}; border-radius: 8px; padding: 16px; display: none;">
+                    <div style="color: ${textMuted}; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Quality</div>
                     <input type="range" id="imageQuality" min="0.5" max="1.0" step="0.1" value="0.9" style="width: 100%; cursor: pointer;">
                     <div style="display: flex; justify-content: space-between; margin-top: 6px;">
-                        <span style="color: #787b86; font-size: 11px;">Lower</span>
+                        <span style="color: ${textSecondary}; font-size: 11px;">Lower</span>
                         <span id="qualityValue" style="color: #a78bfa; font-size: 11px; font-weight: 600;">90%</span>
-                        <span style="color: #787b86; font-size: 11px;">Higher</span>
+                        <span style="color: ${textSecondary}; font-size: 11px;">Higher</span>
                     </div>
                 </div>
             </div>
