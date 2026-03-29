@@ -4984,6 +4984,17 @@ class OrderManager {
                 body.light-mode .order-input {
                     color: #131722 !important;
                     -webkit-text-fill-color: #131722 !important;
+                    background: transparent !important;
+                    background-color: transparent !important;
+                }
+                body.light-mode .order-panel input.order-input[type="number"] {
+                    -moz-appearance: textfield !important;
+                    appearance: textfield !important;
+                }
+                body.light-mode .order-panel input.order-input[type="number"]::-webkit-outer-spin-button,
+                body.light-mode .order-panel input.order-input[type="number"]::-webkit-inner-spin-button {
+                    -webkit-appearance: none !important;
+                    margin: 0 !important;
                 }
                 body.light-mode .order-input::placeholder { color: #787b86 !important; }
                 body.light-mode .order-input-prefix { color: #787b86 !important; }
@@ -5413,6 +5424,17 @@ class OrderManager {
                 }
                 .order-input::placeholder { color: rgba(127, 135, 158, 0.65); font-weight: 500; }
                 .order-input--compact { padding: 8px 0; font-size: 12px; }
+                /* Hide native number spinners — custom +/- steppers only */
+                .order-panel input.order-input[type="number"] {
+                    -moz-appearance: textfield;
+                    appearance: textfield;
+                    background: transparent;
+                }
+                .order-panel input.order-input[type="number"]::-webkit-outer-spin-button,
+                .order-panel input.order-input[type="number"]::-webkit-inner-spin-button {
+                    -webkit-appearance: none;
+                    margin: 0;
+                }
                 .order-input-prefix, .order-input-suffix {
                     font-size: 11px;
                     color: var(--op-text-muted);
