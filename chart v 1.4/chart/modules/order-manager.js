@@ -4817,7 +4817,7 @@ class OrderManager {
 
                 /* ═══════════════════════════════════════════════════════════════
                    LIGHT MODE — TradingView-style (flat white, TV palette)
-                   Greens #089981 · Reds #f23645 · Tab accent #6a329f · Border #e0e3eb
+                   Greens #089981 · Reds #f23645 · Tab accent #2962ff · Border #e0e3eb
                    ═══════════════════════════════════════════════════════════════ */
                 body.light-mode .order-panel {
                     --op-bg: #ffffff !important;
@@ -4825,8 +4825,8 @@ class OrderManager {
                     --op-text: #131722 !important;
                     --op-text-muted: #787b86 !important;
                     --op-border: #e0e3eb !important;
-                    --op-soft-accent: rgba(106, 50, 159, 0.08) !important;
-                    --tv-tab-accent: #6a329f;
+                    --op-soft-accent: rgba(41, 98, 255, 0.08) !important;
+                    --tv-tab-accent: #2962ff;
                     --tv-buy: #089981;
                     --tv-sell: #f23645;
                     background: #ffffff !important;
@@ -4855,8 +4855,8 @@ class OrderManager {
                 body.light-mode .order-panel-backdrop { background: rgba(0,0,0,0.08) !important; }
                 body.light-mode .order-panel__edge-handle {
                     box-shadow: none !important;
-                    background: #6a329f !important;
-                    border-color: #6a329f !important;
+                    background: #2962ff !important;
+                    border-color: #2962ff !important;
                     color: #ffffff !important;
                 }
 
@@ -4883,11 +4883,6 @@ class OrderManager {
                     color: #f23645 !important;
                     -webkit-text-fill-color: #f23645 !important;
                 }
-                body.light-mode .order-tab:hover:not(.active) {
-                    background: #ffffff !important;
-                    border-color: #e0e3eb !important;
-                    filter: none !important;
-                }
                 body.light-mode .order-tab.active.order-tab--buy {
                     background: #089981 !important;
                     border-color: #089981 !important;
@@ -4903,7 +4898,7 @@ class OrderManager {
                     box-shadow: none !important;
                 }
 
-                /* ── Tab strips: Market/Limit/Stop, position mode, breakeven (purple underline) ── */
+                /* ── Tab strips: Market/Limit/Stop, position mode, breakeven (blue underline) ── */
                 body.light-mode .order-button-group:not(.order-button-group--inline) {
                     background: transparent !important;
                     border: none !important;
@@ -4967,9 +4962,9 @@ class OrderManager {
                 body.light-mode .breakeven-mode-tab.active:hover {
                     background: transparent !important;
                     border-color: transparent !important;
-                    color: #6a329f !important;
-                    -webkit-text-fill-color: #6a329f !important;
-                    border-bottom-color: #6a329f !important;
+                    color: #2962ff !important;
+                    -webkit-text-fill-color: #2962ff !important;
+                    border-bottom-color: #2962ff !important;
                     font-weight: 600 !important;
                     box-shadow: none !important;
                 }
@@ -4981,12 +4976,9 @@ class OrderManager {
                     border-radius: 6px !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-input-wrapper:hover {
-                    border-color: #e0e3eb !important;
-                }
                 body.light-mode .order-input-wrapper:focus-within {
-                    border-color: #6a329f !important;
-                    box-shadow: 0 0 0 1px rgba(106, 50, 159, 0.25) !important;
+                    border-color: #2962ff !important;
+                    box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.25) !important;
                     background: #ffffff !important;
                 }
                 body.light-mode .order-input {
@@ -5006,12 +4998,6 @@ class OrderManager {
                     border: 1px solid #e0e3eb !important;
                     color: #131722 !important;
                 }
-                body.light-mode .input-stepper:hover {
-                    background: #f0f3fa !important;
-                    border-color: #e0e3eb !important;
-                    color: #131722 !important;
-                }
-
                 /* ── Risk shortcut chips (%) ── */
                 body.light-mode .risk-btn {
                     background: #ffffff !important;
@@ -5020,16 +5006,11 @@ class OrderManager {
                     border-radius: 4px !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .risk-btn:hover:not(.active) {
-                    background: #ffffff !important;
-                    border-color: #e0e3eb !important;
-                    color: #131722 !important;
-                }
                 body.light-mode .risk-btn.active {
-                    background: rgba(106, 50, 159, 0.08) !important;
-                    border-color: #6a329f !important;
-                    color: #6a329f !important;
-                    -webkit-text-fill-color: #6a329f !important;
+                    background: rgba(41, 98, 255, 0.08) !important;
+                    border-color: #2962ff !important;
+                    color: #2962ff !important;
+                    -webkit-text-fill-color: #2962ff !important;
                     box-shadow: none !important;
                 }
 
@@ -5039,16 +5020,16 @@ class OrderManager {
                     border: 1px solid #e0e3eb !important;
                 }
                 body.light-mode .order-calculation-label { color: #787b86 !important; }
-                body.light-mode .order-calculation-value { color: #6a329f !important; font-weight: 700 !important; }
+                body.light-mode .order-calculation-value { color: #2962ff !important; font-weight: 700 !important; }
 
                 /* ── Toggles & checkboxes ── */
                 body.light-mode .toggle-switch__track { background: #e0e3eb !important; }
-                body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: #6a329f !important; }
+                body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: #2962ff !important; }
                 body.light-mode .order-toggle-label { color: #787b86 !important; }
                 body.light-mode .order-toggle-label:hover { color: #131722 !important; }
                 body.light-mode .order-radio-label { color: #787b86 !important; }
                 body.light-mode .order-radio-label:hover { color: #131722 !important; }
-                body.light-mode .order-panel input[type="checkbox"] { accent-color: #6a329f !important; }
+                body.light-mode .order-panel input[type="checkbox"] { accent-color: #2962ff !important; }
 
                 /* ── Collapse sections (MFE/MAE etc.) ── */
                 body.light-mode .order-collapse {
@@ -5068,7 +5049,7 @@ class OrderManager {
                 body.light-mode .order-collapse--open .order-collapse__header {
                     color: #131722 !important;
                     border-bottom-color: #e0e3eb !important;
-                    background: rgba(106, 50, 159, 0.04) !important;
+                    background: rgba(41, 98, 255, 0.04) !important;
                 }
                 body.light-mode .order-collapse__chevron { color: #787b86 !important; }
                 body.light-mode .order-collapse--open .order-collapse__chevron { color: #131722 !important; }
@@ -5120,8 +5101,8 @@ class OrderManager {
                     box-shadow: none !important;
                 }
                 body.light-mode .order-info-card {
-                    background: rgba(106, 50, 159, 0.06) !important;
-                    border: 1px solid rgba(106, 50, 159, 0.22) !important;
+                    background: rgba(41, 98, 255, 0.06) !important;
+                    border: 1px solid rgba(41, 98, 255, 0.22) !important;
                 }
                 body.light-mode .order-info-body { color: #787b86 !important; }
 
@@ -5139,17 +5120,12 @@ class OrderManager {
                     color: #131722 !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-btn-icon:hover {
-                    background: #ffffff !important;
-                    border-color: #e0e3eb !important;
-                    color: #131722 !important;
-                }
                 body.light-mode .order-btn-icon--accent {
-                    background: rgba(106, 50, 159, 0.12) !important;
-                    border-color: rgba(106, 50, 159, 0.4) !important;
-                    color: #6a329f !important;
+                    background: rgba(41, 98, 255, 0.12) !important;
+                    border-color: rgba(41, 98, 255, 0.4) !important;
+                    color: #2962ff !important;
                 }
-                body.light-mode .order-info-title { color: #6a329f !important; }
+                body.light-mode .order-info-title { color: #2962ff !important; }
                 body.light-mode .order-select {
                     background: #ffffff !important;
                     border: 1px solid #e0e3eb !important;
@@ -5162,10 +5138,6 @@ class OrderManager {
                     border: 1px solid #e0e3eb !important;
                     color: #131722 !important;
                     box-shadow: none !important;
-                }
-                body.light-mode .order-utility-btn:hover {
-                    background: #ffffff !important;
-                    border-color: #e0e3eb !important;
                 }
                 body.light-mode .order-status-card {
                     background: #f0f3fa !important;
@@ -5221,41 +5193,17 @@ class OrderManager {
                 body.light-mode .order-panel .breakeven-mode-tab.active:hover {
                     background: transparent !important;
                     border-color: transparent !important;
-                    color: #6a329f !important;
-                    -webkit-text-fill-color: #6a329f !important;
-                    border-bottom-color: #6a329f !important;
-                    box-shadow: none !important;
-                }
-                body.light-mode .order-panel .risk-btn:hover:not(.active) {
-                    background: #ffffff !important;
-                    border-color: #e0e3eb !important;
-                    color: #131722 !important;
+                    color: #2962ff !important;
+                    -webkit-text-fill-color: #2962ff !important;
+                    border-bottom-color: #2962ff !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-panel .risk-btn.active:hover {
-                    background: rgba(106, 50, 159, 0.12) !important;
-                    border-color: #6a329f !important;
-                    color: #6a329f !important;
-                    -webkit-text-fill-color: #6a329f !important;
+                    background: rgba(41, 98, 255, 0.12) !important;
+                    border-color: #2962ff !important;
+                    color: #2962ff !important;
+                    -webkit-text-fill-color: #2962ff !important;
                     box-shadow: none !important;
-                }
-                body.light-mode .order-panel .input-stepper:hover {
-                    background: #e8ebf0 !important;
-                    border-color: #d5dae2 !important;
-                    color: #374151 !important;
-                    box-shadow: none !important;
-                }
-                body.light-mode .order-panel .order-btn-icon:hover {
-                    background: #ffffff !important;
-                    border-color: #d5dae2 !important;
-                    color: #374151 !important;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
-                }
-                body.light-mode .order-panel .order-utility-btn:hover {
-                    background: #ffffff !important;
-                    border-color: #d5dae2 !important;
-                    color: #374151 !important;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
                 }
                 body.light-mode .order-panel .order-submit-btn:hover {
                     background: #07806d !important;
