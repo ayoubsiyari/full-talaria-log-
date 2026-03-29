@@ -1754,6 +1754,48 @@ class DrawingSettingsPanel {
 
 
 
+.tv-align-select {
+
+    width: 100%;
+
+    box-sizing: border-box;
+
+    height: 32px;
+
+    margin-top: 2px;
+
+    padding: 0 28px 0 10px;
+
+    border-radius: 8px;
+
+    border: 1px solid rgba(255, 255, 255, 0.12);
+
+    background-color: var(--sp-input-bg, rgba(255, 255, 255, 0.05));
+
+    color: var(--sp-text, #d1d4dc);
+
+    font-size: 12px;
+
+    cursor: default;
+
+    -webkit-appearance: none;
+
+    appearance: none;
+
+}
+
+
+
+.tv-align-select:focus {
+
+    outline: none;
+
+    border-color: var(--sp-accent, #2962ff);
+
+}
+
+
+
 .tv-align-btn {
 
     flex: 1;
@@ -3469,6 +3511,18 @@ body.light-mode .tv-align-btn.active:hover {
 body.light-mode .tv-align-buttons {
 
     background: #e0e3eb;
+
+}
+
+
+
+body.light-mode .tv-align-select {
+
+    background-color: #ffffff;
+
+    border-color: #e0e3eb;
+
+    color: #131722;
 
 }
 
@@ -14767,7 +14821,21 @@ body.light-mode .template-save-dialog .dialog-title {
 
             vAlignSection.className = 'tv-align-section';
 
-            vAlignSection.innerHTML = `
+            vAlignSection.innerHTML = isVerticalLine ? `
+
+                    <div class="tv-align-label">Vertical Alignment</div>
+
+                    <select class="tv-align-select" data-prop="${vProp}" aria-label="Vertical text alignment">
+
+                        <option value="top"${currentVAlign === 'top' ? ' selected' : ''}>Top</option>
+
+                        <option value="middle"${currentVAlign === 'middle' ? ' selected' : ''}>Middle</option>
+
+                        <option value="bottom"${currentVAlign === 'bottom' ? ' selected' : ''}>Bottom</option>
+
+                    </select>
+
+                ` : `
 
                     <div class="tv-align-label">Vertical Alignment</div>
 
@@ -14829,7 +14897,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const hVal = ['left', 'center', 'right'];
 
-            const currentHAlign = drawing.style.textHAlign || defaultHAlign;
+            const currentHAlign = drawing.style.textHAlign || drawing.style.textAlign || defaultHAlign;
 
             const hAlignSection = document.createElement('div');
 
@@ -14837,7 +14905,21 @@ body.light-mode .template-save-dialog .dialog-title {
 
             hAlignSection.style.marginTop = '12px';
 
-            hAlignSection.innerHTML = `
+            hAlignSection.innerHTML = isVerticalLine ? `
+
+                    <div class="tv-align-label">Horizontal Alignment</div>
+
+                    <select class="tv-align-select" data-prop="${hProp}" aria-label="Horizontal text alignment">
+
+                        <option value="left"${currentHAlign === 'left' ? ' selected' : ''}>Left</option>
+
+                        <option value="center"${currentHAlign === 'center' ? ' selected' : ''}>Center</option>
+
+                        <option value="right"${currentHAlign === 'right' ? ' selected' : ''}>Right</option>
+
+                    </select>
+
+                ` : `
 
                     <div class="tv-align-label">Horizontal Alignment</div>
 
@@ -19817,6 +19899,40 @@ body.light-mode .template-save-dialog .dialog-title {
                 } else if (prop === 'textOrientation') {
 
                     drawing.style.textOrientation = value;
+
+                    self.renderPreview(drawing);
+
+                }
+
+            });
+
+        });
+
+        
+
+        queryAll('select.tv-align-select').forEach((sel) => {
+
+            sel.addEventListener('change', () => {
+
+                const prop = sel.dataset.prop;
+
+                const value = sel.value;
+
+                this.pendingChanges[prop] = value;
+
+                if (prop === 'textVAlign') {
+
+                    drawing.style.textVAlign = value;
+
+                    drawing.style.textPosition = value;
+
+                    self.renderPreview(drawing);
+
+                } else if (prop === 'textHAlign') {
+
+                    drawing.style.textHAlign = value;
+
+                    drawing.style.textAlign = value;
 
                     self.renderPreview(drawing);
 
