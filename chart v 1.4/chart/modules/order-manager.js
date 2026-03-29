@@ -4816,21 +4816,23 @@ class OrderManager {
                 .order-tab:hover:not(.active) { filter: none; }
 
                 /* ═══════════════════════════════════════════════════════════════
-                   LIGHT MODE — Designer theme from scratch
-                   Palette: cool gray canvas (#ebeef3) + white card surfaces
-                   Depth via soft box-shadows, not opacity overlays
+                   LIGHT MODE — TradingView-style (flat white, TV palette)
+                   Greens #089981 · Reds #f23645 · Tab accent #6a329f · Border #e0e3eb
                    ═══════════════════════════════════════════════════════════════ */
                 body.light-mode .order-panel {
-                    --op-bg: #ebeef3 !important;
+                    --op-bg: #ffffff !important;
                     --op-surface: #ffffff !important;
-                    --op-text: #111827 !important;
-                    --op-text-muted: #6b7280 !important;
-                    --op-border: #d5dae2 !important;
-                    --op-soft-accent: rgba(var(--op-accent-rgb), 0.10) !important;
-                    background: #ebeef3 !important;
-                    border-left: 1px solid #d5dae2 !important;
+                    --op-text: #131722 !important;
+                    --op-text-muted: #787b86 !important;
+                    --op-border: #e0e3eb !important;
+                    --op-soft-accent: rgba(106, 50, 159, 0.08) !important;
+                    --tv-tab-accent: #6a329f;
+                    --tv-buy: #089981;
+                    --tv-sell: #f23645;
+                    background: #ffffff !important;
+                    border-left: 1px solid #e0e3eb !important;
                     box-shadow: none !important;
-                    color: #111827 !important;
+                    color: #131722 !important;
                 }
                 body.light-mode .order-panel *,
                 body.light-mode .order-panel *:focus,
@@ -4851,66 +4853,111 @@ class OrderManager {
                 body.light-mode .order-panel__content::-webkit-scrollbar-thumb { background: #c4c9d2 !important; }
                 body.light-mode .order-panel__content::-webkit-scrollbar-thumb:hover { background: #a8adb8 !important; }
                 body.light-mode .order-panel-backdrop { background: rgba(0,0,0,0.08) !important; }
-                body.light-mode .order-panel__edge-handle { box-shadow: none !important; }
+                body.light-mode .order-panel__edge-handle {
+                    box-shadow: none !important;
+                    background: #6a329f !important;
+                    border-color: #6a329f !important;
+                    color: #ffffff !important;
+                }
 
                 /* Header */
                 body.light-mode .order-panel__header {
-                    background: #e3e7ed !important;
-                    border-bottom: 1px solid #d5dae2 !important;
+                    background: #ffffff !important;
+                    border-bottom: 1px solid #e0e3eb !important;
                 }
-                body.light-mode .order-panel__title { color: #111827 !important; }
-                body.light-mode .order-panel__close { color: #9ca3af !important; }
-                body.light-mode .order-panel__close:hover { background: transparent !important; border: 1px solid #9ca3af !important; color: #111827 !important; }
+                body.light-mode .order-panel__title { color: #131722 !important; }
+                body.light-mode .order-panel__close { color: #787b86 !important; }
+                body.light-mode .order-panel__close:hover { background: transparent !important; border: 1px solid #e0e3eb !important; color: #131722 !important; }
 
-                /* ── BUY / SELL tabs ── */
+                /* ── BUY / SELL (TV solid green / red) ── */
                 body.light-mode .order-tab {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
-                    color: #6b7280 !important;
-                    -webkit-text-fill-color: #6b7280 !important;
+                    border: 1px solid #e0e3eb !important;
                     box-shadow: none !important;
+                }
+                body.light-mode .order-tab.order-tab--buy:not(.active) {
+                    color: #089981 !important;
+                    -webkit-text-fill-color: #089981 !important;
+                }
+                body.light-mode .order-tab.order-tab--sell:not(.active) {
+                    color: #f23645 !important;
+                    -webkit-text-fill-color: #f23645 !important;
                 }
                 body.light-mode .order-tab:hover:not(.active) {
                     background: #ffffff !important;
-                    border-color: #9ca3af !important;
-                    color: #6b7280 !important;
-                    -webkit-text-fill-color: #6b7280 !important;
-                    box-shadow: none !important;
+                    border-color: #e0e3eb !important;
                     filter: none !important;
                 }
                 body.light-mode .order-tab.active.order-tab--buy {
-                    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
-                    border-color: #16a34a !important;
+                    background: #089981 !important;
+                    border-color: #089981 !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-tab.active.order-tab--sell {
-                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-                    border-color: #dc2626 !important;
+                    background: #f23645 !important;
+                    border-color: #f23645 !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                     box-shadow: none !important;
                 }
 
-                /* ── Button groups (Market/Limit/Stop + Risk$/Risk%/LotSize) ── */
-                body.light-mode .order-button-group {
-                    background: #e0e4ea !important;
-                    border: 1px solid #d5dae2 !important;
+                /* ── Tab strips: Market/Limit/Stop, position mode, breakeven (purple underline) ── */
+                body.light-mode .order-button-group:not(.order-button-group--inline) {
+                    background: transparent !important;
+                    border: none !important;
+                    border-radius: 0 !important;
+                    padding: 0 !important;
+                    gap: 20px !important;
+                    display: flex !important;
+                    flex-wrap: nowrap !important;
+                    align-items: stretch !important;
+                    border-bottom: 1px solid #e0e3eb !important;
+                    box-shadow: none !important;
+                }
+                body.light-mode .order-button-group--inline:not(:has(.risk-btn)) {
+                    background: transparent !important;
+                    border: none !important;
+                    border-radius: 0 !important;
+                    padding: 0 !important;
+                    gap: 16px !important;
+                    display: flex !important;
+                    flex-wrap: wrap !important;
+                    align-items: stretch !important;
+                    border-bottom: 1px solid #e0e3eb !important;
+                    box-shadow: none !important;
+                }
+                body.light-mode .order-button-group--inline:has(.risk-btn) {
+                    background: transparent !important;
+                    border: none !important;
+                    border-bottom: none !important;
+                    border-radius: 0 !important;
+                    padding: 0 !important;
+                    gap: 6px !important;
+                    flex-wrap: wrap !important;
+                    box-shadow: none !important;
                 }
                 body.light-mode .order-type-btn,
                 body.light-mode .position-mode-tab,
                 body.light-mode .breakeven-mode-tab {
-                    color: #6b7280 !important;
-                    -webkit-text-fill-color: #6b7280 !important;
+                    color: #787b86 !important;
+                    -webkit-text-fill-color: #787b86 !important;
                     background: transparent !important;
+                    border: none !important;
+                    border-radius: 0 !important;
+                    box-shadow: none !important;
+                    padding: 10px 2px !important;
+                    margin-bottom: -1px !important;
+                    border-bottom: 2px solid transparent !important;
+                    font-weight: 500 !important;
                 }
                 body.light-mode .order-type-btn:hover:not(.active),
                 body.light-mode .position-mode-tab:hover:not(.active),
                 body.light-mode .breakeven-mode-tab:hover:not(.active) {
                     background: transparent !important;
-                    color: #374151 !important;
-                    -webkit-text-fill-color: #374151 !important;
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
                 }
                 body.light-mode .order-type-btn.active,
                 body.light-mode .position-mode-tab.active,
@@ -4918,160 +4965,165 @@ class OrderManager {
                 body.light-mode .order-type-btn.active:hover,
                 body.light-mode .position-mode-tab.active:hover,
                 body.light-mode .breakeven-mode-tab.active:hover {
-                    background: #2563eb !important;
+                    background: transparent !important;
                     border-color: transparent !important;
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
+                    color: #6a329f !important;
+                    -webkit-text-fill-color: #6a329f !important;
+                    border-bottom-color: #6a329f !important;
+                    font-weight: 600 !important;
                     box-shadow: none !important;
                 }
 
                 /* ── Input fields ── */
                 body.light-mode .order-input-wrapper {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
-                    box-shadow: inset 0 1px 2px rgba(0,0,0,0.04) !important;
+                    border: 1px solid #e0e3eb !important;
+                    border-radius: 6px !important;
+                    box-shadow: none !important;
                 }
                 body.light-mode .order-input-wrapper:hover {
-                    border-color: #9ca3af !important;
+                    border-color: #e0e3eb !important;
                 }
                 body.light-mode .order-input-wrapper:focus-within {
-                    border-color: var(--op-accent, #2962ff) !important;
-                    box-shadow: 0 0 0 3px rgba(var(--op-accent-rgb), 0.12), inset 0 1px 2px rgba(0,0,0,0.04) !important;
+                    border-color: #6a329f !important;
+                    box-shadow: 0 0 0 1px rgba(106, 50, 159, 0.25) !important;
                     background: #ffffff !important;
                 }
                 body.light-mode .order-input {
-                    color: #111827 !important;
-                    -webkit-text-fill-color: #111827 !important;
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
                 }
-                body.light-mode .order-input::placeholder { color: #9ca3af !important; }
-                body.light-mode .order-input-prefix { color: #6b7280 !important; }
-                body.light-mode .order-input-suffix { color: #6b7280 !important; font-weight: 600 !important; }
-                body.light-mode .order-label { color: #6b7280 !important; }
-                body.light-mode .order-hint { color: #9ca3af !important; }
-                body.light-mode .order-input--compact { color: #111827 !important; -webkit-text-fill-color: #111827 !important; }
+                body.light-mode .order-input::placeholder { color: #787b86 !important; }
+                body.light-mode .order-input-prefix { color: #787b86 !important; }
+                body.light-mode .order-input-suffix { color: #787b86 !important; font-weight: 600 !important; }
+                body.light-mode .order-label { color: #787b86 !important; }
+                body.light-mode .order-hint { color: #787b86 !important; }
+                body.light-mode .order-input--compact { color: #131722 !important; -webkit-text-fill-color: #131722 !important; }
 
                 /* ── Stepper (+/-) ── */
                 body.light-mode .input-stepper {
-                    background: #e8ebf0 !important;
-                    border: 1px solid #d5dae2 !important;
-                    color: #374151 !important;
+                    background: #f0f3fa !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #131722 !important;
                 }
                 body.light-mode .input-stepper:hover {
-                    background: #e8ebf0 !important;
-                    border-color: #9ca3af !important;
-                    color: #374151 !important;
+                    background: #f0f3fa !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
                 }
 
-                /* ── Risk shortcut buttons ── */
+                /* ── Risk shortcut chips (%) ── */
                 body.light-mode .risk-btn {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
-                    color: #6b7280 !important;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #787b86 !important;
+                    border-radius: 4px !important;
+                    box-shadow: none !important;
                 }
                 body.light-mode .risk-btn:hover:not(.active) {
                     background: #ffffff !important;
-                    border-color: #9ca3af !important;
-                    color: #6b7280 !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
                 }
                 body.light-mode .risk-btn.active {
-                    background: #2563eb !important;
-                    border-color: #1d4ed8 !important;
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
+                    background: rgba(106, 50, 159, 0.08) !important;
+                    border-color: #6a329f !important;
+                    color: #6a329f !important;
+                    -webkit-text-fill-color: #6a329f !important;
                     box-shadow: none !important;
                 }
 
                 /* ── Calculation row (Position Size) ── */
                 body.light-mode .order-calculation {
-                    background: rgba(var(--op-accent-rgb), 0.06) !important;
-                    border: 1px solid rgba(var(--op-accent-rgb), 0.14) !important;
+                    background: #f0f3fa !important;
+                    border: 1px solid #e0e3eb !important;
                 }
-                body.light-mode .order-calculation-label { color: #6b7280 !important; }
-                body.light-mode .order-calculation-value { color: var(--op-accent, #2962ff) !important; font-weight: 700 !important; }
+                body.light-mode .order-calculation-label { color: #787b86 !important; }
+                body.light-mode .order-calculation-value { color: #6a329f !important; font-weight: 700 !important; }
 
                 /* ── Toggles & checkboxes ── */
-                body.light-mode .toggle-switch__track { background: #d1d5db !important; }
-                body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: var(--op-accent, #2962ff) !important; }
-                body.light-mode .order-toggle-label { color: #6b7280 !important; }
-                body.light-mode .order-toggle-label:hover { color: #111827 !important; }
-                body.light-mode .order-radio-label { color: #6b7280 !important; }
-                body.light-mode .order-radio-label:hover { color: #111827 !important; }
-                body.light-mode .order-panel input[type="checkbox"] { accent-color: var(--op-accent, #2962ff) !important; }
+                body.light-mode .toggle-switch__track { background: #e0e3eb !important; }
+                body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: #6a329f !important; }
+                body.light-mode .order-toggle-label { color: #787b86 !important; }
+                body.light-mode .order-toggle-label:hover { color: #131722 !important; }
+                body.light-mode .order-radio-label { color: #787b86 !important; }
+                body.light-mode .order-radio-label:hover { color: #131722 !important; }
+                body.light-mode .order-panel input[type="checkbox"] { accent-color: #6a329f !important; }
 
                 /* ── Collapse sections (MFE/MAE etc.) ── */
                 body.light-mode .order-collapse {
-                    border: 1px solid #d5dae2 !important;
-                    background: #f3f5f8 !important;
-                    border-radius: 8px !important;
+                    border: 1px solid #e0e3eb !important;
+                    background: #ffffff !important;
+                    border-radius: 6px !important;
                 }
-                body.light-mode .order-collapse:hover { border-color: #9ca3af !important; }
+                body.light-mode .order-collapse:hover { border-color: #e0e3eb !important; }
                 body.light-mode .order-collapse__header {
-                    color: #6b7280 !important;
+                    color: #787b86 !important;
                     background: transparent !important;
                 }
                 body.light-mode .order-collapse__header:hover {
                     background: transparent !important;
-                    color: #374151 !important;
+                    color: #131722 !important;
                 }
                 body.light-mode .order-collapse--open .order-collapse__header {
-                    color: #111827 !important;
-                    border-bottom-color: #d5dae2 !important;
-                    background: rgba(var(--op-accent-rgb), 0.05) !important;
+                    color: #131722 !important;
+                    border-bottom-color: #e0e3eb !important;
+                    background: rgba(106, 50, 159, 0.04) !important;
                 }
-                body.light-mode .order-collapse__chevron { color: #9ca3af !important; }
-                body.light-mode .order-collapse--open .order-collapse__chevron { color: #374151 !important; }
+                body.light-mode .order-collapse__chevron { color: #787b86 !important; }
+                body.light-mode .order-collapse--open .order-collapse__chevron { color: #131722 !important; }
                 body.light-mode .order-collapse__content {
-                    background: #f8f9fb !important;
+                    background: #f7f8fa !important;
                 }
 
                 /* ── Summary footer (Reward/Risk/Margin) ── */
                 body.light-mode .order-summary {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
+                    border: 1px solid #e0e3eb !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-summary-label { color: #6b7280 !important; }
-                body.light-mode .order-summary-label--positive { color: #16a34a !important; }
-                body.light-mode .order-summary-label--negative { color: #dc2626 !important; }
-                body.light-mode .order-summary-value { color: #111827 !important; }
-                body.light-mode .order-summary-value--positive { color: #16a34a !important; }
-                body.light-mode .order-summary-value--negative { color: #dc2626 !important; }
+                body.light-mode .order-summary-label { color: #787b86 !important; }
+                body.light-mode .order-summary-label--positive { color: #089981 !important; }
+                body.light-mode .order-summary-label--negative { color: #f23645 !important; }
+                body.light-mode .order-summary-value { color: #131722 !important; }
+                body.light-mode .order-summary-value--positive { color: #089981 !important; }
+                body.light-mode .order-summary-value--negative { color: #f23645 !important; }
                 body.light-mode .order-summary-value--warning { color: #d97706 !important; }
-                body.light-mode .order-summary-value--danger { color: #dc2626 !important; }
-                body.light-mode .order-summary-divider { border-top-color: #e5e7eb !important; }
+                body.light-mode .order-summary-value--danger { color: #f23645 !important; }
+                body.light-mode .order-summary-divider { border-top-color: #e0e3eb !important; }
 
-                /* ── Submit button ── */
+                /* ── Submit (TV green buy / red sell) ── */
                 body.light-mode .order-submit-btn {
-                    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+                    background: #089981 !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                     box-shadow: none !important;
+                    border-radius: 6px !important;
                 }
                 body.light-mode .order-submit-btn:hover {
-                    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+                    background: #07806d !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-submit-btn.sell-mode {
-                    background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%) !important;
+                    background: #f23645 !important;
                 }
                 body.light-mode .order-submit-btn.sell-mode:hover {
-                    background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 100%) !important;
+                    background: #d91e32 !important;
                 }
 
                 /* ── Cards ── */
                 body.light-mode .order-card-soft {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
+                    border: 1px solid #e0e3eb !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-info-card {
-                    background: rgba(var(--op-accent-rgb), 0.05) !important;
-                    border: 1px solid rgba(var(--op-accent-rgb), 0.18) !important;
+                    background: rgba(106, 50, 159, 0.06) !important;
+                    border: 1px solid rgba(106, 50, 159, 0.22) !important;
                 }
-                body.light-mode .order-info-body { color: #6b7280 !important; }
+                body.light-mode .order-info-body { color: #787b86 !important; }
 
                 /* ── Validation ── */
                 body.light-mode .order-validation--error {
@@ -5083,42 +5135,49 @@ class OrderManager {
                 /* ── Icon / utility buttons ── */
                 body.light-mode .order-btn-icon {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
-                    color: #374151 !important;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #131722 !important;
+                    box-shadow: none !important;
                 }
                 body.light-mode .order-btn-icon:hover {
                     background: #ffffff !important;
-                    border-color: #9ca3af !important;
-                    color: #374151 !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
                 }
+                body.light-mode .order-btn-icon--accent {
+                    background: rgba(106, 50, 159, 0.12) !important;
+                    border-color: rgba(106, 50, 159, 0.4) !important;
+                    color: #6a329f !important;
+                }
+                body.light-mode .order-info-title { color: #6a329f !important; }
                 body.light-mode .order-select {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
-                    color: #111827 !important;
-                    box-shadow: inset 0 1px 2px rgba(0,0,0,0.04) !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #131722 !important;
+                    box-shadow: none !important;
+                    border-radius: 6px !important;
                 }
                 body.light-mode .order-utility-btn {
                     background: #ffffff !important;
-                    border: 1px solid #d5dae2 !important;
-                    color: #374151 !important;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #131722 !important;
+                    box-shadow: none !important;
                 }
                 body.light-mode .order-utility-btn:hover {
                     background: #ffffff !important;
-                    border-color: #9ca3af !important;
+                    border-color: #e0e3eb !important;
                 }
                 body.light-mode .order-status-card {
-                    background: #f3f5f8 !important;
-                    border: 1px solid #d5dae2 !important;
+                    background: #f0f3fa !important;
+                    border: 1px solid #e0e3eb !important;
                 }
 
                 /* ── Badges ── */
                 body.light-mode .order-panel .market-type-badge,
                 body.light-mode .order-panel .symbol-badge {
-                    background: #e8ebf0 !important;
-                    border: 1px solid #d5dae2 !important;
-                    color: #374151 !important;
+                    background: #f0f3fa !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #131722 !important;
                 }
 
                 /* Hard stop: no hover visual changes on order-panel buttons */
@@ -5126,23 +5185,24 @@ class OrderManager {
                     filter: none !important;
                     transform: none !important;
                 }
-                body.light-mode .order-panel .order-tab:hover:not(.active) {
-                    background: #ffffff !important;
-                    border-color: #d5dae2 !important;
-                    color: #6b7280 !important;
-                    -webkit-text-fill-color: #6b7280 !important;
-                    box-shadow: none !important;
+                body.light-mode .order-panel .order-tab.order-tab--buy:not(.active):hover {
+                    color: #089981 !important;
+                    -webkit-text-fill-color: #089981 !important;
+                }
+                body.light-mode .order-panel .order-tab.order-tab--sell:not(.active):hover {
+                    color: #f23645 !important;
+                    -webkit-text-fill-color: #f23645 !important;
                 }
                 body.light-mode .order-panel .order-tab.active.order-tab--buy:hover {
-                    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
-                    border-color: #16a34a !important;
+                    background: #07806d !important;
+                    border-color: #07806d !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-panel .order-tab.active.order-tab--sell:hover {
-                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-                    border-color: #dc2626 !important;
+                    background: #d91e32 !important;
+                    border-color: #d91e32 !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                     box-shadow: none !important;
@@ -5152,30 +5212,31 @@ class OrderManager {
                 body.light-mode .order-panel .breakeven-mode-tab:hover:not(.active) {
                     background: transparent !important;
                     border-color: transparent !important;
-                    color: #6b7280 !important;
-                    -webkit-text-fill-color: #6b7280 !important;
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-panel .order-type-btn.active:hover,
                 body.light-mode .order-panel .position-mode-tab.active:hover,
                 body.light-mode .order-panel .breakeven-mode-tab.active:hover {
-                    background: #1d4ed8 !important;
+                    background: transparent !important;
                     border-color: transparent !important;
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
+                    color: #6a329f !important;
+                    -webkit-text-fill-color: #6a329f !important;
+                    border-bottom-color: #6a329f !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-panel .risk-btn:hover:not(.active) {
                     background: #ffffff !important;
-                    border-color: #d5dae2 !important;
-                    color: #6b7280 !important;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
+                    box-shadow: none !important;
                 }
                 body.light-mode .order-panel .risk-btn.active:hover {
-                    background: #1d4ed8 !important;
-                    border-color: #1e40af !important;
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
+                    background: rgba(106, 50, 159, 0.12) !important;
+                    border-color: #6a329f !important;
+                    color: #6a329f !important;
+                    -webkit-text-fill-color: #6a329f !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-panel .input-stepper:hover {
@@ -5197,13 +5258,13 @@ class OrderManager {
                     box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
                 }
                 body.light-mode .order-panel .order-submit-btn:hover {
-                    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+                    background: #07806d !important;
                     box-shadow: none !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
                 }
                 body.light-mode .order-panel .order-submit-btn.sell-mode:hover {
-                    background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 100%) !important;
+                    background: #d91e32 !important;
                     box-shadow: none !important;
                     color: #ffffff !important;
                     -webkit-text-fill-color: #ffffff !important;
