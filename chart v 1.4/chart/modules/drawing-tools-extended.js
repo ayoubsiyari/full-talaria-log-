@@ -68,7 +68,7 @@ class HighlighterTool extends BaseDrawing {
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
         
-        // Only show handles for first and last points
+        // Only show handles for first and last points (grab to move whole stroke)
         const pointsToHandle = [0, this.points.length - 1];
         
         pointsToHandle.forEach(index => {
@@ -88,7 +88,7 @@ class HighlighterTool extends BaseDrawing {
                 .attr('fill', handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'nwse-resize')
+                .style('cursor', 'move')
                 .style('pointer-events', 'all')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-point-index', index);

@@ -163,7 +163,6 @@ class PanelManager {
             width: 330px;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
             color: #d1d4dc;
         `;
