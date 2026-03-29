@@ -5443,10 +5443,17 @@ class OrderManager {
                     color: var(--op-text-muted);
                     font-weight: 600;
                     flex-shrink: 0;
-                    line-height: 1;
+                    line-height: 1.25;
                     display: flex;
                     align-items: center;
                     align-self: center;
+                }
+                /* Rows with steppers: $ / % / Lots use same size as compact input */
+                .order-panel .order-input-wrapper:has(.input-stepper) .order-input-prefix,
+                .order-panel .order-input-wrapper:has(.input-stepper) .order-input-suffix {
+                    font-size: 12px;
+                    font-weight: 600;
+                    line-height: 1.25;
                 }
                 .input-stepper {
                     width: 30px !important;
@@ -5893,9 +5900,9 @@ class OrderManager {
                         <button class="position-mode-tab" type="button" data-mode="lot-size">Lot Size</button>
                     </div>
 
-                    <div id="riskUSDInput" class="order-input-wrapper" style="display: flex; gap: 4px; align-items: center;">
-                        <span class="order-input-prefix" style="position: static; margin-right: -4px;">$</span>
-                        <input type="number" id="riskAmountUSD" value="100" min="1" step="1" class="order-input order-input--compact" style="flex: 1; padding-left: 24px;">
+                    <div id="riskUSDInput" class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
+                        <span class="order-input-prefix">$</span>
+                        <input type="number" id="riskAmountUSD" value="100" min="1" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10" style="width: 28px; height: 28px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #ef4444; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10" style="width: 28px; height: 28px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; color: #22c55e; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
                     </div>
