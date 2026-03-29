@@ -4301,20 +4301,51 @@
             border-color: #d91e32 !important;
         }
 
+        /* Primary CTA (Buy / Sell): explicit bg + white text + fill on every state; kill brightness() on :active */
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode),
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):hover,
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus,
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus-visible {
+            background: #089981 !important;
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
+            filter: none !important;
+        }
+
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):hover {
+            background: #07806d !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            filter: none !important;
+        }
+
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):active {
+            background: #067a63 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            filter: none !important;
         }
 
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode,
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:hover,
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus,
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus-visible {
+            background: #f23645 !important;
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
+            filter: none !important;
+        }
+
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:hover {
+            background: #d91e32 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            filter: none !important;
+        }
+
+        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:active {
+            background: #c91a2c !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            filter: none !important;
         }
 
         body.light-mode #orderPanel #closeOrderPanel.order-panel__close,
@@ -42199,7 +42230,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260328"></script>
 
-    <script defer src="modules/order-manager.js?v=20260328_ORDER_PANEL_IDS"></script>
+    <script defer src="modules/order-manager.js?v=20260328_SUBMIT_CTA"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260328"></script>
 

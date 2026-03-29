@@ -5093,6 +5093,10 @@ class OrderManager {
                 body.light-mode .order-submit-btn.sell-mode:hover {
                     background: #d91e32 !important;
                 }
+                body.light-mode .order-submit-btn:active,
+                body.light-mode .order-submit-btn.sell-mode:active {
+                    filter: none !important;
+                }
 
                 /* ── Cards ── */
                 body.light-mode .order-card-soft {
@@ -5205,7 +5209,7 @@ class OrderManager {
                     -webkit-text-fill-color: #2962ff !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-panel .order-submit-btn:hover {
+                body.light-mode .order-panel .order-submit-btn:not(.sell-mode):hover {
                     background: #07806d !important;
                     box-shadow: none !important;
                     color: #ffffff !important;
