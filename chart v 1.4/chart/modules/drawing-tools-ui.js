@@ -1794,21 +1794,13 @@ class DrawingSettingsPanel {
 
     height: 30px;
 
-    padding: 0 24px 0 8px;
+    padding: 5px 21px 5px 8px;
 
     font-size: 11px;
 
-    border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.14));
+    background-position: right 6px center;
 
-    border-radius: 4px;
-
-}
-
-
-
-.tv-text-alignment-prop-row .tv-text-align-selects .tv-align-select:hover {
-
-    border-color: rgba(var(--sp-accent-rgb), 0.42);
+    background-size: 8px, 100%;
 
 }
 
@@ -1856,11 +1848,11 @@ class DrawingSettingsPanel {
 
     margin-top: 2px;
 
-    padding: 0 28px 0 10px;
+    padding: 5px 21px 5px 8px;
 
     border-radius: 4px;
 
-    border: none;
+    border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.12));
 
     background-color: var(--sp-select-bg, rgba(255, 255, 255, 0.08)) !important;
 
@@ -1878,7 +1870,7 @@ class DrawingSettingsPanel {
 
     background-repeat: no-repeat;
 
-    background-position: right 8px center;
+    background-position: right 6px center;
 
     background-size: 8px, 100%;
 
@@ -1896,11 +1888,13 @@ class DrawingSettingsPanel {
 
     background-repeat: no-repeat;
 
-    background-position: right 8px center;
+    background-position: right 6px center;
 
     background-color: rgba(var(--sp-accent-rgb), 0.14) !important;
 
     background-size: 8px, 100%;
+
+    border-color: rgba(var(--sp-accent-rgb), 0.45);
 
     box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.14);
 
@@ -1911,6 +1905,10 @@ class DrawingSettingsPanel {
 .tv-align-select:focus {
 
     outline: none;
+
+    border-color: var(--sp-accent, #2962ff);
+
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.18);
 
 }
 
@@ -3648,11 +3646,11 @@ body.light-mode .tv-align-buttons {
 
 body.light-mode .tv-align-select {
 
-    background-color: #ffffff !important;
+    background-color: var(--sp-select-bg, var(--sp-input-bg, #ffffff)) !important;
 
-    border: 1px solid #e0e3eb;
+    border: 1px solid var(--sp-input-border, #e0e3eb);
 
-    color: #131722;
+    color: var(--sp-text, #131722);
 
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23131722' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
@@ -3676,13 +3674,13 @@ body.light-mode .tv-align-select:hover {
 
     background-position: right 8px center;
 
-    background-color: rgba(41, 98, 255, 0.10) !important;
+    background-color: rgba(var(--sp-accent-rgb), 0.10) !important;
 
     background-size: 10px;
 
-    border-color: rgba(41, 98, 255, 0.55);
+    border-color: rgba(var(--sp-accent-rgb), 0.55);
 
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.12);
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.12);
 
 }
 
@@ -3690,25 +3688,9 @@ body.light-mode .tv-align-select:hover {
 
 body.light-mode .tv-align-select option {
 
-    background: #ffffff !important;
+    background: var(--sp-ui-chrome-bg, #ffffff) !important;
 
-    color: #131722;
-
-}
-
-
-
-body.light-mode .tv-text-alignment-prop-row .tv-text-align-selects .tv-align-select {
-
-    border-color: #e0e3eb;
-
-}
-
-
-
-body.light-mode .tv-text-alignment-prop-row .tv-text-align-selects .tv-align-select:hover {
-
-    border-color: rgba(41, 98, 255, 0.55);
+    color: var(--sp-text, #131722);
 
 }
 
@@ -14997,6 +14979,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         let hAlignSection = null;
 
+        let textAlignRowEl = null;
+
         const useTextAlignPropRow = isVerticalLine && !hideVerticalAlign && !hideHorizontalAlign;
 
 
@@ -15045,7 +15029,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             `;
 
-            container.appendChild(textAlignRow);
+            textAlignRowEl = textAlignRow;
 
         } else if (!hideVerticalAlign) {
 
@@ -15217,19 +15201,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        if (!useTextAlignPropRow) {
-
-            if (vAlignSection) container.appendChild(vAlignSection);
-
-            if (hAlignSection) container.appendChild(hAlignSection);
-
-        }
-
-
+        let orientationSection = null;
 
         if (drawing.type === 'vertical') {
 
-            const orientationSection = document.createElement('div');
+            orientationSection = document.createElement('div');
 
             orientationSection.className = 'tv-align-section';
 
@@ -15259,7 +15235,57 @@ body.light-mode .template-save-dialog .dialog-title {
 
             `;
 
+        }
+
+
+
+        const afterOrientation = drawing.type === 'vertical' && orientationSection;
+
+
+
+        if (afterOrientation) {
+
             container.appendChild(orientationSection);
+
+        }
+
+
+
+        if (textAlignRowEl) {
+
+            textAlignRowEl.style.marginTop = '12px';
+
+            container.appendChild(textAlignRowEl);
+
+        }
+
+
+
+        if (!useTextAlignPropRow) {
+
+            if (vAlignSection) {
+
+                if (afterOrientation) vAlignSection.style.marginTop = '12px';
+
+                container.appendChild(vAlignSection);
+
+            }
+
+            if (hAlignSection) {
+
+                if (vAlignSection) {
+
+                    hAlignSection.style.marginTop = '12px';
+
+                } else if (afterOrientation) {
+
+                    hAlignSection.style.marginTop = '12px';
+
+                }
+
+                container.appendChild(hAlignSection);
+
+            }
 
         }
 
