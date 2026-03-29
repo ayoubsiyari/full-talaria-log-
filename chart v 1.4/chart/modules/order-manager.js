@@ -5512,6 +5512,11 @@ class OrderManager {
                     padding: 0 12px;
                     box-shadow: none;
                     transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+                    box-sizing: border-box;
+                }
+                .order-panel .order-input-wrapper:has(.order-input--compact) {
+                    padding: 0 8px;
+                    min-height: 0;
                 }
                 .order-input-wrapper:focus-within {
                     border-color: rgba(var(--op-accent-rgb), 0.85);
@@ -5531,14 +5536,23 @@ class OrderManager {
                     line-height: 1.25;
                     min-height: 0;
                     align-self: center;
+                    box-sizing: border-box;
                 }
                 .order-input::placeholder { color: var(--op-text-muted); opacity: 0.75; font-weight: 500; }
-                .order-input--compact { padding: 8px 12px; font-size: 12px; line-height: 1.25; }
+                /* Compact numeric fields — short vertical padding (TP/SL, risk, etc.) */
+                .order-panel .order-input.order-input--compact {
+                    padding: 5px 6px;
+                    font-size: 12px;
+                    line-height: 1.2;
+                    min-height: 0;
+                    height: auto;
+                }
                 /* Hide native number spinners — custom +/- steppers only */
                 .order-panel input.order-input[type="number"] {
                     -moz-appearance: textfield;
                     appearance: textfield;
                     background: transparent;
+                    min-height: 0;
                 }
                 .order-panel input.order-input[type="number"]::-webkit-outer-spin-button,
                 .order-panel input.order-input[type="number"]::-webkit-inner-spin-button {
