@@ -5050,11 +5050,12 @@ class Chart {
 
             let chromeBg, surfaceBg, sidebarUiBg, borderColorRgb;
             if (isLightPanel) {
-                // Light theme: mix toward white for lighter derived surfaces
-                chromeBg = mixRgb(panelRgb, [255, 255, 255], 0.18);
-                surfaceBg = mixRgb(panelRgb, [255, 255, 255], 0.30);
-                sidebarUiBg = mixRgb(panelRgb, [255, 255, 255], 0.12);
-                borderColorRgb = mixRgb(panelRgb, [60, 70, 90], 0.42);
+                // Light theme: mirror dark layering — chrome / surface / sidebar all near-white, subtle neutral borders
+                const W = [255, 255, 255];
+                chromeBg = mixRgb(panelRgb, W, 0.97);
+                surfaceBg = W.slice();
+                sidebarUiBg = mixRgb(panelRgb, W, 0.98);
+                borderColorRgb = mixRgb(W, [15, 23, 42], 0.14);
             } else {
                 const deepUiBase = [8, 12, 28];
                 chromeBg = mixRgb(panelRgb, deepUiBase, 0.72);
@@ -5065,13 +5066,15 @@ class Chart {
 
             // Secondary accent + text colors
             const secondaryColor = targetChart.chartSettings.settingsPanelSecondaryColor || '#7b61ff';
-            const textColor = targetChart.chartSettings.settingsPanelTextColor || (isLightPanel ? '#1f2937' : '#e0e3ea');
+            const textColor = targetChart.chartSettings.settingsPanelTextColor || (isLightPanel ? '#000000' : '#e0e3ea');
             const secondaryRgb = toRgbArray(secondaryColor, [123, 97, 255]);
             const textRgb = toRgbArray(textColor, [224, 227, 234]);
 
             // Derive muted text (mix text toward panel bg)
-            // Keep stronger contrast on light backgrounds.
-            const textMutedRgb = mixRgb(textRgb, panelRgb, isLightPanel ? 0.12 : 0.52);
+            // Light: dark gray from primary text; dark: soften toward panel.
+            const textMutedRgb = isLightPanel
+                ? mixRgb(textRgb, [72, 72, 78], 0.42)
+                : mixRgb(textRgb, panelRgb, 0.52);
             // Input/button bg: slightly darker for light themes, slightly lighter for dark themes
             const inputBgRgb = isLightPanel
                 ? mixRgb(surfaceBg, [0, 0, 0], 0.06)
@@ -5100,7 +5103,7 @@ class Chart {
                 root.style.setProperty('--sp-secondary-rgb', `${secondaryRgb[0]}, ${secondaryRgb[1]}, ${secondaryRgb[2]}`);
                 root.style.setProperty('--sp-text', rgbToCss(textRgb));
                 root.style.setProperty('--sp-text-muted', rgbToCss(textMutedRgb));
-                root.style.setProperty('--sp-text-active', isLightPanel ? '#111111' : '#ffffff');
+                root.style.setProperty('--sp-text-active', isLightPanel ? '#000000' : '#ffffff');
                 root.style.setProperty('--sp-nav-icon-color', rgbToCss(navIconRgb));
                 root.style.setProperty('--sp-hover-bg', rgbaToCss(hoverBgRgb, 0.55));
                 root.style.setProperty('--sp-input-bg', rgbaToCss(inputBgRgb, 0.72));
@@ -5351,16 +5354,16 @@ class Chart {
                 bodyUpColor: '#089981', bodyDownColor: '#f23645',
                 borderUpColor: '#089981', borderDownColor: '#f23645',
                 wickUpColor: '#089981', wickDownColor: '#f23645',
-                scaleTextColor: '#131722', scaleLinesColor: '#f0f3fa',
-                symbolTextColor: '#131722',
+                scaleTextColor: '#000000', scaleLinesColor: '#e8e8e8',
+                symbolTextColor: '#000000',
                 crosshairColor: 'rgba(120, 123, 134, 0.3)',
-                cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#131722',
+                cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#000000',
                 volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
                 settingsPanelBgColor: '#ffffff',
-                settingsPanelSidebarBgColor: '#f5f6fa',
+                settingsPanelSidebarBgColor: '#ffffff',
                 settingsPanelAccentColor: '#2962ff',
                 settingsPanelSecondaryColor: '#089981',
-                settingsPanelTextColor: '#131722'
+                settingsPanelTextColor: '#000000'
             },
             /* ── COLOR THEMES ── */
             'ocean-blue': {
