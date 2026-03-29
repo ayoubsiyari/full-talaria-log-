@@ -5821,7 +5821,7 @@
 
             display: grid;
 
-            grid-template-columns: 18px 1fr;
+            grid-template-columns: 22px minmax(0, 1fr);
 
             align-items: center;
 
@@ -5867,9 +5867,15 @@
 
             align-items: center;
 
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
 
-            gap: 5px;
+            justify-content: space-between;
+
+            gap: 4px;
+
+            width: 100%;
+
+            min-width: 0;
 
         }
 
