@@ -1578,7 +1578,7 @@
 
             background: var(--sp-ui-sidebar-bg, #ffffff) !important;
 
-            border-right: 6px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15)) !important;
+            border-right: none !important;
 
         }
 
@@ -1586,7 +1586,7 @@
 
             background: var(--sp-ui-sidebar-bg, #ffffff);
 
-            border-right: 6px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
+            border-right: none;
 
             box-shadow: none;
 
@@ -34077,6 +34077,26 @@
 
         }
 
+        /* Dark mode: make 6px chrome edges readable (base borders are too low-contrast on #050028) */
+
+        body:not(.light-mode) .toolbar {
+
+            border-bottom: 6px solid rgba(120, 123, 134, 0.55) !important;
+
+        }
+
+        body:not(.light-mode) .right-sidebar-icons {
+
+            border-right: 6px solid rgba(120, 123, 134, 0.5) !important;
+
+        }
+
+        body:not(.light-mode) .left-sidebar {
+
+            border-right: 6px solid rgba(120, 123, 134, 0.45) !important;
+
+        }
+
 
 
         body:not(.light-mode) .replay-toolbar::before {
@@ -34296,6 +34316,18 @@
             flex-shrink: 0 !important;
 
             background: rgba(120, 123, 134, 0.3) !important;
+
+        }
+
+        body:not(.light-mode) .toolbar .divider,
+
+        body:not(.light-mode) .toolbar-divider,
+
+        body:not(.light-mode) .left-sidebar > .divider,
+
+        body:not(.light-mode) .tool-divider {
+
+            background: rgba(120, 123, 134, 0.58) !important;
 
         }
 
