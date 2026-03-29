@@ -5218,6 +5218,47 @@ class OrderManager {
                     -webkit-text-fill-color: #ffffff !important;
                 }
 
+                /* WebKit: pair color + -webkit-text-fill on every tab state so hover never leaves white fill on a light bg */
+                body.light-mode .order-panel .order-tab.order-tab--buy:not(.active) {
+                    color: #089981 !important;
+                    -webkit-text-fill-color: #089981 !important;
+                    background: #ffffff !important;
+                }
+                body.light-mode .order-panel .order-tab.order-tab--sell:not(.active) {
+                    color: #f23645 !important;
+                    -webkit-text-fill-color: #f23645 !important;
+                    background: #ffffff !important;
+                }
+                body.light-mode .order-panel .order-tab.order-tab--buy:not(.active):hover {
+                    color: #089981 !important;
+                    -webkit-text-fill-color: #089981 !important;
+                    background: #ffffff !important;
+                }
+                body.light-mode .order-panel .order-tab.order-tab--sell:not(.active):hover {
+                    color: #f23645 !important;
+                    -webkit-text-fill-color: #f23645 !important;
+                    background: #ffffff !important;
+                }
+                body.light-mode .order-panel .order-tab.active.order-tab--buy,
+                body.light-mode .order-panel .order-tab.active.order-tab--buy:hover {
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                }
+                body.light-mode .order-panel .order-tab.active.order-tab--sell,
+                body.light-mode .order-panel .order-tab.active.order-tab--sell:hover {
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                }
+
+                /* Market type row: inline styles use var(--op-text); force dark text on hover/focus */
+                body.light-mode .order-panel .order-market-type-btn,
+                body.light-mode .order-panel .order-market-type-btn:hover,
+                body.light-mode .order-panel .order-market-type-btn:focus,
+                body.light-mode .order-panel .order-market-type-btn:focus-visible {
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
+                }
+
                 /* ── ORDER TYPE BUTTONS ──────────────────────────────────────────── */
                 .order-section {
                     display: flex;

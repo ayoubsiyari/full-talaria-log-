@@ -4232,6 +4232,26 @@
             -webkit-text-fill-color: #ffffff !important;
         }
 
+        /* Win over any toolbar / icon-button hover that flashes a light grey bg while text stays white-filled (WebKit). */
+        body.light-mode .toolbar #placeOrderBtn.new-order-btn,
+        body.light-mode .toolbar #placeOrderBtn.new-order-btn:focus,
+        body.light-mode .toolbar #placeOrderBtn.new-order-btn:focus-visible {
+            background: #2962ff !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        body.light-mode .toolbar #placeOrderBtn.new-order-btn:hover {
+            background: #1e53e5 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        body.light-mode .toolbar #placeOrderBtn.new-order-btn svg {
+            stroke: #ffffff !important;
+            color: #ffffff !important;
+        }
+
 
 
         .new-order-btn svg {
@@ -42000,7 +42020,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260328"></script>
 
-    <script defer src="modules/order-manager.js?v=20260328_ORDER_BLUE"></script>
+    <script defer src="modules/order-manager.js?v=20260328_ORDER_HOVER_TEXT"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260328"></script>
 
