@@ -5421,9 +5421,12 @@ class OrderManager {
                     outline: none;
                     font-family: inherit;
                     font-weight: 600;
+                    line-height: 1.25;
+                    min-height: 0;
+                    align-self: center;
                 }
                 .order-input::placeholder { color: rgba(127, 135, 158, 0.65); font-weight: 500; }
-                .order-input--compact { padding: 8px 0; font-size: 12px; }
+                .order-input--compact { padding: 8px 0; font-size: 12px; line-height: 1.25; }
                 /* Hide native number spinners — custom +/- steppers only */
                 .order-panel input.order-input[type="number"] {
                     -moz-appearance: textfield;
@@ -5440,6 +5443,10 @@ class OrderManager {
                     color: var(--op-text-muted);
                     font-weight: 600;
                     flex-shrink: 0;
+                    line-height: 1;
+                    display: flex;
+                    align-items: center;
+                    align-self: center;
                 }
                 .input-stepper {
                     width: 30px !important;
@@ -5892,15 +5899,15 @@ class OrderManager {
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10" style="width: 28px; height: 28px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #ef4444; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10" style="width: 28px; height: 28px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; color: #22c55e; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
                     </div>
-                    <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 4px; align-items: center;">
-                        <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; padding-right: 32px;">
-                        <span class="order-input-suffix" style="position: absolute; right: 92px;">%</span>
+                    <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
+                        <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                        <span class="order-input-suffix">%</span>
                         <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5" style="width: 28px; height: 28px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #ef4444; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
                         <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5" style="width: 28px; height: 28px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; color: #22c55e; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
                     </div>
-                    <div id="lotSizeInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 4px; align-items: center;">
-                        <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; padding-right: 44px;">
-                        <span class="order-input-suffix" style="position: absolute; right: 92px;">Lots</span>
+                    <div id="lotSizeInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
+                        <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                        <span class="order-input-suffix">Lots</span>
                         <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="-0.1" style="width: 28px; height: 28px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #ef4444; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
                         <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="+0.1" style="width: 28px; height: 28px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; color: #22c55e; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
                     </div>
