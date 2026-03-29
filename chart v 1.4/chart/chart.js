@@ -14193,7 +14193,7 @@ class Chart {
             const maxY = window.innerHeight - rect.height;
             
             currentX = Math.max(0, Math.min(currentX, maxX));
-            currentY = Math.max(44, Math.min(currentY, maxY)); // 44px for toolbar
+            currentY = Math.max(54, Math.min(currentY, maxY)); // below fixed toolbar (6px bottom border)
             
             sidebar.style.left = currentX + 'px';
             sidebar.style.top = currentY + 'px';

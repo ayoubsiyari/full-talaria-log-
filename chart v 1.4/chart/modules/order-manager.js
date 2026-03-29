@@ -4711,10 +4711,10 @@ class OrderManager {
                 /* ── ORDER PANEL SHELL ───────────────────────────────────────────── */
                 .order-panel {
                     position: fixed;
-                    top: 48px;
+                    top: 54px;
                     right: -440px;
                     width: 420px;
-                    height: calc(100vh - 98px);
+                    height: calc(100vh - 104px);
                     --op-accent: var(--sp-accent, #2962ff);
                     --op-accent-rgb: var(--sp-accent-rgb, 41, 98, 255);
                     --op-bg: var(--sp-bg, #050028);
