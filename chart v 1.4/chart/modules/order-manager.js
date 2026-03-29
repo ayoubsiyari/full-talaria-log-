@@ -2144,88 +2144,128 @@ class OrderManager {
      * Show MFE/MAE settings modal
      */
     showMfeMaeSettings() {
+        if (!document.getElementById('mfeMaeModalStyles')) {
+            const st = document.createElement('style');
+            st.id = 'mfeMaeModalStyles';
+            st.textContent = `
+                #mfeMaeSettingsModal.mfe-mae-modal {
+                    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+                    z-index: 1000010; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+                }
+                body.light-mode #mfeMaeSettingsModal.mfe-mae-modal {
+                    background: rgba(15, 23, 42, 0.35); backdrop-filter: blur(3px);
+                }
+                .mfe-mae-modal__box {
+                    background: #1a1e2e; border: 1px solid #2a2e39; border-radius: 12px; padding: 24px;
+                    max-width: 400px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                }
+                body.light-mode .mfe-mae-modal__box {
+                    background: #ffffff; border: 1px solid #e0e3eb; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+                }
+                .mfe-mae-modal__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+                .mfe-mae-modal__title { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
+                body.light-mode .mfe-mae-modal__title { color: #131722; }
+                .mfe-mae-modal__close {
+                    background: transparent; border: none; color: #787b86; font-size: 24px; cursor: pointer;
+                    padding: 0; width: 32px; height: 32px; line-height: 1; border-radius: 6px;
+                }
+                body.light-mode .mfe-mae-modal__close:hover { color: #131722; border: 1px solid #e0e3eb; }
+                .mfe-mae-modal__intro { color: #787b86; font-size: 12px; margin-bottom: 12px; line-height: 1.5; }
+                body.light-mode .mfe-mae-modal__intro { color: #787b86; }
+                .mfe-mae-modal__info {
+                    background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3); border-radius: 8px;
+                    padding: 12px; margin-bottom: 16px; font-size: 11px; line-height: 1.5; color: #a78bfa;
+                }
+                body.light-mode .mfe-mae-modal__info {
+                    background: rgba(41, 98, 255, 0.06); border: 1px solid rgba(41, 98, 255, 0.22);
+                    color: #131722;
+                }
+                .mfe-mae-modal__field { margin-bottom: 20px; }
+                .mfe-mae-modal__label { display: block; color: #787b86; font-size: 11px; font-weight: 600; margin-bottom: 8px; letter-spacing: 0.04em; text-transform: uppercase; }
+                body.light-mode .mfe-mae-modal__label { color: #787b86; }
+                .mfe-mae-modal__input, .mfe-mae-modal__select {
+                    width: 100%; box-sizing: border-box; font-size: 14px; font-weight: 600;
+                    border-radius: 6px; padding: 10px 12px; outline: none;
+                    background: rgba(255,255,255,0.05); border: 1px solid #2a2e39; color: #fff;
+                }
+                body.light-mode .mfe-mae-modal__input, body.light-mode .mfe-mae-modal__select {
+                    background: #ffffff; border: 1px solid #e0e3eb; color: #131722;
+                    -webkit-text-fill-color: #131722;
+                }
+                body.light-mode .mfe-mae-modal__input:focus, body.light-mode .mfe-mae-modal__select:focus {
+                    border-color: #2962ff; box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.25);
+                }
+                body.light-mode .mfe-mae-modal__select option { color: #131722; background: #ffffff; }
+                .mfe-mae-modal__input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+                .mfe-mae-modal__input[type="number"]::-webkit-outer-spin-button,
+                .mfe-mae-modal__input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+                .mfe-mae-modal__hint { color: #787b86; font-size: 10px; margin-top: 4px; }
+                .mfe-mae-modal__actions { display: flex; gap: 12px; margin-top: 4px; }
+                .mfe-mae-modal__btn { flex: 1; padding: 12px 14px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; }
+                .mfe-mae-modal__btn--primary { background: #7c3aed; color: #fff; }
+                body.light-mode .mfe-mae-modal__btn--primary { background: #089981; color: #fff; }
+                body.light-mode .mfe-mae-modal__btn--primary:hover { background: #07806d; }
+                .mfe-mae-modal__btn--ghost { background: transparent; color: #787b86; border: 1px solid #2a2e39; }
+                body.light-mode .mfe-mae-modal__btn--ghost {
+                    background: #ffffff; color: #131722; border: 1px solid #e0e3eb;
+                }
+                body.light-mode .mfe-mae-modal__btn--ghost:hover { border-color: #cbd5e1; background: #f8fafc; }
+            `;
+            document.head.appendChild(st);
+        }
+
         // Remove existing modal if any
         const existingModal = document.getElementById('mfeMaeSettingsModal');
         if (existingModal) existingModal.remove();
-        
+
         const modal = document.createElement('div');
         modal.id = 'mfeMaeSettingsModal';
-        modal.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-            backdrop-filter: blur(4px);
-        `;
-        
+        modal.className = 'mfe-mae-modal';
+
         const modalContent = document.createElement('div');
-        modalContent.style.cssText = `
-            background: #1a1e2e;
-            border-radius: 12px;
-            padding: 24px;
-            max-width: 400px;
-            width: 90%;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            border: 1px solid #2a2e39;
-        `;
-        
+        modalContent.className = 'mfe-mae-modal__box';
+
         modalContent.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="color: #fff; margin: 0; font-size: 18px;">⚙️ MFE/MAE Settings</h3>
-                <button id="closeMfeMaeSettings" style="background: transparent; border: none; color: #787b86; font-size: 24px; cursor: pointer; padding: 0; width: 32px; height: 32px;">×</button>
+            <div class="mfe-mae-modal__header">
+                <h3 class="mfe-mae-modal__title">⚙️ MFE/MAE Settings</h3>
+                <button type="button" id="closeMfeMaeSettings" class="mfe-mae-modal__close" aria-label="Close">&times;</button>
             </div>
-            
-            <div style="margin-bottom: 20px;">
-                <div style="color: #787b86; font-size: 12px; margin-bottom: 12px; line-height: 1.5;">
-                    Configure the time window for tracking Maximum Favorable Excursion (MFE) and Maximum Adverse Excursion (MAE).
-                </div>
-                <div style="background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3); border-radius: 6px; padding: 10px; margin-bottom: 16px;">
-                    <div style="color: #a78bfa; font-size: 11px; line-height: 1.5;">
-                        📊 <strong>MFE</strong> (Max Favorable Excursion) = Best price level reached<br>
-                        📊 <strong>MAE</strong> (Max Adverse Excursion) = Worst price level reached<br>
-                        <br>
-                        Tracked within a time window AFTER entry, regardless of when TP/SL is hit.
-                    </div>
-                </div>
+
+            <div class="mfe-mae-modal__intro">
+                Configure the time window for tracking Maximum Favorable Excursion (MFE) and Maximum Adverse Excursion (MAE).
             </div>
-            
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; color: #787b86; font-size: 12px; margin-bottom: 8px;">Tracking Window (Hours)</label>
-                <input type="number" id="mfeMaeHoursInput" value="${this.mfeMaeTrackingHours}" min="0.5" max="168" step="0.5" 
-                    style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid #2a2e39; border-radius: 6px; color: #fff; padding: 12px; font-size: 14px;">
-                <div style="color: #787b86; font-size: 10px; margin-top: 4px;">Examples: 0.5 = 30min, 1 = 1h, 4 = 4h, 24 = 1day, 168 = 1week</div>
+            <div class="mfe-mae-modal__info">
+                📊 <strong>MFE</strong> (Max Favorable Excursion) = Best price level reached<br>
+                📊 <strong>MAE</strong> (Max Adverse Excursion) = Worst price level reached<br>
+                <br>
+                Tracked within a time window AFTER entry, regardless of when TP/SL is hit.
             </div>
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; color: #787b86; font-size: 12px; margin-bottom: 8px;">Post-Exit Tracking Mode</label>
-                <select id="postExitTrackingModeInput" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid #2a2e39; border-radius: 6px; color: #fff; padding: 12px; font-size: 14px;">
+
+            <div class="mfe-mae-modal__field">
+                <label class="mfe-mae-modal__label" for="mfeMaeHoursInput">Tracking window (hours)</label>
+                <input type="number" id="mfeMaeHoursInput" class="mfe-mae-modal__input" value="${this.mfeMaeTrackingHours}" min="0.5" max="168" step="0.5">
+                <div class="mfe-mae-modal__hint">Examples: 0.5 = 30min, 1 = 1h, 4 = 4h, 24 = 1day, 168 = 1week</div>
+            </div>
+            <div class="mfe-mae-modal__field">
+                <label class="mfe-mae-modal__label" for="postExitTrackingModeInput">Post-exit tracking mode</label>
+                <select id="postExitTrackingModeInput" class="mfe-mae-modal__select">
                     <option value="hours" ${this.postExitTrackingMode === 'hours' ? 'selected' : ''}>Hours window (legacy)</option>
                     <option value="candles" ${this.postExitTrackingMode === 'candles' ? 'selected' : ''}>Fixed candle count after close</option>
                 </select>
-                <div style="color: #787b86; font-size: 10px; margin-top: 4px;">For TP/SL post-exit analysis, candle mode tracks exactly N candles.</div>
+                <div class="mfe-mae-modal__hint">For TP/SL post-exit analysis, candle mode tracks exactly N candles.</div>
             </div>
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; color: #787b86; font-size: 12px; margin-bottom: 8px;">Post-Exit Candles</label>
-                <input type="number" id="postExitTrackingCandlesInput" value="${this.postExitTrackingCandles}" min="1" max="5000" step="1"
-                    style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid #2a2e39; border-radius: 6px; color: #fff; padding: 12px; font-size: 14px;">
-                <div style="color: #787b86; font-size: 10px; margin-top: 4px;">Default 50 candles.</div>
+            <div class="mfe-mae-modal__field">
+                <label class="mfe-mae-modal__label" for="postExitTrackingCandlesInput">Post-exit candles</label>
+                <input type="number" id="postExitTrackingCandlesInput" class="mfe-mae-modal__input" value="${this.postExitTrackingCandles}" min="1" max="5000" step="1">
+                <div class="mfe-mae-modal__hint">Default 50 candles.</div>
             </div>
-            
-            <div style="display: flex; gap: 12px;">
-                <button id="saveMfeMaeSettings" style="flex: 1; padding: 12px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                    Save Settings
-                </button>
-                <button id="cancelMfeMaeSettings" style="flex: 1; padding: 12px; background: transparent; color: #787b86; border: 1px solid #2a2e39; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                    Cancel
-                </button>
+
+            <div class="mfe-mae-modal__actions">
+                <button type="button" id="saveMfeMaeSettings" class="mfe-mae-modal__btn mfe-mae-modal__btn--primary">Save settings</button>
+                <button type="button" id="cancelMfeMaeSettings" class="mfe-mae-modal__btn mfe-mae-modal__btn--ghost">Cancel</button>
             </div>
         `;
-        
+
         modal.appendChild(modalContent);
         document.body.appendChild(modal);
         
@@ -4683,13 +4723,15 @@ class OrderManager {
                     --op-text-muted: var(--sp-text-muted, #7f879e);
                     --op-border: var(--sp-ui-border, rgba(255,255,255,0.07));
                     --op-soft-accent: rgba(var(--op-accent-rgb), 0.14);
-                    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)), var(--op-bg);
+                    --tv-buy: #089981;
+                    --tv-sell: #f23645;
+                    background: var(--op-bg);
                     border-left: 1px solid var(--op-border);
                     z-index: 1000010;
                     overflow: hidden;
                     overflow-y: auto;
                     transition: right 0.28s cubic-bezier(.4,0,.2,1);
-                    box-shadow: -8px 0 40px rgba(0,0,0,0.6);
+                    box-shadow: none;
                     pointer-events: none;
                     display: flex;
                     flex-direction: column;
@@ -4716,7 +4758,7 @@ class OrderManager {
                     z-index: 1;
                     color: #fff;
                     transition: background 0.15s;
-                    box-shadow: -3px 0 10px rgba(0,0,0,0.4);
+                    box-shadow: none;
                 }
                 .order-panel__edge-handle:hover { filter: none; }
 
@@ -4751,7 +4793,7 @@ class OrderManager {
                     align-items: center;
                     padding: 14px 16px 12px;
                     border-bottom: 1px solid var(--op-border);
-                    background: rgba(0,0,0,0.08);
+                    background: var(--op-surface);
                     flex-shrink: 0;
                     user-select: none;
                 }
@@ -4794,26 +4836,38 @@ class OrderManager {
                     transition: all 0.15s ease;
                 }
                 .order-tab--buy {
-                    background: rgba(255,255,255,0.02);
-                    color: var(--op-text-muted);
+                    background: rgba(255,255,255,0.04);
+                    border-color: var(--op-border);
+                    color: var(--tv-buy, #089981);
                 }
                 .order-tab--sell {
-                    background: rgba(255,255,255,0.02);
-                    color: var(--op-text-muted);
+                    background: rgba(255,255,255,0.04);
+                    border-color: var(--op-border);
+                    color: var(--tv-sell, #f23645);
                 }
                 .order-tab.active.order-tab--buy {
-                    background: linear-gradient(135deg, #22c55e, #16a34a);
-                    border-color: #16a34a;
+                    background: #089981;
+                    border-color: #089981;
                     color: #fff;
-                    box-shadow: 0 3px 14px rgba(34,197,94,0.35);
+                    box-shadow: none;
                 }
                 .order-tab.active.order-tab--sell {
-                    background: linear-gradient(135deg, #ef4444, #dc2626);
-                    border-color: #dc2626;
+                    background: #f23645;
+                    border-color: #f23645;
                     color: #fff;
-                    box-shadow: 0 3px 14px rgba(239,68,68,0.35);
+                    box-shadow: none;
                 }
                 .order-tab:hover:not(.active) { filter: none; }
+                .order-panel .order-tab.active.order-tab--buy:hover {
+                    background: #07806d;
+                    border-color: #07806d;
+                    color: #fff;
+                }
+                .order-panel .order-tab.active.order-tab--sell:hover {
+                    background: #d91e32;
+                    border-color: #d91e32;
+                    color: #fff;
+                }
 
                 /* ═══════════════════════════════════════════════════════════════
                    LIGHT MODE — TradingView-style (flat white, TV palette)
@@ -5284,67 +5338,90 @@ class OrderManager {
                 .order-section--compact { gap: 3px; }
                 .order-button-group {
                     display: flex;
-                    gap: 2px;
-                    background: rgba(0,0,0,0.18);
-                    border: 1px solid var(--op-border);
-                    border-radius: 8px;
-                    padding: 4px;
+                    background: transparent;
+                    border: none;
+                    border-radius: 0;
+                }
+                .order-button-group:not(.order-button-group--inline) {
+                    flex-wrap: nowrap;
+                    align-items: stretch;
+                    min-width: 0;
+                    gap: 20px;
+                    border-bottom: 1px solid rgba(255,255,255,0.12);
+                    padding: 0 0 2px;
+                }
+                .order-button-group--inline:not(:has(.risk-btn)) {
+                    flex-wrap: wrap;
+                    align-items: stretch;
+                    gap: 16px;
+                    border-bottom: 1px solid rgba(255,255,255,0.12);
+                    padding: 0 0 2px;
+                }
+                .order-button-group--inline:has(.risk-btn) {
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    border-bottom: none;
+                    padding: 0;
                 }
                 .order-button-group--inline {
                     background: transparent;
-                    border: none;
-                    padding: 0;
-                    gap: 4px;
+                    border-left: none;
+                    border-right: none;
+                    border-top: none;
                 }
                 .order-type-btn,
                 .position-mode-tab,
                 .breakeven-mode-tab {
                     flex: 1;
                     border: none;
-                    border-radius: 6px;
-                    padding: 7px 8px;
+                    border-radius: 0;
+                    padding: 8px 6px 10px;
                     font-size: 11px;
                     font-weight: 600;
                     cursor: pointer;
                     color: var(--op-text-muted);
                     background: transparent;
-                    transition: all 0.15s ease;
+                    transition: color 0.15s ease, border-color 0.15s ease;
                     letter-spacing: 0.015em;
+                    border-bottom: 2px solid transparent;
+                    margin-bottom: -2px;
+                    min-width: 0;
                 }
                 .order-type-btn:hover,
                 .position-mode-tab:hover,
                 .breakeven-mode-tab:hover {
                     background: transparent;
-                    color: var(--op-text-muted);
+                    color: var(--op-text);
                 }
                 .order-type-btn.active,
                 .position-mode-tab.active,
                 .breakeven-mode-tab.active {
-                    background: var(--op-accent);
-                    color: #fff;
-                    box-shadow: 0 3px 14px rgba(var(--op-accent-rgb), 0.35);
+                    background: transparent;
+                    color: var(--op-accent);
+                    border-bottom-color: var(--op-accent);
+                    box-shadow: none;
                 }
 
                 /* ── RISK SHORTCUT BUTTONS ───────────────────────────────────────── */
                 .risk-btn {
                     flex: 1;
-                    background: rgba(255,255,255,0.03);
-                    border: 1px solid rgba(255,255,255,0.07);
-                    border-radius: 3px;
-                    padding: 4px 4px;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.12);
+                    border-radius: 4px;
+                    padding: 5px 6px;
                     font-size: 10px;
                     font-weight: 600;
                     cursor: pointer;
-                    color: #555a6e;
-                    transition: all 0.15s ease;
+                    color: var(--op-text-muted);
+                    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
                 }
                 .risk-btn:hover {
-                    background: rgba(255,255,255,0.03);
-                    border-color: rgba(255,255,255,0.07);
-                    color: #555a6e;
+                    background: rgba(255,255,255,0.06);
+                    border-color: rgba(255,255,255,0.18);
+                    color: var(--op-text);
                 }
                 .risk-btn.active {
-                    background: rgba(41,98,255,0.22);
+                    background: rgba(41,98,255,0.18);
                     border-color: var(--sp-accent, #2962ff);
                     color: #7aa3ff;
                 }
@@ -5399,17 +5476,17 @@ class OrderManager {
                 .order-input-wrapper {
                     display: flex;
                     align-items: center;
-                    background: linear-gradient(180deg, rgba(0,0,0,0.14) 0%, rgba(0,0,0,0.3) 100%), var(--op-surface);
-                    border: 1px solid var(--op-border);
-                    border-radius: 8px;
-                    padding: 0 10px;
-                    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+                    background: var(--op-surface);
+                    border: 1px solid rgba(255,255,255,0.12);
+                    border-radius: 6px;
+                    padding: 0 12px;
+                    box-shadow: none;
                     transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
                 }
                 .order-input-wrapper:focus-within {
-                    border-color: rgba(var(--op-accent-rgb), 0.95);
-                    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.25) 100%), var(--op-surface);
-                    box-shadow: 0 0 0 2px rgba(var(--op-accent-rgb), 0.2);
+                    border-color: rgba(var(--op-accent-rgb), 0.85);
+                    background: var(--op-surface);
+                    box-shadow: 0 0 0 1px rgba(var(--op-accent-rgb), 0.35);
                 }
                 .order-input {
                     flex: 1;
@@ -5425,7 +5502,7 @@ class OrderManager {
                     min-height: 0;
                     align-self: center;
                 }
-                .order-input::placeholder { color: rgba(127, 135, 158, 0.65); font-weight: 500; }
+                .order-input::placeholder { color: var(--op-text-muted); opacity: 0.75; font-weight: 500; }
                 .order-input--compact { padding: 8px 12px; font-size: 12px; line-height: 1.25; }
                 /* Hide native number spinners — custom +/- steppers only */
                 .order-panel input.order-input[type="number"] {
@@ -5458,9 +5535,9 @@ class OrderManager {
                 .input-stepper {
                     width: 30px !important;
                     height: 30px !important;
-                    border-radius: 8px !important;
-                    border: 1px solid var(--op-border) !important;
-                    background: rgba(0,0,0,0.14) !important;
+                    border-radius: 6px !important;
+                    border: 1px solid rgba(255,255,255,0.12) !important;
+                    background: rgba(0,0,0,0.25) !important;
                     color: var(--op-text) !important;
                     font-size: 16px !important;
                     font-weight: 700 !important;
@@ -5471,12 +5548,12 @@ class OrderManager {
                     transition: all 0.15s ease !important;
                 }
                 .input-stepper:hover {
-                    border-color: var(--op-border) !important;
-                    background: rgba(0,0,0,0.14) !important;
+                    border-color: rgba(255,255,255,0.2) !important;
+                    background: rgba(0,0,0,0.35) !important;
                     color: var(--op-text) !important;
                     transform: none;
                 }
-                .order-hint { font-size: 10px; color: #3d4256; line-height: 1.4; }
+                .order-hint { font-size: 10px; color: var(--op-text-muted); line-height: 1.4; }
 
                 /* ── POSITION SIZE CALC ROW ──────────────────────────────────────── */
                 .order-calculation {
@@ -5488,18 +5565,18 @@ class OrderManager {
                     justify-content: space-between;
                     align-items: center;
                 }
-                .order-calculation-label { color: #555a6e; font-size: 10px; font-weight: 500; }
+                .order-calculation-label { color: var(--op-text-muted); font-size: 10px; font-weight: 500; }
                 .order-calculation-value { color: var(--op-accent); font-size: 11px; font-weight: 700; }
 
                 /* ── COLLAPSE SECTIONS (Protection / Multiple TP) ────────────────── */
                 .order-collapse {
-                    border: 1px solid rgba(255,255,255,0.07);
+                    border: 1px solid rgba(255,255,255,0.12);
                     border-radius: 6px;
-                    background: rgba(255,255,255,0.015);
+                    background: rgba(255,255,255,0.03);
                     margin-bottom: 8px;
                     transition: border-color 0.15s;
                 }
-                .order-collapse:hover { border-color: rgba(255,255,255,0.07); }
+                .order-collapse:hover { border-color: rgba(255,255,255,0.16); }
                 .order-collapse__header {
                     width: 100%;
                     padding: 9px 12px;
@@ -5538,15 +5615,15 @@ class OrderManager {
                     display: none;
                     flex-direction: column;
                     gap: 8px;
-                    background: rgba(0,0,0,0.15);
+                    background: rgba(0,0,0,0.2);
                 }
                 .order-collapse--open .order-collapse__content { display: flex; }
 
                 /* ── SUMMARY FOOTER ──────────────────────────────────────────────── */
                 .order-summary {
-                    background: linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.24) 100%), var(--op-surface);
-                    border: 1px solid var(--op-border);
-                    border-radius: 10px;
+                    background: var(--op-surface);
+                    border: 1px solid rgba(255,255,255,0.12);
+                    border-radius: 6px;
                     padding: 11px 12px;
                     display: flex;
                     flex-direction: column;
@@ -5558,11 +5635,11 @@ class OrderManager {
                     align-items: center;
                 }
                 .order-summary-label { font-size: 11px; font-weight: 500; color: var(--op-text-muted); }
-                .order-summary-label--positive { color: #4ade80; }
-                .order-summary-label--negative { color: #f87171; }
+                .order-summary-label--positive { color: #089981; }
+                .order-summary-label--negative { color: #f23645; }
                 .order-summary-value { font-size: 11px; font-weight: 700; color: var(--op-text); }
-                .order-summary-value--positive { color: #4ade80; }
-                .order-summary-value--negative { color: #f87171; }
+                .order-summary-value--positive { color: #089981; }
+                .order-summary-value--negative { color: #f23645; }
                 .order-summary-value--muted { color: var(--op-text); }
                 .order-summary-value--warning { color: #f59e0b; }
                 .order-summary-value--danger { color: #ef4444; }
@@ -5587,37 +5664,39 @@ class OrderManager {
                 .order-submit-btn {
                     width: 100%;
                     padding: 12px 14px;
-                    background: linear-gradient(135deg, rgba(var(--op-accent-rgb), 0.95) 0%, rgba(var(--op-accent-rgb), 0.75) 100%);
+                    background: #089981;
                     color: #fff;
                     border: none;
-                    border-radius: 10px;
+                    border-radius: 6px;
                     font-size: 13px;
                     font-weight: 700;
                     letter-spacing: 0.03em;
                     cursor: pointer;
-                    transition: filter 0.15s, box-shadow 0.15s;
-                    box-shadow: 0 2px 14px rgba(var(--op-accent-rgb), 0.3);
+                    transition: background 0.15s ease, filter 0.15s;
+                    box-shadow: none;
                     margin-top: 2px;
                 }
-                .order-submit-btn:hover { filter: none; box-shadow: 0 2px 14px rgba(var(--op-accent-rgb), 0.3); }
-                .order-submit-btn:active { filter: brightness(0.92); }
+                .order-submit-btn:hover { background: #07806d; filter: none; box-shadow: none; }
+                .order-submit-btn:active { filter: none; background: #067a63; }
                 .order-submit-btn.sell-mode {
-                    background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%);
-                    box-shadow: 0 2px 14px rgba(220,38,38,0.3);
+                    background: #f23645;
+                    box-shadow: none;
                 }
-                .order-submit-btn.sell-mode:hover { box-shadow: 0 2px 14px rgba(220,38,38,0.3); }
+                .order-submit-btn.sell-mode:hover { background: #d91e32; box-shadow: none; }
+                .order-submit-btn.sell-mode:active { background: #c91a2c; }
 
                 /* ── PROTECTION / MULTI-TP PROFESSIONAL THEME STYLES ─────────────── */
                 .order-card-soft {
-                    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.2) 100%), var(--op-surface);
-                    border: 1px solid var(--op-border);
-                    border-radius: 10px;
+                    background: var(--op-surface);
+                    border: 1px solid rgba(255,255,255,0.12);
+                    border-radius: 6px;
                     padding: 12px;
+                    box-shadow: none;
                 }
                 .order-info-card {
-                    background: rgba(var(--op-accent-rgb), 0.1);
+                    background: rgba(var(--op-accent-rgb), 0.12);
                     border: 1px solid rgba(var(--op-accent-rgb), 0.35);
-                    border-radius: 10px;
+                    border-radius: 6px;
                     padding: 10px;
                     margin-bottom: 12px;
                 }
@@ -5643,18 +5722,18 @@ class OrderManager {
                 .order-btn-icon {
                     min-width: 38px;
                     height: 34px;
-                    border-radius: 8px;
-                    border: 1px solid var(--op-border);
-                    background: rgba(0,0,0,0.14);
+                    border-radius: 6px;
+                    border: 1px solid rgba(255,255,255,0.12);
+                    background: var(--op-surface);
                     color: var(--op-text);
                     font-size: 14px;
                     font-weight: 700;
                     cursor: pointer;
-                    transition: all 0.15s ease;
+                    transition: border-color 0.15s ease, background 0.15s ease;
                 }
                 .order-btn-icon:hover {
-                    border-color: var(--op-border);
-                    background: rgba(0,0,0,0.14);
+                    border-color: rgba(255,255,255,0.2);
+                    background: rgba(255,255,255,0.04);
                 }
                 .order-btn-icon--accent {
                     background: rgba(var(--op-accent-rgb), 0.16);
@@ -5663,14 +5742,15 @@ class OrderManager {
                 }
                 .order-select {
                     flex: 1;
-                    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.24) 100%), var(--op-surface);
-                    border: 1px solid var(--op-border);
-                    border-radius: 8px;
+                    background: var(--op-surface);
+                    border: 1px solid rgba(255,255,255,0.12);
+                    border-radius: 6px;
                     padding: 6px 10px;
                     font-size: 12px;
                     color: var(--op-text);
                     cursor: pointer;
                     outline: none;
+                    box-shadow: none;
                 }
                 .order-stage-card { margin-bottom: 12px; }
                 .order-stage-head {
@@ -5706,9 +5786,9 @@ class OrderManager {
                 .order-status-card {
                     margin-top: 8px;
                     padding: 8px 10px;
-                    border-radius: 8px;
-                    border: 1px solid var(--op-border);
-                    background: rgba(0,0,0,0.12);
+                    border-radius: 6px;
+                    border: 1px solid rgba(255,255,255,0.12);
+                    background: rgba(0,0,0,0.25);
                     display: none;
                 }
                 .order-status-title {
@@ -5741,19 +5821,19 @@ class OrderManager {
                 .order-utility-btn {
                     width: 100%;
                     padding: 9px 12px;
-                    border-radius: 8px;
-                    border: 1px solid var(--op-border);
-                    background: rgba(0,0,0,0.14);
+                    border-radius: 6px;
+                    border: 1px solid rgba(255,255,255,0.12);
+                    background: var(--op-surface);
                     color: var(--op-text);
                     font-size: 12px;
                     font-weight: 700;
                     letter-spacing: 0.02em;
                     cursor: pointer;
-                    transition: all 0.15s ease;
+                    transition: border-color 0.15s ease, background 0.15s ease;
                 }
                 .order-utility-btn:hover {
-                    border-color: var(--op-border);
-                    background: rgba(0,0,0,0.14);
+                    border-color: rgba(255,255,255,0.2);
+                    background: rgba(255,255,255,0.04);
                 }
 
                 /* ── MISC ────────────────────────────────────────────────────────── */
