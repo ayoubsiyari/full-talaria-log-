@@ -7111,9 +7111,7 @@
 
         .tv-select,
 
-        .settings-select,
-
-        .tv-align-select {
+        .settings-select {
 
             background-color: var(--sp-select-bg, rgba(0,0,0,0.85)) !important;
 
@@ -7125,9 +7123,7 @@
 
         .tv-select option,
 
-        .settings-select option,
-
-        .tv-align-select option {
+        .settings-select option {
 
             background-color: var(--sp-ui-chrome-bg, #000000);
 
@@ -7143,17 +7139,49 @@
 
         .settings-select option:hover,
 
-        .tv-align-select option:hover,
-
         .tv-select option:checked,
 
-        .settings-select option:checked,
-
-        .tv-align-select option:checked {
+        .settings-select option:checked {
 
             background-color: var(--sp-accent);
 
             color: #ffffff;
+
+        }
+
+
+
+        /* Text alignment <select> — same chrome as Size (.tv-fontsize-dropdown) */
+
+        .tv-align-select {
+
+            background-color: var(--sp-select-bg, rgba(255, 255, 255, 0.08)) !important;
+
+            color: var(--sp-text, #d1d4dc);
+
+        }
+
+
+
+        .tv-align-select option {
+
+            background-color: var(--sp-bg, #050028);
+
+            color: var(--sp-text, #d1d4dc);
+
+            padding: 8px;
+
+        }
+
+
+
+        .tv-align-select option:hover,
+
+        .tv-align-select option:checked {
+
+            background-color: #363a45;
+
+            color: var(--sp-text, #d1d4dc);
 
         }
 
@@ -41873,85 +41901,85 @@
 
     <!-- Drawing Tools Modules (load in order) -->
 
-    <script defer src="modules/drawing-tools-base.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-base.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-lines.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-lines.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-shapes.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-shapes.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-fibonacci.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-fibonacci.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-text.js?v=20260404_ANCHORED_TEXT_STYLE"></script>
+    <script defer src="modules/drawing-tools-text.js?v=20260405_ANCHORED_TEXT_STYLE"></script>
 
-    <script defer src="modules/drawing-tools-emoji.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-emoji.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-image.js?v=20260404_IMAGE_DEFAULT_SIZE"></script>
+    <script defer src="modules/drawing-tools-image.js?v=20260405_IMAGE_DEFAULT_SIZE"></script>
 
-    <script defer src="modules/emoji-picker.js?v=20260404"></script>
+    <script defer src="modules/emoji-picker.js?v=20260405"></script>
 
-    <script defer src="modules/emoji-picker-simple.js?v=20260404"></script>
+    <script defer src="modules/emoji-picker-simple.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-advanced-volume.js?v=20260404_VP_HIT"></script>
+    <script defer src="modules/drawing-tools-advanced-volume.js?v=20260405_VP_HIT"></script>
 
-    <script defer src="modules/drawing-tools-advanced.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-advanced.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-extended.js?v=20260404_ARROW_MATCH"></script>
+    <script defer src="modules/drawing-tools-extended.js?v=20260405_ARROW_MATCH"></script>
 
-    <script defer src="modules/drawing-tools-patterns.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-patterns.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-fib-gann.js?v=20260404"></script>
+    <script defer src="modules/drawing-tools-fib-gann.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-channels.js?v=20260404_FT_PRICE_CLEAR"></script>
+    <script defer src="modules/drawing-tools-channels.js?v=20260405_FT_PRICE_CLEAR"></script>
 
-    <script defer src="modules/drawing-tools-ui.js?v=20260404_VWAP_STYLE_SEPARATORS"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260405_VWAP_STYLE_SEPARATORS"></script>
 
-    <script defer src="modules/color-picker.js?v=20260404"></script>
+    <script defer src="modules/color-picker.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-toolbar.js?v=20260404"></script>
+    <script defer src="modules/drawing-toolbar.js?v=20260405"></script>
 
-    <script defer src="modules/undo-redo-manager.js?v=20260404"></script>
+    <script defer src="modules/undo-redo-manager.js?v=20260405"></script>
 
-    <script defer src="modules/preferences-sync.js?v=20260404"></script>
+    <script defer src="modules/preferences-sync.js?v=20260405"></script>
 
-    <script defer src="modules/preferences-init.js?v=20260404"></script>
+    <script defer src="modules/preferences-init.js?v=20260405"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=20260404_VP_SELECT"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260405_VP_SELECT"></script>
 
-    <script defer src="modules/favorites-manager.js?v=20260404"></script>
+    <script defer src="modules/favorites-manager.js?v=20260405"></script>
 
-    <script defer src="modules/keyboard-shortcuts.js?v=20260404"></script>
+    <script defer src="modules/keyboard-shortcuts.js?v=20260405"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260404"></script>
+    <script defer src="modules/panel-manager.js?v=20260405"></script>
 
-    <script defer src="settings-panel.js?v=20260404"></script>
+    <script defer src="settings-panel.js?v=20260405"></script>
 
-    <script defer src="settings-panel-ext.js?v=20260404"></script>
+    <script defer src="settings-panel-ext.js?v=20260405"></script>
 
-    <script defer src="modules/timeframe-favorites.js?v=20260404"></script>
+    <script defer src="modules/timeframe-favorites.js?v=20260405"></script>
 
-    <script defer src="modules/propfirm-tracker.js?v=20260404"></script>
+    <script defer src="modules/propfirm-tracker.js?v=20260405"></script>
 
-    <script defer src="modules/compare-overlay.js?v=20260404"></script>
+    <script defer src="modules/compare-overlay.js?v=20260405"></script>
 
-    <script defer src="modules/timezone-manager.js?v=20260404"></script>
+    <script defer src="modules/timezone-manager.js?v=20260405"></script>
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260404_CANDLE_GAP"></script>
+    <script defer src="chart.js?v=20260405_CANDLE_GAP"></script>
 
-    <script defer src="modules/replay-system.js?v=20260404"></script>
+    <script defer src="modules/replay-system.js?v=20260405"></script>
 
-    <script defer src="modules/order-event-bus.js?v=20260404"></script>
+    <script defer src="modules/order-event-bus.js?v=20260405"></script>
 
-    <script defer src="modules/order-service.js?v=20260404"></script>
+    <script defer src="modules/order-service.js?v=20260405"></script>
 
-    <script defer src="modules/market-calculations.js?v=20260404"></script>
+    <script defer src="modules/market-calculations.js?v=20260405"></script>
 
-    <script defer src="modules/order-manager.js?v=20260404"></script>
+    <script defer src="modules/order-manager.js?v=20260405"></script>
 
-    <script defer src="modules/screenshot-manager.js?v=20260404"></script>
+    <script defer src="modules/screenshot-manager.js?v=20260405"></script>
 
-    <script defer src="modules/alert-system.js?v=20260404"></script>
+    <script defer src="modules/alert-system.js?v=20260405"></script>
 
     
 
@@ -42173,11 +42201,11 @@
 
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
 
-    <script defer src="modules/chart-indicators-full.js?v=20260404"></script>
+    <script defer src="modules/chart-indicators-full.js?v=20260405"></script>
 
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
 
-    <script defer src="modules/indicator-ui.js?v=20260404"></script>
+    <script defer src="modules/indicator-ui.js?v=20260405"></script>
 
     
 

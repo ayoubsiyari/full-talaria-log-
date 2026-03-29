@@ -1874,11 +1874,9 @@ class DrawingSettingsPanel {
 
     background-size: 8px, 100%;
 
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
 
     color-scheme: dark;
-
-    accent-color: var(--sp-accent, #2962ff);
 
 }
 
@@ -1892,13 +1890,13 @@ class DrawingSettingsPanel {
 
     background-position: right 6px center;
 
-    background-color: rgba(var(--sp-accent-rgb), 0.14) !important;
+    background-color: rgba(255, 255, 255, 0.12) !important;
 
     background-size: 8px, 100%;
 
-    border-color: rgba(var(--sp-accent-rgb), 0.45);
+    border-color: rgba(255, 255, 255, 0.22);
 
-    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.14);
+    box-shadow: none;
 
 }
 
@@ -1908,9 +1906,9 @@ class DrawingSettingsPanel {
 
     outline: none;
 
-    border-color: var(--sp-accent, #2962ff);
+    border-color: rgba(255, 255, 255, 0.35);
 
-    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.18);
+    box-shadow: none;
 
 }
 
@@ -1918,7 +1916,7 @@ class DrawingSettingsPanel {
 
 .tv-align-select option {
 
-    background-color: var(--sp-ui-chrome-bg, #1e222d) !important;
+    background-color: var(--sp-bg, #050028) !important;
 
     color: var(--sp-text, #d1d4dc);
 
@@ -1934,9 +1932,9 @@ class DrawingSettingsPanel {
 
 .tv-align-select option:focus {
 
-    background-color: var(--sp-accent, #2962ff) !important;
+    background-color: #363a45 !important;
 
-    color: var(--sp-text-active, #ffffff) !important;
+    color: var(--sp-text, #d1d4dc) !important;
 
 }
 
@@ -3680,8 +3678,6 @@ body.light-mode .tv-align-select {
 
     color-scheme: light;
 
-    accent-color: var(--sp-accent, #2962ff);
-
 }
 
 
@@ -3694,13 +3690,13 @@ body.light-mode .tv-align-select:hover {
 
     background-position: right 8px center;
 
-    background-color: rgba(var(--sp-accent-rgb), 0.10) !important;
+    background-color: var(--sp-hover-bg, rgba(0, 0, 0, 0.04)) !important;
 
     background-size: 10px;
 
-    border-color: rgba(var(--sp-accent-rgb), 0.55);
+    border-color: var(--sp-input-border, #cbd5e1);
 
-    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.12);
+    box-shadow: none;
 
 }
 
@@ -3708,7 +3704,7 @@ body.light-mode .tv-align-select:hover {
 
 body.light-mode .tv-align-select option {
 
-    background-color: var(--sp-ui-chrome-bg, #ffffff) !important;
+    background-color: var(--sp-bg, #ffffff) !important;
 
     color: var(--sp-text, #131722);
 
@@ -3724,9 +3720,9 @@ body.light-mode .tv-align-select option:checked,
 
 body.light-mode .tv-align-select option:focus {
 
-    background-color: var(--sp-accent, #2962ff) !important;
+    background-color: #e8ebf0 !important;
 
-    color: var(--sp-text-active, #ffffff) !important;
+    color: var(--sp-text, #131722) !important;
 
 }
 
