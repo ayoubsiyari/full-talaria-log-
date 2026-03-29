@@ -1878,6 +1878,8 @@ class DrawingSettingsPanel {
 
     color-scheme: dark;
 
+    accent-color: var(--sp-accent, #2962ff);
+
 }
 
 
@@ -1916,9 +1918,25 @@ class DrawingSettingsPanel {
 
 .tv-align-select option {
 
-    background: var(--sp-ui-chrome-bg, #1e222d) !important;
+    background-color: var(--sp-ui-chrome-bg, #1e222d) !important;
 
     color: var(--sp-text, #d1d4dc);
+
+    padding: 8px;
+
+}
+
+
+
+.tv-align-select option:hover,
+
+.tv-align-select option:checked,
+
+.tv-align-select option:focus {
+
+    background-color: var(--sp-accent, #2962ff) !important;
+
+    color: var(--sp-text-active, #ffffff) !important;
 
 }
 
@@ -3662,6 +3680,8 @@ body.light-mode .tv-align-select {
 
     color-scheme: light;
 
+    accent-color: var(--sp-accent, #2962ff);
+
 }
 
 
@@ -3688,9 +3708,25 @@ body.light-mode .tv-align-select:hover {
 
 body.light-mode .tv-align-select option {
 
-    background: var(--sp-ui-chrome-bg, #ffffff) !important;
+    background-color: var(--sp-ui-chrome-bg, #ffffff) !important;
 
     color: var(--sp-text, #131722);
+
+    padding: 8px;
+
+}
+
+
+
+body.light-mode .tv-align-select option:hover,
+
+body.light-mode .tv-align-select option:checked,
+
+body.light-mode .tv-align-select option:focus {
+
+    background-color: var(--sp-accent, #2962ff) !important;
+
+    color: var(--sp-text-active, #ffffff) !important;
 
 }
 
