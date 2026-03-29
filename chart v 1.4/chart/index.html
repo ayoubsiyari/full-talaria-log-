@@ -34284,9 +34284,9 @@
         }
 
         body.light-mode .tv-collapsible-tab-btn.active {
-            color: #ffffff !important;
-            background: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.92), rgba(var(--sp-accent-rgb), 0.62)) !important;
-            border-color: rgba(var(--sp-accent-rgb), 0.95) !important;
+            color: #000000 !important;
+            background: rgba(var(--sp-accent-rgb), 0.16) !important;
+            border-color: rgba(var(--sp-accent-rgb), 0.65) !important;
         }
 
         body.light-mode .tv-collapsible-tab-btn .tab-arrow,
@@ -34304,19 +34304,29 @@
             background: rgba(var(--sp-accent-rgb), 0.08) !important;
         }
 
+        body.light-mode .drawing-style-editor .tv-btn-apply,
+        body.light-mode .drawing-style-editor .tv-btn-apply:hover {
+            color: #ffffff !important;
+        }
+
         body.light-mode .drawing-style-editor .tv-collapsible-tab-btn.active,
         body.light-mode .drawing-style-editor .tv-collapsible-tab-btn.active:hover,
         body.light-mode .drawing-style-editor .tv-tab-btn.active,
         body.light-mode .drawing-style-editor .tv-tab-btn.active:hover,
-        body.light-mode .drawing-style-editor .tv-btn-apply,
-        body.light-mode .drawing-style-editor .tv-btn-apply:hover,
         body.light-mode .drawing-style-editor .tv-align-btn.active,
         body.light-mode .drawing-style-editor .tv-align-btn.active:hover,
         body.light-mode .drawing-style-editor .tv-style-btn.active,
         body.light-mode .drawing-style-editor .tv-style-btn.active:hover,
         body.light-mode .drawing-style-editor .tv-ending-btn.active,
         body.light-mode .drawing-style-editor .tv-ending-btn.active:hover {
-            color: #ffffff !important;
+            color: #000000 !important;
+            background: rgba(var(--sp-accent-rgb), 0.14) !important;
+            border-color: rgba(var(--sp-accent-rgb), 0.55) !important;
+        }
+
+        body.light-mode .drawing-style-editor .tv-align-btn.active svg,
+        body.light-mode .drawing-style-editor .tv-align-btn.active:hover svg {
+            stroke: #000000 !important;
         }
 
         body.light-mode .tv-prop-dropdown-btn {
@@ -41933,7 +41943,7 @@
 
     <script defer src="modules/drawing-tools-channels.js?v=20260328_FT_PRICE_CLEAR"></script>
 
-    <script defer src="modules/drawing-tools-ui.js?v=20260328_VWAP_STYLE_SEPARATORS"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260328_LIGHT_ACTIVE_TEXT"></script>
 
     <script defer src="modules/color-picker.js?v=20260328"></script>
 

@@ -3357,11 +3357,11 @@ body.light-mode .tv-tab-btn:hover {
 
 body.light-mode .tv-tab-btn.active {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+    background: rgba(41, 98, 255, 0.14);
 
-    border-color: rgba(41, 98, 255, 0.85);
+    border-color: rgba(41, 98, 255, 0.55);
 
-    color: #fff;
+    color: #000000;
 
 }
 
@@ -3554,11 +3554,11 @@ body.light-mode .tv-style-btn:hover {
 
 body.light-mode .tv-style-btn.active {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+    background: rgba(41, 98, 255, 0.14);
 
-    border-color: rgba(41, 98, 255, 0.85);
+    border-color: rgba(41, 98, 255, 0.55);
 
-    color: #fff;
+    color: #000000;
 
 }
 
@@ -3624,11 +3624,11 @@ body.light-mode .tv-align-btn:hover {
 
 body.light-mode .tv-align-btn.active {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55)) !important;
+    background: rgba(41, 98, 255, 0.14) !important;
 
-    border: none;
+    border: 1px solid rgba(41, 98, 255, 0.55) !important;
 
-    color: #fff !important;
+    color: #000000 !important;
 
     opacity: 1 !important;
 
@@ -3640,7 +3640,7 @@ body.light-mode .tv-align-btn.active {
 
 body.light-mode .tv-align-btn.active svg {
 
-    stroke: #fff !important;
+    stroke: #000000 !important;
 
 }
 
@@ -3648,7 +3648,7 @@ body.light-mode .tv-align-btn.active svg {
 
 body.light-mode .tv-align-btn.active:hover {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.92), rgba(41, 98, 255, 0.62)) !important;
+    background: rgba(41, 98, 255, 0.2) !important;
 
     box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
 
@@ -3782,11 +3782,11 @@ body.light-mode .tv-btn-apply:hover {
 
 body.light-mode .tv-ending-btn.active {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45)) !important;
+    background: rgba(41, 98, 255, 0.14) !important;
 
-    border-color: rgba(41, 98, 255, 0.85) !important;
+    border-color: rgba(41, 98, 255, 0.55) !important;
 
-    color: #fff !important;
+    color: #000000 !important;
 
 }
 
@@ -4726,9 +4726,9 @@ body.light-mode .tv-collapsible-tab-btn:hover {
 
 body.light-mode .tv-collapsible-tab-btn.active {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.92), rgba(41, 98, 255, 0.62));
-    border-color: rgba(41, 98, 255, 0.95);
-    color: #ffffff;
+    background: rgba(41, 98, 255, 0.16);
+    border-color: rgba(41, 98, 255, 0.65);
+    color: #000000;
 
 }
 
@@ -4736,11 +4736,11 @@ body.light-mode .tv-collapsible-tab-btn.active {
 
 body.light-mode .tv-collapsible-tabs-top .tv-collapsible-tab-btn.active {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55)) !important;
+    background: rgba(41, 98, 255, 0.16) !important;
 
-    border-color: rgba(41, 98, 255, 0.9) !important;
+    border-color: rgba(41, 98, 255, 0.65) !important;
 
-    color: #fff !important;
+    color: #000000 !important;
 
 }
 
@@ -28379,6 +28379,8 @@ applyTemplate(drawing, templateId, modal) {
 .drawing-style-editor .drawing-settings-tab-header .tab-button:hover { color: var(--sp-text,#d1d4dc); background: rgba(209, 212, 220, 0.08); }
 
 .drawing-style-editor .drawing-settings-tab-header .tab-button.active { color: #ffffff; background: linear-gradient(135deg, rgba(41,98,255,0.4), rgba(41,98,255,0.2)); box-shadow: 0 4px 10px rgba(41, 98, 255, 0.18); }
+
+body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.active { color: #000000 !important; background: rgba(41,98,255,0.14) !important; box-shadow: none !important; }
 
 .drawing-style-editor .drawing-settings-tab-content .tab-pane { display: none; }
 
