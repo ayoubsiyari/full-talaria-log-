@@ -1750,6 +1750,70 @@ class DrawingSettingsPanel {
 
 
 
+/* Vertical line: one row — label + V/H selects (TradingView-style) */
+
+.tv-text-alignment-prop-row {
+
+    align-items: center;
+
+    min-height: 46px;
+
+    --tv-prop-controls-width: 248px;
+
+}
+
+
+
+.tv-text-alignment-prop-row .tv-text-align-selects {
+
+    display: flex;
+
+    flex-direction: row;
+
+    align-items: center;
+
+    gap: 10px;
+
+    width: var(--tv-prop-controls-width);
+
+    flex: 0 0 var(--tv-prop-controls-width);
+
+    min-width: 0;
+
+}
+
+
+
+.tv-text-alignment-prop-row .tv-text-align-selects .tv-align-select {
+
+    flex: 1 1 0;
+
+    min-width: 0;
+
+    margin-top: 0;
+
+    height: 30px;
+
+    padding: 0 24px 0 8px;
+
+    font-size: 11px;
+
+    border: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.14));
+
+    border-radius: 4px;
+
+}
+
+
+
+.tv-text-alignment-prop-row .tv-text-align-selects .tv-align-select:hover {
+
+    border-color: rgba(var(--sp-accent-rgb), 0.42);
+
+}
+
+
+
 .tv-align-label {
 
     color: var(--sp-text-muted, #787b86);
@@ -1794,11 +1858,11 @@ class DrawingSettingsPanel {
 
     padding: 0 28px 0 10px;
 
-    border-radius: 8px;
+    border-radius: 4px;
 
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: none;
 
-    background-color: var(--sp-input-bg, rgba(255, 255, 255, 0.05));
+    background-color: var(--sp-select-bg, rgba(255, 255, 255, 0.08)) !important;
 
     color: var(--sp-text, #d1d4dc);
 
@@ -1810,6 +1874,36 @@ class DrawingSettingsPanel {
 
     appearance: none;
 
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23787b86' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+    background-repeat: no-repeat;
+
+    background-position: right 8px center;
+
+    background-size: 8px, 100%;
+
+    transition: all 0.15s ease;
+
+    color-scheme: dark;
+
+}
+
+
+
+.tv-align-select:hover {
+
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23787b86' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+    background-repeat: no-repeat;
+
+    background-position: right 8px center;
+
+    background-color: rgba(var(--sp-accent-rgb), 0.14) !important;
+
+    background-size: 8px, 100%;
+
+    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.14);
+
 }
 
 
@@ -1818,7 +1912,15 @@ class DrawingSettingsPanel {
 
     outline: none;
 
-    border-color: var(--sp-accent, #2962ff);
+}
+
+
+
+.tv-align-select option {
+
+    background: var(--sp-ui-chrome-bg, #1e222d) !important;
+
+    color: var(--sp-text, #d1d4dc);
 
 }
 
@@ -3546,11 +3648,67 @@ body.light-mode .tv-align-buttons {
 
 body.light-mode .tv-align-select {
 
-    background-color: #ffffff;
+    background-color: #ffffff !important;
+
+    border: 1px solid #e0e3eb;
+
+    color: #131722;
+
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23131722' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+    background-repeat: no-repeat;
+
+    background-position: right 8px center;
+
+    background-size: 10px;
+
+    color-scheme: light;
+
+}
+
+
+
+body.light-mode .tv-align-select:hover {
+
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23131722' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+    background-repeat: no-repeat;
+
+    background-position: right 8px center;
+
+    background-color: rgba(41, 98, 255, 0.10) !important;
+
+    background-size: 10px;
+
+    border-color: rgba(41, 98, 255, 0.55);
+
+    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.12);
+
+}
+
+
+
+body.light-mode .tv-align-select option {
+
+    background: #ffffff !important;
+
+    color: #131722;
+
+}
+
+
+
+body.light-mode .tv-text-alignment-prop-row .tv-text-align-selects .tv-align-select {
 
     border-color: #e0e3eb;
 
-    color: #131722;
+}
+
+
+
+body.light-mode .tv-text-alignment-prop-row .tv-text-align-selects .tv-align-select:hover {
+
+    border-color: rgba(41, 98, 255, 0.55);
 
 }
 
@@ -14839,9 +14997,57 @@ body.light-mode .template-save-dialog .dialog-title {
 
         let hAlignSection = null;
 
+        const useTextAlignPropRow = isVerticalLine && !hideVerticalAlign && !hideHorizontalAlign;
 
 
-        if (!hideVerticalAlign) {
+
+        if (useTextAlignPropRow) {
+
+            const vProp = 'textVAlign';
+
+            const hProp = 'textHAlign';
+
+            const currentVAlign = drawing.style.textVAlign || drawing.style.textPosition || defaultVAlign;
+
+            const currentHAlign = drawing.style.textHAlign || drawing.style.textAlign || defaultHAlign;
+
+            const textAlignRow = document.createElement('div');
+
+            textAlignRow.className = 'tv-prop-row tv-text-alignment-prop-row';
+
+            textAlignRow.innerHTML = `
+
+                <span class="tv-prop-label">Text alignment</span>
+
+                <div class="tv-prop-controls tv-text-align-selects">
+
+                    <select class="tv-align-select" data-prop="${vProp}" aria-label="Vertical text alignment">
+
+                        <option value="top"${currentVAlign === 'top' ? ' selected' : ''}>Top</option>
+
+                        <option value="middle"${currentVAlign === 'middle' ? ' selected' : ''}>Middle</option>
+
+                        <option value="bottom"${currentVAlign === 'bottom' ? ' selected' : ''}>Bottom</option>
+
+                    </select>
+
+                    <select class="tv-align-select" data-prop="${hProp}" aria-label="Horizontal text alignment">
+
+                        <option value="left"${currentHAlign === 'left' ? ' selected' : ''}>Left</option>
+
+                        <option value="center"${currentHAlign === 'center' ? ' selected' : ''}>Center</option>
+
+                        <option value="right"${currentHAlign === 'right' ? ' selected' : ''}>Right</option>
+
+                    </select>
+
+                </div>
+
+            `;
+
+            container.appendChild(textAlignRow);
+
+        } else if (!hideVerticalAlign) {
 
             const vProp = 'textVAlign';
 
@@ -14923,7 +15129,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Horizontal Alignment
 
-        if (!hideHorizontalAlign) {
+        if (!useTextAlignPropRow && !hideHorizontalAlign) {
 
             const hProp = 'textHAlign';
 
@@ -14935,7 +15141,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             hAlignSection.className = 'tv-align-section';
 
-            if (!(isVerticalLine && !hideVerticalAlign && !hideHorizontalAlign)) {
+            if (vAlignSection) {
 
                 hAlignSection.style.marginTop = '12px';
 
@@ -15011,19 +15217,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        if (isVerticalLine && vAlignSection && hAlignSection) {
-
-            const alignRow = document.createElement('div');
-
-            alignRow.className = 'tv-align-row';
-
-            alignRow.appendChild(vAlignSection);
-
-            alignRow.appendChild(hAlignSection);
-
-            container.appendChild(alignRow);
-
-        } else {
+        if (!useTextAlignPropRow) {
 
             if (vAlignSection) container.appendChild(vAlignSection);
 
