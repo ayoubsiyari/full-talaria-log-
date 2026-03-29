@@ -1722,6 +1722,34 @@ class DrawingSettingsPanel {
 
 
 
+.tv-align-row {
+
+    display: flex;
+
+    flex-direction: row;
+
+    gap: 10px;
+
+    margin-top: 9px;
+
+    align-items: stretch;
+
+}
+
+
+
+.tv-align-row > .tv-align-section {
+
+    margin-top: 0;
+
+    flex: 1;
+
+    min-width: 0;
+
+}
+
+
+
 .tv-align-label {
 
     color: var(--sp-text-muted, #787b86);
@@ -14807,6 +14835,12 @@ body.light-mode .template-save-dialog .dialog-title {
 
         
 
+        let vAlignSection = null;
+
+        let hAlignSection = null;
+
+
+
         if (!hideVerticalAlign) {
 
             const vProp = 'textVAlign';
@@ -14817,7 +14851,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             
 
-            const vAlignSection = document.createElement('div');
+            vAlignSection = document.createElement('div');
 
             vAlignSection.className = 'tv-align-section';
 
@@ -14883,8 +14917,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 `;
 
-            container.appendChild(vAlignSection);
-
         }
 
         
@@ -14899,11 +14931,15 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const currentHAlign = drawing.style.textHAlign || drawing.style.textAlign || defaultHAlign;
 
-            const hAlignSection = document.createElement('div');
+            hAlignSection = document.createElement('div');
 
             hAlignSection.className = 'tv-align-section';
 
-            hAlignSection.style.marginTop = '12px';
+            if (!(isVerticalLine && !hideVerticalAlign && !hideHorizontalAlign)) {
+
+                hAlignSection.style.marginTop = '12px';
+
+            }
 
             hAlignSection.innerHTML = isVerticalLine ? `
 
@@ -14971,7 +15007,27 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 `;
 
-            container.appendChild(hAlignSection);
+        }
+
+
+
+        if (isVerticalLine && vAlignSection && hAlignSection) {
+
+            const alignRow = document.createElement('div');
+
+            alignRow.className = 'tv-align-row';
+
+            alignRow.appendChild(vAlignSection);
+
+            alignRow.appendChild(hAlignSection);
+
+            container.appendChild(alignRow);
+
+        } else {
+
+            if (vAlignSection) container.appendChild(vAlignSection);
+
+            if (hAlignSection) container.appendChild(hAlignSection);
 
         }
 
