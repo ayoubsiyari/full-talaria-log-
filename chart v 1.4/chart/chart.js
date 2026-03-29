@@ -5350,11 +5350,11 @@ class Chart {
             'tradingview-light': {
                 name: 'Light',
                 backgroundColor: '#ffffff',
-                gridColor: 'rgba(42, 46, 57, 0.1)',
+                gridColor: 'rgba(42, 46, 57, 0.22)',
                 bodyUpColor: '#089981', bodyDownColor: '#f23645',
                 borderUpColor: '#089981', borderDownColor: '#f23645',
                 wickUpColor: '#089981', wickDownColor: '#f23645',
-                scaleTextColor: '#000000', scaleLinesColor: '#e8e8e8',
+                scaleTextColor: '#000000', scaleLinesColor: '#787b86',
                 symbolTextColor: '#000000',
                 crosshairColor: 'rgba(120, 123, 134, 0.3)',
                 cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#000000',
