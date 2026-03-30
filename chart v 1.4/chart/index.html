@@ -14133,7 +14133,7 @@
 
             overflow: visible;
 
-            transition: height 0.28s cubic-bezier(.4,0,.2,1);
+            transition: height 0.28s cubic-bezier(.4,0,.2,1), right 0.28s cubic-bezier(.4,0,.2,1);
 
         }
 
@@ -24349,6 +24349,20 @@
         body.settings-open #chart-container {
 
             right: 420px;
+
+        }
+
+        /* Same inset as chart: replay bar (controls + balance row) and positions dock stay aligned when settings drawer is open */
+
+        body.settings-open #replayToolbar {
+
+            right: 420px !important;
+
+        }
+
+        body.settings-open .open-positions-dock-host {
+
+            right: 420px !important;
 
         }
 
