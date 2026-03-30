@@ -5192,6 +5192,11 @@ class Chart {
         // Re-render target chart to apply all settings
         targetChart.scheduleRender();
 
+        // Chart-corner logo (icon + wordmark) must track chart backgroundColor, not body.light-mode (panel chrome).
+        if (isMainAppChart && typeof targetChart.updateLogoForTheme === 'function') {
+            targetChart.updateLogoForTheme();
+        }
+
         // Apply Status Line visibility AFTER render (setTimeout ensures it runs after scheduleRender pipeline)
         const _tc = targetChart;
         const _idSuffix = (_tc.panelIndex !== undefined && _tc.panelIndex !== 0) ? _tc.panelIndex : '';
@@ -11339,23 +11344,20 @@ class Chart {
     }
     
     /**
-     * Update logo visibility based on current theme (light/dark)
+     * Chart-corner lockup: icon + wordmark must follow **chart** backgroundColor only.
+     * `body.light-mode` is driven by panel chrome and must not flip these (querySelector
+     * previously matched only the first .logo-dark/.logo-light — the images — so the
+     * "Talaria-Log" spans still followed body.light-mode).
      */
     updateLogoForTheme() {
         const bgColor = this.chartSettings?.backgroundColor || '#050028';
-        // Skip expensive querySelector + color parse when background hasn't changed
-        if (this._logoCachedBg === bgColor) return;
-        this._logoCachedBg = bgColor;
-
-        if (!this._logoDark) {
-            this._logoDark = document.querySelector('.chart-brand .logo-dark');
-            this._logoLight = document.querySelector('.chart-brand .logo-light');
-        }
-        if (!this._logoDark || !this._logoLight) return;
+        const darkEls = document.querySelectorAll('.chart-brand .logo-dark');
+        const lightEls = document.querySelectorAll('.chart-brand .logo-light');
+        if (!darkEls.length || !lightEls.length) return;
 
         const isLight = this.isLightColor(bgColor);
-        this._logoDark.style.display = isLight ? 'none' : 'block';
-        this._logoLight.style.display = isLight ? 'block' : 'none';
+        darkEls.forEach((el) => { el.style.display = isLight ? 'none' : 'block'; });
+        lightEls.forEach((el) => { el.style.display = isLight ? 'block' : 'none'; });
     }
     
     /**
