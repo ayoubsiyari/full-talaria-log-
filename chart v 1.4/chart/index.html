@@ -56991,7 +56991,7 @@ P['symbol']={title:'Symbol',build:function(){
 
     var baselineSec=(type==='baseline')?sec(st('BASELINE COLOR')+clr('Baseline color','blClr',blC)):'';
 
-    return sec(st('CHART TYPE')+selDD('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
+    return templateSec+sec(st('CHART TYPE')+selDD('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
 
     selDD('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
 
@@ -57212,6 +57212,13 @@ P['canvas']={title:'Canvas',build:function(){
         row('Scale lines', scaleLinesBtn));
 
 },wire:function(){
+
+    // Hide panel/sidebar template block in Appearance only
+    var panelTplWrap=document.getElementById('tl_panel_dd_wrap');
+    if(panelTplWrap){
+        var panelTplSection=panelTplWrap.closest('.settings-section');
+        if(panelTplSection) panelTplSection.style.display='none';
+    }
 
     function clearActiveTplSelection(){
 
