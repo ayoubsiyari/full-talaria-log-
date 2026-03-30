@@ -6346,6 +6346,8 @@
 
         .pl-sync-check {
 
+            position: relative;
+
             width: 16px;
 
             height: 16px;
@@ -6364,6 +6366,32 @@
 
             line-height: 0;
 
+        }
+
+        .pl-sync-check:has(input[type="checkbox"]:checked)::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            margin-left: -5px;
+            margin-top: -5px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center / 10px 10px no-repeat;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .pl-sync-check input[type="checkbox"].tv-native-checkbox:checked {
+            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45)) !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            background-size: auto !important;
+        }
+
+        .pl-sync-check input[type="checkbox"].tv-native-checkbox:checked:hover {
+            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55)) !important;
+            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
         }
 
 
@@ -25272,9 +25300,9 @@
 
         
 
-        /* Toggle Switch */
+        /* Toggle Switch — only when a slider track exists (do NOT use bare .sync-toggle: layout dropdown reuses that class for native checkboxes). */
 
-        .sync-toggle {
+        .sync-toggle:has(.sync-toggle-slider) {
 
             position: relative;
 
@@ -25286,7 +25314,7 @@
 
         
 
-        .sync-toggle input {
+        .sync-toggle:has(.sync-toggle-slider) input {
 
             opacity: 0;
 
@@ -25346,7 +25374,7 @@
 
         
 
-        .sync-toggle input:checked + .sync-toggle-slider {
+        .sync-toggle:has(.sync-toggle-slider) input:checked + .sync-toggle-slider {
 
             background: var(--sp-accent);
 
@@ -25354,12 +25382,58 @@
 
         
 
-        .sync-toggle input:checked + .sync-toggle-slider:before {
+        .sync-toggle:has(.sync-toggle-slider) input:checked + .sync-toggle-slider:before {
 
             transform: translateX(16px);
 
             background: white;
 
+        }
+
+        /* Layout dropdown: native tv checkboxes — white tick on accent (same read as dark mode). */
+        .layout-dropdown label.sync-toggle:not(:has(.sync-toggle-slider)) {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            min-width: 16px;
+            min-height: 16px;
+            box-sizing: border-box;
+        }
+
+        .layout-dropdown label.sync-toggle:not(:has(.sync-toggle-slider)) input[type="checkbox"].tv-native-checkbox {
+            opacity: 1;
+            position: relative;
+            z-index: 0;
+        }
+
+        .layout-dropdown label.sync-toggle:not(:has(.sync-toggle-slider)):has(input:checked)::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            margin-left: -5px;
+            margin-top: -5px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center / 10px 10px no-repeat;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Tick is on label::after — keep input fill as gradient only (no duplicate SVG layer). */
+        .layout-dropdown label.sync-toggle:not(:has(.sync-toggle-slider)) input[type="checkbox"].tv-native-checkbox:checked {
+            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45)) !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            background-size: auto !important;
+        }
+
+        .layout-dropdown label.sync-toggle:not(:has(.sync-toggle-slider)) input[type="checkbox"].tv-native-checkbox:checked:hover {
+            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55)) !important;
+            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
         }
 
         
@@ -25466,7 +25540,7 @@
 
         
 
-        body.light-mode .sync-toggle input:checked + .sync-toggle-slider {
+        body.light-mode .sync-toggle:has(.sync-toggle-slider) input:checked + .sync-toggle-slider {
 
             background: var(--sp-accent);
 
@@ -25474,7 +25548,7 @@
 
         
 
-        body.light-mode .sync-toggle input:checked + .sync-toggle-slider:before {
+        body.light-mode .sync-toggle:has(.sync-toggle-slider) input:checked + .sync-toggle-slider:before {
 
             background: #ffffff;
 
@@ -35288,25 +35362,6 @@
         body.light-mode .tv-settings-modal .tv-modal-close:hover {
             color: #000000 !important;
             background: #ffffff !important;
-        }
-
-        /* Layout / settings sync rows: checked tv-native checkboxes must show white tick on accent (solid blue otherwise). */
-        body.light-mode input[type="checkbox"].tv-native-checkbox:checked,
-        body.light-mode .tv-settings-modal input[type="checkbox"]:checked,
-        body.light-mode .pl-sync-check input[type="checkbox"]:checked {
-            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45)), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat, no-repeat !important;
-            background-position: center, center !important;
-            background-size: auto, 10px 10px !important;
-        }
-
-        body.light-mode input[type="checkbox"].tv-native-checkbox:checked:hover,
-        body.light-mode .tv-settings-modal input[type="checkbox"]:checked:hover,
-        body.light-mode .pl-sync-check input[type="checkbox"]:checked:hover {
-            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55)), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat, no-repeat !important;
-            background-position: center, center !important;
-            background-size: auto, 10px 10px !important;
         }
 
     </style>
