@@ -1571,6 +1571,12 @@ class PanelManager {
             this.createResizeHandles();
             this._updateSelectionOverlay();
         });
+
+        // Panel charts can be initialized while percentage layout still reports 0×0, so resize()
+        // bails out once and never revisits. One delayed pass catches real dimensions.
+        setTimeout(() => {
+            if (typeof this.resizePanels === 'function') this.resizePanels();
+        }, 350);
     }
     
     /**

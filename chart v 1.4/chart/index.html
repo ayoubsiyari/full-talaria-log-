@@ -45999,11 +45999,18 @@
 
                 
 
-                // Check if panel already has a chart instance
+                // If chart exists, re-measure — first init can run before layout has non-zero size,
+                // which skips resize() and leaves no Y-axis until something else triggers a resize.
 
                 if (panel.chartInstance) {
 
-                    return panel.chartInstance;
+                    const pc = panel.chartInstance;
+
+                    if (typeof pc.resize === 'function') pc.resize();
+
+                    if (typeof pc.render === 'function') pc.render();
+
+                    return pc;
 
                 }
 

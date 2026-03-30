@@ -6918,9 +6918,20 @@ class Chart {
 	        const dprChanged = this._lastResizeDpr !== dpr;
 	        const sizeChanged = oldW !== nextW || oldH !== nextH;
 
+	        // Multi-panel / percentage layouts: first measure can be 0×0 before the browser
+	        // finishes reflow. Retrying avoids leaving this.w unset so axes never draw.
 	        if (nextW < 2 || nextH < 2) {
+	            this._resizeLayoutRetries = (this._resizeLayoutRetries || 0) + 1;
+	            if (this._resizeLayoutRetries <= 24 && !this._resizeZeroSizeScheduled) {
+	                this._resizeZeroSizeScheduled = true;
+	                requestAnimationFrame(() => {
+	                    this._resizeZeroSizeScheduled = false;
+	                    this.resize();
+	                });
+	            }
 	            return;
 	        }
+	        this._resizeLayoutRetries = 0;
 
 	        if (!sizeChanged && !dprChanged) {
 	            return;
