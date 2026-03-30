@@ -58,6 +58,11 @@ window._spPanels = {};
     });
 
     function loadSection(type) {
+        if (type === 'help') {
+            if (typeof window.closePanel === 'function') window.closePanel();
+            if (typeof window._openProfileHelpPanel === 'function') window._openProfileHelpPanel();
+            return;
+        }
         console.log('[SP] loadSection:', type, '| panel registered:', !!window._spPanels[type], '| contEl:', !!contEl);
         currentType = type;
         var titles = { general:'General Settings', chart:'Chart Settings', project:'Project Settings', leverage:'Leverage', symbol:'Symbol Properties', commissions:'Commissions' };

@@ -5840,6 +5840,80 @@
 
         #helpPanel .sp-content-body { padding: 20px 24px; }
 
+        /* Help moved into Profile — standalone help drawer hidden */
+
+        #helpPanel { display: none !important; pointer-events: none; visibility: hidden; }
+
+        #helpBtn { display: none !important; }
+
+        /* Profile > Help: same horizontal sub-tabs as old Help panel */
+
+        #profilePanel .profile-help-subnav {
+
+            display: flex;
+
+            flex-direction: row;
+
+            flex-wrap: wrap;
+
+            align-items: stretch;
+
+            gap: 0;
+
+            border-bottom: 1px solid var(--sp-border, rgba(255,255,255,0.08));
+
+            flex-shrink: 0;
+
+            padding: 0 4px;
+
+            margin: -4px -8px 0;
+
+        }
+
+        #profilePanel .profile-help-subnav .sp-nav-item {
+
+            padding: 0 14px;
+
+            border-radius: 0;
+
+            white-space: nowrap;
+
+            border-bottom: 2px solid transparent;
+
+            min-height: 40px;
+
+            font-size: 13px;
+
+            display: flex;
+
+            align-items: center;
+
+            cursor: pointer;
+
+            color: var(--sp-text-muted, #787b86);
+
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+
+        }
+
+        #profilePanel .profile-help-subnav .sp-nav-item:hover {
+
+            background: rgba(255,255,255,0.04);
+
+            border-bottom-color: rgba(var(--sp-accent-rgb),0.4);
+
+        }
+
+        #profilePanel .profile-help-subnav .sp-nav-item.active {
+
+            background: transparent;
+
+            border-bottom-color: var(--sp-accent, #2962ff);
+
+            color: var(--sp-text-active, #fff);
+
+        }
+
 
 
         /* Settings mode: hide items that have dedicated toolbar buttons */
@@ -42237,7 +42311,7 @@
 
                     </div>
 
-                    <div class="menu-grid-item" data-action="help">
+                    <div class="menu-grid-item" data-action="help" style="display:none;">
 
                         <div class="menu-grid-icon">
 
@@ -58750,6 +58824,14 @@ function loadSection(type){
 
     if (type === 'canvas') type = 'symbol';
 
+    if (type === 'help') {
+
+        if (typeof window._openProfileHelpPanel === 'function') window._openProfileHelpPanel();
+
+        return;
+
+    }
+
     console.log('[loadSection] Loading section:', type);
     console.log('[loadSection] P object:', P);
     console.log('[loadSection] P[panellayout]:', P ? P['panellayout'] : 'P is undefined');
@@ -58870,11 +58952,25 @@ window.syncRightToolbarActionButtons = function() {
 
     var spanel = document.getElementById('settingsPanel');
 
-    if (!spanel || !spanel.classList.contains('open')) return;
+    if (!spanel || !spanel.classList.contains('open')) {
+
+        var ppOpen = document.getElementById('profilePanel');
+
+        if (ppOpen && ppOpen.classList.contains('open')) {
+
+            var pBtn = document.getElementById('profileBtn');
+
+            if (pBtn) pBtn.classList.add('active');
+
+        }
+
+        return;
+
+    }
 
     if (spanel.classList.contains('sp-mode') && typeof _spCurrentMode === 'string' && _spCurrentMode) {
 
-        var map = { panellayout: 'layout-selector-btn', globalmarket: 'globalViewBtn', objecttree: 'objectTreeBtn', alerts: 'toolbarAlertsBtn', help: 'helpBtn', profile: 'profileBtn' };
+        var map = { panellayout: 'layout-selector-btn', globalmarket: 'globalViewBtn', objecttree: 'objectTreeBtn', alerts: 'toolbarAlertsBtn', help: 'profileBtn', profile: 'profileBtn' };
 
         var bid = map[_spCurrentMode];
 
@@ -59039,6 +59135,14 @@ window._openMode = function(section) {
 
     if (!panel) return;
 
+    if (section === 'help') {
+
+        if (typeof window._openProfileHelpPanel === 'function') window._openProfileHelpPanel();
+
+        return;
+
+    }
+
     // Close any open drawing-tool category dropdowns and reset arrow states
 
     document.querySelectorAll('.tool-dropdown.show').forEach(function(d) { d.classList.remove('show'); });
@@ -59124,6 +59228,54 @@ window._closeSidePanel=function(id){
     var p=document.getElementById(id);
 
     if(p)p.classList.remove('open');
+
+    if(typeof window.syncRightToolbarActionButtons==='function')window.syncRightToolbarActionButtons();
+
+};
+
+window._openProfileHelpPanel=function(){
+
+    var pSet=document.getElementById('settingsPanel');
+
+    if(pSet&&pSet.classList.contains('open')&&typeof window.closePanel==='function')window.closePanel();
+
+    var pp=document.getElementById('profilePanel');
+
+    var nav=document.getElementById('profileNav');
+
+    var helpItem=nav&&nav.querySelector('.sp-nav-item[data-pp="help"]');
+
+    var onHelp=helpItem&&helpItem.classList.contains('active');
+
+    if(pp&&pp.classList.contains('open')&&onHelp){
+
+        window._closeSidePanel('profilePanel');
+
+        return;
+
+    }
+
+    if(!pp||!pp.classList.contains('open')){
+
+        if(typeof window._openSidePanel==='function')window._openSidePanel('profilePanel');
+
+    }
+
+    if(nav){
+
+        nav.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});
+
+        if(helpItem)helpItem.classList.add('active');
+
+    }
+
+    var t=document.getElementById('profileContentTitle');
+
+    if(t){ var _Ti=window._i18nT||function(s){return s;}; t.textContent=_Ti('Help'); }
+
+    _profileLoad('help');
+
+    if(typeof window.syncRightToolbarActionButtons==='function')window.syncRightToolbarActionButtons();
 
 };
 
@@ -59361,21 +59513,29 @@ var _helpSections={
 
 };
 
-function _helpLoad(key){
+function _helpLoad(key,targetEl){
 
     var s=_helpSections[key]; if(!s)return;
 
-    var t=document.getElementById('helpContentTitle'); if(t)t.textContent=s.title;
+    var c=targetEl||document.getElementById('helpPanelContent'); if(!c)return;
 
-    var c=document.getElementById('helpPanelContent'); if(!c)return;
+    var inProfile=(c.id==='profileHelpSubContent');
 
-    c.innerHTML=s.html;
+    var kbId=inProfile?'profileHelpKbBody':'kbShortcutsBody';
+
+    var fqId=inProfile?'profileHelpFaqBody':'helpFaqBody';
+
+    var html=s.html.replace(/id="kbShortcutsBody"/g,'id="'+kbId+'"').replace(/id="helpFaqBody"/g,'id="'+fqId+'"');
+
+    var t=document.getElementById('helpContentTitle'); if(t&&!targetEl)t.textContent=s.title;
+
+    c.innerHTML=html;
 
     if(key==='shortcuts'){
 
         var rows=[['Ctrl/Cmd + Z','Undo'],['Ctrl/Cmd + Y','Redo'],['Ctrl/Cmd + S','Save'],['Alt + T','Toggle theme'],['F','Fit to view'],['R','Replay mode'],['Delete','Remove selected'],['Esc','Cancel / deselect'],['+ / -','Zoom in / out']];
 
-        var tb=document.getElementById('kbShortcutsBody');
+        var tb=document.getElementById(kbId);
 
         if(tb){tb.innerHTML=rows.map(function(r){return'<tr><td style="padding:8px 12px;color:#d1d4dc;border-bottom:1px solid rgba(255,255,255,0.05);"><kbd style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:2px 7px;font-size:11px;font-family:monospace;">'+r[0]+'</kbd></td><td style="padding:8px 12px;color:#787b86;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05);">'+r[1]+'</td></tr>';}).join('');}
 
@@ -59385,7 +59545,7 @@ function _helpLoad(key){
 
         var faqs=[['What file formats are supported?','CSV files with OHLCV data. Columns: timestamp, open, high, low, close, volume.'],['How do I take a screenshot?','Click the camera icon in the toolbar. The chart is captured instantly.'],['Can I use custom indicators?','Yes — open the Indicators panel and add from the available list.'],['How do I save my drawings?','Drawings are saved automatically to localStorage and synced to your account.']];
 
-        var fb=document.getElementById('helpFaqBody');
+        var fb=document.getElementById(fqId);
 
         if(fb){fb.innerHTML=faqs.map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');}
 
@@ -59743,61 +59903,53 @@ window._profileFillHelpTab=function(c){
 
     var _T=window._i18nT||function(s){return s;};
 
-    var edu=_helpSections.education.html;
+    c.innerHTML='<div class="profile-help-embed" style="display:flex;flex-direction:column;min-height:0;flex:1;">'
 
-    var shortcuts=_helpSections.shortcuts.html.replace('id="kbShortcutsBody"','id="profileHelpKbBody"');
+        +'<nav class="sp-nav profile-help-subnav" id="profileHelpSubNav" role="tablist">'
 
-    var scTitle='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#787b86;margin:18px 0 8px;text-transform:uppercase;">'+_T('Shortcuts')+'</div>';
+        +'<div class="sp-nav-item active" data-ph2="contact"><span>'+_T('Contact')+'</span></div>'
 
-    var faqWrap='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#787b86;margin:18px 0 8px;text-transform:uppercase;">'+_T('FAQ')+'</div>'
+        +'<div class="sp-nav-item" data-ph2="shortcuts"><span>'+_T('Shortcuts')+'</span></div>'
 
-        +'<div style="padding:4px 0;" id="profileHelpFaqBody"></div>';
+        +'<div class="sp-nav-item" data-ph2="faq"><span>'+_T('FAQ')+'</span></div>'
 
-    var contact=_helpSections.contact.html;
+        +'<div class="sp-nav-item" data-ph2="education"><span>'+_T('Education')+'</span></div>'
 
-    var ver='<div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);">'
+        +'<div class="sp-nav-item" data-ph2="changelog"><span>'+_T('Changelog')+'</span></div>'
 
-        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">'
+        +'</nav>'
 
-        +'<span style="background:#26a69a;color:#fff;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">'+_T('NEW')+'</span>'
+        +'<div class="profile-help-subcontent" id="profileHelpSubContent" style="flex:1;min-height:0;overflow-y:auto;padding:16px 4px 20px 0;"></div>'
 
-        +'<span style="color:#d1d4dc;font-size:13px;font-weight:600;">'+_T('Version')+' 1.4.9</span>'
+        +'</div>';
 
-        +'<span style="margin-left:auto;font-size:11px;color:#555a6e;">v1.5.0</span></div>'
+    var sub=document.getElementById('profileHelpSubContent');
 
-        +'<div style="color:#d1d4dc;font-size:12px;line-height:1.7;">'
+    var nav=document.getElementById('profileHelpSubNav');
 
-        +'<p style="margin:0 0 8px;font-weight:600;color:#fff;">'+_T('What\'s new')+'</p>'
+    if(nav&&!nav.dataset.ph2Wired){
 
-        +'<ul style="margin:0;padding-left:18px;color:#787b86;">'
+        nav.dataset.ph2Wired='1';
 
-        +'<li>'+_T('Profile tabs: Account & Help')+'</li>'
+        nav.querySelectorAll('.sp-nav-item[data-ph2]').forEach(function(item){
 
-        +'<li>'+_T('Performance improvements (render loop, RAF binding)')+'</li>'
+            item.addEventListener('click',function(e){
 
-        +'<li>'+_T('Template and color settings caching')+'</li>'
+                e.stopPropagation();
 
-        +'<li>'+_T('Screenshot latency improvements')+'</li>'
+                nav.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});
 
-        +'</ul></div></div>';
+                item.classList.add('active');
 
-    c.innerHTML=edu+scTitle+shortcuts+faqWrap+contact+ver;
+                if(sub)_helpLoad(item.dataset.ph2,sub);
 
-    var faqs=[['What file formats are supported?','CSV files with OHLCV data. Columns: timestamp, open, high, low, close, volume.'],['How do I take a screenshot?','Click the camera icon in the toolbar. The chart is captured instantly.'],['Can I use custom indicators?','Yes — open the Indicators panel and add from the available list.'],['How do I save my drawings?','Drawings are saved automatically to localStorage and synced to your account.']];
+            });
 
-    var fb=c.querySelector('#profileHelpFaqBody');
-
-    if(fb){fb.innerHTML=faqs.map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');}
-
-    var tb=c.querySelector('#profileHelpKbBody');
-
-    if(tb){
-
-        var rows=[['Ctrl/Cmd + Z','Undo'],['Ctrl/Cmd + Y','Redo'],['Ctrl/Cmd + S','Save'],['Alt + T','Toggle theme'],['F','Fit to view'],['R','Replay mode'],['Delete','Remove selected'],['Esc','Cancel / deselect'],['+ / -','Zoom in / out']];
-
-        tb.innerHTML=rows.map(function(r){return'<tr><td style="padding:8px 12px;color:#d1d4dc;border-bottom:1px solid rgba(255,255,255,0.05);"><kbd style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:2px 7px;font-size:11px;font-family:monospace;">'+r[0]+'</kbd></td><td style="padding:8px 12px;color:#787b86;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05);">'+r[1]+'</td></tr>';}).join('');
+        });
 
     }
+
+    if(sub)_helpLoad('contact',sub);
 
 };
 
@@ -59912,6 +60064,8 @@ function _profileWireNav(){
             if(_pn)_pn.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.pp==='account');});
 
         }
+
+        if(typeof window.syncRightToolbarActionButtons==='function')window.syncRightToolbarActionButtons();
 
     };
 
