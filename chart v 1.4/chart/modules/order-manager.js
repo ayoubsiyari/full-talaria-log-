@@ -4714,7 +4714,7 @@ class OrderManager {
                     top: 54px;
                     right: -440px;
                     width: 420px;
-                    height: calc(100vh - 104px);
+                    height: calc(100vh - 54px);
                     --op-accent: var(--sp-accent, #2962ff);
                     --op-accent-rgb: var(--sp-accent-rgb, 41, 98, 255);
                     --op-bg: var(--sp-bg, #050028);
@@ -4726,7 +4726,7 @@ class OrderManager {
                     --tv-buy: #089981;
                     --tv-sell: #f23645;
                     background: var(--op-bg);
-                    border-left: 1px solid var(--op-border);
+                    border-left: 6px solid var(--sp-ui-border, rgba(255,255,255,0.22));
                     z-index: 1000010;
                     overflow: hidden;
                     overflow-y: auto;

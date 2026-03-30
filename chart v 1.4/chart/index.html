@@ -14167,8 +14167,9 @@
 
         }
 
-        /* Prevent overlap with settings drawer */
-        body.settings-open #replayToolbar .replay-controls-right {
+        /* Prevent overlap with settings drawer: hide values, keep toggle button visible */
+        body.settings-open #replayToolbar .replay-controls-right .replay-stat-item,
+        body.settings-open #replayToolbar .replay-controls-right .replay-stat-divider {
             display: none !important;
         }
 
