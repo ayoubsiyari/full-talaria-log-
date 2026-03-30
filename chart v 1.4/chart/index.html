@@ -6424,250 +6424,6 @@
 
         .side-panel.open { right: 0; }
 
-        /* Profile: Accounts + Help side-by-side (wider panel) */
-
-        #profilePanel.profile-panel-two {
-
-            width: min(700px, 96vw);
-
-            flex-direction: column;
-
-        }
-
-        #profilePanel.profile-panel-two:not(.open) { right: calc(-1 * min(700px, 96vw)); }
-
-        .profile-panel-inner {
-
-            display: flex;
-
-            flex-direction: column;
-
-            height: 100%;
-
-            min-height: 0;
-
-        }
-
-        .profile-panel-toolbar {
-
-            display: flex;
-
-            align-items: center;
-
-            justify-content: space-between;
-
-            padding: 10px 14px 4px;
-
-            flex-shrink: 0;
-
-        }
-
-        .profile-hero-avatar {
-
-            width: 56px;
-
-            height: 56px;
-
-            border-radius: 50%;
-
-            background: linear-gradient(135deg, var(--sp-accent, #2962ff), #6c63ff);
-
-            display: flex;
-
-            align-items: center;
-
-            justify-content: center;
-
-            font-size: 20px;
-
-            font-weight: 700;
-
-            color: #fff;
-
-            letter-spacing: -0.5px;
-
-            flex-shrink: 0;
-
-        }
-
-        .profile-two-col-scroll {
-
-            flex: 1;
-
-            min-height: 0;
-
-            overflow-y: auto;
-
-            overflow-x: hidden;
-
-        }
-
-        .profile-two-col {
-
-            display: flex;
-
-            gap: 20px;
-
-            padding: 8px 18px 22px;
-
-            align-items: flex-start;
-
-        }
-
-        .profile-two-col--embed { padding: 8px 12px 16px; }
-
-        .profile-col {
-
-            flex: 1;
-
-            min-width: 0;
-
-            display: flex;
-
-            flex-direction: column;
-
-            gap: 0;
-
-        }
-
-        .profile-col-header {
-
-            display: inline-flex;
-
-            align-self: flex-start;
-
-            background: var(--sp-accent, #2962ff);
-
-            color: #fff;
-
-            font-size: 13px;
-
-            font-weight: 600;
-
-            padding: 8px 18px;
-
-            border-radius: 10px;
-
-            margin-bottom: 12px;
-
-        }
-
-        .profile-section-label {
-
-            font-size: 11px;
-
-            font-weight: 600;
-
-            letter-spacing: 0.07em;
-
-            color: var(--sp-text-muted, #787b86);
-
-            margin: 18px 0 10px;
-
-            text-transform: uppercase;
-
-        }
-
-        .profile-help-intro {
-
-            color: var(--sp-text-muted, #787b86);
-
-            font-size: 12px;
-
-            margin: 0 0 12px;
-
-            line-height: 1.5;
-
-        }
-
-        .profile-link-more {
-
-            background: none;
-
-            border: none;
-
-            color: var(--sp-accent, #2962ff);
-
-            font-size: 12px;
-
-            font-weight: 600;
-
-            cursor: pointer;
-
-            padding: 8px 0 4px;
-
-            font-family: inherit;
-
-            text-align: left;
-
-        }
-
-        .profile-link-more:hover { text-decoration: underline; }
-
-        .profile-support-box {
-
-            display: flex;
-
-            align-items: center;
-
-            gap: 10px;
-
-            padding: 12px 14px;
-
-            background: rgba(255, 255, 255, 0.05);
-
-            border-radius: 8px;
-
-            margin-top: 8px;
-
-        }
-
-        .profile-support-box a {
-
-            color: var(--sp-accent, #2962ff);
-
-            text-decoration: none;
-
-            font-size: 13px;
-
-            font-weight: 500;
-
-        }
-
-        .profile-version-block {
-
-            margin-top: 16px;
-
-            padding-top: 14px;
-
-            border-top: 1px solid rgba(255, 255, 255, 0.06);
-
-        }
-
-        .profile-badge-new {
-
-            background: #26a69a;
-
-            color: #fff;
-
-            border-radius: 10px;
-
-            padding: 2px 8px;
-
-            font-size: 10px;
-
-            font-weight: 700;
-
-            letter-spacing: 0.03em;
-
-        }
-
-        @media (max-width: 620px) {
-
-            .profile-two-col { flex-direction: column; }
-
-        }
-
         body.light-mode .side-panel {
             background: var(--sp-ui-surface-bg, #f0f0f0);
             border-left: 3px solid var(--sp-ui-border, rgba(47, 79, 79, 0.2));
@@ -36535,19 +36291,49 @@
 
 
 
-    <!-- Profile Panel (Account + Help & Support, two columns) -->
+    <!-- Profile Panel (two tabs: Account | Help) -->
 
-    <div class="side-panel profile-panel-two" id="profilePanel">
+    <div class="side-panel" id="profilePanel">
 
-        <div class="profile-panel-inner">
+        <div class="sp-sidebar">
 
-            <div class="profile-panel-toolbar">
+            <div class="sp-sidebar-header">
 
-                <span style="width:40px;flex-shrink:0;"></span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 
-                <div class="profile-hero-avatar" id="profileHeroAvatar">T</div>
+                <span>Profile</span>
 
-                <button type="button" class="sp-close-btn" onclick="event.stopPropagation();window._closeSidePanel('profilePanel');" title="Close">
+            </div>
+
+            <nav class="sp-nav" id="profileNav">
+
+                <div class="sp-nav-item active" data-pp="account">
+
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+
+                    <span>Account</span>
+
+                </div>
+
+                <div class="sp-nav-item" data-pp="help">
+
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
+
+                    <span>Help</span>
+
+                </div>
+
+            </nav>
+
+        </div>
+
+        <div class="sp-content-wrap">
+
+            <div class="sp-content-header">
+
+                <span id="profileContentTitle">Account</span>
+
+                <button class="sp-close-btn" onclick="event.stopPropagation();window._closeSidePanel('profilePanel');">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
 
@@ -36555,11 +36341,7 @@
 
             </div>
 
-            <div class="profile-two-col-scroll">
-
-                <div class="profile-two-col" id="profilePanelContent"></div>
-
-            </div>
+            <div class="sp-content-body" id="profilePanelContent"></div>
 
         </div>
 
@@ -58873,23 +58655,23 @@ P['profile']={
 
         var closeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>';
 
-        return '<div class="sp-embedded sp-profile-embed" id="spProfileLayout" style="display:flex;flex-direction:column;height:100%;min-height:0;">'
+        var nav='<div class="sp-panel-tab active" data-sp-profile="account"><span>Account</span></div>'
 
-            +'<div class="profile-panel-toolbar" style="padding-top:4px;">'
+            +'<div class="sp-panel-tab" data-sp-profile="help"><span>Help</span></div>';
 
-            +'<span style="width:40px;flex-shrink:0;"></span>'
+        return '<div class="sp-embedded" id="spProfileLayout" style="display:flex;flex-direction:column;height:100%;">'
 
-            +'<div class="profile-hero-avatar" id="spProfileHeroAvatar">T</div>'
+            +'<div style="display:flex;align-items:center;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08)),var(--sp-ui-sidebar-bg,#0b1227);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">'
+
+            +'<nav id="spProfileNavInner" style="display:flex;padding:8px;gap:8px;flex:1;overflow-x:auto;align-items:center;justify-content:center;">'+nav+'</nav>'
+
+            +'<div style="display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0;">'
 
             +'<button type="button" id="spProfileClose" class="sp-close-btn">'+closeIcon+'</button>'
 
-            +'</div>'
+            +'</div></div>'
 
-            +'<div class="profile-two-col-scroll" style="flex:1;min-height:0;">'
-
-            +'<div id="spProfileTwoCol" class="profile-two-col profile-two-col--embed"></div>'
-
-            +'</div>'
+            +'<div id="spProfileContentInner" style="flex:1;overflow-y:auto;padding:20px 24px;"></div>'
 
             +'</div>';
 
@@ -58899,9 +58681,7 @@ P['profile']={
 
         var layout=document.getElementById('spProfileLayout'); if(!layout)return;
 
-        var two=document.getElementById('spProfileTwoCol');
-
-        var hero=document.getElementById('spProfileHeroAvatar');
+        var content=document.getElementById('spProfileContentInner'); if(!content)return;
 
         var hdr=document.querySelector('#settingsPanel .sp-content-header');
 
@@ -58911,7 +58691,51 @@ P['profile']={
 
         if(closeBtn)closeBtn.addEventListener('click',function(e){e.stopPropagation();if(typeof closePanel==='function')closePanel();});
 
-        if(two&&typeof window._profileRenderCombined==='function')window._profileRenderCombined(two,hero);
+        function ppLoad(key){
+
+            var titleEl=document.getElementById('spContentTitle');
+
+            var _T=window._i18nT||function(s){return s;};
+
+            if(key==='account'){
+
+                if(titleEl)titleEl.textContent=_T('Account');
+
+                if(typeof window._profileFillAccountTab==='function')window._profileFillAccountTab(content);
+
+                return;
+
+            }
+
+            if(key==='help'){
+
+                if(titleEl)titleEl.textContent=_T('Help');
+
+                if(typeof window._profileFillHelpTab==='function')window._profileFillHelpTab(content);
+
+                return;
+
+            }
+
+        }
+
+        layout.querySelectorAll('.sp-panel-tab[data-sp-profile]').forEach(function(item){
+
+            item.addEventListener('click',function(e){
+
+                e.stopPropagation();
+
+                layout.querySelectorAll('.sp-panel-tab').forEach(function(n){n.classList.remove('active');});
+
+                item.classList.add('active');
+
+                ppLoad(item.dataset.spProfile);
+
+            });
+
+        });
+
+        ppLoad('account');
 
     }
 
@@ -59647,21 +59471,13 @@ var _profileSections={
 
 };
 
-window._profileLastRender=null;
+window._wireProfileAccountOverview=function(content,restoreAccountTab){
 
-window._profileWireAccountBody=function(content){
-
-    if(!content)return;
+    if(!content||typeof restoreAccountTab!=='function')return;
 
     var _liveUser={};
 
-    function _restoreOverview(){
-
-        var L=window._profileLastRender;
-
-        if(L&&L.twoColEl&&typeof window._profileRenderCombined==='function')window._profileRenderCombined(L.twoColEl,L.heroEl);
-
-    }
+    function _restoreOverview(){restoreAccountTab();}
 
     function _acctPlanLabel(u){
 
@@ -59696,18 +59512,6 @@ window._profileWireAccountBody=function(content){
     function _backBtn(label){return'<button type="button" class="_acctBack" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:#787b86;font-size:12px;cursor:pointer;padding:0 0 14px;font-family:inherit;" onmouseenter="this.style.color=\'#d1d4dc\'" onmouseleave="this.style.color=\'#787b86\'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>'+(label||'Back')+'</button>';}
 
     function _row(label,value){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:rgba(255,255,255,0.04);border-radius:8px;"><span style="color:#787b86;font-size:12px;">'+label+'</span><span style="color:#d1d4dc;font-size:12px;font-weight:500;">'+value+'</span></div>';}
-
-    function _syncHero(){
-
-        var L=window._profileLastRender;
-
-        if(!L||!L.heroEl)return;
-
-        var avatarEl=content.querySelector('#acctAvatar');
-
-        if(avatarEl&&avatarEl.textContent)L.heroEl.textContent=avatarEl.textContent.trim();
-
-    }
 
     function _showProfile(){
 
@@ -59817,8 +59621,6 @@ window._profileWireAccountBody=function(content){
 
         if(inlineEl){inlineEl.textContent=b.label;inlineEl.style.color=b.color;inlineEl.style.background=b.bg;}
 
-        _syncHero();
-
     }
 
     content.querySelectorAll('[data-acct-href]').forEach(function(el){
@@ -59877,11 +59679,9 @@ window._profileWireAccountBody=function(content){
 
 };
 
-window._profileRenderCombined=function(twoColEl,heroEl){
+window._profileFillAccountTab=function(c){
 
-    if(!twoColEl||typeof _profileSections==='undefined')return;
-
-    window._profileLastRender={twoColEl:twoColEl,heroEl:heroEl||null};
+    if(!c||typeof _profileSections==='undefined')return;
 
     var _T=window._i18nT||function(s){return s;};
 
@@ -59911,99 +59711,13 @@ window._profileRenderCombined=function(twoColEl,heroEl){
 
         +'</div>';
 
-    var faqs=[['What file formats are supported?','CSV files with OHLCV data. Columns: timestamp, open, high, low, close, volume.'],['How do I take a screenshot?','Click the camera icon in the toolbar. The chart is captured instantly.'],['Can I use custom indicators?','Yes — open the Indicators panel and add from the available list.'],['How do I save my drawings?','Drawings are saved automatically to localStorage and synced to your account.']];
+    var pref='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#787b86;margin:16px 0 8px;text-transform:uppercase;">'+_T('Preferences')+'</div>';
 
-    var faqShort=faqs.slice(0,2).map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');
+    c.innerHTML=_profileSections.account.html+pref+langHtml+_profileSections.timezone.html;
 
-    var faqRest=faqs.slice(2).map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');
+    window._wireProfileAccountOverview(c,function(){window._profileFillAccountTab(c);});
 
-    var chev='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="14" height="14" style="margin-left:auto;color:#555a6e;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>';
-
-    twoColEl.innerHTML='<div class="profile-col">'
-
-        +'<div class="profile-col-header">'+_T('Account')+'</div>'
-
-        +'<div id="profileAcctBody">'+_profileSections.account.html+'</div>'
-
-        +'<div class="profile-section-label">'+_T('Preferences')+'</div>'
-
-        +'<div id="profileLangSlot">'+langHtml+'</div>'
-
-        +'<div id="profileTzSlot" style="margin-top:4px;">'+_profileSections.timezone.html+'</div>'
-
-        +'</div>'
-
-        +'<div class="profile-col">'
-
-        +'<div class="profile-col-header">'+_T('Help & Support')+'</div>'
-
-        +'<div class="profile-section-label" style="margin-top:0;">'+_T('Education')+'</div>'
-
-        +'<p class="profile-help-intro">'+_T('Learn how to use Talaria Chart effectively.')+'</p>'
-
-        +'<div class="side-panel-item profile-help-doc" style="border-radius:8px;cursor:pointer;border-bottom:none;margin-bottom:4px;">'
-
-        +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg>'
-
-        +'<span style="flex:1;">'+_T('Documentation')+'</span>'+chev+'</div>'
-
-        +'<div class="side-panel-item profile-help-vid" style="border-radius:8px;cursor:pointer;border-bottom:none;margin-bottom:4px;">'
-
-        +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><polygon points="5 3 19 12 5 21 5 3"/></svg>'
-
-        +'<span style="flex:1;">'+_T('Video tutorials')+'</span>'+chev+'</div>'
-
-        +'<div class="profile-section-label">'+_T('FAQ')+'</div>'
-
-        +'<div id="profileFaqShort">'+faqShort+'</div>'
-
-        +'<div id="profileFaqRest" style="display:none;">'+faqRest+'</div>'
-
-        +'<button type="button" class="profile-link-more" id="profileFaqMoreBtn">More &gt;&gt;&gt;</button>'
-
-        +'<div class="profile-section-label">'+_T('Hot Keys')+'</div>'
-
-        +'<button type="button" class="profile-link-more" id="profileKbMoreBtn">More &gt;&gt;&gt;</button>'
-
-        +'<div id="profileKbWrap" style="display:none;margin-top:6px;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody id="profileKbBody"></tbody></table></div>'
-
-        +'<div class="profile-support-box">'
-
-        +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>'
-
-        +'<a href="mailto:support@talaria.io">support@talaria.io</a></div>'
-
-        +'<div class="profile-version-block">'
-
-        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'
-
-        +'<span class="profile-badge-new">'+_T('NEW')+'</span>'
-
-        +'<span style="color:#d1d4dc;font-size:13px;font-weight:600;">'+_T('Version')+' 1.4.9</span>'
-
-        +'<span style="margin-left:auto;font-size:11px;color:#555a6e;">v1.5.0</span></div>'
-
-        +'<p style="margin:0 0 8px;font-weight:600;color:#fff;font-size:12px;">'+_T('What\'s new')+'</p>'
-
-        +'<ul style="margin:0;padding-left:18px;color:#787b86;font-size:12px;line-height:1.65;">'
-
-        +'<li>'+_T('Two-column Help & Profile panels')+'</li>'
-
-        +'<li>'+_T('Performance improvements (render loop, RAF binding)')+'</li>'
-
-        +'<li>'+_T('Template and color settings caching')+'</li>'
-
-        +'<li>'+_T('Screenshot latency improvements')+'</li>'
-
-        +'</ul></div>'
-
-        +'</div>';
-
-    var acct=twoColEl.querySelector('#profileAcctBody');
-
-    if(acct)window._profileWireAccountBody(acct);
-
-    twoColEl.querySelectorAll('[data-lang-code]').forEach(function(el){
+    c.querySelectorAll('[data-lang-code]').forEach(function(el){
 
         el.addEventListener('click',function(e){
 
@@ -60011,43 +59725,77 @@ window._profileRenderCombined=function(twoColEl,heroEl){
 
             window._applyLanguage(el.dataset.langCode);
 
-            window._profileRenderCombined(twoColEl,heroEl);
+            window._profileFillAccountTab(c);
 
         });
 
     });
 
-    var tzEl=twoColEl.querySelector('#profileTzDisplay');
+    var tzEl=c.querySelector('#profileTzDisplay');
 
     if(tzEl&&window.timezoneManager&&window.timezoneManager.getCurrentLabel)tzEl.textContent=window.timezoneManager.getCurrentLabel();
 
-    var doc=twoColEl.querySelector('.profile-help-doc');
+};
 
-    if(doc)doc.addEventListener('click',function(e){e.stopPropagation();window.open('https://docs.talaria.com','_blank');});
+window._profileFillHelpTab=function(c){
 
-    var vid=twoColEl.querySelector('.profile-help-vid');
+    if(!c||typeof _helpSections==='undefined')return;
 
-    if(vid)vid.addEventListener('click',function(e){e.stopPropagation();window.open('https://youtube.com','_blank');});
+    var _T=window._i18nT||function(s){return s;};
 
-    var fm=twoColEl.querySelector('#profileFaqMoreBtn');
+    var edu=_helpSections.education.html;
 
-    var fr=twoColEl.querySelector('#profileFaqRest');
+    var shortcuts=_helpSections.shortcuts.html.replace('id="kbShortcutsBody"','id="profileHelpKbBody"');
 
-    if(fm&&fr)fm.addEventListener('click',function(e){e.stopPropagation();var on=fr.style.display!=='block';fr.style.display=on?'block':'none';fm.textContent=on?'<<< '+_T('Less'):'More >>>';});
+    var scTitle='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#787b86;margin:18px 0 8px;text-transform:uppercase;">'+_T('Shortcuts')+'</div>';
 
-    var kbBtn=twoColEl.querySelector('#profileKbMoreBtn');
+    var faqWrap='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#787b86;margin:18px 0 8px;text-transform:uppercase;">'+_T('FAQ')+'</div>'
 
-    var kbWrap=twoColEl.querySelector('#profileKbWrap');
+        +'<div style="padding:4px 0;" id="profileHelpFaqBody"></div>';
 
-    var kbBody=twoColEl.querySelector('#profileKbBody');
+    var contact=_helpSections.contact.html;
 
-    if(kbBtn&&kbWrap&&kbBody){
+    var ver='<div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);">'
+
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">'
+
+        +'<span style="background:#26a69a;color:#fff;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">'+_T('NEW')+'</span>'
+
+        +'<span style="color:#d1d4dc;font-size:13px;font-weight:600;">'+_T('Version')+' 1.4.9</span>'
+
+        +'<span style="margin-left:auto;font-size:11px;color:#555a6e;">v1.5.0</span></div>'
+
+        +'<div style="color:#d1d4dc;font-size:12px;line-height:1.7;">'
+
+        +'<p style="margin:0 0 8px;font-weight:600;color:#fff;">'+_T('What\'s new')+'</p>'
+
+        +'<ul style="margin:0;padding-left:18px;color:#787b86;">'
+
+        +'<li>'+_T('Profile tabs: Account & Help')+'</li>'
+
+        +'<li>'+_T('Performance improvements (render loop, RAF binding)')+'</li>'
+
+        +'<li>'+_T('Template and color settings caching')+'</li>'
+
+        +'<li>'+_T('Screenshot latency improvements')+'</li>'
+
+        +'</ul></div></div>';
+
+    c.innerHTML=edu+scTitle+shortcuts+faqWrap+contact+ver;
+
+    var faqs=[['What file formats are supported?','CSV files with OHLCV data. Columns: timestamp, open, high, low, close, volume.'],['How do I take a screenshot?','Click the camera icon in the toolbar. The chart is captured instantly.'],['Can I use custom indicators?','Yes — open the Indicators panel and add from the available list.'],['How do I save my drawings?','Drawings are saved automatically to localStorage and synced to your account.']];
+
+    var fb=c.querySelector('#profileHelpFaqBody');
+
+    if(fb){fb.innerHTML=faqs.map(function(f){return'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><p style="margin:0 0 4px;color:#d1d4dc;font-size:13px;font-weight:600;">'+f[0]+'</p><p style="margin:0;color:#787b86;font-size:12px;line-height:1.6;">'+f[1]+'</p></div>';}).join('');}
+
+    var tb=c.querySelector('#profileHelpKbBody');
+
+    if(tb){
 
         var rows=[['Ctrl/Cmd + Z','Undo'],['Ctrl/Cmd + Y','Redo'],['Ctrl/Cmd + S','Save'],['Alt + T','Toggle theme'],['F','Fit to view'],['R','Replay mode'],['Delete','Remove selected'],['Esc','Cancel / deselect'],['+ / -','Zoom in / out']];
 
-        kbBody.innerHTML=rows.map(function(r){return'<tr><td style="padding:8px 10px;color:#d1d4dc;border-bottom:1px solid rgba(255,255,255,0.05);"><kbd style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:2px 7px;font-size:11px;font-family:monospace;">'+r[0]+'</kbd></td><td style="padding:8px 10px;color:#787b86;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05);">'+r[1]+'</td></tr>';}).join('');
-
-        kbBtn.addEventListener('click',function(e){e.stopPropagation();var on=kbWrap.style.display!=='block';kbWrap.style.display=on?'block':'none';kbBtn.textContent=on?'<<< '+_T('Less'):'More >>>';});
+        tb.innerHTML=rows.map(function(r){return'<tr><td style="padding:8px 12px;color:#d1d4dc;border-bottom:1px solid rgba(255,255,255,0.05);"><kbd style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:2px 7px;font-size:11px;font-family:monospace;">'+r[0]+'</kbd></td><td style="padding:8px 12px;color:#787b86;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05);">'+r[1]+'</td></tr>';}).join('');
 
     }
 
@@ -60055,11 +59803,57 @@ window._profileRenderCombined=function(twoColEl,heroEl){
 
 function _profileLoad(key){
 
-    var c=document.getElementById('profilePanelContent');
+    var s=(typeof _profileSections!=='undefined')?_profileSections[key]:null;
 
-    if(c&&typeof window._profileRenderCombined==='function'){
+    if(!s&&key!=='account'&&key!=='help')return;
 
-        window._profileRenderCombined(c,document.getElementById('profileHeroAvatar'));
+    var t=document.getElementById('profileContentTitle'); if(t){
+
+        var _Ti=window._i18nT||function(x){return x;};
+
+        if(key==='account')t.textContent=_Ti('Account');
+
+        else if(key==='help')t.textContent=_Ti('Help');
+
+        else if(s)t.textContent=s.title;
+
+    }
+
+    var c=document.getElementById('profilePanelContent'); if(!c)return;
+
+    if(key==='account'){window._profileFillAccountTab(c);return;}
+
+    if(key==='help'){window._profileFillHelpTab(c);return;}
+
+    c.innerHTML=s.html;
+
+    if(key==='theme'){
+
+        var ptc=document.getElementById('profileThemeContent'); if(!ptc)return;
+
+        var isDark=!document.body.classList.contains('light-mode');
+
+        ptc.innerHTML='<p style="color:#787b86;font-size:12px;margin:0 0 14px;">Choose your interface theme</p><div style="display:flex;gap:10px;">'
+
+            +'<button type="button" id="ppThemeDark" style="flex:1;padding:28px 10px 14px;border-radius:10px;border:2px solid '+(isDark?'var(--sp-accent,#2962ff)':'rgba(255,255,255,0.1)')+';background:'+(isDark?'rgba(var(--sp-accent-rgb,41,98,255),0.1)':'rgba(255,255,255,0.03)')+';cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:8px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24" style="color:#d1d4dc;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span style="color:#d1d4dc;font-size:12px;font-weight:600;">Dark</span></button>'
+
+            +'<button type="button" id="ppThemeLight" style="flex:1;padding:28px 10px 14px;border-radius:10px;border:2px solid '+(!isDark?'var(--sp-accent,#2962ff)':'rgba(255,255,255,0.1)')+';background:'+(!isDark?'rgba(var(--sp-accent-rgb,41,98,255),0.1)':'rgba(255,255,255,0.03)')+';cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:8px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24" style="color:#d1d4dc;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><span style="color:#d1d4dc;font-size:12px;font-weight:600;">Light</span></button></div>';
+
+        var pd=document.getElementById('ppThemeDark');
+
+        var pl=document.getElementById('ppThemeLight');
+
+        if(pd)pd.addEventListener('click',function(){document.body.classList.remove('light-mode');_profileLoad('theme');});
+
+        if(pl)pl.addEventListener('click',function(){document.body.classList.add('light-mode');_profileLoad('theme');});
+
+    }
+
+    if(key==='timezone'){
+
+        var tzDisplay=document.getElementById('profileTzDisplay');
+
+        if(tzDisplay&&window.timezoneManager&&window.timezoneManager.getCurrentLabel)tzDisplay.textContent=window.timezoneManager.getCurrentLabel();
 
     }
 
@@ -60067,11 +59861,25 @@ function _profileLoad(key){
 
 function _profileWireNav(){
 
-    var c=document.getElementById('profilePanelContent');
+    var nav=document.getElementById('profileNav'); if(!nav)return;
 
-    var h=document.getElementById('profileHeroAvatar');
+    nav.querySelectorAll('.sp-nav-item[data-pp]').forEach(function(item){
 
-    if(typeof window._profileRenderCombined==='function')window._profileRenderCombined(c,h);
+        item.addEventListener('click',function(e){
+
+            e.stopPropagation();
+
+            nav.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});
+
+            item.classList.add('active');
+
+            _profileLoad(item.dataset.pp);
+
+        });
+
+    });
+
+    _profileLoad('account');
 
 }
 
@@ -60097,11 +59905,11 @@ function _profileWireNav(){
 
         else if(id==='profilePanel'){
 
-            var _pc=document.getElementById('profilePanelContent');
+            _profileLoad('account');
 
-            var _ph=document.getElementById('profileHeroAvatar');
+            var _pn=document.getElementById('profileNav');
 
-            if(_pc&&typeof window._profileRenderCombined==='function')window._profileRenderCombined(_pc,_ph);
+            if(_pn)_pn.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.pp==='account');});
 
         }
 
