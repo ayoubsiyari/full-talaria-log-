@@ -59977,7 +59977,47 @@ window._wireProfileAccountOverview=function(content,restoreAccountTab){
 
     _dashBtn.addEventListener('mouseleave',function(){this.style.background='rgba(var(--sp-accent-rgb,41,98,255),0.12)';});
 
-    _dashBtn.addEventListener('click',function(){window.location.href='/dashboard/';});
+    _dashBtn.addEventListener('click',function(){
+
+        var sid=null;
+
+        try{
+
+            var c=(typeof window.getActiveChart==='function'?window.getActiveChart():null)||window.chart||window.mainChart;
+
+            if(c&&typeof c.getActiveTradingSessionId==='function')sid=c.getActiveTradingSessionId();
+
+        }catch(e){}
+
+        if(!sid){
+
+            try{sid=localStorage.getItem('active_trading_session_id');}catch(e2){}
+
+        }
+
+        if(!sid){
+
+            try{
+
+                var p=new URLSearchParams(window.location.search);
+
+                sid=p.get('sessionId')||p.get('session_id')||null;
+
+            }catch(e3){}
+
+        }
+
+        if(sid){
+
+            window.location.href='/dashboard/sessions/analytics/?id='+encodeURIComponent(String(sid));
+
+        }else{
+
+            window.location.href='/dashboard/sessions/';
+
+        }
+
+    });
 
     var _logoutBtn=document.createElement('button');
 
