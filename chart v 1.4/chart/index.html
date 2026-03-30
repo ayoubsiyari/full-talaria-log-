@@ -7055,6 +7055,50 @@
 
         }
 
+        /* Right-align color swatches: label | controls (flex-end) | fixed swatch column */
+        .settings-row-swatch-align {
+            display: grid;
+            grid-template-columns: minmax(90px, 1fr) minmax(0, 1fr) 32px;
+            align-items: center;
+            column-gap: 10px;
+            padding: 6px 0;
+        }
+        .settings-row-swatch-align .settings-input-label {
+            grid-column: 1;
+            min-width: 0;
+        }
+        .settings-row-swatch-align .settings-row-trail {
+            grid-column: 2;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            min-width: 0;
+        }
+        .settings-row-swatch-align .settings-row-swatch-slot {
+            grid-column: 3;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            width: 32px;
+            justify-self: end;
+        }
+        .settings-row-swatch-align .settings-row-swatch-slot > button {
+            margin: 0 !important;
+        }
+        .settings-row-swatch-align--compact {
+            grid-template-columns: minmax(0, 1fr) 32px;
+        }
+        .settings-row-swatch-align--compact .settings-input-label {
+            display: none !important;
+        }
+        .settings-row-swatch-align--compact .settings-row-trail {
+            grid-column: 1;
+        }
+        .settings-row-swatch-align--compact .settings-row-swatch-slot {
+            grid-column: 2;
+        }
+
 
 
         .settings-input-label {
@@ -56673,7 +56717,7 @@ document.addEventListener('click',function(e){if(!e.target.closest('.sp-cdd-wrap
 
 document.addEventListener('click',function(e){var t=e.target;if(!t||typeof t.closest!=='function')return;if(t.closest('.tl-dd-wrap'))return;document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});},true);
 
-function clr(label,id,val){ var safeVal=String(val||'#000000'); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><button id="sw_'+id+'" data-color="'+safeVal+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+safeVal+';cursor:pointer;flex-shrink:0;margin-left:auto;margin-right:4px;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div>'; }
+function clr(label,id,val){ var safeVal=String(val||'#000000'); var compact=!label; var rowCls='settings-input-row settings-row-swatch-align'+(compact?' settings-row-swatch-align--compact':''); var lbl=compact?'':'<span class="settings-input-label">'+label+'</span>'; return '<div class="'+rowCls+'">'+lbl+'<div class="settings-row-trail"></div><div class="settings-row-swatch-slot"><button id="sw_'+id+'" data-color="'+safeVal+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+safeVal+';cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></button></div></div>'; }
 
 function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:var(--sp-accent);font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--sp-text-muted,#787b86);margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
 
@@ -57227,7 +57271,7 @@ P['symbol']={title:'Symbol',build:function(){
 
     function swCv(id,val){var s=String(val||'#000000');return '<button id="sw_'+id+'" data-color="'+s+'" onclick="window._spClr(this)" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:'+s+';cursor:pointer;flex-shrink:0;" onmouseover="this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.boxShadow=\'none\'"></button>';}
 
-    function rowCv(label,ctrl){return '<div class="settings-input-row"><span class="settings-input-label" style="flex:1;min-width:0;">'+label+'</span><div style="display:flex;align-items:center;justify-content:flex-end;min-width:160px;flex-shrink:0;">'+ctrl+'</div></div>';}
+    function rowCvAlign(label,trail,swatch){if(arguments.length===2){swatch=trail;trail='';}return '<div class="settings-input-row settings-row-swatch-align"><span class="settings-input-label" style="min-width:0;">'+label+'</span><div class="settings-row-trail">'+(trail||'')+'</div><div class="settings-row-swatch-slot">'+swatch+'</div></div>';}
 
     var gridOptsCv=[['Vert and horz','Vert and horz'],['Vertical','Vert only'],['Horizontal','Horz only'],['None','No lines']];
 
@@ -57237,15 +57281,17 @@ P['symbol']={title:'Symbol',build:function(){
 
     var cxDashCv=({solid:'none',dashed:'8 4',dotted:'2 4'})[cs.crosshairPattern||'dashed']||'8 4';
 
-    var crosshairBtnCv='<button onclick="window._openCrosshairColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:0 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_cxColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+cxColCv+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_cxLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+cxDashCv+'"/></svg></button>';
+    var crosshairLineBtnCv='<button type="button" onclick="window._openCrosshairColorPicker(this)" style="display:flex;align-items:center;justify-content:center;padding:0 10px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><svg width="32" height="10"><line id="_cxLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="1.5" stroke-dasharray="'+cxDashCv+'"/></svg></button>';
+
+    var crosshairSwatchBtnCv='<button type="button" onclick="window._openCrosshairColorPicker(this)" aria-label="Crosshair color" style="width:28px;height:28px;padding:0;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;"><span id="_cxColorSwatch" style="display:block;width:20px;height:20px;border-radius:4px;background:'+cxColCv+';"></span></button>';
 
     var canvasSec=sec(st('CANVAS')+
 
-        rowCv('Background', swCv('cv_bg', cs.backgroundColor||'#050028'))+
+        rowCvAlign('Background', swCv('cv_bg', cs.backgroundColor||'#050028'))+
 
-        rowCv('Grid lines', '<div style="display:flex;align-items:center;gap:6px;">'+swCv('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)')+gridSelCv+'</div>')+
+        rowCvAlign('Grid lines', gridSelCv, swCv('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)'))+
 
-        rowCv('Crosshair', crosshairBtnCv));
+        rowCvAlign('Crosshair', crosshairLineBtnCv, crosshairSwatchBtnCv));
 
     var fontOptsSc=[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']];
 
@@ -57259,13 +57305,15 @@ P['symbol']={title:'Symbol',build:function(){
 
     var slDashSc=({solid:'none',dashed:'8 4',dotted:'2 4'})[cs.scaleLinePattern||'solid']||'none';
 
-    var scaleLinesBtnSc='<button onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;gap:6px;padding:0 8px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><div id="_slColorSwatch" style="width:13px;height:13px;border-radius:3px;background:'+slColSc+';flex-shrink:0;"></div><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+slWSc+'" stroke-dasharray="'+slDashSc+'" stroke-linecap="round"/></svg></button>';
+    var scaleLinesLineBtnSc='<button type="button" onclick="window._openScaleLinesColorPicker(this)" style="display:flex;align-items:center;justify-content:center;padding:0 10px;height:28px;background:var(--sp-input-bg,rgba(255,255,255,0.08));border:1px solid var(--sp-btn-border,rgba(255,255,255,0.15));border-radius:6px;cursor:pointer;flex-shrink:0;"><svg width="32" height="10"><line id="_slLinePreview" x1="2" y1="5" x2="30" y2="5" stroke="#d1d4dc" stroke-width="'+slWSc+'" stroke-dasharray="'+slDashSc+'" stroke-linecap="round"/></svg></button>';
+
+    var scaleLinesSwatchBtnSc='<button type="button" onclick="window._openScaleLinesColorPicker(this)" aria-label="Scale lines color" style="width:28px;height:28px;padding:0;border-radius:6px;border:1px solid var(--sp-btn-border,rgba(255,255,255,0.22));background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;"><span id="_slColorSwatch" style="display:block;width:20px;height:20px;border-radius:4px;background:'+slColSc+';"></span></button>';
 
     var scalesSec=sec(st('SCALES')+
 
-        rowCv('Scale text', '<div style="display:flex;align-items:center;gap:6px;">'+fontSelSc+swCv('cv_scaleText', cs.scaleTextColor||'#ffffff')+'</div>')+
+        rowCvAlign('Scale text', fontSelSc, swCv('cv_scaleText', cs.scaleTextColor||'#ffffff'))+
 
-        rowCv('Scale lines', scaleLinesBtnSc));
+        rowCvAlign('Scale lines', scaleLinesLineBtnSc, scaleLinesSwatchBtnSc));
 
     var chartTypeSec=sec(st('CHART TYPE')+selDD('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
 
