@@ -1170,6 +1170,16 @@
 
         }
 
+        .sidebar-bottom-actions {
+            margin-top: auto;
+            margin-bottom: 12px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
         /* Sidebar theme toggle (placed under undo/redo) */
         #themeToggleBtn .theme-icon-light { display: none; }
         #themeToggleBtn.is-light .theme-icon-dark { display: none; }
@@ -41259,14 +41269,8 @@
 
             
 
-            <!-- Spacer to push panel icons to bottom -->
-
-            <div style="flex: 1;"></div>
-
-
-
-            <!-- Undo / Redo -->
-
+            <!-- Bottom actions -->
+            <div class="sidebar-bottom-actions">
             <button class="sidebar-timeframe-btn" id="undoBtn" data-tooltip="Undo (Ctrl+Z)">
 
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
@@ -41307,6 +41311,7 @@
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                 </svg>
             </button>
+            </div>
 
             
 
@@ -56986,7 +56991,7 @@ P['symbol']={title:'Symbol',build:function(){
 
     var baselineSec=(type==='baseline')?sec(st('BASELINE COLOR')+clr('Baseline color','blClr',blC)):'';
 
-    return templateSec+sec(st('CHART TYPE')+selDD('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
+    return sec(st('CHART TYPE')+selDD('Type','sym_type',[['candles','Candlestick'],['hollow','Hollow Candles'],['heikinashi','Heikin Ashi'],['bars','Bar'],['line','Line'],['area','Area'],['baseline','Baseline']],type)+
 
     selDD('Precision','sym_prec',[['default','Default'],['0','0'],['1','0.0'],['2','0.00'],['3','0.000'],['4','0.0000'],['5','0.00000']],cs.pricePrecision||'default')+
 
@@ -57074,7 +57079,7 @@ P['symbol']={title:'Symbol',build:function(){
 
     wChk('symTitle',function(v){set('symbolTitle',v);});wDD('symFmt',function(v){set('symbolTitleFormat',v);});wClr('symClr',function(v){set('symbolTextColor',v);});
 
-    (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];function _sdd(id,meth,prop){var trig=document.getElementById(id+'_trig');var pnl=document.getElementById(id+'_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';if(!o&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){var ddc=tlDdChromeFromChart((ch()||{}).chartSettings||{});this.style.background=ddc.optHover;});opt.addEventListener('mouseleave',function(){var cv2=ch();var ddc=tlDdChromeFromChart((cv2||{}).chartSettings||{});this.style.background=(cv2&&cv2[prop]===this.dataset.tplid)?ddc.optActive:'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;if(cv2[prop]===tid){pnl.style.display='none';return;}var m=sl.find(function(s){return s.id===tid;});if(!m)return;var originalState=cv2[prop];var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';window._templatePreviewMode=true;if(typeof cv2[meth]==='function')cv2[meth](tid);showTemplateConfirmation(m.name,meth,prop,tid,originalState,originalChartSettings);});});}
+    (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[];function _sdd(id,meth,prop){var trig=document.getElementById(id+'_trig');var pnl=document.getElementById(id+'_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';if(!o&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){var ddc=tlDdChromeFromChart((ch()||{}).chartSettings||{});this.style.background=ddc.optHover;});opt.addEventListener('mouseleave',function(){var cv2=ch();var ddc=tlDdChromeFromChart((cv2||{}).chartSettings||{});this.style.background=(cv2&&cv2[prop]===this.dataset.tplid)?ddc.optActive:'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;if(cv2[prop]===tid){pnl.style.display='none';return;}var m=sl.find(function(s){return s.id===tid;});if(!m)return;pnl.style.display='none';window._templatePreviewMode=false;if(typeof cv2[meth]==='function')cv2[meth](tid);if(typeof cv2.saveSettings==='function')cv2.saveSettings();});});}
         _sdd('tl_chart_dd','applyChartOnlyTemplate','_lastChartOnlyTemplate');
         _sdd('tl_talaria_dd','applyTemplate','_lastTemplateSelected');
     })();
@@ -57383,7 +57388,7 @@ P['canvas']={title:'Canvas',build:function(){
 
     });
 
-        (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getPanelTemplateSwatches==='function'?cv.getPanelTemplateSwatches():(typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[]);var trig=document.getElementById('tl_panel_dd_trig');var pnl=document.getElementById('tl_panel_dd_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';if(!o&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){var ddc=tlDdChromeFromChart((ch()||{}).chartSettings||{});this.style.background=ddc.optHover;});opt.addEventListener('mouseleave',function(){var cv2=ch();var ddc=tlDdChromeFromChart((cv2||{}).chartSettings||{});this.style.background=(cv2&&cv2._lastPanelOnlyTemplate===this.dataset.tplid)?ddc.optActive:'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;if(cv2._lastPanelOnlyTemplate===tid){pnl.style.display='none';return;}var m=sl.find(function(s){return s.id===tid;});if(!m)return;var originalState=cv2._lastPanelOnlyTemplate;var originalChartSettings=cv2.chartSettings?JSON.parse(JSON.stringify(cv2.chartSettings)):null;pnl.style.display='none';window._templatePreviewMode=true;if(typeof cv2.applyPanelOnlyTemplate==='function')cv2.applyPanelOnlyTemplate(tid);showTemplateConfirmation(m.name,'applyPanelOnlyTemplate','_lastPanelOnlyTemplate',tid,originalState,originalChartSettings);});});})();
+        (function(){var cv=ch();if(!cv)return;var sl=typeof cv.getPanelTemplateSwatches==='function'?cv.getPanelTemplateSwatches():(typeof cv.getTalariaTemplateSwatches==='function'?cv.getTalariaTemplateSwatches():[]);var trig=document.getElementById('tl_panel_dd_trig');var pnl=document.getElementById('tl_panel_dd_panel');if(!trig||!pnl)return;trig.addEventListener('click',function(e){e.stopPropagation();var o=pnl.style.display!=='none';document.querySelectorAll('.tl-dd-panel').forEach(function(p){p.style.display='none';});pnl.style.display=o?'none':'block';if(!o&&typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome();});pnl.querySelectorAll('.tl-dd-opt').forEach(function(opt){opt.addEventListener('mouseenter',function(){var ddc=tlDdChromeFromChart((ch()||{}).chartSettings||{});this.style.background=ddc.optHover;});opt.addEventListener('mouseleave',function(){var cv2=ch();var ddc=tlDdChromeFromChart((cv2||{}).chartSettings||{});this.style.background=(cv2&&cv2._lastPanelOnlyTemplate===this.dataset.tplid)?ddc.optActive:'transparent';});opt.addEventListener('click',function(e){e.stopPropagation();var cv2=ch();if(!cv2)return;var tid=this.dataset.tplid;if(!tid)return;if(cv2._lastPanelOnlyTemplate===tid){pnl.style.display='none';return;}var m=sl.find(function(s){return s.id===tid;});if(!m)return;pnl.style.display='none';window._templatePreviewMode=false;if(typeof cv2.applyPanelOnlyTemplate==='function')cv2.applyPanelOnlyTemplate(tid);if(typeof cv2.saveSettings==='function')cv2.saveSettings();});});})();
 
 }};
 
