@@ -24819,6 +24819,9 @@
 
             transform: translateX(0);
 
+            /* Let glow extend past the span box; overflow:hidden clips text-shadow into a grey “plate” */
+            overflow: visible;
+
         }
 
         .chart-brand.brand-lockup .logo-bottom.logo-dark,
@@ -24829,22 +24832,20 @@
 
         }
 
-        /* Soft glow on chart-corner wordmark (panel theme) */
+        /* Soft letter glow (drop-shadow follows glyph alpha — avoids flat “background plate” from clipped text-shadow) */
         .chart-brand.brand-lockup .logo-bottom.logo-dark {
 
-            text-shadow:
-                0 0 10px rgba(255, 255, 255, 0.45),
-                0 0 22px rgba(255, 255, 255, 0.2),
-                0 0 36px rgba(255, 255, 255, 0.08);
+            text-shadow: none;
+
+            filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)) drop-shadow(0 0 6px rgba(255, 255, 255, 0.28)) drop-shadow(0 0 14px rgba(255, 255, 255, 0.12));
 
         }
 
         .chart-brand.brand-lockup .logo-bottom.logo-light {
 
-            text-shadow:
-                0 0 10px rgba(255, 255, 255, 0.85),
-                0 0 20px rgba(255, 255, 255, 0.45),
-                0 0 32px rgba(255, 255, 255, 0.2);
+            text-shadow: none;
+
+            filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.2)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.12)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
 
         }
 
@@ -24881,6 +24882,8 @@
             z-index: 2;
 
             cursor: pointer;
+
+            overflow: visible;
 
         }
 
