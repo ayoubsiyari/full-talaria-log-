@@ -57275,8 +57275,6 @@ P['symbol']={title:'Symbol',build:function(){
 
     return templateSec+chartTypeSec+sec(st('PANEL COLORS')+clr('Text color','sp_text',cs.settingsPanelTextColor||'#e0e3ea'))+canvasSec+scalesSec+
 
-    colorSec+baselineSec+
-
     sec(st('STATUS LINE')+
 
         chk('Show OHLC values','showVals',cs.showChartValues!==false)+
@@ -57287,7 +57285,9 @@ P['symbol']={title:'Symbol',build:function(){
 
         selDD('Label format','symFmt',[['Description','Description'],['Ticker','Ticker'],['Both','Ticker + Description']],cs.symbolTitleFormat||'Description')+
 
-        clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc'))+extraSec;
+        clr('Label color','symClr',cs.symbolTextColor||'#d1d4dc'))+
+
+    colorSec+baselineSec+extraSec;
 
 },wire:function(){
 
