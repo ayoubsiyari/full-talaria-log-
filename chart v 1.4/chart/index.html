@@ -24779,7 +24779,7 @@
 
             line-height: 1;
 
-            transition: max-width 0.3s ease, opacity 0.25s ease, margin-left 0.3s ease;
+            transition: max-width 0.38s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.32s ease, margin-left 0.38s ease, transform 0.38s cubic-bezier(0.25, 0.8, 0.25, 1);
 
             -webkit-font-smoothing: antialiased;
 
@@ -24799,6 +24799,15 @@
 
 
 
+        /* Chart corner: “Talaria-Log” slides left → right as it reveals */
+        .chart-brand.brand-lockup .logo-bottom {
+
+            transform: translateX(-28px);
+
+        }
+
+
+
         /* Wordmark on hover: chart corner only (not the top toolbar lockup) */
         .chart-brand.brand-lockup:hover .logo-bottom {
 
@@ -24807,6 +24816,8 @@
             opacity: 1;
 
             margin-left: 0;
+
+            transform: translateX(0);
 
         }
 
