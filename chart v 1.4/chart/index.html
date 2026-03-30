@@ -57644,7 +57644,7 @@ P['canvas']={title:'Canvas',build:function(){
 
 P['trading']={title:'Trading',build:function(){
 
-    var g=gLoad(),s=sess(),mode=g.orderPlacementMode||'instant',lev=parseInt(s.leverage||100,10);
+    var g=gLoad(),mode=g.orderPlacementMode||'instant';
 
     return sec(st('ORDER PLACEMENT')+
 
@@ -57658,8 +57658,6 @@ P['trading']={title:'Trading',build:function(){
 
     sec(st('CHART OVERLAYS')+chk('Show order history on chart','tr_orderHist',g.showOrderHistory!==false)+chk('Show open orders on chart','tr_openOrders',g.showOpenOrders!==false))+
 
-    sec(st('LEVERAGE')+rng('Leverage (1:x)','tr_lev',lev,1,500))+
-
     savebtn('tr_save','Save Trading Settings');
 
 },wire:function(){
@@ -57670,21 +57668,11 @@ P['trading']={title:'Trading',build:function(){
 
     wChk('tr_openOrders',function(v){gSave({showOpenOrders:v});set('showOpenOrders',v);});
 
-    var rnEl=document.getElementById('rng_tr_lev');
-
-    if(rnEl){rnEl.addEventListener('input',function(){var rv=document.getElementById('rv_tr_lev');if(rv)rv.textContent=this.value;});}
-
     var sb=document.getElementById('tr_save');
 
     if(sb)sb.addEventListener('click',function(){
 
-        var lv=parseInt((rnEl?rnEl.value:100))||100;
-
-        var s=sess();s.leverage=lv;saveSess(s);
-
         gSave({});
-
-        document.querySelectorAll('#challengeLeverage,.leverage-value').forEach(function(el){el.textContent='1:'+lv;});
 
         this.textContent='Saved ✓';this.style.background='#089981';var self=this;setTimeout(function(){self.textContent='Save Trading Settings';self.style.background='var(--sp-accent)';},1800);
 
