@@ -1172,8 +1172,8 @@
 
         /* Sidebar theme toggle (placed under undo/redo) */
         #themeToggleBtn .theme-icon-light { display: none; }
-        body.light-mode #themeToggleBtn .theme-icon-dark { display: none; }
-        body.light-mode #themeToggleBtn .theme-icon-light { display: block; }
+        #themeToggleBtn.is-light .theme-icon-dark { display: none; }
+        #themeToggleBtn.is-light .theme-icon-light { display: block; }
 
         
 
@@ -42968,9 +42968,26 @@
             
 
             if (darkModeBtn && lightModeBtn) {
+                const getThemeSourceChart = () => window.chart || window.mainChart || null;
+                const isPanelLightTheme = () => {
+                    const c = getThemeSourceChart();
+                    if (!c || !c.chartSettings) return false;
+                    const tpl = String(c.chartSettings.activePanelOnlyTemplate || '').toLowerCase();
+                    if (tpl === 'tradingview-light' || tpl === 'light') return true;
+                    if (tpl === 'tradingview-dark' || tpl === 'dark') return false;
+                    const bg = String(c.chartSettings.settingsPanelBgColor || '').toLowerCase();
+                    return bg === '#ffffff' || bg === 'white' || bg === 'rgb(255, 255, 255)';
+                };
+                const applyPanelThemeOnly = (makeLight) => {
+                    const c = getThemeSourceChart();
+                    if (!c || typeof c.applyPanelOnlyTemplate !== 'function') return;
+                    c.applyPanelOnlyTemplate(makeLight ? 'tradingview-light' : 'tradingview-dark');
+                    if (typeof c.saveSettings === 'function') c.saveSettings();
+                };
                 const updateThemeToggleState = () => {
                     if (!themeToggleBtn) return;
-                    const isLight = document.body.classList.contains('light-mode');
+                    const isLight = isPanelLightTheme();
+                    themeToggleBtn.classList.toggle('is-light', isLight);
                     themeToggleBtn.setAttribute('data-tooltip', isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode');
                     themeToggleBtn.setAttribute('title', isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode');
                 };
@@ -42987,59 +43004,12 @@
 
                     
 
-                    document.body.classList.add('light-mode');
-
                     darkModeBtn.style.display = 'none';
 
                     lightModeBtn.style.display = 'none';
 
-                    // Apply light theme to chart immediately
-
-                    if (window.chart) {
-
-                        window.chart.chartSettings.scaleLinesColor = '#787b86';
-
-                        window.chart.chartSettings.scaleTextColor = '#000000';
-
-                        window.chart.chartSettings.backgroundColor = '#ffffff';
-
-                        window.chart.chartSettings.gridColor = 'rgba(42, 46, 57, 0.22)';
-
-                        window.chart.chartSettings.symbolTextColor = '#000000';
-
-                        // Apply background to canvas and container
-
-                        window.chart.canvas.style.backgroundColor = '#ffffff';
-
-                        const container = document.querySelector('.chart-container');
-
-                        if (container) container.style.backgroundColor = '#ffffff';
-
-                        // Apply text color to OHLC info elements
-
-                        const ohlcInfo = document.querySelector('.ohlc-info');
-
-                        if (ohlcInfo) {
-
-                            ohlcInfo.style.color = '#050028';
-
-                            ohlcInfo.querySelectorAll('[style*="color"]').forEach(el => { el.style.color = ''; });
-
-                            ohlcInfo.style.color = '#050028';
-
-                        }
-
-                        window.chart.render();
-
-                        // Save settings to persist theme change
-
-                        if (typeof window.chart.saveSettings === 'function') {
-
-                            window.chart.saveSettings();
-
-                        }
-
-                    }
+                    // Apply LIGHT to panel/sidebar only (do not touch chart colors)
+                    applyPanelThemeOnly(true);
 
                     updateThemeToggleState();
 
@@ -43055,65 +43025,12 @@
 
                     
 
-                    document.body.classList.remove('light-mode');
-
                     lightModeBtn.style.display = 'none';
 
                     darkModeBtn.style.display = 'none';
 
-                    // Apply dark theme to chart immediately
-
-                    if (window.chart) {
-
-                        window.chart.chartSettings.scaleLinesColor = '#050028';
-
-                        window.chart.chartSettings.scaleTextColor = '#ffffff';
-
-                        window.chart.chartSettings.backgroundColor = '#050028';
-
-                        window.chart.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
-
-                        window.chart.chartSettings.symbolTextColor = '#ffffff';
-
-                        // Apply background to canvas and container
-
-                        window.chart.canvas.style.backgroundColor = '#050028';
-
-                        const container = document.querySelector('.chart-container');
-
-                        if (container) container.style.backgroundColor = '#050028';
-
-                        // Apply text color to OHLC info elements
-
-                        const ohlcInfo = document.querySelector('.ohlc-info');
-
-                        if (ohlcInfo) {
-
-                            ohlcInfo.querySelectorAll('[style*="color"]').forEach(el => { el.style.color = ''; });
-
-                            ohlcInfo.style.color = '#ffffff';
-
-                            /* legacy: keep for any remaining inline-styled children */
-
-                            ohlcInfo.querySelectorAll('.ohlc-symbol-text, .ohlc-label, .ohlc-value, .ohlc-separator, #chartTimeframe, .volume-label, .volume-value').forEach(el => {
-
-                                el.style.color = '#ffffff';
-
-                            });
-
-                        }
-
-                        window.chart.render();
-
-                        // Save settings to persist theme change
-
-                        if (typeof window.chart.saveSettings === 'function') {
-
-                            window.chart.saveSettings();
-
-                        }
-
-                    }
+                    // Apply DARK to panel/sidebar only (do not touch chart colors)
+                    applyPanelThemeOnly(false);
 
                     updateThemeToggleState();
 
@@ -43121,11 +43038,8 @@
 
                 if (themeToggleBtn) {
                     themeToggleBtn.addEventListener('click', () => {
-                        if (document.body.classList.contains('light-mode')) {
-                            lightModeBtn.click();
-                        } else {
-                            darkModeBtn.click();
-                        }
+                        if (isPanelLightTheme()) lightModeBtn.click();
+                        else darkModeBtn.click();
                     });
                 }
 
