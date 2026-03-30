@@ -2267,6 +2267,11 @@
 
         }
 
+        /* Stat row SVGs use stroke="currentColor"; base .replay-stat-icon gray would otherwise stay faint (span rules don't match <svg>). */
+        body.light-mode .replay-toolbar .replay-stat-icon {
+            color: var(--sp-text, #0f172a);
+        }
+
         
 
         body.light-mode .speed-label {
