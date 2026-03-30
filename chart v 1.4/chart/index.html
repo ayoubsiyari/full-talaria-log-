@@ -14167,10 +14167,24 @@
 
         }
 
-        /* Prevent overlap with settings drawer: hide values, keep toggle button visible */
-        body.settings-open #replayToolbar .replay-controls-right .replay-stat-item,
+        /* Settings open: keep stats visible in compact mode (no overlap) */
+        body.settings-open #replayToolbar .replay-controls-right {
+            right: 8px !important;
+            gap: 6px !important;
+        }
+        body.settings-open #replayToolbar .replay-controls-right .replay-stat-label,
         body.settings-open #replayToolbar .replay-controls-right .replay-stat-divider {
             display: none !important;
+        }
+        body.settings-open #replayToolbar .replay-controls-right .replay-stat-item {
+            gap: 4px !important;
+        }
+        body.settings-open #replayToolbar .replay-controls-right .replay-stat-icon {
+            width: 12px !important;
+            height: 12px !important;
+        }
+        body.settings-open #replayToolbar .replay-controls-right .replay-stat-value {
+            font-size: 11px !important;
         }
 
 
@@ -42297,7 +42311,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260328"></script>
 
-    <script defer src="modules/order-manager.js?v=20260328_COMPACT_INPUTS"></script>
+    <script defer src="modules/order-manager.js?v=20260330_FULL_HEIGHT_DIVIDER"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260328"></script>
 
