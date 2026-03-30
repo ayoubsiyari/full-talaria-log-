@@ -2809,7 +2809,7 @@
 
             background: var(--sp-ui-surface-bg, #f0f0f0);
 
-            border-left: 1px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
+            border-left: 6px solid var(--sp-ui-border, rgba(47, 79, 79, 0.2));
 
             box-shadow: none;
 
@@ -5582,7 +5582,7 @@
 
                 var(--sp-bg);
 
-            border-left: 1px solid var(--sp-ui-border, rgba(255,255,255,0.07));
+            border-left: 6px solid var(--sp-ui-border, rgba(255,255,255,0.22));
 
             z-index: 1000010;
 
@@ -6420,7 +6420,7 @@
 
             background: linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.12)), var(--sp-bg, #050028);
 
-            border-left: 1px solid var(--sp-ui-border, rgba(255,255,255,0.07));
+            border-left: 6px solid var(--sp-ui-border, rgba(255,255,255,0.22));
 
             z-index: 1000010;
 
@@ -6438,7 +6438,7 @@
 
         body.light-mode .side-panel {
             background: var(--sp-ui-surface-bg, #f0f0f0);
-            border-left: 1px solid var(--sp-ui-border, rgba(47, 79, 79, 0.15));
+            border-left: 6px solid var(--sp-ui-border, rgba(47, 79, 79, 0.2));
             box-shadow: none;
         }
 
@@ -48587,8 +48587,6 @@ function showIndicatorsMenu() {
 
                 collapseToggle.addEventListener('click', () => {
 
-                    if (window.closePanel) window.closePanel();
-
                     if (panelExpanded) { collapsePanel(); } else { expandPanel(); }
 
                 });
@@ -58834,12 +58832,7 @@ var _spAnimMs = 280;
 function _syncSpBottom() {
 
     if (!panel) return;
-
-    var ct = document.querySelector('.container');
-
-    var b = ct ? parseFloat(ct.style.bottom) || 0 : 0;
-
-    panel.style.bottom = b + 'px';
+    panel.style.bottom = '0px';
 
 }
 
