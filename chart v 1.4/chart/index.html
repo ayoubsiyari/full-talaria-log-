@@ -24905,6 +24905,12 @@
 
         }
 
+        /* Chart-corner logo follows panel theme toggle (independent from body.light-mode chart theme) */
+        body:not(.panel-light-theme) .chart-brand.brand-lockup .logo-dark { display: block !important; }
+        body:not(.panel-light-theme) .chart-brand.brand-lockup .logo-light { display: none !important; }
+        body.panel-light-theme .chart-brand.brand-lockup .logo-dark { display: none !important; }
+        body.panel-light-theme .chart-brand.brand-lockup .logo-light { display: block !important; }
+
         /* Wordmark “Talaria-Log” still expands on .brand-lockup:hover (see rules above); no icon scale on list flags */
         .ssd-item:hover .ssd-flag {
 
@@ -42997,6 +43003,7 @@
                 const updateThemeToggleState = () => {
                     if (!themeToggleBtn) return;
                     const isLight = isPanelLightTheme();
+                    document.body.classList.toggle('panel-light-theme', isLight);
                     themeToggleBtn.classList.toggle('is-light', isLight);
                     themeToggleBtn.setAttribute('data-tooltip', isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode');
                     themeToggleBtn.setAttribute('title', isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode');
