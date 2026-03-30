@@ -14167,6 +14167,11 @@
 
         }
 
+        /* Prevent overlap with settings drawer */
+        body.settings-open #replayToolbar .replay-controls-right {
+            display: none !important;
+        }
+
 
 
         /* Make empty space of the BIG replay toolbar non-interactive (click-through)
