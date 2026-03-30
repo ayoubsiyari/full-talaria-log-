@@ -57660,8 +57660,6 @@ P['trading']={title:'Trading',build:function(){
 
     sec(st('LEVERAGE')+rng('Leverage (1:x)','tr_lev',lev,1,500))+
 
-    sec(st('COMMISSIONS')+irow('Average spread (pips)','tr_spread',s.averageSpread||0,0,100,0.1)+irow('Slippage (pips)','tr_slip',s.slippage||0,0,100,0.1)+sel('Commission type','tr_commType',[['none','None'],['per_trade','Per trade (fixed)'],['per_lot','Per lot'],['percent','% of value']],s.commissionType||'none')+irow('Commission value','tr_commVal',s.commissionValue||0,0,1000,0.01))+
-
     savebtn('tr_save','Save Trading Settings');
 
 },wire:function(){
@@ -57682,11 +57680,7 @@ P['trading']={title:'Trading',build:function(){
 
         var lv=parseInt((rnEl?rnEl.value:100))||100;
 
-        function nv(id){var el=document.getElementById('nr_'+id);return el?parseFloat(el.value)||0:0;}
-
-        function sv(id){var el=document.getElementById('sl_'+id);return el?el.value:'none';}
-
-        var s=sess();s.leverage=lv;s.averageSpread=nv('tr_spread');s.slippage=nv('tr_slip');s.commissionType=sv('tr_commType');s.commissionValue=nv('tr_commVal');saveSess(s);
+        var s=sess();s.leverage=lv;saveSess(s);
 
         gSave({});
 
