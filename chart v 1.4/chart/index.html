@@ -27068,12 +27068,17 @@
 
             gap: 8px;
 
-            padding: 8px 0;
+            padding: 0;
 
             background: transparent;
 
             border-top: none;
 
+        }
+
+        /* Collapse when all bottom icons are hidden */
+        .right-sidebar-bottom.is-collapsed {
+            display: none;
         }
 
 
@@ -43051,6 +43056,21 @@
                 updateThemeToggleState();
 
             }
+
+            // Remove bottom-bar reserved space when all its icons are hidden
+            (function(){
+                var rb=document.querySelector('.right-sidebar-bottom');
+                if(!rb) return;
+                var hasVisible=false;
+                rb.querySelectorAll('.right-sidebar-icon-btn').forEach(function(btn){
+                    if(hasVisible) return;
+                    var cs=window.getComputedStyle(btn);
+                    if(cs.display!=='none' && cs.visibility!=='hidden' && cs.opacity!=='0'){
+                        hasVisible=true;
+                    }
+                });
+                rb.classList.toggle('is-collapsed', !hasVisible);
+            })();
 
             
 
