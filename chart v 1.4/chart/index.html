@@ -1140,36 +1140,6 @@
 
         
 
-        #undoBtn, #redoBtn {
-
-            width: 34px;
-
-            height: 34px;
-
-            min-width: 34px;
-
-            min-height: 34px;
-
-        }
-
-        
-
-        #undoBtn svg, #redoBtn svg {
-
-            width: 18px;
-
-            height: 18px;
-
-        }
-
-        
-
-        #undoBtn {
-
-            margin-top: 0px;
-
-        }
-
         .sidebar-bottom-actions {
             margin-top: auto;
             margin-bottom: 0;
@@ -38814,6 +38784,32 @@
 
                     </div>
 
+                    <div class="tool-divider"></div>
+
+                    <button type="button" class="toolbar-icon-btn" id="undoBtn" data-tooltip="Undo (Ctrl+Z)">
+
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+
+                            <path d="M3 10h10c4.42 0 8 3.58 8 8v2"></path>
+
+                            <polyline points="7 14 3 10 7 6"></polyline>
+
+                        </svg>
+
+                    </button>
+
+                    <button type="button" class="toolbar-icon-btn" id="redoBtn" data-tooltip="Redo (Ctrl+Y)">
+
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+
+                            <path d="M21 10H11c-4.42 0-8 3.58-8 8v2"></path>
+
+                            <polyline points="17 14 21 10 17 6"></polyline>
+
+                        </svg>
+
+                    </button>
+
                 </div>
 
         </div>
@@ -41434,32 +41430,8 @@
 
             
 
-            <!-- Bottom actions -->
+            <!-- Bottom actions (undo/redo live on top drawing toolbar after trash) -->
             <div class="sidebar-bottom-actions">
-            <button class="sidebar-timeframe-btn" id="undoBtn" data-tooltip="Undo (Ctrl+Z)">
-
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-
-                    <path d="M3 10h10c4.42 0 8 3.58 8 8v2"></path>
-
-                    <polyline points="7 14 3 10 7 6"></polyline>
-
-                </svg>
-
-            </button>
-
-            <button class="sidebar-timeframe-btn" id="redoBtn" data-tooltip="Redo (Ctrl+Y)">
-
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-
-                    <path d="M21 10H11c-4.42 0-8 3.58-8 8v2"></path>
-
-                    <polyline points="17 14 21 10 17 6"></polyline>
-
-                </svg>
-
-            </button>
-
             <button class="sidebar-timeframe-btn" id="themeToggleBtn" data-tooltip="Toggle Theme">
                 <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <circle cx="12" cy="12" r="5"/>
