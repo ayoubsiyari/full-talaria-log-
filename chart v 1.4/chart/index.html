@@ -24861,6 +24861,25 @@
 
         }
 
+        /* Chart watermark symbol: same soft glow as “Talaria-Log” (drop-shadow respects image alpha) */
+        .chart-brand.brand-lockup img.logo-dark {
+
+            filter: brightness(1.85) saturate(0)
+                drop-shadow(0 0 1px rgba(255, 255, 255, 0.55))
+                drop-shadow(0 0 6px rgba(255, 255, 255, 0.28))
+                drop-shadow(0 0 14px rgba(255, 255, 255, 0.12));
+
+        }
+
+        .chart-brand.brand-lockup img.logo-light {
+
+            filter: brightness(1) saturate(0)
+                drop-shadow(0 0 1px rgba(0, 0, 0, 0.2))
+                drop-shadow(0 0 5px rgba(0, 0, 0, 0.12))
+                drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+
+        }
+
 
 
         .brand-lockup .logo-bottom.logo-dark {
@@ -24947,6 +24966,16 @@
         body.light-mode .brand-lockup img {
 
             filter: none;
+
+        }
+
+        /* Keep chart-corner mark glowing in light mode (generic rule above strips filters) */
+        body.light-mode .chart-brand.brand-lockup img.logo-light {
+
+            filter: brightness(1) saturate(0)
+                drop-shadow(0 0 1px rgba(0, 0, 0, 0.2))
+                drop-shadow(0 0 5px rgba(0, 0, 0, 0.12))
+                drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
 
         }
 
