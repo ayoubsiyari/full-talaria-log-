@@ -6950,13 +6950,14 @@
 
         .pl-sync-check input[type="checkbox"]:checked {
 
-            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45)), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+            /* SVG first = top layer (first list item paints closest to user); gradient sits behind */
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45));
 
             background-repeat: no-repeat, no-repeat;
 
             background-position: center, center;
 
-            background-size: auto, 10px 10px;
+            background-size: 10px 10px, auto;
 
             border-color: rgba(var(--sp-accent-rgb), 0.85);
 
@@ -6970,13 +6971,13 @@
 
         .pl-sync-check input[type="checkbox"]:checked:hover {
 
-            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55)), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55));
 
             background-repeat: no-repeat, no-repeat;
 
             background-position: center, center;
 
-            background-size: auto, 10px 10px;
+            background-size: 10px 10px, auto;
 
             border-color: rgba(var(--sp-accent-rgb), 0.85);
 
@@ -35307,17 +35308,18 @@
             background: #ffffff !important;
         }
 
-        /* Native accent checkboxes: must beat body.light-mode input / fib input !important and stay consistent in light mode */
+        /* Native accent checkboxes: SVG must be first (top) so the tick is not covered by the gradient; force no native theme paint */
         body.light-mode input[type="checkbox"].tv-native-checkbox:checked,
         body.light-mode .tv-settings-modal input[type="checkbox"]:checked,
         body.light-mode .pl-sync-check input[type="checkbox"]:checked,
         body.light-mode .layout-dropdown label.sync-toggle:not(:has(.sync-toggle-slider)) input[type="checkbox"].tv-native-checkbox:checked {
+            -webkit-appearance: none !important;
+            appearance: none !important;
             background-color: transparent !important;
-            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45)),
-                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.75), rgba(var(--sp-accent-rgb), 0.45)) !important;
             background-repeat: no-repeat, no-repeat !important;
             background-position: center, center !important;
-            background-size: auto, 10px 10px !important;
+            background-size: 10px 10px, auto !important;
             border-color: rgba(var(--sp-accent-rgb), 0.85) !important;
         }
 
@@ -35325,12 +35327,13 @@
         body.light-mode .tv-settings-modal input[type="checkbox"]:checked:hover,
         body.light-mode .pl-sync-check input[type="checkbox"]:checked:hover,
         body.light-mode .layout-dropdown label.sync-toggle:not(:has(.sync-toggle-slider)) input[type="checkbox"].tv-native-checkbox:checked:hover {
+            -webkit-appearance: none !important;
+            appearance: none !important;
             background-color: transparent !important;
-            background-image: linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55)),
-                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(var(--sp-accent-rgb), 0.85), rgba(var(--sp-accent-rgb), 0.55)) !important;
             background-repeat: no-repeat, no-repeat !important;
             background-position: center, center !important;
-            background-size: auto, 10px 10px !important;
+            background-size: 10px 10px, auto !important;
             border-color: rgba(var(--sp-accent-rgb), 0.85) !important;
             box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.16);
         }
