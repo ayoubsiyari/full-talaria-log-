@@ -14427,18 +14427,18 @@
             right: 8px !important;
             gap: 6px !important;
         }
-        body.settings-open #replayToolbar .replay-controls-right .replay-stat-label,
-        body.settings-open #replayToolbar .replay-controls-right .replay-stat-divider {
+        body.settings-open #replayToolbar .replay-controls-left .replay-stat-label,
+        body.settings-open #replayToolbar .replay-controls-left .replay-stat-divider {
             display: none !important;
         }
-        body.settings-open #replayToolbar .replay-controls-right .replay-stat-item {
+        body.settings-open #replayToolbar .replay-controls-left .replay-stat-item {
             gap: 4px !important;
         }
-        body.settings-open #replayToolbar .replay-controls-right .replay-stat-icon {
+        body.settings-open #replayToolbar .replay-controls-left .replay-stat-icon {
             width: 12px !important;
             height: 12px !important;
         }
-        body.settings-open #replayToolbar .replay-controls-right .replay-stat-value {
+        body.settings-open #replayToolbar .replay-controls-left .replay-stat-value {
             font-size: 11px !important;
         }
 
@@ -14538,6 +14538,17 @@
 
             left: 40px;
 
+            /* Cap width so 1,000,000+ / long decimals don’t collide with center controls */
+            max-width: min(72vw, 820px);
+
+            min-width: 0;
+
+            display: flex;
+
+            align-items: center;
+
+            flex-wrap: nowrap;
+
         }
 
 
@@ -14550,8 +14561,7 @@
 
             left: auto;
 
-            /* Cap width so 1,000,000+ / long decimals don’t collide with center controls */
-            max-width: min(72vw, 820px);
+            max-width: min(40vw, 420px);
 
             min-width: 0;
 
@@ -14560,6 +14570,8 @@
             align-items: center;
 
             flex-wrap: nowrap;
+
+            gap: 6px;
 
         }
 
@@ -39713,51 +39725,101 @@
 
 
 
-                <!-- Left Group: Time/Timezone -->
+                <!-- Left Group: Account stats -->
 
                 <div class="replay-controls-group replay-controls-left">
 
-                    <!-- Timezone Selector (moved to left) -->
+                    <!-- Balance -->
 
-                    <div class="replay-timezone-selector" id="replayTimezoneWrapper" style="display:none;">
+                    <div class="replay-stat-item">
 
-                        <button id="replayTimezoneToggle" class="replay-tz-btn" title="Select Timezone">
+                        <svg class="replay-stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
 
-                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <rect x="2" y="4" width="20" height="16" rx="2"></rect>
 
-                                <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="2" y1="10" x2="22" y2="10"></line>
 
-                                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                        </svg>
 
-                                <path d="M2 12h20"></path>
+                        <span class="replay-stat-label">Start Balance:</span>
 
-                            </svg>
-
-                            <span id="replayTimezoneLabel">UTC</span>
-
-                        </button>
-
-                        <div id="replayTimezoneMenu" class="replay-tz-menu"></div>
+                        <span class="replay-stat-value" id="replayBalance">10,000</span>
 
                     </div>
 
                     
 
-                    <!-- Current Candle Date/Time Display -->
+                    <div class="replay-stat-divider"></div>
 
-                    <div class="replay-datetime-display">
+                    
 
-                        <svg class="replay-datetime-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <!-- Equity -->
 
-                            <circle cx="12" cy="12" r="10"></circle>
+                    <div class="replay-stat-item">
 
-                            <polyline points="12 6 12 12 16 14"></polyline>
+                        <svg class="replay-stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+
+                            <path d="M2 17l10 5 10-5"></path>
+
+                            <path d="M2 12l10 5 10-5"></path>
 
                         </svg>
 
-                        <span id="replayCurrentTime" class="replay-datetime-value">Loading...</span>
+                        <span class="replay-stat-label">Equity:</span>
+
+                        <span class="replay-stat-value" id="replayEquity">10,000</span>
 
                     </div>
+
+                    
+
+                    <div class="replay-stat-divider"></div>
+
+                    
+
+                    <!-- P&L -->
+
+                    <div class="replay-stat-item">
+
+                        <svg class="replay-stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+
+                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+
+                            <polyline points="17 6 23 6 23 12"></polyline>
+
+                        </svg>
+
+                        <span class="replay-stat-label">P&L:</span>
+
+                        <span class="replay-stat-value" id="replayPnL">0</span>
+
+                    </div>
+
+                    
+
+                    <!-- Toggle Visibility Button -->
+
+                    <button class="replay-stat-toggle" id="toggleStatsVisibility" title="Toggle values visibility">
+
+                        <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+
+                            <circle cx="12" cy="12" r="3"></circle>
+
+                        </svg>
+
+                        <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+
+                            <line x1="1" y1="1" x2="23" y2="23"></line>
+
+                        </svg>
+
+                    </button>
 
                 </div>
 
@@ -40125,101 +40187,51 @@
 
 
 
-                <!-- Right Group: Account Stats -->
+                <!-- Right Group: Time / timezone + toolbar actions -->
 
                 <div class="replay-controls-group replay-controls-right">
 
-                    <!-- Balance -->
+                    <!-- Timezone Selector -->
 
-                    <div class="replay-stat-item">
+                    <div class="replay-timezone-selector" id="replayTimezoneWrapper" style="display:none;">
 
-                        <svg class="replay-stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                        <button id="replayTimezoneToggle" class="replay-tz-btn" title="Select Timezone">
 
-                            <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
 
-                            <line x1="2" y1="10" x2="22" y2="10"></line>
+                                <circle cx="12" cy="12" r="10"></circle>
 
-                        </svg>
+                                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
 
-                        <span class="replay-stat-label">Start Balance:</span>
+                                <path d="M2 12h20"></path>
 
-                        <span class="replay-stat-value" id="replayBalance">10,000</span>
+                            </svg>
 
-                    </div>
+                            <span id="replayTimezoneLabel">UTC</span>
 
-                    
+                        </button>
 
-                    <div class="replay-stat-divider"></div>
-
-                    
-
-                    <!-- Equity -->
-
-                    <div class="replay-stat-item">
-
-                        <svg class="replay-stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-
-                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-
-                            <path d="M2 17l10 5 10-5"></path>
-
-                            <path d="M2 12l10 5 10-5"></path>
-
-                        </svg>
-
-                        <span class="replay-stat-label">Equity:</span>
-
-                        <span class="replay-stat-value" id="replayEquity">10,000</span>
+                        <div id="replayTimezoneMenu" class="replay-tz-menu"></div>
 
                     </div>
 
                     
 
-                    <div class="replay-stat-divider"></div>
+                    <!-- Current Candle Date/Time Display -->
 
-                    
+                    <div class="replay-datetime-display">
 
-                    <!-- P&L -->
+                        <svg class="replay-datetime-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
 
-                    <div class="replay-stat-item">
+                            <circle cx="12" cy="12" r="10"></circle>
 
-                        <svg class="replay-stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-
-                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-
-                            <polyline points="17 6 23 6 23 12"></polyline>
+                            <polyline points="12 6 12 12 16 14"></polyline>
 
                         </svg>
 
-                        <span class="replay-stat-label">P&L:</span>
-
-                        <span class="replay-stat-value" id="replayPnL">0</span>
+                        <span id="replayCurrentTime" class="replay-datetime-value">Loading...</span>
 
                     </div>
-
-                    
-
-                    <!-- Toggle Visibility Button -->
-
-                    <button class="replay-stat-toggle" id="toggleStatsVisibility" title="Toggle values visibility">
-
-                        <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-
-                            <circle cx="12" cy="12" r="3"></circle>
-
-                        </svg>
-
-                        <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-
-                            <line x1="1" y1="1" x2="23" y2="23"></line>
-
-                        </svg>
-
-                    </button>
 
                     
 
