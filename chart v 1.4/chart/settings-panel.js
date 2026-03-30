@@ -290,23 +290,13 @@ window._spPanels = {};
     window._spPanels['profile'] = {
         title: 'Profile',
         build: function(){
-            var src = document.querySelector('#profilePanel .side-panel-body');
-            return src ? src.innerHTML : '';
+            if (window.P && window.P['profile'] && typeof window.P['profile'].build === 'function')
+                return window.P['profile'].build();
+            return '<p style="color:#787b86;padding:20px 0;">Profile unavailable.</p>';
         },
         wire: function(){
-            var ctx = document.getElementById('settingsPanelContent');
-            if (!ctx) return;
-            var t = ctx.querySelector('#profileTheme2');
-            if (t) t.onclick = function(){
-                document.body.classList.toggle('light-mode');
-                var isDark = !document.body.classList.contains('light-mode');
-                var v = ctx.querySelector('#profileThemeValue2');
-                if (v) v.textContent = isDark ? 'Dark' : 'Light';
-            };
-            var a = ctx.querySelector('#profileAccount2');
-            if (a) a.onclick = function(){ window.location.href = '/profile'; };
-            var l = ctx.querySelector('#profileLogout2');
-            if (l) l.onclick = function(){ window.location.href = '/logout'; };
+            if (window.P && window.P['profile'] && typeof window.P['profile'].wire === 'function')
+                window.P['profile'].wire();
         }
     };
 
