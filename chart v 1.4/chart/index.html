@@ -24802,6 +24802,12 @@
         /* Chart corner: “Talaria-Log” slides left → right as it reveals */
         .chart-brand.brand-lockup .logo-bottom {
 
+            max-width: 0 !important;
+
+            opacity: 0 !important;
+
+            overflow: hidden !important;
+
             transform: translateX(-28px);
 
         }
@@ -24811,16 +24817,16 @@
         /* Wordmark on hover: chart corner only (not the top toolbar lockup) */
         .chart-brand.brand-lockup:hover .logo-bottom {
 
-            max-width: 300px;
+            max-width: 300px !important;
 
-            opacity: 1;
+            opacity: 1 !important;
 
             margin-left: 0;
 
             transform: translateX(0);
 
             /* Let glow extend past the span box; overflow:hidden clips text-shadow into a grey “plate” */
-            overflow: visible;
+            overflow: visible !important;
 
         }
 
