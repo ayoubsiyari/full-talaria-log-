@@ -59461,6 +59461,8 @@ window._translations={
 
         'Language':'اللغة','Timezone':'المنطقة الزمنية','Account':'الحساب','Log Out':'تسجيل الخروج',
 
+        'Go to dashboard':'الذهاب إلى لوحة التحكم',
+
         /* Help nav */
 
         'Contact':'اتصل بنا','Shortcuts':'اختصارات','FAQ':'الأسئلة الشائعة',
@@ -59957,9 +59959,25 @@ window._wireProfileAccountOverview=function(content,restoreAccountTab){
 
         .catch(function(){});
 
+    var _Tacct=window._i18nT||function(s){return s;};
+
     var _logoutDiv=document.createElement('div');
 
-    _logoutDiv.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);';
+    _logoutDiv.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;gap:10px;';
+
+    var _dashBtn=document.createElement('button');
+
+    _dashBtn.type='button';
+
+    _dashBtn.textContent=_Tacct('Go to dashboard');
+
+    _dashBtn.style.cssText='width:100%;padding:9px 16px;background:rgba(var(--sp-accent-rgb,41,98,255),0.12);border:1px solid rgba(var(--sp-accent-rgb,41,98,255),0.35);border-radius:8px;color:var(--sp-accent,#2962ff);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all 0.15s;';
+
+    _dashBtn.addEventListener('mouseenter',function(){this.style.background='rgba(var(--sp-accent-rgb,41,98,255),0.22)';});
+
+    _dashBtn.addEventListener('mouseleave',function(){this.style.background='rgba(var(--sp-accent-rgb,41,98,255),0.12)';});
+
+    _dashBtn.addEventListener('click',function(){window.location.href='/dashboard/';});
 
     var _logoutBtn=document.createElement('button');
 
@@ -59974,6 +59992,8 @@ window._wireProfileAccountOverview=function(content,restoreAccountTab){
     _logoutBtn.addEventListener('mouseleave',function(){this.style.background='rgba(242,54,69,0.10)';});
 
     _logoutBtn.addEventListener('click',function(){window.location.href='/logout';});
+
+    _logoutDiv.appendChild(_dashBtn);
 
     _logoutDiv.appendChild(_logoutBtn);
 
