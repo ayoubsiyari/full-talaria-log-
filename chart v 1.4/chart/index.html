@@ -2296,13 +2296,37 @@
 
         body.light-mode .speed-slider-control.detached .speed-slider-play-btn {
 
-            background: var(--sp-ui-chrome-bg, #ffffff);
+            background: #000000;
 
-            border: 1px solid var(--sp-ui-border, #e0e0e0);
+            border: 1px solid #10b981;
 
-            color: var(--sp-text, #000000);
+            color: #10b981;
 
             box-shadow: none;
+
+        }
+
+        body.light-mode .speed-slider-control.detached .speed-slider-play-btn:hover {
+
+            background: #050028;
+
+            color: #34d399;
+
+        }
+
+        body.light-mode .speed-slider-control.detached .speed-slider-play-btn.playing {
+
+            border-color: #fb923c;
+
+            color: #fb923c;
+
+        }
+
+        body.light-mode .speed-slider-control.detached .speed-slider-play-btn.playing:hover {
+
+            background: #050028;
+
+            color: #fdba74;
 
         }
 
@@ -2334,7 +2358,15 @@
 
         body.light-mode .speed-slider-custom {
 
-            background: var(--sp-ui-surface-bg, #f0f0f0);
+            background: #363a45;
+
+        }
+
+        
+
+        body.light-mode .speed-slider-custom:hover {
+
+            background: #4a4e5a;
 
         }
 
@@ -2342,7 +2374,7 @@
 
         body.light-mode .speed-slider-custom-fill {
 
-            background: var(--sp-accent, #2962ff);
+            background: #787b86;
 
         }
 
@@ -2350,9 +2382,9 @@
 
         body.light-mode .speed-slider-custom-thumb {
 
-            background: var(--sp-text, #000000);
+            background: #ffffff;
 
-            box-shadow: none;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
 
         }
 
@@ -14857,11 +14889,11 @@
 
         
 
-        /* Light mode - speed slider play button */
+        /* Light mode - speed slider play button (match dark theme colors) */
 
         body.light-mode .speed-slider-play-btn {
 
-            background: #ffffff;
+            background: #000000;
 
             border-color: #10b981;
 
@@ -14873,9 +14905,9 @@
 
         body.light-mode .speed-slider-play-btn:hover {
 
-            background: rgba(16, 185, 129, 0.1);
+            background: #050028;
 
-            color: #059669;
+            color: #34d399;
 
         }
 
@@ -14883,7 +14915,7 @@
 
         body.light-mode .speed-slider-play-btn.playing {
 
-            background: #ffffff;
+            background: #000000;
 
             border-color: #fb923c;
 
@@ -14895,9 +14927,9 @@
 
         body.light-mode .speed-slider-play-btn.playing:hover {
 
-            background: rgba(251, 146, 60, 0.1);
+            background: #050028;
 
-            color: #ea580c;
+            color: #fdba74;
 
         }
 
@@ -34891,19 +34923,24 @@
         }
 
         body.light-mode .speed-slider-custom {
-            background: #ffffff !important;
+            background: #363a45 !important;
+        }
+
+        body.light-mode .speed-slider-custom:hover {
+            background: #4a4e5a !important;
         }
 
         body.light-mode .speed-slider-custom-fill {
-            background: var(--sp-accent) !important;
+            background: #787b86 !important;
         }
 
         body.light-mode .speed-slider-custom-thumb {
-            background: #000000 !important;
+            background: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15) !important;
         }
 
         body.light-mode .speed-slider-ticks .tick {
-            background: #cbd5e1 !important;
+            background: #64748b !important;
         }
 
         body.light-mode .speed-drag-handle {
