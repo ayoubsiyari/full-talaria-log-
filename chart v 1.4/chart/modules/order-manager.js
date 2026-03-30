@@ -4727,7 +4727,7 @@ class OrderManager {
                     --tv-buy: #089981;
                     --tv-sell: #f23645;
                     background: var(--op-bg);
-                    border-left: 6px solid var(--sp-ui-border, rgba(255,255,255,0.22));
+                    border-left: 3px solid var(--sp-ui-border, rgba(255,255,255,0.22));
                     z-index: 1000010;
                     overflow: hidden;
                     overflow-y: auto;
@@ -4902,7 +4902,7 @@ class OrderManager {
                     --tv-buy: #089981;
                     --tv-sell: #f23645;
                     background: #ffffff !important;
-                    border-left: 6px solid var(--sp-ui-border, rgba(47, 79, 79, 0.2)) !important;
+                    border-left: 3px solid var(--sp-ui-border, rgba(47, 79, 79, 0.2)) !important;
                     box-shadow: none !important;
                     color: #131722 !important;
                 }
