@@ -15019,7 +15019,10 @@ class Chart {
             : crossPattern === 'dotted'
                 ? `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
                 : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
+        // Match receiveCrosshairSync / plot box: explicit top + span only the drawable width (not 100% of wrapper).
+        const plotW = Math.max(0, this.w - m.l - m.r);
         if (vLine) {
+            vLine.style.top = '0px';
             vLine.style.left = snappedX + 'px';
             vLine.style.width = crossWidth + 'px';
             vLine.style.height = 'calc(100% - 30px)';
@@ -15027,6 +15030,9 @@ class Chart {
             vLine.style.background = vBg;
         }
         if (hLine) {
+            hLine.style.left = m.l + 'px';
+            hLine.style.right = 'auto';
+            hLine.style.width = plotW + 'px';
             hLine.style.top = crosshairY + 'px';
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
@@ -17432,12 +17438,12 @@ class Chart {
         const isXVisible = x >= m.l && x <= this.w - m.r;
         const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
         
-        // Vertical line styles (dashed like TradingView)
+        // Vertical line — same geometry as updateCrosshair (top:0 + height calc) so lines stay aligned after sync.
         const vBaseStyle = `
             position: absolute;
-            top: ${m.t}px;
+            top: 0;
             width: ${crossWidth}px;
-            height: ${this.h - m.t - m.b}px;
+            height: calc(100% - 30px);
             background: repeating-linear-gradient(to bottom, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
             z-index: 100;
@@ -17445,7 +17451,7 @@ class Chart {
         
         if (vLine) {
             if (isXVisible) {
-                vLine.style.cssText = vBaseStyle + `left:${x}px;height:calc(100% - 30px);display:block;`;
+                vLine.style.cssText = vBaseStyle + `left:${x}px;display:block;`;
             } else {
                 // Hide if out of visible range
                 vLine.style.display = 'none';
