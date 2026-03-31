@@ -1185,8 +1185,8 @@
 
         .sidebar-zoom-popover {
             position: absolute;
-            right: 36px;
-            bottom: -6px;
+            left: calc(100% + 8px);
+            bottom: -4px;
             width: 172px;
             border: 1px solid rgba(255, 255, 255, 0.14);
             background: rgba(10, 14, 28, 0.96);
@@ -1199,6 +1199,41 @@
 
         .sidebar-zoom-popover.open {
             display: block;
+        }
+
+        body.zoom-compact-ui .right-sidebar-icons {
+            width: 40px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            gap: 4px;
+            padding-top: 8px;
+        }
+
+        body.zoom-compact-ui .sidebar-timeframe-section {
+            padding-bottom: 4px;
+            gap: 4px;
+        }
+
+        body.zoom-compact-ui .sidebar-bottom-actions {
+            position: sticky;
+            bottom: 6px;
+            background: inherit;
+            padding-top: 4px;
+            z-index: 3;
+        }
+
+        body.zoom-compact-ui .right-sidebar-icon-btn,
+        body.zoom-compact-ui .sidebar-timeframe-btn {
+            width: 30px;
+            height: 30px;
+            min-width: 30px;
+        }
+
+        body.zoom-compact-ui .right-sidebar-icon-btn svg,
+        body.zoom-compact-ui .sidebar-timeframe-btn svg {
+            width: 15px;
+            height: 15px;
         }
 
         .sidebar-zoom-row {
@@ -43540,6 +43575,7 @@
                 const paint = (z) => {
                     const zoom = clamp(round(z));
                     document.body.style.zoom = String(zoom);
+                    document.body.classList.toggle('zoom-compact-ui', zoom >= 1.2);
                     zoomLevelBtn.textContent = Math.round(zoom * 100) + '%';
                     zoomRangeInput.value = String(Math.round(zoom * 100));
                     try { localStorage.setItem(KEY, String(zoom)); } catch (e) {}
