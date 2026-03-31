@@ -692,32 +692,48 @@ class CompareOverlay {
             return name.length > 12 ? name.substring(0, 12) : name;
         };
 
-        const getPairFlags = (symbol) => {
-            const flags = {
-                EUR: '🇪🇺', USD: '🇺🇸', GBP: '🇬🇧', JPY: '🇯🇵',
-                AUD: '🇦🇺', CAD: '🇨🇦', CHF: '🇨🇭', NZD: '🇳🇿',
-                CNY: '🇨🇳', HKD: '🇭🇰', SGD: '🇸🇬', SEK: '🇸🇪',
-                NOK: '🇳🇴', MXN: '🇲🇽', ZAR: '🇿🇦', TRY: '🇹🇷',
-                XAU: '🥇', XAG: '🥈', BTC: '₿', ETH: 'Ξ'
+        const currencyToCountry = (ccy) => {
+            const map = {
+                USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
+                CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
+                HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
+                BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
+                KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
+                ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
+                BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
+                NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
+                BHD: 'bh', OMR: 'om', JOD: 'jo', XAU: 'xau', XAG: 'xag'
             };
+            return map[(ccy || '').toUpperCase()] || null;
+        };
 
-            const clean = String(symbol || '').toUpperCase().replace(/[^A-Z]/g, '');
-            if (clean.length >= 6) {
-                const base = clean.substring(0, 3);
-                const quote = clean.substring(3, 6);
-                const baseFlag = flags[base] || '';
-                const quoteFlag = flags[quote] || '';
-                if (baseFlag && quoteFlag) return `${baseFlag}${quoteFlag}`;
-                if (baseFlag) return baseFlag;
+        const getPairIconHTML = (symbol) => {
+            const clean = String(symbol || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+            if (clean.length < 6) {
+                return String(symbol || '').slice(0, 2).toUpperCase() || '•';
             }
-            return flags[clean.substring(0, 3)] || '📊';
+
+            const base = clean.slice(0, 3);
+            const quote = clean.slice(3, 6);
+            const baseCC = currencyToCountry(base);
+            const quoteCC = currencyToCountry(quote);
+            if (!baseCC || !quoteCC || baseCC === 'xau' || baseCC === 'xag' || quoteCC === 'xau' || quoteCC === 'xag') {
+                return `${base.slice(0, 2)}${quote.slice(0, 2)}`;
+            }
+
+            const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+            const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+            return `
+                <img class="compare-pair-flag compare-pair-flag-base" src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:5px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.75);box-shadow:0 1px 3px rgba(0,0,0,0.45);" />
+                <img class="compare-pair-flag compare-pair-flag-quote" src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:15px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.75);box-shadow:0 1px 3px rgba(0,0,0,0.45);" />
+            `;
         };
         
         // Render available symbols with action buttons
         availableSymbols.forEach(file => {
             const fullName = file.original_name?.replace(/\.(csv|CSV)$/, '').toUpperCase() || `FILE_${file.id}`;
             const symbolName = extractSymbolName(file.original_name) || fullName;
-            const pairFlags = getPairFlags(symbolName);
+            const pairIconHTML = getPairIconHTML(symbolName);
             const iconType = getIconType(symbolName);
             const isAdded = overlayedIds.includes(file.id) || linkedPaneIds.includes(file.id);
             
@@ -727,7 +743,7 @@ class CompareOverlay {
             item.dataset.fileId = file.id;
             
             item.innerHTML = `
-                <div class="compare-symbol-icon ${iconType}">${pairFlags}</div>
+                <div class="compare-symbol-icon ${iconType}" style="position:relative;overflow:visible;">${pairIconHTML}</div>
                 <div class="compare-symbol-info">
                     <span class="compare-symbol-name">${symbolName}</span>
                     <span class="compare-symbol-desc">${file.row_count?.toLocaleString() || '?'} candles</span>
