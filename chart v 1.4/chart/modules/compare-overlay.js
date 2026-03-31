@@ -55,22 +55,22 @@ class CompareOverlay {
                 }
             }
         } catch (_) {}
-        return document.body.classList.contains('light-mode') ? '#ffffff' : '#131722';
+        return '#131722';
     }
 
     getLinkedPaneThemeTokens() {
-        const isLightTheme = document.body.classList.contains('light-mode') || document.body.classList.contains('light-theme');
-        const scaleText = this.chart?.chartSettings?.scaleTextColor || (isLightTheme ? '#0f172a' : '#787b86');
-        const scaleLine = this.chart?.chartSettings?.scaleLineColor || (isLightTheme ? 'rgba(15,23,42,0.22)' : '#363a45');
+        const scaleText = this.chart?.chartSettings?.scaleTextColor || '#787b86';
+        const scaleLine = this.chart?.chartSettings?.scaleLineColor || '#363a45';
+        const paneBg = this.getMainChartBackground();
         return {
-            isLightTheme,
-            paneBg: this.getMainChartBackground(),
+            paneBg,
             border: scaleLine,
-            legendBg: isLightTheme ? 'rgba(255,255,255,0.9)' : 'rgba(19,23,34,0.9)',
-            textPrimary: isLightTheme ? '#0f172a' : '#d1d4dc',
+            legendBg: paneBg,
+            hoverBg: 'rgba(255,255,255,0.08)',
+            textPrimary: scaleText,
             textSecondary: scaleText,
-            iconMuted: isLightTheme ? '#475569' : '#787b86',
-            iconHover: isLightTheme ? '#0f172a' : '#d1d4dc'
+            iconMuted: scaleText,
+            iconHover: scaleText
         };
     }
     
@@ -1038,7 +1038,7 @@ class CompareOverlay {
                 legend.querySelectorAll('button').forEach(btn => {
                     btn.addEventListener('mouseenter', () => {
                         btn.style.color = theme.iconHover;
-                        btn.style.background = theme.isLightTheme ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.1)';
+                        btn.style.background = theme.hoverBg;
                     });
                     btn.addEventListener('mouseleave', () => {
                         btn.style.color = theme.iconMuted;
@@ -1124,12 +1124,11 @@ class CompareOverlay {
         ctx.fillRect(0, 0, width, height);
         
         const mainChart = this.chart;
-        const isLightTheme = document.body.classList.contains('light-mode') || document.body.classList.contains('light-theme');
-        const axisBg = isLightTheme ? '#ffffff' : '#131722';
-        const axisBorder = isLightTheme ? 'rgba(15,23,42,0.22)' : '#363a45';
-        const axisText = isLightTheme ? '#0f172a' : '#787b86';
-        const axisCrosshairBg = isLightTheme ? 'rgba(15,23,42,0.18)' : '#363a45';
-        const axisCrosshairText = isLightTheme ? '#0f172a' : '#d1d4dc';
+        const axisBg = this.getMainChartBackground();
+        const axisBorder = mainChart.chartSettings?.scaleLineColor || '#363a45';
+        const axisText = mainChart.chartSettings?.scaleTextColor || '#787b86';
+        const axisCrosshairBg = mainChart.chartSettings?.scaleLineColor || '#363a45';
+        const axisCrosshairText = mainChart.chartSettings?.scaleTextColor || '#d1d4dc';
         const margin = { t: 10, r: (mainChart.margin?.r || 60), b: 5, l: (mainChart.margin?.l || 0) };
         const chartWidth = width - margin.l - margin.r;
         const chartHeight = height - margin.t - margin.b;
@@ -1212,7 +1211,7 @@ class CompareOverlay {
         // Y ticks/grid: use nice ticks like main chart (not fixed quartiles)
         const numYTicks = Math.max(8, Math.min(15, Math.floor(chartHeight / 60)));
         const yTicks = this.generateNiceTicks(minPrice, maxPrice, numYTicks);
-        const gridColor = mainChart.chartSettings?.gridColor || (isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)');
+        const gridColor = mainChart.chartSettings?.gridColor || 'rgba(42, 46, 57, 0.6)';
         ctx.strokeStyle = gridColor;
         ctx.lineWidth = 1;
         yTicks.forEach((price) => {
