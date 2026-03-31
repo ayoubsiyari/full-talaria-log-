@@ -9702,7 +9702,13 @@ class Chart {
         }
         
         if (this.replaySystem && this.replaySystem.isActive) {
+            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+                this.compareOverlay.refreshForTimeframe(timeframe);
+            }
             this.replaySystem.onTimeframeChange();
+            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+                requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(timeframe));
+            }
             return;
         }
         

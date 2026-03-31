@@ -743,7 +743,7 @@ class CompareOverlay {
             item.dataset.fileId = file.id;
             
             item.innerHTML = `
-                <div class="compare-symbol-icon ${iconType}" style="position:relative;overflow:visible;">${pairIconHTML}</div>
+                <div class="compare-symbol-icon ${iconType}" style="position:relative;overflow:visible;background:transparent;border:none;box-shadow:none;">${pairIconHTML}</div>
                 <div class="compare-symbol-info">
                     <span class="compare-symbol-name">${symbolName}</span>
                     <span class="compare-symbol-desc">${file.row_count?.toLocaleString() || '?'} candles</span>
