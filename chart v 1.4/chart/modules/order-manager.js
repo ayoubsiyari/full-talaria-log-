@@ -5194,7 +5194,6 @@ class OrderManager {
                 }
                 body.light-mode .order-calculation-label { color: #787b86 !important; }
                 body.light-mode .order-calculation-value { color: #b8922a !important; font-weight: 700 !important; }
-                body.light-mode .order-calculation-sub { color: #6b7280 !important; }
 
                 /* ── Toggles & checkboxes ── */
                 body.light-mode .toggle-switch__track { background: #e0e3eb !important; }
@@ -5804,21 +5803,6 @@ class OrderManager {
                     font-weight: 700;
                     font-family: var(--om-mono);
                 }
-                .order-calculation-values {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: flex-end;
-                    gap: 2px;
-                    min-width: 0;
-                }
-                .order-calculation-sub {
-                    font-size: 9px;
-                    font-weight: 500;
-                    color: var(--om-muted);
-                    font-family: var(--om-mono);
-                    line-height: 1.2;
-                    text-align: right;
-                }
 
                 /* ── COLLAPSE (TagRow-style headers) ─────────────────────────────── */
                 .order-collapse {
@@ -6289,11 +6273,8 @@ class OrderManager {
                     </div>
                     <input type="hidden" id="orderQuantity" value="1">
                     <div id="calculatedPosition" class="order-calculation">
-                        <span class="order-calculation-label" id="calculatedLabel">Position Size:</span>
-                        <div class="order-calculation-values">
-                            <span id="calculatedLots" class="order-calculation-value">0.00 Lots</span>
-                            <span id="calculatedSub" class="order-calculation-sub" style="display:none;"></span>
-                        </div>
+                        <span class="order-calculation-label" id="calculatedLabel">Risk Amount</span>
+                        <span id="calculatedValue" class="order-calculation-value">$0.00</span>
                     </div>
                 </div>
 
@@ -8258,20 +8239,19 @@ class OrderManager {
         }
     }
     
-    /** Risk $ readout: dollar amount as % of the balance radio (current vs initial). */
-    _riskUsdAsPercentLabel(riskUsd) {
-        if (!riskUsd || riskUsd <= 0) return '';
+    /** Risk $ readout value: fixed $ risk as a % of selected balance (single-line display). */
+    _riskUsdAsPercentValue(riskUsd) {
         const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
         const balance = balanceType === 'current' ? this.balance : this.initialBalance;
-        if (!balance || !Number.isFinite(balance) || balance <= 0) return '';
+        if (!riskUsd || riskUsd <= 0) return '0.00%';
+        if (!balance || !Number.isFinite(balance) || balance <= 0) return '—';
         const pct = (riskUsd / balance) * 100;
-        const scope = balanceType === 'initial' ? 'initial' : 'current';
-        return `${pct.toFixed(2)}% of ${scope}`;
+        return `${pct.toFixed(2)}%`;
     }
 
     /**
-     * Label + primary/secondary strings for the position readout row (mode-aware).
-     * Risk $ → lots + "% of balance"; Risk % → lots + "% · $"; Lot size → $ risk + lots (or hint).
+     * Single summary row: left label + right value (mode-aware, matches TradeEntry-style readout).
+     * Risk % → Risk Amount / $… ; Risk $ → % of balance / …% ; Lot size → Risk Amount / $… or Position / lots.
      */
     _getCalculatedReadoutParts() {
         const config = this.getMarketConfig();
@@ -8283,14 +8263,13 @@ class OrderManager {
             const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const enableSL = document.getElementById('enableSL')?.checked;
-            const label = 'Calculated Risk:';
             if (lotSize <= 0) {
-                return { label, primary: '$0.00', secondary: '' };
+                return { label: 'Risk Amount', value: '$0.00' };
             }
             if (entryPrice && slPrice && enableSL) {
                 const slDistance = Math.abs(entryPrice - slPrice);
                 if (slDistance === 0) {
-                    return { label, primary: '$0.00', secondary: `${lotSize.toFixed(2)} ${positionLabel}` };
+                    return { label: 'Risk Amount', value: '$0.00' };
                 }
                 let calculatedRisk;
                 if (window.marketCalcEngine && this._getSymbol()) {
@@ -8299,23 +8278,13 @@ class OrderManager {
                     const slDistanceInPips = slDistance / (this.pipSize || 0.0001);
                     calculatedRisk = slDistanceInPips * lotSize * (this.pipValuePerLot || 10);
                 }
-                return {
-                    label,
-                    primary: `$${calculatedRisk.toFixed(2)}`,
-                    secondary: `${lotSize.toFixed(2)} ${positionLabel}`
-                };
+                return { label: 'Risk Amount', value: `$${calculatedRisk.toFixed(2)}` };
             }
             return {
-                label,
-                primary: `${lotSize.toFixed(2)} ${positionLabel}`,
-                secondary: 'Set SL for $ risk'
+                label: 'Position',
+                value: `${lotSize.toFixed(2)} ${positionLabel}`
             };
         }
-
-        const label = 'Position Size:';
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const enableSL = document.getElementById('enableSL')?.checked;
 
         const riskUsdVal = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
         const riskPercentVal = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
@@ -8323,59 +8292,26 @@ class OrderManager {
         const balance = balanceType === 'current' ? this.balance : this.initialBalance;
         const pctRiskAmount = (balance * riskPercentVal) / 100;
 
-        if (!entryPrice || !slPrice || !enableSL) {
-            const primary = `0.00 ${positionLabel} (Set SL)`;
-            let secondary = '';
-            if (mode === 'risk-percent' && riskPercentVal > 0) {
-                secondary = `${riskPercentVal}% · $${pctRiskAmount.toFixed(2)}`;
-            } else if (mode === 'risk-usd' && riskUsdVal > 0) {
-                secondary = this._riskUsdAsPercentLabel(riskUsdVal);
+        if (mode === 'risk-percent') {
+            if (!balance || !Number.isFinite(balance) || balance <= 0) {
+                return { label: 'Risk Amount', value: '—' };
             }
-            return { label, primary, secondary };
+            return { label: 'Risk Amount', value: `$${pctRiskAmount.toFixed(2)}` };
         }
 
-        const slDistance = Math.abs(entryPrice - slPrice);
-        if (slDistance === 0) {
-            return { label, primary: `0.00 ${positionLabel}`, secondary: '' };
-        }
-
-        let riskAmount = 0;
         if (mode === 'risk-usd') {
-            riskAmount = riskUsdVal;
-        } else if (mode === 'risk-percent') {
-            riskAmount = pctRiskAmount;
+            return { label: '% of balance', value: this._riskUsdAsPercentValue(riskUsdVal) };
         }
 
-        if (riskAmount <= 0) {
-            let secondary = '';
-            if (mode === 'risk-percent' && riskPercentVal > 0) {
-                secondary = `${riskPercentVal}%`;
-            }
-            return { label, primary: `0.00 ${positionLabel}`, secondary };
-        }
-
-        const positionSize = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
-        const primary = `${positionSize.toFixed(2)} ${positionLabel}`;
-        let secondary = '';
-        if (mode === 'risk-usd') {
-            secondary = this._riskUsdAsPercentLabel(riskAmount);
-        } else if (mode === 'risk-percent') {
-            secondary = `${riskPercentVal}% · $${riskAmount.toFixed(2)}`;
-        }
-        return { label, primary, secondary };
+        return { label: 'Risk Amount', value: '$0.00' };
     }
 
     _applyCalculatedReadout(parts) {
         if (!parts) return;
         const labelEl = document.getElementById('calculatedLabel');
-        const lotsEl = document.getElementById('calculatedLots');
-        const subEl = document.getElementById('calculatedSub');
+        const valueEl = document.getElementById('calculatedValue');
         if (labelEl) labelEl.textContent = parts.label;
-        if (lotsEl) lotsEl.textContent = parts.primary;
-        if (subEl) {
-            subEl.textContent = parts.secondary || '';
-            subEl.style.display = parts.secondary ? 'block' : 'none';
-        }
+        if (valueEl) valueEl.textContent = parts.value;
     }
 
     /**

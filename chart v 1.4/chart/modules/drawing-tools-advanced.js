@@ -1425,10 +1425,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             console.log(`   SL input set to: ${slInput.value}`);
         }
 
-        // Update calculated lot size display
-        const calculatedLots = document.getElementById('calculatedLots');
-        if (calculatedLots) {
-            calculatedLots.textContent = `${quantity.toFixed(2)} Lots`;
+        if (typeof orderManager.calculatePositionFromRisk === 'function') {
+            orderManager.calculatePositionFromRisk();
         }
         
         // Also set on orderManager for calculations
