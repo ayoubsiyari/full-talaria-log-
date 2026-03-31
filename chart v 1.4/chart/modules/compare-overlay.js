@@ -40,6 +40,8 @@ class CompareOverlay {
     }
 
     getMainChartBackground() {
+        const fromSettings = this.chart?.chartSettings?.backgroundColor;
+        if (fromSettings && fromSettings !== 'transparent') return fromSettings;
         try {
             const chartContainer = document.getElementById('chart-container');
             const chartWrapper = document.getElementById('chartWrapper');
@@ -865,6 +867,7 @@ class CompareOverlay {
         }
         const theme = this.getLinkedPaneThemeTokens();
         const paneBg = theme.paneBg;
+        const gridColor = this.chart?.chartSettings?.gridColor || (theme.isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)');
         container.style.background = paneBg;
         
         // Get main chart dimensions for reference
@@ -1076,6 +1079,17 @@ class CompareOverlay {
                 legendEl.querySelectorAll('button').forEach((btn) => {
                     btn.style.color = theme.iconMuted;
                 });
+                const ohlc = legendEl.querySelector('.pane-ohlc');
+                if (ohlc) {
+                    ohlc.style.color = theme.textSecondary;
+                    ohlc.querySelectorAll('span').forEach((sp) => {
+                        if (sp.classList.contains('pane-open') || sp.classList.contains('pane-high') || sp.classList.contains('pane-low') || sp.classList.contains('pane-close')) {
+                            sp.style.color = theme.textPrimary;
+                        } else {
+                            sp.style.color = theme.textSecondary;
+                        }
+                    });
+                }
             }
             wrapper.style.background = paneBg;
             
@@ -1198,7 +1212,8 @@ class CompareOverlay {
         // Y ticks/grid: use nice ticks like main chart (not fixed quartiles)
         const numYTicks = Math.max(8, Math.min(15, Math.floor(chartHeight / 60)));
         const yTicks = this.generateNiceTicks(minPrice, maxPrice, numYTicks);
-        ctx.strokeStyle = isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)';
+        const gridColor = mainChart.chartSettings?.gridColor || (isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)');
+        ctx.strokeStyle = gridColor;
         ctx.lineWidth = 1;
         yTicks.forEach((price) => {
             const y = yScale(price);
@@ -1210,7 +1225,7 @@ class CompareOverlay {
         });
         
         // Vertical grid lines: reuse main chart time ticks when available for exact sync
-        ctx.strokeStyle = isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)';
+        ctx.strokeStyle = gridColor;
         ctx.lineWidth = 1;
         if (Array.isArray(mainChart._timeTicks) && mainChart._timeTicks.length > 0) {
             mainChart._timeTicks.forEach((tick) => {
