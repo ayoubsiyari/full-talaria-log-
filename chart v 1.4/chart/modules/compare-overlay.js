@@ -1389,13 +1389,25 @@ class CompareOverlay {
         ctx.fillStyle = axisBg;
         ctx.fillRect(width - margin.r, 0, margin.r, height);
         
-        // Draw Y-axis border
-        ctx.strokeStyle = axisBorder;
-        ctx.lineWidth = 1;
+        // Draw Y-axis border using the same style model as main chart scale line
+        const scaleLineColor = mainChart.chartSettings?.scaleLineColor || axisBorder;
+        const scaleLineWidth = mainChart.chartSettings?.scaleLineWidth || 1;
+        const scaleLinePattern = mainChart.chartSettings?.scaleLinePattern || 'solid';
+        if (scaleLinePattern === 'dashed') {
+            ctx.setLineDash([4, 4]);
+        } else if (scaleLinePattern === 'dotted') {
+            ctx.setLineDash([2, 4]);
+        } else {
+            ctx.setLineDash([]);
+        }
+        ctx.strokeStyle = scaleLineColor;
+        ctx.lineWidth = scaleLineWidth;
+        const axisBorderX = Math.floor(width - margin.r) + 0.5;
         ctx.beginPath();
-        ctx.moveTo(width - margin.r + 0.5, 0);
-        ctx.lineTo(width - margin.r + 0.5, height);
+        ctx.moveTo(axisBorderX, 0);
+        ctx.lineTo(axisBorderX, height);
         ctx.stroke();
+        ctx.setLineDash([]);
         
         // Draw Y-axis labels
         ctx.fillStyle = axisText;
