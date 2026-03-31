@@ -106,14 +106,14 @@ class PanelManager {
      * Setup event listeners for panel synchronization
      */
     setupEventListeners() {
+        // Continuous scroll/zoom sync — only for Date Range mode.
+        // Time sync is one-shot on panel click (handled in selectPanel).
         window.addEventListener('chartScrolled', (e) => {
             if (this._isSyncing) return;
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
-            // Both Time and Date Range sync use the same full-window alignment
-            // (same visible wall-clock period across all panels, TradingView-style).
-            if ((this.syncSettings.dateRange || this.syncSettings.time)
+            if (this.syncSettings.dateRange
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
@@ -492,50 +492,29 @@ class PanelManager {
             });
         }
         
-        // Time sync toggle
+        // Time sync toggle (one-shot on panel click — TradingView-style)
         const timeToggle = dropdown.querySelector('#time-sync-toggle');
         if (timeToggle) {
             timeToggle.checked = this.syncSettings.time;
             timeToggle.addEventListener('change', (e) => {
                 e.stopPropagation();
                 this.syncSettings.time = e.target.checked;
-
-                // Mutually exclusive with date-range
-                if (e.target.checked && this.syncSettings.dateRange) {
-                    this.syncSettings.dateRange = false;
-                    const drToggle = dropdown.querySelector('#daterange-sync-toggle');
-                    if (drToggle) drToggle.checked = false;
-                }
-
                 this.saveSyncSettings();
 
                 if (e.target.checked && this.panels.length > 1) {
                     const selectedPanel = this.panels[this.selectedPanelIndex];
-                    if (selectedPanel?.chartInstance?.data?.length) {
-                        const chart = selectedPanel.chartInstance;
-                        const startIndex = chart.getVisibleStartIndex ? chart.getVisibleStartIndex() : 0;
-                        const endIndex = chart.getVisibleEndIndex ? chart.getVisibleEndIndex() : chart.data.length - 1;
-                        this.syncTime(selectedPanel, startIndex, endIndex);
-                    }
+                    if (selectedPanel) this.syncTimeToPanel(selectedPanel);
                 }
             });
         }
 
-        // Date range sync toggle
+        // Date range sync toggle (continuous scroll + zoom sync)
         const dateRangeToggle = dropdown.querySelector('#daterange-sync-toggle');
         if (dateRangeToggle) {
             dateRangeToggle.checked = this.syncSettings.dateRange;
             dateRangeToggle.addEventListener('change', (e) => {
                 e.stopPropagation();
                 this.syncSettings.dateRange = e.target.checked;
-
-                // Mutually exclusive with time
-                if (e.target.checked && this.syncSettings.time) {
-                    this.syncSettings.time = false;
-                    const tToggle = dropdown.querySelector('#time-sync-toggle');
-                    if (tToggle) tToggle.checked = false;
-                }
-
                 this.saveSyncSettings();
 
                 if (e.target.checked && this.panels.length > 1) {
@@ -674,24 +653,46 @@ class PanelManager {
     }
 
     /**
-     * Full-window time sync (TradingView-style): all panels show the same wall-clock period.
-     * Called when Time or Date Range toggle is turned on to perform an immediate sync.
+     * TradingView-style Time sync: one-shot navigation.
+     * All other panels navigate to the same center point in time as the source,
+     * keeping their own zoom level (candle width unchanged).
      */
-    syncTime(sourcePanel, startIndex, endIndex) {
-        if (!(this.syncSettings.time || this.syncSettings.dateRange) || this.currentLayout === '1') return;
+    syncTimeToPanel(sourcePanel) {
+        if (!this.syncSettings.time || this.currentLayout === '1') return;
 
-        const sourceChart = sourcePanel.chartInstance;
+        const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
 
-        const clampedStart = Math.max(0, Math.min(startIndex, sourceChart.data.length - 1));
-        const clampedEnd = Math.max(clampedStart, Math.min(endIndex, sourceChart.data.length - 1));
-        const startTimestamp = sourceChart.data[clampedStart]?.t;
-        const barMs = typeof sourceChart.inferBarDurationMs === 'function'
-            ? sourceChart.inferBarDurationMs() : 60000;
-        const rangeEndExclusive = (sourceChart.data[clampedEnd]?.t || 0) + barMs;
+        const startIndex = typeof sourceChart.getVisibleStartIndex === 'function'
+            ? sourceChart.getVisibleStartIndex() : 0;
+        const endIndex = typeof sourceChart.getVisibleEndIndex === 'function'
+            ? sourceChart.getVisibleEndIndex() : sourceChart.data.length - 1;
+        const centerIndex = Math.floor((startIndex + endIndex) / 2);
+        const centerTs = sourceChart.data[Math.min(centerIndex, sourceChart.data.length - 1)]?.t;
+        if (!centerTs) return;
 
-        if (!startTimestamp || rangeEndExclusive <= startTimestamp) return;
-        this.syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive);
+        this._isSyncing = true;
+        try {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const chart = panel.chartInstance;
+                if (!chart?.data?.length) return;
+
+                const targetIdx = chart.findGoToTargetIndex
+                    ? chart.findGoToTargetIndex(chart.data, centerTs)
+                    : this._bsearchTimestamp(chart.data, centerTs);
+
+                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+                const m = chart.margin || { l: 0, r: 60 };
+                const chartWidth = chart.w - m.l - m.r;
+
+                chart.offsetX = (chartWidth / 2) - (targetIdx * spacing);
+                if (chart.constrainOffset) chart.constrainOffset();
+                if (chart.scheduleRender) chart.scheduleRender();
+            });
+        } finally {
+            requestAnimationFrame(() => { this._isSyncing = false; });
+        }
     }
     
     /**
@@ -723,7 +724,7 @@ class PanelManager {
      */
     syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
         if (this._isSyncing) return;
-        if (!(this.syncSettings.dateRange || this.syncSettings.time) || this.currentLayout === '1') return;
+        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
 
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
@@ -792,18 +793,14 @@ class PanelManager {
 
     /** @deprecated kept for backward compatibility */
     syncScroll(sourcePanel) {
-        if (!sourcePanel?.chartInstance?.data?.length) return;
-        const chart = sourcePanel.chartInstance;
-        const si = typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0;
-        const ei = typeof chart.getVisibleEndIndex === 'function' ? chart.getVisibleEndIndex() : chart.data.length - 1;
-        this.syncTime(sourcePanel, si, ei);
+        this.syncTimeToPanel(sourcePanel);
     }
     
     /**
      * Sync date range across all panels (same visible wall-clock window + fit zoom)
      */
     syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
-        if (!(this.syncSettings.dateRange || this.syncSettings.time) || this.currentLayout === '1') return;
+        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
 
         const sourceChart = sourcePanel.chartInstance;
         if (!sourceChart?.data?.length) return;
@@ -1876,6 +1873,11 @@ class PanelManager {
             }
             
             console.log(`📊 Panel ${index} selected (TF: ${liveTimeframe})`);
+
+            // Time sync: navigate all other panels to the same center point in time
+            if (this.syncSettings.time) {
+                this.syncTimeToPanel(panel);
+            }
             
             // Dispatch event with live timeframe
             window.dispatchEvent(new CustomEvent('panelSelected', {
