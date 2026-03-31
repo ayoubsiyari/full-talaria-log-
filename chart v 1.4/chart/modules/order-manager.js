@@ -8251,11 +8251,9 @@ class OrderManager {
 
     /**
      * Single summary row: left label + right value (mode-aware, matches TradeEntry-style readout).
-     * Risk % → Risk Amount / $… ; Risk $ → % of balance / …% ; Lot size → Risk Amount / $… or Position / lots.
+     * Risk % → Risk Amount / $… ; Risk $ → % of balance / …% ; Lot size → Risk Amount / $… (or — without SL).
      */
     _getCalculatedReadoutParts() {
-        const config = this.getMarketConfig();
-        const positionLabel = config.positionLabel;
         const mode = this.positionSizeMode || 'risk-usd';
 
         if (mode === 'lot-size') {
@@ -8280,10 +8278,8 @@ class OrderManager {
                 }
                 return { label: 'Risk Amount', value: `$${calculatedRisk.toFixed(2)}` };
             }
-            return {
-                label: 'Position',
-                value: `${lotSize.toFixed(2)} ${positionLabel}`
-            };
+            // Lots are in the input above; summary row is always $ risk (needs SL to compute).
+            return { label: 'Risk Amount', value: '—' };
         }
 
         const riskUsdVal = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
