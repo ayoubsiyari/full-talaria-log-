@@ -14,7 +14,7 @@
 
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 
     <!-- Zain: same files as homepage (homepage/font/Zain); wordmark uses Black for maximum weight -->
     <style>
@@ -4378,24 +4378,16 @@
             background: rgba(239, 68, 68, 0.10) !important;
         }
 
-        body.light-mode #orderPanel .position-mode-tab:not(.active),
-        body.light-mode #orderPanel .position-mode-tab:not(.active):hover,
-        body.light-mode #orderPanel .position-mode-tab:not(.active):focus,
-        body.light-mode #orderPanel .breakeven-mode-tab:not(.active),
-        body.light-mode #orderPanel .breakeven-mode-tab:not(.active):hover,
-        body.light-mode #orderPanel .breakeven-mode-tab:not(.active):focus {
+        body.light-mode #orderPanel .order-button-group--inline:has(.position-mode-tab) .position-mode-tab:not(.active),
+        body.light-mode #orderPanel .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab:not(.active) {
             color: #787b86 !important;
             -webkit-text-fill-color: #787b86 !important;
         }
 
-        body.light-mode #orderPanel .position-mode-tab.active,
-        body.light-mode #orderPanel .position-mode-tab.active:hover,
-        body.light-mode #orderPanel .position-mode-tab.active:focus,
-        body.light-mode #orderPanel .breakeven-mode-tab.active,
-        body.light-mode #orderPanel .breakeven-mode-tab.active:hover,
-        body.light-mode #orderPanel .breakeven-mode-tab.active:focus {
-            color: #2962ff !important;
-            -webkit-text-fill-color: #2962ff !important;
+        body.light-mode #orderPanel .order-button-group--inline:has(.position-mode-tab) .position-mode-tab.active,
+        body.light-mode #orderPanel .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab.active {
+            color: #C9A84C !important;
+            -webkit-text-fill-color: #C9A84C !important;
         }
 
         body.light-mode #orderPanel .risk-btn:not(.active),
@@ -4408,8 +4400,8 @@
         body.light-mode #orderPanel .risk-btn.active,
         body.light-mode #orderPanel .risk-btn.active:hover,
         body.light-mode #orderPanel .risk-btn.active:focus {
-            color: #2962ff !important;
-            -webkit-text-fill-color: #2962ff !important;
+            color: #b8922a !important;
+            -webkit-text-fill-color: #b8922a !important;
         }
 
         body.light-mode #orderPanel .order-btn-icon:not(.order-btn-icon--accent),
@@ -4422,8 +4414,8 @@
         body.light-mode #orderPanel .order-btn-icon--accent,
         body.light-mode #orderPanel .order-btn-icon--accent:hover,
         body.light-mode #orderPanel .order-btn-icon--accent:focus {
-            color: #2962ff !important;
-            -webkit-text-fill-color: #2962ff !important;
+            color: #b8922a !important;
+            -webkit-text-fill-color: #b8922a !important;
         }
 
         body.light-mode #orderPanel .order-utility-btn,
@@ -42918,7 +42910,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260401"></script>
 
-    <script defer src="modules/order-manager.js?v=20260401_TRADEENTRY_MARKET_LIMIT_STOP"></script>
+    <script defer src="modules/order-manager.js?v=20260401_TRADEENTRY_PANEL_FULL"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260401"></script>
 

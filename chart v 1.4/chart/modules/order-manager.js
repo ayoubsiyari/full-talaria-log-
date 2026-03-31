@@ -4716,15 +4716,24 @@ class OrderManager {
                     width: 420px;
                     bottom: 0;
                     height: auto;
-                    --op-accent: var(--sp-accent, #2962ff);
-                    --op-accent-rgb: var(--sp-accent-rgb, 41, 98, 255);
-                    --op-bg: var(--sp-bg, #050028);
-                    --op-surface: var(--sp-ui-chrome-bg, #0d142b);
-                    --op-text: var(--sp-text, #d1d4dc);
-                    --op-text-muted: var(--sp-text-muted, #7f879e);
-                    --op-border: var(--sp-ui-border, rgba(255,255,255,0.07));
-                    --op-soft-accent: rgba(var(--op-accent-rgb), 0.14);
-                    /* TradeEntry-style BUY/SELL (see C.g / C.r / gBg / rBg in reference) */
+                    /* TradeEntry palette (C.bg, C.panel, C.b, …) */
+                    --om-bg: #080b11;
+                    --om-panel: #0f1319;
+                    --om-panel2: #141a22;
+                    --om-b: #1a2030;
+                    --om-b2: #242e3e;
+                    --om-tx: #c8cfd8;
+                    --om-dim: #5e6a7a;
+                    --om-muted: #333e50;
+                    --om-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+                    --op-accent: #2643F7;
+                    --op-accent-rgb: 38, 67, 247;
+                    --op-bg: var(--om-panel);
+                    --op-surface: var(--om-panel2);
+                    --op-text: var(--om-tx);
+                    --op-text-muted: var(--om-dim);
+                    --op-border: var(--om-b);
+                    --op-soft-accent: rgba(201, 168, 76, 0.08);
                     --om-g: #22c55e;
                     --om-r: #ef4444;
                     --om-g-bg: rgba(34, 197, 94, 0.06);
@@ -4732,7 +4741,6 @@ class OrderManager {
                     --om-seg-bg: #080b11;
                     --om-seg-border: #1a2030;
                     --om-tab-dim: #5e6a7a;
-                    /* TradeEntry order-type: Market / Limit / Stop */
                     --om-ot-gold: #C9A84C;
                     --om-ot-gold-bg: rgba(201, 168, 76, 0.10);
                     --om-ot-blue: #2643F7;
@@ -4741,17 +4749,17 @@ class OrderManager {
                     --om-ot-red-bg: rgba(239, 68, 68, 0.06);
                     --tv-buy: #22c55e;
                     --tv-sell: #ef4444;
-                    background: var(--op-bg);
-                    border-left: 3px solid var(--sp-ui-border, rgba(255,255,255,0.22));
+                    background: var(--om-panel);
+                    border-left: 1px solid var(--om-b);
                     z-index: 1000010;
                     overflow: hidden;
                     overflow-y: auto;
                     transition: right 0.28s cubic-bezier(.4,0,.2,1);
-                    box-shadow: none;
+                    box-shadow: -8px 0 32px rgba(0,0,0,0.45);
                     pointer-events: none;
                     display: flex;
                     flex-direction: column;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                 }
                 .order-panel.visible { right: 0; pointer-events: auto; }
 
@@ -4763,8 +4771,8 @@ class OrderManager {
                     transform: translateY(-50%);
                     width: 19px;
                     height: 44px;
-                    background: var(--op-accent);
-                    border: 1px solid var(--op-accent);
+                    background: var(--om-ot-gold);
+                    border: 1px solid rgba(201, 168, 76, 0.45);
                     border-right: none;
                     border-radius: 6px 0 0 6px;
                     display: flex;
@@ -4772,11 +4780,11 @@ class OrderManager {
                     justify-content: center;
                     cursor: pointer;
                     z-index: 1;
-                    color: #fff;
-                    transition: background 0.15s;
+                    color: #0f1319;
+                    transition: filter 0.15s, background 0.15s;
                     box-shadow: none;
                 }
-                .order-panel__edge-handle:hover { filter: none; }
+                .order-panel__edge-handle:hover { filter: brightness(1.08); }
 
                 /* ── SCROLLBAR ───────────────────────────────────────────────────── */
                 .order-panel__content::-webkit-scrollbar { width: 3px; }
@@ -4796,43 +4804,51 @@ class OrderManager {
 
                 /* ── HEADER ──────────────────────────────────────────────────────── */
                 .order-panel__content {
-                    padding: 14px 16px 24px;
+                    padding: 10px 14px 16px;
                     flex: 1;
                     overflow-y: auto;
                     overflow-x: hidden;
                     min-height: 0;
                     display: block;
+                    background: var(--om-bg);
                 }
                 .order-panel__header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: 14px 16px 12px;
-                    border-bottom: 1px solid var(--op-border);
-                    background: var(--op-surface);
+                    padding: 10px 14px;
+                    border-bottom: 1px solid var(--om-b);
+                    background: var(--om-panel);
                     flex-shrink: 0;
                     user-select: none;
                 }
                 .order-panel__title {
                     margin: 0;
-                    color: var(--op-text);
-                    font-size: 14px;
-                    font-weight: 600;
+                    color: var(--om-tx);
+                    font-size: 13px;
+                    font-weight: 700;
                     letter-spacing: 0.01em;
                 }
                 .order-panel__close {
                     background: transparent;
-                    border: none;
-                    color: var(--op-text-muted);
+                    border: 1px solid var(--om-b);
+                    color: var(--om-dim);
                     cursor: pointer;
-                    font-size: 22px;
+                    font-size: 18px;
                     line-height: 1;
-                    width: 28px; height: 28px;
-                    border-radius: 6px;
-                    display: flex; align-items: center; justify-content: center;
-                    transition: background 0.15s, color 0.15s;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 5px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: border-color 0.15s, color 0.15s, background 0.15s;
                 }
-                .order-panel__close:hover { background: transparent; color: var(--op-text-muted); }
+                .order-panel__close:hover {
+                    background: rgba(255,255,255,0.04);
+                    color: var(--om-tx);
+                    border-color: var(--om-b2);
+                }
 
                 /* ── BUY / SELL — segmented control (TradeEntry Tabs: C.bg, C.b, gBg/rBg, g/r) ── */
                 .order-panel__tab-group {
@@ -4898,24 +4914,32 @@ class OrderManager {
                    LIGHT MODE — panel chrome; BUY/SELL track matches segmented reference
                    ═══════════════════════════════════════════════════════════════ */
                 body.light-mode .order-panel {
+                    --om-bg: #f7f8fa !important;
+                    --om-panel: #ffffff !important;
+                    --om-panel2: #f0f3fa !important;
+                    --om-b: #e0e3eb !important;
+                    --om-b2: #d1d5db !important;
+                    --om-tx: #131722 !important;
+                    --om-dim: #787b86 !important;
+                    --om-muted: #9ca3af !important;
                     --op-bg: #ffffff !important;
-                    --op-surface: #ffffff !important;
+                    --op-surface: #f0f3fa !important;
+                    --op-text: #131722 !important;
+                    --op-text-muted: #787b86 !important;
+                    --op-border: #e0e3eb !important;
+                    --op-soft-accent: rgba(201, 168, 76, 0.12) !important;
                     --om-seg-bg: #f0f3fa !important;
                     --om-seg-border: #e0e3eb !important;
                     --om-tab-dim: #787b86 !important;
                     --om-ot-gold-bg: rgba(201, 168, 76, 0.14) !important;
                     --om-ot-blue-bg: rgba(38, 67, 247, 0.10) !important;
                     --om-ot-red-bg: rgba(239, 68, 68, 0.10) !important;
-                    --op-text: #131722 !important;
-                    --op-text-muted: #787b86 !important;
-                    --op-border: #e0e3eb !important;
-                    --op-soft-accent: rgba(41, 98, 255, 0.08) !important;
-                    --tv-tab-accent: #2962ff;
+                    --tv-tab-accent: #2643F7;
                     --tv-buy: #22c55e;
                     --tv-sell: #ef4444;
                     background: #ffffff !important;
-                    border-left: 3px solid var(--sp-ui-border, rgba(47, 79, 79, 0.2)) !important;
-                    box-shadow: none !important;
+                    border-left: 1px solid #e0e3eb !important;
+                    box-shadow: -8px 0 28px rgba(0,0,0,0.08) !important;
                     color: #131722 !important;
                 }
                 body.light-mode .order-panel *,
@@ -4939,9 +4963,9 @@ class OrderManager {
                 body.light-mode .order-panel-backdrop { background: rgba(0,0,0,0.08) !important; }
                 body.light-mode .order-panel__edge-handle {
                     box-shadow: none !important;
-                    background: #2962ff !important;
-                    border-color: #2962ff !important;
-                    color: #ffffff !important;
+                    background: #C9A84C !important;
+                    border-color: rgba(201, 168, 76, 0.55) !important;
+                    color: #131722 !important;
                 }
 
                 /* Header */
@@ -4949,9 +4973,27 @@ class OrderManager {
                     background: #ffffff !important;
                     border-bottom: 1px solid #e0e3eb !important;
                 }
+                body.light-mode .order-panel__content {
+                    background: #f7f8fa !important;
+                }
                 body.light-mode .order-panel__title { color: #131722 !important; }
-                body.light-mode .order-panel__close { color: #787b86 !important; }
-                body.light-mode .order-panel__close:hover { background: transparent !important; border: 1px solid #e0e3eb !important; color: #131722 !important; }
+                body.light-mode .order-panel__close {
+                    color: #787b86 !important;
+                    border-color: #e0e3eb !important;
+                }
+                body.light-mode .order-panel__close:hover {
+                    background: #f0f3fa !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
+                }
+                body.light-mode #tpSection {
+                    border-color: rgba(34, 197, 94, 0.28) !important;
+                    background: rgba(34, 197, 94, 0.06) !important;
+                }
+                body.light-mode #slSection {
+                    border-color: rgba(239, 68, 68, 0.25) !important;
+                    background: rgba(239, 68, 68, 0.06) !important;
+                }
 
                 /* ── BUY / SELL — same segmented logic as TradeEntry (tint + g/r text) ── */
                 body.light-mode .order-tab {
@@ -4993,7 +5035,7 @@ class OrderManager {
                     margin-top: 2px !important;
                     box-sizing: border-box !important;
                 }
-                body.light-mode .order-button-group--inline:not(:has(.risk-btn)) {
+                body.light-mode .order-button-group--inline:not(:has(.risk-btn)):not(:has(.position-mode-tab)):not(:has(.breakeven-mode-tab)) {
                     background: transparent !important;
                     border: none !important;
                     border-radius: 0 !important;
@@ -5005,6 +5047,16 @@ class OrderManager {
                     border-bottom: 1px solid #e0e3eb !important;
                     box-shadow: none !important;
                 }
+                body.light-mode .order-button-group--inline:has(.position-mode-tab),
+                body.light-mode .order-button-group--inline:has(.breakeven-mode-tab) {
+                    background: var(--om-seg-bg) !important;
+                    border: 1px solid var(--om-seg-border) !important;
+                    border-radius: 4px !important;
+                    padding: 1px !important;
+                    gap: 0 !important;
+                    border-bottom: none !important;
+                    flex-wrap: nowrap !important;
+                }
                 body.light-mode .order-button-group--inline:has(.risk-btn) {
                     background: transparent !important;
                     border: none !important;
@@ -5015,36 +5067,32 @@ class OrderManager {
                     flex-wrap: wrap !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .position-mode-tab,
-                body.light-mode .breakeven-mode-tab {
+                body.light-mode .order-button-group--inline:has(.position-mode-tab) .position-mode-tab,
+                body.light-mode .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab {
                     color: #787b86 !important;
                     -webkit-text-fill-color: #787b86 !important;
                     background: transparent !important;
                     border: none !important;
-                    border-radius: 0 !important;
-                    box-shadow: none !important;
-                    padding: 10px 2px !important;
-                    margin-bottom: -1px !important;
-                    border-bottom: 2px solid transparent !important;
-                    font-weight: 500 !important;
+                    border-radius: 3px !important;
+                    padding: 2px 7px !important;
+                    margin-bottom: 0 !important;
+                    border-bottom: none !important;
+                    font-weight: 600 !important;
+                    font-size: 9px !important;
                 }
-                body.light-mode .position-mode-tab:hover:not(.active),
-                body.light-mode .breakeven-mode-tab:hover:not(.active) {
-                    background: transparent !important;
+                body.light-mode .order-button-group--inline:has(.position-mode-tab) .position-mode-tab:hover:not(.active),
+                body.light-mode .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab:hover:not(.active) {
                     color: #131722 !important;
                     -webkit-text-fill-color: #131722 !important;
                 }
-                body.light-mode .position-mode-tab.active,
-                body.light-mode .breakeven-mode-tab.active,
-                body.light-mode .position-mode-tab.active:hover,
-                body.light-mode .breakeven-mode-tab.active:hover {
-                    background: transparent !important;
-                    border-color: transparent !important;
-                    color: #2962ff !important;
-                    -webkit-text-fill-color: #2962ff !important;
-                    border-bottom-color: #2962ff !important;
+                body.light-mode .order-button-group--inline:has(.position-mode-tab) .position-mode-tab.active,
+                body.light-mode .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab.active,
+                body.light-mode .order-button-group--inline:has(.position-mode-tab) .position-mode-tab.active:hover,
+                body.light-mode .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab.active:hover {
+                    background: rgba(201, 168, 76, 0.14) !important;
+                    color: #C9A84C !important;
+                    -webkit-text-fill-color: #C9A84C !important;
                     font-weight: 600 !important;
-                    box-shadow: none !important;
                 }
 
                 body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn {
@@ -5082,12 +5130,12 @@ class OrderManager {
                 body.light-mode .order-input-wrapper {
                     background: #ffffff !important;
                     border: 1px solid #e0e3eb !important;
-                    border-radius: 6px !important;
+                    border-radius: 5px !important;
                     box-shadow: none !important;
                 }
                 body.light-mode .order-input-wrapper:focus-within {
-                    border-color: #2962ff !important;
-                    box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.25) !important;
+                    border-color: rgba(38, 67, 247, 0.45) !important;
+                    box-shadow: 0 0 0 1px rgba(38, 67, 247, 0.15) !important;
                     background: #ffffff !important;
                 }
                 body.light-mode .order-input {
@@ -5113,9 +5161,14 @@ class OrderManager {
                 body.light-mode .order-input--compact { color: #131722 !important; -webkit-text-fill-color: #131722 !important; }
 
                 /* ── Stepper (+/-) ── */
-                body.light-mode .input-stepper {
+                body.light-mode .order-panel .input-stepper {
                     background: #f0f3fa !important;
-                    border: 1px solid #e0e3eb !important;
+                    border: none !important;
+                    border-left: 1px solid #e0e3eb !important;
+                    color: #787b86 !important;
+                }
+                body.light-mode .order-panel .input-stepper:hover {
+                    background: #e8ecf3 !important;
                     color: #131722 !important;
                 }
                 /* ── Risk shortcut chips (%) ── */
@@ -5127,24 +5180,24 @@ class OrderManager {
                     box-shadow: none !important;
                 }
                 body.light-mode .risk-btn.active {
-                    background: rgba(41, 98, 255, 0.08) !important;
-                    border-color: #2962ff !important;
-                    color: #2962ff !important;
-                    -webkit-text-fill-color: #2962ff !important;
+                    background: rgba(201, 168, 76, 0.12) !important;
+                    border-color: rgba(201, 168, 76, 0.4) !important;
+                    color: #b8922a !important;
+                    -webkit-text-fill-color: #b8922a !important;
                     box-shadow: none !important;
                 }
 
                 /* ── Calculation row (Position Size) ── */
                 body.light-mode .order-calculation {
-                    background: #f0f3fa !important;
-                    border: 1px solid #e0e3eb !important;
+                    background: rgba(201, 168, 76, 0.08) !important;
+                    border: 1px solid rgba(201, 168, 76, 0.22) !important;
                 }
                 body.light-mode .order-calculation-label { color: #787b86 !important; }
-                body.light-mode .order-calculation-value { color: #2962ff !important; font-weight: 700 !important; }
+                body.light-mode .order-calculation-value { color: #b8922a !important; font-weight: 700 !important; }
 
                 /* ── Toggles & checkboxes ── */
                 body.light-mode .toggle-switch__track { background: #e0e3eb !important; }
-                body.light-mode .toggle-switch input:checked + .toggle-switch__track { background: #2962ff !important; }
+                body.light-mode .order-panel .toggle-switch input:checked + .toggle-switch__track { background: #C9A84C !important; }
                 body.light-mode .order-toggle-label { color: #787b86 !important; }
                 body.light-mode .order-toggle-label:hover { color: #131722 !important; }
                 body.light-mode .order-radio-label { color: #787b86 !important; }
@@ -5167,12 +5220,12 @@ class OrderManager {
                     color: #131722 !important;
                 }
                 body.light-mode .order-collapse--open .order-collapse__header {
-                    color: #131722 !important;
+                    color: #b8922a !important;
                     border-bottom-color: #e0e3eb !important;
-                    background: rgba(41, 98, 255, 0.04) !important;
+                    background: rgba(201, 168, 76, 0.08) !important;
                 }
                 body.light-mode .order-collapse__chevron { color: #787b86 !important; }
-                body.light-mode .order-collapse--open .order-collapse__chevron { color: #131722 !important; }
+                body.light-mode .order-collapse--open .order-collapse__chevron { color: #b8922a !important; }
                 body.light-mode .order-collapse__content {
                     background: #f7f8fa !important;
                 }
@@ -5184,11 +5237,11 @@ class OrderManager {
                     box-shadow: none !important;
                 }
                 body.light-mode .order-summary-label { color: #787b86 !important; }
-                body.light-mode .order-summary-label--positive { color: #089981 !important; }
-                body.light-mode .order-summary-label--negative { color: #f23645 !important; }
+                body.light-mode .order-summary-label--positive { color: #22c55e !important; }
+                body.light-mode .order-summary-label--negative { color: #ef4444 !important; }
                 body.light-mode .order-summary-value { color: #131722 !important; }
-                body.light-mode .order-summary-value--positive { color: #089981 !important; }
-                body.light-mode .order-summary-value--negative { color: #f23645 !important; }
+                body.light-mode .order-summary-value--positive { color: #22c55e !important; }
+                body.light-mode .order-summary-value--negative { color: #ef4444 !important; }
                 body.light-mode .order-summary-value--warning { color: #d97706 !important; }
                 body.light-mode .order-summary-value--danger { color: #f23645 !important; }
                 body.light-mode .order-summary-divider { border-top-color: #e0e3eb !important; }
@@ -5229,9 +5282,10 @@ class OrderManager {
                     box-shadow: none !important;
                 }
                 body.light-mode .order-info-card {
-                    background: rgba(41, 98, 255, 0.06) !important;
-                    border: 1px solid rgba(41, 98, 255, 0.22) !important;
+                    background: rgba(201, 168, 76, 0.08) !important;
+                    border: 1px solid rgba(201, 168, 76, 0.25) !important;
                 }
+                body.light-mode .order-info-title { color: #b8922a !important; }
                 body.light-mode .order-info-body { color: #787b86 !important; }
 
                 /* ── Validation ── */
@@ -5249,11 +5303,10 @@ class OrderManager {
                     box-shadow: none !important;
                 }
                 body.light-mode .order-btn-icon--accent {
-                    background: rgba(41, 98, 255, 0.12) !important;
-                    border-color: rgba(41, 98, 255, 0.4) !important;
-                    color: #2962ff !important;
+                    background: rgba(201, 168, 76, 0.12) !important;
+                    border-color: rgba(201, 168, 76, 0.4) !important;
+                    color: #b8922a !important;
                 }
-                body.light-mode .order-info-title { color: #2962ff !important; }
                 body.light-mode .order-select {
                     background: #ffffff !important;
                     border: 1px solid #e0e3eb !important;
@@ -5302,27 +5355,21 @@ class OrderManager {
                     -webkit-text-fill-color: #dc2626 !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-panel .position-mode-tab:hover:not(.active),
-                body.light-mode .order-panel .breakeven-mode-tab:hover:not(.active) {
-                    background: transparent !important;
-                    border-color: transparent !important;
+                body.light-mode .order-panel .order-button-group--inline:has(.position-mode-tab) .position-mode-tab:hover:not(.active),
+                body.light-mode .order-panel .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab:hover:not(.active) {
                     color: #131722 !important;
                     -webkit-text-fill-color: #131722 !important;
-                    box-shadow: none !important;
                 }
                 body.light-mode .order-panel .order-button-group:not(.order-button-group--inline) .order-type-btn:hover:not(.active) {
                     background: transparent !important;
                     color: #131722 !important;
                     -webkit-text-fill-color: #131722 !important;
                 }
-                body.light-mode .order-panel .position-mode-tab.active:hover,
-                body.light-mode .order-panel .breakeven-mode-tab.active:hover {
-                    background: transparent !important;
-                    border-color: transparent !important;
-                    color: #2962ff !important;
-                    -webkit-text-fill-color: #2962ff !important;
-                    border-bottom-color: #2962ff !important;
-                    box-shadow: none !important;
+                body.light-mode .order-panel .order-button-group--inline:has(.position-mode-tab) .position-mode-tab.active:hover,
+                body.light-mode .order-panel .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab.active:hover {
+                    background: rgba(201, 168, 76, 0.18) !important;
+                    color: #b8922a !important;
+                    -webkit-text-fill-color: #b8922a !important;
                 }
                 body.light-mode .order-panel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"]:hover {
                     background: rgba(201, 168, 76, 0.18) !important;
@@ -5396,8 +5443,21 @@ class OrderManager {
                 .order-section {
                     display: flex;
                     flex-direction: column;
-                    gap: 7px;
-                    margin-bottom: 10px;
+                    gap: 6px;
+                    margin-bottom: 12px;
+                }
+                /* TradeEntry-style TP / SL emphasis */
+                #tpSection {
+                    padding: 8px 10px;
+                    border-radius: 6px;
+                    border: 1px solid rgba(34, 197, 94, 0.18);
+                    background: rgba(34, 197, 94, 0.04);
+                }
+                #slSection {
+                    padding: 8px 10px;
+                    border-radius: 6px;
+                    border: 1px solid rgba(239, 68, 68, 0.18);
+                    background: rgba(239, 68, 68, 0.04);
                 }
                 .order-section--compact { gap: 3px; }
                 .order-button-group {
@@ -5418,12 +5478,26 @@ class OrderManager {
                     border: 1px solid var(--om-seg-border);
                     border-radius: 5px;
                 }
-                .order-button-group--inline:not(:has(.risk-btn)) {
+                .order-button-group--inline:not(:has(.risk-btn)):not(:has(.position-mode-tab)):not(:has(.breakeven-mode-tab)) {
                     flex-wrap: wrap;
                     align-items: stretch;
                     gap: 16px;
                     border-bottom: 1px solid rgba(255,255,255,0.12);
                     padding: 0;
+                }
+                /* Risk $ / % / Lots + breakeven mode — TradeEntry chip row */
+                .order-button-group--inline:has(.position-mode-tab),
+                .order-button-group--inline:has(.breakeven-mode-tab) {
+                    flex-wrap: nowrap !important;
+                    align-items: stretch !important;
+                    gap: 0 !important;
+                    padding: 1px !important;
+                    margin-bottom: 6px !important;
+                    box-sizing: border-box !important;
+                    background: var(--om-seg-bg) !important;
+                    border: 1px solid var(--om-seg-border) !important;
+                    border-radius: 4px !important;
+                    border-bottom: none !important;
                 }
                 .order-button-group--inline:has(.risk-btn) {
                     flex-wrap: wrap;
@@ -5437,46 +5511,43 @@ class OrderManager {
                     border-right: none;
                     border-top: none;
                 }
-                /* Position / breakeven — underline strip (unchanged) */
-                .position-mode-tab,
-                .breakeven-mode-tab {
+                /* Position / breakeven — segmented (gold active like TradeEntry Risk $ row) */
+                .order-button-group--inline:has(.position-mode-tab) .position-mode-tab,
+                .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab {
                     flex: 1;
                     border: none;
-                    border-radius: 0;
-                    padding: 10px 2px;
-                    font-size: 11px;
-                    font-weight: 500;
+                    border-radius: 3px;
+                    padding: 2px 7px;
+                    font-size: 9px;
+                    font-weight: 600;
                     cursor: pointer;
-                    color: var(--op-text-muted);
-                    -webkit-text-fill-color: var(--op-text-muted);
+                    color: var(--om-tab-dim);
+                    -webkit-text-fill-color: var(--om-tab-dim);
                     background: transparent;
-                    transition: color 0.15s ease, border-color 0.15s ease, font-weight 0.15s ease;
-                    letter-spacing: 0.015em;
-                    border-bottom: 2px solid transparent;
-                    margin-bottom: -1px;
+                    transition: background 0.1s ease, color 0.1s ease;
+                    letter-spacing: 0.02em;
+                    border-bottom: none !important;
+                    margin-bottom: 0 !important;
                     min-width: 0;
                     box-shadow: none;
                 }
-                .position-mode-tab:hover,
-                .breakeven-mode-tab:hover {
-                    background: transparent;
-                    color: var(--op-text);
-                    -webkit-text-fill-color: var(--op-text);
+                .order-button-group--inline:has(.position-mode-tab) .position-mode-tab:hover:not(.active),
+                .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab:hover:not(.active) {
+                    color: var(--om-tx);
+                    -webkit-text-fill-color: var(--om-tx);
                 }
-                .position-mode-tab.active,
-                .breakeven-mode-tab.active {
-                    background: transparent;
-                    color: #2962ff;
-                    -webkit-text-fill-color: #2962ff;
-                    border-bottom-color: #2962ff;
-                    font-weight: 600;
-                    box-shadow: none;
+                .order-button-group--inline:has(.position-mode-tab) .position-mode-tab.active,
+                .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab.active {
+                    background: var(--om-ot-gold-bg) !important;
+                    color: var(--om-ot-gold) !important;
+                    -webkit-text-fill-color: var(--om-ot-gold) !important;
+                    font-weight: 600 !important;
                 }
-                .position-mode-tab.active:hover,
-                .breakeven-mode-tab.active:hover {
-                    color: #2962ff;
-                    -webkit-text-fill-color: #2962ff;
-                    border-bottom-color: #2962ff;
+                .order-button-group--inline:has(.position-mode-tab) .position-mode-tab.active:hover,
+                .order-button-group--inline:has(.breakeven-mode-tab) .breakeven-mode-tab.active:hover {
+                    background: rgba(201, 168, 76, 0.14) !important;
+                    color: #b8922a !important;
+                    -webkit-text-fill-color: #b8922a !important;
                 }
 
                 /* Market / Limit / Stop — segmented (TradeEntry: gold / blue / red tints) */
@@ -5533,28 +5604,27 @@ class OrderManager {
                     -webkit-text-fill-color: #f87171 !important;
                 }
 
-                /* ── RISK SHORTCUT BUTTONS ───────────────────────────────────────── */
+                /* ── RISK SHORTCUT BUTTONS (tag chips) ───────────────────────────── */
                 .risk-btn {
                     flex: 1;
-                    background: rgba(255,255,255,0.04);
-                    border: 1px solid rgba(255,255,255,0.12);
-                    border-radius: 4px;
-                    padding: 5px 6px;
-                    font-size: 10px;
+                    background: transparent;
+                    border: 1px solid var(--om-b);
+                    border-radius: 8px;
+                    padding: 2px 7px;
+                    font-size: 9px;
                     font-weight: 600;
                     cursor: pointer;
-                    color: var(--op-text-muted);
+                    color: var(--om-dim);
                     transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
                 }
                 .risk-btn:hover {
-                    background: rgba(255,255,255,0.06);
-                    border-color: rgba(255,255,255,0.18);
-                    color: var(--op-text);
+                    border-color: var(--om-b2);
+                    color: var(--om-tx);
                 }
                 .risk-btn.active {
-                    background: rgba(41,98,255,0.18);
-                    border-color: var(--sp-accent, #2962ff);
-                    color: #7aa3ff;
+                    background: var(--om-ot-gold-bg);
+                    border-color: rgba(201, 168, 76, 0.35);
+                    color: var(--om-ot-gold);
                 }
 
                 /* ── TOGGLE SWITCH ───────────────────────────────────────────────── */
@@ -5564,7 +5634,7 @@ class OrderManager {
                 .toggle-switch__track {
                     position: absolute; cursor: pointer;
                     inset: 0;
-                    background: rgba(255,255,255,0.12);
+                    background: rgba(255,255,255,0.08);
                     border-radius: 999px;
                     transition: background 0.25s;
                 }
@@ -5577,73 +5647,80 @@ class OrderManager {
                     transition: transform 0.2s;
                     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
                 }
-                .toggle-switch input:checked + .toggle-switch__track { background: var(--sp-accent, #2962ff); }
+                .order-panel .toggle-switch input:checked + .toggle-switch__track {
+                    background: var(--om-ot-gold);
+                }
                 .toggle-switch input:checked + .toggle-switch__track + .toggle-switch__thumb { transform: translateX(16px); }
                 .order-toggle-label {
-                    color: #787b86; font-size: 11px; cursor: pointer; user-select: none;
+                    color: var(--om-dim);
+                    font-size: 11px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    user-select: none;
                     transition: color 0.15s;
                 }
-                .order-toggle-label:hover, .order-radio-label:hover { color: #787b86; }
+                .order-toggle-label:hover, .order-radio-label:hover { color: var(--om-tx); }
 
                 /* ── RADIO GROUP ─────────────────────────────────────────────────── */
                 .order-radio-group { display: flex; gap: 14px; }
                 .order-radio-label {
                     display: flex; align-items: center; gap: 5px;
-                    font-size: 11px; color: #787b86; cursor: pointer;
+                    font-size: 11px;
+                    color: var(--om-dim);
+                    cursor: pointer;
                     transition: color 0.15s;
                 }
-                .order-radio-label input { accent-color: var(--sp-accent, #2962ff); }
+                .order-radio-label input { accent-color: var(--om-ot-gold); }
 
-                /* ── INPUTS ──────────────────────────────────────────────────────── */
+                /* ── INPUTS (TradeEntry Inp) ─────────────────────────────────────── */
                 .order-grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
                 .order-field { display: flex; flex-direction: column; gap: 4px; }
                 .order-label {
-                    font-size: 10px;
-                    color: var(--op-text-muted);
+                    font-size: 9px;
+                    color: var(--om-dim);
                     font-weight: 600;
-                    letter-spacing: 0.05em;
+                    letter-spacing: 0.07em;
                     text-transform: uppercase;
                 }
                 .order-input-wrapper {
                     display: flex;
                     align-items: center;
-                    background: var(--op-surface);
-                    border: 1px solid rgba(255,255,255,0.12);
-                    border-radius: 6px;
-                    padding: 0 12px;
+                    background: var(--om-bg);
+                    border: 1px solid var(--om-b);
+                    border-radius: 5px;
+                    padding: 0 10px;
                     box-shadow: none;
-                    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+                    transition: border-color 0.15s, box-shadow 0.15s;
                     box-sizing: border-box;
+                    overflow: hidden;
                 }
                 .order-panel .order-input-wrapper:has(.order-input--compact) {
                     padding: 0 8px;
                     min-height: 0;
                 }
                 .order-input-wrapper:focus-within {
-                    border-color: rgba(var(--op-accent-rgb), 0.85);
-                    background: var(--op-surface);
-                    box-shadow: 0 0 0 1px rgba(var(--op-accent-rgb), 0.35);
+                    border-color: rgba(38, 67, 247, 0.55);
+                    box-shadow: 0 0 0 1px rgba(38, 67, 247, 0.22);
                 }
                 .order-input {
                     flex: 1;
                     background: transparent;
                     border: none;
-                    color: var(--op-text);
-                    font-size: 13px;
-                    padding: 9px 12px;
+                    color: var(--om-tx);
+                    font-size: 12px;
+                    padding: 7px 8px;
                     outline: none;
-                    font-family: inherit;
-                    font-weight: 600;
+                    font-family: var(--om-mono);
+                    font-weight: 500;
                     line-height: 1.25;
                     min-height: 0;
                     align-self: center;
                     box-sizing: border-box;
                 }
-                .order-input::placeholder { color: var(--op-text-muted); opacity: 0.75; font-weight: 500; }
-                /* Compact numeric fields — short vertical padding (TP/SL, risk, etc.) */
+                .order-input::placeholder { color: var(--om-muted); opacity: 0.9; font-weight: 500; }
                 .order-panel .order-input.order-input--compact {
-                    padding: 5px 6px;
-                    font-size: 12px;
+                    padding: 5px 7px;
+                    font-size: 11px;
                     line-height: 1.2;
                     min-height: 0;
                     height: auto;
@@ -5661,115 +5738,134 @@ class OrderManager {
                     margin: 0;
                 }
                 .order-input-prefix, .order-input-suffix {
-                    font-size: 11px;
-                    color: var(--op-text-muted);
+                    font-size: 9px;
+                    color: var(--om-dim);
                     font-weight: 600;
                     flex-shrink: 0;
                     line-height: 1.25;
                     display: flex;
                     align-items: center;
                     align-self: center;
+                    font-family: 'DM Sans', sans-serif;
                 }
-                /* Rows with steppers: $ / % / Lots use same size as compact input */
+                .order-panel .order-input-wrapper:has(.input-stepper) {
+                    padding: 0 0 0 8px;
+                }
                 .order-panel .order-input-wrapper:has(.input-stepper) .order-input-prefix,
                 .order-panel .order-input-wrapper:has(.input-stepper) .order-input-suffix {
                     font-size: 12px;
-                    font-weight: 600;
-                    line-height: 1.25;
+                    font-family: var(--om-mono);
                 }
-                .input-stepper {
-                    width: 30px !important;
-                    height: 30px !important;
-                    border-radius: 6px !important;
-                    border: 1px solid rgba(255,255,255,0.12) !important;
-                    background: rgba(0,0,0,0.25) !important;
-                    color: var(--op-text) !important;
-                    font-size: 16px !important;
+                /* Stepper +/- (TradeEntry Stepper) */
+                .order-panel .input-stepper {
+                    width: 28px !important;
+                    height: 32px !important;
+                    border-radius: 0 !important;
+                    border: none !important;
+                    border-left: 1px solid var(--om-b) !important;
+                    background: var(--om-panel2) !important;
+                    color: var(--om-dim) !important;
+                    font-size: 14px !important;
                     font-weight: 700 !important;
                     cursor: pointer !important;
                     display: inline-flex !important;
                     align-items: center !important;
                     justify-content: center !important;
-                    transition: all 0.15s ease !important;
+                    transition: background 0.15s ease, color 0.15s ease !important;
+                    flex-shrink: 0 !important;
                 }
-                .input-stepper:hover {
-                    border-color: rgba(255,255,255,0.2) !important;
-                    background: rgba(0,0,0,0.35) !important;
-                    color: var(--op-text) !important;
-                    transform: none;
+                .order-panel .input-stepper:hover {
+                    background: var(--om-b2) !important;
+                    color: var(--om-tx) !important;
                 }
-                .order-hint { font-size: 10px; color: var(--op-text-muted); line-height: 1.4; }
+                .order-hint { font-size: 10px; color: var(--om-muted); line-height: 1.4; }
 
-                /* ── POSITION SIZE CALC ROW ──────────────────────────────────────── */
+                /* ── POSITION SIZE CALC ROW (ReadoutRow) ─────────────────────────── */
                 .order-calculation {
-                    background: var(--op-soft-accent);
-                    border: 1px solid var(--op-border);
-                    border-radius: 4px;
-                    padding: 5px 10px;
+                    background: rgba(201, 168, 76, 0.06);
+                    border: 1px solid rgba(201, 168, 76, 0.18);
+                    border-radius: 5px;
+                    padding: 6px 10px;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
+                    margin-top: 4px;
                 }
-                .order-calculation-label { color: var(--op-text-muted); font-size: 10px; font-weight: 500; }
-                .order-calculation-value { color: var(--op-accent); font-size: 11px; font-weight: 700; }
+                .order-calculation-label {
+                    color: var(--om-dim);
+                    font-size: 10px;
+                    font-weight: 500;
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .order-calculation-value {
+                    color: var(--om-ot-gold);
+                    font-size: 11px;
+                    font-weight: 700;
+                    font-family: var(--om-mono);
+                }
 
-                /* ── COLLAPSE SECTIONS (Protection / Multiple TP) ────────────────── */
+                /* ── COLLAPSE (TagRow-style headers) ─────────────────────────────── */
                 .order-collapse {
-                    border: 1px solid rgba(255,255,255,0.12);
+                    border: 1px solid var(--om-b);
                     border-radius: 6px;
-                    background: rgba(255,255,255,0.03);
+                    background: var(--om-panel2);
                     margin-bottom: 8px;
                     transition: border-color 0.15s;
                 }
-                .order-collapse:hover { border-color: rgba(255,255,255,0.16); }
+                .order-collapse:hover { border-color: var(--om-b2); }
                 .order-collapse__header {
                     width: 100%;
-                    padding: 9px 12px;
+                    padding: 8px 10px;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
                     cursor: pointer;
-                    color: #9ca3af;
-                    font-size: 11px;
+                    color: var(--om-dim);
+                    font-size: 10px;
                     font-weight: 600;
-                    background: rgba(255,255,255,0.02);
+                    text-transform: uppercase;
+                    letter-spacing: 0.06em;
+                    background: transparent;
                     border: none;
                     border-bottom: 1px solid transparent;
                     transition: all 0.15s ease;
-                    letter-spacing: 0.01em;
                     text-align: left;
+                    font-family: 'DM Sans', sans-serif;
                 }
-                .order-collapse__header:hover { background: rgba(255,255,255,0.02); color: #9ca3af; }
+                .order-collapse__header:hover { color: var(--om-tx); }
                 .order-collapse--open .order-collapse__header {
-                    color: #d1d4dc;
-                    border-bottom-color: rgba(255,255,255,0.06);
-                    background: rgba(41,98,255,0.06);
+                    color: var(--om-ot-gold);
+                    border-bottom-color: var(--om-b);
+                    background: rgba(201, 168, 76, 0.06);
                 }
                 .order-collapse__header span { display: flex; align-items: center; gap: 7px; }
                 .order-collapse__chevron {
                     width: 16px; height: 16px;
                     display: flex; align-items: center; justify-content: center;
-                    color: #555a6e;
+                    color: var(--om-muted);
                     transition: transform 0.2s ease, color 0.15s;
                     font-style: normal;
-                    font-size: 13px;
+                    font-size: 11px;
                 }
-                .order-collapse--open .order-collapse__chevron { transform: rotate(180deg); color: #d1d4dc; }
+                .order-collapse--open .order-collapse__chevron {
+                    transform: rotate(180deg);
+                    color: var(--om-ot-gold);
+                }
                 .order-collapse__content {
-                    padding: 10px 12px 12px;
+                    padding: 10px 10px 12px;
                     display: none;
                     flex-direction: column;
                     gap: 8px;
-                    background: rgba(0,0,0,0.2);
+                    background: var(--om-bg);
                 }
                 .order-collapse--open .order-collapse__content { display: flex; }
 
                 /* ── SUMMARY FOOTER ──────────────────────────────────────────────── */
                 .order-summary {
-                    background: var(--op-surface);
-                    border: 1px solid rgba(255,255,255,0.12);
+                    background: var(--om-panel2);
+                    border: 1px solid var(--om-b);
                     border-radius: 6px;
-                    padding: 11px 12px;
+                    padding: 10px 12px;
                     display: flex;
                     flex-direction: column;
                     gap: 6px;
@@ -5779,17 +5875,17 @@ class OrderManager {
                     justify-content: space-between;
                     align-items: center;
                 }
-                .order-summary-label { font-size: 11px; font-weight: 500; color: var(--op-text-muted); }
-                .order-summary-label--positive { color: #089981; }
-                .order-summary-label--negative { color: #f23645; }
-                .order-summary-value { font-size: 11px; font-weight: 700; color: var(--op-text); }
-                .order-summary-value--positive { color: #089981; }
-                .order-summary-value--negative { color: #f23645; }
-                .order-summary-value--muted { color: var(--op-text); }
+                .order-summary-label { font-size: 10px; font-weight: 500; color: var(--om-dim); font-family: 'DM Sans', sans-serif; }
+                .order-summary-label--positive { color: var(--om-g); }
+                .order-summary-label--negative { color: var(--om-r); }
+                .order-summary-value { font-size: 10px; font-weight: 700; color: var(--om-tx); font-family: var(--om-mono); }
+                .order-summary-value--positive { color: var(--om-g); }
+                .order-summary-value--negative { color: var(--om-r); }
+                .order-summary-value--muted { color: var(--om-tx); }
                 .order-summary-value--warning { color: #f59e0b; }
-                .order-summary-value--danger { color: #ef4444; }
+                .order-summary-value--danger { color: var(--om-r); }
                 .order-summary-divider {
-                    border-top: 1px solid rgba(255,255,255,0.06);
+                    border-top: 1px solid var(--om-b);
                     margin-top: 4px;
                     padding-top: 6px;
                 }
@@ -5847,17 +5943,17 @@ class OrderManager {
                     filter: brightness(0.96);
                 }
 
-                /* ── PROTECTION / MULTI-TP PROFESSIONAL THEME STYLES ─────────────── */
+                /* ── PROTECTION / CARDS (TradeEntry panel2 + gold border) ─────────── */
                 .order-card-soft {
-                    background: var(--op-surface);
-                    border: 1px solid rgba(255,255,255,0.12);
+                    background: var(--om-panel2);
+                    border: 1px solid var(--om-b);
                     border-radius: 6px;
-                    padding: 12px;
+                    padding: 10px;
                     box-shadow: none;
                 }
                 .order-info-card {
-                    background: rgba(var(--op-accent-rgb), 0.12);
-                    border: 1px solid rgba(var(--op-accent-rgb), 0.35);
+                    background: rgba(201, 168, 76, 0.06);
+                    border: 1px solid rgba(201, 168, 76, 0.22);
                     border-radius: 6px;
                     padding: 10px;
                     margin-bottom: 12px;
@@ -5867,13 +5963,14 @@ class OrderManager {
                     align-items: center;
                     gap: 8px;
                     margin-bottom: 6px;
-                    color: var(--op-accent);
+                    color: var(--om-ot-gold);
                     font-size: 12px;
                     font-weight: 700;
+                    font-family: 'DM Sans', sans-serif;
                 }
                 .order-info-body {
                     font-size: 11px;
-                    color: var(--op-text-muted);
+                    color: var(--om-dim);
                     line-height: 1.45;
                 }
                 .order-protection-toolbar {
@@ -5884,35 +5981,36 @@ class OrderManager {
                 .order-btn-icon {
                     min-width: 38px;
                     height: 34px;
-                    border-radius: 6px;
-                    border: 1px solid rgba(255,255,255,0.12);
-                    background: var(--op-surface);
-                    color: var(--op-text);
+                    border-radius: 5px;
+                    border: 1px solid var(--om-b);
+                    background: var(--om-panel2);
+                    color: var(--om-tx);
                     font-size: 14px;
                     font-weight: 700;
                     cursor: pointer;
                     transition: border-color 0.15s ease, background 0.15s ease;
                 }
                 .order-btn-icon:hover {
-                    border-color: rgba(255,255,255,0.2);
-                    background: rgba(255,255,255,0.04);
+                    border-color: var(--om-b2);
+                    background: var(--om-bg);
                 }
                 .order-btn-icon--accent {
-                    background: rgba(var(--op-accent-rgb), 0.16);
-                    border-color: rgba(var(--op-accent-rgb), 0.45);
-                    color: var(--op-accent);
+                    background: rgba(201, 168, 76, 0.12);
+                    border-color: rgba(201, 168, 76, 0.35);
+                    color: var(--om-ot-gold);
                 }
                 .order-select {
                     flex: 1;
-                    background: var(--op-surface);
-                    border: 1px solid rgba(255,255,255,0.12);
-                    border-radius: 6px;
+                    background: var(--om-bg);
+                    border: 1px solid var(--om-b);
+                    border-radius: 5px;
                     padding: 6px 10px;
                     font-size: 12px;
-                    color: var(--op-text);
+                    color: var(--om-tx);
                     cursor: pointer;
                     outline: none;
                     box-shadow: none;
+                    font-family: 'DM Sans', sans-serif;
                 }
                 .order-stage-card { margin-bottom: 12px; }
                 .order-stage-head {
@@ -5930,13 +6028,14 @@ class OrderManager {
                     font-weight: 700;
                 }
                 .order-stage-badge {
-                    font-size: 9px;
+                    font-size: 8px;
                     font-weight: 800;
                     letter-spacing: 0.04em;
-                    color: #fff;
-                    background: rgba(var(--op-accent-rgb), 0.9);
+                    color: var(--om-ot-gold);
+                    background: var(--om-ot-gold-bg);
+                    border: 1px solid rgba(201, 168, 76, 0.28);
                     border-radius: 999px;
-                    padding: 3px 8px;
+                    padding: 2px 7px;
                 }
                 .order-field-stack { margin-bottom: 10px; }
                 .order-note {
@@ -5967,9 +6066,9 @@ class OrderManager {
                     margin-left: 8px;
                     padding: 6px 12px;
                     border-radius: 8px;
-                    border: 1px solid rgba(var(--op-accent-rgb), 0.45);
-                    background: rgba(var(--op-accent-rgb), 0.15);
-                    color: var(--op-accent);
+                    border: 1px solid rgba(201, 168, 76, 0.4);
+                    background: rgba(201, 168, 76, 0.12);
+                    color: var(--om-ot-gold);
                     font-size: 11px;
                     font-weight: 700;
                     cursor: pointer;
@@ -5977,16 +6076,16 @@ class OrderManager {
                     transition: all 0.15s ease;
                 }
                 .order-inline-action:hover {
-                    background: rgba(var(--op-accent-rgb), 0.15);
-                    border-color: rgba(var(--op-accent-rgb), 0.45);
+                    background: rgba(201, 168, 76, 0.18);
+                    border-color: rgba(201, 168, 76, 0.5);
                 }
                 .order-utility-btn {
                     width: 100%;
                     padding: 9px 12px;
-                    border-radius: 6px;
-                    border: 1px solid rgba(255,255,255,0.12);
-                    background: var(--op-surface);
-                    color: var(--op-text);
+                    border-radius: 5px;
+                    border: 1px solid var(--om-b);
+                    background: var(--om-panel2);
+                    color: var(--om-tx);
                     font-size: 12px;
                     font-weight: 700;
                     letter-spacing: 0.02em;
@@ -5994,8 +6093,20 @@ class OrderManager {
                     transition: border-color 0.15s ease, background 0.15s ease;
                 }
                 .order-utility-btn:hover {
-                    border-color: rgba(255,255,255,0.2);
-                    background: rgba(255,255,255,0.04);
+                    border-color: var(--om-b2);
+                    background: var(--om-bg);
+                }
+
+                .order-market-type-btn {
+                    border-color: var(--om-b) !important;
+                    background: var(--om-panel2) !important;
+                    color: var(--om-tx) !important;
+                    border-radius: 5px !important;
+                    font-family: 'DM Sans', sans-serif !important;
+                }
+                .order-market-dropdown {
+                    background: var(--om-panel) !important;
+                    border-color: var(--om-b) !important;
                 }
 
                 /* ── MISC ────────────────────────────────────────────────────────── */
@@ -6015,7 +6126,7 @@ class OrderManager {
             <!-- Fixed header — sits outside the scrollable content -->
             <div id="orderPanelHeader" class="order-panel__header">
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A84C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                     <h3 class="order-panel__title">Place order</h3>
                 </div>
                 <button id="closeOrderPanel" class="order-panel__close" type="button">&times;</button>
@@ -6046,7 +6157,7 @@ class OrderManager {
                             <span id="marketTypeName">Forex</span>
                             <span style="margin-left: auto; font-size: 10px; opacity: 0.7;">▼</span>
                         </button>
-                        <div id="marketTypeDropdownPanel" class="order-market-dropdown" style="
+                        <div id="marketTypeDropdownPanel" class="order-market-dropdown order-market-dropdown--panel" style="
                             position: absolute;
                             top: 100%;
                             left: 0;
@@ -6145,20 +6256,20 @@ class OrderManager {
                     <div id="riskUSDInput" class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
                         <span class="order-input-prefix">$</span>
                         <input type="number" id="riskAmountUSD" value="100" min="1" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
-                        <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10" style="width: 28px; height: 28px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #ef4444; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
-                        <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10" style="width: 28px; height: 28px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; color: #22c55e; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
+                        <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10">−</button>
+                        <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10">+</button>
                     </div>
                     <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
                         <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                         <span class="order-input-suffix">%</span>
-                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5" style="width: 28px; height: 28px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #ef4444; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
-                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5" style="width: 28px; height: 28px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; color: #22c55e; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
+                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
+                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
                     </div>
                     <div id="lotSizeInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
                         <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                         <span class="order-input-suffix">Lots</span>
-                        <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="-0.1" style="width: 28px; height: 28px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #ef4444; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
-                        <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="+0.1" style="width: 28px; height: 28px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; color: #22c55e; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
+                        <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="-0.1">−</button>
+                        <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="+0.1">+</button>
                     </div>
                     <input type="hidden" id="orderQuantity" value="1">
                     <div id="calculatedPosition" class="order-calculation">
