@@ -7096,17 +7096,12 @@ class Chart {
         if (window.panelManager._syncingDateRange) return;
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
-        let startIndex = typeof this.getVisibleStartIndex === 'function'
+        const startIndex = typeof this.getVisibleStartIndex === 'function'
             ? this.getVisibleStartIndex()
             : 0;
-        let endIndex = typeof this.getVisibleEndIndex === 'function'
+        const endIndex = typeof this.getVisibleEndIndex === 'function'
             ? this.getVisibleEndIndex()
             : Math.max(0, this.data.length - 1);
-        if (startIndex > endIndex) {
-            const tmp = startIndex;
-            startIndex = endIndex;
-            endIndex = tmp;
-        }
 
         const startTimestamp = this.data[startIndex]?.t ?? 0;
         const barMs = this.inferBarDurationMs();

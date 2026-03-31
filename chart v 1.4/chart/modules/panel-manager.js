@@ -778,11 +778,10 @@ class PanelManager {
                 else if (chart.render) chart.render();
             });
         } finally {
-            // Clear immediately so the next wheel/pan in the same frame can sync other panels.
-            // Deferring to rAF left a gap where dispatchScrollSync / syncScrollByVisibleTimeRange
-            // no-oped while the user kept zooming (noticeable on small TFs + date-range sync).
-            this._isSyncing = false;
-            this._syncingDateRange = false;
+            requestAnimationFrame(() => {
+                this._isSyncing = false;
+                this._syncingDateRange = false;
+            });
         }
     }
 
@@ -800,29 +799,28 @@ class PanelManager {
         if (!sourceChart?.data?.length) return;
         
         this._isSyncing = true;
-        try {
-            this.panels.forEach(panel => {
-                if (panel.index === sourcePanel.index) return;
-
-                const chart = panel.chartInstance;
-                if (!chart?.data?.length) return;
-
-                // Direct offsetX copy for smooth movement
-                // Scale based on candle width ratio if different
-                const sourceSpacing = sourceChart.getCandleSpacing ? sourceChart.getCandleSpacing() : (sourceChart.candleWidth + 2);
-                const targetSpacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-                const ratio = targetSpacing / sourceSpacing;
-
-                // Copy offsetX directly (scaled if candle widths differ)
-                chart.offsetX = sourceChart.offsetX * ratio;
-
-                // Constrain to valid range and render
-                if (chart.constrainOffset) chart.constrainOffset();
-                if (chart.render) chart.render();
-            });
-        } finally {
-            this._isSyncing = false;
-        }
+        
+        this.panels.forEach(panel => {
+            if (panel.index === sourcePanel.index) return;
+            
+            const chart = panel.chartInstance;
+            if (!chart?.data?.length) return;
+            
+            // Direct offsetX copy for smooth movement
+            // Scale based on candle width ratio if different
+            const sourceSpacing = sourceChart.getCandleSpacing ? sourceChart.getCandleSpacing() : (sourceChart.candleWidth + 2);
+            const targetSpacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+            const ratio = targetSpacing / sourceSpacing;
+            
+            // Copy offsetX directly (scaled if candle widths differ)
+            chart.offsetX = sourceChart.offsetX * ratio;
+            
+            // Constrain to valid range and render
+            if (chart.constrainOffset) chart.constrainOffset();
+            if (chart.render) chart.render();
+        });
+        
+        requestAnimationFrame(() => { this._isSyncing = false; });
     }
     
     /**
