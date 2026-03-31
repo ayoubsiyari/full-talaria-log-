@@ -7107,6 +7107,10 @@ class Chart {
         const barMs = this.inferBarDurationMs();
         // Exclusive end of the visible window (same wall-clock span on every timeframe).
         const endTimestamp = (this.data[endIndex]?.t ?? 0) + barMs;
+
+        // Skip when time axis / visible window did not change (e.g. vertical price zoom only).
+        const sig = `${Math.round(this.offsetX * 100) / 100}|${this.candleWidth}|${startTimestamp}|${endTimestamp}`;
+        if (this._lastScrollSyncSig === sig) return;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
@@ -7125,6 +7129,8 @@ class Chart {
         }
         
         if (!sourcePanel) return;
+
+        this._lastScrollSyncSig = sig;
         window.dispatchEvent(new CustomEvent('chartScrolled', {
             detail: {
                 chart: this,
@@ -12715,7 +12721,7 @@ class Chart {
                 }
 
                 this.scheduleRender();
-                this.dispatchScrollSync();
+                // Do not sync other panels on vertical price zoom — time axis unchanged.
                 return;
             }
 
@@ -12977,7 +12983,9 @@ class Chart {
                     
                     this.constrainOffset();
                     this.scheduleRender();
-                    this.dispatchScrollSync();
+                    if (resisted.dx !== 0) {
+                        this.dispatchScrollSync();
+                    }
                     
                     // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
@@ -13351,7 +13359,9 @@ class Chart {
                         }
                         this.constrainOffset();
                         this.scheduleRender();
-                        this.dispatchScrollSync();
+                        if (effectiveDx !== 0) {
+                            this.dispatchScrollSync();
+                        }
                     }
 
                     this.drag.lastX = e.clientX;

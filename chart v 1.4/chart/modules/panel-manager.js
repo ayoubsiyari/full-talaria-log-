@@ -790,7 +790,15 @@ class PanelManager {
                 if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
-                chart.offsetX = -iL2 * spacing;
+                // Right-edge anchor (TradingView-style): keep the end of the synced window at the
+                // right plot edge so bars compress/expand into the viewport instead of sliding the
+                // whole strip left (left-align + quantize was fighting constrainOffset).
+                const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
+                    ? chart.timeScale.rightOffsetCandles
+                    : 5;
+                const rightMargin = Math.max(0, rightMarginCandles) * spacing;
+                const targetRight = chart.w - m.r - rightMargin;
+                chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
