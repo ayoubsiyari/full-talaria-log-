@@ -12445,24 +12445,36 @@ class Chart {
     
     /**
      * Get the index of the first visible candle
+     * Must match calculateScales() visible slice (without buffer) so panel date-range sync
+     * matches the actual plot window — not Math.floor(-offsetX/spacing), which diverges from
+     * -Math.floor(offsetX/spacing) when offset/spacing is not integral.
      * @returns {number} Start index
      */
     getVisibleStartIndex() {
         if (!this.data || this.data.length === 0) return 0;
-        const startIdx = Math.floor(this.pixelToDataIndex(this.margin.l));
-        return Math.max(0, startIdx);
+        const m = this.margin || { l: 0, r: 60 };
+        const spacing = this.getCandleSpacing();
+        const cw = this.w - m.l - m.r;
+        if (cw <= 0 || spacing <= 0) return 0;
+        const leftIdx = -Math.floor(this.offsetX / spacing);
+        return Math.max(0, Math.min(leftIdx, this.data.length - 1));
     }
     
     /**
-     * Get the index of the last visible candle
+     * Get the index of the last visible candle (inclusive) in the main plot width (w - margins).
      * @returns {number} End index
      */
     getVisibleEndIndex() {
         if (!this.data || this.data.length === 0) return 0;
-        // Treat the right-axis zone as part of the drawable viewport so the last candle
-        // remains rendered while moving behind the axis.
-        const endIdx = Math.ceil(this.pixelToDataIndex(this.w));
-        return Math.min(this.data.length - 1, endIdx);
+        const m = this.margin || { l: 0, r: 60 };
+        const spacing = this.getCandleSpacing();
+        const cw = this.w - m.l - m.r;
+        if (cw <= 0 || spacing <= 0) return 0;
+        const leftIdx = -Math.floor(this.offsetX / spacing);
+        const endExclusive = leftIdx + Math.ceil(cw / spacing);
+        const endInclusive = Math.min(this.data.length - 1, endExclusive - 1);
+        const start = Math.max(0, Math.min(leftIdx, this.data.length - 1));
+        return Math.max(start, Math.max(0, endInclusive));
     }
     
     // First redrawDrawings() implementation removed as it was a duplicate

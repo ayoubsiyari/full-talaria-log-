@@ -109,13 +109,31 @@ class PanelManager {
         // Listen for scroll sync events from charts
         window.addEventListener('chartScrolled', (e) => {
             const d = e.detail || {};
-            const { panel, offsetX, candleWidth, startTimestamp, endTimestamp } = d;
+            let { panel, offsetX, candleWidth, startTimestamp, endTimestamp } = d;
+            const chart = d.chart;
             if (!panel) return;
             // Date range: align by visible time window (required when panels use different intervals).
-            if (this.syncSettings.dateRange && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
-                && startTimestamp > 0 && endTimestamp > startTimestamp) {
-                this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
-            } else if (this.syncSettings.time) {
+            if (this.syncSettings.dateRange && this.currentLayout !== '1') {
+                if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)
+                    || startTimestamp <= 0 || endTimestamp <= startTimestamp) {
+                    if (chart?.data?.length && typeof chart.getVisibleStartIndex === 'function'
+                        && typeof chart.getVisibleEndIndex === 'function') {
+                        const si = chart.getVisibleStartIndex();
+                        const ei = chart.getVisibleEndIndex();
+                        startTimestamp = chart.data[si]?.t ?? 0;
+                        const barMs = typeof chart.inferBarDurationMs === 'function'
+                            ? chart.inferBarDurationMs()
+                            : 60000;
+                        endTimestamp = (chart.data[ei]?.t ?? 0) + barMs;
+                    }
+                }
+                if (Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
+                    && startTimestamp > 0 && endTimestamp > startTimestamp) {
+                    this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
+                    return;
+                }
+            }
+            if (this.syncSettings.time) {
                 this.syncScroll(panel, offsetX, candleWidth);
             }
         });
