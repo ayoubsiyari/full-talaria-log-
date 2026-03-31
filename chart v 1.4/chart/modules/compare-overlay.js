@@ -38,6 +38,23 @@ class CompareOverlay {
         
         this.init();
     }
+
+    getMainChartBackground() {
+        try {
+            const chartContainer = document.getElementById('chart-container');
+            const chartWrapper = document.getElementById('chartWrapper');
+            const canvasEl = this.chart && this.chart.canvas ? this.chart.canvas : null;
+            const candidates = [canvasEl, chartWrapper, chartContainer, document.body];
+            for (const el of candidates) {
+                if (!el) continue;
+                const bg = window.getComputedStyle(el).backgroundColor;
+                if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+                    return bg;
+                }
+            }
+        } catch (_) {}
+        return document.body.classList.contains('light-mode') ? '#ffffff' : '#131722';
+    }
     
     init() {
         this.setupEventListeners();
@@ -738,6 +755,7 @@ class CompareOverlay {
     setupLinkedPanesContainer() {
         // Create container for linked panes below main chart
         let container = document.getElementById('linkedPanesContainer');
+        const paneBg = this.getMainChartBackground();
         if (!container) {
             const chartContainer = document.getElementById('chart-container');
             if (chartContainer) {
@@ -748,7 +766,7 @@ class CompareOverlay {
                     bottom: 30px;
                     left: 0;
                     right: 0;
-                    background: #131722;
+                    background: ${paneBg};
                     z-index: 100;
                 `;
                 chartContainer.appendChild(container);
@@ -756,6 +774,9 @@ class CompareOverlay {
             } else {
                 console.error('❌ Could not find chart-container for linked panes');
             }
+        }
+        if (container) {
+            container.style.background = paneBg;
         }
         
         // Hook into main chart's render to sync linked panes
@@ -809,6 +830,8 @@ class CompareOverlay {
             this.setupLinkedPanesContainer();
             return;
         }
+        const paneBg = this.getMainChartBackground();
+        container.style.background = paneBg;
         
         // Get main chart dimensions for reference
         const mainCanvas = this.chart.canvas;
@@ -836,7 +859,7 @@ class CompareOverlay {
                     width: 100%;
                     height: ${paneHeight}px;
                     border-top: 1px solid #363a45;
-                    background: #131722;
+                    background: ${paneBg};
                 `;
                 
                 // Create canvas - set explicit size
@@ -971,6 +994,7 @@ class CompareOverlay {
                 
                 console.log(`📊 Created linked pane wrapper for ${pane.symbol}, canvas: ${canvas.width}x${canvas.height}`);
             }
+            wrapper.style.background = paneBg;
             
             // Update canvas size to match wrapper
             const rect = wrapper.getBoundingClientRect();
@@ -999,7 +1023,7 @@ class CompareOverlay {
         // Clear canvas
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(dpr, dpr);
-        ctx.fillStyle = '#131722';
+        ctx.fillStyle = this.getMainChartBackground();
         ctx.fillRect(0, 0, width, height);
         
         const margin = { t: 10, r: 60, b: 5, l: 0 };
@@ -1384,8 +1408,8 @@ class CompareOverlay {
         }
         
         // Update OHLC display with last visible candle
-        if (visibleData.length > 0) {
-            const lastCandle = visibleData[visibleData.length - 1];
+        if (paneData.length > 0) {
+            const lastCandle = paneData[paneData.length - 1];
             this.updatePaneOHLCDirect(pane, lastCandle);
         }
         
