@@ -5612,6 +5612,8 @@ class OrderManager {
                     border: 1px solid rgba(34, 197, 94, 0.45);
                     background: rgba(8, 11, 17, 0.92);
                     box-sizing: border-box;
+                    min-width: 0;
+                    max-width: 100%;
                 }
                 .order-tp-card__header {
                     display: flex;
@@ -5668,24 +5670,46 @@ class OrderManager {
                     flex-direction: column;
                     gap: 0;
                 }
-                .order-tp-card__body { display: flex; flex-direction: column; gap: 0; }
+                .order-tp-card__body {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0;
+                    min-width: 0;
+                    max-width: 100%;
+                }
                 .order-tp-card__inputs-row {
                     display: grid;
                     grid-template-columns: 1fr 1fr;
-                    gap: 8px;
+                    gap: 6px;
                     align-items: end;
+                    width: 100%;
+                    min-width: 0;
+                    box-sizing: border-box;
+                }
+                .order-tp-card__inputs-row > .order-tp-field {
+                    min-width: 0;
+                }
+                .order-tp-card__inputs-row .order-input-wrapper {
+                    min-width: 0;
+                    width: 100%;
+                    max-width: 100%;
+                }
+                .order-tp-card__inputs-row .order-input.order-input--compact {
+                    min-width: 0;
+                    width: 100%;
+                    max-width: 100%;
                 }
                 .order-tp-card__inputs-row--three {
-                    grid-template-columns: 1fr 1fr 1fr;
+                    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
                 }
                 .order-tp-card__inputs-row--two {
-                    grid-template-columns: 1fr 1fr;
+                    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
                 }
                 .order-input-wrapper.order-input-wrapper--tp-target {
                     border: 1px solid var(--om-b) !important;
                     background: var(--om-bg) !important;
                     border-radius: 6px;
-                    padding: 0 8px !important;
+                    padding: 0 6px !important;
                 }
                 .order-tp-field__label {
                     display: block;
@@ -5702,13 +5726,13 @@ class OrderManager {
                     border-left: 3px solid #22c55e !important;
                     background: var(--om-bg) !important;
                     border-radius: 6px;
-                    padding: 0 10px 0 8px !important;
+                    padding: 0 6px 0 6px !important;
                 }
                 .order-input-wrapper.order-input-wrapper--tp-rr {
                     border: 1px solid var(--om-b) !important;
                     background: var(--om-bg) !important;
                     border-radius: 6px;
-                    padding: 0 10px !important;
+                    padding: 0 6px !important;
                 }
                 .order-input-wrapper.order-input-wrapper--tp:focus-within {
                     border-color: rgba(34, 197, 94, 0.55) !important;
