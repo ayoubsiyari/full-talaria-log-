@@ -12653,9 +12653,8 @@ class Chart {
 
             // Zoom direction: 1 = zoom in, -1 = zoom out
             const zoomDirection = e.deltaY < 0 ? 1 : -1;
-            // Use smaller base factors to slow zoom speed
             const basePriceZoomFactor = 1.06;   // vertical zoom
-            const baseTimeZoomFactor = 1.04;    // horizontal zoom
+            const baseTimeZoomFactor = 1.08;    // horizontal zoom
             const priceZoomFactor = zoomDirection > 0 ? basePriceZoomFactor : 1 / basePriceZoomFactor;
 
             // Current spacing before any zoom

@@ -111,11 +111,12 @@ class PanelManager {
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
-            if (this.syncSettings.dateRange && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
+            // Both Time and Date Range sync use the same full-window alignment
+            // (same visible wall-clock period across all panels, TradingView-style).
+            if ((this.syncSettings.dateRange || this.syncSettings.time)
+                && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
-            } else if (this.syncSettings.time) {
-                this.syncScrollByTime(panel);
             }
         });
     }
@@ -673,86 +674,24 @@ class PanelManager {
     }
 
     /**
-     * Sync time/scroll position across all panels (timestamp-based).
-     * Aligns the right edge of each panel's viewport to the same wall-clock instant
-     * without changing zoom level (unlike date-range sync which adjusts candle width).
+     * Full-window time sync (TradingView-style): all panels show the same wall-clock period.
+     * Called when Time or Date Range toggle is turned on to perform an immediate sync.
      */
     syncTime(sourcePanel, startIndex, endIndex) {
-        if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!(this.syncSettings.time || this.syncSettings.dateRange) || this.currentLayout === '1') return;
 
         const sourceChart = sourcePanel.chartInstance;
         if (!sourceChart?.data?.length) return;
 
-        const clampedEnd = Math.min(endIndex, sourceChart.data.length - 1);
-        const rightTimestamp = sourceChart.data[clampedEnd]?.t;
-        if (!rightTimestamp) return;
+        const clampedStart = Math.max(0, Math.min(startIndex, sourceChart.data.length - 1));
+        const clampedEnd = Math.max(clampedStart, Math.min(endIndex, sourceChart.data.length - 1));
+        const startTimestamp = sourceChart.data[clampedStart]?.t;
+        const barMs = typeof sourceChart.inferBarDurationMs === 'function'
+            ? sourceChart.inferBarDurationMs() : 60000;
+        const rangeEndExclusive = (sourceChart.data[clampedEnd]?.t || 0) + barMs;
 
-        this._isSyncing = true;
-        try {
-            this.panels.forEach(panel => {
-                if (panel.index === sourcePanel.index) return;
-                const chart = panel.chartInstance;
-                if (!chart?.data?.length) return;
-
-                const targetIndex = chart.findGoToTargetIndex
-                    ? chart.findGoToTargetIndex(chart.data, rightTimestamp)
-                    : this._bsearchTimestamp(chart.data, rightTimestamp);
-
-                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-                const m = chart.margin || { l: 0, r: 60 };
-                const chartWidth = chart.w - m.l - m.r;
-                const visibleCandles = Math.max(1, Math.floor(chartWidth / spacing));
-
-                chart.offsetX = -(targetIndex - visibleCandles + 1) * spacing;
-                if (chart.constrainOffset) chart.constrainOffset();
-                if (chart.scheduleRender) chart.scheduleRender();
-            });
-        } finally {
-            requestAnimationFrame(() => { this._isSyncing = false; });
-        }
-    }
-
-    /**
-     * Timestamp-based scroll sync used during continuous panning (called from chartScrolled).
-     * Each target panel keeps its own zoom level; right-edge timestamp is matched to the source.
-     */
-    syncScrollByTime(sourcePanel) {
-        if (this._isSyncing) return;
-        if (!this.syncSettings.time || this.currentLayout === '1') return;
-
-        const sourceChart = sourcePanel?.chartInstance;
-        if (!sourceChart?.data?.length) return;
-
-        const endIndex = typeof sourceChart.getVisibleEndIndex === 'function'
-            ? sourceChart.getVisibleEndIndex()
-            : sourceChart.data.length - 1;
-        const rightTimestamp = sourceChart.data[Math.min(endIndex, sourceChart.data.length - 1)]?.t;
-        if (!rightTimestamp) return;
-
-        this._isSyncing = true;
-        try {
-            this.panels.forEach(panel => {
-                if (panel.index === sourcePanel.index) return;
-                const chart = panel.chartInstance;
-                if (!chart?.data?.length) return;
-
-                const targetIndex = chart.findGoToTargetIndex
-                    ? chart.findGoToTargetIndex(chart.data, rightTimestamp)
-                    : this._bsearchTimestamp(chart.data, rightTimestamp);
-
-                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-                const m = chart.margin || { l: 0, r: 60 };
-                const chartWidth = chart.w - m.l - m.r;
-                const visibleCandles = Math.max(1, Math.floor(chartWidth / spacing));
-
-                chart.offsetX = -(targetIndex - visibleCandles + 1) * spacing;
-                if (chart.constrainOffset) chart.constrainOffset();
-                if (chart.scheduleRender) chart.scheduleRender();
-                else if (chart.render) chart.render();
-            });
-        } finally {
-            requestAnimationFrame(() => { this._isSyncing = false; });
-        }
+        if (!startTimestamp || rangeEndExclusive <= startTimestamp) return;
+        this.syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive);
     }
     
     /**
@@ -784,7 +723,7 @@ class PanelManager {
      */
     syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
         if (this._isSyncing) return;
-        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
+        if (!(this.syncSettings.dateRange || this.syncSettings.time) || this.currentLayout === '1') return;
 
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
@@ -842,16 +781,20 @@ class PanelManager {
         }
     }
 
-    /** @deprecated replaced by syncScrollByTime – kept as no-op in case external code references it */
+    /** @deprecated kept for backward compatibility */
     syncScroll(sourcePanel) {
-        this.syncScrollByTime(sourcePanel);
+        if (!sourcePanel?.chartInstance?.data?.length) return;
+        const chart = sourcePanel.chartInstance;
+        const si = typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0;
+        const ei = typeof chart.getVisibleEndIndex === 'function' ? chart.getVisibleEndIndex() : chart.data.length - 1;
+        this.syncTime(sourcePanel, si, ei);
     }
     
     /**
      * Sync date range across all panels (same visible wall-clock window + fit zoom)
      */
     syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
-        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
+        if (!(this.syncSettings.dateRange || this.syncSettings.time) || this.currentLayout === '1') return;
 
         const sourceChart = sourcePanel.chartInstance;
         if (!sourceChart?.data?.length) return;
