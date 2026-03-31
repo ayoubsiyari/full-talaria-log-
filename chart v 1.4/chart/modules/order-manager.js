@@ -8258,9 +8258,20 @@ class OrderManager {
         }
     }
     
+    /** Risk $ readout: dollar amount as % of the balance radio (current vs initial). */
+    _riskUsdAsPercentLabel(riskUsd) {
+        if (!riskUsd || riskUsd <= 0) return '';
+        const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+        const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+        if (!balance || !Number.isFinite(balance) || balance <= 0) return '';
+        const pct = (riskUsd / balance) * 100;
+        const scope = balanceType === 'initial' ? 'initial' : 'current';
+        return `${pct.toFixed(2)}% of ${scope}`;
+    }
+
     /**
      * Label + primary/secondary strings for the position readout row (mode-aware).
-     * Risk $ → lots + "$ risk"; Risk % → lots + "% · $"; Lot size → $ risk + lots (or hint).
+     * Risk $ → lots + "% of balance"; Risk % → lots + "% · $"; Lot size → $ risk + lots (or hint).
      */
     _getCalculatedReadoutParts() {
         const config = this.getMarketConfig();
@@ -8318,7 +8329,7 @@ class OrderManager {
             if (mode === 'risk-percent' && riskPercentVal > 0) {
                 secondary = `${riskPercentVal}% · $${pctRiskAmount.toFixed(2)}`;
             } else if (mode === 'risk-usd' && riskUsdVal > 0) {
-                secondary = `$${riskUsdVal.toFixed(2)} risk`;
+                secondary = this._riskUsdAsPercentLabel(riskUsdVal);
             }
             return { label, primary, secondary };
         }
@@ -8347,7 +8358,7 @@ class OrderManager {
         const primary = `${positionSize.toFixed(2)} ${positionLabel}`;
         let secondary = '';
         if (mode === 'risk-usd') {
-            secondary = `$${riskAmount.toFixed(2)} risk`;
+            secondary = this._riskUsdAsPercentLabel(riskAmount);
         } else if (mode === 'risk-percent') {
             secondary = `${riskPercentVal}% · $${riskAmount.toFixed(2)}`;
         }
