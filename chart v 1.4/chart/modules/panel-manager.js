@@ -44,8 +44,8 @@ class PanelManager {
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
 
-        /** Last (panelIndex:rightEdgeBarIndex) for Time sync — one follower jump per source bar at the right edge. */
-        this._timeSyncDiscreteKey = null;
+        /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
+        this._timeSyncLastTargetBar = {};
         
         // Sync settings - time enabled by default for smooth scroll sync
         this.syncSettings = {
@@ -121,19 +121,14 @@ class PanelManager {
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
             }
-            // Time: one jump when the bar at the source's RIGHT EDGE advances (range-by-range; matches wheel anchor math).
+            // Time: discrete range-by-range sync. Each TARGET panel jumps only when
+            // the bar IT would show at its right edge changes — so a 5m target jumps
+            // once every 5 min of scrolling, a 1m target jumps once per minute.
             else if (this.syncSettings.time
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
-                const reIdx = Number.isFinite(d.rightEdgeBarIndex)
-                    ? d.rightEdgeBarIndex
-                    : (Number.isFinite(d.endIndex) ? d.endIndex : -1);
-                const discreteKey = `${panel.index}:${reIdx}`;
-                if (this._timeSyncDiscreteKey === discreteKey) return;
-                this._timeSyncDiscreteKey = discreteKey;
                 const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
-                    ? d.timeSyncEndTimestamp
-                    : endTimestamp;
-                this.syncScrollByRightEdge(panel, ts);
+                    ? d.timeSyncEndTimestamp : endTimestamp;
+                this._discreteTimeSyncToRightEdge(panel, ts);
             }
         });
     }
@@ -516,7 +511,7 @@ class PanelManager {
             timeToggle.addEventListener('change', (e) => {
                 e.stopPropagation();
                 this.syncSettings.time = e.target.checked;
-                this._timeSyncDiscreteKey = null;
+                this._timeSyncLastTargetBar = {};
                 this.saveSyncSettings();
 
                 if (e.target.checked && this.panels.length > 1) {
@@ -671,14 +666,15 @@ class PanelManager {
     }
 
     /**
-     * Center all other panels on a wall-clock instant (Time sync). Source chart unchanged.
+     * Position a timestamp on all follower panels at a given fraction across the chart width
+     * (0 = left edge, 0.5 = center, 1 = right edge). Each panel keeps its own zoom.
      */
-    _centerOtherPanelsOnTimestamp(sourcePanel, timestamp) {
+    _positionOtherPanelsOnTimestamp(sourcePanel, timestamp, fraction) {
         if (!this.syncSettings.time || this.currentLayout === '1') return;
         if (!Number.isFinite(timestamp)) return;
 
-        const toRelease = [];
         this._isSyncing = true;
+        const toRelease = [];
         try {
             this.panels.forEach(panel => {
                 if (panel.index === sourcePanel.index) return;
@@ -696,9 +692,11 @@ class PanelManager {
                 const m = chart.margin || { l: 0, r: 60 };
                 const chartWidth = chart.w - m.l - m.r;
 
-                chart.offsetX = (chartWidth / 2) - (targetIdx * spacing);
+                chart.offsetX = (chartWidth * fraction) - (targetIdx * spacing);
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
+
+                this._timeSyncLastTargetBar[panel.index] = targetIdx;
             });
         } finally {
             requestAnimationFrame(() => {
@@ -711,52 +709,63 @@ class PanelManager {
     }
 
     /**
-     * TradingView-style: when a panel is selected, other panels show the same center time.
+     * TradingView-style: when a panel is selected, show its right-edge time on all others.
      */
     syncTimeToPanel(sourcePanel) {
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
 
-        const startIndex = typeof sourceChart.getVisibleStartIndex === 'function'
-            ? sourceChart.getVisibleStartIndex() : 0;
         const endIndex = typeof sourceChart.getVisibleEndIndex === 'function'
             ? sourceChart.getVisibleEndIndex() : sourceChart.data.length - 1;
-        const centerIndex = Math.floor((startIndex + endIndex) / 2);
-        const centerTs = sourceChart.data[Math.min(centerIndex, sourceChart.data.length - 1)]?.t;
-        if (!centerTs) return;
-        this._centerOtherPanelsOnTimestamp(sourcePanel, centerTs);
+        const rightTs = sourceChart.data[Math.min(endIndex, sourceChart.data.length - 1)]?.t;
+        if (!rightTs) return;
+        this._positionOtherPanelsOnTimestamp(sourcePanel, rightTs, 0.85);
     }
 
     /**
-     * TradingView-style: click on a bar — other panels jump to that same date/time.
+     * Click on a bar → place that time at the same relative screen position on follower panels.
      */
-    syncTimeToClickedTimestamp(sourcePanel, timestamp) {
-        this._centerOtherPanelsOnTimestamp(sourcePanel, timestamp);
+    syncTimeToClickedTimestamp(sourcePanel, timestamp, screenFraction) {
+        const frac = Number.isFinite(screenFraction) ? screenFraction : 0.5;
+        this._positionOtherPanelsOnTimestamp(sourcePanel, timestamp, frac);
     }
     
     /**
-     * Time-sync scroll: align right-edge timestamp across panels, keep each panel's own zoom.
-     * Produces the discrete "jump" effect (e.g. 1 bar on 5m = 5 bars on 1m).
+     * Per-target discrete Time sync: for each follower panel, compute which bar index
+     * the source's right-edge timestamp maps to in THAT panel's data. Only update
+     * when that target bar index changes (so 5m targets jump every 5 minutes, 1m every minute).
      */
-    syncScrollByRightEdge(sourcePanel, rightEdgeTimestamp) {
+    _discreteTimeSyncToRightEdge(sourcePanel, rightEdgeTimestamp) {
         if (this._isSyncing) return;
         if (!this.syncSettings.time || this.currentLayout === '1') return;
         if (!Number.isFinite(rightEdgeTimestamp)) return;
 
-        const toRelease = [];
+        let anyChanged = false;
+        const toUpdate = [];
+
+        this.panels.forEach(panel => {
+            if (panel.index === sourcePanel.index) return;
+            const chart = panel.chartInstance;
+            if (!chart?.data?.length) return;
+
+            const targetIdx = chart.findGoToTargetIndex
+                ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
+                : this._bsearchTimestamp(chart.data, rightEdgeTimestamp);
+
+            const lastIdx = this._timeSyncLastTargetBar[panel.index];
+            if (lastIdx === targetIdx) return;
+
+            this._timeSyncLastTargetBar[panel.index] = targetIdx;
+            anyChanged = true;
+            toUpdate.push({ chart, targetIdx });
+        });
+
+        if (!anyChanged) return;
+
         this._isSyncing = true;
         try {
-            this.panels.forEach(panel => {
-                if (panel.index === sourcePanel.index) return;
-                const chart = panel.chartInstance;
-                if (!chart?.data?.length) return;
-
+            toUpdate.forEach(({ chart, targetIdx }) => {
                 chart._suppressPanelScrollSync = true;
-                toRelease.push(chart);
-
-                const targetIdx = chart.findGoToTargetIndex
-                    ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
-                    : this._bsearchTimestamp(chart.data, rightEdgeTimestamp);
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
                 const m = chart.margin || { l: 0, r: 60 };
@@ -770,7 +779,7 @@ class PanelManager {
         } finally {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    toUpdate.forEach(({ chart }) => { chart._suppressPanelScrollSync = false; });
                     this._isSyncing = false;
                 });
             });
@@ -1902,7 +1911,7 @@ class PanelManager {
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
-        this._timeSyncDiscreteKey = null;
+        this._timeSyncLastTargetBar = {};
 
         // Deselect all panels
         this.panels.forEach((panel, i) => {

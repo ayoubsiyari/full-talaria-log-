@@ -13230,6 +13230,9 @@ class Chart {
                                 const clamped = Math.max(0, Math.min(idx, this.data.length - 1));
                                 const ts = this.data[clamped]?.t;
                                 if (ts && typeof pm.syncTimeToClickedTimestamp === 'function') {
+                                    const mm = this.margin || { l: 0, r: 60 };
+                                    const cw = this.w - mm.l - mm.r;
+                                    const screenFrac = cw > 0 ? Math.max(0, Math.min(1, (mx - mm.l) / cw)) : 0.5;
                                     let sourcePanel = this.panel || null;
                                     if (!sourcePanel && typeof pm.getPanels === 'function') {
                                         const panels = pm.getPanels();
@@ -13244,7 +13247,7 @@ class Chart {
                                         }
                                     }
                                     if (sourcePanel) {
-                                        pm.syncTimeToClickedTimestamp(sourcePanel, ts);
+                                        pm.syncTimeToClickedTimestamp(sourcePanel, ts, screenFrac);
                                     }
                                 }
                             }
