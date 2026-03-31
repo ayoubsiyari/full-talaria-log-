@@ -12063,9 +12063,38 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         if (!this.yScale) return;
 
-        const lastCandle = this.data[this.data.length - 1];
-        if (!lastCandle) return;
-        const price = lastCandle.c;
+        // Use visible/replay-synced price so line doesn't disappear intermittently
+        // when global last candle is outside the current replay/viewport context.
+        let price = null;
+        const lastVisible = (Array.isArray(visible) && visible.length > 0) ? visible[visible.length - 1] : null;
+        if (lastVisible && Number.isFinite(lastVisible.c)) {
+            price = lastVisible.c;
+        }
+        if (!Number.isFinite(price) && this.data && this.data.length > 0) {
+            const lastCandle = this.data[this.data.length - 1];
+            if (lastCandle && Number.isFinite(lastCandle.c)) price = lastCandle.c;
+        }
+
+        if (this.replaySystem && this.replaySystem.isActive) {
+            const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
+            let replayPrice = null;
+            if (hasOwnData) {
+                if (this.data && this.data.length > 0) replayPrice = this.data[this.data.length - 1].c;
+            } else {
+                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
+                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
+                }
+                if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
+                    replayPrice = this.replaySystem.animatingCandle.close;
+                }
+                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
+                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
+                }
+            }
+            if (Number.isFinite(replayPrice)) price = replayPrice;
+        }
+
+        if (!Number.isFinite(price)) return;
         const y = this.yScale(price);
         const m = this.margin;
         if (!isFinite(y) || y < m.t || y > this.h - m.b) return;
