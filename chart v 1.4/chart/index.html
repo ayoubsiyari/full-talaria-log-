@@ -25193,7 +25193,7 @@
 
             text-shadow: none;
 
-            filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)) drop-shadow(0 0 6px rgba(255, 255, 255, 0.28)) drop-shadow(0 0 14px rgba(255, 255, 255, 0.12));
+            filter: none;
 
         }
 
@@ -25201,27 +25201,44 @@
 
             text-shadow: none;
 
-            filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.2)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.12)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+            filter: none;
 
         }
 
         /* Chart watermark symbol: same soft glow as “Talaria-Log” (drop-shadow respects image alpha) */
         .chart-brand.brand-lockup img.logo-dark {
 
-            filter: brightness(1.85) saturate(0)
-                drop-shadow(0 0 1px rgba(255, 255, 255, 0.55))
-                drop-shadow(0 0 6px rgba(255, 255, 255, 0.28))
-                drop-shadow(0 0 14px rgba(255, 255, 255, 0.12));
+            filter: brightness(1.85) saturate(0);
 
         }
 
         .chart-brand.brand-lockup img.logo-light {
 
+            filter: brightness(1) saturate(0);
+
+        }
+
+        /* Glow only on hover */
+        .chart-brand.brand-lockup:hover .logo-bottom.logo-dark {
+            filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)) drop-shadow(0 0 6px rgba(255, 255, 255, 0.28)) drop-shadow(0 0 14px rgba(255, 255, 255, 0.12));
+        }
+
+        .chart-brand.brand-lockup:hover .logo-bottom.logo-light {
+            filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.2)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.12)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+        }
+
+        .chart-brand.brand-lockup:hover img.logo-dark {
+            filter: brightness(1.85) saturate(0)
+                drop-shadow(0 0 1px rgba(255, 255, 255, 0.55))
+                drop-shadow(0 0 6px rgba(255, 255, 255, 0.28))
+                drop-shadow(0 0 14px rgba(255, 255, 255, 0.12));
+        }
+
+        .chart-brand.brand-lockup:hover img.logo-light {
             filter: brightness(1) saturate(0)
                 drop-shadow(0 0 1px rgba(0, 0, 0, 0.2))
                 drop-shadow(0 0 5px rgba(0, 0, 0, 0.12))
                 drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
-
         }
 
 
