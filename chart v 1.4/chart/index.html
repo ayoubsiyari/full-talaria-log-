@@ -33109,32 +33109,7 @@
 
         }
 
-        /* Slow sweep across full track (visible even at low %) */
-        .loader-progress-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            width: 35%;
-            background: linear-gradient(
-                90deg,
-                transparent 0%,
-                rgba(255, 255, 255, 0.12) 50%,
-                transparent 100%
-            );
-            animation: loaderTrackSweep 4.2s linear infinite;
-            pointer-events: none;
-            z-index: 1;
-        }
-
-        @keyframes loaderTrackSweep {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(400%); }
-        }
-
-        
-
+        /* Fill width is updated by JS — keep shimmer on a separate layer so CSS animation never restarts */
         .loader-progress-bar {
 
             height: 100%;
@@ -33149,34 +33124,57 @@
 
             position: relative;
 
-            overflow: hidden;
-
-            z-index: 2;
+            z-index: 1;
 
         }
 
-        .loader-progress-bar::after {
+        .loader-progress-shimmer {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            overflow: hidden;
+            border-radius: inherit;
+        }
+
+        .loader-progress-shimmer::before {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             bottom: 0;
-            width: 45%;
-            min-width: 72px;
+            width: 42%;
             background: linear-gradient(
                 90deg,
                 transparent 0%,
-                rgba(255, 255, 255, 0.42) 50%,
+                rgba(255, 255, 255, 0.45) 50%,
                 transparent 100%
             );
-            animation: loaderBarShimmer 3.4s linear infinite;
-            pointer-events: none;
+            animation: loaderShimmerSweep 3.6s linear infinite;
             will-change: transform;
         }
 
-        @keyframes loaderBarShimmer {
-            0% { transform: translateX(-120%); }
-            100% { transform: translateX(380%); }
+        .loader-progress-shimmer::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 28%;
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(255, 255, 255, 0.14) 50%,
+                transparent 100%
+            );
+            animation: loaderShimmerSweep 5.8s linear infinite;
+            animation-delay: -1.4s;
+            will-change: transform;
+        }
+
+        @keyframes loaderShimmerSweep {
+            0% { transform: translate3d(-100%, 0, 0); }
+            100% { transform: translate3d(400%, 0, 0); }
         }
 
         
@@ -35991,6 +35989,8 @@
             <div class="loader-progress-container">
 
                 <div class="loader-progress-bar" id="loaderProgress"></div>
+
+                <div class="loader-progress-shimmer" aria-hidden="true"></div>
 
             </div>
 
