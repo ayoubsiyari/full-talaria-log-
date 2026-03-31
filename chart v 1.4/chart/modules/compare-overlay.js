@@ -18,6 +18,9 @@ const COMPARE_TRASH_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" 
 class CompareOverlay {
     constructor(chart) {
         this.chart = chart;
+        this.scopeKey = chart && chart.isPanel
+            ? `panel_${chart.panelIndex != null ? chart.panelIndex : 'x'}`
+            : 'main';
         this.overlays = []; // Array of overlay objects
         this.colors = [
             '#FF6B6B', // Red
@@ -789,13 +792,16 @@ class CompareOverlay {
     
     setupLinkedPanesContainer() {
         // Create container for linked panes below main chart
-        let container = document.getElementById('linkedPanesContainer');
+        const containerId = `linkedPanesContainer_${this.scopeKey}`;
+        let container = document.getElementById(containerId);
         const paneBg = this.getMainChartBackground();
         if (!container) {
-            const chartContainer = document.getElementById('chart-container');
+            const chartContainer = (typeof this.chart._getPanelOverlayContainer === 'function')
+                ? this.chart._getPanelOverlayContainer()
+                : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
             if (chartContainer) {
                 container = document.createElement('div');
-                container.id = 'linkedPanesContainer';
+                container.id = containerId;
                 container.style.cssText = `
                     position: absolute;
                     bottom: 30px;
@@ -859,7 +865,7 @@ class CompareOverlay {
     renderLinkedPanes() {
         if (!this.linkedPanes || this.linkedPanes.length === 0) return;
         
-        const container = document.getElementById('linkedPanesContainer');
+        const container = document.getElementById(`linkedPanesContainer_${this.scopeKey}`);
         if (!container) {
             console.log('📊 No linked panes container, creating...');
             this.setupLinkedPanesContainer();
