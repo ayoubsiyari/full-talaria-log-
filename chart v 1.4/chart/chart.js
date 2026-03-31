@@ -607,8 +607,8 @@ class Chart {
             this.initIndicators();
         }
         
-        // Initialize Compare Overlay (only for main chart)
-        if (!this.isPanel && typeof CompareOverlay !== 'undefined') {
+        // Initialize Compare Overlay per chart instance (main + panels)
+        if (typeof CompareOverlay !== 'undefined') {
             try {
                 this.compareOverlay = new CompareOverlay(this);
             } catch (e) {
