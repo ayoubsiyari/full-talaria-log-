@@ -785,14 +785,18 @@ class PanelManager {
                 const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
                 const numBars = Math.max(1, iR2 - iL2 + 1);
 
-                // Continuous width for smooth multi-panel sync (avoid Fibonacci snap jitter).
+                // Fit the same wall-clock window: spacing = plotWidth / numBars. Must allow bar width
+                // above the normal UI max (~89px) on HTF when few bars span the window — otherwise
+                // clamp + left-align branch broke axis range vs 1m and crosshair X mismatch.
                 const rawSpacing = chartWidth / numBars;
                 const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
                     ? chart.zoomLevel.allowedWidths
                     : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                 const minW = allowedWidths[0];
-                const maxW = allowedWidths[allowedWidths.length - 1];
-                chart.candleWidth = Math.max(minW, Math.min(maxW, rawSpacing));
+                // Upper bound: one bar may span up to full plot width when the window is a single HTF bar.
+                const maxSyncCandle = Math.max(minW, chartWidth);
+                chart._dateRangeSyncAllowWideCandles = true;
+                chart.candleWidth = Math.max(minW, Math.min(maxSyncCandle, rawSpacing));
                 let nearestIdx = 0;
                 let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
                 for (let i = 1; i < allowedWidths.length; i++) {
@@ -806,21 +810,12 @@ class PanelManager {
                 if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
-                // If the ideal zoom would exceed max bar width (few HTF bars in the same wall-clock
-                // window as many 1m bars), we cannot fill the plot — right-edge math then fights
-                // constrainOffset() and the chart looks like it "snaps to center". Pin the window
-                // start to the left edge instead (stable HTF behavior).
-                const hitZoomCeiling = rawSpacing > maxW + 1e-6;
-                if (hitZoomCeiling) {
-                    chart.offsetX = -iL2 * spacing;
-                } else {
-                    const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
-                        ? chart.timeScale.rightOffsetCandles
-                        : 5;
-                    const rightMargin = Math.max(0, rightMarginCandles) * spacing;
-                    const targetRight = chart.w - m.r - rightMargin;
-                    chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
-                }
+                const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
+                    ? chart.timeScale.rightOffsetCandles
+                    : 5;
+                const rightMargin = Math.max(0, rightMarginCandles) * spacing;
+                const targetRight = chart.w - m.r - rightMargin;
+                chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
