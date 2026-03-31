@@ -4095,30 +4095,27 @@ class ReplaySystem {
     }
 
     /**
-     * Check if the last candle is visible in the viewport (same logic for main + panel charts).
-     */
-    isLastCandleVisibleForChart(chart) {
-        if (!chart || !chart.data || chart.data.length === 0) {
-            return true;
-        }
-
-        const lastIndex = chart.data.length - 1;
-
-        let visibleEnd;
-        if (typeof chart.getVisibleEndIndex === 'function') {
-            visibleEnd = chart.getVisibleEndIndex();
-        } else {
-            visibleEnd = chart.visibleEndIndex || 0;
-        }
-
-        return visibleEnd >= (lastIndex - 1);
-    }
-
-    /**
      * Check if the last candle is visible in the viewport
      */
     isLastCandleVisible() {
-        return this.isLastCandleVisibleForChart(this.chart);
+        if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
+            return true;
+        }
+        
+        const lastIndex = this.chart.data.length - 1;
+        
+        // Use getVisibleEndIndex method if available, otherwise fall back to property
+        let visibleEnd;
+        if (typeof this.chart.getVisibleEndIndex === 'function') {
+            visibleEnd = this.chart.getVisibleEndIndex();
+        } else {
+            visibleEnd = this.chart.visibleEndIndex || 0;
+        }
+        
+        
+        // Last candle is visible if it's within the visible range (with small buffer)
+        const isVisible = visibleEnd >= (lastIndex - 1);
+        return isVisible;
     }
 
     /**
@@ -4138,28 +4135,21 @@ class ReplaySystem {
             }
         }
 
-        // Update panel follow buttons — same visibility rule as #replayFollow (getVisibleEndIndex)
+        // Update panel follow buttons
         const pm = window.panelManager;
         if (pm && pm.panels) {
             pm.panels.forEach((panel, idx) => {
                 const btn = document.getElementById(`panelFollow${idx}`);
                 if (!btn) return;
-                if (!this.isActive) {
-                    btn.style.display = 'none';
-                    return;
-                }
+                if (!this.isActive) { btn.style.display = 'none'; return; }
                 const pc = panel.chartInstance;
-                if (!pc || !pc.data || pc.data.length === 0) {
-                    btn.style.display = 'none';
-                    return;
-                }
-                const showPanelFollow = !this.isLastCandleVisibleForChart(pc);
-                if (showPanelFollow) {
-                    btn.style.display = 'flex';
-                    btn.style.opacity = '1';
-                } else {
-                    btn.style.display = 'none';
-                }
+                if (!pc || !pc.data || pc.data.length === 0) { btn.style.display = 'none'; return; }
+                const m = pc.margin || { l: 0, r: 0 };
+                const spacing = typeof pc.getCandleSpacing === 'function' ? pc.getCandleSpacing() : (pc.candleWidth + 2);
+                const lastX = m.l + (pc.data.length - 1) * spacing + (pc.offsetX || 0);
+                const visible = lastX >= 0 && lastX <= (pc.w || 0) + spacing * 2;
+                btn.style.display = visible ? 'none' : 'flex';
+                if (!visible) btn.style.opacity = '1';
             });
         }
     }

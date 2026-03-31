@@ -208,8 +208,6 @@ class Chart {
         this.isZooming = false;
         this.magnetMode = 'off'; // Magnet mode for snapping to OHLC
         this.currentTimeframe = '1m'; // Track current timeframe
-        /** When true, next constrainOffset() allows candleWidth above zoom UI max (multi-TF date-range sync only). */
-        this._allowWiderThanMaxCandleForSync = false;
 
         this.activeTradingSessionId = null;
         this._sessionStateLoadedFor = null;
@@ -7109,10 +7107,6 @@ class Chart {
         const barMs = this.inferBarDurationMs();
         // Exclusive end of the visible window (same wall-clock span on every timeframe).
         const endTimestamp = (this.data[endIndex]?.t ?? 0) + barMs;
-
-        // Skip when time axis / visible window did not change (e.g. vertical price zoom only).
-        const sig = `${Math.round(this.offsetX * 100) / 100}|${this.candleWidth}|${startTimestamp}|${endTimestamp}`;
-        if (this._lastScrollSyncSig === sig) return;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
@@ -7131,8 +7125,6 @@ class Chart {
         }
         
         if (!sourcePanel) return;
-
-        this._lastScrollSyncSig = sig;
         window.dispatchEvent(new CustomEvent('chartScrolled', {
             detail: {
                 chart: this,
@@ -7470,12 +7462,7 @@ class Chart {
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
         if (this.candleWidth < minWidth) this.candleWidth = minWidth;
-        if (this._allowWiderThanMaxCandleForSync) {
-            if (this.candleWidth > cw) this.candleWidth = cw;
-            this._allowWiderThanMaxCandleForSync = false;
-        } else if (this.candleWidth > maxWidth) {
-            this.candleWidth = maxWidth;
-        }
+        if (this.candleWidth > maxWidth) this.candleWidth = maxWidth;
         
         // Allow wider price zoom range
         const minZoom = this.minPriceZoom;
@@ -10280,22 +10267,6 @@ class Chart {
     }
 
     /**
-     * Inverse of _getSpacingForCandleWidth: desired px per bar (plotWidth / numBars) → candleWidth
-     * so getCandleSpacing() matches target spacing (fixes multi-panel date-range sync offset math).
-     */
-    targetCandleWidthForPlotSpacing(targetSpacing) {
-        const MIN_GAP_PX = 2;
-        const minW = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
-            ? this.zoomLevel.allowedWidths[0]
-            : 0.2;
-        if (!Number.isFinite(targetSpacing) || targetSpacing <= MIN_GAP_PX) return minW;
-        const wWide = targetSpacing - MIN_GAP_PX;
-        if (wWide > 4) return wWide;
-        const wNarrow = targetSpacing - MIN_GAP_PX - 1;
-        return Math.max(minW, wNarrow);
-    }
-
-    /**
      * Get effective candle spacing based on zoom level
      * This ensures consistent spacing calculations throughout the chart
      */
@@ -12474,36 +12445,24 @@ class Chart {
     
     /**
      * Get the index of the first visible candle
-     * Must match calculateScales() visible slice (without buffer) so panel date-range sync
-     * matches the actual plot window — not Math.floor(-offsetX/spacing), which diverges from
-     * -Math.floor(offsetX/spacing) when offset/spacing is not integral.
      * @returns {number} Start index
      */
     getVisibleStartIndex() {
         if (!this.data || this.data.length === 0) return 0;
-        const m = this.margin || { l: 0, r: 60 };
-        const spacing = this.getCandleSpacing();
-        const cw = this.w - m.l - m.r;
-        if (cw <= 0 || spacing <= 0) return 0;
-        const leftIdx = -Math.floor(this.offsetX / spacing);
-        return Math.max(0, Math.min(leftIdx, this.data.length - 1));
+        const startIdx = Math.floor(this.pixelToDataIndex(this.margin.l));
+        return Math.max(0, startIdx);
     }
     
     /**
-     * Get the index of the last visible candle (inclusive) in the main plot width (w - margins).
+     * Get the index of the last visible candle
      * @returns {number} End index
      */
     getVisibleEndIndex() {
         if (!this.data || this.data.length === 0) return 0;
-        const m = this.margin || { l: 0, r: 60 };
-        const spacing = this.getCandleSpacing();
-        const cw = this.w - m.l - m.r;
-        if (cw <= 0 || spacing <= 0) return 0;
-        const leftIdx = -Math.floor(this.offsetX / spacing);
-        const endExclusive = leftIdx + Math.ceil(cw / spacing);
-        const endInclusive = Math.min(this.data.length - 1, endExclusive - 1);
-        const start = Math.max(0, Math.min(leftIdx, this.data.length - 1));
-        return Math.max(start, Math.max(0, endInclusive));
+        // Treat the right-axis zone as part of the drawable viewport so the last candle
+        // remains rendered while moving behind the axis.
+        const endIdx = Math.ceil(this.pixelToDataIndex(this.w));
+        return Math.min(this.data.length - 1, endIdx);
     }
     
     // First redrawDrawings() implementation removed as it was a duplicate
@@ -12744,7 +12703,7 @@ class Chart {
                 }
 
                 this.scheduleRender();
-                // Do not sync other panels on vertical price zoom — time axis unchanged.
+                this.dispatchScrollSync();
                 return;
             }
 
@@ -13006,9 +12965,7 @@ class Chart {
                     
                     this.constrainOffset();
                     this.scheduleRender();
-                    if (resisted.dx !== 0) {
-                        this.dispatchScrollSync();
-                    }
+                    this.dispatchScrollSync();
                     
                     // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
@@ -13382,9 +13339,7 @@ class Chart {
                         }
                         this.constrainOffset();
                         this.scheduleRender();
-                        if (effectiveDx !== 0) {
-                            this.dispatchScrollSync();
-                        }
+                        this.dispatchScrollSync();
                     }
 
                     this.drag.lastX = e.clientX;

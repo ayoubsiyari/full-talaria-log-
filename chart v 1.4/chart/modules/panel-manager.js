@@ -43,10 +43,6 @@ class PanelManager {
 
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
-
-        /** Coalesce chartScrolled → one follower update per animation frame (TradingView-smooth) */
-        this._scrollSyncRafId = null;
-        this._pendingScrollSyncDetail = null;
         
         // Sync settings - time enabled by default for smooth scroll sync
         this.syncSettings = {
@@ -110,71 +106,19 @@ class PanelManager {
      * Setup event listeners for panel synchronization
      */
     setupEventListeners() {
+        // Listen for scroll sync events from charts
         window.addEventListener('chartScrolled', (e) => {
             const d = e.detail || {};
-            if (!d.panel) return;
-            this._pendingScrollSyncDetail = d;
-            if (this._scrollSyncRafId != null) return;
-            this._scrollSyncRafId = requestAnimationFrame(() => {
-                this._scrollSyncRafId = null;
-                const detail = this._pendingScrollSyncDetail;
-                this._pendingScrollSyncDetail = null;
-                if (detail) this._applyScrollSyncFromDetail(detail);
-            });
-        });
-    }
-
-    /**
-     * Apply latest coalesced scroll sync (one update per frame — avoids dropped events + jank).
-     */
-    /**
-     * True when any other panel uses a different timeframe than the source (1m vs 5m, etc.).
-     * Pixel-based time sync is wrong in that case — follower must match wall-clock range + zoom.
-     */
-    _panelsHaveDifferentTimeframes(sourcePanel) {
-        const src = sourcePanel?.chartInstance;
-        const srcTf = src && src.currentTimeframe ? String(src.currentTimeframe).toLowerCase().trim() : '';
-        if (!srcTf) return false;
-        for (const p of this.panels) {
-            if (p.index === sourcePanel.index) continue;
-            const c = p.chartInstance;
-            const tf = c && c.currentTimeframe ? String(c.currentTimeframe).toLowerCase().trim() : '';
-            if (tf && tf !== srcTf) return true;
-        }
-        return false;
-    }
-
-    _applyScrollSyncFromDetail(d) {
-        let { panel, offsetX, candleWidth, startTimestamp, endTimestamp } = d;
-        const chart = d.chart;
-        if (!panel) return;
-        const useWallClock = this.currentLayout !== '1' && (
-            this.syncSettings.dateRange
-            || (this.syncSettings.time && this._panelsHaveDifferentTimeframes(panel))
-        );
-        if (useWallClock) {
-            if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)
-                || startTimestamp <= 0 || endTimestamp <= startTimestamp) {
-                if (chart?.data?.length && typeof chart.getVisibleStartIndex === 'function'
-                    && typeof chart.getVisibleEndIndex === 'function') {
-                    const si = chart.getVisibleStartIndex();
-                    const ei = chart.getVisibleEndIndex();
-                    startTimestamp = chart.data[si]?.t ?? 0;
-                    const barMs = typeof chart.inferBarDurationMs === 'function'
-                        ? chart.inferBarDurationMs()
-                        : 60000;
-                    endTimestamp = (chart.data[ei]?.t ?? 0) + barMs;
-                }
-            }
-            if (Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
+            const { panel, offsetX, candleWidth, startTimestamp, endTimestamp } = d;
+            if (!panel) return;
+            // Date range: align by visible time window (required when panels use different intervals).
+            if (this.syncSettings.dateRange && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
-                return;
+            } else if (this.syncSettings.time) {
+                this.syncScroll(panel, offsetX, candleWidth);
             }
-        }
-        if (this.syncSettings.time) {
-            this.syncScroll(panel, offsetX, candleWidth);
-        }
+        });
     }
     
     /**
@@ -782,16 +726,15 @@ class PanelManager {
      * @param {number} rangeEndExclusive - first instant after the last visible bar (source open + barMs).
      */
     syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
-        if (this.currentLayout === '1') return;
-        const useWallClock = this.syncSettings.dateRange
-            || (this.syncSettings.time && this._panelsHaveDifferentTimeframes(sourcePanel));
-        if (!useWallClock) return;
+        if (this._isSyncing) return;
+        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
 
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
         if (!Number.isFinite(startTimestamp) || !Number.isFinite(rangeEndExclusive)) return;
         if (rangeEndExclusive <= startTimestamp) return;
 
+        this._isSyncing = true;
         this._syncingDateRange = true;
         try {
             this.panels.forEach(panel => {
@@ -809,34 +752,19 @@ class PanelManager {
                 const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
                 const numBars = Math.max(1, iR2 - iL2 + 1);
 
-                // Target horizontal pitch must match getCandleSpacing() = candleWidth + gap (+ narrow boost), not raw candleWidth.
-                const targetSpacing = chartWidth / numBars;
-                const idealW = typeof chart.targetCandleWidthForPlotSpacing === 'function'
-                    ? chart.targetCandleWidthForPlotSpacing(targetSpacing)
-                    : (() => {
-                        const wWide = targetSpacing - 2;
-                        return wWide > 4 ? wWide : Math.max(0.2, targetSpacing - 3);
-                    })();
+                const rawSpacing = chartWidth / numBars;
                 const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
                     ? chart.zoomLevel.allowedWidths
                     : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                 const minW = allowedWidths[0];
                 const maxW = allowedWidths[allowedWidths.length - 1];
-                // Few HTF bars in the same wall-clock window need spacing wider than the normal UI max (~89px).
-                // Let constrainOffset accept it once so the follower matches the leader's date range (not a pan-only drift).
-                const needWiderThanUiMax = idealW > maxW + 1e-6;
-                if (needWiderThanUiMax) {
-                    chart._allowWiderThanMaxCandleForSync = true;
-                    chart.candleWidth = Math.max(minW, Math.min(idealW, chartWidth));
-                } else {
-                    chart.candleWidth = Math.max(minW, Math.min(maxW, idealW));
-                }
+                chart.candleWidth = Math.max(minW, Math.min(maxW, rawSpacing));
                 let nearestIdx = 0;
                 let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
                 for (let i = 1; i < allowedWidths.length; i++) {
-                    const diffW = Math.abs(chart.candleWidth - allowedWidths[i]);
-                    if (diffW < minDiff) {
-                        minDiff = diffW;
+                    const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+                    if (d < minDiff) {
+                        minDiff = d;
                         nearestIdx = i;
                     }
                 }
@@ -844,18 +772,16 @@ class PanelManager {
                 if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
-                const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
-                    ? chart.timeScale.rightOffsetCandles
-                    : 5;
-                const rightMargin = Math.max(0, rightMarginCandles) * spacing;
-                const targetRight = chart.w - m.r - rightMargin;
-                chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
+                chart.offsetX = -iL2 * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
             });
         } finally {
-            this._syncingDateRange = false;
+            requestAnimationFrame(() => {
+                this._isSyncing = false;
+                this._syncingDateRange = false;
+            });
         }
     }
 
@@ -863,12 +789,16 @@ class PanelManager {
      * Direct scroll sync - synchronize chart scroll positions smoothly
      */
     syncScroll(sourcePanel, offsetX, candleWidth) {
+        // Prevent infinite sync loops
+        if (this._isSyncing) return;
         // Pixel-based scroll sync (same-speed drag). Use only when "Time" sync is on;
         // "Date range" sync uses syncScrollByVisibleTimeRange instead (multi-timeframe safe).
         if (!this.syncSettings.time || this.currentLayout === '1') return;
         
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
+        
+        this._isSyncing = true;
         
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
@@ -885,10 +815,12 @@ class PanelManager {
             // Copy offsetX directly (scaled if candle widths differ)
             chart.offsetX = sourceChart.offsetX * ratio;
             
+            // Constrain to valid range and render
             if (chart.constrainOffset) chart.constrainOffset();
-            if (chart.scheduleRender) chart.scheduleRender();
-            else if (chart.render) chart.render();
+            if (chart.render) chart.render();
         });
+        
+        requestAnimationFrame(() => { this._isSyncing = false; });
     }
     
     /**
@@ -1804,7 +1736,7 @@ class PanelManager {
         followBtn.className = 'panel-follow-btn';
         followBtn.id = `panelFollow${index}`;
         followBtn.title = 'Follow Latest Candle';
-        followBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v16" fill="none" stroke-width="2"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>`;
+        followBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v16" fill="none" stroke-width="2"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>`;
         followBtn.style.display = 'none';
         followBtn.addEventListener('click', () => {
             const replay = window.chart && window.chart.replaySystem;
