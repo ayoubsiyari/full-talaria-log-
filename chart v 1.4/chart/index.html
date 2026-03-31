@@ -57693,7 +57693,9 @@ P['symbol']={title:'Symbol',build:function(){
 
         rowCvAlign('Grid lines', gridSelCv, swCv('cv_gridClr', cs.gridColor||'rgba(42,46,57,0.6)'))+
 
-        rowCvAlign('Crosshair', crosshairLineBtnCv, crosshairSwatchBtnCv));
+        rowCvAlign('Crosshair', crosshairLineBtnCv, crosshairSwatchBtnCv)+
+
+        rowCvAlign('Price line', swCv('cv_plClr', plC)));
 
     var fontOptsSc=[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']];
 
@@ -57842,6 +57844,8 @@ P['symbol']={title:'Symbol',build:function(){
     });
 
     wClr('cv_gridClr',function(v){set('gridColor',v);spClearActiveTplSelection();});
+
+    wClr('cv_plClr',function(v){set('priceLineColor',v);spClearActiveTplSelection();});
 
     wClr('cv_scaleText',function(v){
 
