@@ -43027,7 +43027,7 @@
 
     <script defer src="modules/propfirm-tracker.js?v=20260401"></script>
 
-    <script defer src="modules/compare-overlay.js?v=20260414"></script>
+    <script defer src="modules/compare-overlay.js?v=20260415"></script>
 
     <script defer src="modules/timezone-manager.js?v=20260401"></script>
 
@@ -54871,10 +54871,11 @@ function showIndicatorsMenu() {
         // Open Compare Symbol Modal (called by + button)
 
         function openCompareSymbolModal() {
-
-            if (window.chart && window.chart.compareOverlay) {
-
-                window.chart.compareOverlay.openModal();
+            const activeChart = (typeof window.getActiveChart === 'function')
+                ? window.getActiveChart()
+                : window.chart;
+            if (activeChart && activeChart.compareOverlay) {
+                activeChart.compareOverlay.openModal();
 
             } else {
 
@@ -55492,9 +55493,11 @@ function showIndicatorsMenu() {
 
                             // Add as overlay with same scale
 
-                            if (window.chart && window.chart.compareOverlay) {
-
-                                window.chart.compareOverlay.addOverlay(numericFileId, symbolName);
+                            const _activeChartSame = (typeof window.getActiveChart === 'function')
+                                ? window.getActiveChart()
+                                : window.chart;
+                            if (_activeChartSame && _activeChartSame.compareOverlay) {
+                                _activeChartSame.compareOverlay.addOverlay(numericFileId, symbolName);
 
                             } else {
 
@@ -55508,9 +55511,11 @@ function showIndicatorsMenu() {
 
                             // Add as overlay with separate Y-axis (for now same as same-scale)
 
-                            if (window.chart && window.chart.compareOverlay) {
-
-                                window.chart.compareOverlay.addOverlay(numericFileId, symbolName);
+                            const _activeChartNewScale = (typeof window.getActiveChart === 'function')
+                                ? window.getActiveChart()
+                                : window.chart;
+                            if (_activeChartNewScale && _activeChartNewScale.compareOverlay) {
+                                _activeChartNewScale.compareOverlay.addOverlay(numericFileId, symbolName);
 
                             } else {
 

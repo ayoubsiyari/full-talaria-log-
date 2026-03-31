@@ -1489,11 +1489,22 @@ class CompareOverlay {
         if (pane.crosshair && pane.crosshair.x >= 0) {
             const cx = pane.crosshair.x;
             const cy = pane.crosshair.y;
+            const crossColor = mainChart.chartSettings?.crosshairColor || '#787b86';
+            const crossPattern = mainChart.chartSettings?.crosshairPattern || 'dashed';
+            const crossWidth = Math.max(1, parseInt(mainChart.chartSettings?.crosshairWidth, 10) || 2);
+            const cursorLabelBg = mainChart.chartSettings?.cursorLabelBgColor || axisCrosshairBg;
+            const cursorLabelText = mainChart.chartSettings?.cursorLabelTextColor || axisCrosshairText;
             
             ctx.save();
-            ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = '#787b86';
-            ctx.lineWidth = 1;
+            if (crossPattern === 'dashed') {
+                ctx.setLineDash([4, 4]);
+            } else if (crossPattern === 'dotted') {
+                ctx.setLineDash([2, 4]);
+            } else {
+                ctx.setLineDash([]);
+            }
+            ctx.strokeStyle = crossColor;
+            ctx.lineWidth = crossWidth;
             
             // Vertical line
             if (cx >= margin.l && cx <= chartWidth) {
@@ -1514,9 +1525,9 @@ class CompareOverlay {
                 const crosshairPrice = minPrice + (1 - (cy - margin.t) / chartHeight) * priceRange;
                 if (!isNaN(crosshairPrice)) {
                     ctx.setLineDash([]);
-                    ctx.fillStyle = axisCrosshairBg;
+                    ctx.fillStyle = cursorLabelBg;
                     ctx.fillRect(width - margin.r, cy - 10, margin.r, 20);
-                    ctx.fillStyle = axisCrosshairText;
+                    ctx.fillStyle = cursorLabelText;
                     ctx.font = scaleFont;
                     ctx.textAlign = 'center';
                     ctx.fillText(crosshairPrice.toFixed(decimals), width - margin.r / 2, cy + 4);
