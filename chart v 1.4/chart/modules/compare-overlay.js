@@ -3242,6 +3242,37 @@ class CompareOverlay {
         const inlineHost = panelHost
             ? panelHost.querySelector('.ohlc-indicators')
             : document.getElementById('ohlcIndicators');
+        const currencyToCountry = (ccy) => {
+            const map = {
+                USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
+                CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
+                HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
+                BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
+                KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
+                ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
+                BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
+                NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
+                BHD: 'bh', OMR: 'om', JOD: 'jo'
+            };
+            return map[(ccy || '').toUpperCase()] || null;
+        };
+        const buildOverlayPairFlags = (symbol) => {
+            const clean = String(symbol || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+            if (clean.length < 6) return '';
+            const base = clean.slice(0, 3);
+            const quote = clean.slice(3, 6);
+            const baseCC = currencyToCountry(base);
+            const quoteCC = currencyToCountry(quote);
+            if (!baseCC || !quoteCC) return '';
+            const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+            const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+            return `
+                <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
+                    <img src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.8);" />
+                    <img src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:10px;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.8);" />
+                </span>
+            `;
+        };
         
         if (!legend) {
             legend = document.createElement('div');
@@ -3290,6 +3321,7 @@ class CompareOverlay {
             const isBullish = latestCandle.c >= latestCandle.o;
             const changeColor = isBullish ? '#26a69a' : '#ef5350';
             const isHidden = !overlay.visible;
+            const pairFlags = buildOverlayPairFlags(overlay.symbol);
             
             const row = document.createElement('div');
             row.style.cssText = `
@@ -3337,13 +3369,13 @@ class CompareOverlay {
                     opacity: ${isHidden ? '0.5' : '1'};
                     cursor: pointer;
                 ">
-                    <span style="
+                    ${pairFlags || `<span style="
                         width: 10px;
                         height: 10px;
                         background: ${overlay.color};
                         border-radius: 2px;
                         ${isSelected ? 'box-shadow: 0 0 0 2px #2962ff;' : ''}
-                    "></span>
+                    "></span>`}
                     <span style="color: ${overlay.color}; font-weight: 500;">${overlay.symbol}</span>
                     ${isSelected ? '<span style="color: #2962ff; font-size: 10px;">↕</span>' : ''}
                     <button class="overlay-visibility-btn" data-id="${overlay.id}" title="${isHidden ? 'Show' : 'Hide'}" style="${iconBtnStyle}">
