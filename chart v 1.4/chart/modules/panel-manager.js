@@ -44,7 +44,7 @@ class PanelManager {
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
 
-        /** Last (panelIndex:endIndex) for Time sync — follower updates only when this changes (TradingView-style discrete jumps). */
+        /** Last (panelIndex:rightEdgeBarIndex) for Time sync — one follower jump per source bar at the right edge. */
         this._timeSyncDiscreteKey = null;
         
         // Sync settings - time enabled by default for smooth scroll sync
@@ -121,19 +121,19 @@ class PanelManager {
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
             }
-            // Time: only when the source's right-edge BAR changes (discrete jumps — not smooth follow on every pixel).
+            // Time: one jump when the bar at the source's RIGHT EDGE advances (range-by-range; matches wheel anchor math).
             else if (this.syncSettings.time
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
-                const srcChart = d.chart;
-                let barT = 0;
-                if (srcChart && srcChart.data && srcChart.data.length && Number.isFinite(d.endIndex)) {
-                    const ei = Math.max(0, Math.min(d.endIndex, srcChart.data.length - 1));
-                    barT = srcChart.data[ei]?.t ?? 0;
-                }
-                const discreteKey = `${panel.index}:${barT}`;
+                const reIdx = Number.isFinite(d.rightEdgeBarIndex)
+                    ? d.rightEdgeBarIndex
+                    : (Number.isFinite(d.endIndex) ? d.endIndex : -1);
+                const discreteKey = `${panel.index}:${reIdx}`;
                 if (this._timeSyncDiscreteKey === discreteKey) return;
                 this._timeSyncDiscreteKey = discreteKey;
-                this.syncScrollByRightEdge(panel, endTimestamp);
+                const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
+                    ? d.timeSyncEndTimestamp
+                    : endTimestamp;
+                this.syncScrollByRightEdge(panel, ts);
             }
         });
     }

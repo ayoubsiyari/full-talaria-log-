@@ -7109,6 +7109,14 @@ class Chart {
         const barMs = this.inferBarDurationMs();
         // Exclusive end of the visible window (same wall-clock span on every timeframe).
         const endTimestamp = (this.data[endIndex]?.t ?? 0) + barMs;
+
+        // Right-edge bar index (same geometry as wheel zoom) — used for Time sync discrete steps (range-by-range).
+        const m = this.margin || { l: 0, r: 60 };
+        const spacing = this.getCandleSpacing ? this.getCandleSpacing() : (this.candleWidth + 2);
+        const rightEdgePx = this.w - m.r;
+        const idxAtRight = (rightEdgePx - m.l - this.offsetX) / spacing;
+        const rightEdgeBarIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
+        const timeSyncEndTimestamp = (this.data[rightEdgeBarIndex]?.t ?? 0) + barMs;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
@@ -7133,6 +7141,8 @@ class Chart {
                 panel: sourcePanel,
                 startIndex,
                 endIndex,
+                rightEdgeBarIndex,
+                timeSyncEndTimestamp,
                 startTimestamp,
                 endTimestamp,
                 rangeEndExclusive: endTimestamp,
