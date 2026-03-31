@@ -884,7 +884,7 @@ class CompareOverlay {
                 legend.style.cssText = `
                     position: absolute;
                     top: 8px;
-                    left: 10px;
+                    left: ${(this.chart.margin?.l || 0) + 10}px;
                     display: flex;
                     align-items: center;
                     gap: 6px;
@@ -1026,7 +1026,7 @@ class CompareOverlay {
         ctx.fillStyle = this.getMainChartBackground();
         ctx.fillRect(0, 0, width, height);
         
-        const margin = { t: 10, r: 60, b: 5, l: 0 };
+        const margin = { t: 10, r: (mainChart.margin?.r || 60), b: 5, l: (mainChart.margin?.l || 0) };
         const chartWidth = width - margin.l - margin.r;
         const chartHeight = height - margin.t - margin.b;
         
@@ -1119,8 +1119,7 @@ class CompareOverlay {
         }
         
         // Draw vertical grid lines - sync with main chart's time axis
-        const spacing = 2;
-        const totalCandleWidth = mainChart.candleWidth + spacing;
+        const totalCandleWidth = candleSpacing;
         
         // Calculate how many candles fit and the interval for grid lines
         const visibleCandles = Math.ceil(chartWidth / totalCandleWidth);
@@ -1544,8 +1543,8 @@ class CompareOverlay {
      * Setup price axis controls (same as overlay - drag Y-axis to zoom, drag chart to move)
      */
     setupPaneAxisControls(pane, canvas, wrapper) {
-        const priceAxisWidth = 60;
-        const margin = { t: 10, r: 60, b: 5, l: 0 };
+        const priceAxisWidth = this.chart.margin?.r || 60;
+        const margin = { t: 10, r: priceAxisWidth, b: 5, l: (this.chart.margin?.l || 0) };
         
         const dragState = {
             isDragging: false,
@@ -1747,8 +1746,7 @@ class CompareOverlay {
             const price = pane.currentMax - ((my - margin.t) / chartHeight) * (pane.currentMax - pane.currentMin);
             
             // Index from X (use main chart's calculation)
-            const spacing = 2;
-            const candleSpacing = this.chart.candleWidth + spacing;
+            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : (this.chart.candleWidth + 2);
             const adjustedX = mx - margin.l - this.chart.offsetX;
             const dataIndex = Math.round(adjustedX / candleSpacing);
             
