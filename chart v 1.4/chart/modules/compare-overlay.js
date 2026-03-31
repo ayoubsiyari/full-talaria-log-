@@ -762,17 +762,75 @@ class CompareOverlay {
             }
             return;
         }
-        
-        switch (mode) {
-            case 'same-scale':
-                // Add overlay on same chart with same scale
-                await this.addOverlay(fileId, symbolName);
-                break;
-            case 'new-scale':
-                // Add overlay with separate Y-axis (for now same as overlay)
-                await this.addOverlay(fileId, symbolName);
-                break;
+
+        // Close picker immediately and show temporary loading label near chart symbol.
+        this.closeModal();
+        this.startOverlayLoadingState(symbolName);
+
+        try {
+            switch (mode) {
+                case 'same-scale':
+                    // Add overlay on same chart with same scale
+                    await this.addOverlay(fileId, symbolName);
+                    break;
+                case 'new-scale':
+                    // Add overlay with separate Y-axis (for now same as overlay)
+                    await this.addOverlay(fileId, symbolName);
+                    break;
+            }
+        } finally {
+            this.stopOverlayLoadingState();
         }
+    }
+
+    startOverlayLoadingState(symbolName) {
+        try {
+            this.stopOverlayLoadingState();
+
+            const host = (typeof this.chart._getPanelOverlayContainer === 'function')
+                ? this.chart._getPanelOverlayContainer()
+                : (this.chart?.canvas?.closest('.chart-panel') || document);
+            const symbolLine = host?.querySelector?.('.ohlc-symbol-line') || document.querySelector('.ohlc-symbol-line');
+            if (!symbolLine) return;
+
+            const badge = document.createElement('span');
+            badge.className = 'compare-overlay-loading-badge';
+            badge.style.cssText = [
+                'display:inline-flex',
+                'align-items:center',
+                'margin-left:10px',
+                'padding:2px 8px',
+                'border-radius:999px',
+                'font-size:11px',
+                'font-weight:600',
+                'letter-spacing:0.2px',
+                'color:#93c5fd',
+                'background:rgba(30,64,175,0.2)',
+                'border:1px solid rgba(96,165,250,0.35)'
+            ].join(';');
+            badge.textContent = `${symbolName} loading`;
+            symbolLine.appendChild(badge);
+
+            let dots = 0;
+            this._overlayLoadingEl = badge;
+            this._overlayLoadingTimer = setInterval(() => {
+                dots = (dots + 1) % 4;
+                if (this._overlayLoadingEl) {
+                    this._overlayLoadingEl.textContent = `${symbolName} loading${'.'.repeat(dots)}`;
+                }
+            }, 320);
+        } catch (_) {}
+    }
+
+    stopOverlayLoadingState() {
+        if (this._overlayLoadingTimer) {
+            clearInterval(this._overlayLoadingTimer);
+            this._overlayLoadingTimer = null;
+        }
+        if (this._overlayLoadingEl && this._overlayLoadingEl.parentNode) {
+            this._overlayLoadingEl.parentNode.removeChild(this._overlayLoadingEl);
+        }
+        this._overlayLoadingEl = null;
     }
     
     async addLinkedPane(fileId, symbolName) {
