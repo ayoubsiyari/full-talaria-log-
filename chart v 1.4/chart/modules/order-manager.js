@@ -5194,6 +5194,7 @@ class OrderManager {
                 }
                 body.light-mode .order-calculation-label { color: #787b86 !important; }
                 body.light-mode .order-calculation-value { color: #b8922a !important; font-weight: 700 !important; }
+                body.light-mode .order-calculation-sub { color: #6b7280 !important; }
 
                 /* ── Toggles & checkboxes ── */
                 body.light-mode .toggle-switch__track { background: #e0e3eb !important; }
@@ -5803,6 +5804,21 @@ class OrderManager {
                     font-weight: 700;
                     font-family: var(--om-mono);
                 }
+                .order-calculation-values {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                    gap: 2px;
+                    min-width: 0;
+                }
+                .order-calculation-sub {
+                    font-size: 9px;
+                    font-weight: 500;
+                    color: var(--om-muted);
+                    font-family: var(--om-mono);
+                    line-height: 1.2;
+                    text-align: right;
+                }
 
                 /* ── COLLAPSE (TagRow-style headers) ─────────────────────────────── */
                 .order-collapse {
@@ -6274,7 +6290,10 @@ class OrderManager {
                     <input type="hidden" id="orderQuantity" value="1">
                     <div id="calculatedPosition" class="order-calculation">
                         <span class="order-calculation-label" id="calculatedLabel">Position Size:</span>
-                        <span id="calculatedLots" class="order-calculation-value">0.00 Lots</span>
+                        <div class="order-calculation-values">
+                            <span id="calculatedLots" class="order-calculation-value">0.00 Lots</span>
+                            <span id="calculatedSub" class="order-calculation-sub" style="display:none;"></span>
+                        </div>
                     </div>
                 </div>
 
@@ -7094,17 +7113,7 @@ class OrderManager {
             positionLabel.innerHTML = `Position sizing <span style="font-size: 9px; color: #6b7280;">(${config.positionLabel})</span>`;
         }
         
-        // Update calculated lots label
-        const calculatedLabel = document.getElementById('calculatedLabel');
-        if (calculatedLabel) {
-            calculatedLabel.textContent = `Position Size:`;
-        }
-        
-        const calculatedLots = document.getElementById('calculatedLots');
-        if (calculatedLots) {
-            const qty = document.getElementById('orderQuantity')?.value || '0';
-            calculatedLots.textContent = `${parseFloat(qty).toFixed(2)} ${config.positionLabel}`;
-        }
+        this._applyCalculatedReadout(this._getCalculatedReadoutParts());
         
         // Update lot size input label
         const lotSizeLabel = document.querySelector('label[for="lotSizeAmount"]');
@@ -7252,10 +7261,7 @@ class OrderManager {
         if (quantityInput && typeof order.quantity === 'number') {
             quantityInput.value = order.quantity.toFixed(2);
         }
-        const calculatedLots = document.getElementById('calculatedLots');
-        if (calculatedLots && typeof order.quantity === 'number') {
-            calculatedLots.textContent = `${order.quantity.toFixed(2)} Lots`;
-        }
+        this._applyCalculatedReadout(this._getCalculatedReadoutParts());
 
         const riskUsdInput = document.getElementById('riskAmountUSD');
         if (riskUsdInput) {
@@ -7610,16 +7616,6 @@ class OrderManager {
                     riskUSDInput.classList.add('is-hidden');
                     riskPercentInput.classList.add('is-hidden');
                     lotSizeInput.classList.remove('is-hidden');
-                }
-                
-                // Update labels based on mode
-                const calculatedLabel = document.getElementById('calculatedLabel');
-                if (calculatedLabel) {
-                    if (mode === 'lot-size') {
-                        calculatedLabel.textContent = 'Calculated Risk:';
-                    } else {
-                        calculatedLabel.textContent = 'Position Size:';
-                    }
                 }
                 
                 // Auto-switch TP distribution mode to match position sizing mode
@@ -8221,11 +8217,7 @@ class OrderManager {
             }
         }
         
-        // Also update calculated lots display with correct label
-        const calculatedLots = document.getElementById('calculatedLots');
-        if (calculatedLots) {
-            calculatedLots.textContent = `${quantity.toFixed(2)} ${positionLabel}`;
-        }
+        this._applyCalculatedReadout(this._getCalculatedReadoutParts());
     }
     
     /**
@@ -8267,6 +8259,115 @@ class OrderManager {
     }
     
     /**
+     * Label + primary/secondary strings for the position readout row (mode-aware).
+     * Risk $ → lots + "$ risk"; Risk % → lots + "% · $"; Lot size → $ risk + lots (or hint).
+     */
+    _getCalculatedReadoutParts() {
+        const config = this.getMarketConfig();
+        const positionLabel = config.positionLabel;
+        const mode = this.positionSizeMode || 'risk-usd';
+
+        if (mode === 'lot-size') {
+            const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
+            const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const enableSL = document.getElementById('enableSL')?.checked;
+            const label = 'Calculated Risk:';
+            if (lotSize <= 0) {
+                return { label, primary: '$0.00', secondary: '' };
+            }
+            if (entryPrice && slPrice && enableSL) {
+                const slDistance = Math.abs(entryPrice - slPrice);
+                if (slDistance === 0) {
+                    return { label, primary: '$0.00', secondary: `${lotSize.toFixed(2)} ${positionLabel}` };
+                }
+                let calculatedRisk;
+                if (window.marketCalcEngine && this._getSymbol()) {
+                    calculatedRisk = this._engineRisk(entryPrice, slPrice, lotSize, entryPrice);
+                } else {
+                    const slDistanceInPips = slDistance / (this.pipSize || 0.0001);
+                    calculatedRisk = slDistanceInPips * lotSize * (this.pipValuePerLot || 10);
+                }
+                return {
+                    label,
+                    primary: `$${calculatedRisk.toFixed(2)}`,
+                    secondary: `${lotSize.toFixed(2)} ${positionLabel}`
+                };
+            }
+            return {
+                label,
+                primary: `${lotSize.toFixed(2)} ${positionLabel}`,
+                secondary: 'Set SL for $ risk'
+            };
+        }
+
+        const label = 'Position Size:';
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const enableSL = document.getElementById('enableSL')?.checked;
+
+        const riskUsdVal = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+        const riskPercentVal = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+        const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+        const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+        const pctRiskAmount = (balance * riskPercentVal) / 100;
+
+        if (!entryPrice || !slPrice || !enableSL) {
+            const primary = `0.00 ${positionLabel} (Set SL)`;
+            let secondary = '';
+            if (mode === 'risk-percent' && riskPercentVal > 0) {
+                secondary = `${riskPercentVal}% · $${pctRiskAmount.toFixed(2)}`;
+            } else if (mode === 'risk-usd' && riskUsdVal > 0) {
+                secondary = `$${riskUsdVal.toFixed(2)} risk`;
+            }
+            return { label, primary, secondary };
+        }
+
+        const slDistance = Math.abs(entryPrice - slPrice);
+        if (slDistance === 0) {
+            return { label, primary: `0.00 ${positionLabel}`, secondary: '' };
+        }
+
+        let riskAmount = 0;
+        if (mode === 'risk-usd') {
+            riskAmount = riskUsdVal;
+        } else if (mode === 'risk-percent') {
+            riskAmount = pctRiskAmount;
+        }
+
+        if (riskAmount <= 0) {
+            let secondary = '';
+            if (mode === 'risk-percent' && riskPercentVal > 0) {
+                secondary = `${riskPercentVal}%`;
+            }
+            return { label, primary: `0.00 ${positionLabel}`, secondary };
+        }
+
+        const positionSize = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
+        const primary = `${positionSize.toFixed(2)} ${positionLabel}`;
+        let secondary = '';
+        if (mode === 'risk-usd') {
+            secondary = `$${riskAmount.toFixed(2)} risk`;
+        } else if (mode === 'risk-percent') {
+            secondary = `${riskPercentVal}% · $${riskAmount.toFixed(2)}`;
+        }
+        return { label, primary, secondary };
+    }
+
+    _applyCalculatedReadout(parts) {
+        if (!parts) return;
+        const labelEl = document.getElementById('calculatedLabel');
+        const lotsEl = document.getElementById('calculatedLots');
+        const subEl = document.getElementById('calculatedSub');
+        if (labelEl) labelEl.textContent = parts.label;
+        if (lotsEl) lotsEl.textContent = parts.primary;
+        if (subEl) {
+            subEl.textContent = parts.secondary || '';
+            subEl.style.display = parts.secondary ? 'block' : 'none';
+        }
+    }
+
+    /**
      * Calculate position size from risk amount or percentage, or calculate risk from lot size
      */
     calculatePositionFromRisk() {
@@ -8279,8 +8380,8 @@ class OrderManager {
             const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
             
             if (lotSize <= 0) {
-                document.getElementById('calculatedLots').textContent = '$0.00';
                 document.getElementById('orderQuantity').value = '0';
+                this._applyCalculatedReadout(this._getCalculatedReadoutParts());
                 return;
             }
             
@@ -8300,17 +8401,15 @@ class OrderManager {
             // Calculate risk if SL is enabled
             if (entryPrice && slPrice && enableSL) {
                 const slDistance = Math.abs(entryPrice - slPrice);
-                const slDistanceInPips = slDistance / this.pipSize;
-                const calculatedRisk = slDistanceInPips * lotSize * this.pipValuePerLot;
-                
-                document.getElementById('calculatedLots').textContent = `$${calculatedRisk.toFixed(2)}`;
+                const slDistanceInPips = slDistance / (this.pipSize || 0.0001);
+                const calculatedRisk = window.marketCalcEngine && this._getSymbol()
+                    ? this._engineRisk(entryPrice, slPrice, lotSize, entryPrice)
+                    : slDistanceInPips * lotSize * (this.pipValuePerLot || 10);
                 
                 console.log(`📊 Risk Calculation (Lot Size Mode):`);
                 console.log(`   Lot Size: ${lotSize.toFixed(2)} lots`);
                 console.log(`   SL Distance: ${slDistance.toFixed(5)} (${slDistanceInPips.toFixed(2)} pips)`);
                 console.log(`   Calculated Risk: $${calculatedRisk.toFixed(2)}`);
-            } else {
-                document.getElementById('calculatedLots').textContent = `${lotSize.toFixed(2)} Lots (Set SL for risk)`;
             }
             
             this.updatePlaceButtonText();
@@ -8320,16 +8419,16 @@ class OrderManager {
         
         // For risk-based modes, need entry price and stop loss to calculate position size
         if (!entryPrice || !slPrice || !enableSL) {
-            document.getElementById('calculatedLots').textContent = '0.00 Lots (Set SL)';
             document.getElementById('orderQuantity').value = '0';
+            this._applyCalculatedReadout(this._getCalculatedReadoutParts());
             return;
         }
         
         // Calculate stop loss distance in price
         const slDistance = Math.abs(entryPrice - slPrice);
         if (slDistance === 0) {
-            document.getElementById('calculatedLots').textContent = '0.00 Lots';
             document.getElementById('orderQuantity').value = '0';
+            this._applyCalculatedReadout(this._getCalculatedReadoutParts());
             return;
         }
         
@@ -8345,8 +8444,8 @@ class OrderManager {
         }
         
         if (riskAmount <= 0) {
-            document.getElementById('calculatedLots').textContent = '0.00 Lots';
             document.getElementById('orderQuantity').value = '0';
+            this._applyCalculatedReadout(this._getCalculatedReadoutParts());
             return;
         }
         
@@ -8364,9 +8463,6 @@ class OrderManager {
         console.log(`   Pip Value/Lot: $${this.pipValuePerLot}`);
         console.log(`   Position Size: ${positionSize.toFixed(2)} lots`);
         console.log(`   Verification: ${slDistanceInPips.toFixed(2)} pips × ${positionSize.toFixed(2)} lots × $${this.pipValuePerLot} = $${(slDistanceInPips * positionSize * this.pipValuePerLot).toFixed(2)} risk`);
-        
-        // Update display
-        document.getElementById('calculatedLots').textContent = `${positionSize.toFixed(2)} Lots`;
         
         // Update orderQuantity value for order placement
         const qtyInput = document.getElementById('orderQuantity');
@@ -9778,9 +9874,7 @@ class OrderManager {
                             const quantityInput = document.getElementById('orderQuantity');
                             if (quantityInput) quantityInput.value = roundedLotSize.toFixed(2);
                             
-                            // Update calculatedLots display
-                            const calculatedLotsDisplay = document.getElementById('calculatedLots');
-                            if (calculatedLotsDisplay) calculatedLotsDisplay.textContent = `${roundedLotSize.toFixed(2)} Lots`;
+                            self.calculatePositionFromRisk();
                             
                             // Update SL amount display
                             const slAmountDisplay = document.getElementById('slAmountDisplay');
@@ -9961,11 +10055,7 @@ class OrderManager {
                                 quantityInput.value = roundedLotSize.toFixed(2);
                             }
                             
-                            // Update the calculatedLots display
-                            const calculatedLotsDisplay = document.getElementById('calculatedLots');
-                            if (calculatedLotsDisplay) {
-                                calculatedLotsDisplay.textContent = `${roundedLotSize.toFixed(2)} Lots`;
-                            }
+                            self.calculatePositionFromRisk();
                         }
                         
                         // Restore flag
@@ -10299,11 +10389,7 @@ class OrderManager {
                                 quantityInput.value = roundedLotSize.toFixed(2);
                             }
                             
-                            // Update the calculatedLots display
-                            const calculatedLotsDisplay = document.getElementById('calculatedLots');
-                            if (calculatedLotsDisplay) {
-                                calculatedLotsDisplay.textContent = `${roundedLotSize.toFixed(2)} Lots`;
-                            }
+                            self.calculatePositionFromRisk();
                             
                             // Update SL amount display
                             const slAmountDisplay = document.getElementById('slAmountDisplay');
