@@ -4990,9 +4990,12 @@ class OrderManager {
                     border-color: rgba(34, 197, 94, 0.28) !important;
                     background: rgba(34, 197, 94, 0.06) !important;
                 }
-                body.light-mode #slSection {
-                    border-color: rgba(239, 68, 68, 0.25) !important;
-                    background: rgba(239, 68, 68, 0.06) !important;
+                body.light-mode .order-sl-card {
+                    background: #ffffff !important;
+                    border-color: rgba(220, 38, 38, 0.35) !important;
+                }
+                body.light-mode .order-input-wrapper.order-input-wrapper--sl {
+                    background: #f8fafc !important;
                 }
 
                 /* ── BUY / SELL — same segmented logic as TradeEntry (tint + g/r text) ── */
@@ -5457,11 +5460,94 @@ class OrderManager {
                     border: 1px solid rgba(34, 197, 94, 0.18);
                     background: rgba(34, 197, 94, 0.04);
                 }
-                #slSection {
-                    padding: 8px 10px;
+                /* Stop loss card (below entry): red frame, accent input, distance + quantity */
+                .order-sl-card {
+                    padding: 10px 12px;
+                    border-radius: 8px;
+                    border: 1px solid rgba(242, 54, 69, 0.42);
+                    background: rgba(8, 11, 17, 0.92);
+                    box-sizing: border-box;
+                }
+                .order-sl-card__header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                }
+                .order-sl-card__title-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    min-width: 0;
+                }
+                .order-sl-card__icon {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 3px;
+                    background: #f23645;
+                    flex-shrink: 0;
+                }
+                .order-sl-card__title {
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.1em;
+                    text-transform: uppercase;
+                    color: #f23645;
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .order-sl-card__toggle-wrap {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    cursor: pointer;
+                    flex-shrink: 0;
+                }
+                .order-sl-card__toggle-label {
+                    font-size: 9px;
+                    color: var(--om-muted);
+                    font-weight: 600;
+                }
+                .order-sl-card__body { display: flex; flex-direction: column; gap: 0; }
+                .order-input-wrapper.order-input-wrapper--sl {
+                    border: 1px solid rgba(242, 54, 69, 0.35) !important;
+                    border-left: 3px solid #f23645 !important;
+                    background: var(--om-bg) !important;
                     border-radius: 6px;
-                    border: 1px solid rgba(239, 68, 68, 0.18);
-                    background: rgba(239, 68, 68, 0.04);
+                    padding: 0 10px 0 8px !important;
+                }
+                .order-input-wrapper.order-input-wrapper--sl:focus-within {
+                    border-color: rgba(242, 54, 69, 0.55) !important;
+                    box-shadow: 0 0 0 1px rgba(242, 54, 69, 0.12);
+                }
+                .order-sl-stats {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    margin-top: 10px;
+                }
+                .order-sl-stat {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 10px;
+                    line-height: 1.3;
+                }
+                .order-sl-stat__label {
+                    font-weight: 600;
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .order-sl-stat--distance .order-sl-stat__label { color: #f23645; }
+                .order-sl-stat--distance .order-sl-stat__value {
+                    color: #f23645 !important;
+                    font-family: var(--om-mono);
+                    font-weight: 600;
+                }
+                .order-sl-stat--qty .order-sl-stat__label { color: var(--om-ot-gold); }
+                .order-sl-stat--qty .order-sl-stat__value {
+                    color: var(--om-ot-gold) !important;
+                    font-family: var(--om-mono);
+                    font-weight: 700;
                 }
                 .order-section--compact { gap: 3px; }
                 .order-button-group {
@@ -6324,33 +6410,44 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-grid-two" style="align-items: start;">
-                    <div class="order-section" id="tpSection">
-                        <div class="order-toggle-wrapper">
-                            <input type="checkbox" id="enableTP" class="order-checkbox" checked>
-                            <label for="enableTP" class="order-toggle-label">Profit target</label>
+                <div class="order-section order-sl-card" id="slSection">
+                    <div class="order-sl-card__header">
+                        <div class="order-sl-card__title-group">
+                            <span class="order-sl-card__icon" aria-hidden="true"></span>
+                            <span class="order-sl-card__title">Stop loss</span>
                         </div>
-                        <div id="tpInputs" class="order-grid-two">
-                            <div class="order-field">
-                                <label class="order-label" for="tpPrice">Price</label>
-                                <div class="order-input-wrapper">
-                                    <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact">
-                                </div>
+                        <label class="order-sl-card__toggle-wrap" for="enableSL">
+                            <input type="checkbox" id="enableSL" class="order-checkbox" checked>
+                            <span class="order-sl-card__toggle-label">Enable</span>
+                        </label>
+                    </div>
+                    <div id="slInputs" class="order-sl-card__body">
+                        <div class="order-input-wrapper order-input-wrapper--sl">
+                            <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Stop loss price">
+                        </div>
+                        <div class="order-sl-stats">
+                            <div class="order-sl-stat order-sl-stat--distance">
+                                <span class="order-sl-stat__label">Distance</span>
+                                <span id="slPipsDisplay" class="order-sl-stat__value">—</span>
+                            </div>
+                            <div class="order-sl-stat order-sl-stat--qty">
+                                <span class="order-sl-stat__label">Quantity</span>
+                                <span id="slQuantityDisplay" class="order-sl-stat__value">—</span>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="order-section" id="slSection">
-                        <div class="order-toggle-wrapper">
-                            <input type="checkbox" id="enableSL" class="order-checkbox" checked>
-                            <label for="enableSL" class="order-toggle-label">Stop loss</label>
-                        </div>
-                        <div id="slInputs" class="order-grid-two">
-                            <div class="order-field">
-                                <label class="order-label" for="slPrice">Price</label>
-                                <div class="order-input-wrapper">
-                                    <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact">
-                                </div>
+                <div class="order-section" id="tpSection">
+                    <div class="order-toggle-wrapper">
+                        <input type="checkbox" id="enableTP" class="order-checkbox" checked>
+                        <label for="enableTP" class="order-toggle-label">Profit target</label>
+                    </div>
+                    <div id="tpInputs" class="order-grid-two">
+                        <div class="order-field">
+                            <label class="order-label" for="tpPrice">Price</label>
+                            <div class="order-input-wrapper">
+                                <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact">
                             </div>
                         </div>
                     </div>
@@ -7311,7 +7408,7 @@ class OrderManager {
             if (typeof enableSL.onchange === 'function') {
                 enableSL.onchange();
             } else {
-                slInputs.style.display = enableSL.checked ? 'grid' : 'none';
+                slInputs.style.display = enableSL.checked ? 'flex' : 'none';
             }
         }
 
@@ -7856,7 +7953,7 @@ class OrderManager {
         const slInputs = document.getElementById('slInputs');
         if (enableSL && slInputs) {
             enableSL.onchange = () => {
-                slInputs.style.display = enableSL.checked ? 'grid' : 'none';
+                slInputs.style.display = enableSL.checked ? 'flex' : 'none';
                 if (enableSL.checked) {
                     this.syncDefaultTargetsToEntry();
                 }
@@ -8517,6 +8614,10 @@ class OrderManager {
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         
         if (!entryPrice) {
+            const spd = document.getElementById('slPipsDisplay');
+            const sqd = document.getElementById('slQuantityDisplay');
+            if (spd) spd.textContent = '—';
+            if (sqd) sqd.textContent = '—';
             this.updateMarginLevelBadge();
             return;
         }
@@ -8693,6 +8794,29 @@ class OrderManager {
                 const total = reward - risk;
                 totalEl.textContent = `${total >= 0 ? '' : '-'}$${Math.abs(total).toFixed(2)}`;
                 totalEl.style.color = total >= 0 ? '#22c55e' : '#ef4444';
+            }
+        }
+
+        const slPipsDisplay = document.getElementById('slPipsDisplay');
+        const slQuantityDisplay = document.getElementById('slQuantityDisplay');
+        if (slPipsDisplay && slQuantityDisplay) {
+            const cfg = this.getMarketConfig();
+            const pip = Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001);
+            if (!hasValidSL) {
+                slPipsDisplay.textContent = '—';
+                slQuantityDisplay.textContent = '—';
+            } else {
+                const dist = slDistance;
+                let distText;
+                if (cfg.showPips) {
+                    distText = `${(dist / pip).toFixed(2)} pips`;
+                } else if (cfg.showTicks) {
+                    distText = `${(dist / pip).toFixed(2)} pts`;
+                } else {
+                    distText = `${dist.toFixed(cfg.symbolPrecision ?? 5)} pts`;
+                }
+                slPipsDisplay.textContent = distText;
+                slQuantityDisplay.textContent = `${quantity.toFixed(2)} ${cfg.positionLabel}`;
             }
         }
 
