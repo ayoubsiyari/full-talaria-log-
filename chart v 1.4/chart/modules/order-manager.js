@@ -81,6 +81,7 @@ class OrderManager {
             this.contractSize = 100000; // Standard lot size (100,000 units)
             this.positionSizeMode = 'risk-usd';
             this._syncingTpTargetInputs = false;
+            this._syncingTpRRInput = false;
             this.breakevenMode = 'pips';
             this.mfeMaeTrackingHours = 4;
             this.tradeJournal = [];
@@ -1300,6 +1301,64 @@ class OrderManager {
             if (m < targetUsd) hi = mid; else lo = mid;
         }
         return (lo + hi) / 2;
+    }
+
+    /**
+     * Valid SL vs entry + risk USD (same rules as calculateAdvancedRiskReward).
+     * @param {number} entryPrice
+     * @param {number} quantity
+     * @param {number} minDistance
+     * @returns {{ hasValidSL: boolean, slDistance: number, risk: number }}
+     */
+    _getOrderPanelSlRiskContext(entryPrice, quantity, minDistance) {
+        const slEnabled = document.getElementById('enableSL')?.checked;
+        let slPrice = 0;
+        if (slEnabled) {
+            const slIn = parseFloat(document.getElementById('slPrice')?.value || 0);
+            if (slIn > 0) slPrice = slIn;
+        }
+        const slDistance = Math.abs(entryPrice - slPrice);
+        const hasValidSL = !!(slEnabled && slPrice > 0 && slDistance > minDistance);
+        let risk = 0;
+        if (hasValidSL) {
+            if (this.positionSizeMode === 'risk-usd') {
+                risk = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+            } else if (this.positionSizeMode === 'risk-percent') {
+                const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+                const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+                risk = (balance * riskPercent) / 100;
+            } else if (this.positionSizeMode === 'lot-size') {
+                if (window.marketCalcEngine) {
+                    risk = this._engineRisk(entryPrice, slPrice, quantity, entryPrice);
+                }
+                if (!window.marketCalcEngine || !Number.isFinite(risk)) {
+                    const slDistanceInPips = slDistance / (this.pipSize || 0.0001);
+                    risk = slDistanceInPips * quantity * this.pipValuePerLot;
+                }
+            }
+        }
+        return { hasValidSL, slDistance, risk };
+    }
+
+    /**
+     * Solve for TP price from desired reward:risk (single TP; uses current SL risk model).
+     * @param {number} desiredRR
+     * @returns {number|null}
+     */
+    _solveTpPriceForDesiredRR(desiredRR) {
+        const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked;
+        if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) return null;
+        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!entryPrice || !desiredRR || !Number.isFinite(desiredRR) || desiredRR <= 0) return null;
+        if (!document.getElementById('enableTP')?.checked) return null;
+        const halfPip = (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001) * 0.5;
+        const maxMinDistance = Math.max(Math.abs(entryPrice) * 1e-4, 1e-12);
+        const minDistance = Math.min(halfPip, maxMinDistance);
+        const { hasValidSL, risk } = this._getOrderPanelSlRiskContext(entryPrice, quantity, minDistance);
+        if (!hasValidSL || !risk || risk <= 0) return null;
+        return this._solveTpPriceForTargetRewardUsd(desiredRR * risk);
     }
 
     /** Show Target $ vs Target % vs 2-column (RR) based on position sizing mode. */
@@ -5739,7 +5798,7 @@ class OrderManager {
                     box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.12);
                 }
                 #tpRRInput {
-                    cursor: default;
+                    cursor: text;
                     color: var(--om-tx);
                 }
                 .order-tp-stats {
@@ -6725,7 +6784,7 @@ class OrderManager {
                                 <div class="order-tp-field" id="tpFieldRR">
                                     <label class="order-tp-field__label" for="tpRRInput">R : R</label>
                                     <div class="order-input-wrapper order-input-wrapper--tp-rr">
-                                        <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" readonly tabindex="-1" aria-label="Risk to reward ratio">
+                                        <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" aria-label="Risk to reward ratio">
                                     </div>
                                 </div>
                                 <div class="order-tp-field" id="tpFieldTargetUsd">
@@ -8190,6 +8249,30 @@ class OrderManager {
                 this._syncingTpTargetInputs = false;
             };
         }
+
+        const tpRRInputEl = document.getElementById('tpRRInput');
+        if (tpRRInputEl) {
+            tpRRInputEl.oninput = () => {
+                const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked;
+                if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+                    this.calculateAdvancedRiskReward();
+                    this.updatePreviewLines();
+                    return;
+                }
+                this._syncingTpRRInput = true;
+                const rr = parseFloat(tpRRInputEl.value || 0);
+                if (rr > 0 && Number.isFinite(rr)) {
+                    const tp = this._solveTpPriceForDesiredRR(rr);
+                    if (tp != null && Number.isFinite(tp)) {
+                        const inp = document.getElementById('tpPrice');
+                        if (inp) inp.value = parseFloat(tp.toFixed(5));
+                    }
+                }
+                this.calculateAdvancedRiskReward();
+                this.updatePreviewLines();
+                this._syncingTpRRInput = false;
+            };
+        }
         
         // Input stepper buttons (+/- controls)
         document.querySelectorAll('.input-stepper').forEach(btn => {
@@ -8982,7 +9065,7 @@ class OrderManager {
             if (tpd) tpd.textContent = '—';
             if (tpp) tpp.textContent = '—';
             const tpRR = document.getElementById('tpRRInput');
-            if (tpRR) tpRR.value = '';
+            if (tpRR && !this._syncingTpRRInput) tpRR.value = '';
             ['tpSummaryPctRisk', 'tpSummaryPctReward', 'tpSummaryRRDisplay'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.textContent = '—';
@@ -8997,10 +9080,8 @@ class OrderManager {
         
         // Get TP/SL enabled status
         const tpEnabled = document.getElementById('enableTP')?.checked;
-        const slEnabled = document.getElementById('enableSL')?.checked;
         
         let tpPrice = 0;
-        let slPrice = 0;
         
         // Calculate TP price (use the first non-zero value)
         if (tpEnabled) {
@@ -9022,40 +9103,7 @@ class OrderManager {
         const minDistance = Math.min(halfPip, maxMinDistance);
         const hasValidTP = tpEnabled && tpPrice > 0 && tpDistance > minDistance;
         
-        // Calculate SL price (use the first non-zero value)
-        if (slEnabled) {
-            const slPriceInput = parseFloat(document.getElementById('slPrice')?.value || 0);
-            
-            if (slPriceInput > 0) {
-                slPrice = slPriceInput;
-            }
-        }
-        
-        // Check if SL is actually set (different from entry price)
-        // Use a small epsilon for floating point comparison
-        const slDistance = Math.abs(entryPrice - slPrice);
-        const hasValidSL = slEnabled && slPrice > 0 && slDistance > minDistance;
-        
-        // Get risk amount based on mode (ONLY if SL is actually set and different from entry)
-        let risk = 0;
-        if (hasValidSL) {
-            if (this.positionSizeMode === 'risk-usd') {
-                risk = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
-            } else if (this.positionSizeMode === 'risk-percent') {
-                const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
-                const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-                const balance = balanceType === 'current' ? this.balance : this.initialBalance;
-                risk = (balance * riskPercent) / 100;
-            } else if (this.positionSizeMode === 'lot-size') {
-                if (window.marketCalcEngine) {
-                    risk = this._engineRisk(entryPrice, slPrice, quantity, entryPrice);
-                }
-                if (!window.marketCalcEngine || !Number.isFinite(risk)) {
-                    const slDistanceInPips = slDistance / this.pipSize;
-                    risk = slDistanceInPips * quantity * this.pipValuePerLot;
-                }
-            }
-        }
+        const { hasValidSL, slDistance, risk } = this._getOrderPanelSlRiskContext(entryPrice, quantity, minDistance);
         
         // Reward: use MarketCalculationEngine (same as chart TP/SL labels) so JPY / cross / tick
         // specs match position sizing; manual pipSize×pipValue can be wrong and inflate $ reward.
@@ -9202,12 +9250,14 @@ class OrderManager {
             if (!tpEnabled || !hasValidTP) {
                 tpDistanceDisplay.textContent = '—';
                 tpProfitDisplay.textContent = '—';
-                tpRRInput.value = '';
+                if (!this._syncingTpRRInput) tpRRInput.value = '';
             } else if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
                 tpDistanceDisplay.textContent = '—';
                 tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
                 const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
-                tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
+                if (!this._syncingTpRRInput) {
+                    tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
+                }
             } else {
                 const dist = tpDistance;
                 let distText;
@@ -9221,7 +9271,9 @@ class OrderManager {
                 tpDistanceDisplay.textContent = distText;
                 tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
                 const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
-                tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
+                if (!this._syncingTpRRInput) {
+                    tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
+                }
             }
         }
 
