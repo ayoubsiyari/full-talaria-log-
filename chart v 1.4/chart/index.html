@@ -4311,105 +4311,7 @@
             color: #ffffff !important;
         }
 
-        /* Order panel — same WebKit fill fix: #orderPanel + IDs beat generic button:hover / inheritance. */
-        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active),
-        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):hover,
-        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):focus,
-        body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):focus-visible {
-            color: #166534 !important;
-            -webkit-text-fill-color: #166534 !important;
-            background: #ffffff !important;
-        }
-
-        body.light-mode #orderPanel #buyTab.order-tab--buy.active,
-        body.light-mode #orderPanel #buyTab.order-tab--buy.active:hover,
-        body.light-mode #orderPanel #buyTab.order-tab--buy.active:focus,
-        body.light-mode #orderPanel #buyTab.order-tab--buy.active:focus-visible {
-            color: #bbf7d0 !important;
-            -webkit-text-fill-color: #bbf7d0 !important;
-            background: #15803d !important;
-            border-color: #15803d !important;
-        }
-
-        body.light-mode #orderPanel #buyTab.order-tab--buy.active:hover {
-            background: #166534 !important;
-            border-color: #166534 !important;
-            color: #dcfce7 !important;
-            -webkit-text-fill-color: #dcfce7 !important;
-        }
-
-        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active),
-        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):hover,
-        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):focus,
-        body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):focus-visible {
-            color: #b91c1c !important;
-            -webkit-text-fill-color: #b91c1c !important;
-            background: #ffffff !important;
-        }
-
-        body.light-mode #orderPanel #sellTab.order-tab--sell.active,
-        body.light-mode #orderPanel #sellTab.order-tab--sell.active:hover,
-        body.light-mode #orderPanel #sellTab.order-tab--sell.active:focus,
-        body.light-mode #orderPanel #sellTab.order-tab--sell.active:focus-visible {
-            color: #fecaca !important;
-            -webkit-text-fill-color: #fecaca !important;
-            background: #b91c1c !important;
-            border-color: #b91c1c !important;
-        }
-
-        body.light-mode #orderPanel #sellTab.order-tab--sell.active:hover {
-            background: #dc2626 !important;
-            border-color: #dc2626 !important;
-            color: #fee2e2 !important;
-            -webkit-text-fill-color: #fee2e2 !important;
-        }
-
-        /* Primary CTA: green / red fill + tinted label (not pure white) */
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode),
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus,
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus-visible {
-            background: #15803d !important;
-            color: #bbf7d0 !important;
-            -webkit-text-fill-color: #bbf7d0 !important;
-            filter: none !important;
-        }
-
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):hover {
-            background: #166534 !important;
-            color: #dcfce7 !important;
-            -webkit-text-fill-color: #dcfce7 !important;
-            filter: none !important;
-        }
-
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):active {
-            background: #14532d !important;
-            color: #ecfdf5 !important;
-            -webkit-text-fill-color: #ecfdf5 !important;
-            filter: none !important;
-        }
-
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode,
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus,
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus-visible {
-            background: #b91c1c !important;
-            color: #fecaca !important;
-            -webkit-text-fill-color: #fecaca !important;
-            filter: none !important;
-        }
-
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:hover {
-            background: #dc2626 !important;
-            color: #fee2e2 !important;
-            -webkit-text-fill-color: #fee2e2 !important;
-            filter: none !important;
-        }
-
-        body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:active {
-            background: #991b1b !important;
-            color: #fecaca !important;
-            -webkit-text-fill-color: #fecaca !important;
-            filter: none !important;
-        }
+        /* BUY/SELL + place-order styling lives in modules/order-manager.js (single source). */
 
         body.light-mode #orderPanel #closeOrderPanel.order-panel__close,
         body.light-mode #orderPanel #closeOrderPanel.order-panel__close:focus,
@@ -21346,7 +21248,7 @@
 
         /* Unified hover effect for all buttons */
 
-        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.tv-color-btn):not(.dropdown-arrow):not(.cursor-dropdown-arrow):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow):not(.sidebar-timeframe-arrow):hover {
+        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.tv-color-btn):not(.dropdown-arrow):not(.cursor-dropdown-arrow):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow):not(.sidebar-timeframe-arrow):not(.order-tab):not(.order-submit-btn):hover {
 
             background: rgba(255, 255, 255, 0.12) !important;
 
@@ -21378,7 +21280,7 @@
 
         /* Active state for toggle buttons */
 
-        button.active {
+        button.active:not(.order-tab) {
 
             background: rgba(var(--sp-accent-rgb), 0.25) !important;
 
@@ -21390,7 +21292,7 @@
 
 
 
-        button.active:hover {
+        button.active:not(.order-tab):hover {
 
             background: rgba(var(--sp-accent-rgb), 0.35) !important;
 
@@ -42997,7 +42899,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260401"></script>
 
-    <script defer src="modules/order-manager.js?v=20260401_ORDER_PANEL_FILL_TINT"></script>
+    <script defer src="modules/order-manager.js?v=20260401_ORDER_PANEL_SINGLE_SOURCE"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260401"></script>
 

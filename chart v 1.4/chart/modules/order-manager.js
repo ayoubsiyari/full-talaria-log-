@@ -4724,6 +4724,7 @@ class OrderManager {
                     --op-text-muted: var(--sp-text-muted, #7f879e);
                     --op-border: var(--sp-ui-border, rgba(255,255,255,0.07));
                     --op-soft-accent: rgba(var(--op-accent-rgb), 0.14);
+                    --op-tab-idle-bg: rgba(255, 255, 255, 0.08);
                     --tv-buy: #15803d;
                     --tv-sell: #b91c1c;
                     background: var(--op-bg);
@@ -4835,67 +4836,68 @@ class OrderManager {
                     letter-spacing: 0.04em;
                     cursor: pointer;
                     transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-                    background: var(--op-surface);
+                    background: var(--op-tab-idle-bg);
                     box-shadow: none;
                 }
-                /* Inactive: strong green / red label on surface */
+                /* Inactive: green/red labels on neutral dark (not --op-surface navy) */
                 .order-tab.order-tab--buy:not(.active) {
-                    color: #166534;
-                    -webkit-text-fill-color: #166534;
-                    background: var(--op-surface);
-                    border-color: rgba(255,255,255,0.12);
+                    color: #4ade80;
+                    -webkit-text-fill-color: #4ade80;
+                    background: var(--op-tab-idle-bg);
+                    border-color: rgba(74, 222, 128, 0.35);
                 }
                 .order-tab.order-tab--sell:not(.active) {
-                    color: #b91c1c;
-                    -webkit-text-fill-color: #b91c1c;
-                    background: var(--op-surface);
-                    border-color: rgba(255,255,255,0.12);
+                    color: #f87171;
+                    -webkit-text-fill-color: #f87171;
+                    background: var(--op-tab-idle-bg);
+                    border-color: rgba(248, 113, 113, 0.3);
                 }
                 .order-tab.active.order-tab--buy {
-                    background: #15803d;
-                    border-color: #15803d;
-                    color: #bbf7d0;
-                    -webkit-text-fill-color: #bbf7d0;
+                    background: #15803d !important;
+                    border-color: #15803d !important;
+                    color: #bbf7d0 !important;
+                    -webkit-text-fill-color: #bbf7d0 !important;
                     box-shadow: none;
                 }
                 .order-tab.active.order-tab--sell {
-                    background: #b91c1c;
-                    border-color: #b91c1c;
-                    color: #fecaca;
-                    -webkit-text-fill-color: #fecaca;
+                    background: #b91c1c !important;
+                    border-color: #b91c1c !important;
+                    color: #fecaca !important;
+                    -webkit-text-fill-color: #fecaca !important;
                     box-shadow: none;
                 }
                 .order-tab:hover:not(.active) { filter: none; }
                 .order-panel .order-tab.order-tab--buy:not(.active):hover {
-                    color: #14532d;
-                    -webkit-text-fill-color: #14532d;
-                    background: var(--op-surface);
+                    color: #86efac;
+                    -webkit-text-fill-color: #86efac;
+                    background: var(--op-tab-idle-bg);
                 }
                 .order-panel .order-tab.order-tab--sell:not(.active):hover {
-                    color: #991b1b;
-                    -webkit-text-fill-color: #991b1b;
-                    background: var(--op-surface);
+                    color: #fca5a5;
+                    -webkit-text-fill-color: #fca5a5;
+                    background: var(--op-tab-idle-bg);
                 }
                 .order-panel .order-tab.active.order-tab--buy:hover {
-                    background: #166534;
-                    border-color: #166534;
-                    color: #dcfce7;
-                    -webkit-text-fill-color: #dcfce7;
+                    background: #166534 !important;
+                    border-color: #166534 !important;
+                    color: #dcfce7 !important;
+                    -webkit-text-fill-color: #dcfce7 !important;
                 }
                 .order-panel .order-tab.active.order-tab--sell:hover {
-                    background: #dc2626;
-                    border-color: #dc2626;
-                    color: #fee2e2;
-                    -webkit-text-fill-color: #fee2e2;
+                    background: #dc2626 !important;
+                    border-color: #dc2626 !important;
+                    color: #fee2e2 !important;
+                    -webkit-text-fill-color: #fee2e2 !important;
                 }
 
                 /* ═══════════════════════════════════════════════════════════════
                    LIGHT MODE — TradingView-style (flat white, TV palette)
-                   Buy bg #15803d / text #bbf7d0 · Sell bg #b91c1c / text #fecaca · Tab accent #2962ff
+                   BUY/SELL tabs: green/red only (idle uses --op-tab-idle-bg, not blue chrome)
                    ═══════════════════════════════════════════════════════════════ */
                 body.light-mode .order-panel {
                     --op-bg: #ffffff !important;
                     --op-surface: #ffffff !important;
+                    --op-tab-idle-bg: #ffffff !important;
                     --op-text: #131722 !important;
                     --op-text-muted: #787b86 !important;
                     --op-border: #e0e3eb !important;
@@ -5332,15 +5334,21 @@ class OrderManager {
                     -webkit-text-fill-color: #991b1b !important;
                     background: #ffffff !important;
                 }
-                body.light-mode .order-panel .order-tab.active.order-tab--buy,
-                body.light-mode .order-panel .order-tab.active.order-tab--buy:hover {
+                body.light-mode .order-panel .order-tab.active.order-tab--buy {
                     color: #bbf7d0 !important;
                     -webkit-text-fill-color: #bbf7d0 !important;
                 }
-                body.light-mode .order-panel .order-tab.active.order-tab--sell,
-                body.light-mode .order-panel .order-tab.active.order-tab--sell:hover {
+                body.light-mode .order-panel .order-tab.active.order-tab--buy:hover {
+                    color: #dcfce7 !important;
+                    -webkit-text-fill-color: #dcfce7 !important;
+                }
+                body.light-mode .order-panel .order-tab.active.order-tab--sell {
                     color: #fecaca !important;
                     -webkit-text-fill-color: #fecaca !important;
+                }
+                body.light-mode .order-panel .order-tab.active.order-tab--sell:hover {
+                    color: #fee2e2 !important;
+                    -webkit-text-fill-color: #fee2e2 !important;
                 }
 
                 /* Market type row: inline styles use var(--op-text); force dark text on hover/focus */
