@@ -1150,6 +1150,77 @@
             gap: 6px;
         }
 
+        .sidebar-zoom-control {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .sidebar-zoom-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.04);
+            color: #a0aec0;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .sidebar-zoom-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.28);
+            color: #d1d4dc;
+        }
+
+        .sidebar-zoom-level {
+            min-width: 42px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            color: #a0aec0;
+            font-size: 11px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 0 4px;
+        }
+
+        .sidebar-zoom-level:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #d1d4dc;
+        }
+
+        body.light-mode .sidebar-zoom-btn {
+            border-color: #d6dae3;
+            background: rgba(0, 0, 0, 0.03);
+            color: #4b5563;
+        }
+
+        body.light-mode .sidebar-zoom-btn:hover {
+            border-color: #c5cbd8;
+            background: rgba(0, 0, 0, 0.08);
+            color: #111827;
+        }
+
+        body.light-mode .sidebar-zoom-level {
+            color: #4b5563;
+        }
+
+        body.light-mode .sidebar-zoom-level:hover {
+            background: rgba(0, 0, 0, 0.06);
+            color: #111827;
+        }
+
         /* Sidebar theme toggle (placed under undo/redo) */
         #themeToggleBtn .theme-icon-light { display: none; }
         #themeToggleBtn.is-light .theme-icon-dark { display: none; }
@@ -41689,6 +41760,11 @@
 
             <!-- Bottom actions (undo/redo live on top drawing toolbar after trash) -->
             <div class="sidebar-bottom-actions">
+            <div class="sidebar-zoom-control" id="sidebarZoomControl">
+                <button type="button" class="sidebar-zoom-btn" id="zoomOutBtn" title="Zoom out">-</button>
+                <button type="button" class="sidebar-zoom-level" id="zoomLevelBtn" title="Reset zoom">100%</button>
+                <button type="button" class="sidebar-zoom-btn" id="zoomInBtn" title="Zoom in">+</button>
+            </div>
             <button class="sidebar-timeframe-btn" id="themeToggleBtn" data-tooltip="Toggle Theme">
                 <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <circle cx="12" cy="12" r="5"/>
@@ -43363,6 +43439,35 @@
 
             const lightModeBtn = document.getElementById('lightModeBtn');
             const themeToggleBtn = document.getElementById('themeToggleBtn');
+            const zoomOutBtn = document.getElementById('zoomOutBtn');
+            const zoomInBtn = document.getElementById('zoomInBtn');
+            const zoomLevelBtn = document.getElementById('zoomLevelBtn');
+
+            (function(){
+                if (!zoomOutBtn || !zoomInBtn || !zoomLevelBtn) return;
+                const KEY = 'talaria_page_zoom';
+                const MIN = 0.6;
+                const MAX = 1.8;
+                const STEP = 0.1;
+                const clamp = (v) => Math.min(MAX, Math.max(MIN, v));
+                const round = (v) => Math.round(v * 10) / 10;
+                const read = () => {
+                    try {
+                        const z = parseFloat(localStorage.getItem(KEY) || '1');
+                        return isFinite(z) ? clamp(round(z)) : 1;
+                    } catch (e) { return 1; }
+                };
+                const paint = (z) => {
+                    const zoom = clamp(round(z));
+                    document.body.style.zoom = String(zoom);
+                    zoomLevelBtn.textContent = Math.round(zoom * 100) + '%';
+                    try { localStorage.setItem(KEY, String(zoom)); } catch (e) {}
+                };
+                zoomOutBtn.addEventListener('click', function(){ paint(read() - STEP); });
+                zoomInBtn.addEventListener('click', function(){ paint(read() + STEP); });
+                zoomLevelBtn.addEventListener('click', function(){ paint(1); });
+                paint(read());
+            })();
 
             
 
