@@ -748,27 +748,36 @@ class PanelManager {
                 const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
                 const numBars = Math.max(1, iR2 - iL2 + 1);
 
-                const rawSpacing = chartWidth / numBars;
+                // Desired spacing = chartWidth / numBars, but getCandleSpacing adds a gap.
+                // Solve for candleWidth so that getCandleSpacing(cw) ≈ desiredSpacing.
+                const desiredSpacing = chartWidth / numBars;
+                let cw = desiredSpacing;
+                if (typeof chart._getSpacingForCandleWidth === 'function') {
+                    const s1 = chart._getSpacingForCandleWidth(cw);
+                    if (s1 > 0) cw = cw * (desiredSpacing / s1);
+                    const s2 = chart._getSpacingForCandleWidth(cw);
+                    if (s2 > 0) cw = cw * (desiredSpacing / s2);
+                }
+
                 const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
                     ? chart.zoomLevel.allowedWidths
                     : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                 const minW = allowedWidths[0];
                 const maxW = allowedWidths[allowedWidths.length - 1];
-                chart.candleWidth = Math.max(minW, Math.min(maxW, rawSpacing));
+                chart.candleWidth = Math.max(minW, Math.min(maxW, cw));
+
                 let nearestIdx = 0;
                 let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
                 for (let i = 1; i < allowedWidths.length; i++) {
                     const d = Math.abs(chart.candleWidth - allowedWidths[i]);
-                    if (d < minDiff) {
-                        minDiff = d;
-                        nearestIdx = i;
-                    }
+                    if (d < minDiff) { minDiff = d; nearestIdx = i; }
                 }
                 if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
                 if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
+                // Right-edge anchoring (TradingView-style): last visible bar stays at right margin
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
-                chart.offsetX = -iL2 * spacing;
+                chart.offsetX = chartWidth - (iR2 + 1) * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();

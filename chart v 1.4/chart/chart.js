@@ -10257,13 +10257,15 @@ class Chart {
 
     /**
      * Pixels between bar centers for a nominal candle width (used for layout, hit-testing, zoom animation).
+     * Gap scales linearly from 0 at sub-pixel widths to 2px at w >= 8, allowing deep zoom-out
+     * on high-frequency data (e.g. 3+ days on 1-minute charts).
      */
     _getSpacingForCandleWidth(cw) {
         const w = Number(cw);
-        if (!Number.isFinite(w)) return 8 + 2;
-        const MIN_GAP_PX = 2;
-        const narrowBoost = w <= 4 ? 1 : 0;
-        return w + MIN_GAP_PX + narrowBoost;
+        if (!Number.isFinite(w)) return 10;
+        if (w <= 0.5) return Math.max(0.2, w);
+        const gap = Math.min(2, (w - 0.5) * (2 / 7.5));
+        return w + gap;
     }
 
     /**
