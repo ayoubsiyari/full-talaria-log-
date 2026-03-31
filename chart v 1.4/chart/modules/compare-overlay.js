@@ -3236,10 +3236,34 @@ class CompareOverlay {
     
     updateOverlayLegend() {
         let legend = document.getElementById('overlayLegendContainer');
+        const panelHost = (typeof this.chart._getPanelOverlayContainer === 'function')
+            ? this.chart._getPanelOverlayContainer()
+            : (this.chart?.canvas?.closest('.chart-panel') || null);
+        const inlineHost = panelHost
+            ? panelHost.querySelector('.ohlc-indicators')
+            : document.getElementById('ohlcIndicators');
         
         if (!legend) {
             legend = document.createElement('div');
             legend.id = 'overlayLegendContainer';
+            legend.className = 'overlay-legend-inline';
+        }
+
+        // Keep compare overlay symbols inside OHLC body so collapse/hide controls include them.
+        if (inlineHost) {
+            if (legend.parentElement !== inlineHost) inlineHost.appendChild(legend);
+            legend.style.cssText = `
+                position: static;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                margin-top: 2px;
+                z-index: 2;
+                pointer-events: auto;
+            `;
+            legend.dataset.inline = '1';
+        } else if (!legend.parentElement) {
+            // Fallback for unexpected layouts
             legend.style.cssText = `
                 position: absolute;
                 top: 52px;
@@ -3251,10 +3275,8 @@ class CompareOverlay {
                 pointer-events: auto;
             `;
             this.chart.canvas.parentElement.appendChild(legend);
+            legend.dataset.inline = '0';
         }
-        
-        // Update top position (below OHLC info and Volume)
-        legend.style.top = '52px';
         
         // Clear and rebuild
         legend.innerHTML = '';
@@ -3412,7 +3434,7 @@ class CompareOverlay {
         
         // Update overlay legend
         const legend = document.getElementById('overlayLegendContainer');
-        if (legend) {
+        if (legend && legend.dataset.inline !== '1') {
             legend.style.left = leftOffset + 'px';
         }
         
