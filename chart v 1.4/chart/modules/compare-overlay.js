@@ -724,8 +724,8 @@ class CompareOverlay {
             const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
             const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
             return `
-                <img class="compare-pair-flag compare-pair-flag-base" src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:5px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.75);box-shadow:0 1px 3px rgba(0,0,0,0.45);" />
-                <img class="compare-pair-flag compare-pair-flag-quote" src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:15px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.75);box-shadow:0 1px 3px rgba(0,0,0,0.45);" />
+                <img class="compare-pair-flag compare-pair-flag-base" src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:5px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
+                <img class="compare-pair-flag compare-pair-flag-quote" src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:15px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
             `;
         };
         
@@ -3268,8 +3268,8 @@ class CompareOverlay {
             const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
             return `
                 <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
-                    <img src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.8);" />
-                    <img src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:10px;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.8);" />
+                    <img src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
+                    <img src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:10px;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
                 </span>
             `;
         };
