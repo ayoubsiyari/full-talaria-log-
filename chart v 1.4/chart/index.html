@@ -4316,8 +4316,8 @@
         body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):hover,
         body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):focus,
         body.light-mode #orderPanel #buyTab.order-tab--buy:not(.active):focus-visible {
-            color: #22c55e !important;
-            -webkit-text-fill-color: #22c55e !important;
+            color: #166534 !important;
+            -webkit-text-fill-color: #166534 !important;
             background: #ffffff !important;
         }
 
@@ -4325,23 +4325,25 @@
         body.light-mode #orderPanel #buyTab.order-tab--buy.active:hover,
         body.light-mode #orderPanel #buyTab.order-tab--buy.active:focus,
         body.light-mode #orderPanel #buyTab.order-tab--buy.active:focus-visible {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            background: #22c55e !important;
-            border-color: #22c55e !important;
+            color: #bbf7d0 !important;
+            -webkit-text-fill-color: #bbf7d0 !important;
+            background: #15803d !important;
+            border-color: #15803d !important;
         }
 
         body.light-mode #orderPanel #buyTab.order-tab--buy.active:hover {
-            background: #16a34a !important;
-            border-color: #16a34a !important;
+            background: #166534 !important;
+            border-color: #166534 !important;
+            color: #dcfce7 !important;
+            -webkit-text-fill-color: #dcfce7 !important;
         }
 
         body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active),
         body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):hover,
         body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):focus,
         body.light-mode #orderPanel #sellTab.order-tab--sell:not(.active):focus-visible {
-            color: #ef4444 !important;
-            -webkit-text-fill-color: #ef4444 !important;
+            color: #b91c1c !important;
+            -webkit-text-fill-color: #b91c1c !important;
             background: #ffffff !important;
         }
 
@@ -4349,61 +4351,63 @@
         body.light-mode #orderPanel #sellTab.order-tab--sell.active:hover,
         body.light-mode #orderPanel #sellTab.order-tab--sell.active:focus,
         body.light-mode #orderPanel #sellTab.order-tab--sell.active:focus-visible {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            background: #ef4444 !important;
-            border-color: #ef4444 !important;
+            color: #fecaca !important;
+            -webkit-text-fill-color: #fecaca !important;
+            background: #b91c1c !important;
+            border-color: #b91c1c !important;
         }
 
         body.light-mode #orderPanel #sellTab.order-tab--sell.active:hover {
             background: #dc2626 !important;
             border-color: #dc2626 !important;
+            color: #fee2e2 !important;
+            -webkit-text-fill-color: #fee2e2 !important;
         }
 
-        /* Primary CTA (Buy / Sell): explicit bg + white text + fill on every state; kill brightness() on :active */
+        /* Primary CTA: green / red fill + tinted label (not pure white) */
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode),
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus,
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):focus-visible {
-            background: #22c55e !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            background: #15803d !important;
+            color: #bbf7d0 !important;
+            -webkit-text-fill-color: #bbf7d0 !important;
             filter: none !important;
         }
 
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):hover {
-            background: #16a34a !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            background: #166534 !important;
+            color: #dcfce7 !important;
+            -webkit-text-fill-color: #dcfce7 !important;
             filter: none !important;
         }
 
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn:not(.sell-mode):active {
-            background: #15803d !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            background: #14532d !important;
+            color: #ecfdf5 !important;
+            -webkit-text-fill-color: #ecfdf5 !important;
             filter: none !important;
         }
 
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode,
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus,
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:focus-visible {
-            background: #ef4444 !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            background: #b91c1c !important;
+            color: #fecaca !important;
+            -webkit-text-fill-color: #fecaca !important;
             filter: none !important;
         }
 
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:hover {
             background: #dc2626 !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            color: #fee2e2 !important;
+            -webkit-text-fill-color: #fee2e2 !important;
             filter: none !important;
         }
 
         body.light-mode #orderPanel #placeOrderButton.order-submit-btn.sell-mode:active {
-            background: #b91c1c !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            background: #991b1b !important;
+            color: #fecaca !important;
+            -webkit-text-fill-color: #fecaca !important;
             filter: none !important;
         }
 
@@ -42993,7 +42997,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260401"></script>
 
-    <script defer src="modules/order-manager.js?v=20260401_ORDER_PANEL_GREEN_RED"></script>
+    <script defer src="modules/order-manager.js?v=20260401_ORDER_PANEL_FILL_TINT"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260401"></script>
 
