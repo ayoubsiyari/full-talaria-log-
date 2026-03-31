@@ -1148,6 +1148,11 @@
             flex-direction: column;
             align-items: center;
             gap: 6px;
+            position: sticky;
+            bottom: 6px;
+            z-index: 5;
+            padding-bottom: 4px;
+            background: inherit;
         }
 
         .sidebar-zoom-control {
@@ -27524,6 +27529,12 @@
             padding-bottom: 0;
 
             gap: 6px;
+
+            overflow-y: auto;
+
+            overflow-x: hidden;
+
+            scrollbar-width: thin;
 
             outline: none !important;
 
