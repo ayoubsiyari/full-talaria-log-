@@ -5095,8 +5095,8 @@ class OrderManager {
                     font-weight: 600 !important;
                 }
                 body.light-mode .order-position-sizing-head .order-button-group--position-mode .position-mode-tab {
-                    font-size: 8px !important;
-                    padding: 2px 4px !important;
+                    font-size: 9px !important;
+                    padding: 3px 6px !important;
                 }
 
                 body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn {
@@ -5574,16 +5574,16 @@ class OrderManager {
                 .order-position-sizing-head .order-button-group--inline.order-button-group--position-mode {
                     flex: 0 1 auto !important;
                     width: auto !important;
-                    max-width: min(136px, 40%) !important;
-                    min-width: 88px !important;
+                    max-width: min(158px, 44%) !important;
+                    min-width: 102px !important;
                     margin-bottom: 0 !important;
                 }
                 .order-position-sizing-head .order-button-group--inline.order-button-group--position-mode .position-mode-tab {
                     flex: 1 1 0 !important;
                     min-width: 0 !important;
-                    padding: 2px 4px !important;
-                    font-size: 8px !important;
-                    letter-spacing: 0.01em !important;
+                    padding: 3px 6px !important;
+                    font-size: 9px !important;
+                    letter-spacing: 0.02em !important;
                 }
 
                 /* Market / Limit / Stop — segmented (TradeEntry: gold / blue / red tints) */
