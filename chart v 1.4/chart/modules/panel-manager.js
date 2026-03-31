@@ -806,15 +806,21 @@ class PanelManager {
                 if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
-                // Right-edge anchor (TradingView-style): keep the end of the synced window at the
-                // right plot edge so bars compress/expand into the viewport instead of sliding the
-                // whole strip left (left-align + quantize was fighting constrainOffset).
-                const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
-                    ? chart.timeScale.rightOffsetCandles
-                    : 5;
-                const rightMargin = Math.max(0, rightMarginCandles) * spacing;
-                const targetRight = chart.w - m.r - rightMargin;
-                chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
+                // If the ideal zoom would exceed max bar width (few HTF bars in the same wall-clock
+                // window as many 1m bars), we cannot fill the plot — right-edge math then fights
+                // constrainOffset() and the chart looks like it "snaps to center". Pin the window
+                // start to the left edge instead (stable HTF behavior).
+                const hitZoomCeiling = rawSpacing > maxW + 1e-6;
+                if (hitZoomCeiling) {
+                    chart.offsetX = -iL2 * spacing;
+                } else {
+                    const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
+                        ? chart.timeScale.rightOffsetCandles
+                        : 5;
+                    const rightMargin = Math.max(0, rightMarginCandles) * spacing;
+                    const targetRight = chart.w - m.r - rightMargin;
+                    chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
+                }
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
