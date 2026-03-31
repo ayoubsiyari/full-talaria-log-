@@ -1463,9 +1463,10 @@ class CompareOverlay {
         
         // Draw current price line and label
         if (lastPrice > 0 && !isNaN(lastPrice)) {
+            const currentPriceLabelColor = mainChart.chartSettings?.priceLineColor || pane.color;
             // Dashed line from chart to price axis
             ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = pane.color;
+            ctx.strokeStyle = currentPriceLabelColor;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(width - margin.r, lastY);
@@ -1474,7 +1475,7 @@ class CompareOverlay {
             ctx.setLineDash([]);
             
             // Price label background
-            ctx.fillStyle = pane.color;
+            ctx.fillStyle = currentPriceLabelColor;
             ctx.fillRect(width - margin.r, lastY - 10, margin.r, 20);
             
             // Price label text
