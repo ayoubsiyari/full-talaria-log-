@@ -795,10 +795,10 @@ class CompareOverlay {
         const containerId = `linkedPanesContainer_${this.scopeKey}`;
         let container = document.getElementById(containerId);
         const paneBg = this.getMainChartBackground();
+        const chartContainer = (typeof this.chart._getPanelOverlayContainer === 'function')
+            ? this.chart._getPanelOverlayContainer()
+            : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
         if (!container) {
-            const chartContainer = (typeof this.chart._getPanelOverlayContainer === 'function')
-                ? this.chart._getPanelOverlayContainer()
-                : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
             if (chartContainer) {
                 container = document.createElement('div');
                 container.id = containerId;
@@ -817,6 +817,9 @@ class CompareOverlay {
             }
         }
         if (container) {
+            if (chartContainer && container.parentElement !== chartContainer) {
+                chartContainer.appendChild(container);
+            }
             container.style.background = paneBg;
         }
         
@@ -864,16 +867,22 @@ class CompareOverlay {
     
     renderLinkedPanes() {
         if (!this.linkedPanes || this.linkedPanes.length === 0) return;
-        
-        const container = document.getElementById(`linkedPanesContainer_${this.scopeKey}`);
+
+        const containerId = `linkedPanesContainer_${this.scopeKey}`;
+        let container = document.getElementById(containerId);
         if (!container) {
             console.log('📊 No linked panes container, creating...');
             this.setupLinkedPanesContainer();
             return;
         }
+        const expectedHost = (typeof this.chart._getPanelOverlayContainer === 'function')
+            ? this.chart._getPanelOverlayContainer()
+            : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
+        if (expectedHost && container.parentElement !== expectedHost) {
+            expectedHost.appendChild(container);
+        }
         const theme = this.getLinkedPaneThemeTokens();
         const paneBg = theme.paneBg;
-        const gridColor = this.chart?.chartSettings?.gridColor || (theme.isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)');
         container.style.background = paneBg;
         
         // Get main chart dimensions for reference
@@ -3460,6 +3469,13 @@ class CompareOverlay {
         this.overlays.forEach(overlay => {
             overlay.data = this.resampleData(overlay.rawData, timeframe);
         });
+        if (Array.isArray(this.linkedPanes)) {
+            this.linkedPanes.forEach(pane => {
+                pane.data = this.resampleData(pane.rawData || [], timeframe);
+                this.calculateLinkedPaneScale(pane);
+            });
+            this.renderLinkedPanes();
+        }
         this.chart.render();
     }
     
