@@ -106,17 +106,23 @@ class PanelManager {
      * Setup event listeners for panel synchronization
      */
     setupEventListeners() {
-        // Continuous scroll/zoom sync — only for Date Range mode.
-        // Time sync is one-shot on panel click (handled in selectPanel).
         window.addEventListener('chartScrolled', (e) => {
             if (this._isSyncing) return;
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
+
+            // Date Range: continuous full-window sync (scroll + zoom locked).
             if (this.syncSettings.dateRange
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
+            }
+            // Time: right-edge timestamp sync, each panel keeps its own zoom.
+            // Panels move in discrete jumps (e.g. 1 bar on 5m = 5 bars on 1m).
+            else if (this.syncSettings.time
+                && Number.isFinite(endTimestamp) && endTimestamp > 0) {
+                this.syncScrollByRightEdge(panel, endTimestamp);
             }
         });
     }
@@ -695,6 +701,40 @@ class PanelManager {
         }
     }
     
+    /**
+     * Time-sync scroll: align right-edge timestamp across panels, keep each panel's own zoom.
+     * Produces the discrete "jump" effect (e.g. 1 bar on 5m = 5 bars on 1m).
+     */
+    syncScrollByRightEdge(sourcePanel, rightEdgeTimestamp) {
+        if (this._isSyncing) return;
+        if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!Number.isFinite(rightEdgeTimestamp)) return;
+
+        this._isSyncing = true;
+        try {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const chart = panel.chartInstance;
+                if (!chart?.data?.length) return;
+
+                const targetIdx = chart.findGoToTargetIndex
+                    ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
+                    : this._bsearchTimestamp(chart.data, rightEdgeTimestamp);
+
+                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+                const m = chart.margin || { l: 0, r: 60 };
+                const chartWidth = chart.w - m.l - m.r;
+                const visibleCandles = Math.max(1, Math.floor(chartWidth / spacing));
+
+                chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing;
+                if (chart.constrainOffset) chart.constrainOffset();
+                if (chart.scheduleRender) chart.scheduleRender();
+            });
+        } finally {
+            requestAnimationFrame(() => { this._isSyncing = false; });
+        }
+    }
+
     /**
      * Last data index with candle time <= ts (ascending by .t). Used for date-range scroll alignment.
      */
