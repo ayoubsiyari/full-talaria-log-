@@ -3070,11 +3070,14 @@ class CompareOverlay {
                 return;
             }
             
-            // Calculate Y scale for this overlay (its own price range)
+            // Calculate Y scale for this overlay from full OHLC range.
+            // Using close-only can distort/clip candle wicks on higher timeframes.
             let minPrice = Infinity, maxPrice = -Infinity;
             overlayData.forEach(d => {
-                if (d.c < minPrice) minPrice = d.c;
-                if (d.c > maxPrice) maxPrice = d.c;
+                const lo = Number.isFinite(d.l) ? d.l : d.c;
+                const hi = Number.isFinite(d.h) ? d.h : d.c;
+                if (lo < minPrice) minPrice = lo;
+                if (hi > maxPrice) maxPrice = hi;
             });
             
             let priceRange = maxPrice - minPrice || 1;
