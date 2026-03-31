@@ -32855,6 +32855,17 @@
 
         }
 
+        html.bt-preload #backtestingLoader {
+            display: flex;
+        }
+
+        html.bt-preload .toolbar,
+        html.bt-preload .container,
+        html.bt-preload .right-sidebar-icons,
+        html.bt-preload #unifiedRightPanel {
+            visibility: hidden;
+        }
+
         
 
         .loader-content {
@@ -32865,13 +32876,11 @@
 
             width: min(560px, calc(100vw - 40px));
             padding: 30px 26px 24px;
-            border-radius: 18px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background:
-                radial-gradient(120% 85% at 50% -20%, rgba(41, 98, 255, 0.25), transparent 68%),
-                linear-gradient(180deg, rgba(17, 24, 39, 0.68), rgba(9, 12, 24, 0.88));
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(10px);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            background: linear-gradient(180deg, rgba(12, 17, 32, 0.86), rgba(8, 12, 24, 0.9));
+            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+            backdrop-filter: blur(6px);
 
         }
 
@@ -32897,9 +32906,9 @@
 
         .loader-brand {
             position: relative;
-            width: 92px;
-            height: 92px;
-            margin: 0 auto 16px;
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 14px;
             display: grid;
             place-items: center;
         }
@@ -32909,27 +32918,26 @@
             position: absolute;
             inset: 0;
             border-radius: 50%;
-            border: 2px solid rgba(41, 98, 255, 0.35);
-            border-top-color: rgba(41, 98, 255, 0.95);
-            animation: loaderBrandSpin 1.25s linear infinite;
+            border: 2px solid rgba(41, 98, 255, 0.28);
+            border-top-color: rgba(41, 98, 255, 0.88);
+            animation: loaderBrandSpin 1.5s linear infinite;
         }
 
         .loader-brand::after {
             content: '';
             position: absolute;
-            inset: 14px;
+            inset: 10px;
             border-radius: 50%;
-            background: radial-gradient(circle at 35% 30%, rgba(123, 97, 255, 0.45), rgba(41, 98, 255, 0.08) 62%, transparent 75%);
-            filter: blur(0.5px);
-            animation: loaderPulse 2.2s ease-in-out infinite;
+            background: radial-gradient(circle at 50% 40%, rgba(41, 98, 255, 0.2), rgba(41, 98, 255, 0.04) 65%, transparent 78%);
+            animation: loaderPulse 2.4s ease-in-out infinite;
         }
 
         .loader-brand img {
-            width: 34px;
-            height: 34px;
+            width: 28px;
+            height: 28px;
             position: relative;
             z-index: 2;
-            filter: drop-shadow(0 0 12px rgba(41, 98, 255, 0.45));
+            filter: drop-shadow(0 0 6px rgba(41, 98, 255, 0.35));
         }
 
         @keyframes loaderBrandSpin {
@@ -32953,13 +32961,13 @@
 
         .loader-title {
 
-            font-size: 27px;
+            font-size: 23px;
 
             font-weight: 700;
 
             margin-bottom: 6px;
 
-            color: #eef2ff;
+            color: #f3f4f6;
 
             letter-spacing: 0.01em;
 
@@ -32973,7 +32981,7 @@
 
             color: #98a2b8;
 
-            margin-bottom: 22px;
+            margin-bottom: 18px;
 
         }
 
@@ -32983,7 +32991,7 @@
 
             width: 100%;
 
-            height: 6px;
+            height: 5px;
 
             background: rgba(255, 255, 255, 0.1);
 
@@ -32999,7 +33007,7 @@
 
             height: 100%;
 
-            background: linear-gradient(90deg, #2962ff 0%, #7b61ff 55%, #26c6da 100%);
+            background: linear-gradient(90deg, #2962ff 0%, #3b82f6 60%, #60a5fa 100%);
 
             border-radius: 999px;
 
@@ -33027,9 +33035,9 @@
 
             margin-top: 16px;
 
-            font-size: 12px;
+            font-size: 11px;
 
-            color: #96a0b5;
+            color: #8f99ad;
 
         }
 
@@ -33045,14 +33053,14 @@
 
             justify-content: center;
 
-            gap: 10px;
+            gap: 8px;
 
             justify-content: flex-start;
             text-align: left;
             padding: 6px 10px;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.015);
 
         }
 
@@ -33060,9 +33068,9 @@
 
         .loader-step.completed {
 
-            color: #7dd3fc;
-            border-color: rgba(125, 211, 252, 0.45);
-            background: rgba(56, 189, 248, 0.08);
+            color: #86efac;
+            border-color: rgba(134, 239, 172, 0.28);
+            background: rgba(34, 197, 94, 0.08);
 
         }
 
@@ -33070,9 +33078,9 @@
 
         .loader-step.active {
 
-            color: #c4b5fd;
-            border-color: rgba(167, 139, 250, 0.45);
-            background: rgba(124, 58, 237, 0.1);
+            color: #bfdbfe;
+            border-color: rgba(96, 165, 250, 0.32);
+            background: rgba(59, 130, 246, 0.11);
 
         }
 
@@ -35801,6 +35809,18 @@
 </head>
 
 <body>
+
+    <script>
+        (function () {
+            try {
+                var p = new URLSearchParams(window.location.search);
+                var mode = p.get('mode');
+                if (mode === 'backtest' || mode === 'propfirm') {
+                    document.documentElement.classList.add('bt-preload');
+                }
+            } catch (e) {}
+        })();
+    </script>
 
     <!-- Backtesting Loading Overlay -->
 

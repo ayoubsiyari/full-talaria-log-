@@ -855,6 +855,7 @@ class Chart {
         if (loader) {
             setTimeout(() => {
                 loader.classList.remove('active');
+                try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
             }, 500);
         }
     }
