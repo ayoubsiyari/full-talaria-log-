@@ -55,6 +55,22 @@ class CompareOverlay {
         } catch (_) {}
         return document.body.classList.contains('light-mode') ? '#ffffff' : '#131722';
     }
+
+    getLinkedPaneThemeTokens() {
+        const isLightTheme = document.body.classList.contains('light-mode') || document.body.classList.contains('light-theme');
+        const scaleText = this.chart?.chartSettings?.scaleTextColor || (isLightTheme ? '#0f172a' : '#787b86');
+        const scaleLine = this.chart?.chartSettings?.scaleLineColor || (isLightTheme ? 'rgba(15,23,42,0.22)' : '#363a45');
+        return {
+            isLightTheme,
+            paneBg: this.getMainChartBackground(),
+            border: scaleLine,
+            legendBg: isLightTheme ? 'rgba(255,255,255,0.9)' : 'rgba(19,23,34,0.9)',
+            textPrimary: isLightTheme ? '#0f172a' : '#d1d4dc',
+            textSecondary: scaleText,
+            iconMuted: isLightTheme ? '#475569' : '#787b86',
+            iconHover: isLightTheme ? '#0f172a' : '#d1d4dc'
+        };
+    }
     
     init() {
         this.setupEventListeners();
@@ -847,7 +863,8 @@ class CompareOverlay {
             this.setupLinkedPanesContainer();
             return;
         }
-        const paneBg = this.getMainChartBackground();
+        const theme = this.getLinkedPaneThemeTokens();
+        const paneBg = theme.paneBg;
         container.style.background = paneBg;
         
         // Get main chart dimensions for reference
@@ -908,16 +925,17 @@ class CompareOverlay {
                     z-index: 10;
                     font-size: 12px;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    color: #d1d4dc;
-                    background: rgba(19, 23, 34, 0.9);
+                    color: ${theme.textPrimary};
+                    background: ${theme.legendBg};
                     padding: 4px 10px;
                     border-radius: 4px;
+                    border: 1px solid ${theme.border};
                 `;
                 
                 const iconBtnStyle = `
                     background: transparent;
                     border: none;
-                    color: #787b86;
+                    color: ${theme.iconMuted};
                     cursor: pointer;
                     padding: 2px;
                     display: flex;
@@ -942,11 +960,11 @@ class CompareOverlay {
                     <button class="pane-delete-btn" data-id="${pane.id}" title="Remove" style="${iconBtnStyle}">
                         ${COMPARE_TRASH_ICON_SVG}
                     </button>
-                    <span class="pane-ohlc" style="margin-left: 8px; color: #787b86;">
-                        <span style="color: #787b86;">O</span> <span class="pane-open" style="color: #d1d4dc;">--</span>
-                        <span style="color: #787b86; margin-left: 6px;">H</span> <span class="pane-high" style="color: #d1d4dc;">--</span>
-                        <span style="color: #787b86; margin-left: 6px;">L</span> <span class="pane-low" style="color: #d1d4dc;">--</span>
-                        <span style="color: #787b86; margin-left: 6px;">C</span> <span class="pane-close" style="color: #d1d4dc;">--</span>
+                    <span class="pane-ohlc" style="margin-left: 8px; color: ${theme.textSecondary};">
+                        <span style="color: ${theme.textSecondary};">O</span> <span class="pane-open" style="color: ${theme.textPrimary};">--</span>
+                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">H</span> <span class="pane-high" style="color: ${theme.textPrimary};">--</span>
+                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">L</span> <span class="pane-low" style="color: ${theme.textPrimary};">--</span>
+                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">C</span> <span class="pane-close" style="color: ${theme.textPrimary};">--</span>
                     </span>
                 `;
                 
@@ -1016,11 +1034,11 @@ class CompareOverlay {
                 // Add hover effects
                 legend.querySelectorAll('button').forEach(btn => {
                     btn.addEventListener('mouseenter', () => {
-                        btn.style.color = '#d1d4dc';
-                        btn.style.background = 'rgba(255,255,255,0.1)';
+                        btn.style.color = theme.iconHover;
+                        btn.style.background = theme.isLightTheme ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.1)';
                     });
                     btn.addEventListener('mouseleave', () => {
-                        btn.style.color = '#787b86';
+                        btn.style.color = theme.iconMuted;
                         btn.style.background = 'transparent';
                     });
                 });
@@ -1049,6 +1067,15 @@ class CompareOverlay {
                 this.setupPaneAxisControls(pane, canvas, wrapper);
                 
                 console.log(`📊 Created linked pane wrapper for ${pane.symbol}, canvas: ${canvas.width}x${canvas.height}`);
+            }
+            const legendEl = document.getElementById(`linkedPaneLegend_${pane.id}`);
+            if (legendEl) {
+                legendEl.style.background = theme.legendBg;
+                legendEl.style.color = theme.textPrimary;
+                legendEl.style.border = `1px solid ${theme.border}`;
+                legendEl.querySelectorAll('button').forEach((btn) => {
+                    btn.style.color = theme.iconMuted;
+                });
             }
             wrapper.style.background = paneBg;
             
