@@ -11165,6 +11165,49 @@ class Chart {
     }
 
     /**
+     * Resolve effective current price used by both price-line and axis label.
+     * Keeps render sources consistent across live mode, replay mode, and panel charts.
+     */
+    resolveEffectiveCurrentPrice(visible) {
+        let price = null;
+
+        const lastVisible = (Array.isArray(visible) && visible.length > 0)
+            ? visible[visible.length - 1]
+            : null;
+        if (lastVisible && Number.isFinite(lastVisible.c)) {
+            price = lastVisible.c;
+        }
+
+        if (!Number.isFinite(price) && this.data && this.data.length > 0) {
+            const lastCandle = this.data[this.data.length - 1];
+            if (lastCandle && Number.isFinite(lastCandle.c)) price = lastCandle.c;
+        }
+
+        if (this.replaySystem && this.replaySystem.isActive) {
+            const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
+            let replayPrice = null;
+
+            if (hasOwnData) {
+                if (this.data && this.data.length > 0) replayPrice = this.data[this.data.length - 1].c;
+            } else {
+                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
+                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
+                }
+                if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
+                    replayPrice = this.replaySystem.animatingCandle.close;
+                }
+                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
+                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
+                }
+            }
+
+            if (Number.isFinite(replayPrice)) price = replayPrice;
+        }
+
+        return Number.isFinite(price) ? price : null;
+    }
+
+    /**
      * Draw current price label on the right side (live price indicator)
      */
     drawCurrentPriceLabel(visible) {
@@ -11201,35 +11244,9 @@ class Chart {
         }
         if (!displayCandle) return;
         
-        // === USE REPLAY-SYNCED PRICE WHEN REPLAY IS ACTIVE ===
-        let currentPrice = displayCandle.c;
-
-        if (this.replaySystem && this.replaySystem.isActive) {
-            const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
-            let replayPrice = null;
-
-            if (hasOwnData) {
-                // Panel with independent pair: use the panel's own last visible candle close
-                if (this.data && this.data.length > 0) {
-                    replayPrice = this.data[this.data.length - 1].c;
-                }
-            } else {
-                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
-                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
-                }
-
-                if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
-                    replayPrice = this.replaySystem.animatingCandle.close;
-                }
-
-                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
-                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
-                }
-            }
-
-            if (Number.isFinite(replayPrice)) {
-                currentPrice = replayPrice;
-            }
+        let currentPrice = this.resolveEffectiveCurrentPrice(visible);
+        if (!Number.isFinite(currentPrice) && Number.isFinite(displayCandle.c)) {
+            currentPrice = displayCandle.c;
         }
 
         if (!Number.isFinite(currentPrice)) return;
@@ -12063,36 +12080,7 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         if (!this.yScale) return;
 
-        // Use visible/replay-synced price so line doesn't disappear intermittently
-        // when global last candle is outside the current replay/viewport context.
-        let price = null;
-        const lastVisible = (Array.isArray(visible) && visible.length > 0) ? visible[visible.length - 1] : null;
-        if (lastVisible && Number.isFinite(lastVisible.c)) {
-            price = lastVisible.c;
-        }
-        if (!Number.isFinite(price) && this.data && this.data.length > 0) {
-            const lastCandle = this.data[this.data.length - 1];
-            if (lastCandle && Number.isFinite(lastCandle.c)) price = lastCandle.c;
-        }
-
-        if (this.replaySystem && this.replaySystem.isActive) {
-            const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
-            let replayPrice = null;
-            if (hasOwnData) {
-                if (this.data && this.data.length > 0) replayPrice = this.data[this.data.length - 1].c;
-            } else {
-                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
-                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
-                }
-                if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
-                    replayPrice = this.replaySystem.animatingCandle.close;
-                }
-                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
-                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
-                }
-            }
-            if (Number.isFinite(replayPrice)) price = replayPrice;
-        }
+        const price = this.resolveEffectiveCurrentPrice(visible);
 
         if (!Number.isFinite(price)) return;
         const y = this.yScale(price);
