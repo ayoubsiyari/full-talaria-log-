@@ -77,33 +77,6 @@ class CompareOverlay {
         };
     }
 
-    _computeLinkedPaneReservePx() {
-        if (!Array.isArray(this.linkedPanes) || this.linkedPanes.length === 0) return 0;
-        const dpr = window.devicePixelRatio || 1;
-        const chartHeight = (this.chart?.canvas?.height || 0) / dpr;
-        let total = 0;
-        this.linkedPanes.forEach((pane) => {
-            const h = pane?.height;
-            if (typeof h === 'string' && h.endsWith('%')) {
-                const p = Number.parseFloat(h);
-                if (Number.isFinite(p)) total += (chartHeight * p / 100);
-            } else {
-                const px = Number.parseFloat(h);
-                if (Number.isFinite(px)) total += px;
-            }
-        });
-        return Math.max(0, Math.round(total));
-    }
-
-    _applyLinkedPaneBottomReserve() {
-        if (!this.chart || !this.chart.margin) return;
-        if (!Number.isFinite(this._baseMarginB)) {
-            this._baseMarginB = Number(this.chart.margin.b) || 30;
-        }
-        const reserve = this._computeLinkedPaneReservePx();
-        this.chart.margin.b = this._baseMarginB + reserve;
-    }
-    
     init() {
         this.setupEventListeners();
         this.setupYAxisDrag();
@@ -831,7 +804,7 @@ class CompareOverlay {
                 container.id = containerId;
                 container.style.cssText = `
                     position: absolute;
-                    bottom: ${Number.isFinite(this._baseMarginB) ? this._baseMarginB : ((this.chart?.margin?.b) || 30)}px;
+                    bottom: 30px;
                     left: 0;
                     right: 0;
                     background: ${paneBg};
@@ -847,7 +820,7 @@ class CompareOverlay {
             if (chartContainer && container.parentElement !== chartContainer) {
                 chartContainer.appendChild(container);
             }
-            container.style.bottom = `${Number.isFinite(this._baseMarginB) ? this._baseMarginB : ((this.chart?.margin?.b) || 30)}px`;
+            container.style.bottom = '30px';
             container.style.background = paneBg;
         }
         
@@ -856,7 +829,6 @@ class CompareOverlay {
             this._linkedPaneHooked = true;
             const originalRender = this.chart.render.bind(this.chart);
             this.chart.render = () => {
-                this._applyLinkedPaneBottomReserve();
                 originalRender();
                 this.renderLinkedPanes();
             };
@@ -895,12 +867,7 @@ class CompareOverlay {
     }
     
     renderLinkedPanes() {
-        if (!this.linkedPanes || this.linkedPanes.length === 0) {
-            if (Number.isFinite(this._baseMarginB) && this.chart?.margin) {
-                this.chart.margin.b = this._baseMarginB;
-            }
-            return;
-        }
+        if (!this.linkedPanes || this.linkedPanes.length === 0) return;
 
         const containerId = `linkedPanesContainer_${this.scopeKey}`;
         let container = document.getElementById(containerId);
