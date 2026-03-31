@@ -191,8 +191,6 @@ class Chart {
         this.drawings = [];
         this.syncDrawings = true; // Enable drawing sync across panels
         this.syncCrosshair = true; // Enable crosshair sync across panels
-        /** When true, constrainOffset() does not clamp candleWidth to max (multi-panel date-range fit). */
-        this._dateRangeSyncAllowWideCandles = false;
         this.currentCrosshairTimestamp = null; // Track crosshair timestamp for sync
         this.lockedCrosshairDataIndex = null;
         this.xScale = null;
@@ -7057,7 +7055,6 @@ class Chart {
         this._chartViewRestored = false;
         
         // Reset zoom
-        this._dateRangeSyncAllowWideCandles = false;
         this.candleWidth = 8;
         this.priceZoom = 1;
         this.priceOffset = 0;
@@ -7471,9 +7468,7 @@ class Chart {
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
         if (this.candleWidth < minWidth) this.candleWidth = minWidth;
-        if (!this._dateRangeSyncAllowWideCandles && this.candleWidth > maxWidth) {
-            this.candleWidth = maxWidth;
-        }
+        if (this.candleWidth > maxWidth) this.candleWidth = maxWidth;
         
         // Allow wider price zoom range
         const minZoom = this.minPriceZoom;
@@ -7602,7 +7597,6 @@ class Chart {
         }
         
         // Apply horizontal zoom
-        this._dateRangeSyncAllowWideCandles = false;
         this.candleWidth = newCandleWidth;
         
         // Center view on selection
@@ -10505,7 +10499,6 @@ class Chart {
         const maxWidth = widths[widths.length - 1];
         
         // Apply zoom with shared candle width bounds
-        this._dateRangeSyncAllowWideCandles = false;
         this.candleWidth = Math.max(minWidth, Math.min(maxWidth, this.candleWidth * factor));
         
         // Adjust offset to keep center point stable
@@ -10530,7 +10523,6 @@ class Chart {
     
     resetView() {
         // Reset zoom levels
-        this._dateRangeSyncAllowWideCandles = false;
         this.candleWidth = 8;
         this.priceZoom = 1;
         this.priceOffset = 0;
@@ -12756,7 +12748,6 @@ class Chart {
                     this.priceScale.autoScale = false;
                 }
 
-                this._dateRangeSyncAllowWideCandles = false;
                 this.candleWidth = newWidth;
 
                 const newCandleSpacing = this.getCandleSpacing();
@@ -13023,7 +13014,6 @@ class Chart {
                     const rightEdge = this.w - m.r;
                     const lastVisibleIdx = (rightEdge - m.l - this.offsetX) / oldSpacing;
                     
-                    this._dateRangeSyncAllowWideCandles = false;
                     this.candleWidth = newWidth;
                     const newSpacing = this.getCandleSpacing();
                     
@@ -13350,7 +13340,6 @@ class Chart {
                         const oldSpacing = this.getCandleSpacing();
                         const rightEdge = this.w - m.r;
                         const lastVisibleIdx = (rightEdge - m.l - this.offsetX) / oldSpacing;
-                        this._dateRangeSyncAllowWideCandles = false;
                         this.candleWidth = newWidth;
                         const newSpacing = this.getCandleSpacing();
                         this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
@@ -17517,31 +17506,8 @@ class Chart {
         
         // No data at all - nothing to show
         if (!candle) return;
+        const x = this.dataIndexToPixel(candleIndex);
         const m = this.margin;
-        // Multi-panel date range on: same wall-clock moment should sit at the same horizontal
-        // fraction of the plot on every TF (bar centers differ between 1m and 15m).
-        let x;
-        const pm = window.panelManager;
-        const dateRangeSync = pm && pm.syncSettings && pm.syncSettings.dateRange && pm.currentLayout !== '1';
-        if (dateRangeSync && this.data && this.data.length > 0
-            && typeof this.getVisibleStartIndex === 'function' && typeof this.getVisibleEndIndex === 'function') {
-            const vs = this.getVisibleStartIndex();
-            const ve = this.getVisibleEndIndex();
-            const vStartT = this.data[vs]?.t;
-            const barMs = typeof this.inferBarDurationMs === 'function' ? this.inferBarDurationMs() : 60000;
-            const vEndT = (this.data[ve]?.t ?? 0) + barMs;
-            const ts = this.normalizeTimestampMs ? this.normalizeTimestampMs(timestamp) : timestamp;
-            if (Number.isFinite(vStartT) && Number.isFinite(vEndT) && vEndT > vStartT && Number.isFinite(ts)) {
-                const frac = (ts - vStartT) / (vEndT - vStartT);
-                const fc = Math.max(0, Math.min(1, frac));
-                const plotW = Math.max(0, this.w - m.l - m.r);
-                x = m.l + fc * plotW;
-            } else {
-                x = this.dataIndexToPixel(candleIndex);
-            }
-        } else {
-            x = this.dataIndexToPixel(candleIndex);
-        }
         
         // Check if x is within visible bounds
         const isXVisible = x >= m.l && x <= this.w - m.r;
