@@ -341,9 +341,10 @@ class Chart {
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
          * Instruments may hold 10–15+ years of 1m bars on disk — that full series is never loaded at once.
          * Requests are scoped by session start/end; longer windows stream via replay forward /candles merge.
-         * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads (e.g. 48000) for a lighter first paint.
+         * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads for a heavier first batch.
+         * Default kept moderate so first paint stays fast; viewport/replay loads more as needed.
          */
-        this.BACKTEST_SMART_INITIAL_LIMIT = 100000;
+        this.BACKTEST_SMART_INITIAL_LIMIT = 24000;
 
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
@@ -869,7 +870,7 @@ class Chart {
             setTimeout(() => {
                 loader.classList.remove('active');
                 try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
-            }, 500);
+            }, 180);
         } else {
             try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
         }
