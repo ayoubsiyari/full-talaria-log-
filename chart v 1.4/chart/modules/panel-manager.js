@@ -43,6 +43,9 @@ class PanelManager {
 
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
+
+        /** Last (panelIndex:endIndex) for Time sync — follower updates only when this changes (TradingView-style discrete jumps). */
+        this._timeSyncDiscreteKey = null;
         
         // Sync settings - time enabled by default for smooth scroll sync
         this.syncSettings = {
@@ -118,10 +121,18 @@ class PanelManager {
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
             }
-            // Time: right-edge timestamp sync, each panel keeps its own zoom.
-            // Panels move in discrete jumps (e.g. 1 bar on 5m = 5 bars on 1m).
+            // Time: only when the source's right-edge BAR changes (discrete jumps — not smooth follow on every pixel).
             else if (this.syncSettings.time
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
+                const srcChart = d.chart;
+                let barT = 0;
+                if (srcChart && srcChart.data && srcChart.data.length && Number.isFinite(d.endIndex)) {
+                    const ei = Math.max(0, Math.min(d.endIndex, srcChart.data.length - 1));
+                    barT = srcChart.data[ei]?.t ?? 0;
+                }
+                const discreteKey = `${panel.index}:${barT}`;
+                if (this._timeSyncDiscreteKey === discreteKey) return;
+                this._timeSyncDiscreteKey = discreteKey;
                 this.syncScrollByRightEdge(panel, endTimestamp);
             }
         });
@@ -505,6 +516,7 @@ class PanelManager {
             timeToggle.addEventListener('change', (e) => {
                 e.stopPropagation();
                 this.syncSettings.time = e.target.checked;
+                this._timeSyncDiscreteKey = null;
                 this.saveSyncSettings();
 
                 if (e.target.checked && this.panels.length > 1) {
@@ -1890,7 +1902,8 @@ class PanelManager {
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
-        
+        this._timeSyncDiscreteKey = null;
+
         // Deselect all panels
         this.panels.forEach((panel, i) => {
             if (panel.element) {
