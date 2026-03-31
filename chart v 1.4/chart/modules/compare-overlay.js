@@ -1027,6 +1027,12 @@ class CompareOverlay {
         ctx.fillRect(0, 0, width, height);
         
         const mainChart = this.chart;
+        const isLightTheme = document.body.classList.contains('light-mode') || document.body.classList.contains('light-theme');
+        const axisBg = isLightTheme ? '#ffffff' : '#131722';
+        const axisBorder = isLightTheme ? 'rgba(15,23,42,0.22)' : '#363a45';
+        const axisText = isLightTheme ? '#0f172a' : '#787b86';
+        const axisCrosshairBg = isLightTheme ? 'rgba(15,23,42,0.18)' : '#363a45';
+        const axisCrosshairText = isLightTheme ? '#0f172a' : '#d1d4dc';
         const margin = { t: 10, r: (mainChart.margin?.r || 60), b: 5, l: (mainChart.margin?.l || 0) };
         const chartWidth = width - margin.l - margin.r;
         const chartHeight = height - margin.t - margin.b;
@@ -1107,7 +1113,7 @@ class CompareOverlay {
         };
         
         // Draw horizontal grid lines
-        ctx.strokeStyle = 'rgba(42, 46, 57, 0.6)';
+        ctx.strokeStyle = isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)';
         ctx.lineWidth = 1;
         const gridLines = 4;
         for (let i = 0; i <= gridLines; i++) {
@@ -1125,7 +1131,7 @@ class CompareOverlay {
         const visibleCandles = Math.ceil(chartWidth / totalCandleWidth);
         const gridInterval = Math.max(1, Math.floor(visibleCandles / 6)); // ~6 vertical lines
         
-        ctx.strokeStyle = 'rgba(42, 46, 57, 0.6)';
+        ctx.strokeStyle = isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)';
         ctx.lineWidth = 1;
         
         for (let i = startIdx; i <= endIdx; i++) {
@@ -1310,14 +1316,16 @@ class CompareOverlay {
         console.log(`📊 Pane drew ${pointCount} ${displayType}, range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}`);
         
         // Determine decimal places based on price magnitude
-        const decimals = maxPrice > 100 ? 2 : (maxPrice > 10 ? 3 : 5);
+        const decimals = typeof mainChart.getPriceDecimals === 'function'
+            ? mainChart.getPriceDecimals(priceRange)
+            : (maxPrice > 100 ? 2 : (maxPrice > 10 ? 3 : 5));
         
         // Draw Y-axis background first
-        ctx.fillStyle = '#131722';
+        ctx.fillStyle = axisBg;
         ctx.fillRect(width - margin.r, 0, margin.r, height);
         
         // Draw Y-axis border
-        ctx.strokeStyle = '#363a45';
+        ctx.strokeStyle = axisBorder;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(width - margin.r + 0.5, 0);
@@ -1325,7 +1333,7 @@ class CompareOverlay {
         ctx.stroke();
         
         // Draw Y-axis labels
-        ctx.fillStyle = '#787b86';
+        ctx.fillStyle = axisText;
         ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'center';
         
@@ -1394,9 +1402,9 @@ class CompareOverlay {
                 const crosshairPrice = minPrice + (1 - (cy - margin.t) / chartHeight) * priceRange;
                 if (!isNaN(crosshairPrice)) {
                     ctx.setLineDash([]);
-                    ctx.fillStyle = '#363a45';
+                    ctx.fillStyle = axisCrosshairBg;
                     ctx.fillRect(width - margin.r, cy - 10, margin.r, 20);
-                    ctx.fillStyle = '#d1d4dc';
+                    ctx.fillStyle = axisCrosshairText;
                     ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText(crosshairPrice.toFixed(decimals), width - margin.r / 2, cy + 4);
