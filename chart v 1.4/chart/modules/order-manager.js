@@ -1374,6 +1374,17 @@ class OrderManager {
         row.classList.toggle('order-tp-card__inputs-row--two', mode === 'lot-size');
     }
 
+    /** Lot-size mode: SL card shows Risk $ / Risk % instead of contract quantity. */
+    _syncSlCardSecondaryRows() {
+        const mode = this.positionSizeMode || 'risk-usd';
+        const qtyRow = document.getElementById('slStatRowQty');
+        const lotRisk = document.getElementById('slStatRowsLotRisk');
+        if (!qtyRow || !lotRisk) return;
+        const isLot = mode === 'lot-size';
+        qtyRow.classList.toggle('is-hidden', isLot);
+        lotRisk.classList.toggle('is-hidden', !isLot);
+    }
+
     /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
@@ -5640,6 +5651,11 @@ class OrderManager {
                     gap: 6px;
                     margin-top: 10px;
                 }
+                .order-sl-stat-rows-lot-risk {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
                 .order-sl-stat {
                     display: flex;
                     justify-content: space-between;
@@ -5662,6 +5678,14 @@ class OrderManager {
                     color: var(--om-ot-gold) !important;
                     font-family: var(--om-mono);
                     font-weight: 700;
+                }
+                .order-sl-stat--riskusd .order-sl-stat__label,
+                .order-sl-stat--riskpct .order-sl-stat__label { color: #f23645; }
+                .order-sl-stat--riskusd .order-sl-stat__value,
+                .order-sl-stat--riskpct .order-sl-stat__value {
+                    color: #f23645 !important;
+                    font-family: var(--om-mono);
+                    font-weight: 600;
                 }
 
                 /* Profit target card */
@@ -6752,9 +6776,19 @@ class OrderManager {
                                 <span class="order-sl-stat__label">Distance</span>
                                 <span id="slPipsDisplay" class="order-sl-stat__value">—</span>
                             </div>
-                            <div class="order-sl-stat order-sl-stat--qty">
+                            <div id="slStatRowQty" class="order-sl-stat order-sl-stat--qty">
                                 <span class="order-sl-stat__label">Quantity</span>
                                 <span id="slQuantityDisplay" class="order-sl-stat__value">—</span>
+                            </div>
+                            <div id="slStatRowsLotRisk" class="order-sl-stat-rows-lot-risk is-hidden">
+                                <div class="order-sl-stat order-sl-stat--riskusd">
+                                    <span class="order-sl-stat__label">Risk $</span>
+                                    <span id="slRiskUsdDisplay" class="order-sl-stat__value">—</span>
+                                </div>
+                                <div class="order-sl-stat order-sl-stat--riskpct">
+                                    <span class="order-sl-stat__label">Risk %</span>
+                                    <span id="slRiskPctDisplay" class="order-sl-stat__value">—</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -7664,6 +7698,7 @@ class OrderManager {
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
         this._syncTpProfitTargetFieldVisibility();
+        this._syncSlCardSecondaryRows();
         
         console.log(`📊 Order panel updated for ${config.name}`);
     }
@@ -8154,6 +8189,7 @@ class OrderManager {
                 this.updatePreviewLines();
                 
                 this._syncTpProfitTargetFieldVisibility();
+                this._syncSlCardSecondaryRows();
             };
         });
         
@@ -8699,6 +8735,7 @@ class OrderManager {
         // Initialize
         this.orderSide = 'BUY';
         this._syncTpProfitTargetFieldVisibility();
+        this._syncSlCardSecondaryRows();
         this.updatePlaceButtonText();
     }
     
@@ -9060,6 +9097,10 @@ class OrderManager {
             const sqd = document.getElementById('slQuantityDisplay');
             if (spd) spd.textContent = '—';
             if (sqd) sqd.textContent = '—';
+            const slRUsd = document.getElementById('slRiskUsdDisplay');
+            const slRPct = document.getElementById('slRiskPctDisplay');
+            if (slRUsd) slRUsd.textContent = '—';
+            if (slRPct) slRPct.textContent = '—';
             const tpd = document.getElementById('tpDistanceDisplay');
             const tpp = document.getElementById('tpProfitDisplay');
             if (tpd) tpd.textContent = '—';
@@ -9304,12 +9345,17 @@ class OrderManager {
 
         const slPipsDisplay = document.getElementById('slPipsDisplay');
         const slQuantityDisplay = document.getElementById('slQuantityDisplay');
+        const slRiskUsdDisplay = document.getElementById('slRiskUsdDisplay');
+        const slRiskPctDisplay = document.getElementById('slRiskPctDisplay');
+        const modeSL = this.positionSizeMode || 'risk-usd';
         if (slPipsDisplay && slQuantityDisplay) {
             const cfg = this.getMarketConfig();
             const pip = Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001);
             if (!hasValidSL) {
                 slPipsDisplay.textContent = '—';
                 slQuantityDisplay.textContent = '—';
+                if (slRiskUsdDisplay) slRiskUsdDisplay.textContent = '—';
+                if (slRiskPctDisplay) slRiskPctDisplay.textContent = '—';
             } else {
                 const dist = slDistance;
                 let distText;
@@ -9322,6 +9368,14 @@ class OrderManager {
                 }
                 slPipsDisplay.textContent = distText;
                 slQuantityDisplay.textContent = `${quantity.toFixed(2)} ${cfg.positionLabel}`;
+                if (modeSL === 'lot-size' && slRiskUsdDisplay && slRiskPctDisplay) {
+                    const rOk = risk > 0 && Number.isFinite(risk);
+                    slRiskUsdDisplay.textContent = rOk ? `$${risk.toFixed(2)}` : '$0.00';
+                    slRiskPctDisplay.textContent = this._riskUsdAsPercentValue(rOk ? risk : 0);
+                } else if (slRiskUsdDisplay && slRiskPctDisplay) {
+                    slRiskUsdDisplay.textContent = '—';
+                    slRiskPctDisplay.textContent = '—';
+                }
             }
         }
 
