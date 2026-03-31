@@ -626,25 +626,23 @@ class CompareOverlay {
         });
     }
     
-    addSymbolWithMode(fileId, symbolName, mode) {
+    async addSymbolWithMode(fileId, symbolName, mode) {
         console.log(`📊 Adding symbol ${symbolName} with mode: ${mode}`);
         
         switch (mode) {
             case 'same-scale':
                 // Add overlay on same chart with same scale
-                this.addOverlay(fileId, symbolName);
+                await this.addOverlay(fileId, symbolName);
                 break;
             case 'new-scale':
                 // Add overlay with separate Y-axis (for now same as overlay)
-                this.addOverlay(fileId, symbolName);
+                await this.addOverlay(fileId, symbolName);
                 break;
             case 'new-pane':
                 // Add as linked pane (shares time axis with main chart)
-                this.addLinkedPane(fileId, symbolName);
+                await this.addLinkedPane(fileId, symbolName);
                 break;
         }
-        
-        this.closeModal();
     }
     
     async addLinkedPane(fileId, symbolName) {
@@ -672,6 +670,9 @@ class CompareOverlay {
             // Parse CSV data (same as overlay)
             const rawData = this.parseCSVData(result.data);
             console.log(`📊 Parsed ${rawData.length} candles`);
+            if (!Array.isArray(rawData) || rawData.length === 0) {
+                throw new Error('No valid candles parsed for selected symbol');
+            }
             
             // Initialize linked panes array if needed
             if (!this.linkedPanes) {
@@ -724,11 +725,13 @@ class CompareOverlay {
             console.log(`📊 Rendering linked panes (total: ${this.linkedPanes.length})`);
             this.renderLinkedPanes();
             this.renderSymbolsList();
+            this.closeModal();
             
             console.log(`✅ Linked pane added: ${symbolName} with ${pane.data.length} candles`);
             
         } catch (error) {
             console.error('Error adding linked pane:', error);
+            alert(`Failed to add ${symbolName}: ${error.message}`);
         }
     }
     
@@ -2367,6 +2370,9 @@ class CompareOverlay {
             // Parse using chart's parsing logic
             const rawData = this.parseCSVData(result.data);
             console.log(`📊 Parsed ${rawData.length} candles`);
+            if (!Array.isArray(rawData) || rawData.length === 0) {
+                throw new Error('No valid candles parsed for selected symbol');
+            }
             
             // Resample to match current timeframe
             const resampledData = this.resampleData(rawData, this.chart.currentTimeframe);
@@ -2441,6 +2447,7 @@ class CompareOverlay {
         let separator = ',';
         if (lines[dataStartIdx].split('\t').length > 4) separator = '\t';
         else if (lines[dataStartIdx].split(';').length > 4) separator = ';';
+        else if (lines[dataStartIdx].split(/\s+/).length > 5) separator = /\s+/;
         
         // Find column indices
         let timeIdx = -1, dateIdx = -1, openIdx = -1, highIdx = -1, lowIdx = -1, closeIdx = -1, volIdx = -1, tickerIdx = -1;
@@ -2495,25 +2502,31 @@ class CompareOverlay {
             
             // Parse timestamp
             let timestamp = null;
-            if (dateIdx >= 0) {
-                let dateStr = cols[dateIdx];
-                if (timeIdx >= 0 && cols[timeIdx]) {
-                    dateStr += ' ' + cols[timeIdx];
+            if (dateIdx >= 0 && timeIdx >= 0 && timeIdx !== dateIdx) {
+                timestamp = this.parseDateTime(cols[dateIdx], cols[timeIdx]);
+            } else if (dateIdx >= 0) {
+                timestamp = this.parseDateTime(cols[dateIdx]);
+            } else if (timeIdx >= 0) {
+                const timeVal = cols[timeIdx];
+                if (/^\d+$/.test(timeVal)) {
+                    timestamp = parseInt(timeVal, 10);
+                    if (timestamp < 10000000000) timestamp *= 1000;
+                } else {
+                    timestamp = this.parseDateTime(timeVal);
                 }
-                timestamp = this.parseDateTime(dateStr);
-                
-                // Debug first few failures
-                if (!timestamp && i < dataStartIdx + 3) {
-                    console.log('📊 Failed to parse date:', dateStr);
-                }
+            }
+            
+            // Debug first few failures
+            if (!timestamp && i < dataStartIdx + 3) {
+                console.log('📊 Failed to parse date:', cols[dateIdx >= 0 ? dateIdx : (timeIdx >= 0 ? timeIdx : 0)]);
             }
             
             if (!timestamp) continue;
             
-            const open = parseFloat(cols[openIdx]);
-            const high = parseFloat(cols[highIdx]);
-            const low = parseFloat(cols[lowIdx]);
-            const close = parseFloat(cols[closeIdx]);
+            const open = parseFloat(cols[openIdx >= 0 ? openIdx : 1]);
+            const high = parseFloat(cols[highIdx >= 0 ? highIdx : 2]);
+            const low = parseFloat(cols[lowIdx >= 0 ? lowIdx : 3]);
+            const close = parseFloat(cols[closeIdx >= 0 ? closeIdx : 4]);
             const volume = volIdx >= 0 ? parseFloat(cols[volIdx]) || 0 : 0;
             
             if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) continue;
@@ -2527,11 +2540,16 @@ class CompareOverlay {
         return data;
     }
     
-    parseDateTime(dateStr) {
+    parseDateTime(dateStr, timeStr = null) {
         if (!dateStr) return null;
         
         // Clean the string
-        dateStr = dateStr.trim();
+        dateStr = String(dateStr).trim();
+        if (timeStr != null && String(timeStr).trim() !== '') {
+            const merged = `${dateStr} ${String(timeStr).trim()}`;
+            const mergedParsed = this.parseDateTime(merged);
+            if (mergedParsed) return mergedParsed;
+        }
         
         // Handle YYYYMMDD HHMM format (e.g., "20180401 2104" or "20180401 210400")
         const compactMatch = dateStr.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2})(\d{2})(\d{2})?$/);
