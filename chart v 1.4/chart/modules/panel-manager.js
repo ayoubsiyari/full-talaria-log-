@@ -782,7 +782,10 @@ class PanelManager {
      * @param {number} rangeEndExclusive - first instant after the last visible bar (source open + barMs).
      */
     syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
-        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
+        if (this.currentLayout === '1') return;
+        const useWallClock = this.syncSettings.dateRange
+            || (this.syncSettings.time && this._panelsHaveDifferentTimeframes(sourcePanel));
+        if (!useWallClock) return;
 
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
@@ -806,7 +809,14 @@ class PanelManager {
                 const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
                 const numBars = Math.max(1, iR2 - iL2 + 1);
 
-                const rawSpacing = chartWidth / numBars;
+                // Target horizontal pitch must match getCandleSpacing() = candleWidth + gap (+ narrow boost), not raw candleWidth.
+                const targetSpacing = chartWidth / numBars;
+                const idealW = typeof chart.targetCandleWidthForPlotSpacing === 'function'
+                    ? chart.targetCandleWidthForPlotSpacing(targetSpacing)
+                    : (() => {
+                        const wWide = targetSpacing - 2;
+                        return wWide > 4 ? wWide : Math.max(0.2, targetSpacing - 3);
+                    })();
                 const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
                     ? chart.zoomLevel.allowedWidths
                     : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
@@ -814,12 +824,12 @@ class PanelManager {
                 const maxW = allowedWidths[allowedWidths.length - 1];
                 // Few HTF bars in the same wall-clock window need spacing wider than the normal UI max (~89px).
                 // Let constrainOffset accept it once so the follower matches the leader's date range (not a pan-only drift).
-                const needWiderThanUiMax = rawSpacing > maxW + 1e-6;
+                const needWiderThanUiMax = idealW > maxW + 1e-6;
                 if (needWiderThanUiMax) {
                     chart._allowWiderThanMaxCandleForSync = true;
-                    chart.candleWidth = Math.max(minW, Math.min(rawSpacing, chartWidth));
+                    chart.candleWidth = Math.max(minW, Math.min(idealW, chartWidth));
                 } else {
-                    chart.candleWidth = Math.max(minW, Math.min(maxW, rawSpacing));
+                    chart.candleWidth = Math.max(minW, Math.min(maxW, idealW));
                 }
                 let nearestIdx = 0;
                 let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);

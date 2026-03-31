@@ -10280,6 +10280,22 @@ class Chart {
     }
 
     /**
+     * Inverse of _getSpacingForCandleWidth: desired px per bar (plotWidth / numBars) → candleWidth
+     * so getCandleSpacing() matches target spacing (fixes multi-panel date-range sync offset math).
+     */
+    targetCandleWidthForPlotSpacing(targetSpacing) {
+        const MIN_GAP_PX = 2;
+        const minW = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+            ? this.zoomLevel.allowedWidths[0]
+            : 0.2;
+        if (!Number.isFinite(targetSpacing) || targetSpacing <= MIN_GAP_PX) return minW;
+        const wWide = targetSpacing - MIN_GAP_PX;
+        if (wWide > 4) return wWide;
+        const wNarrow = targetSpacing - MIN_GAP_PX - 1;
+        return Math.max(minW, wNarrow);
+    }
+
+    /**
      * Get effective candle spacing based on zoom level
      * This ensures consistent spacing calculations throughout the chart
      */
