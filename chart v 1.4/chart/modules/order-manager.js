@@ -4986,9 +4986,12 @@ class OrderManager {
                     border-color: #e0e3eb !important;
                     color: #131722 !important;
                 }
-                body.light-mode #tpSection {
-                    border-color: rgba(34, 197, 94, 0.28) !important;
-                    background: rgba(34, 197, 94, 0.06) !important;
+                body.light-mode .order-tp-card {
+                    background: #ffffff !important;
+                    border-color: rgba(22, 163, 74, 0.4) !important;
+                }
+                body.light-mode .order-input-wrapper.order-input-wrapper--tp {
+                    background: #f8fafc !important;
                 }
                 body.light-mode .order-sl-card {
                     background: #ffffff !important;
@@ -5453,13 +5456,7 @@ class OrderManager {
                     gap: 6px;
                     margin-bottom: 12px;
                 }
-                /* TradeEntry-style TP / SL emphasis */
-                #tpSection {
-                    padding: 8px 10px;
-                    border-radius: 6px;
-                    border: 1px solid rgba(34, 197, 94, 0.18);
-                    background: rgba(34, 197, 94, 0.04);
-                }
+                /* Profit target card (green) + R:R summary bar — see .order-tp-card */
                 /* Stop loss card (below entry): red frame, accent input, distance + quantity */
                 .order-sl-card {
                     padding: 10px 12px;
@@ -5549,6 +5546,178 @@ class OrderManager {
                     font-family: var(--om-mono);
                     font-weight: 700;
                 }
+
+                /* Profit target card */
+                .order-tp-card {
+                    padding: 10px 12px;
+                    border-radius: 8px;
+                    border: 1px solid rgba(34, 197, 94, 0.45);
+                    background: rgba(8, 11, 17, 0.92);
+                    box-sizing: border-box;
+                }
+                .order-tp-card__header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                }
+                .order-tp-card__title-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    min-width: 0;
+                }
+                .order-tp-card__icon {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 3px;
+                    background: #22c55e;
+                    flex-shrink: 0;
+                }
+                .order-tp-card__title {
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.1em;
+                    text-transform: uppercase;
+                    color: #22c55e;
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .order-tp-card__link-btn {
+                    background: none;
+                    border: none;
+                    padding: 0 2px;
+                    font-size: 12px;
+                    line-height: 1;
+                    opacity: 0.45;
+                    cursor: default;
+                    color: var(--om-muted);
+                }
+                .order-tp-card__toggle-wrap {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    cursor: pointer;
+                    flex-shrink: 0;
+                }
+                .order-tp-card__toggle-label {
+                    font-size: 9px;
+                    color: var(--om-muted);
+                    font-weight: 600;
+                }
+                .order-tp-card__main {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0;
+                }
+                .order-tp-card__body { display: flex; flex-direction: column; gap: 0; }
+                .order-tp-card__inputs-row {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px;
+                    align-items: end;
+                }
+                .order-tp-field__label {
+                    display: block;
+                    font-size: 8px;
+                    font-weight: 600;
+                    letter-spacing: 0.06em;
+                    text-transform: uppercase;
+                    color: var(--om-muted);
+                    margin-bottom: 4px;
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .order-input-wrapper.order-input-wrapper--tp {
+                    border: 1px solid rgba(34, 197, 94, 0.35) !important;
+                    border-left: 3px solid #22c55e !important;
+                    background: var(--om-bg) !important;
+                    border-radius: 6px;
+                    padding: 0 10px 0 8px !important;
+                }
+                .order-input-wrapper.order-input-wrapper--tp-rr {
+                    border: 1px solid var(--om-b) !important;
+                    background: var(--om-bg) !important;
+                    border-radius: 6px;
+                    padding: 0 10px !important;
+                }
+                .order-input-wrapper.order-input-wrapper--tp:focus-within {
+                    border-color: rgba(34, 197, 94, 0.55) !important;
+                    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.12);
+                }
+                #tpRRInput {
+                    cursor: default;
+                    color: var(--om-tx);
+                }
+                .order-tp-stats {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    margin-top: 10px;
+                }
+                .order-tp-stat {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 10px;
+                    line-height: 1.3;
+                }
+                .order-tp-stat--dist .order-tp-stat__label,
+                .order-tp-stat--dist .order-tp-stat__value { color: #22c55e; font-family: var(--om-mono); font-weight: 600; }
+                .order-tp-stat--profit .order-tp-stat__label,
+                .order-tp-stat--profit .order-tp-stat__value {
+                    color: var(--om-ot-gold) !important;
+                    font-family: var(--om-mono);
+                    font-weight: 700;
+                }
+                .order-tp-summary {
+                    margin-top: 10px;
+                    padding-top: 10px;
+                    border-top: 1px solid rgba(255, 255, 255, 0.06);
+                }
+                .order-tp-summary__bar {
+                    display: flex;
+                    height: 4px;
+                    border-radius: 2px;
+                    overflow: hidden;
+                    margin-bottom: 8px;
+                }
+                .order-tp-summary__bar-seg--risk {
+                    background: #ef4444;
+                    height: 100%;
+                    min-width: 0;
+                    transition: width 0.15s ease;
+                }
+                .order-tp-summary__bar-seg--reward {
+                    background: #22c55e;
+                    height: 100%;
+                    min-width: 0;
+                    transition: width 0.15s ease;
+                }
+                .order-tp-summary__row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                }
+                .order-tp-summary__pcts {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 10px;
+                    font-family: var(--om-mono);
+                    font-weight: 600;
+                }
+                .order-tp-summary__pct--risk { color: #ef4444; }
+                .order-tp-summary__pct--reward { color: #22c55e; }
+                .order-tp-summary__arrow { color: var(--om-muted); font-weight: 400; }
+                .order-tp-summary__rr {
+                    font-size: 10px;
+                    font-weight: 700;
+                    color: var(--om-ot-gold);
+                    font-family: var(--om-mono);
+                }
+
                 .order-section--compact { gap: 3px; }
                 .order-button-group {
                     display: flex;
@@ -6438,16 +6607,57 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-section" id="tpSection">
-                    <div class="order-toggle-wrapper">
-                        <input type="checkbox" id="enableTP" class="order-checkbox" checked>
-                        <label for="enableTP" class="order-toggle-label">Profit target</label>
+                <div class="order-section order-tp-card" id="tpSection">
+                    <div class="order-tp-card__header">
+                        <div class="order-tp-card__title-group">
+                            <span class="order-tp-card__icon" aria-hidden="true"></span>
+                            <span class="order-tp-card__title">Profit target</span>
+                            <button type="button" class="order-tp-card__link-btn" id="tpChartLinkStub" tabindex="-1" title="Chart link" aria-hidden="true">🔗</button>
+                        </div>
+                        <label class="order-tp-card__toggle-wrap" for="enableTP">
+                            <input type="checkbox" id="enableTP" class="order-checkbox" checked>
+                            <span class="order-tp-card__toggle-label">Enable</span>
+                        </label>
                     </div>
-                    <div id="tpInputs" class="order-grid-two">
-                        <div class="order-field">
-                            <label class="order-label" for="tpPrice">Price</label>
-                            <div class="order-input-wrapper">
-                                <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact">
+                    <div id="tpCardMain" class="order-tp-card__main">
+                        <div id="tpInputs" class="order-tp-card__body">
+                            <div class="order-tp-card__inputs-row">
+                                <div class="order-tp-field">
+                                    <label class="order-tp-field__label" for="tpPrice">Price</label>
+                                    <div class="order-input-wrapper order-input-wrapper--tp">
+                                        <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Take profit price">
+                                    </div>
+                                </div>
+                                <div class="order-tp-field">
+                                    <label class="order-tp-field__label" for="tpRRInput">R : R</label>
+                                    <div class="order-input-wrapper order-input-wrapper--tp-rr">
+                                        <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" readonly tabindex="-1" aria-label="Risk to reward ratio">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="order-tp-stats">
+                                <div class="order-tp-stat order-tp-stat--dist">
+                                    <span class="order-tp-stat__label">Distance</span>
+                                    <span id="tpDistanceDisplay" class="order-tp-stat__value">—</span>
+                                </div>
+                                <div class="order-tp-stat order-tp-stat--profit">
+                                    <span class="order-tp-stat__label">Profit $</span>
+                                    <span id="tpProfitDisplay" class="order-tp-stat__value">—</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="order-tp-summary">
+                            <div class="order-tp-summary__bar" aria-hidden="true">
+                                <span id="tpRiskRewardBarRisk" class="order-tp-summary__bar-seg order-tp-summary__bar-seg--risk" style="width:50%"></span>
+                                <span id="tpRiskRewardBarReward" class="order-tp-summary__bar-seg order-tp-summary__bar-seg--reward" style="width:50%"></span>
+                            </div>
+                            <div class="order-tp-summary__row">
+                                <div class="order-tp-summary__pcts">
+                                    <span id="tpSummaryPctRisk" class="order-tp-summary__pct order-tp-summary__pct--risk">—</span>
+                                    <span class="order-tp-summary__arrow">→</span>
+                                    <span id="tpSummaryPctReward" class="order-tp-summary__pct order-tp-summary__pct--reward">—</span>
+                                </div>
+                                <span id="tpSummaryRRDisplay" class="order-tp-summary__rr">—</span>
                             </div>
                         </div>
                     </div>
@@ -7386,13 +7596,13 @@ class OrderManager {
         }
 
         const enableTP = document.getElementById('enableTP');
-        const tpInputs = document.getElementById('tpInputs');
-        if (enableTP && tpInputs) {
+        const tpCardMain = document.getElementById('tpCardMain');
+        if (enableTP && tpCardMain) {
             enableTP.checked = !!order.takeProfit;
             if (typeof enableTP.onchange === 'function') {
                 enableTP.onchange();
             } else {
-                tpInputs.style.display = enableTP.checked ? 'grid' : 'none';
+                tpCardMain.style.display = enableTP.checked ? 'flex' : 'none';
             }
         }
 
@@ -7937,10 +8147,10 @@ class OrderManager {
         
         // Enable/Disable TP/SL
         const enableTP = document.getElementById('enableTP');
-        const tpInputs = document.getElementById('tpInputs');
-        if (enableTP && tpInputs) {
+        const tpCardMain = document.getElementById('tpCardMain');
+        if (enableTP && tpCardMain) {
             enableTP.onchange = () => {
-                tpInputs.style.display = enableTP.checked ? 'grid' : 'none';
+                tpCardMain.style.display = enableTP.checked ? 'flex' : 'none';
                 if (enableTP.checked) {
                     this.syncDefaultTargetsToEntry();
                 }
@@ -8618,6 +8828,20 @@ class OrderManager {
             const sqd = document.getElementById('slQuantityDisplay');
             if (spd) spd.textContent = '—';
             if (sqd) sqd.textContent = '—';
+            const tpd = document.getElementById('tpDistanceDisplay');
+            const tpp = document.getElementById('tpProfitDisplay');
+            if (tpd) tpd.textContent = '—';
+            if (tpp) tpp.textContent = '—';
+            const tpRR = document.getElementById('tpRRInput');
+            if (tpRR) tpRR.value = '';
+            ['tpSummaryPctRisk', 'tpSummaryPctReward', 'tpSummaryRRDisplay'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '—';
+            });
+            const br = document.getElementById('tpRiskRewardBarRisk');
+            const bw = document.getElementById('tpRiskRewardBarReward');
+            if (br) br.style.width = '50%';
+            if (bw) bw.style.width = '50%';
             this.updateMarginLevelBadge();
             return;
         }
@@ -8794,6 +9018,71 @@ class OrderManager {
                 const total = reward - risk;
                 totalEl.textContent = `${total >= 0 ? '' : '-'}$${Math.abs(total).toFixed(2)}`;
                 totalEl.style.color = total >= 0 ? '#22c55e' : '#ef4444';
+            }
+        }
+
+        const tpDistanceDisplay = document.getElementById('tpDistanceDisplay');
+        const tpProfitDisplay = document.getElementById('tpProfitDisplay');
+        const tpRRInput = document.getElementById('tpRRInput');
+        const tpSummaryPctRisk = document.getElementById('tpSummaryPctRisk');
+        const tpSummaryPctReward = document.getElementById('tpSummaryPctReward');
+        const tpSummaryRRDisplay = document.getElementById('tpSummaryRRDisplay');
+        const barRiskSeg = document.getElementById('tpRiskRewardBarRisk');
+        const barRewardSeg = document.getElementById('tpRiskRewardBarReward');
+        const cfgTP = this.getMarketConfig();
+        const pipTP = Number.isFinite(cfgTP.pipSize) && cfgTP.pipSize > 0 ? cfgTP.pipSize : (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001);
+        const balTypeTP = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+        const balTP = balTypeTP === 'current' ? this.balance : this.initialBalance;
+
+        if (tpDistanceDisplay && tpProfitDisplay && tpRRInput) {
+            if (!tpEnabled || !hasValidTP) {
+                tpDistanceDisplay.textContent = '—';
+                tpProfitDisplay.textContent = '—';
+                tpRRInput.value = '';
+            } else if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+                tpDistanceDisplay.textContent = '—';
+                tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
+                const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
+                tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
+            } else {
+                const dist = tpDistance;
+                let distText;
+                if (cfgTP.showPips) {
+                    distText = `${(dist / pipTP).toFixed(2)} pips`;
+                } else if (cfgTP.showTicks) {
+                    distText = `${(dist / pipTP).toFixed(2)} pts`;
+                } else {
+                    distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 5)} pts`;
+                }
+                tpDistanceDisplay.textContent = distText;
+                tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
+                const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
+                tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
+            }
+        }
+
+        if (tpSummaryPctRisk && tpSummaryPctReward && tpSummaryRRDisplay && barRiskSeg && barRewardSeg) {
+            if (!tpEnabled || !hasValidTP || !balTP || balTP <= 0 || !Number.isFinite(balTP)) {
+                tpSummaryPctRisk.textContent = '—';
+                tpSummaryPctReward.textContent = '—';
+                tpSummaryRRDisplay.textContent = '—';
+                barRiskSeg.style.width = '50%';
+                barRewardSeg.style.width = '50%';
+            } else {
+                const rp = risk > 0 ? (risk / balTP) * 100 : 0;
+                const rwp = reward > 0 && Number.isFinite(reward) ? (reward / balTP) * 100 : 0;
+                tpSummaryPctRisk.textContent = risk > 0 ? `-${rp.toFixed(2)}%` : '—';
+                tpSummaryPctReward.textContent = reward > 0 ? `+${rwp.toFixed(2)}%` : '—';
+                const ratio = hasValidSL && risk > 0 && reward > 0 ? reward / risk : 0;
+                tpSummaryRRDisplay.textContent = ratio > 0 && Number.isFinite(ratio) ? `1 : ${ratio.toFixed(1)}` : '—';
+                const sumBR = risk + reward;
+                if (sumBR > 0 && Number.isFinite(sumBR)) {
+                    barRiskSeg.style.width = `${(risk / sumBR) * 100}%`;
+                    barRewardSeg.style.width = `${(reward / sumBR) * 100}%`;
+                } else {
+                    barRiskSeg.style.width = '50%';
+                    barRewardSeg.style.width = '50%';
+                }
             }
         }
 
@@ -9883,8 +10172,8 @@ class OrderManager {
                         if (enableSL && slPrice > 0 && slPrice !== entryPrice) {
                             const riskDistance = Math.abs(slPrice - entryPrice);
                             const rr = rewardDistance / riskDistance;
-                            const rrDisplay = document.getElementById('rrDisplay');
-                            if (rrDisplay) rrDisplay.textContent = `${rr.toFixed(2)}R`;
+                            const tpRRInputEl = document.getElementById('tpRRInput');
+                            if (tpRRInputEl) tpRRInputEl.value = rr > 0 && Number.isFinite(rr) ? rr.toFixed(2) : '';
                         }
                     }
                 } else if (lineData.label && lineData.label.startsWith('TP') && lineData.targetIndex !== undefined) {
@@ -9958,8 +10247,8 @@ class OrderManager {
                         if (enableTP && tpPrice > 0 && tpPrice !== entryPrice) {
                             const rewardDistance = Math.abs(tpPrice - entryPrice);
                             const rr = rewardDistance / riskDistance;
-                            const rrDisplay = document.getElementById('rrDisplay');
-                            if (rrDisplay) rrDisplay.textContent = `${rr.toFixed(2)}R`;
+                            const tpRRInputEl = document.getElementById('tpRRInput');
+                            if (tpRRInputEl) tpRRInputEl.value = rr > 0 && Number.isFinite(rr) ? rr.toFixed(2) : '';
                         }
                         
                         // Calculate lot size and update displays
@@ -10204,8 +10493,8 @@ class OrderManager {
                             if (enableSL && slPrice > 0 && slPrice !== newPrice) {
                                 const riskDistance = Math.abs(slPrice - newPrice);
                                 const rr = rewardDistance / riskDistance;
-                                const rrDisplay = document.getElementById('rrDisplay');
-                                if (rrDisplay) rrDisplay.textContent = `${rr.toFixed(2)}R`;
+                                const tpRRInputEl = document.getElementById('tpRRInput');
+                                if (tpRRInputEl) tpRRInputEl.value = rr > 0 && Number.isFinite(rr) ? rr.toFixed(2) : '';
                             }
                         }
                     }
@@ -10444,8 +10733,8 @@ class OrderManager {
                         if (enableSL && slPrice > 0 && slPrice !== entryPrice) {
                             const riskDistance = Math.abs(slPrice - entryPrice);
                             const rr = rewardDistance / riskDistance;
-                            const rrDisplay = document.getElementById('rrDisplay');
-                            if (rrDisplay) rrDisplay.textContent = `${rr.toFixed(2)}R`;
+                            const tpRRInputEl = document.getElementById('tpRRInput');
+                            if (tpRRInputEl) tpRRInputEl.value = rr > 0 && Number.isFinite(rr) ? rr.toFixed(2) : '';
                         }
                     }
                 } else if (label === 'SL') {
@@ -10471,8 +10760,8 @@ class OrderManager {
                             const rewardDistance = Math.abs(tpPrice - entryPrice);
                             const riskDistance = Math.abs(newPrice - entryPrice);
                             const rr = rewardDistance / riskDistance;
-                            const rrDisplay = document.getElementById('rrDisplay');
-                            if (rrDisplay) rrDisplay.textContent = `${rr.toFixed(2)}R`;
+                            const tpRRInputEl = document.getElementById('tpRRInput');
+                            if (tpRRInputEl) tpRRInputEl.value = rr > 0 && Number.isFinite(rr) ? rr.toFixed(2) : '';
                         }
                         
                         // Calculate lot size if in risk-based mode

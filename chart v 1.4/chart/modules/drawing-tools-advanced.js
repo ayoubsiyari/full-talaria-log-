@@ -1407,8 +1407,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             enableTP.dispatchEvent(new Event('change', { bubbles: true }));
             tpInput.value = tpPrice.toFixed(5);
             tpInput.dispatchEvent(new Event('input', { bubbles: true }));
-            const tpInputs = document.getElementById('tpInputs');
-            if (tpInputs) tpInputs.style.display = 'grid';
+            const tpCardMain = document.getElementById('tpCardMain');
+            if (tpCardMain) tpCardMain.style.display = 'flex';
             console.log(`   TP input set to: ${tpInput.value}`);
         }
 
