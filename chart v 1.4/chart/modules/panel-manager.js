@@ -127,11 +127,32 @@ class PanelManager {
     /**
      * Apply latest coalesced scroll sync (one update per frame — avoids dropped events + jank).
      */
+    /**
+     * True when any other panel uses a different timeframe than the source (1m vs 5m, etc.).
+     * Pixel-based time sync is wrong in that case — follower must match wall-clock range + zoom.
+     */
+    _panelsHaveDifferentTimeframes(sourcePanel) {
+        const src = sourcePanel?.chartInstance;
+        const srcTf = src && src.currentTimeframe ? String(src.currentTimeframe).toLowerCase().trim() : '';
+        if (!srcTf) return false;
+        for (const p of this.panels) {
+            if (p.index === sourcePanel.index) continue;
+            const c = p.chartInstance;
+            const tf = c && c.currentTimeframe ? String(c.currentTimeframe).toLowerCase().trim() : '';
+            if (tf && tf !== srcTf) return true;
+        }
+        return false;
+    }
+
     _applyScrollSyncFromDetail(d) {
         let { panel, offsetX, candleWidth, startTimestamp, endTimestamp } = d;
         const chart = d.chart;
         if (!panel) return;
-        if (this.syncSettings.dateRange && this.currentLayout !== '1') {
+        const useWallClock = this.currentLayout !== '1' && (
+            this.syncSettings.dateRange
+            || (this.syncSettings.time && this._panelsHaveDifferentTimeframes(panel))
+        );
+        if (useWallClock) {
             if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)
                 || startTimestamp <= 0 || endTimestamp <= startTimestamp) {
                 if (chart?.data?.length && typeof chart.getVisibleStartIndex === 'function'
@@ -791,7 +812,15 @@ class PanelManager {
                     : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                 const minW = allowedWidths[0];
                 const maxW = allowedWidths[allowedWidths.length - 1];
-                chart.candleWidth = Math.max(minW, Math.min(maxW, rawSpacing));
+                // Few HTF bars in the same wall-clock window need spacing wider than the normal UI max (~89px).
+                // Let constrainOffset accept it once so the follower matches the leader's date range (not a pan-only drift).
+                const needWiderThanUiMax = rawSpacing > maxW + 1e-6;
+                if (needWiderThanUiMax) {
+                    chart._allowWiderThanMaxCandleForSync = true;
+                    chart.candleWidth = Math.max(minW, Math.min(rawSpacing, chartWidth));
+                } else {
+                    chart.candleWidth = Math.max(minW, Math.min(maxW, rawSpacing));
+                }
                 let nearestIdx = 0;
                 let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
                 for (let i = 1; i < allowedWidths.length; i++) {
@@ -805,18 +834,12 @@ class PanelManager {
                 if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
-                // Zoom capped: cannot fill plot — pin window start (left) so offset/constrain stay stable.
-                const hitZoomCeiling = rawSpacing > maxW + 1e-6;
-                if (hitZoomCeiling) {
-                    chart.offsetX = -iL2 * spacing;
-                } else {
-                    const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
-                        ? chart.timeScale.rightOffsetCandles
-                        : 5;
-                    const rightMargin = Math.max(0, rightMarginCandles) * spacing;
-                    const targetRight = chart.w - m.r - rightMargin;
-                    chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
-                }
+                const rightMarginCandles = Number.isFinite(chart.timeScale?.rightOffsetCandles)
+                    ? chart.timeScale.rightOffsetCandles
+                    : 5;
+                const rightMargin = Math.max(0, rightMarginCandles) * spacing;
+                const targetRight = chart.w - m.r - rightMargin;
+                chart.offsetX = targetRight - m.l - (iR2 + 1) * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();

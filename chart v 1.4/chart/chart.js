@@ -208,6 +208,8 @@ class Chart {
         this.isZooming = false;
         this.magnetMode = 'off'; // Magnet mode for snapping to OHLC
         this.currentTimeframe = '1m'; // Track current timeframe
+        /** When true, next constrainOffset() allows candleWidth above zoom UI max (multi-TF date-range sync only). */
+        this._allowWiderThanMaxCandleForSync = false;
 
         this.activeTradingSessionId = null;
         this._sessionStateLoadedFor = null;
@@ -7468,7 +7470,12 @@ class Chart {
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
         if (this.candleWidth < minWidth) this.candleWidth = minWidth;
-        if (this.candleWidth > maxWidth) this.candleWidth = maxWidth;
+        if (this._allowWiderThanMaxCandleForSync) {
+            if (this.candleWidth > cw) this.candleWidth = cw;
+            this._allowWiderThanMaxCandleForSync = false;
+        } else if (this.candleWidth > maxWidth) {
+            this.candleWidth = maxWidth;
+        }
         
         // Allow wider price zoom range
         const minZoom = this.minPriceZoom;
