@@ -875,7 +875,7 @@ class CompareOverlay {
                     position: relative;
                     width: 100%;
                     height: ${paneHeight}px;
-                    border-top: 1px solid #363a45;
+                    border-top: none;
                     background: ${paneBg};
                 `;
                 
@@ -968,6 +968,45 @@ class CompareOverlay {
                 `;
                 pane.svg = svg;
                 if (!pane.drawings) pane.drawings = [];
+
+                // Add the same resize line/handle style as multi-panel layout
+                const resizeHandle = document.createElement('div');
+                resizeHandle.className = 'panel-resize-handle horizontal';
+                resizeHandle.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    z-index: 210;
+                `;
+                wrapper.appendChild(resizeHandle);
+
+                // Drag-to-resize linked pane height (same row-resize feel as multi-panel)
+                resizeHandle.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const startY = e.clientY;
+                    const startHeight = wrapper.getBoundingClientRect().height;
+                    const minHeight = 120;
+                    const maxHeight = Math.max(minHeight, Math.floor((this.chart.h || 900) * 0.85));
+                    resizeHandle.classList.add('dragging');
+
+                    const onMove = (ev) => {
+                        const delta = ev.clientY - startY;
+                        const newHeight = Math.max(minHeight, Math.min(maxHeight, Math.round(startHeight - delta)));
+                        pane.height = `${newHeight}px`;
+                        wrapper.style.height = `${newHeight}px`;
+                        canvas.style.height = `${newHeight}px`;
+                        this.renderLinkedPanes();
+                    };
+                    const onUp = () => {
+                        resizeHandle.classList.remove('dragging');
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                    };
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                });
                 
                 wrapper.appendChild(canvas);
                 wrapper.appendChild(svg);
