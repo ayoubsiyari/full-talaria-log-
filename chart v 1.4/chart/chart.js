@@ -757,6 +757,15 @@ class Chart {
                 loader.classList.add('active');
                 this.updateLoaderProgress(0, 'Loading session data...');
             }
+            // Safety release: never allow preload gate to stay forever.
+            if (this._backtestLoaderSafetyTimer) clearTimeout(this._backtestLoaderSafetyTimer);
+            this._backtestLoaderSafetyTimer = setTimeout(() => {
+                try {
+                    const l = document.getElementById('backtestingLoader');
+                    if (l) l.classList.remove('active');
+                    document.documentElement.classList.remove('bt-preload');
+                } catch (e) {}
+            }, 20000);
             
             const sessionId = urlParams.get('sessionId');
 
@@ -852,11 +861,17 @@ class Chart {
     
     hideLoader() {
         const loader = document.getElementById('backtestingLoader');
+        if (this._backtestLoaderSafetyTimer) {
+            clearTimeout(this._backtestLoaderSafetyTimer);
+            this._backtestLoaderSafetyTimer = null;
+        }
         if (loader) {
             setTimeout(() => {
                 loader.classList.remove('active');
                 try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
             }, 500);
+        } else {
+            try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
         }
     }
 
