@@ -80,6 +80,7 @@ class OrderManager {
             // Trading settings
             this.contractSize = 100000; // Standard lot size (100,000 units)
             this.positionSizeMode = 'risk-usd';
+            this._syncingTpTargetInputs = false;
             this.breakevenMode = 'pips';
             this.mfeMaeTrackingHours = 4;
             this.tradeJournal = [];
@@ -1255,6 +1256,63 @@ class OrderManager {
         // which blows up USD pip value (e.g. 1000/1.08 instead of 1000/126).
         const mark = Number.isFinite(levelPrice) ? levelPrice : entryPrice;
         return this._enginePnL(side, entryPrice, levelPrice, q, mark, sym, null);
+    }
+
+    /**
+     * Solve for TP price so estimated $ profit matches target (single TP, current quantity).
+     */
+    _solveTpPriceForTargetRewardUsd(targetUsd) {
+        const entry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        const dir = this.orderSide === 'SELL' ? 'SELL' : 'BUY';
+        if (!entry || !qty || targetUsd <= 0) return null;
+        const est = (tp) => this.estimatePnLForPriceLevel(dir, entry, tp, qty);
+        const ps = Math.max(this.pipSize || 0.0001, 1e-12);
+        if (dir === 'BUY') {
+            let lo = entry + ps * 0.5;
+            let hi = lo;
+            let guard = 0;
+            while (est(hi) < targetUsd && guard < 50) {
+                hi = entry + (hi - entry) * 2 + ps;
+                guard++;
+            }
+            if (est(hi) < targetUsd) return hi;
+            for (let i = 0; i < 80; i++) {
+                const mid = (lo + hi) / 2;
+                const m = est(mid);
+                if (Math.abs(m - targetUsd) < 0.05) return mid;
+                if (m < targetUsd) lo = mid; else hi = mid;
+            }
+            return (lo + hi) / 2;
+        }
+        let hi = entry - ps * 0.5;
+        let lo = hi - ps * 200;
+        let g2 = 0;
+        while (est(lo) < targetUsd && g2 < 50) {
+            lo -= Math.max(entry - lo, ps) * 2;
+            g2++;
+        }
+        if (est(lo) < targetUsd) return lo;
+        for (let i = 0; i < 80; i++) {
+            const mid = (lo + hi) / 2;
+            const m = est(mid);
+            if (Math.abs(m - targetUsd) < 0.05) return mid;
+            if (m < targetUsd) hi = mid; else lo = mid;
+        }
+        return (lo + hi) / 2;
+    }
+
+    /** Show Target $ vs Target % vs 2-column (RR) based on position sizing mode. */
+    _syncTpProfitTargetFieldVisibility() {
+        const mode = this.positionSizeMode || 'risk-usd';
+        const row = document.getElementById('tpInputsRow');
+        const usd = document.getElementById('tpFieldTargetUsd');
+        const pct = document.getElementById('tpFieldTargetPct');
+        if (!row || !usd || !pct) return;
+        usd.classList.toggle('is-hidden', mode !== 'risk-usd');
+        pct.classList.toggle('is-hidden', mode !== 'risk-percent');
+        row.classList.toggle('order-tp-card__inputs-row--three', mode !== 'lot-size');
+        row.classList.toggle('order-tp-card__inputs-row--two', mode === 'lot-size');
     }
 
     /**
@@ -5617,6 +5675,18 @@ class OrderManager {
                     gap: 8px;
                     align-items: end;
                 }
+                .order-tp-card__inputs-row--three {
+                    grid-template-columns: 1fr 1fr 1fr;
+                }
+                .order-tp-card__inputs-row--two {
+                    grid-template-columns: 1fr 1fr;
+                }
+                .order-input-wrapper.order-input-wrapper--tp-target {
+                    border: 1px solid var(--om-b) !important;
+                    background: var(--om-bg) !important;
+                    border-radius: 6px;
+                    padding: 0 8px !important;
+                }
                 .order-tp-field__label {
                     display: block;
                     font-size: 8px;
@@ -6621,17 +6691,31 @@ class OrderManager {
                     </div>
                     <div id="tpCardMain" class="order-tp-card__main">
                         <div id="tpInputs" class="order-tp-card__body">
-                            <div class="order-tp-card__inputs-row">
+                            <div class="order-tp-card__inputs-row order-tp-card__inputs-row--three" id="tpInputsRow">
                                 <div class="order-tp-field">
                                     <label class="order-tp-field__label" for="tpPrice">Price</label>
                                     <div class="order-input-wrapper order-input-wrapper--tp">
                                         <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Take profit price">
                                     </div>
                                 </div>
-                                <div class="order-tp-field">
+                                <div class="order-tp-field" id="tpFieldRR">
                                     <label class="order-tp-field__label" for="tpRRInput">R : R</label>
                                     <div class="order-input-wrapper order-input-wrapper--tp-rr">
                                         <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" readonly tabindex="-1" aria-label="Risk to reward ratio">
+                                    </div>
+                                </div>
+                                <div class="order-tp-field" id="tpFieldTargetUsd">
+                                    <label class="order-tp-field__label" for="tpTargetProfitUSD">Target $</label>
+                                    <div class="order-input-wrapper order-input-wrapper--tp-target">
+                                        <span class="order-input-prefix">$</span>
+                                        <input type="number" id="tpTargetProfitUSD" value="300" min="0" step="1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit in dollars">
+                                    </div>
+                                </div>
+                                <div class="order-tp-field is-hidden" id="tpFieldTargetPct">
+                                    <label class="order-tp-field__label" for="tpTargetProfitPercent">Target %</label>
+                                    <div class="order-input-wrapper order-input-wrapper--tp-target">
+                                        <input type="number" id="tpTargetProfitPercent" value="3" min="0" step="0.1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit as percent of balance">
+                                        <span class="order-input-suffix">%</span>
                                     </div>
                                 </div>
                             </div>
@@ -7496,6 +7580,7 @@ class OrderManager {
         // Recalculate position size with new settings
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
+        this._syncTpProfitTargetFieldVisibility();
         
         console.log(`📊 Order panel updated for ${config.name}`);
     }
@@ -7984,6 +8069,8 @@ class OrderManager {
                 
                 // Update preview lines
                 this.updatePreviewLines();
+                
+                this._syncTpProfitTargetFieldVisibility();
             };
         });
         
@@ -8039,6 +8126,44 @@ class OrderManager {
                 }
                 
                 this.updatePreviewLines();
+            };
+        }
+        
+        const tpTargetUsd = document.getElementById('tpTargetProfitUSD');
+        const tpTargetPct = document.getElementById('tpTargetProfitPercent');
+        if (tpTargetUsd) {
+            tpTargetUsd.oninput = () => {
+                this._syncingTpTargetInputs = true;
+                const v = parseFloat(tpTargetUsd.value || 0);
+                if (v > 0) {
+                    const tp = this._solveTpPriceForTargetRewardUsd(v);
+                    if (tp != null && Number.isFinite(tp)) {
+                        const inp = document.getElementById('tpPrice');
+                        if (inp) inp.value = parseFloat(tp.toFixed(5));
+                    }
+                }
+                this.calculateAdvancedRiskReward();
+                this.updatePreviewLines();
+                this._syncingTpTargetInputs = false;
+            };
+        }
+        if (tpTargetPct) {
+            tpTargetPct.oninput = () => {
+                this._syncingTpTargetInputs = true;
+                const balType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                const bal = balType === 'current' ? this.balance : this.initialBalance;
+                const pct = parseFloat(tpTargetPct.value || 0);
+                const targetUsd = bal > 0 ? (bal * pct) / 100 : 0;
+                if (targetUsd > 0) {
+                    const tp = this._solveTpPriceForTargetRewardUsd(targetUsd);
+                    if (tp != null && Number.isFinite(tp)) {
+                        const inp = document.getElementById('tpPrice');
+                        if (inp) inp.value = parseFloat(tp.toFixed(5));
+                    }
+                }
+                this.calculateAdvancedRiskReward();
+                this.updatePreviewLines();
+                this._syncingTpTargetInputs = false;
             };
         }
         
@@ -8112,12 +8237,11 @@ class OrderManager {
         // Balance type radio buttons (Current / Initial)
         document.querySelectorAll('input[name="balanceType"]').forEach(radio => {
             radio.onchange = () => {
-                // Recalculate position size when balance type changes (only affects Risk % mode)
                 if (this.positionSizeMode === 'risk-percent') {
                     this.calculatePositionFromRisk();
-                    this.calculateAdvancedRiskReward();
-                    this.updatePreviewLines();
                 }
+                this.calculateAdvancedRiskReward();
+                this.updatePreviewLines();
             };
         });
         
@@ -8467,6 +8591,7 @@ class OrderManager {
         
         // Initialize
         this.orderSide = 'BUY';
+        this._syncTpProfitTargetFieldVisibility();
         this.updatePlaceButtonText();
     }
     
@@ -9018,6 +9143,21 @@ class OrderManager {
                 const total = reward - risk;
                 totalEl.textContent = `${total >= 0 ? '' : '-'}$${Math.abs(total).toFixed(2)}`;
                 totalEl.style.color = total >= 0 ? '#22c55e' : '#ef4444';
+            }
+        }
+
+        if (!this._syncingTpTargetInputs) {
+            const usdIn = document.getElementById('tpTargetProfitUSD');
+            const pctIn = document.getElementById('tpTargetProfitPercent');
+            const modeTP = this.positionSizeMode || 'risk-usd';
+            const balSync = (document.querySelector('input[name="balanceType"]:checked')?.value || 'current') === 'current'
+                ? this.balance
+                : this.initialBalance;
+            if (usdIn && modeTP === 'risk-usd' && hasValidTP && reward > 0 && Number.isFinite(reward)) {
+                usdIn.value = parseFloat(reward.toFixed(2));
+            }
+            if (pctIn && modeTP === 'risk-percent' && hasValidTP && balSync > 0 && reward > 0 && Number.isFinite(reward)) {
+                pctIn.value = parseFloat(((reward / balSync) * 100).toFixed(2));
             }
         }
 
