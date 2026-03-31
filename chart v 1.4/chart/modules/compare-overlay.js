@@ -262,42 +262,62 @@ class CompareOverlay {
     }
     
     setupEventListeners() {
-        // Compare button
-        const compareBtn = document.getElementById('compareBtn');
-        if (compareBtn) {
-            compareBtn.addEventListener('click', () => this.openModal());
-        }
-        
-        // Modal close button
-        const closeBtn = document.getElementById('compareModalClose');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.closeModal());
-        }
-        
-        // Modal overlay click to close
-        const modalOverlay = document.getElementById('compareModalOverlay');
-        if (modalOverlay) {
-            modalOverlay.addEventListener('click', (e) => {
-                if (e.target === modalOverlay) {
-                    this.closeModal();
+        // Bind global compare modal listeners once and route to active chart overlay.
+        if (!window.__compareOverlayGlobalHandlersBound) {
+            const resolveOwner = () => {
+                const activeChart = (typeof window.getActiveChart === 'function')
+                    ? window.getActiveChart()
+                    : window.chart;
+                return (activeChart && activeChart.compareOverlay) || window.__activeCompareOverlayOwner || null;
+            };
+
+            const compareBtn = document.getElementById('compareBtn');
+            if (compareBtn) {
+                compareBtn.addEventListener('click', () => {
+                    const owner = resolveOwner();
+                    if (owner) owner.openModal();
+                });
+            }
+            
+            const closeBtn = document.getElementById('compareModalClose');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    const owner = window.__activeCompareOverlayOwner;
+                    if (owner) owner.closeModal();
+                });
+            }
+            
+            const modalOverlay = document.getElementById('compareModalOverlay');
+            if (modalOverlay) {
+                modalOverlay.addEventListener('click', (e) => {
+                    if (e.target === modalOverlay) {
+                        const owner = window.__activeCompareOverlayOwner;
+                        if (owner) owner.closeModal();
+                    }
+                });
+            }
+            
+            const searchInput = document.getElementById('compareSearchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    const owner = window.__activeCompareOverlayOwner || resolveOwner();
+                    if (owner) owner.filterSymbols(e.target.value);
+                });
+            }
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const owner = window.__activeCompareOverlayOwner || resolveOwner();
+                    if (owner) {
+                        owner.closeModal();
+                        owner.closeSettingsPopup();
+                        owner.closePaneSettingsPopup();
+                    }
                 }
             });
+
+            window.__compareOverlayGlobalHandlersBound = true;
         }
-        
-        // Search input
-        const searchInput = document.getElementById('compareSearchInput');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => this.filterSymbols(e.target.value));
-        }
-        
-        // Escape key to close modal
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal();
-                this.closeSettingsPopup();
-                this.closePaneSettingsPopup();
-            }
-        });
         
         // Initialize settings popup
         this.initSettingsPopup();
@@ -326,6 +346,7 @@ class CompareOverlay {
     
     openModal() {
         console.log('📊 Opening compare modal');
+        window.__activeCompareOverlayOwner = this;
         const modal = document.getElementById('compareModalOverlay');
         if (modal) {
             modal.classList.add('open');
@@ -352,6 +373,9 @@ class CompareOverlay {
         const modal = document.getElementById('compareModalOverlay');
         if (modal) {
             modal.classList.remove('open');
+        }
+        if (window.__activeCompareOverlayOwner === this) {
+            window.__activeCompareOverlayOwner = null;
         }
     }
     
