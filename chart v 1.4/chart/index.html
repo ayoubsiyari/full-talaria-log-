@@ -17705,9 +17705,10 @@
 
 
 
-        /* Floating Follow Button - positioned inside chart-wrapper */
+        /* Floating follow button — main chart (#replayFollow) and panel charts (.panel-follow-btn) share one spec */
 
-        #replayFollow {
+        #replayFollow,
+        .panel-follow-btn {
             position: absolute;
             bottom: 70px;
             right: 120px;
@@ -17739,7 +17740,8 @@
             }
         }
 
-        #replayFollow:hover {
+        #replayFollow:hover,
+        .panel-follow-btn:hover {
             background: rgba(45, 55, 72, 0.7);
             border-color: rgba(160, 174, 192, 0.4);
             color: #e2e8f0;
@@ -17748,9 +17750,12 @@
             opacity: 1;
         }
 
-        #replayFollow svg {
+        #replayFollow svg,
+        .panel-follow-btn svg {
             width: 20px;
             height: 20px;
+            display: block;
+            flex-shrink: 0;
         }
 
         /* Light mode */
@@ -17767,42 +17772,6 @@
             border-color: rgba(15, 23, 42, 0.25);
             color: #ffffff;
             opacity: 1;
-        }
-
-        /* Panel follow button */
-        .panel-follow-btn {
-            position: absolute;
-            bottom: 50px;
-            right: 80px;
-            z-index: 100;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            width: 38px;
-            height: 38px;
-            padding: 0;
-            background: rgba(45, 55, 72, 0.45);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1.5px solid rgba(160, 174, 192, 0.2);
-            border-radius: 50%;
-            color: rgba(160, 174, 192, 0.7);
-            cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
-            animation: followPulse 2.5s ease-in-out infinite;
-        }
-        .panel-follow-btn:hover {
-            background: rgba(45, 55, 72, 0.7);
-            border-color: rgba(160, 174, 192, 0.4);
-            color: #e2e8f0;
-            transform: scale(1.1);
-            animation: none;
-            opacity: 1;
-        }
-        .panel-follow-btn svg {
-            width: 16px;
-            height: 16px;
         }
 
         .replay-datetime-label {
