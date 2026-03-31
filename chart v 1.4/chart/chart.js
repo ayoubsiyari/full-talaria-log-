@@ -7093,6 +7093,8 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
+        if (this._suppressPanelScrollSync) return;
+        if (window.panelManager._isSyncing) return;
         if (window.panelManager._syncingDateRange) return;
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
@@ -13164,7 +13166,15 @@ class Chart {
             }
             // Handle pan end - no inertia, stop immediately
             else if (dragType === 'pan' && wasDragging) {
-                this.dispatchScrollSync();
+                const panClickThresholdPx = 5;
+                const panDx = e.clientX - (this.drag.startX ?? e.clientX);
+                const panDy = e.clientY - (this.drag.startY ?? e.clientY);
+                const isChartClick = e.button === 0 && Math.hypot(panDx, panDy) < panClickThresholdPx;
+                // Real pan → sync scroll to other panels. Tiny movement (click) → skip so Time-sync
+                // click handler can align by bar time without fighting right-edge sync.
+                if (!isChartClick) {
+                    this.dispatchScrollSync();
+                }
                 this.scheduleChartViewSave();
 
                 // Re-check replay follow indicator after the pan settles.
@@ -13179,15 +13189,12 @@ class Chart {
 
                 // VP fill uses pointer-events none so pan reaches the canvas; treat a short click as
                 // select when the topmost hit at the release point is an unlocked volume profile.
-                const panClickThresholdPx = 5;
-                const panDx = e.clientX - (this.drag.startX ?? e.clientX);
-                const panDy = e.clientY - (this.drag.startY ?? e.clientY);
-                if (e.button === 0
-                    && Math.hypot(panDx, panDy) < panClickThresholdPx
+                if (isChartClick
                     && !this.tool
                     && this.drawingManager
                     && !this.drawingManager.currentTool) {
                     const svgNode = this.svg && this.svg.node();
+                    let vpHandled = false;
                     if (svgNode) {
                         const svgRect = svgNode.getBoundingClientRect();
                         const mouseX = e.clientX - svgRect.left;
@@ -13196,6 +13203,41 @@ class Chart {
                         const top = hits && hits.length ? hits[0] : null;
                         if (top && !top.locked && this.drawingManager.isVolumeProfileToolType(top.type)) {
                             this.drawingManager.selectDrawing(top, false);
+                            vpHandled = true;
+                        }
+                    }
+                    // Time sync (TradingView): click on bar → other panels show same date/time
+                    if (!vpHandled) {
+                        const pm = window.panelManager;
+                        if (pm && pm.syncSettings && pm.syncSettings.time && pm.currentLayout !== '1'
+                            && this.data && this.data.length) {
+                            const rect = this.canvas.getBoundingClientRect();
+                            const mx = e.clientX - rect.left;
+                            const my = e.clientY - rect.top;
+                            const mode = detectCursorMode(mx, my);
+                            if (mode === 'chart' || mode === 'timeAxis') {
+                                const idx = Math.floor(this.pixelToDataIndex(mx));
+                                const clamped = Math.max(0, Math.min(idx, this.data.length - 1));
+                                const ts = this.data[clamped]?.t;
+                                if (ts && typeof pm.syncTimeToClickedTimestamp === 'function') {
+                                    let sourcePanel = this.panel || null;
+                                    if (!sourcePanel && typeof pm.getPanels === 'function') {
+                                        const panels = pm.getPanels();
+                                        for (let pi = 0; pi < panels.length; pi++) {
+                                            if (panels[pi].chartInstance === this) {
+                                                sourcePanel = panels[pi];
+                                                break;
+                                            }
+                                        }
+                                        if (!sourcePanel && this === window.chart && panels.length > 0) {
+                                            sourcePanel = panels[0];
+                                        }
+                                    }
+                                    if (sourcePanel) {
+                                        pm.syncTimeToClickedTimestamp(sourcePanel, ts);
+                                    }
+                                }
+                            }
                         }
                     }
                 }

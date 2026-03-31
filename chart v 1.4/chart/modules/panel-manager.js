@@ -659,24 +659,13 @@ class PanelManager {
     }
 
     /**
-     * TradingView-style Time sync: one-shot navigation.
-     * All other panels navigate to the same center point in time as the source,
-     * keeping their own zoom level (candle width unchanged).
+     * Center all other panels on a wall-clock instant (Time sync). Source chart unchanged.
      */
-    syncTimeToPanel(sourcePanel) {
+    _centerOtherPanelsOnTimestamp(sourcePanel, timestamp) {
         if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!Number.isFinite(timestamp)) return;
 
-        const sourceChart = sourcePanel?.chartInstance;
-        if (!sourceChart?.data?.length) return;
-
-        const startIndex = typeof sourceChart.getVisibleStartIndex === 'function'
-            ? sourceChart.getVisibleStartIndex() : 0;
-        const endIndex = typeof sourceChart.getVisibleEndIndex === 'function'
-            ? sourceChart.getVisibleEndIndex() : sourceChart.data.length - 1;
-        const centerIndex = Math.floor((startIndex + endIndex) / 2);
-        const centerTs = sourceChart.data[Math.min(centerIndex, sourceChart.data.length - 1)]?.t;
-        if (!centerTs) return;
-
+        const toRelease = [];
         this._isSyncing = true;
         try {
             this.panels.forEach(panel => {
@@ -684,9 +673,12 @@ class PanelManager {
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
 
+                chart._suppressPanelScrollSync = true;
+                toRelease.push(chart);
+
                 const targetIdx = chart.findGoToTargetIndex
-                    ? chart.findGoToTargetIndex(chart.data, centerTs)
-                    : this._bsearchTimestamp(chart.data, centerTs);
+                    ? chart.findGoToTargetIndex(chart.data, timestamp)
+                    : this._bsearchTimestamp(chart.data, timestamp);
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
                 const m = chart.margin || { l: 0, r: 60 };
@@ -697,8 +689,37 @@ class PanelManager {
                 if (chart.scheduleRender) chart.scheduleRender();
             });
         } finally {
-            requestAnimationFrame(() => { this._isSyncing = false; });
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    this._isSyncing = false;
+                });
+            });
         }
+    }
+
+    /**
+     * TradingView-style: when a panel is selected, other panels show the same center time.
+     */
+    syncTimeToPanel(sourcePanel) {
+        const sourceChart = sourcePanel?.chartInstance;
+        if (!sourceChart?.data?.length) return;
+
+        const startIndex = typeof sourceChart.getVisibleStartIndex === 'function'
+            ? sourceChart.getVisibleStartIndex() : 0;
+        const endIndex = typeof sourceChart.getVisibleEndIndex === 'function'
+            ? sourceChart.getVisibleEndIndex() : sourceChart.data.length - 1;
+        const centerIndex = Math.floor((startIndex + endIndex) / 2);
+        const centerTs = sourceChart.data[Math.min(centerIndex, sourceChart.data.length - 1)]?.t;
+        if (!centerTs) return;
+        this._centerOtherPanelsOnTimestamp(sourcePanel, centerTs);
+    }
+
+    /**
+     * TradingView-style: click on a bar — other panels jump to that same date/time.
+     */
+    syncTimeToClickedTimestamp(sourcePanel, timestamp) {
+        this._centerOtherPanelsOnTimestamp(sourcePanel, timestamp);
     }
     
     /**
@@ -710,12 +731,16 @@ class PanelManager {
         if (!this.syncSettings.time || this.currentLayout === '1') return;
         if (!Number.isFinite(rightEdgeTimestamp)) return;
 
+        const toRelease = [];
         this._isSyncing = true;
         try {
             this.panels.forEach(panel => {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+
+                chart._suppressPanelScrollSync = true;
+                toRelease.push(chart);
 
                 const targetIdx = chart.findGoToTargetIndex
                     ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
@@ -731,7 +756,12 @@ class PanelManager {
                 if (chart.scheduleRender) chart.scheduleRender();
             });
         } finally {
-            requestAnimationFrame(() => { this._isSyncing = false; });
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    this._isSyncing = false;
+                });
+            });
         }
     }
 
@@ -771,6 +801,7 @@ class PanelManager {
         if (!Number.isFinite(startTimestamp) || !Number.isFinite(rangeEndExclusive)) return;
         if (rangeEndExclusive <= startTimestamp) return;
 
+        const toRelease = [];
         this._isSyncing = true;
         this._syncingDateRange = true;
         try {
@@ -778,6 +809,9 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+
+                chart._suppressPanelScrollSync = true;
+                toRelease.push(chart);
 
                 const m = chart.margin || { l: 0, r: 60 };
                 const chartWidth = chart.w - m.l - m.r;
@@ -825,8 +859,11 @@ class PanelManager {
             });
         } finally {
             requestAnimationFrame(() => {
-                this._isSyncing = false;
-                this._syncingDateRange = false;
+                requestAnimationFrame(() => {
+                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    this._isSyncing = false;
+                    this._syncingDateRange = false;
+                });
             });
         }
     }
