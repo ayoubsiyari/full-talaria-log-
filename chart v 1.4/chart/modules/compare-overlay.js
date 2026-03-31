@@ -1026,12 +1026,12 @@ class CompareOverlay {
         ctx.fillStyle = this.getMainChartBackground();
         ctx.fillRect(0, 0, width, height);
         
+        const mainChart = this.chart;
         const margin = { t: 10, r: (mainChart.margin?.r || 60), b: 5, l: (mainChart.margin?.l || 0) };
         const chartWidth = width - margin.l - margin.r;
         const chartHeight = height - margin.t - margin.b;
         
         // Get main chart data and settings
-        const mainChart = this.chart;
         const mainData = mainChart.data || [];
         if (mainData.length === 0) return;
         
