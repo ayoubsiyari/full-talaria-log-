@@ -4732,6 +4732,13 @@ class OrderManager {
                     --om-seg-bg: #080b11;
                     --om-seg-border: #1a2030;
                     --om-tab-dim: #5e6a7a;
+                    /* TradeEntry order-type: Market / Limit / Stop */
+                    --om-ot-gold: #C9A84C;
+                    --om-ot-gold-bg: rgba(201, 168, 76, 0.10);
+                    --om-ot-blue: #2643F7;
+                    --om-ot-blue-bg: rgba(38, 67, 247, 0.10);
+                    --om-ot-red: #ef4444;
+                    --om-ot-red-bg: rgba(239, 68, 68, 0.06);
                     --tv-buy: #22c55e;
                     --tv-sell: #ef4444;
                     background: var(--op-bg);
@@ -4896,6 +4903,9 @@ class OrderManager {
                     --om-seg-bg: #f0f3fa !important;
                     --om-seg-border: #e0e3eb !important;
                     --om-tab-dim: #787b86 !important;
+                    --om-ot-gold-bg: rgba(201, 168, 76, 0.14) !important;
+                    --om-ot-blue-bg: rgba(38, 67, 247, 0.10) !important;
+                    --om-ot-red-bg: rgba(239, 68, 68, 0.10) !important;
                     --op-text: #131722 !important;
                     --op-text-muted: #787b86 !important;
                     --op-border: #e0e3eb !important;
@@ -4969,18 +4979,19 @@ class OrderManager {
                     box-shadow: none !important;
                 }
 
-                /* ── Tab strips: Market/Limit/Stop, position mode, breakeven (blue underline) ── */
+                /* ── Market/Limit/Stop segmented + inline strips (position / BE) ── */
                 body.light-mode .order-button-group:not(.order-button-group--inline) {
-                    background: transparent !important;
-                    border: none !important;
-                    border-radius: 0 !important;
-                    padding: 0 !important;
-                    gap: 20px !important;
+                    background: var(--om-seg-bg) !important;
+                    border: 1px solid var(--om-seg-border) !important;
+                    border-radius: 5px !important;
+                    padding: 2px !important;
+                    gap: 0 !important;
                     display: flex !important;
                     flex-wrap: nowrap !important;
                     align-items: stretch !important;
-                    border-bottom: 1px solid #e0e3eb !important;
                     box-shadow: none !important;
+                    margin-top: 2px !important;
+                    box-sizing: border-box !important;
                 }
                 body.light-mode .order-button-group--inline:not(:has(.risk-btn)) {
                     background: transparent !important;
@@ -5004,7 +5015,6 @@ class OrderManager {
                     flex-wrap: wrap !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-type-btn,
                 body.light-mode .position-mode-tab,
                 body.light-mode .breakeven-mode-tab {
                     color: #787b86 !important;
@@ -5018,17 +5028,14 @@ class OrderManager {
                     border-bottom: 2px solid transparent !important;
                     font-weight: 500 !important;
                 }
-                body.light-mode .order-type-btn:hover:not(.active),
                 body.light-mode .position-mode-tab:hover:not(.active),
                 body.light-mode .breakeven-mode-tab:hover:not(.active) {
                     background: transparent !important;
                     color: #131722 !important;
                     -webkit-text-fill-color: #131722 !important;
                 }
-                body.light-mode .order-type-btn.active,
                 body.light-mode .position-mode-tab.active,
                 body.light-mode .breakeven-mode-tab.active,
-                body.light-mode .order-type-btn.active:hover,
                 body.light-mode .position-mode-tab.active:hover,
                 body.light-mode .breakeven-mode-tab.active:hover {
                     background: transparent !important;
@@ -5038,6 +5045,37 @@ class OrderManager {
                     border-bottom-color: #2962ff !important;
                     font-weight: 600 !important;
                     box-shadow: none !important;
+                }
+
+                body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn {
+                    color: var(--om-tab-dim) !important;
+                    -webkit-text-fill-color: var(--om-tab-dim) !important;
+                    background: transparent !important;
+                    border: none !important;
+                    border-radius: 4px !important;
+                    padding: 6px 0 !important;
+                    margin-bottom: 0 !important;
+                    font-weight: 600 !important;
+                    box-shadow: none !important;
+                }
+                body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn:hover:not(.active) {
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
+                }
+                body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"] {
+                    background: var(--om-ot-gold-bg) !important;
+                    color: var(--om-ot-gold) !important;
+                    -webkit-text-fill-color: var(--om-ot-gold) !important;
+                }
+                body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="limit"] {
+                    background: var(--om-ot-blue-bg) !important;
+                    color: var(--om-ot-blue) !important;
+                    -webkit-text-fill-color: var(--om-ot-blue) !important;
+                }
+                body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="stop"] {
+                    background: var(--om-ot-red-bg) !important;
+                    color: var(--om-ot-red) !important;
+                    -webkit-text-fill-color: var(--om-ot-red) !important;
                 }
 
                 /* ── Input fields ── */
@@ -5264,7 +5302,6 @@ class OrderManager {
                     -webkit-text-fill-color: #dc2626 !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-panel .order-type-btn:hover:not(.active),
                 body.light-mode .order-panel .position-mode-tab:hover:not(.active),
                 body.light-mode .order-panel .breakeven-mode-tab:hover:not(.active) {
                     background: transparent !important;
@@ -5273,7 +5310,11 @@ class OrderManager {
                     -webkit-text-fill-color: #131722 !important;
                     box-shadow: none !important;
                 }
-                body.light-mode .order-panel .order-type-btn.active:hover,
+                body.light-mode .order-panel .order-button-group:not(.order-button-group--inline) .order-type-btn:hover:not(.active) {
+                    background: transparent !important;
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
+                }
                 body.light-mode .order-panel .position-mode-tab.active:hover,
                 body.light-mode .order-panel .breakeven-mode-tab.active:hover {
                     background: transparent !important;
@@ -5282,6 +5323,21 @@ class OrderManager {
                     -webkit-text-fill-color: #2962ff !important;
                     border-bottom-color: #2962ff !important;
                     box-shadow: none !important;
+                }
+                body.light-mode .order-panel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"]:hover {
+                    background: rgba(201, 168, 76, 0.18) !important;
+                    color: #b8922a !important;
+                    -webkit-text-fill-color: #b8922a !important;
+                }
+                body.light-mode .order-panel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="limit"]:hover {
+                    background: rgba(38, 67, 247, 0.14) !important;
+                    color: #1e35c4 !important;
+                    -webkit-text-fill-color: #1e35c4 !important;
+                }
+                body.light-mode .order-panel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="stop"]:hover {
+                    background: rgba(239, 68, 68, 0.14) !important;
+                    color: #f87171 !important;
+                    -webkit-text-fill-color: #f87171 !important;
                 }
                 body.light-mode .order-panel .risk-btn.active:hover {
                     background: rgba(41, 98, 255, 0.12) !important;
@@ -5354,9 +5410,13 @@ class OrderManager {
                     flex-wrap: nowrap;
                     align-items: stretch;
                     min-width: 0;
-                    gap: 20px;
-                    border-bottom: 1px solid rgba(255,255,255,0.12);
-                    padding: 0;
+                    gap: 0;
+                    padding: 2px;
+                    margin-top: 2px;
+                    box-sizing: border-box;
+                    background: var(--om-seg-bg);
+                    border: 1px solid var(--om-seg-border);
+                    border-radius: 5px;
                 }
                 .order-button-group--inline:not(:has(.risk-btn)) {
                     flex-wrap: wrap;
@@ -5377,8 +5437,7 @@ class OrderManager {
                     border-right: none;
                     border-top: none;
                 }
-                /* Market / Limit / Stop — text + bottom rule only (matches light: gray → blue underline) */
-                .order-type-btn,
+                /* Position / breakeven — underline strip (unchanged) */
                 .position-mode-tab,
                 .breakeven-mode-tab {
                     flex: 1;
@@ -5398,14 +5457,12 @@ class OrderManager {
                     min-width: 0;
                     box-shadow: none;
                 }
-                .order-type-btn:hover,
                 .position-mode-tab:hover,
                 .breakeven-mode-tab:hover {
                     background: transparent;
                     color: var(--op-text);
                     -webkit-text-fill-color: var(--op-text);
                 }
-                .order-type-btn.active,
                 .position-mode-tab.active,
                 .breakeven-mode-tab.active {
                     background: transparent;
@@ -5415,12 +5472,65 @@ class OrderManager {
                     font-weight: 600;
                     box-shadow: none;
                 }
-                .order-type-btn.active:hover,
                 .position-mode-tab.active:hover,
                 .breakeven-mode-tab.active:hover {
                     color: #2962ff;
                     -webkit-text-fill-color: #2962ff;
                     border-bottom-color: #2962ff;
+                }
+
+                /* Market / Limit / Stop — segmented (TradeEntry: gold / blue / red tints) */
+                .order-button-group:not(.order-button-group--inline) .order-type-btn {
+                    flex: 1;
+                    padding: 6px 0;
+                    border: none;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 0.02em;
+                    cursor: pointer;
+                    margin-bottom: 0;
+                    min-width: 0;
+                    box-shadow: none;
+                    transition: background 0.1s ease, color 0.1s ease;
+                    background: transparent;
+                    color: var(--om-tab-dim);
+                    -webkit-text-fill-color: var(--om-tab-dim);
+                }
+                .order-button-group:not(.order-button-group--inline) .order-type-btn:hover:not(.active) {
+                    color: #6b7280;
+                    -webkit-text-fill-color: #6b7280;
+                    background: transparent;
+                }
+                .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"] {
+                    background: var(--om-ot-gold-bg) !important;
+                    color: var(--om-ot-gold) !important;
+                    -webkit-text-fill-color: var(--om-ot-gold) !important;
+                }
+                .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="limit"] {
+                    background: var(--om-ot-blue-bg) !important;
+                    color: var(--om-ot-blue) !important;
+                    -webkit-text-fill-color: var(--om-ot-blue) !important;
+                }
+                .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="stop"] {
+                    background: var(--om-ot-red-bg) !important;
+                    color: var(--om-ot-red) !important;
+                    -webkit-text-fill-color: var(--om-ot-red) !important;
+                }
+                .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"]:hover {
+                    background: rgba(201, 168, 76, 0.14) !important;
+                    color: #d4b84f !important;
+                    -webkit-text-fill-color: #d4b84f !important;
+                }
+                .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="limit"]:hover {
+                    background: rgba(38, 67, 247, 0.14) !important;
+                    color: #1e35c4 !important;
+                    -webkit-text-fill-color: #1e35c4 !important;
+                }
+                .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="stop"]:hover {
+                    background: rgba(239, 68, 68, 0.10) !important;
+                    color: #f87171 !important;
+                    -webkit-text-fill-color: #f87171 !important;
                 }
 
                 /* ── RISK SHORTCUT BUTTONS ───────────────────────────────────────── */

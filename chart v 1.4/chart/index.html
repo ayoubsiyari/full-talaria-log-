@@ -4345,18 +4345,37 @@
             -webkit-text-fill-color: #131722 !important;
         }
 
-        body.light-mode #orderPanel .order-type-btn:not(.active),
-        body.light-mode #orderPanel .order-type-btn:not(.active):hover,
-        body.light-mode #orderPanel .order-type-btn:not(.active):focus {
+        /* Market/Limit/Stop — segmented tints (match order-manager TradeEntry tokens) */
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn:not(.active),
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn:not(.active):hover,
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn:not(.active):focus {
             color: #787b86 !important;
             -webkit-text-fill-color: #787b86 !important;
+            background: transparent !important;
         }
 
-        body.light-mode #orderPanel .order-type-btn.active,
-        body.light-mode #orderPanel .order-type-btn.active:hover,
-        body.light-mode #orderPanel .order-type-btn.active:focus {
-            color: #2962ff !important;
-            -webkit-text-fill-color: #2962ff !important;
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"],
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"]:hover,
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="market"]:focus {
+            color: #C9A84C !important;
+            -webkit-text-fill-color: #C9A84C !important;
+            background: rgba(201, 168, 76, 0.14) !important;
+        }
+
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="limit"],
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="limit"]:hover,
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="limit"]:focus {
+            color: #2643F7 !important;
+            -webkit-text-fill-color: #2643F7 !important;
+            background: rgba(38, 67, 247, 0.10) !important;
+        }
+
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="stop"],
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="stop"]:hover,
+        body.light-mode #orderPanel .order-button-group:not(.order-button-group--inline) .order-type-btn.active[data-type="stop"]:focus {
+            color: #ef4444 !important;
+            -webkit-text-fill-color: #ef4444 !important;
+            background: rgba(239, 68, 68, 0.10) !important;
         }
 
         body.light-mode #orderPanel .position-mode-tab:not(.active),
@@ -21248,7 +21267,7 @@
 
         /* Unified hover effect for all buttons */
 
-        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.tv-color-btn):not(.dropdown-arrow):not(.cursor-dropdown-arrow):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow):not(.sidebar-timeframe-arrow):not(.order-tab):not(.order-submit-btn):hover {
+        button:not(:disabled):not(.timeframe-dropdown-trigger):not(.tv-color-btn):not(.dropdown-arrow):not(.cursor-dropdown-arrow):not(.replay-mode-trigger):not(.replay-mode-option):not(.replay-mode-dropdown-arrow):not(.interval-dropdown-arrow):not(.sidebar-timeframe-arrow):not(.order-tab):not(.order-submit-btn):not(.order-type-btn):hover {
 
             background: rgba(255, 255, 255, 0.12) !important;
 
@@ -21280,7 +21299,7 @@
 
         /* Active state for toggle buttons */
 
-        button.active:not(.order-tab) {
+        button.active:not(.order-tab):not(.order-type-btn) {
 
             background: rgba(var(--sp-accent-rgb), 0.25) !important;
 
@@ -21292,7 +21311,7 @@
 
 
 
-        button.active:not(.order-tab):hover {
+        button.active:not(.order-tab):not(.order-type-btn):hover {
 
             background: rgba(var(--sp-accent-rgb), 0.35) !important;
 
@@ -42899,7 +42918,7 @@
 
     <script defer src="modules/market-calculations.js?v=20260401"></script>
 
-    <script defer src="modules/order-manager.js?v=20260401_TRADEENTRY_STYLE"></script>
+    <script defer src="modules/order-manager.js?v=20260401_TRADEENTRY_MARKET_LIMIT_STOP"></script>
 
     <script defer src="modules/screenshot-manager.js?v=20260401"></script>
 
