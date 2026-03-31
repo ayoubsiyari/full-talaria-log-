@@ -343,6 +343,49 @@ class CompareOverlay {
             this.availableFiles = [];
         }
     }
+
+    getSessionSymbolFiles() {
+        try {
+            const session = JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+            if (session && Array.isArray(session.files) && session.files.length > 0) {
+                return session.files;
+            }
+        } catch (_) {}
+        return [];
+    }
+
+    getCompareSourceFiles() {
+        const sessionFiles = this.getSessionSymbolFiles();
+        if (!Array.isArray(sessionFiles) || sessionFiles.length === 0) {
+            return this.availableFiles;
+        }
+
+        const byId = new Map();
+        const byName = new Map();
+        (this.availableFiles || []).forEach(file => {
+            byId.set(String(file.id), file);
+            const fname = String(file.original_name || file.name || '')
+                .replace(/\.(csv|CSV)$/, '')
+                .toUpperCase();
+            if (fname) byName.set(fname, file);
+        });
+
+        const scoped = [];
+        const seen = new Set();
+        sessionFiles.forEach(sf => {
+            const sid = String(sf.id ?? '');
+            const sname = String(sf.name || '').replace(/\.(csv|CSV)$/, '').toUpperCase();
+            let match = null;
+            if (sid && byId.has(sid)) match = byId.get(sid);
+            else if (sname && byName.has(sname)) match = byName.get(sname);
+            if (match && !seen.has(String(match.id))) {
+                seen.add(String(match.id));
+                scoped.push(match);
+            }
+        });
+
+        return scoped;
+    }
     
     openModal() {
         console.log('📊 Opening compare modal');
@@ -601,8 +644,8 @@ class CompareOverlay {
         
         // Filter available symbols (not current, not overlayed, not in linked panes)
         const linkedPaneIds = this.linkedPanes ? this.linkedPanes.map(p => p.fileId) : [];
-        const hasLinkedPane = Array.isArray(this.linkedPanes) && this.linkedPanes.length > 0;
-        const availableSymbols = this.availableFiles.filter(file => {
+        const compareSourceFiles = this.getCompareSourceFiles();
+        const availableSymbols = compareSourceFiles.filter(file => {
             return file.id !== currentFileId && 
                    !overlayedIds.includes(file.id) && 
                    !linkedPaneIds.includes(file.id);
@@ -648,12 +691,33 @@ class CompareOverlay {
             // Fallback: if name is short enough, use it; otherwise truncate
             return name.length > 12 ? name.substring(0, 12) : name;
         };
+
+        const getPairFlags = (symbol) => {
+            const flags = {
+                EUR: '🇪🇺', USD: '🇺🇸', GBP: '🇬🇧', JPY: '🇯🇵',
+                AUD: '🇦🇺', CAD: '🇨🇦', CHF: '🇨🇭', NZD: '🇳🇿',
+                CNY: '🇨🇳', HKD: '🇭🇰', SGD: '🇸🇬', SEK: '🇸🇪',
+                NOK: '🇳🇴', MXN: '🇲🇽', ZAR: '🇿🇦', TRY: '🇹🇷',
+                XAU: '🥇', XAG: '🥈', BTC: '₿', ETH: 'Ξ'
+            };
+
+            const clean = String(symbol || '').toUpperCase().replace(/[^A-Z]/g, '');
+            if (clean.length >= 6) {
+                const base = clean.substring(0, 3);
+                const quote = clean.substring(3, 6);
+                const baseFlag = flags[base] || '';
+                const quoteFlag = flags[quote] || '';
+                if (baseFlag && quoteFlag) return `${baseFlag}${quoteFlag}`;
+                if (baseFlag) return baseFlag;
+            }
+            return flags[clean.substring(0, 3)] || '📊';
+        };
         
         // Render available symbols with action buttons
         availableSymbols.forEach(file => {
             const fullName = file.original_name?.replace(/\.(csv|CSV)$/, '').toUpperCase() || `FILE_${file.id}`;
             const symbolName = extractSymbolName(file.original_name) || fullName;
-            const abbrev = symbolName.substring(0, 2);
+            const pairFlags = getPairFlags(symbolName);
             const iconType = getIconType(symbolName);
             const isAdded = overlayedIds.includes(file.id) || linkedPaneIds.includes(file.id);
             
@@ -663,14 +727,13 @@ class CompareOverlay {
             item.dataset.fileId = file.id;
             
             item.innerHTML = `
-                <div class="compare-symbol-icon ${iconType}">${abbrev}</div>
+                <div class="compare-symbol-icon ${iconType}">${pairFlags}</div>
                 <div class="compare-symbol-info">
                     <span class="compare-symbol-name">${symbolName}</span>
                     <span class="compare-symbol-desc">${file.row_count?.toLocaleString() || '?'} candles</span>
                 </div>
                 <div class="compare-symbol-actions">
                     <button class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}" data-symbol="${symbolName}">Overlay</button>
-                    <button class="compare-action-btn primary" data-mode="new-pane" data-file-id="${file.id}" data-symbol="${symbolName}" ${hasLinkedPane ? 'disabled title="Only one New Pane is allowed"' : ''}>New Pane</button>
                 </div>
             `;
             
@@ -691,11 +754,11 @@ class CompareOverlay {
     
     async addSymbolWithMode(fileId, symbolName, mode) {
         console.log(`📊 Adding symbol ${symbolName} with mode: ${mode}`);
-        if (mode === 'new-pane' && Array.isArray(this.linkedPanes) && this.linkedPanes.length > 0) {
+        if (mode === 'new-pane') {
             if (typeof this.chart?.showNotification === 'function') {
-                this.chart.showNotification('Only one New Pane is allowed. Remove the current pane first.');
+                this.chart.showNotification('New Pane is disabled. Use the multi-panel layout system instead.');
             } else {
-                alert('Only one New Pane is allowed. Remove the current pane first.');
+                alert('New Pane is disabled. Use the multi-panel layout system instead.');
             }
             return;
         }
@@ -708,10 +771,6 @@ class CompareOverlay {
             case 'new-scale':
                 // Add overlay with separate Y-axis (for now same as overlay)
                 await this.addOverlay(fileId, symbolName);
-                break;
-            case 'new-pane':
-                // Add as linked pane (shares time axis with main chart)
-                await this.addLinkedPane(fileId, symbolName);
                 break;
         }
     }
