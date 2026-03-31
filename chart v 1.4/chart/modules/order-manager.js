@@ -5094,6 +5094,10 @@ class OrderManager {
                     -webkit-text-fill-color: #C9A84C !important;
                     font-weight: 600 !important;
                 }
+                body.light-mode .order-position-sizing-head .order-button-group--position-mode .position-mode-tab {
+                    font-size: 8px !important;
+                    padding: 2px 4px !important;
+                }
 
                 body.light-mode .order-button-group:not(.order-button-group--inline) .order-type-btn {
                     color: var(--om-tab-dim) !important;
@@ -5548,6 +5552,38 @@ class OrderManager {
                     background: rgba(201, 168, 76, 0.14) !important;
                     color: #b8922a !important;
                     -webkit-text-fill-color: #b8922a !important;
+                }
+
+                /* Position sizing header: title left, compact Risk $ / % / Lots on one line */
+                .order-position-sizing-head {
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 8px;
+                    margin-bottom: 6px;
+                    width: 100%;
+                    min-width: 0;
+                }
+                .order-position-sizing-head > .order-label {
+                    margin-bottom: 0;
+                    flex: 1 1 auto;
+                    min-width: 0;
+                    line-height: 1.25;
+                }
+                .order-position-sizing-head .order-button-group--inline.order-button-group--position-mode {
+                    flex: 0 1 auto !important;
+                    width: auto !important;
+                    max-width: min(136px, 40%) !important;
+                    min-width: 88px !important;
+                    margin-bottom: 0 !important;
+                }
+                .order-position-sizing-head .order-button-group--inline.order-button-group--position-mode .position-mode-tab {
+                    flex: 1 1 0 !important;
+                    min-width: 0 !important;
+                    padding: 2px 4px !important;
+                    font-size: 8px !important;
+                    letter-spacing: 0.01em !important;
                 }
 
                 /* Market / Limit / Stop — segmented (TradeEntry: gold / blue / red tints) */
@@ -6246,11 +6282,13 @@ class OrderManager {
                 </div>
 
                 <div class="order-section">
-                    <label class="order-label" id="positionSizingLabel" for="riskAmountUSD">Position sizing</label>
-                    <div class="order-button-group order-button-group--inline">
-                        <button class="position-mode-tab active" type="button" data-mode="risk-usd">Risk $</button>
-                        <button class="position-mode-tab" type="button" data-mode="risk-percent">Risk %</button>
-                        <button class="position-mode-tab" type="button" data-mode="lot-size">Lot Size</button>
+                    <div class="order-position-sizing-head">
+                        <label class="order-label" id="positionSizingLabel" for="riskAmountUSD">Position sizing</label>
+                        <div class="order-button-group order-button-group--inline order-button-group--position-mode">
+                            <button class="position-mode-tab active" type="button" data-mode="risk-usd">Risk $</button>
+                            <button class="position-mode-tab" type="button" data-mode="risk-percent">Risk %</button>
+                            <button class="position-mode-tab" type="button" data-mode="lot-size">Lot Size</button>
+                        </div>
                     </div>
 
                     <div id="riskUSDInput" class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
