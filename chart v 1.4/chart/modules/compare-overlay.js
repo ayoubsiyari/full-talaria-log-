@@ -1625,9 +1625,9 @@ class CompareOverlay {
                 
                 // Only handle Y-axis zoom here (chart area movement is handled by combinedDrag)
                 if (dragState.dragType === 'zoom') {
-                    // Drag from Y-axis: Zoom (same as overlay)
+                    // Drag from Y-axis: match main chart price-axis behavior
                     const sensitivity = 0.002;
-                    const zoomFactor = 1 + dy * sensitivity;
+                    const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
                     const newZoom = Math.max(0.5, Math.min(20, pane.priceZoom * zoomFactor));
                     
                     const newRange = baseRange / newZoom;
@@ -1635,7 +1635,7 @@ class CompareOverlay {
                     
                     // Zoom centered on mouse position
                     const mouseRatio = (my - margin.t) / chartHeight;
-                    pane.priceOffset += rangeChange * (0.5 - mouseRatio);
+                    pane.priceOffset -= rangeChange * (0.5 - mouseRatio);
                     pane.priceZoom = newZoom;
                 }
                 
@@ -1698,7 +1698,26 @@ class CompareOverlay {
         
         // Horizontal scroll - sync with main chart
         canvas.addEventListener('wheel', (e) => {
-            if (!isOverPriceAxis(e)) {
+            if (isOverPriceAxis(e)) {
+                // Match main chart: wheel on price axis zooms vertical scale
+                e.preventDefault();
+                pane.autoScale = false;
+                const rect = canvas.getBoundingClientRect();
+                const my = e.clientY - rect.top;
+                const chartHeight = rect.height - margin.t - margin.b;
+                const baseRange = pane.baseRange || (pane.yMax - pane.yMin) || 100;
+                const displayedRange = baseRange / pane.priceZoom;
+                const sensitivity = 0.002;
+                const zoomFactor = Math.max(0.01, 1 - e.deltaY * sensitivity);
+                const newZoom = Math.max(0.5, Math.min(20, pane.priceZoom * zoomFactor));
+                const newRange = baseRange / newZoom;
+                const rangeChange = newRange - displayedRange;
+                const mouseRatio = (my - margin.t) / chartHeight;
+                pane.priceOffset -= rangeChange * (0.5 - mouseRatio);
+                pane.priceZoom = newZoom;
+                this.renderLinkedPanes();
+                return;
+            } else {
                 // Horizontal scroll in chart area - sync with main chart
                 e.preventDefault();
                 
@@ -1939,7 +1958,7 @@ class CompareOverlay {
                 const baseRange = pane.baseRange || (pane.yMax - pane.yMin) || 100;
                 const displayedRange = baseRange / pane.priceZoom;
                 const pricePerPixel = displayedRange / chartHeight;
-                pane.priceOffset -= dy * pricePerPixel;
+                pane.priceOffset += dy * pricePerPixel;
             }
             
             // Update last position
