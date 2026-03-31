@@ -556,6 +556,7 @@ class CompareOverlay {
         
         // Filter available symbols (not current, not overlayed, not in linked panes)
         const linkedPaneIds = this.linkedPanes ? this.linkedPanes.map(p => p.fileId) : [];
+        const hasLinkedPane = Array.isArray(this.linkedPanes) && this.linkedPanes.length > 0;
         const availableSymbols = this.availableFiles.filter(file => {
             return file.id !== currentFileId && 
                    !overlayedIds.includes(file.id) && 
@@ -624,7 +625,7 @@ class CompareOverlay {
                 </div>
                 <div class="compare-symbol-actions">
                     <button class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}" data-symbol="${symbolName}">Overlay</button>
-                    <button class="compare-action-btn primary" data-mode="new-pane" data-file-id="${file.id}" data-symbol="${symbolName}">New Pane</button>
+                    <button class="compare-action-btn primary" data-mode="new-pane" data-file-id="${file.id}" data-symbol="${symbolName}" ${hasLinkedPane ? 'disabled title="Only one New Pane is allowed"' : ''}>New Pane</button>
                 </div>
             `;
             
@@ -645,6 +646,14 @@ class CompareOverlay {
     
     async addSymbolWithMode(fileId, symbolName, mode) {
         console.log(`📊 Adding symbol ${symbolName} with mode: ${mode}`);
+        if (mode === 'new-pane' && Array.isArray(this.linkedPanes) && this.linkedPanes.length > 0) {
+            if (typeof this.chart?.showNotification === 'function') {
+                this.chart.showNotification('Only one New Pane is allowed. Remove the current pane first.');
+            } else {
+                alert('Only one New Pane is allowed. Remove the current pane first.');
+            }
+            return;
+        }
         
         switch (mode) {
             case 'same-scale':
@@ -664,6 +673,14 @@ class CompareOverlay {
     
     async addLinkedPane(fileId, symbolName) {
         console.log(`📊 Adding linked pane for ${symbolName} (fileId: ${fileId})`);
+        if (Array.isArray(this.linkedPanes) && this.linkedPanes.length > 0) {
+            if (typeof this.chart?.showNotification === 'function') {
+                this.chart.showNotification('Only one New Pane is allowed. Remove the current pane first.');
+            } else {
+                alert('Only one New Pane is allowed. Remove the current pane first.');
+            }
+            return;
+        }
         
         try {
             // Use same endpoint as overlays
@@ -1112,35 +1129,42 @@ class CompareOverlay {
             return margin.t + chartHeight - ((price - minPrice) / priceRange) * chartHeight;
         };
         
-        // Draw horizontal grid lines
+        // Y ticks/grid: use nice ticks like main chart (not fixed quartiles)
+        const numYTicks = Math.max(8, Math.min(15, Math.floor(chartHeight / 60)));
+        const yTicks = this.generateNiceTicks(minPrice, maxPrice, numYTicks);
         ctx.strokeStyle = isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)';
         ctx.lineWidth = 1;
-        const gridLines = 4;
-        for (let i = 0; i <= gridLines; i++) {
-            const y = margin.t + (chartHeight * i / gridLines);
+        yTicks.forEach((price) => {
+            const y = yScale(price);
+            if (y < margin.t || y > height - margin.b) return;
             ctx.beginPath();
             ctx.moveTo(0, Math.floor(y) + 0.5);
             ctx.lineTo(chartWidth, Math.floor(y) + 0.5);
             ctx.stroke();
-        }
+        });
         
-        // Draw vertical grid lines - sync with main chart's time axis
-        const totalCandleWidth = candleSpacing;
-        
-        // Calculate how many candles fit and the interval for grid lines
-        const visibleCandles = Math.ceil(chartWidth / totalCandleWidth);
-        const gridInterval = Math.max(1, Math.floor(visibleCandles / 6)); // ~6 vertical lines
-        
+        // Vertical grid lines: reuse main chart time ticks when available for exact sync
         ctx.strokeStyle = isLightTheme ? 'rgba(15,23,42,0.18)' : 'rgba(42, 46, 57, 0.6)';
         ctx.lineWidth = 1;
-        
-        for (let i = startIdx; i <= endIdx; i++) {
-            // Draw grid at regular intervals
-            if (i % gridInterval === 0) {
-                const x = mainChart.dataIndexToPixel ? 
-                    mainChart.dataIndexToPixel(i) : 
-                    margin.l + (i * totalCandleWidth) + mainChart.offsetX + mainChart.candleWidth / 2;
-                
+        if (Array.isArray(mainChart._timeTicks) && mainChart._timeTicks.length > 0) {
+            mainChart._timeTicks.forEach((tick) => {
+                const x = tick.x;
+                if (x >= margin.l && x <= chartWidth) {
+                    ctx.beginPath();
+                    ctx.moveTo(Math.floor(x) + 0.5, margin.t);
+                    ctx.lineTo(Math.floor(x) + 0.5, height - margin.b);
+                    ctx.stroke();
+                }
+            });
+        } else {
+            const totalCandleWidth = candleSpacing;
+            const visibleCandles = Math.ceil(chartWidth / totalCandleWidth);
+            const gridInterval = Math.max(1, Math.floor(visibleCandles / 6));
+            for (let i = startIdx; i <= endIdx; i++) {
+                if (i % gridInterval !== 0) continue;
+                const x = mainChart.dataIndexToPixel
+                    ? mainChart.dataIndexToPixel(i)
+                    : margin.l + (i * totalCandleWidth) + mainChart.offsetX + mainChart.candleWidth / 2;
                 if (x >= margin.l && x <= chartWidth) {
                     ctx.beginPath();
                     ctx.moveTo(Math.floor(x) + 0.5, margin.t);
@@ -1315,10 +1339,12 @@ class CompareOverlay {
         
         console.log(`📊 Pane drew ${pointCount} ${displayType}, range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}`);
         
-        // Determine decimal places based on price magnitude
+        // Determine decimal places from same logic as main chart
         const decimals = typeof mainChart.getPriceDecimals === 'function'
             ? mainChart.getPriceDecimals(priceRange)
             : (maxPrice > 100 ? 2 : (maxPrice > 10 ? 3 : 5));
+        const scaleTextSize = mainChart.chartSettings?.scaleTextSize || 11;
+        const scaleFont = `${scaleTextSize}px Roboto`;
         
         // Draw Y-axis background first
         ctx.fillStyle = axisBg;
@@ -1334,21 +1360,14 @@ class CompareOverlay {
         
         // Draw Y-axis labels
         ctx.fillStyle = axisText;
-        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = scaleFont;
         ctx.textAlign = 'center';
-        
-        const priceStep = priceRange / gridLines;
-        for (let i = 0; i <= gridLines; i++) {
-            const price = maxPrice - priceStep * i;
-            const y = margin.t + (chartHeight * i / gridLines);
-            
-            // Don't draw if too close to current price label
-            if (lastPrice > 0 && Math.abs(y - lastY) < 18) continue;
-            
-            if (!isNaN(price)) {
-                ctx.fillText(price.toFixed(decimals), width - margin.r / 2, y + 4);
-            }
-        }
+        yTicks.forEach((price) => {
+            const y = yScale(price);
+            if (y < margin.t + 8 || y > height - margin.b - 8) return;
+            if (lastPrice > 0 && Math.abs(y - lastY) < 18) return;
+            if (!isNaN(price)) ctx.fillText(price.toFixed(decimals), width - margin.r / 2, y + 4);
+        });
         
         // Draw current price line and label
         if (lastPrice > 0 && !isNaN(lastPrice)) {
@@ -1368,7 +1387,7 @@ class CompareOverlay {
             
             // Price label text
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.font = `500 ${scaleTextSize}px Roboto`;
             ctx.textAlign = 'center';
             ctx.fillText(lastPrice.toFixed(decimals), width - margin.r / 2, lastY + 4);
         }
@@ -1405,7 +1424,7 @@ class CompareOverlay {
                     ctx.fillStyle = axisCrosshairBg;
                     ctx.fillRect(width - margin.r, cy - 10, margin.r, 20);
                     ctx.fillStyle = axisCrosshairText;
-                    ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+                    ctx.font = scaleFont;
                     ctx.textAlign = 'center';
                     ctx.fillText(crosshairPrice.toFixed(decimals), width - margin.r / 2, cy + 4);
                 }
