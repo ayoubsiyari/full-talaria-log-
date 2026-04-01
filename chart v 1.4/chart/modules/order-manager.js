@@ -11863,7 +11863,27 @@ class OrderManager {
                 const field = e.target.dataset.field;
                 const level = this.multiEntryLevels.find(l => l.id === id);
                 if (level) {
-                    level[field] = parseFloat(e.target.value) || 0;
+                    const newVal = parseFloat(e.target.value) || 0;
+                    
+                    if (field === 'amount') {
+                        // Auto-redistribute: keep total constant, split remainder across others
+                        const total = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
+                        level.amount = newVal;
+                        const remaining = Math.max(0, total - newVal);
+                        const others = this.multiEntryLevels.filter(l => l.id !== id);
+                        if (others.length > 0) {
+                            const each = Math.round(remaining / others.length);
+                            others.forEach(l => {
+                                l.amount = each;
+                                // Update other amount inputs in-place
+                                const inp = container.querySelector(`.multi-entry-amount-input[data-level-id="${l.id}"]`);
+                                if (inp) inp.value = each;
+                            });
+                        }
+                    } else {
+                        level[field] = newVal;
+                    }
+                    
                     this.updateMultiEntrySummary();
                     this.syncMultiEntryToSplitEntries();
                     // Update info rows in-place (no DOM rebuild, keeps focus)
