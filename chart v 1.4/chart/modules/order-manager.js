@@ -1472,6 +1472,31 @@ class OrderManager {
     }
 
     /**
+     * Total size (lots/contracts) across multi-entry rows from each row's amount and distance to SL.
+     * Does not use a single entry-vs-SL distance for the whole order — panel amounts stay user-controlled.
+     */
+    _computeMultiEntryTotalLots() {
+        if (!this.multiEntryLevels || this.multiEntryLevels.length === 0) return 0;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
+        const mode = this.positionSizeMode || 'risk-usd';
+        let totalLots = 0;
+        for (const l of this.multiEntryLevels) {
+            if (mode === 'lot-size') {
+                totalLots += (l.amount || 0);
+            } else if (l.price > 0 && slPrice > 0) {
+                const slPips = Math.abs(l.price - slPrice) / pipSize;
+                if (slPips > 0) {
+                    const ru = this._multiEntryRiskUsdForLevel(l, mode);
+                    totalLots += ru / (slPips * pipValue);
+                }
+            }
+        }
+        return totalLots;
+    }
+
+    /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
      * @param {number} entry
@@ -9369,6 +9394,22 @@ class OrderManager {
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
+
+        // Multiple entry: quantity = sum of per-level lots from row amounts × each price vs SL (panel risk is fixed; amounts are not recomputed when prices move)
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const totalLots = this._computeMultiEntryTotalLots();
+            const qtyInput = document.getElementById('orderQuantity');
+            if (qtyInput) {
+                qtyInput.value = Number.isFinite(totalLots) ? totalLots.toFixed(2) : '0';
+            }
+            this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+            requestAnimationFrame(() => {
+                this.updatePreviewLines();
+            });
+            this.updatePlaceButtonText();
+            this.calculateAdvancedRiskReward();
+            return;
+        }
         
         // For lot-size mode, we don't need SL to set position size
         if (this.positionSizeMode === 'lot-size') {
@@ -11290,50 +11331,57 @@ class OrderManager {
                     if ((self.positionSizeMode === 'risk-usd' || self.positionSizeMode === 'risk-percent') && 
                         enableSL && slPrice > 0 && entryPrice > 0 && slPrice !== entryPrice) {
                         
-                        // Set flag to prevent updatePreviewLines() during drag
                         const wasDragging = self.isDraggingPreviewLine;
                         self.isDraggingPreviewLine = true;
                         
-                        // Calculate lot size directly using current prices
                         const riskPips = Math.abs(entryPrice - slPrice) / self.pipSize;
+                        const useMulti = self.isMultiEntryMode && self.multiEntryLevels && self.multiEntryLevels.length > 0;
                         
                         if (riskPips > 0) {
-                            let riskAmount;
-                            if (self.positionSizeMode === 'risk-usd') {
-                                riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 50);
-                            } else {
-                                const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 1);
-                                riskAmount = (self.accountBalance || 100000) * (riskPercent / 100);
-                            }
-                            
-                            const lotSize = riskAmount / (riskPips * self.pipValuePerLot);
-                            const roundedLotSize = Math.round(lotSize * 100) / 100;
-                            
-                            // Update quantity input
-                            const quantityInput = document.getElementById('orderQuantity');
-                            if (quantityInput) {
-                                quantityInput.value = roundedLotSize.toFixed(2);
+                            if (!useMulti) {
+                                let riskAmount;
+                                if (self.positionSizeMode === 'risk-usd') {
+                                    riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 50);
+                                } else {
+                                    const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 1);
+                                    const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                                    const balance = balanceType === 'current' ? self.balance : self.initialBalance;
+                                    riskAmount = (Math.max(0, balance) * riskPercent) / 100;
+                                }
+                                const lotSize = riskAmount / (riskPips * self.pipValuePerLot);
+                                const roundedLotSize = Math.round(lotSize * 100) / 100;
+                                const quantityInput = document.getElementById('orderQuantity');
+                                if (quantityInput) {
+                                    quantityInput.value = roundedLotSize.toFixed(2);
+                                }
                             }
                             
                             self.calculatePositionFromRisk();
                         }
                         
-                        // Restore flag
                         self.isDraggingPreviewLine = wasDragging;
                         
-                        // Manually update Entry label to show new lot size
                         if (self.previewLines.entry) {
                             const entryY = self.chart.scales.yScale(self.previewLines.entry.price);
                             self.renderPreviewLabel(self.previewLines.entry, entryY);
                         }
                         
-                        // Update SL pips display
                         const slPipsDisplay = document.getElementById('slPipsDisplay');
                         if (slPipsDisplay) slPipsDisplay.textContent = `${riskPips.toFixed(1)} pips`;
                         
-                        // Update SL amount display
                         const slAmountDisplay = document.getElementById('slAmountDisplay');
-                        if (slAmountDisplay) slAmountDisplay.textContent = `$${riskAmount.toFixed(2)}`;
+                        if (slAmountDisplay && riskPips > 0) {
+                            let riskAmount;
+                            if (self.positionSizeMode === 'risk-usd') {
+                                riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+                            } else {
+                                const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+                                const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                                const balance = balanceType === 'current' ? self.balance : self.initialBalance;
+                                riskAmount = (Math.max(0, balance) * riskPercent) / 100;
+                            }
+                            slAmountDisplay.textContent = `$${riskAmount.toFixed(2)}`;
+                        }
                     }
                     
                     // Also update TP calculations when Entry is dragged
@@ -12154,24 +12202,9 @@ class OrderManager {
      */
     updateMultiEntrySummary() {
         const avgPrice = this._calcMultiEntryAvgPrice();
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const pipSize = this.pipSize || 0.0001;
-        const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
-        const mode = this.positionSizeMode || 'risk-usd';
-        let totalLots = 0;
-        this.multiEntryLevels.forEach(l => {
-            if (mode === 'lot-size') {
-                totalLots += (l.amount || 0);
-            } else if (l.price > 0 && slPrice > 0) {
-                const slPips = Math.abs(l.price - slPrice) / pipSize;
-                if (slPips > 0) {
-                    const ru = this._multiEntryRiskUsdForLevel(l, mode);
-                    totalLots += ru / (slPips * pipValue);
-                }
-            }
-        });
+        const totalLots = this._computeMultiEntryTotalLots();
 
         const avgEl = document.getElementById('multiEntryAvgPrice');
         const qtyEl = document.getElementById('multiEntryTotalQty');
@@ -12189,6 +12222,10 @@ class OrderManager {
             if (mainInput && avgPrice > 0) {
                 mainInput.value = this.formatPrice(avgPrice);
             }
+        }
+
+        if (this.isMultiEntryMode) {
+            this.calculatePositionFromRisk();
         }
     }
 
@@ -12209,8 +12246,8 @@ class OrderManager {
                 const mainInput = document.getElementById('orderEntryPrice');
                 if (mainInput) mainInput.value = this.formatPrice(validLevels[0].price);
             }
+            this.calculatePositionFromRisk();
             this.updatePreviewLines();
-            this.calculateAdvancedRiskReward();
             this.updatePlaceButtonText();
             return;
         }
@@ -12258,7 +12295,6 @@ class OrderManager {
 
         this.updateMultiEntrySummary();
         this.updatePreviewLines();
-        this.calculateAdvancedRiskReward();
         this.updatePlaceButtonText();
     }
 
