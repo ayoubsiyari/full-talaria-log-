@@ -6579,6 +6579,269 @@ class OrderManager {
                     border-color: var(--om-b) !important;
                 }
 
+                /* ── MULTI-ENTRY SYSTEM ──────────────────────────────────────────── */
+                .multi-entry-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 6px;
+                }
+                .multi-entry-toggle {
+                    padding: 3px 10px;
+                    border: 1px solid var(--om-b2);
+                    border-radius: 4px;
+                    background: var(--om-panel2);
+                    color: var(--om-dim);
+                    font-size: 9px;
+                    font-weight: 700;
+                    letter-spacing: 0.06em;
+                    text-transform: uppercase;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .multi-entry-toggle:hover {
+                    border-color: var(--om-ot-gold);
+                    color: var(--om-ot-gold);
+                }
+                .multi-entry-toggle.active {
+                    background: var(--om-ot-gold-bg);
+                    border-color: rgba(201, 168, 76, 0.4);
+                    color: var(--om-ot-gold);
+                }
+                .multi-entry-container {
+                    border: 1px solid var(--om-b);
+                    border-radius: 6px;
+                    background: var(--om-panel2);
+                    overflow: hidden;
+                }
+                .multi-entry-columns {
+                    display: grid;
+                    grid-template-columns: 1fr 80px 24px;
+                    gap: 6px;
+                    padding: 6px 8px 4px;
+                    border-bottom: 1px solid var(--om-b);
+                }
+                .multi-entry-col-label {
+                    font-size: 8px;
+                    font-weight: 700;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    color: var(--om-dim);
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .multi-entry-rows {
+                    max-height: 240px;
+                    overflow-y: auto;
+                }
+                .multi-entry-row {
+                    padding: 6px 8px;
+                    border-bottom: 1px solid var(--om-b);
+                }
+                .multi-entry-row:last-child { border-bottom: none; }
+                .multi-entry-row-inputs {
+                    display: grid;
+                    grid-template-columns: 1fr 80px 24px;
+                    gap: 6px;
+                    align-items: center;
+                }
+                .multi-entry-row-input {
+                    width: 100%;
+                    background: var(--om-bg);
+                    border: 1px solid var(--om-b);
+                    border-radius: 4px;
+                    color: var(--om-tx);
+                    font-size: 12px;
+                    font-family: var(--om-mono);
+                    font-weight: 600;
+                    padding: 6px 8px;
+                    outline: none;
+                    box-sizing: border-box;
+                    -moz-appearance: textfield;
+                    appearance: textfield;
+                }
+                .multi-entry-row-input::-webkit-outer-spin-button,
+                .multi-entry-row-input::-webkit-inner-spin-button {
+                    -webkit-appearance: none;
+                    margin: 0;
+                }
+                .multi-entry-row-input:focus {
+                    border-color: rgba(38, 67, 247, 0.55);
+                    box-shadow: 0 0 0 1px rgba(38, 67, 247, 0.15);
+                }
+                .multi-entry-amount-wrap {
+                    display: flex;
+                    align-items: center;
+                    background: var(--om-bg);
+                    border: 1px solid var(--om-b);
+                    border-radius: 4px;
+                    overflow: hidden;
+                }
+                .multi-entry-amount-prefix {
+                    padding: 0 0 0 6px;
+                    font-size: 10px;
+                    color: var(--om-dim);
+                    font-weight: 600;
+                    flex-shrink: 0;
+                }
+                .multi-entry-amount-input {
+                    width: 100%;
+                    background: transparent;
+                    border: none;
+                    color: var(--om-tx);
+                    font-size: 11px;
+                    font-family: var(--om-mono);
+                    font-weight: 600;
+                    padding: 5px 6px;
+                    outline: none;
+                    box-sizing: border-box;
+                    -moz-appearance: textfield;
+                    appearance: textfield;
+                    min-width: 0;
+                }
+                .multi-entry-amount-input::-webkit-outer-spin-button,
+                .multi-entry-amount-input::-webkit-inner-spin-button {
+                    -webkit-appearance: none;
+                    margin: 0;
+                }
+                .multi-entry-delete-btn {
+                    width: 22px;
+                    height: 22px;
+                    border: none;
+                    background: transparent;
+                    color: #ef4444;
+                    font-size: 14px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 3px;
+                    transition: background 0.1s;
+                    padding: 0;
+                }
+                .multi-entry-delete-btn:hover {
+                    background: rgba(239, 68, 68, 0.15);
+                }
+                .multi-entry-row-info {
+                    display: flex;
+                    gap: 8px;
+                    padding: 3px 0 0;
+                    font-size: 9px;
+                    color: var(--om-dim);
+                    font-family: var(--om-mono);
+                    font-weight: 500;
+                }
+                .multi-entry-row-info span { color: var(--om-ot-gold); font-weight: 600; }
+                .multi-entry-add-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 8px;
+                    border-top: 1px dashed var(--om-b2);
+                    cursor: pointer;
+                    transition: background 0.1s;
+                }
+                .multi-entry-add-row:hover {
+                    background: rgba(255, 255, 255, 0.02);
+                }
+                .multi-entry-add-icon {
+                    width: 20px;
+                    height: 20px;
+                    border: 1px dashed var(--om-b2);
+                    border-radius: 3px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: var(--om-dim);
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+                .multi-entry-add-text {
+                    font-size: 10px;
+                    color: var(--om-dim);
+                    font-weight: 500;
+                }
+                .multi-entry-footer {
+                    display: flex;
+                    justify-content: flex-end;
+                    padding: 6px 8px;
+                    border-top: 1px solid var(--om-b);
+                }
+                .multi-entry-equal-btn {
+                    padding: 4px 12px;
+                    border: 1px solid var(--om-b2);
+                    border-radius: 4px;
+                    background: var(--om-bg);
+                    color: var(--om-tx);
+                    font-size: 10px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.15s;
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .multi-entry-equal-btn:hover {
+                    border-color: var(--om-ot-gold);
+                    color: var(--om-ot-gold);
+                }
+                .multi-entry-summary {
+                    margin-top: 6px;
+                    padding: 8px 10px;
+                    border-radius: 5px;
+                    background: rgba(38, 67, 247, 0.06);
+                    border: 1px solid rgba(38, 67, 247, 0.18);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                .multi-entry-summary-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+                .multi-entry-summary-label {
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: var(--om-ot-gold);
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .multi-entry-summary-value {
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: var(--om-ot-gold);
+                    font-family: var(--om-mono);
+                }
+
+                /* Light mode overrides for multi-entry */
+                body.light-mode .multi-entry-container {
+                    background: #ffffff !important;
+                    border-color: #e0e3eb !important;
+                }
+                body.light-mode .multi-entry-row-input {
+                    background: #f7f8fa !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
+                }
+                body.light-mode .multi-entry-amount-wrap {
+                    background: #f7f8fa !important;
+                    border-color: #e0e3eb !important;
+                }
+                body.light-mode .multi-entry-amount-input { color: #131722 !important; }
+                body.light-mode .multi-entry-toggle {
+                    background: #f0f3fa !important;
+                    border-color: #e0e3eb !important;
+                    color: #787b86 !important;
+                }
+                body.light-mode .multi-entry-toggle.active {
+                    background: rgba(201, 168, 76, 0.12) !important;
+                    border-color: rgba(201, 168, 76, 0.4) !important;
+                    color: #b8922a !important;
+                }
+                body.light-mode .multi-entry-summary {
+                    background: rgba(38, 67, 247, 0.05) !important;
+                    border-color: rgba(38, 67, 247, 0.15) !important;
+                }
+
                 /* ── MISC ────────────────────────────────────────────────────────── */
                 .is-hidden { display: none !important; }
             `;
@@ -6750,11 +7013,50 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-section">
-                    <label class="order-label" for="orderEntryPrice">Entry price</label>
-                    <div class="order-input-wrapper">
-                        <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact">
-                        <span class="order-input-suffix">USD</span>
+                <div class="order-section" id="entryPriceSection">
+                    <div class="multi-entry-header">
+                        <label class="order-label">Entry price</label>
+                        <button type="button" class="multi-entry-toggle" id="multiEntryToggle">Single</button>
+                    </div>
+
+                    <!-- Single entry mode (default) -->
+                    <div id="singleEntryMode">
+                        <div class="order-input-wrapper">
+                            <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact">
+                            <span class="order-input-suffix">USD</span>
+                        </div>
+                    </div>
+
+                    <!-- Multiple entry mode -->
+                    <div id="multiEntryMode" style="display:none;">
+                        <div class="multi-entry-container">
+                            <div class="multi-entry-columns">
+                                <span class="multi-entry-col-label">Price level</span>
+                                <span class="multi-entry-col-label">Amount</span>
+                                <span></span>
+                            </div>
+                            <div class="multi-entry-rows" id="multiEntryRows">
+                                <!-- Rows rendered dynamically -->
+                            </div>
+                            <div class="multi-entry-add-row" id="multiEntryAddBtn">
+                                <div class="multi-entry-add-icon">+</div>
+                                <span class="multi-entry-add-text">Level</span>
+                            </div>
+                            <div class="multi-entry-footer">
+                                <button type="button" class="multi-entry-equal-btn" id="multiEntryEqualBtn">Equal</button>
+                            </div>
+                        </div>
+                        <div class="multi-entry-summary" id="multiEntrySummary">
+                            <div class="multi-entry-summary-row">
+                                <span class="multi-entry-summary-label">Avg Entry</span>
+                                <span class="multi-entry-summary-value" id="multiEntryAvgPrice">0.00000</span>
+                            </div>
+                            <div class="multi-entry-summary-row">
+                                <span class="multi-entry-summary-label">Total Qty</span>
+                                <span class="multi-entry-summary-value" id="multiEntryTotalQty">0.00 Contracts</span>
+                            </div>
+                        </div>
+                        <input type="hidden" id="orderEntryPriceMulti" value="0">
                     </div>
                 </div>
 
@@ -7990,6 +8292,9 @@ class OrderManager {
         
         // Initialize Market Type Selector in panel
         this.initMarketTypeSelectorInPanel();
+        
+        // Initialize Multi-Entry UI events
+        this.initMultiEntryEvents();
         
         // Advanced Order Toggle - controls visibility of advanced features
         const advancedOrderToggle = document.getElementById('advancedOrderToggle');
@@ -11276,7 +11581,314 @@ class OrderManager {
         console.log('🗑️ Cleared all split entries');
         this.updatePreviewLines();
     }
-    
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MULTI-ENTRY UI SYSTEM — Panel-based multiple entry level management
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Initialize multi-entry UI events (called once after panel creation)
+     */
+    initMultiEntryEvents() {
+        const toggleBtn = document.getElementById('multiEntryToggle');
+        const addBtn = document.getElementById('multiEntryAddBtn');
+        const equalBtn = document.getElementById('multiEntryEqualBtn');
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.toggleEntryMode());
+        }
+        if (addBtn) {
+            addBtn.addEventListener('click', () => this.addMultiEntryLevel());
+        }
+        if (equalBtn) {
+            equalBtn.addEventListener('click', () => this.equalizeMultiEntryAmounts());
+        }
+
+        // Initialize multi-entry levels array
+        if (!this.multiEntryLevels) {
+            this.multiEntryLevels = [];
+            this.multiEntryIdCounter = 1;
+            this.isMultiEntryMode = false;
+        }
+    }
+
+    /**
+     * Toggle between SINGLE and MULTIPLE entry mode
+     */
+    toggleEntryMode() {
+        this.isMultiEntryMode = !this.isMultiEntryMode;
+        const toggleBtn = document.getElementById('multiEntryToggle');
+        const singleMode = document.getElementById('singleEntryMode');
+        const multiMode = document.getElementById('multiEntryMode');
+
+        if (this.isMultiEntryMode) {
+            toggleBtn.textContent = 'Multiple';
+            toggleBtn.classList.add('active');
+            if (singleMode) singleMode.style.display = 'none';
+            if (multiMode) multiMode.style.display = 'block';
+
+            // If no levels yet, seed with the current entry price as level 1
+            if (this.multiEntryLevels.length === 0) {
+                const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
+                this.multiEntryLevels.push({
+                    id: this.multiEntryIdCounter++,
+                    price: currentPrice,
+                    amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
+                });
+                // Add a second empty level
+                this.multiEntryLevels.push({
+                    id: this.multiEntryIdCounter++,
+                    price: 0,
+                    amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
+                });
+            }
+            this.renderMultiEntryRows();
+        } else {
+            toggleBtn.textContent = 'Single';
+            toggleBtn.classList.remove('active');
+            if (singleMode) singleMode.style.display = 'block';
+            if (multiMode) multiMode.style.display = 'none';
+
+            // Sync the avg entry back to the single entry field
+            if (this.multiEntryLevels.length > 0) {
+                const avgPrice = this._calcMultiEntryAvgPrice();
+                if (avgPrice > 0) {
+                    const entryInput = document.getElementById('orderEntryPrice');
+                    if (entryInput) entryInput.value = this.formatPrice(avgPrice);
+                }
+            }
+
+            // Clear split entries from chart when switching back to single
+            this.clearSplitEntries();
+        }
+
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.updatePlaceButtonText();
+    }
+
+    /**
+     * Render all multi-entry rows in the panel
+     */
+    renderMultiEntryRows() {
+        const container = document.getElementById('multiEntryRows');
+        if (!container) return;
+
+        const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+
+        container.innerHTML = '';
+        this.multiEntryLevels.forEach((level, idx) => {
+            const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
+            // Calculate contracts: amount / (price * pipSize * 100000) simplified
+            // Use risk-based: contracts = amount / (distance_pips * pipValue)
+            // For display, show amount / price as a rough lot approximation
+            const contracts = level.price > 0 ? (level.amount / (level.price * 100)).toFixed(2) : '0.00';
+
+            const row = document.createElement('div');
+            row.className = 'multi-entry-row';
+            row.innerHTML = `
+                <div class="multi-entry-row-inputs">
+                    <input type="number" class="multi-entry-row-input" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price">
+                    <div class="multi-entry-amount-wrap">
+                        <span class="multi-entry-amount-prefix">$</span>
+                        <input type="number" class="multi-entry-amount-input" value="${level.amount || ''}" step="1" min="0" data-level-id="${level.id}" data-field="amount">
+                    </div>
+                    <button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>
+                </div>
+                <div class="multi-entry-row-info">
+                    <span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${contracts} Contracts
+                </div>
+            `;
+            container.appendChild(row);
+        });
+
+        // Wire up events for new rows
+        container.querySelectorAll('.multi-entry-row-input, .multi-entry-amount-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const id = parseInt(e.target.dataset.levelId);
+                const field = e.target.dataset.field;
+                const level = this.multiEntryLevels.find(l => l.id === id);
+                if (level) {
+                    level[field] = parseFloat(e.target.value) || 0;
+                    this.updateMultiEntrySummary();
+                    this.syncMultiEntryToSplitEntries();
+                    // Re-render info rows (percentages change when amounts change)
+                    if (field === 'amount') {
+                        this.renderMultiEntryRows();
+                    }
+                }
+            });
+        });
+
+        container.querySelectorAll('.multi-entry-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = parseInt(e.currentTarget.dataset.levelId);
+                this.removeMultiEntryLevel(id);
+            });
+        });
+
+        this.updateMultiEntrySummary();
+    }
+
+    /**
+     * Add a new entry level
+     */
+    addMultiEntryLevel() {
+        const avgAmount = this.multiEntryLevels.length > 0
+            ? Math.round(this.multiEntryLevels.reduce((s, l) => s + l.amount, 0) / this.multiEntryLevels.length)
+            : 40;
+
+        this.multiEntryLevels.push({
+            id: this.multiEntryIdCounter++,
+            price: 0,
+            amount: avgAmount
+        });
+
+        this.renderMultiEntryRows();
+        this.syncMultiEntryToSplitEntries();
+    }
+
+    /**
+     * Remove an entry level by ID
+     */
+    removeMultiEntryLevel(id) {
+        // Don't allow removing if only 1 level left — switch back to single
+        if (this.multiEntryLevels.length <= 1) {
+            this.toggleEntryMode(); // Back to single
+            return;
+        }
+        this.multiEntryLevels = this.multiEntryLevels.filter(l => l.id !== id);
+        this.renderMultiEntryRows();
+        this.syncMultiEntryToSplitEntries();
+    }
+
+    /**
+     * Distribute amounts equally across all levels
+     */
+    equalizeMultiEntryAmounts() {
+        if (this.multiEntryLevels.length === 0) return;
+        const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
+        const equalAmount = totalAmount > 0
+            ? Math.round(totalAmount / this.multiEntryLevels.length)
+            : 40;
+
+        this.multiEntryLevels.forEach(l => { l.amount = equalAmount; });
+        this.renderMultiEntryRows();
+        this.syncMultiEntryToSplitEntries();
+    }
+
+    /**
+     * Calculate weighted average entry price
+     */
+    _calcMultiEntryAvgPrice() {
+        const levels = this.multiEntryLevels.filter(l => l.price > 0 && l.amount > 0);
+        if (levels.length === 0) return 0;
+        const totalWeightedPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
+        const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
+        return totalAmount > 0 ? totalWeightedPrice / totalAmount : 0;
+    }
+
+    /**
+     * Update the Avg Entry and Total Qty summary display
+     */
+    updateMultiEntrySummary() {
+        const avgPrice = this._calcMultiEntryAvgPrice();
+        const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
+
+        // Calculate total contracts (rough: sum of amount / price for each level)
+        let totalContracts = 0;
+        this.multiEntryLevels.forEach(l => {
+            if (l.price > 0) {
+                totalContracts += l.amount / (l.price * 100);
+            }
+        });
+
+        const avgEl = document.getElementById('multiEntryAvgPrice');
+        const qtyEl = document.getElementById('multiEntryTotalQty');
+        if (avgEl) avgEl.textContent = avgPrice > 0 ? this.formatPrice(avgPrice) : '0.00000';
+        if (qtyEl) qtyEl.textContent = `${totalContracts.toFixed(2)} Contracts`;
+
+        // Sync avg price to the hidden field and the main orderEntryPrice
+        const hiddenInput = document.getElementById('orderEntryPriceMulti');
+        if (hiddenInput) hiddenInput.value = avgPrice;
+
+        // Update the main entry price to avg for downstream calculations
+        const mainInput = document.getElementById('orderEntryPrice');
+        if (mainInput && avgPrice > 0) {
+            mainInput.value = this.formatPrice(avgPrice);
+        }
+    }
+
+    /**
+     * Sync multi-entry levels to the existing splitEntries system for chart preview lines
+     */
+    syncMultiEntryToSplitEntries() {
+        if (!this.isMultiEntryMode) return;
+
+        // Clear existing split entries
+        this.splitEntries = [];
+        this.splitEntriesEnabled = false;
+
+        const validLevels = this.multiEntryLevels.filter(l => l.price > 0);
+        if (validLevels.length <= 1) {
+            // Single valid level — use as main entry, no splits needed
+            if (validLevels.length === 1) {
+                const mainInput = document.getElementById('orderEntryPrice');
+                if (mainInput) mainInput.value = this.formatPrice(validLevels[0].price);
+            }
+            this.updatePreviewLines();
+            this.calculateAdvancedRiskReward();
+            this.updatePlaceButtonText();
+            return;
+        }
+
+        // Use first valid level as main entry
+        const mainLevel = validLevels[0];
+        const mainInput = document.getElementById('orderEntryPrice');
+        if (mainInput) mainInput.value = this.formatPrice(mainLevel.price);
+
+        // Remaining levels become split entries
+        const totalAmount = validLevels.reduce((s, l) => s + l.amount, 0);
+        for (let i = 1; i < validLevels.length; i++) {
+            const lvl = validLevels[i];
+            const pct = totalAmount > 0 ? Math.round((lvl.amount / totalAmount) * 100) : Math.round(100 / validLevels.length);
+
+            // Auto-detect order type
+            const currentCandle = this.getCurrentCandle();
+            const currentPrice = currentCandle?.c || currentCandle?.close || 0;
+            let orderType = this.orderType;
+            if (currentPrice > 0) {
+                if (this.orderSide === 'BUY') {
+                    orderType = lvl.price > currentPrice ? 'stop' : 'limit';
+                } else {
+                    orderType = lvl.price < currentPrice ? 'stop' : 'limit';
+                }
+            }
+
+            this.splitEntries.push({
+                id: this.splitEntryIdCounter++,
+                price: parseFloat(lvl.price.toFixed(5)),
+                percentage: pct,
+                orderType: orderType,
+                lineData: null
+            });
+        }
+
+        if (this.splitEntries.length > 0) {
+            this.splitEntriesEnabled = true;
+        }
+
+        // Also set main entry percentage
+        const mainPct = totalAmount > 0 ? Math.round((mainLevel.amount / totalAmount) * 100) : Math.round(100 / validLevels.length);
+        // Main entry percentage is implicit (100 - sum of split percentages)
+
+        this.updateMultiEntrySummary();
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.updatePlaceButtonText();
+    }
+
     /**
      * Draw the split handle badge on a line
      */
