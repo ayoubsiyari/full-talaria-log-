@@ -1497,6 +1497,40 @@ class OrderManager {
     }
 
     /**
+     * Worst-case fill in the ladder for one shared SL beyond the whole cluster:
+     * BUY → lowest entry; SELL → highest entry.
+     */
+    _getMultiEntryEntryAnchorPrice() {
+        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length === 0) return null;
+        const prices = this.multiEntryLevels.map(l => l.price).filter(p => p > 0);
+        if (prices.length === 0) return null;
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        return side === 'SELL' ? Math.max(...prices) : Math.min(...prices);
+    }
+
+    /**
+     * Single SL for all multiple entries: default SL = anchor ± 10 pips (same as single-entry defaults).
+     * Panel risk ($ / % / lots) still drives sizing; this only sets the shared SL price level.
+     */
+    _applyMultiEntryStopLossDefault() {
+        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length === 0) return;
+        if (!document.getElementById('enableSL')?.checked) return;
+        const anchor = this._getMultiEntryEntryAnchorPrice();
+        if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) return;
+        const slInput = document.getElementById('slPrice');
+        if (!slInput) return;
+
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        const pipSize = this.pipSize || 0.0001;
+        const defaultSteps = 10;
+        const offset = pipSize * defaultSteps;
+        const slDefault = side === 'SELL' ? (anchor + offset) : (anchor - offset);
+        const precision = this.getPricePrecision(anchor);
+        slInput.value = slDefault.toFixed(precision);
+        this.slLastSyncedEntryPrice = null;
+    }
+
+    /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
      * @param {number} entry
@@ -10375,9 +10409,7 @@ class OrderManager {
         const defaultSteps = 10;
         const offset = pipSize * defaultSteps;
         const tpDefault = side === 'SELL' ? (entryPrice - offset) : (entryPrice + offset);
-        const slDefault = side === 'SELL' ? (entryPrice + offset) : (entryPrice - offset);
         const tpFormatted = tpDefault.toFixed(precision);
-        const slFormatted = slDefault.toFixed(precision);
 
         // TP syncing: sync to sensible default if NOT manually positioned
         if (tpPriceInput && !this.tpManuallyPositioned) {
@@ -10387,10 +10419,17 @@ class OrderManager {
             }
         }
 
-        // SL syncing: sync to sensible default if NOT manually positioned
+        // SL: one shared stop for multiple entries — anchor to worst-case fill (min BUY / max SELL)
+        const meAnchor = this._getMultiEntryEntryAnchorPrice();
+        const priceForSl = (meAnchor != null && Number.isFinite(meAnchor) && meAnchor > 0) ? meAnchor : entryPrice;
+        const precisionSl = this.getPricePrecision(priceForSl);
+        const slDefault = side === 'SELL' ? (priceForSl + offset) : (priceForSl - offset);
+        const slFormatted = slDefault.toFixed(precisionSl);
+        const anchorFormatted = priceForSl.toFixed(precisionSl);
+
         if (slPriceInput && !this.slManuallyPositioned) {
             const existing = String(slPriceInput.value || '').trim();
-            if (!existing || existing === entryFormatted) {
+            if (!existing || existing === entryFormatted || existing === anchorFormatted) {
                 slPriceInput.value = slFormatted;
             }
         }
@@ -11966,6 +12005,9 @@ class OrderManager {
                 }
                 this.multiEntryLevels.push(lvl1, lvl2);
             }
+            // One SL for all entries: refresh default stop from cluster anchor (panel risk unchanged)
+            this.slManuallyPositioned = false;
+            this._applyMultiEntryStopLossDefault();
             this.renderMultiEntryRows();
             this.syncMultiEntryToSplitEntries(); // Show levels on chart immediately
         } else {
@@ -12147,6 +12189,10 @@ class OrderManager {
         });
 
         this.equalizeMultiEntryAmounts();
+        if (!this.slManuallyPositioned) {
+            this._applyMultiEntryStopLossDefault();
+            this.calculatePositionFromRisk();
+        }
     }
 
     /**
@@ -12161,6 +12207,10 @@ class OrderManager {
         this.multiEntryLevels = this.multiEntryLevels.filter(l => l.id !== id);
         // Auto-equalize amounts across remaining levels
         this.equalizeMultiEntryAmounts();
+        if (!this.slManuallyPositioned) {
+            this._applyMultiEntryStopLossDefault();
+            this.calculatePositionFromRisk();
+        }
     }
 
     /**
@@ -12484,6 +12534,10 @@ class OrderManager {
                     });
                     // Equalize amounts across all levels (includes render + sync)
                     self.equalizeMultiEntryAmounts();
+                    if (!self.slManuallyPositioned) {
+                        self._applyMultiEntryStopLossDefault();
+                        self.calculatePositionFromRisk();
+                    }
                     self.showNotification(`Entry level added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isEntryLine) {
                     // Legacy split entry
