@@ -7053,7 +7053,7 @@ class OrderManager {
                             </div>
                             <div class="multi-entry-summary-row">
                                 <span class="multi-entry-summary-label">Total Qty</span>
-                                <span class="multi-entry-summary-value" id="multiEntryTotalQty">0.00 Contracts</span>
+                                <span class="multi-entry-summary-value" id="multiEntryTotalQty">0.00 Lots</span>
                             </div>
                         </div>
                         <input type="hidden" id="orderEntryPriceMulti" value="0">
@@ -11829,14 +11829,16 @@ class OrderManager {
         if (!container) return;
 
         const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
+        const config = this.getMarketConfig();
+        const posLabel = config?.positionLabel || 'Lot';
 
         container.innerHTML = '';
         this.multiEntryLevels.forEach((level, idx) => {
             const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
-            // Calculate contracts: amount / (price * pipSize * 100000) simplified
-            // Use risk-based: contracts = amount / (distance_pips * pipValue)
-            // For display, show amount / price as a rough lot approximation
-            const contracts = level.price > 0 ? (level.amount / (level.price * 100)).toFixed(2) : '0.00';
+            const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
 
             const row = document.createElement('div');
             row.className = 'multi-entry-row';
@@ -11850,7 +11852,7 @@ class OrderManager {
                     <button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>
                 </div>
                 <div class="multi-entry-row-info">
-                    <span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${contracts} Contracts
+                    <span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${lots} ${posLabel}
                 </div>
             `;
             container.appendChild(row);
@@ -11903,18 +11905,34 @@ class OrderManager {
     }
 
     /**
-     * Update info rows (percentages/contracts) in-place without rebuilding DOM
+     * Calculate lot size for a single multi-entry level using same formula as order panel
+     * lotSize = riskAmount / (slPips * pipValuePerLot)
+     */
+    _calcLevelLotSize(level, slPrice, pipSize, pipValue) {
+        if (!level.price || level.price <= 0 || !slPrice || slPrice <= 0) return '0.00';
+        const slPips = Math.abs(level.price - slPrice) / pipSize;
+        if (slPips === 0) return '0.00';
+        return ((level.amount || 0) / (slPips * pipValue)).toFixed(2);
+    }
+
+    /**
+     * Update info rows (percentages/lot sizes) in-place without rebuilding DOM
      */
     _updateMultiEntryInfoRows() {
         const container = document.getElementById('multiEntryRows');
         if (!container) return;
         const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
+        const config = this.getMarketConfig();
+        const posLabel = config?.positionLabel || 'Lot';
         const infoEls = container.querySelectorAll('.multi-entry-row-info');
         this.multiEntryLevels.forEach((level, idx) => {
             if (infoEls[idx]) {
                 const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
-                const contracts = level.price > 0 ? (level.amount / (level.price * 100)).toFixed(2) : '0.00';
-                infoEls[idx].innerHTML = `<span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${contracts} Contracts`;
+                const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
+                infoEls[idx].innerHTML = `<span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${lots} ${posLabel}`;
             }
         });
     }
@@ -11993,18 +12011,24 @@ class OrderManager {
         const avgPrice = this._calcMultiEntryAvgPrice();
         const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
 
-        // Calculate total contracts (rough: sum of amount / price for each level)
-        let totalContracts = 0;
+        // Calculate total lots using correct formula: sum of each level's lotSize
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
+        const config = this.getMarketConfig();
+        const posLabel = config?.positionLabel || 'Lot';
+        let totalLots = 0;
         this.multiEntryLevels.forEach(l => {
-            if (l.price > 0) {
-                totalContracts += l.amount / (l.price * 100);
+            if (l.price > 0 && slPrice > 0) {
+                const slPips = Math.abs(l.price - slPrice) / pipSize;
+                if (slPips > 0) totalLots += (l.amount || 0) / (slPips * pipValue);
             }
         });
 
         const avgEl = document.getElementById('multiEntryAvgPrice');
         const qtyEl = document.getElementById('multiEntryTotalQty');
         if (avgEl) avgEl.textContent = avgPrice > 0 ? this.formatPrice(avgPrice) : '0.00000';
-        if (qtyEl) qtyEl.textContent = `${totalContracts.toFixed(2)} Contracts`;
+        if (qtyEl) qtyEl.textContent = `${totalLots.toFixed(2)} ${posLabel}`;
 
         // Sync avg price to the hidden field and the main orderEntryPrice
         const hiddenInput = document.getElementById('orderEntryPriceMulti');
