@@ -11954,9 +11954,12 @@ class OrderManager {
         if (hiddenInput) hiddenInput.value = avgPrice;
 
         // Update the main entry price to avg for downstream calculations
-        const mainInput = document.getElementById('orderEntryPrice');
-        if (mainInput && avgPrice > 0) {
-            mainInput.value = this.formatPrice(avgPrice);
+        // But NOT in multi-entry mode — each level keeps its own price on the chart
+        if (!this.isMultiEntryMode) {
+            const mainInput = document.getElementById('orderEntryPrice');
+            if (mainInput && avgPrice > 0) {
+                mainInput.value = this.formatPrice(avgPrice);
+            }
         }
     }
 
