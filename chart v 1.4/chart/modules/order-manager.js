@@ -17005,6 +17005,10 @@ class OrderManager {
             const finalPrice = lineType === 'entry' ? order.openPrice : 
                              lineType === 'sl' ? order.stopLoss : 
                              order.takeProfit;
+
+            if ((lineType === 'sl' || lineType === 'tp') && order.isSplitEntry && order.splitGroupId) {
+                self._syncSplitGroupProtectionPrices(order, lineType === 'sl' ? 'sl' : 'tp', finalPrice);
+            }
             
             // Final update - refresh all SL/TP lines and positions panel
             self.updateSLTPLines(ctx);
@@ -17588,6 +17592,12 @@ class OrderManager {
         const chart = targetChart || this.chart;
         if (!chart?.svg) return;
         if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) return;
+
+        // Shared SL/TP for scale-in: only first pending leg draws targets
+        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) > 1) {
+            return;
+        }
+
         const entries = [];
         const entryPrice = pendingOrder.entryPrice;
         const quantity = pendingOrder.quantity;
@@ -17636,7 +17646,14 @@ class OrderManager {
                 
                 // Calculate P&L for this TP target based on pending order's entry
                 const closeQty = quantity * (target.percentage / 100);
-                const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
+                let tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
+                if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
+                    const members = this._getSplitGroupPendingOrders(pendingOrder);
+                    tpPnL = members.reduce((sum, m) => {
+                        const cq = m.quantity * (target.percentage / 100);
+                        return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, target.price, cq, pendingSym);
+                    }, 0);
+                }
                 
                 const labelText = `TP${index + 1} (${target.percentage.toFixed(0)}%) , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage);
@@ -17645,16 +17662,28 @@ class OrderManager {
                 }
             });
         } else if (pendingOrder.takeProfit) {
-            // Single TP - calculate P&L
-            const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
+            // Single TP - calculate P&L (sum all legs for scale-in)
+            let tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
+            if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
+                const members = this._getSplitGroupPendingOrders(pendingOrder);
+                tpPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
+                    m.direction, m.entryPrice, pendingOrder.takeProfit, m.quantity, pendingSym
+                ), 0);
+            }
             const labelText = `TP , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.takeProfit, 'TP', labelText, tpPnL);
             if (item) entries.push(item);
         }
         
-        // Draw SL with P&L calculated from THIS pending order's entry
+        // Draw SL with P&L (sum all legs for scale-in)
         if (pendingOrder.stopLoss) {
-            const slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
+            let slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
+            if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
+                const members = this._getSplitGroupPendingOrders(pendingOrder);
+                slPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
+                    m.direction, m.entryPrice, pendingOrder.stopLoss, m.quantity, pendingSym
+                ), 0);
+            }
             const labelText = `SL , P&L: ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.stopLoss, 'SL', labelText, slPnL);
             if (item) entries.push(item);
@@ -17875,10 +17904,18 @@ class OrderManager {
                         const tpTarget = pendingOrder.tpTargets.find(t => t.id === target.targetId);
                         if (tpTarget) tpTarget.price = parseFloat(formattedPrice);
                     } else {
-                        pendingOrder.takeProfit = parseFloat(formattedPrice);
+                        const p = parseFloat(formattedPrice);
+                        pendingOrder.takeProfit = p;
+                        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+                            self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => { m.takeProfit = p; });
+                        }
                     }
                 } else if (target.type === 'SL') {
-                    pendingOrder.stopLoss = parseFloat(formattedPrice);
+                    const p = parseFloat(formattedPrice);
+                    pendingOrder.stopLoss = p;
+                    if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+                        self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => { m.stopLoss = p; });
+                    }
                 }
                 
                 self.removePendingSLTPLines(pendingOrder.id);
@@ -18450,6 +18487,54 @@ class OrderManager {
         console.log(`✅ Order line removed. Remaining lines: ${this.orderLines.length}`);
     }
     
+    /** All open legs in a split / multi-entry group (deduped by id). */
+    _getSplitGroupOpenPositions(order) {
+        if (!order?.splitGroupId || !order.isSplitEntry) return order ? [order] : [];
+        const byId = new Map();
+        const add = (arr) => {
+            (arr || []).forEach((o) => {
+                if (o && o.splitGroupId === order.splitGroupId && o.isSplitEntry && !byId.has(o.id)) {
+                    byId.set(o.id, o);
+                }
+            });
+        };
+        add(this.openPositions);
+        add(this.orderService?.openPositions);
+        return [...byId.values()];
+    }
+
+    /** All pending legs in the same split group. */
+    _getSplitGroupPendingOrders(pendingOrder) {
+        if (!pendingOrder?.splitGroupId || !pendingOrder.isSplitEntry) return pendingOrder ? [pendingOrder] : [];
+        const byId = new Map();
+        const add = (arr) => {
+            (arr || []).forEach((o) => {
+                if (o && o.splitGroupId === pendingOrder.splitGroupId && o.isSplitEntry && !byId.has(o.id)) {
+                    byId.set(o.id, o);
+                }
+            });
+        };
+        add(this.pendingOrders);
+        add(this.orderService?.pendingOrders);
+        return [...byId.values()];
+    }
+
+    _findOpenPositionById(orderId) {
+        const a = this.openPositions?.find((p) => p.id === orderId);
+        if (a) return a;
+        return this.orderService?.openPositions?.find((p) => p.id === orderId) || null;
+    }
+
+    _syncSplitGroupProtectionPrices(order, kind, price) {
+        if (!order?.splitGroupId || !order.isSplitEntry) return;
+        const p = Number.parseFloat(price);
+        if (!Number.isFinite(p)) return;
+        this._getSplitGroupOpenPositions(order).forEach((o) => {
+            if (kind === 'sl') o.stopLoss = p;
+            else if (kind === 'tp') o.takeProfit = p;
+        });
+    }
+
     /**
      * Draw SL and TP lines on chart
      */
@@ -18458,6 +18543,11 @@ class OrderManager {
         console.log(`   SL: ${order.stopLoss}, TP: ${order.takeProfit}`);
         console.log(`   tpTargets:`, order.tpTargets);
         console.log(`   Has multiple TPs: ${order.tpTargets && order.tpTargets.length > 0 ? 'YES (' + order.tpTargets.length + ')' : 'NO'}`);
+
+        // One shared SL/TP for the whole scale-in: only the first leg draws chart lines
+        if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) > 1) {
+            return;
+        }
 
         if (targetChart == null && this._isMultiPanelLayout()) {
             const charts = this._collectLayoutCharts();
@@ -18488,8 +18578,14 @@ class OrderManager {
         if (order.stopLoss) {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
-            // Calculate potential loss at SL (same engine as order panel)
-            const slPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.stopLoss, order.quantity, orderSym);
+            // Calculate potential loss at SL — sum all legs for scale-in / split groups
+            let slPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.stopLoss, order.quantity, orderSym);
+            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                const members = this._getSplitGroupOpenPositions(order);
+                slPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
+                    m.type, m.openPrice, order.stopLoss, m.quantity, orderSym
+                ), 0);
+            }
             
             const slLine = chart.svg.append('line')
                 .attr('class', `sl-line sl-${order.id}`)
@@ -18604,9 +18700,16 @@ class OrderManager {
             
             order.tpTargets.forEach((target, index) => {
                 if (target.price > 0 && target.percentage > 0) {
-                    // Calculate PnL for this target
+                    // Calculate PnL for this target (sum all legs for scale-in)
                     const targetQuantity = order.quantity * (target.percentage / 100);
-                    const tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, target.price, targetQuantity, orderSym);
+                    let tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, target.price, targetQuantity, orderSym);
+                    if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                        const members = this._getSplitGroupOpenPositions(order);
+                        tpPnL = members.reduce((sum, m) => {
+                            const tq = m.quantity * (target.percentage / 100);
+                            return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, target.price, tq, orderSym);
+                        }, 0);
+                    }
                     
                     // Color gradient from light to dark green
                     const colors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
@@ -18673,8 +18776,14 @@ class OrderManager {
             // Draw single TP line (fallback)
             console.log(`  🎯 Drawing single TP line at ${order.takeProfit.toFixed(2)}`);
             
-            // Calculate potential profit at TP
-            const tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.takeProfit, order.quantity, orderSym);
+            // Calculate potential profit at TP — sum all legs for scale-in
+            let tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.takeProfit, order.quantity, orderSym);
+            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                const members = this._getSplitGroupOpenPositions(order);
+                tpPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
+                    m.type, m.openPrice, order.takeProfit, m.quantity, orderSym
+                ), 0);
+            }
             
             const tpLine = chart.svg.append('line')
                 .attr('class', `tp-line tp-${order.id}`)
@@ -18947,15 +19056,17 @@ class OrderManager {
      * Remove only Stop Loss from order (keeps position open)
      */
     removeStopLoss(orderId) {
-        // Find the order
-        const order = this.openPositions.find(o => o.id === orderId);
+        const order = this._findOpenPositionById(orderId);
         if (!order) {
             console.error(`Order #${orderId} not found`);
             return;
         }
         
-        // Remove SL from order object
-        order.stopLoss = null;
+        if (order.splitGroupId && order.isSplitEntry) {
+            this._getSplitGroupOpenPositions(order).forEach((o) => { o.stopLoss = null; });
+        } else {
+            order.stopLoss = null;
+        }
         
         // Remove SL line from chart(s)
         if (this.slLines) {
@@ -18979,15 +19090,17 @@ class OrderManager {
      * Remove only Take Profit from order (keeps position open)
      */
     removeTakeProfit(orderId) {
-        // Find the order
-        const order = this.openPositions.find(o => o.id === orderId);
+        const order = this._findOpenPositionById(orderId);
         if (!order) {
             console.error(`Order #${orderId} not found`);
             return;
         }
         
-        // Remove TP from order object
-        order.takeProfit = null;
+        if (order.splitGroupId && order.isSplitEntry) {
+            this._getSplitGroupOpenPositions(order).forEach((o) => { o.takeProfit = null; });
+        } else {
+            order.takeProfit = null;
+        }
         
         // Remove TP line(s) from chart(s)
         if (this.tpLines) {
