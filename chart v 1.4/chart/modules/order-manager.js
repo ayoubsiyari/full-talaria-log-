@@ -12121,7 +12121,7 @@ class OrderManager {
         const mEntry = /translate\(([^,]+),/.exec(trEntry);
         const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
         // Keep connector on the right side near the entry tag.
-        const connectorPadRight = 28; // px past entry label — nudge toward axis, away from badges
+        const connectorPadRight = 5; // px past entry label — nudge toward axis, away from badges
         const anchorX = Number.isFinite(entryX)
             ? Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + connectorPadRight))
             : Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
@@ -16131,6 +16131,13 @@ class OrderManager {
             .attr('opacity', 0.92)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
+        const dragHitLine = chart.svg.append('line')
+            .attr('class', `pending-order-hit-line pending-${pendingOrder.id}`)
+            .attr('stroke', lineColor)
+            .attr('stroke-width', 14)
+            .attr('opacity', 0)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'ns-resize');
         
         // Label box with colored background for visibility
         const labelBox = chart.svg.append('rect')
@@ -16240,6 +16247,7 @@ class OrderManager {
                 
                 // Update line position
                 line.attr('y1', clampedY).attr('y2', clampedY);
+                dragHitLine.attr('y1', clampedY).attr('y2', clampedY);
                 
                 // Use same positioning as updateOrderLines
                 const boxHeight = 18;
@@ -16264,6 +16272,7 @@ class OrderManager {
                     .attr('x', labelBoxX + 10)
                     .attr('y', clampedY + 4);
                 line.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
+                dragHitLine.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
                 
                 // Hide price box/text (price shown on Y-axis)
                 if (priceBox) priceBox.style('display', 'none');
@@ -16289,6 +16298,7 @@ class OrderManager {
         
         // Apply drag to line, labelBox, and priceBox
         line.call(drag);
+        dragHitLine.call(drag);
         labelBox.call(drag);
         if (priceBox) priceBox.call(drag);
         
@@ -16296,6 +16306,7 @@ class OrderManager {
             orderId: pendingOrder.id,
             isPending: true,
             line,
+            dragHitLine,
             labelBox,
             labelText,
             priceBox,
@@ -16355,8 +16366,17 @@ class OrderManager {
                 .attr('class', `pending-${type.toLowerCase()}-label pending-${type.toLowerCase()}-${pendingOrder.id}`)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
+            const hitLine = isDraggable
+                ? chart.svg.append('line')
+                    .attr('class', `pending-${type.toLowerCase()}-hit-line pending-${type.toLowerCase()}-${pendingOrder.id}`)
+                    .attr('stroke', color)
+                    .attr('stroke-width', 14)
+                    .attr('opacity', 0)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'ns-resize')
+                : null;
 
-            return { price, type, line, labelGroup, labelText, pnl, orderId: pendingOrder.id, targetId, percentage };
+            return { price, type, line, hitLine, labelGroup, labelText, pnl, orderId: pendingOrder.id, targetId, percentage };
         };
 
         // Check if we have multiple TP targets
@@ -16457,6 +16477,13 @@ class OrderManager {
                     .attr('y1', y)
                     .attr('y2', y)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
+                if (target.hitLine) {
+                    target.hitLine
+                        .attr('x1', 0)
+                        .attr('x2', ch.w)
+                        .attr('y1', y)
+                        .attr('y2', y);
+                }
 
                 const labelGroup = target.labelGroup;
                 labelGroup.selectAll('*').remove();
@@ -16600,6 +16627,7 @@ class OrderManager {
         
         // Apply drag to BOTH line AND labelGroup (same as executed orders)
         target.line.call(drag);
+        if (target.hitLine) target.hitLine.call(drag);
         target.labelGroup.call(drag);
     }
 
@@ -16611,6 +16639,7 @@ class OrderManager {
         records.forEach((record) => {
             record.targets.forEach((target) => {
                 target.line?.remove();
+                target.hitLine?.remove();
                 target.labelGroup?.remove();
                 target.priceHighlight?.remove();
             });
@@ -16628,6 +16657,7 @@ class OrderManager {
         lineDatas.forEach((lineData) => {
             try {
                 if (lineData.line) lineData.line.remove();
+                if (lineData.dragHitLine) lineData.dragHitLine.remove();
                 if (lineData.labelBox) lineData.labelBox.remove();
                 if (lineData.labelText) lineData.labelText.remove();
                 if (lineData.priceBox) lineData.priceBox.remove();
@@ -18272,7 +18302,7 @@ class OrderManager {
         if (lines.length > 0) {
             console.log(`📍 updateOrderLines: Updating ${lines.length} order lines`);
 
-            lines.forEach(({ orderId, isPending, line, labelBox, labelText, arrow, priceBox, priceText, closeBtn }) => {
+            lines.forEach(({ orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn }) => {
                 let price, orderData;
 
                 if (isPending) {
@@ -18300,6 +18330,13 @@ class OrderManager {
                     .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y);
+                if (dragHitLine) {
+                    dragHitLine
+                        .attr('x1', 0)
+                        .attr('x2', ch.w)
+                        .attr('y1', y)
+                        .attr('y2', y);
+                }
 
                 if (priceBox) priceBox.style('display', 'none');
                 if (priceText) priceText.style('display', 'none');
@@ -18325,6 +18362,7 @@ class OrderManager {
                         .attr('x', labelBoxX + 10)
                         .attr('y', y + 4);
                     line.attr('x2', Math.max(0, labelBoxX));
+                    if (dragHitLine) dragHitLine.attr('x2', Math.max(0, labelBoxX));
 
                     if (arrow) {
                         arrow
