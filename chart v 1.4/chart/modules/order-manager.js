@@ -18096,13 +18096,14 @@ class OrderManager {
                     const boxY = y - boxHeight / 2;
                     const spacing = 5;
                     const yAxisWidth = 70; // Space for Y-axis price highlight
+                    const labelRightNudge = 18;
                     
                     // Position close button (rightmost, before Y-axis area)
-                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15}, ${y})`);
+                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
                     
                     // Position label box to the left of close button
                     const labelBoxWidth = labelText.node().getBBox().width + 20;
-                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth;
+                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge;
                     
                     labelBox
                         .attr('x', labelBoxX)
@@ -18253,17 +18254,18 @@ class OrderManager {
                     const boxHeight = 18;
                     const boxY = y - boxHeight / 2;
                     const yAxisWidth = 70; // Space for Y-axis price highlight
+                    const labelRightNudge = 18;
                     
                     // Position close button if it exists (rightmost, before Y-axis area)
                     if (closeBtn) {
-                        closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15}, ${y})`);
+                        closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
                     }
                     
                     // Position label box to the left of close button (or at right edge)
                     const labelBoxWidth = labelText.node().getBBox().width + 20;
                     const labelBoxX = closeBtn 
-                        ? ch.w - yAxisWidth - 30 - labelBoxWidth
-                        : ch.w - yAxisWidth - 10 - labelBoxWidth;
+                        ? ch.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge
+                        : ch.w - yAxisWidth - 10 - labelBoxWidth + labelRightNudge;
                     
                     labelBox
                         .attr('x', labelBoxX)
@@ -18426,12 +18428,13 @@ class OrderManager {
                     const boxHeight = 18;
                     const boxY = y - boxHeight / 2;
                     const yAxisWidth = 70;
+                    const labelRightNudge = 18;
 
-                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15}, ${y})`);
+                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
 
                     const arrowWidth = arrow ? arrow.node().getBBox().width : 0;
                     const labelBoxWidth = labelText.node().getBBox().width + arrowWidth + 20;
-                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth;
+                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge;
 
                     labelBox
                         .attr('x', labelBoxX)
