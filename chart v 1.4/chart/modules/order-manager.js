@@ -9268,7 +9268,17 @@ class OrderManager {
      * Calculate position size from risk amount or percentage, or calculate risk from lot size
      */
     calculatePositionFromRisk() {
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        let entryPrice;
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            entryPrice = this._calcMultiEntryAvgPrice();
+            if (!entryPrice || entryPrice <= 0) {
+                entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            }
+            const hiddenInput = document.getElementById('orderEntryPriceMulti');
+            if (hiddenInput && entryPrice > 0) hiddenInput.value = entryPrice;
+        } else {
+            entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        }
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
         
@@ -9279,6 +9289,15 @@ class OrderManager {
             if (lotSize <= 0) {
                 document.getElementById('orderQuantity').value = '0';
                 this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+                return;
+            }
+
+            if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+                this._rebalanceLevelAmountsToTarget();
+                this.updateMultiEntrySummary();
+                requestAnimationFrame(() => this.updatePreviewLines());
+                this.updatePlaceButtonText();
+                this.calculateAdvancedRiskReward();
                 return;
             }
             
@@ -9343,6 +9362,15 @@ class OrderManager {
         if (riskAmount <= 0) {
             document.getElementById('orderQuantity').value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+            return;
+        }
+
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            this._rebalanceLevelAmountsToTarget();
+            this.updateMultiEntrySummary();
+            requestAnimationFrame(() => this.updatePreviewLines());
+            this.updatePlaceButtonText();
+            this.calculateAdvancedRiskReward();
             return;
         }
         
@@ -11795,6 +11823,7 @@ class OrderManager {
                     amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
                 });
             }
+            this._rebalanceLevelAmountsToTarget();
             this.renderMultiEntryRows();
             this.syncMultiEntryToSplitEntries(); // Show levels on chart immediately
         } else {
@@ -11886,6 +11915,13 @@ class OrderManager {
                         level[field] = newVal;
                     }
                     
+                    if (field === 'amount') {
+                        this._rebalanceLevelAmountsToTarget();
+                        this.multiEntryLevels.forEach(lvl => {
+                            const inp = container.querySelector(`.multi-entry-amount-input[data-level-id="${lvl.id}"]`);
+                            if (inp) inp.value = lvl.amount;
+                        });
+                    }
                     this.updateMultiEntrySummary();
                     this.syncMultiEntryToSplitEntries();
                     // Update info rows in-place (no DOM rebuild, keeps focus)
@@ -11902,6 +11938,46 @@ class OrderManager {
         });
 
         this.updateMultiEntrySummary();
+    }
+
+    /**
+     * Scale level dollar amounts so they sum to the active risk target (USD or % of balance).
+     */
+    _rebalanceLevelAmountsToTarget() {
+        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length === 0) return;
+
+        let totalRiskTarget = 0;
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode === 'risk-usd') {
+            totalRiskTarget = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+        } else if (mode === 'risk-percent') {
+            const pct = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+            const balType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+            const bal = balType === 'current' ? this.balance : this.initialBalance;
+            totalRiskTarget = (bal * pct) / 100;
+        } else {
+            return;
+        }
+
+        if (totalRiskTarget <= 0) return;
+
+        const currentSum = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
+        if (currentSum <= 0) {
+            const each = Math.round(totalRiskTarget / this.multiEntryLevels.length);
+            this.multiEntryLevels.forEach(l => { l.amount = each; });
+            return;
+        }
+
+        const scale = totalRiskTarget / currentSum;
+        this.multiEntryLevels.forEach(l => {
+            l.amount = Math.round((l.amount || 0) * scale);
+        });
+
+        const newSum = this.multiEntryLevels.reduce((s, l) => s + l.amount, 0);
+        const diff = Math.round(totalRiskTarget) - newSum;
+        if (diff !== 0 && this.multiEntryLevels.length > 0) {
+            this.multiEntryLevels[this.multiEntryLevels.length - 1].amount += diff;
+        }
     }
 
     /**
@@ -11989,6 +12065,7 @@ class OrderManager {
             : 40;
 
         this.multiEntryLevels.forEach(l => { l.amount = equalAmount; });
+        this._rebalanceLevelAmountsToTarget();
         this.renderMultiEntryRows();
         this.syncMultiEntryToSplitEntries();
     }
@@ -12030,6 +12107,14 @@ class OrderManager {
         if (avgEl) avgEl.textContent = avgPrice > 0 ? this.formatPrice(avgPrice) : '0.00000';
         if (qtyEl) qtyEl.textContent = `${totalLots.toFixed(2)} ${posLabel}`;
 
+        if (this.isMultiEntryMode) {
+            const qtyInput = document.getElementById('orderQuantity');
+            if (qtyInput && Number.isFinite(totalLots) && totalLots > 0) {
+                qtyInput.value = totalLots.toFixed(2);
+            }
+            this.updatePlaceButtonText();
+        }
+
         // Sync avg price to the hidden field and the main orderEntryPrice
         const hiddenInput = document.getElementById('orderEntryPriceMulti');
         if (hiddenInput) hiddenInput.value = avgPrice;
@@ -12041,6 +12126,11 @@ class OrderManager {
             if (mainInput && avgPrice > 0) {
                 mainInput.value = this.formatPrice(avgPrice);
             }
+        }
+
+        // Per-row % and lots (chart drags / SL changes only hit updateMultiEntrySummary, not render)
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            this._updateMultiEntryInfoRows();
         }
     }
 
@@ -13068,6 +13158,221 @@ class OrderManager {
                 'warning',
                 5000
             );
+        }
+
+        // Multi-entry: one order per level; lots = risk_i / (sl_pips_i * pip_value), sum(risk_i) = risk budget
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
+            if (window.propFirmTracker && window.propFirmTracker.tradingDisabled) {
+                console.error('🚫 Trading is disabled due to prop firm rule violation');
+                this.showNotification('❌ Trading Disabled - Challenge rule violated', 'error');
+                return;
+            }
+
+            const pipSz = this.pipSize || 0.0001;
+            const pipVal = this.pipValuePerLot || 10;
+            const validLevels = this.multiEntryLevels.filter(l => l.price > 0 && l.amount > 0);
+            if (validLevels.length === 0) {
+                this.showNotification('⚠️ No valid entry levels configured', 'warning');
+                return;
+            }
+
+            if (slEnabled && slPrice > 0) {
+                const slErrors = [];
+                for (let i = 0; i < validLevels.length; i++) {
+                    const l = validLevels[i];
+                    const slDist = Math.abs(l.price - slPrice);
+                    if (slDist < pipSz * 0.5) {
+                        slErrors.push(`Level ${i + 1} price too close to SL`);
+                        break;
+                    }
+                    if (this.orderSide === 'BUY' && slPrice >= l.price) {
+                        slErrors.push(`Level ${i + 1}: Stop Loss for BUY must be BELOW entry`);
+                        break;
+                    }
+                    if (this.orderSide === 'SELL' && slPrice <= l.price) {
+                        slErrors.push(`Level ${i + 1}: Stop Loss for SELL must be ABOVE entry`);
+                        break;
+                    }
+                }
+                if (slErrors.length > 0) {
+                    this.showNotification(slErrors[0], 'warning');
+                    return;
+                }
+            }
+
+            const cloneTpTargets = (targets) => {
+                if (!targets || targets.length === 0) return targets;
+                return targets.map(t => ({ ...t, hit: false }));
+            };
+            const cloneBreakevenSettings = (settings) => {
+                if (!settings) return settings;
+                return { ...settings, triggered: false };
+            };
+            const cloneTrailingStop = (ts) => {
+                if (!ts) return ts;
+                return { ...ts, activated: false, currentStep: 0 };
+            };
+
+            let totalLots = 0;
+            validLevels.forEach(level => {
+                const slPips = slEnabled && slPrice > 0
+                    ? Math.abs(level.price - slPrice) / pipSz
+                    : 0;
+                const levelLots = slPips > 0
+                    ? (level.amount / (slPips * pipVal))
+                    : parseFloat(document.getElementById('lotSizeAmount')?.value || 1) / validLevels.length;
+                totalLots += levelLots;
+            });
+
+            const aggregateRisk = validLevels.reduce((s, l) => s + (l.amount || 0), 0);
+            const sessionValidationErrors = [];
+            if (this.orderService && typeof this.orderService.estimateTradeMargin === 'function') {
+                const tentative = {
+                    ticker: activeTicker,
+                    symbol: activeTicker,
+                    quantity: totalLots,
+                    instrument_settings: activeInstrumentSettings
+                };
+                const requiredMargin = this.orderService.estimateTradeMargin(tentative);
+                const sessionState = this.orderService.multiInstrumentSession || {};
+                const freeMargin = Number.parseFloat(sessionState.free_margin ?? this.equity);
+                const usedMargin = Number.parseFloat(sessionState.used_margin ?? 0);
+                const equityNow = Number.parseFloat(this.equity);
+                const marginCallLevel = Number.parseFloat(sessionState.margin_call_level);
+                const stopOutLevel = Number.parseFloat(sessionState.stop_out_level);
+                const maxRiskPerTradePct = Number.parseFloat(sessionState.max_risk_per_trade_pct);
+
+                if (Number.isFinite(requiredMargin) && Number.isFinite(freeMargin) && requiredMargin > freeMargin) {
+                    sessionValidationErrors.push(`❌ Insufficient free margin (${requiredMargin.toFixed(2)} required, ${freeMargin.toFixed(2)} available)`);
+                }
+
+                if (Number.isFinite(maxRiskPerTradePct) && maxRiskPerTradePct > 0 && Number.isFinite(equityNow) && equityNow > 0) {
+                    const orderRiskPct = (aggregateRisk / equityNow) * 100;
+                    if (Number.isFinite(orderRiskPct) && orderRiskPct > maxRiskPerTradePct) {
+                        sessionValidationErrors.push(`❌ Risk per trade too high (${orderRiskPct.toFixed(2)}% > ${maxRiskPerTradePct.toFixed(2)}% max)`);
+                    }
+                }
+
+                const projectedUsedMargin = (Number.isFinite(usedMargin) ? usedMargin : 0) + (Number.isFinite(requiredMargin) ? requiredMargin : 0);
+                if (Number.isFinite(equityNow) && equityNow > 0 && Number.isFinite(projectedUsedMargin) && projectedUsedMargin > 0) {
+                    const projectedMarginLevel = (equityNow / projectedUsedMargin) * 100;
+                    if (Number.isFinite(stopOutLevel) && projectedMarginLevel <= stopOutLevel) {
+                        sessionValidationErrors.push(`❌ Blocked by Stop-Out level (${projectedMarginLevel.toFixed(2)}% <= ${stopOutLevel.toFixed(2)}%)`);
+                    } else if (Number.isFinite(marginCallLevel) && projectedMarginLevel <= marginCallLevel) {
+                        sessionValidationErrors.push(`❌ Blocked by Margin-Call level (${projectedMarginLevel.toFixed(2)}% <= ${marginCallLevel.toFixed(2)}%)`);
+                    }
+                }
+            }
+            if (sessionValidationErrors.length > 0) {
+                this.showNotification(sessionValidationErrors[0], 'error');
+                return;
+            }
+
+            this.removePreviewLines();
+
+            const splitGroupId = `split_${Date.now()}`;
+            let placedCount = 0;
+
+            validLevels.forEach((level, idx) => {
+                const slPips = slEnabled && slPrice > 0
+                    ? Math.abs(level.price - slPrice) / pipSz
+                    : 0;
+                const levelLots = slPips > 0
+                    ? (level.amount / (slPips * pipVal))
+                    : parseFloat(document.getElementById('lotSizeAmount')?.value || 1) / validLevels.length;
+
+                const qtyRounded = parseFloat(levelLots.toFixed(2));
+                if (qtyRounded <= 0) return;
+
+                const effectiveOrderType = (() => {
+                    if (this.orderType === 'market') return 'market';
+                    if (this.orderSide === 'BUY') return level.price > currentPrice ? 'stop' : 'limit';
+                    return level.price < currentPrice ? 'stop' : 'limit';
+                })();
+
+                if (effectiveOrderType === 'market') {
+                    const order = {
+                        id: this.orderIdCounter++,
+                        symbol: activeTicker,
+                        ticker: activeTicker,
+                        sourceFileId: this._chartSourceFileId(),
+                        instrument_settings: activeInstrumentSettings,
+                        type: this.orderSide,
+                        openPrice: level.price,
+                        openTime: currentCandle.t,
+                        quantity: qtyRounded,
+                        originalQuantity: qtyRounded,
+                        riskAmount: level.amount,
+                        originalRiskAmount: level.amount,
+                        status: 'OPEN',
+                        stopLoss: slEnabled && slPrice > 0 ? slPrice : null,
+                        takeProfit: tpEnabled && tpPrice > 0 ? tpPrice : null,
+                        autoBreakeven: autoBreakeven,
+                        breakevenSettings: breakevenSettings,
+                        highestPrice: level.price,
+                        lowestPrice: level.price,
+                        mfe: level.price,
+                        mae: level.price,
+                        mfeTime: currentCandle.t,
+                        maeTime: currentCandle.t,
+                        mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
+                        postExitTrackingMode: this.postExitTrackingMode,
+                        postExitTrackingCandles: this.postExitTrackingCandles,
+                        postExitProcessedCandles: 0,
+                        trailingStop: cloneTrailingStop(trailingStop),
+                        tpTargets: cloneTpTargets(tpTargets),
+                        partialCloses: [],
+                        partialClosePnL: 0,
+                        splitGroupId,
+                        splitIndex: idx + 1,
+                        splitTotal: validLevels.length,
+                        isSplitEntry: true
+                    };
+                    if (this.orderService) {
+                        this.orderService.registerOpenOrder(order);
+                    } else {
+                        this.openPositions.push(order);
+                        this.orders.push(order);
+                    }
+                    this.drawOrderLine(order);
+                    this.drawSLTPLines(order);
+                    setTimeout(() => this.drawEntryMarker(order), 100);
+                    placedCount++;
+                } else {
+                    this.placePendingOrderWithSplit(
+                        level.price,
+                        qtyRounded,
+                        tpEnabled && tpPrice > 0 ? tpPrice : 0,
+                        slEnabled && slPrice > 0 ? slPrice : 0,
+                        level.amount,
+                        autoBreakeven,
+                        cloneBreakevenSettings(breakevenSettings),
+                        cloneTrailingStop(trailingStop),
+                        cloneTpTargets(tpTargets),
+                        currentCandle.t,
+                        splitGroupId,
+                        idx + 1,
+                        validLevels.length,
+                        effectiveOrderType
+                    );
+                    placedCount++;
+                }
+            });
+
+            if (placedCount === 0) {
+                this.showNotification('⚠️ Position size must be greater than 0 lots', 'warning');
+                return;
+            }
+
+            this.showNotification(
+                `✅ ${placedCount} entries placed | Total: ${totalLots.toFixed(2)} lots | Risk per level proportional to SL distance`,
+                'success'
+            );
+            this.updatePositionsPanel();
+            this.showPositionsPanel();
+            this.toggleOrderPanel();
+            this.clearSplitEntries();
+            return;
         }
         
         // Calculate ACTUAL risk from final quantity and SL distance
