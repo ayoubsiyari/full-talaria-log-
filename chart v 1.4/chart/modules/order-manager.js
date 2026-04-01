@@ -12124,40 +12124,51 @@ class OrderManager {
         const anchorX = Number.isFinite(entryX)
             ? Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + 10))
             : Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
-        const strokeCol = this.orderSide === 'SELL' ? '#f23645' : '#2962ff';
+        const entryY = this.chart.scales.yScale(entryPx);
+        const tpY = (tpOn && tpPx > 0) ? this.chart.scales.yScale(tpPx) : null;
+        const slY = (slOn && slPx > 0) ? this.chart.scales.yScale(slPx) : null;
 
-        this._pendingPreviewConnector = this.chart.svg.append('line')
+        const connectorGroup = this.chart.svg.append('g')
             .attr('class', 'preview-pending-connector')
-            .attr('x1', anchorX)
-            .attr('x2', anchorX)
-            .attr('y1', yTop)
-            .attr('y2', yBot)
-            .attr('stroke', strokeCol)
-            .attr('stroke-width', 1)
-            .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', '4,4')
-            .attr('opacity', 0.82)
             .style('pointer-events', 'none');
-        try {
-            this._pendingPreviewConnector.lower();
-        } catch (_e) { /* ignore */ }
+        this._pendingPreviewConnector = connectorGroup;
 
-        const dotFill = this.orderSide === 'SELL' ? '#f23645' : '#2962ff';
+        const drawSegment = (yTo, stroke) => {
+            if (!Number.isFinite(yTo)) return null;
+            return connectorGroup.append('line')
+                .attr('x1', anchorX)
+                .attr('x2', anchorX)
+                .attr('y1', entryY)
+                .attr('y2', yTo)
+                .attr('stroke', stroke)
+                .attr('stroke-width', 1)
+                .attr('stroke-linecap', 'butt')
+                .attr('stroke-dasharray', '4,4')
+                .attr('opacity', 0.9);
+        };
+
+        // Color by level role so the side color follows TP/SL location automatically.
+        drawSegment(tpY, '#22c55e'); // TP branch
+        drawSegment(slY, '#f23645'); // SL branch
+
         const dotStroke = '#0f172a';
-        const drawDot = (y) => this.chart.svg.append('circle')
+        const drawDot = (y, fill) => connectorGroup.append('circle')
             .attr('class', 'preview-pending-connector-dot')
             .attr('cx', anchorX)
             .attr('cy', y)
             .attr('r', 2.5)
-            .attr('fill', dotFill)
+            .attr('fill', fill)
             .attr('stroke', dotStroke)
             .attr('stroke-width', 1)
-            .attr('opacity', 0.95)
-            .style('pointer-events', 'none');
+            .attr('opacity', 0.95);
 
-        this._pendingPreviewConnectorDots = ys
-            .map((y) => drawDot(y))
-            .filter(Boolean);
+        this._pendingPreviewConnectorDots = [];
+        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, '#2962ff'));
+        if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY, '#22c55e'));
+        if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY, '#f23645'));
+        try {
+            connectorGroup.lower();
+        } catch (_e) { /* ignore */ }
     }
 
     validateOrder(orderType, orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity = null, positionSizeMode = null, slEnabled = false) {
