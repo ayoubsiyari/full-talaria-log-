@@ -9182,6 +9182,12 @@ class OrderManager {
                     reason = 'Set Position Size';
                 }
             }
+            // Multi-entry: each level must imply at least min lot (e.g. 0.01) after SL distance
+            else if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0 && this._multiEntryAnyLevelBelowMinLot()) {
+                canPlace = false;
+                const minSz = this.getMarketConfig()?.minSize ?? 0.01;
+                reason = `Min ${minSz} ${positionLabel} per level`;
+            }
             
             // Update button state
             if (!canPlace) {
@@ -9844,6 +9850,7 @@ class OrderManager {
         }
 
         this.updateMarginLevelBadge();
+        this.updatePlaceButtonText();
     }
 
     updateMarginLevelBadge() {
@@ -10682,6 +10689,10 @@ class OrderManager {
                 slPrice = slPriceInput;
             }
         }
+
+        const pipSizePE = this.pipSize || 0.0001;
+        const pipValuePE = this.pipValuePerLot || 10;
+        const minLotPE = this.getMarketConfig()?.minSize ?? 0.01;
         
         // Draw entry price preview line (dashed blue/red) - now draggable!
         const entryColor = this.orderSide === 'BUY' ? '#2962ff' : '#f23645';
@@ -10693,12 +10704,32 @@ class OrderManager {
         } else if (this.splitEntriesEnabled) {
             mainEntryLabel = `Entry (${mainEntryPercent}%)`;
         }
-        this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true);
+        let drawMainEntryLine = true;
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const mainLv = this.multiEntryLevels.find(l => l.price > 0);
+            if (mainLv && !this._multiEntryLevelMeetsMinLot(mainLv, slPrice, pipSizePE, pipValuePE, minLotPE)) {
+                drawMainEntryLine = false;
+            }
+        }
+        if (drawMainEntryLine) {
+            this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true);
+        }
         
         // Draw split entry lines if any — using same style as main Entry
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach((splitEntry, index) => {
                 if (splitEntry.price > 0) {
+                    let skipLine = false;
+                    if (this.isMultiEntryMode && splitEntry.multiEntryLevelId != null && this.multiEntryLevels) {
+                        const lvl = this.multiEntryLevels.find(l => l.id === splitEntry.multiEntryLevelId);
+                        if (lvl && !this._multiEntryLevelMeetsMinLot(lvl, slPrice, pipSizePE, pipValuePE, minLotPE)) {
+                            skipLine = true;
+                        }
+                    }
+                    if (skipLine) {
+                        splitEntry.lineData = null;
+                        return;
+                    }
                     const splitColor = entryColor; // Same color as main entry
                     const splitOrderType = splitEntry.orderType || this.orderType;
                     // Label format: "Entry#N:orderType" — parsed by composePreviewLabelSegments
@@ -12358,19 +12389,60 @@ class OrderManager {
     }
 
     /**
+     * Calculate lot size for a single multi-entry level (numeric) — same formula as the panel row.
+     */
+    _calcLevelLotSizeNumeric(level, slPrice, pipSize, pipValue) {
+        if (!level || !level.price || level.price <= 0) return 0;
+        const ps = pipSize || this.pipSize || 0.0001;
+        const pv = pipValue || this.pipValuePerLot || 10;
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode === 'lot-size') {
+            return Math.max(0, Number(level.amount) || 0);
+        }
+        if (!slPrice || slPrice <= 0) return 0;
+        const slPips = Math.abs(level.price - slPrice) / ps;
+        if (slPips <= 0) return 0;
+        const riskUsd = this._getMultiEntryLevelRiskUsd(level);
+        const v = riskUsd / (slPips * pv);
+        return Number.isFinite(v) ? v : 0;
+    }
+
+    /**
+     * Multi-entry: level is valid for preview / submit when implied size is at least minLot (default 0.01).
+     * Risk modes without SL price skip this rule (cannot size per level).
+     */
+    _multiEntryLevelMeetsMinLot(level, slPrice, pipSize, pipValue, minLot = 0.01) {
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode !== 'lot-size' && (!slPrice || slPrice <= 0)) {
+            return true;
+        }
+        const lots = this._calcLevelLotSizeNumeric(level, slPrice, pipSize, pipValue);
+        return Number.isFinite(lots) && lots >= minLot - 1e-10;
+    }
+
+    /** True if any priced level is below minimum lot (disables place + hides that level's chart line). */
+    _multiEntryAnyLevelBelowMinLot() {
+        if (!this.isMultiEntryMode || !this.multiEntryLevels?.length) return false;
+        const minLot = this.getMarketConfig()?.minSize ?? 0.01;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
+        for (const level of this.multiEntryLevels) {
+            if (!level.price || level.price <= 0) continue;
+            if (!this._multiEntryLevelMeetsMinLot(level, slPrice, pipSize, pipValue, minLot)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Calculate lot size for a single multi-entry level using same formula as order panel
      * lotSize = riskAmount / (slPips * pipValuePerLot)
      */
     _calcLevelLotSize(level, slPrice, pipSize, pipValue) {
-        if (!level.price || level.price <= 0 || !slPrice || slPrice <= 0) return '0.00';
-        const slPips = Math.abs(level.price - slPrice) / pipSize;
-        if (slPips === 0) return '0.00';
-        const mode = this.positionSizeMode || 'risk-usd';
-        if (mode === 'lot-size') {
-            return (level.amount || 0).toFixed(2);
-        }
-        const riskUsd = this._getMultiEntryLevelRiskUsd(level);
-        return (riskUsd / (slPips * pipValue)).toFixed(2);
+        const n = this._calcLevelLotSizeNumeric(level, slPrice, pipSize, pipValue);
+        return Number.isFinite(n) ? n.toFixed(2) : '0.00';
     }
 
     /**
