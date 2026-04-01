@@ -10419,6 +10419,31 @@ class OrderManager {
             updateYAxisHighlight(this.previewLines.be, beY);
         }
 
+        // Update split entry (multi-entry) line positions
+        if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
+            this.previewLines.splitEntries.forEach(splitLine => {
+                if (splitLine && splitLine.price) {
+                    const splitY = this.chart.scales.yScale(splitLine.price);
+                    
+                    if (splitLine.line) {
+                        splitLine.line
+                            .attr('y1', splitY)
+                            .attr('y2', splitY)
+                            .attr('x2', this.chart.w);
+                    }
+                    if (splitLine.hitLine) {
+                        splitLine.hitLine
+                            .attr('y1', splitY)
+                            .attr('y2', splitY)
+                            .attr('x2', this.chart.w);
+                    }
+
+                    updateLabelY(splitLine, splitY);
+                    updateYAxisHighlight(splitLine, splitY);
+                }
+            });
+        }
+
         // Reflow horizontal preview label alignment after width changes
         if (widthChanged) {
             this.alignPreviewLabels();
@@ -10434,6 +10459,9 @@ class OrderManager {
             clipPreviewToLabel(this.previewLines.be);
             if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
                 this.previewLines.multipleTPs.forEach(clipPreviewToLabel);
+            }
+            if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
+                this.previewLines.splitEntries.forEach(clipPreviewToLabel);
             }
         }
 
@@ -11000,11 +11028,19 @@ class OrderManager {
                         self.renderPreviewLabel(lineData, clampedY);
                         self.adjustPreviewLineForLabel(lineData);
                     }
-                } else if (lineData.label === 'Entry') {
+                } else if (lineData.label === 'Entry' || (lineData.label && lineData.label.startsWith('Entry#1:'))) {
                     const entryInput = document.getElementById('orderEntryPrice');
                     if (entryInput) {
                         entryInput.value = formattedPrice;
                         // Don't dispatch event here - we'll calculate manually below
+                    }
+                    
+                    // Sync to first multi-entry level
+                    if (self.isMultiEntryMode && self.multiEntryLevels.length > 0) {
+                        self.multiEntryLevels[0].price = parseFloat(newPrice.toFixed(5));
+                        const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${self.multiEntryLevels[0].id}"][data-field="price"]`);
+                        if (priceInput) priceInput.value = self.formatPrice(newPrice);
+                        self.updateMultiEntrySummary();
                     }
                     
                     // Auto-detect order type based on entry position relative to current price
@@ -11132,7 +11168,8 @@ class OrderManager {
 
                 // Only recalculate position size if we're in a risk-based mode AND we have SL enabled
                 // For lot-size mode, position doesn't depend on entry price
-                if (lineData.label === 'Entry' || lineData.label === 'SL') {
+                const isMainEntry = lineData.label === 'Entry' || (lineData.label && lineData.label.startsWith('Entry#1:'));
+                if (isMainEntry || lineData.label === 'SL') {
                     const enableSL = document.getElementById('enableSL')?.checked;
                     
                     // Get prices - use the CURRENT drag position for the line being dragged
