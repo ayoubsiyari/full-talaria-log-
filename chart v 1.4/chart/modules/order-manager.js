@@ -7476,6 +7476,36 @@ class OrderManager {
             ];
         }
 
+        // Split entry labels: "Entry#2:limit", "Entry#3:stop", etc. — same style as main Entry
+        if (label && label.startsWith('Entry#')) {
+            const parts = label.replace('Entry#', '').split(':');
+            const levelNum = parts[0];
+            const splitOrderType = (parts[1] || this.orderType || 'limit').toUpperCase();
+            const sideUpper = (this.orderSide || 'BUY').toUpperCase();
+            
+            const fullLabel = `${splitOrderType} ${sideUpper} #${levelNum}`;
+            
+            return [
+                {
+                    text: fullLabel,
+                    fill: color,
+                    stroke: color,
+                    textColor: '#ffffff',
+                    fontWeight: '700',
+                    minWidth: 104
+                },
+                {
+                    text: priceText,
+                    fill: '#0f172a',
+                    stroke: color,
+                    textColor: '#ffffff',
+                    fontWeight: '700',
+                    minWidth: 74,
+                    role: 'price'
+                }
+            ];
+        }
+
         if (label === 'TP') {
             return [
                 {
@@ -10476,22 +10506,25 @@ class OrderManager {
         const mainEntryLabel = this.splitEntriesEnabled ? `Entry (${mainEntryPercent}%)` : 'Entry';
         this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true);
         
-        // Draw split entry lines if any
+        // Draw split entry lines if any — using same style as main Entry
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach((splitEntry, index) => {
                 if (splitEntry.price > 0) {
-                    // Use a lighter shade of the entry color for splits
-                    const splitColor = this.orderSide === 'BUY' ? '#5b8def' : '#f5787f';
-                    
-                    // Get order type for this split entry (may differ from main entry)
+                    const splitColor = entryColor; // Same color as main entry
                     const splitOrderType = splitEntry.orderType || this.orderType;
-                    const typeLabel = splitOrderType.toUpperCase();
-                    const splitLabel = `${typeLabel} ${this.orderSide}`;
+                    // Label format: "Entry#N:orderType" — parsed by composePreviewLabelSegments
+                    const splitLabel = `Entry#${index + 2}:${splitOrderType}`;
                     
-                    const splitLine = this.drawSplitEntryLine(splitEntry.price, splitColor, splitLabel, splitEntry.id, index);
+                    const splitLine = this.drawPreviewLine(splitEntry.price, splitColor, splitLabel, this.orderSide, true);
                     if (splitLine) {
                         splitEntry.lineData = splitLine;
-                        splitLine.orderType = splitOrderType; // Store order type on line data
+                        splitLine.isSplitEntry = true;
+                        splitLine.splitEntryId = splitEntry.id;
+                        splitLine.orderType = splitOrderType;
+                        // Use multiEntryLevelId stored on splitEntry for reliable sync-back
+                        if (splitEntry.multiEntryLevelId !== undefined) {
+                            splitLine.multiEntryLevelId = splitEntry.multiEntryLevelId;
+                        }
                         this.previewLines.splitEntries.push(splitLine);
                     }
                 }
@@ -11043,6 +11076,49 @@ class OrderManager {
                     
                     // Recalculate risk/reward since TP/SL are synced to entry
                     self.calculateAdvancedRiskReward();
+                } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
+                    // Split entry line drag — sync price back to splitEntries and multiEntryLevels
+                    if (lineData.splitEntryId !== undefined) {
+                        self.updateSplitEntryPrice(lineData.splitEntryId, newPrice);
+                    }
+                    
+                    // Sync to multi-entry panel levels
+                    if (self.isMultiEntryMode && lineData.multiEntryLevelId !== undefined) {
+                        const level = self.multiEntryLevels.find(l => l.id === lineData.multiEntryLevelId);
+                        if (level) {
+                            level.price = parseFloat(newPrice.toFixed(5));
+                            // Update the panel input for this level
+                            const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${level.id}"][data-field="price"]`);
+                            if (priceInput) priceInput.value = self.formatPrice(newPrice);
+                        }
+                        self.updateMultiEntrySummary();
+                    }
+                    
+                    // Auto-detect order type based on price
+                    const currentCandle = self.getCurrentCandle();
+                    const currentPrice = currentCandle?.c || currentCandle?.close || 0;
+                    if (currentPrice > 0) {
+                        let newOrderType;
+                        if (self.orderSide === 'BUY') {
+                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
+                        } else {
+                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
+                        }
+                        if (lineData.orderType !== newOrderType) {
+                            lineData.orderType = newOrderType;
+                            // Extract level number from label
+                            const lvlNum = lineData.label.split('#')[1]?.split(':')[0] || '2';
+                            lineData.label = `Entry#${lvlNum}:${newOrderType}`;
+                            // Update split entry data
+                            const splitEntry = self.splitEntries.find(e => e.id === lineData.splitEntryId);
+                            if (splitEntry) splitEntry.orderType = newOrderType;
+                            // Re-render label
+                            self.renderPreviewLabel(lineData, clampedY);
+                            self.adjustPreviewLineForLabel(lineData);
+                        }
+                    }
+                    
+                    self.calculateAdvancedRiskReward();
                 }
 
                 // Only recalculate position size if we're in a risk-based mode AND we have SL enabled
@@ -11534,6 +11610,9 @@ class OrderManager {
         const index = this.splitEntries.findIndex(e => e.id === entryId);
         if (index === -1) return;
         
+        // Find the price of the entry being removed so we can match it to multiEntryLevels
+        const removedEntry = this.splitEntries[index];
+        
         this.splitEntries.splice(index, 1);
         
         // Redistribute percentages
@@ -11544,6 +11623,22 @@ class OrderManager {
             this.splitEntries.forEach(entry => {
                 entry.percentage = equalPercent;
             });
+        }
+        
+        // Sync back to multi-entry panel if active
+        if (this.isMultiEntryMode && this.multiEntryLevels && removedEntry) {
+            const levelIdx = this.multiEntryLevels.findIndex(l => 
+                Math.abs(l.price - removedEntry.price) < 0.000001
+            );
+            if (levelIdx !== -1) {
+                this.multiEntryLevels.splice(levelIdx, 1);
+                // If only 1 or 0 levels left, switch back to single mode
+                if (this.multiEntryLevels.length <= 1) {
+                    this.toggleEntryMode();
+                } else {
+                    this.renderMultiEntryRows();
+                }
+            }
         }
         
         console.log(`🗑️ Removed split entry #${entryId}`);
@@ -11559,7 +11654,14 @@ class OrderManager {
         const entry = this.splitEntries.find(e => e.id === entryId);
         if (entry) {
             entry.price = parseFloat(newPrice.toFixed(5));
-            console.log(`📊 Updated split entry #${entryId} to ${newPrice.toFixed(5)}`);
+            
+            // Also sync to matching multiEntryLevel
+            if (this.isMultiEntryMode && entry.multiEntryLevelId !== undefined && this.multiEntryLevels) {
+                const level = this.multiEntryLevels.find(l => l.id === entry.multiEntryLevelId);
+                if (level) {
+                    level.price = entry.price;
+                }
+            }
         }
     }
     
@@ -11871,6 +11973,7 @@ class OrderManager {
                 price: parseFloat(lvl.price.toFixed(5)),
                 percentage: pct,
                 orderType: orderType,
+                multiEntryLevelId: lvl.id,
                 lineData: null
             });
         }
@@ -12082,260 +12185,9 @@ class OrderManager {
         return splitHandle;
     }
     
-    /**
-     * Draw a split entry line (similar to preview line but with close button)
-     */
-    drawSplitEntryLine(price, color, label, entryId, index) {
-        const self = this;
-        const y = this.chart.scales.yScale(price);
-        
-        // Draw the line
-        const line = this.chart.svg.append('line')
-            .attr('class', 'split-entry-line')
-            .attr('x1', 0)
-            .attr('x2', this.chart.w)
-            .attr('y1', y)
-            .attr('y2', y)
-            .attr('stroke', color)
-            .attr('stroke-width', 1)
-            .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', null)
-            .attr('opacity', 0.88)
-            .style('pointer-events', 'all')
-            .style('cursor', 'ns-resize');
-        
-        // Create label group
-        const labelGroup = this.chart.svg.append('g')
-            .attr('class', 'split-entry-label-group')
-            .style('pointer-events', 'all')
-            .style('cursor', 'ns-resize');
-        
-        const lineData = {
-            line,
-            labelGroup,
-            price,
-            label,
-            color,
-            entryId,
-            index,
-            priceText: null,
-            labelDimensions: { width: 0, height: 0 },
-            isSplitEntry: true
-        };
-        
-        // Render the label with close button
-        this.renderSplitEntryLabel(lineData, y);
-        
-        // Make the line draggable
-        this.makeSplitEntryLineDraggable(lineData);
-        
-        return lineData;
-    }
-    
-    /**
-     * Render split entry label with close button
-     */
-    renderSplitEntryLabel(lineData, y) {
-        if (!lineData || !lineData.labelGroup) return;
-        
-        const self = this;
-        lineData.labelGroup.selectAll('*').remove();
-        
-        const height = 24;
-        const gap = 4;
-        let offsetX = 0;
-        
-        // Label segment
-        const labelSegment = lineData.labelGroup.append('g')
-            .attr('class', 'split-entry-segment');
-        
-        const labelText = labelSegment.append('text')
-            .attr('class', 'split-entry-label-text')
-            .attr('fill', '#ffffff')
-            .attr('font-size', '11px')
-            .attr('font-weight', '600')
-            .attr('text-anchor', 'middle')
-            .attr('y', height / 2)
-            .attr('dy', '0.35em')
-            .text(lineData.label);
-        
-        const labelBBox = labelText.node().getBBox();
-        const labelWidth = Math.max(labelBBox.width + 16, 70);
-        
-        labelSegment.insert('rect', ':first-child')
-            .attr('class', 'split-entry-label-bg')
-            .attr('width', labelWidth)
-            .attr('height', height)
-            .attr('rx', 6)
-            .attr('fill', lineData.color)
-            .attr('stroke', lineData.color)
-            .attr('stroke-width', 1.2);
-        
-        labelText.attr('x', labelWidth / 2);
-        labelSegment.attr('transform', `translate(${offsetX}, 0)`);
-        offsetX += labelWidth + gap;
-        
-        // Price segment
-        const priceSegment = lineData.labelGroup.append('g')
-            .attr('class', 'split-entry-price-segment');
-        
-        const priceText = priceSegment.append('text')
-            .attr('class', 'split-entry-price-text')
-            .attr('fill', '#ffffff')
-            .attr('font-size', '11px')
-            .attr('font-weight', '700')
-            .attr('text-anchor', 'middle')
-            .attr('y', height / 2)
-            .attr('dy', '0.35em')
-            .text(this.formatPrice(lineData.price));
-        
-        const priceBBox = priceText.node().getBBox();
-        const priceWidth = Math.max(priceBBox.width + 16, 65);
-        
-        priceSegment.insert('rect', ':first-child')
-            .attr('class', 'split-entry-price-bg')
-            .attr('width', priceWidth)
-            .attr('height', height)
-            .attr('rx', 6)
-            .attr('fill', 'rgba(0, 0, 0, 0.7)')
-            .attr('stroke', lineData.color)
-            .attr('stroke-width', 1);
-        
-        priceText.attr('x', priceWidth / 2);
-        priceSegment.attr('transform', `translate(${offsetX}, 0)`);
-        lineData.priceText = priceText;
-        offsetX += priceWidth + gap;
-        
-        // Close button (X)
-        const closeSize = 20;
-        const closeGroup = lineData.labelGroup.append('g')
-            .attr('class', 'split-entry-close-btn')
-            .attr('transform', `translate(${offsetX}, ${(height - closeSize) / 2})`)
-            .style('cursor', 'pointer');
-        
-        closeGroup.append('circle')
-            .attr('cx', closeSize / 2)
-            .attr('cy', closeSize / 2)
-            .attr('r', closeSize / 2)
-            .attr('fill', 'rgba(239, 68, 68, 0.3)')
-            .attr('stroke', '#ef4444')
-            .attr('stroke-width', 1.5);
-        
-        closeGroup.append('text')
-            .attr('x', closeSize / 2)
-            .attr('y', closeSize / 2)
-            .attr('dy', '0.35em')
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#ef4444')
-            .attr('font-size', '12px')
-            .attr('font-weight', '700')
-            .text('✕');
-        
-        // Close button events
-        closeGroup
-            .on('mouseenter', function() {
-                d3.select(this).select('circle')
-                    .attr('fill', 'rgba(239, 68, 68, 0.5)');
-            })
-            .on('mouseleave', function() {
-                d3.select(this).select('circle')
-                    .attr('fill', 'rgba(239, 68, 68, 0.3)');
-            })
-            .on('click', function(event) {
-                event.stopPropagation();
-                self.removeSplitEntry(lineData.entryId);
-            });
-        
-        // Position the label group
-        const bbox = lineData.labelGroup.node().getBBox();
-        lineData.labelDimensions = { width: bbox.width, height: bbox.height };
-        
-        const x = this.chart.w - bbox.width - 70; // Offset from right
-        const translateY = y - height / 2;
-        lineData.labelGroup.attr('transform', `translate(${x}, ${translateY})`);
-        this.adjustPreviewLineForLabel(lineData);
-    }
-    
-    /**
-     * Make split entry line draggable
-     */
-    makeSplitEntryLineDraggable(lineData) {
-        const self = this;
-        let isDragging = false;
-        
-        const drag = d3.drag()
-            .on('start', function() {
-                isDragging = true;
-                lineData.line.attr('opacity', 1);
-                self.isDraggingPreviewLine = true;
-            })
-            .on('drag', function(event) {
-                if (!isDragging || !self.chart?.scales?.yScale) return;
-                
-                const chartHeight = self.chart.h || 400;
-                const clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                const newPrice = self.chart.scales.yScale.invert(clampedY);
-                
-                // Update line position
-                lineData.line.attr('y1', clampedY).attr('y2', clampedY);
-                lineData.price = newPrice;
-                
-                // Auto-detect order type based on price vs current price
-                const currentCandle = self.getCurrentCandle();
-                const currentPrice = currentCandle?.c || currentCandle?.close || 0;
-                
-                if (currentPrice > 0) {
-                    let newOrderType;
-                    if (self.orderSide === 'BUY') {
-                        newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
-                    } else {
-                        newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
-                    }
-                    
-                    // Update order type if changed
-                    if (lineData.orderType !== newOrderType) {
-                        lineData.orderType = newOrderType;
-                        lineData.label = `${newOrderType.toUpperCase()} ${self.orderSide}`;
-                        
-                        // Update the split entry data
-                        const splitEntry = self.splitEntries.find(e => e.id === lineData.entryId);
-                        if (splitEntry) {
-                            splitEntry.orderType = newOrderType;
-                        }
-                        
-                        // Re-render label to show new type
-                        self.renderSplitEntryLabel(lineData, clampedY);
-                    }
-                }
-                
-                // Update price text
-                if (lineData.priceText) {
-                    lineData.priceText.text(self.formatPrice(newPrice));
-                }
-                
-                // Update label position
-                const height = lineData.labelDimensions.height || 24;
-                const currentX = self.chart.w - lineData.labelDimensions.width - 70;
-                lineData.labelGroup.attr('transform', `translate(${currentX}, ${clampedY - height / 2})`);
-                self.adjustPreviewLineForLabel(lineData);
-                
-                // Update split entry data
-                self.updateSplitEntryPrice(lineData.entryId, newPrice);
-            })
-            .on('end', function() {
-                isDragging = false;
-                lineData.line.attr('opacity', 0.8);
-                self.isDraggingPreviewLine = false;
-                
-                // Recalculate risk/reward
-                self.calculateAdvancedRiskReward();
-            });
-        
-        // Apply drag to both line and label
-        lineData.line.call(drag);
-        lineData.labelGroup.call(drag);
-    }
-    
+    // Old drawSplitEntryLine / renderSplitEntryLabel / makeSplitEntryLineDraggable removed —
+    // Split entries now use drawPreviewLine with Entry#N labels and sync-back in makePreviewLineDraggable.
+
     /**
      * Add a new TP target from split drag
      */
