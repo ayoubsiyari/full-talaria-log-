@@ -17865,6 +17865,7 @@ class OrderManager {
                     labelText
                         .attr('x', labelBoxX + 10)
                         .attr('y', y + 4);
+                    line.attr('x2', Math.max(0, labelBoxX));
                 }
                 
                 // Track this SL price for Y-axis highlight
@@ -18025,6 +18026,7 @@ class OrderManager {
                     labelText
                         .attr('x', labelBoxX + 10)
                         .attr('y', y + 4);
+                    line.attr('x2', Math.max(0, labelBoxX));
                 }
                 
                 // Track this TP price for Y-axis highlight
@@ -18185,6 +18187,7 @@ class OrderManager {
                     labelText
                         .attr('x', labelBoxX + 10)
                         .attr('y', y + 4);
+                    line.attr('x2', Math.max(0, labelBoxX));
 
                     if (arrow) {
                         arrow
