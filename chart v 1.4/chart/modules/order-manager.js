@@ -12041,8 +12041,13 @@ class OrderManager {
             return match ? parseFloat(match[1]) : this.chart.w - width - 18;
         })();
 
-        // End the stroke exactly at the label's left edge (no gap — TradingView-style continuity).
-        const lineEndX = Math.max(0, x);
+        // End at label edge by default; preview TP/SL extends to right axis price.
+        let lineEndX = Math.max(0, x);
+        const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
+        const isTpOrSl = lineData.label === 'SL' || lineData.label === 'TP' || (typeof lineData.label === 'string' && lineData.label.startsWith('TP'));
+        if (isPreviewOrder && isTpOrSl) {
+            lineEndX = this.chart.w;
+        }
 
         lineData.line
             .attr('x1', 0)
@@ -12095,8 +12100,15 @@ class OrderManager {
         if (tpOn) pushLeftX(this.previewLines.tp);
         if (slOn) pushLeftX(this.previewLines.sl);
         if (!leftXs.length) return;
-        // Place connector at the shared left-edge zone so TP/SL horizontals visibly intersect it.
-        const anchorX = Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
+        const entryGroup = this.previewLines.entry?.labelGroup;
+        const entryW = this.previewLines.entry?.labelDimensions?.width || 0;
+        const trEntry = entryGroup?.attr('transform') || '';
+        const mEntry = /translate\(([^,]+),/.exec(trEntry);
+        const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
+        // Keep connector on the right side near the entry tag.
+        const anchorX = Number.isFinite(entryX)
+            ? Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + 10))
+            : Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
         const strokeCol = this.orderSide === 'SELL' ? '#f23645' : '#2962ff';
 
         this._pendingPreviewConnector = this.chart.svg.append('line')
