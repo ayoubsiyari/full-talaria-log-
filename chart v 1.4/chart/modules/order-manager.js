@@ -10610,6 +10610,13 @@ class OrderManager {
         if (!this.chart || !this.chart.svg || !this.chart.scales) {
             return;
         }
+
+        // Draft order preview (LIMIT/STOP BUY, AVG, SL/TP badges) only exists while the drawer is open.
+        // Otherwise scheduled rAF callbacks (e.g. from calculatePositionFromRisk) redraw a ghost line after place + close.
+        const orderPanelEl = document.getElementById('orderPanel');
+        if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) {
+            return;
+        }
         
         // Don't redraw if currently dragging a preview line (prevents interruption)
         if (this.isDraggingPreviewLine) {
