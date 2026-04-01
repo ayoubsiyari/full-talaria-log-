@@ -12083,13 +12083,20 @@ class OrderManager {
         const yBot = Math.max(...ys);
         if (!Number.isFinite(yTop) || !Number.isFinite(yBot) || Math.abs(yBot - yTop) < 0.5) return;
 
-        const entryGroup = this.previewLines.entry?.labelGroup;
-        const entryW = this.previewLines.entry?.labelDimensions?.width || 0;
-        const tr = entryGroup?.attr('transform') || '';
-        const m = /translate\(([^,]+),/.exec(tr);
-        const entryX = m ? parseFloat(m[1]) : NaN;
-        if (!Number.isFinite(entryX)) return;
-        const anchorX = Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + 10));
+        const leftXs = [];
+        const pushLeftX = (ld) => {
+            if (!ld?.labelGroup) return;
+            const tr = ld.labelGroup.attr('transform') || '';
+            const m = /translate\(([^,]+),/.exec(tr);
+            const lx = m ? parseFloat(m[1]) : NaN;
+            if (Number.isFinite(lx)) leftXs.push(lx);
+        };
+        pushLeftX(this.previewLines.entry);
+        if (tpOn) pushLeftX(this.previewLines.tp);
+        if (slOn) pushLeftX(this.previewLines.sl);
+        if (!leftXs.length) return;
+        // Place connector at the shared left-edge zone so TP/SL horizontals visibly intersect it.
+        const anchorX = Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
         const strokeCol = this.orderSide === 'SELL' ? '#f23645' : '#2962ff';
 
         this._pendingPreviewConnector = this.chart.svg.append('line')
