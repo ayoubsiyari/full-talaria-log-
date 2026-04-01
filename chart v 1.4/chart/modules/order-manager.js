@@ -1387,6 +1387,90 @@ class OrderManager {
         lotRisk.classList.toggle('is-hidden', !isLot);
     }
 
+    /** Multi-entry column header + input adorners for current position sizing mode. */
+    _syncMultiEntryAmountColLabel() {
+        const el = document.getElementById('multiEntryAmountColLabel');
+        if (!el) return;
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode === 'risk-usd') el.textContent = 'Amount ($)';
+        else if (mode === 'risk-percent') el.textContent = 'Risk %';
+        else el.textContent = 'Lots';
+    }
+
+    /**
+     * Dollar risk at a multi-entry level for the given mode (`level.amount` semantics differ per mode).
+     * @param {{ amount?: number, price?: number }} level
+     * @param {string} [mode]
+     * @returns {number}
+     */
+    _multiEntryRiskUsdForLevel(level, mode) {
+        const m = mode || this.positionSizeMode || 'risk-usd';
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
+        const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const slPips = level.price > 0 && sl > 0 ? Math.abs(level.price - sl) / pipSize : 0;
+        if (m === 'risk-usd') {
+            return Math.max(0, level.amount || 0);
+        }
+        if (m === 'risk-percent') {
+            const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+            const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+            return (Math.max(0, balance) * (level.amount || 0)) / 100;
+        }
+        if (m === 'lot-size') {
+            if (slPips <= 0) return 0;
+            return (level.amount || 0) * slPips * pipValue;
+        }
+        return 0;
+    }
+
+    /**
+     * Set `level.amount` from a target dollar risk for the active mode.
+     * @param {{ amount?: number, price?: number }} level
+     * @param {number} riskUsd
+     * @param {string} [mode]
+     */
+    _setLevelAmountFromRiskUsd(level, riskUsd, mode) {
+        const m = mode || this.positionSizeMode || 'risk-usd';
+        const r = Math.max(0, riskUsd);
+        if (m === 'risk-usd') {
+            level.amount = parseFloat(r.toFixed(2));
+            return;
+        }
+        if (m === 'risk-percent') {
+            const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+            const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+            level.amount = balance > 0 ? parseFloat(((r / balance) * 100).toFixed(2)) : 0;
+            return;
+        }
+        if (m === 'lot-size') {
+            const pipSize = this.pipSize || 0.0001;
+            const pipValue = this.pipValuePerLot || 10;
+            const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const slPips = level.price > 0 && sl > 0 ? Math.abs(level.price - sl) / pipSize : 0;
+            level.amount = slPips > 0 ? parseFloat((r / (slPips * pipValue)).toFixed(2)) : 0;
+        }
+    }
+
+    /** When switching Risk $ / % / Lot size, convert stored multi-entry amounts so risk stays consistent. */
+    _syncMultiEntryLevelsToPositionMode(prevMode) {
+        if (!this.multiEntryLevels || this.multiEntryLevels.length === 0) return;
+        const next = this.positionSizeMode || 'risk-usd';
+        if (!prevMode || prevMode === next) return;
+        this.multiEntryLevels.forEach((level) => {
+            const ru = this._multiEntryRiskUsdForLevel(level, prevMode);
+            this._setLevelAmountFromRiskUsd(level, ru, next);
+        });
+    }
+
+    _formatMultiEntryAmountCell(val, mode) {
+        const m = mode || this.positionSizeMode || 'risk-usd';
+        const v = Math.max(0, val);
+        if (m === 'risk-percent') return parseFloat(v.toFixed(2));
+        if (m === 'lot-size') return parseFloat(v.toFixed(2));
+        return parseFloat(v.toFixed(2));
+    }
+
     /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
@@ -6684,6 +6768,13 @@ class OrderManager {
                     font-weight: 600;
                     flex-shrink: 0;
                 }
+                .multi-entry-amount-suffix {
+                    padding: 0 6px 0 2px;
+                    font-size: 10px;
+                    color: var(--om-dim);
+                    font-weight: 600;
+                    flex-shrink: 0;
+                }
                 .multi-entry-amount-input {
                     width: 100%;
                     background: transparent;
@@ -7032,7 +7123,7 @@ class OrderManager {
                         <div class="multi-entry-container">
                             <div class="multi-entry-columns">
                                 <span class="multi-entry-col-label">Price level</span>
-                                <span class="multi-entry-col-label">Amount</span>
+                                <span class="multi-entry-col-label" id="multiEntryAmountColLabel">Amount ($)</span>
                                 <span></span>
                             </div>
                             <div class="multi-entry-rows" id="multiEntryRows">
@@ -8460,7 +8551,14 @@ class OrderManager {
         document.querySelectorAll('.position-mode-tab').forEach(tab => {
             tab.onclick = () => {
                 const mode = tab.dataset.mode;
+                const prevMode = this.positionSizeMode;
                 this.positionSizeMode = mode;
+
+                if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+                    this._syncMultiEntryLevelsToPositionMode(prevMode);
+                    this.renderMultiEntryRows();
+                }
+                this._syncMultiEntryAmountColLabel();
                 
                 // Update tab styling
                 document.querySelectorAll('.position-mode-tab').forEach(t => {
@@ -11758,6 +11856,7 @@ class OrderManager {
             this.multiEntryIdCounter = 1;
             this.isMultiEntryMode = false;
         }
+        this._syncMultiEntryAmountColLabel();
     }
 
     /**
@@ -11777,23 +11876,47 @@ class OrderManager {
 
             // If no levels yet, seed with the current entry price as level 1
             if (this.multiEntryLevels.length === 0) {
+                const mode = this.positionSizeMode || 'risk-usd';
                 const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-                const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
-                this.multiEntryLevels.push({
-                    id: this.multiEntryIdCounter++,
-                    price: currentPrice,
-                    amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
-                });
-                // Add a second level offset slightly from main entry
+                let totalRiskUsd = 0;
+                if (mode === 'risk-usd') {
+                    totalRiskUsd = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
+                } else if (mode === 'risk-percent') {
+                    const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || 1);
+                    const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                    const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+                    totalRiskUsd = (Math.max(0, balance) * rp) / 100;
+                } else {
+                    const lots = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
+                    const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const pipSize = this.pipSize || 0.0001;
+                    const pipValue = this.pipValuePerLot || 10;
+                    const slPips = currentPrice > 0 && sl > 0 ? Math.abs(currentPrice - sl) / pipSize : 0;
+                    totalRiskUsd = slPips > 0 ? lots * slPips * pipValue : 0;
+                }
+                const halfUsd = totalRiskUsd > 0 ? totalRiskUsd / 2 : 0;
                 const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
                 const secondPrice = currentPrice > 0
                     ? parseFloat((currentPrice * (1 + offsetDir * 0.001)).toFixed(5))
                     : 0;
-                this.multiEntryLevels.push({
-                    id: this.multiEntryIdCounter++,
-                    price: secondPrice,
-                    amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
-                });
+                const lvl1 = { id: this.multiEntryIdCounter++, price: currentPrice, amount: 0 };
+                const lvl2 = { id: this.multiEntryIdCounter++, price: secondPrice, amount: 0 };
+                if (halfUsd > 0) {
+                    this._setLevelAmountFromRiskUsd(lvl1, halfUsd, mode);
+                    this._setLevelAmountFromRiskUsd(lvl2, halfUsd, mode);
+                } else if (mode === 'lot-size') {
+                    const lots = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
+                    const each = lots > 0 ? parseFloat((lots / 2).toFixed(2)) : 0.5;
+                    lvl1.amount = each;
+                    lvl2.amount = each;
+                } else if (mode === 'risk-percent') {
+                    lvl1.amount = 0.5;
+                    lvl2.amount = 0.5;
+                } else {
+                    lvl1.amount = 40;
+                    lvl2.amount = 40;
+                }
+                this.multiEntryLevels.push(lvl1, lvl2);
             }
             this.renderMultiEntryRows();
             this.syncMultiEntryToSplitEntries(); // Show levels on chart immediately
@@ -11828,16 +11951,29 @@ class OrderManager {
         const container = document.getElementById('multiEntryRows');
         if (!container) return;
 
-        const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+        this._syncMultiEntryAmountColLabel();
+
+        const mode = this.positionSizeMode || 'risk-usd';
+        const totalWeighted = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
 
+        const step = mode === 'risk-percent' ? '0.1' : (mode === 'lot-size' ? '0.01' : '1');
+        const prefixHtml = mode === 'risk-usd'
+            ? '<span class="multi-entry-amount-prefix">$</span>'
+            : '';
+        const suffixHtml = mode === 'risk-percent'
+            ? '<span class="multi-entry-amount-suffix">%</span>'
+            : (mode === 'lot-size'
+                ? `<span class="multi-entry-amount-suffix">${posLabel}</span>`
+                : '');
+
         container.innerHTML = '';
         this.multiEntryLevels.forEach((level, idx) => {
-            const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
+            const pct = totalWeighted > 0 ? ((level.amount / totalWeighted) * 100) : 0;
             const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
 
             const row = document.createElement('div');
@@ -11846,8 +11982,9 @@ class OrderManager {
                 <div class="multi-entry-row-inputs">
                     <input type="number" class="multi-entry-row-input" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price">
                     <div class="multi-entry-amount-wrap">
-                        <span class="multi-entry-amount-prefix">$</span>
-                        <input type="number" class="multi-entry-amount-input" value="${level.amount || ''}" step="1" min="0" data-level-id="${level.id}" data-field="amount">
+                        ${prefixHtml}
+                        <input type="number" class="multi-entry-amount-input" value="${level.amount || ''}" step="${step}" min="0" data-level-id="${level.id}" data-field="amount">
+                        ${suffixHtml}
                     </div>
                     <button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>
                 </div>
@@ -11866,20 +12003,20 @@ class OrderManager {
                 const level = this.multiEntryLevels.find(l => l.id === id);
                 if (level) {
                     const newVal = parseFloat(e.target.value) || 0;
+                    const m = this.positionSizeMode || 'risk-usd';
                     
                     if (field === 'amount') {
                         // Auto-redistribute: keep total constant, split remainder across others
                         const total = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
-                        level.amount = newVal;
+                        level.amount = this._formatMultiEntryAmountCell(newVal, m);
                         const remaining = Math.max(0, total - newVal);
                         const others = this.multiEntryLevels.filter(l => l.id !== id);
                         if (others.length > 0) {
-                            const each = Math.round(remaining / others.length);
+                            const eachRaw = remaining / others.length;
                             others.forEach(l => {
-                                l.amount = each;
-                                // Update other amount inputs in-place
+                                l.amount = this._formatMultiEntryAmountCell(eachRaw, m);
                                 const inp = container.querySelector(`.multi-entry-amount-input[data-level-id="${l.id}"]`);
-                                if (inp) inp.value = each;
+                                if (inp) inp.value = l.amount;
                             });
                         }
                     } else {
@@ -11909,10 +12046,15 @@ class OrderManager {
      * lotSize = riskAmount / (slPips * pipValuePerLot)
      */
     _calcLevelLotSize(level, slPrice, pipSize, pipValue) {
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode === 'lot-size') {
+            return (level.amount || 0).toFixed(2);
+        }
         if (!level.price || level.price <= 0 || !slPrice || slPrice <= 0) return '0.00';
         const slPips = Math.abs(level.price - slPrice) / pipSize;
         if (slPips === 0) return '0.00';
-        return ((level.amount || 0) / (slPips * pipValue)).toFixed(2);
+        const ru = this._multiEntryRiskUsdForLevel(level, mode);
+        return (ru / (slPips * pipValue)).toFixed(2);
     }
 
     /**
@@ -11921,7 +12063,7 @@ class OrderManager {
     _updateMultiEntryInfoRows() {
         const container = document.getElementById('multiEntryRows');
         if (!container) return;
-        const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+        const totalWeighted = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
@@ -11930,7 +12072,7 @@ class OrderManager {
         const infoEls = container.querySelectorAll('.multi-entry-row-info');
         this.multiEntryLevels.forEach((level, idx) => {
             if (infoEls[idx]) {
-                const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
+                const pct = totalWeighted > 0 ? ((level.amount / totalWeighted) * 100) : 0;
                 const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
                 infoEls[idx].innerHTML = `<span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${lots} ${posLabel}`;
             }
@@ -11941,10 +12083,6 @@ class OrderManager {
      * Add a new entry level
      */
     addMultiEntryLevel() {
-        const avgAmount = this.multiEntryLevels.length > 0
-            ? Math.round(this.multiEntryLevels.reduce((s, l) => s + l.amount, 0) / this.multiEntryLevels.length)
-            : 40;
-
         // Default price: offset from the lowest (BUY) or highest (SELL) existing level
         const existingPrices = this.multiEntryLevels.filter(l => l.price > 0).map(l => l.price);
         let newPrice = 0;
@@ -11957,10 +12095,9 @@ class OrderManager {
         this.multiEntryLevels.push({
             id: this.multiEntryIdCounter++,
             price: newPrice,
-            amount: avgAmount
+            amount: 0
         });
 
-        // Auto-equalize amounts across all levels
         this.equalizeMultiEntryAmounts();
     }
 
@@ -11983,12 +12120,20 @@ class OrderManager {
      */
     equalizeMultiEntryAmounts() {
         if (this.multiEntryLevels.length === 0) return;
-        const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
-        const equalAmount = totalAmount > 0
-            ? Math.round(totalAmount / this.multiEntryLevels.length)
-            : 40;
-
-        this.multiEntryLevels.forEach(l => { l.amount = equalAmount; });
+        const mode = this.positionSizeMode || 'risk-usd';
+        const n = this.multiEntryLevels.length;
+        const totalUsd = this.multiEntryLevels.reduce((s, l) => s + this._multiEntryRiskUsdForLevel(l, mode), 0);
+        if (totalUsd > 0) {
+            const perUsd = totalUsd / n;
+            this.multiEntryLevels.forEach(l => this._setLevelAmountFromRiskUsd(l, perUsd, mode));
+        } else if (mode === 'lot-size') {
+            const lots = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
+            const each = lots > 0 ? parseFloat((lots / n).toFixed(2)) : 0.5;
+            this.multiEntryLevels.forEach(l => { l.amount = each; });
+        } else {
+            const fb = mode === 'risk-usd' ? 40 : 0.5;
+            this.multiEntryLevels.forEach(l => { l.amount = fb; });
+        }
         this.renderMultiEntryRows();
         this.syncMultiEntryToSplitEntries();
     }
@@ -12009,19 +12154,22 @@ class OrderManager {
      */
     updateMultiEntrySummary() {
         const avgPrice = this._calcMultiEntryAvgPrice();
-        const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
-
-        // Calculate total lots using correct formula: sum of each level's lotSize
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
+        const mode = this.positionSizeMode || 'risk-usd';
         let totalLots = 0;
         this.multiEntryLevels.forEach(l => {
-            if (l.price > 0 && slPrice > 0) {
+            if (mode === 'lot-size') {
+                totalLots += (l.amount || 0);
+            } else if (l.price > 0 && slPrice > 0) {
                 const slPips = Math.abs(l.price - slPrice) / pipSize;
-                if (slPips > 0) totalLots += (l.amount || 0) / (slPips * pipValue);
+                if (slPips > 0) {
+                    const ru = this._multiEntryRiskUsdForLevel(l, mode);
+                    totalLots += ru / (slPips * pipValue);
+                }
             }
         });
 
