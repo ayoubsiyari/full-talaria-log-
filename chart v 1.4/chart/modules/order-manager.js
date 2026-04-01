@@ -15988,9 +15988,10 @@ class OrderManager {
         const line = chart.svg.append('line')
             .attr('class', `pending-order-line pending-${pendingOrder.id}`)
             .attr('stroke', lineColor)
-            .attr('stroke-width', 1.6)
+            .attr('stroke-width', 1)
+            .attr('stroke-linecap', 'butt')
             .attr('stroke-dasharray', '4,4')
-            .attr('opacity', 0.95)
+            .attr('opacity', 0.92)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         
@@ -16090,7 +16091,7 @@ class OrderManager {
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
-                line.attr('stroke-width', 3).attr('opacity', 1);
+                line.attr('stroke-width', 1.6).attr('opacity', 1);
                 console.log(`🎯 Started dragging pending entry line`);
             })
             .on('drag', function(event) {
@@ -16125,6 +16126,7 @@ class OrderManager {
                 labelText
                     .attr('x', labelBoxX + 10)
                     .attr('y', clampedY + 4);
+                line.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
                 
                 // Hide price box/text (price shown on Y-axis)
                 if (priceBox) priceBox.style('display', 'none');
@@ -16136,7 +16138,7 @@ class OrderManager {
                 if (!isDragging) return;
                 isDragging = false;
                 
-                line.attr('stroke-width', 2).attr('opacity', 0.8);
+                line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
                 const formattedPrice = self.formatPrice(pendingOrder.entryPrice);
                 console.log(`📍 Pending entry moved to ${formattedPrice}`);
@@ -16205,9 +16207,10 @@ class OrderManager {
             const line = chart.svg.append('line')
                 .attr('class', `pending-${type.toLowerCase()}-line pending-${type.toLowerCase()}-${pendingOrder.id}`)
                 .attr('stroke', color)
-                .attr('stroke-width', isDraggable ? 2.2 : 1.4)
-                .attr('stroke-dasharray', type === 'BE' ? '3,3' : '4,4')
-                .attr('opacity', type === 'BE' ? 0.9 : 0.95)
+                .attr('stroke-width', 1)
+                .attr('stroke-linecap', 'butt')
+                .attr('stroke-dasharray', type === 'BE' ? '5,3' : '4,4')
+                .attr('opacity', type === 'BE' ? 0.92 : 0.92)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
@@ -16304,7 +16307,6 @@ class OrderManager {
         ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
 
         const marginRight = 90;
-        const lineStopOffset = 14;
 
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
@@ -16314,7 +16316,7 @@ class OrderManager {
                 
                 target.line
                     .attr('x1', 0)
-                    .attr('x2', ch.w - lineStopOffset)
+                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
@@ -16374,6 +16376,7 @@ class OrderManager {
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
+                target.line.attr('x2', Math.max(0, translateX));
                 
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
                     this.makePendingTargetDraggable(target, entry.pendingOrder, ch);
@@ -16406,7 +16409,7 @@ class OrderManager {
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
-                target.line.attr('stroke-width', 5).attr('opacity', 1);
+                target.line.attr('stroke-width', 1.6).attr('opacity', 1);
                 console.log(`🎯 Started dragging pending ${target.type}`);
             })
             .on('drag', function(event) {
@@ -16422,6 +16425,7 @@ class OrderManager {
                 const marginRight = 90;
                 const translateX = ch.w - dims.width - marginRight;
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
+                target.line.attr('x2', Math.max(0, translateX));
                 
                 if (target.priceHighlight) {
                     target.priceHighlight.remove();
@@ -16435,7 +16439,7 @@ class OrderManager {
                 if (!isDragging) return;
                 isDragging = false;
                 
-                target.line.attr('stroke-width', 3).attr('opacity', 0.9);
+                target.line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
                 const formattedPrice = self.formatPrice(target.price);
                 console.log(`📍 Pending ${target.type} moved to ${formattedPrice}`);
