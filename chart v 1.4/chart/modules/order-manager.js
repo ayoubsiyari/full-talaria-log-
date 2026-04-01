@@ -10391,6 +10391,17 @@ class OrderManager {
         let frameId = null;
         const dragRightNudge = 22;
         let dragXNudgeApplied = false;
+        const applyDragRightNudge = () => {
+            if (!lineData?.labelGroup) return;
+            const tr = lineData.labelGroup.attr('transform') || '';
+            const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
+            if (!m) return;
+            const x = parseFloat(m[1]) || 0;
+            const y = parseFloat(m[2]) || 0;
+            const nextX = dragXNudgeApplied ? x : (x + dragRightNudge);
+            lineData.labelGroup.attr('transform', `translate(${nextX}, ${y})`);
+            dragXNudgeApplied = true;
+        };
         
         // Throttle helper for calculations - limits execution to once per frame
         const throttledCalculate = (fn) => {
@@ -10406,16 +10417,7 @@ class OrderManager {
                 isDragging = true;
                 dragStartTime = Date.now();
                 lineData.line.attr('opacity', 1);
-                if (lineData?.labelGroup && !dragXNudgeApplied) {
-                    const tr = lineData.labelGroup.attr('transform') || '';
-                    const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
-                    if (m) {
-                        const x = parseFloat(m[1]) || 0;
-                        const y = parseFloat(m[2]) || 0;
-                        lineData.labelGroup.attr('transform', `translate(${x + dragRightNudge}, ${y})`);
-                        dragXNudgeApplied = true;
-                    }
-                }
+                applyDragRightNudge();
                 
                 // Set flag to prevent full redraw during drag
                 self.isDraggingPreviewLine = true;
@@ -10963,6 +10965,8 @@ class OrderManager {
                     self.calculateAdvancedRiskReward();
                     self.updatePlaceButtonText();
                 });
+                // Re-render routines can reset transform; enforce the drag nudge each frame.
+                applyDragRightNudge();
                 
                 // ALWAYS do an immediate (non-throttled) calculation for first-drag feedback
                 // This ensures values show immediately, throttled version provides smooth updates
