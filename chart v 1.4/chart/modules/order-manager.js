@@ -10389,19 +10389,6 @@ class OrderManager {
         let isDragging = false;
         let dragStartTime = 0;
         let frameId = null;
-        const dragRightNudge = 80;
-        let dragXNudgeApplied = false;
-        const applyDragRightNudge = () => {
-            if (!lineData?.labelGroup) return;
-            const tr = lineData.labelGroup.attr('transform') || '';
-            const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
-            if (!m) return;
-            const x = parseFloat(m[1]) || 0;
-            const y = parseFloat(m[2]) || 0;
-            const nextX = dragXNudgeApplied ? x : (x + dragRightNudge);
-            lineData.labelGroup.attr('transform', `translate(${nextX}, ${y})`);
-            dragXNudgeApplied = true;
-        };
         
         // Throttle helper for calculations - limits execution to once per frame
         const throttledCalculate = (fn) => {
@@ -10417,7 +10404,6 @@ class OrderManager {
                 isDragging = true;
                 dragStartTime = Date.now();
                 lineData.line.attr('opacity', 1);
-                applyDragRightNudge();
                 
                 // Set flag to prevent full redraw during drag
                 self.isDraggingPreviewLine = true;
@@ -10965,8 +10951,6 @@ class OrderManager {
                     self.calculateAdvancedRiskReward();
                     self.updatePlaceButtonText();
                 });
-                // Re-render routines can reset transform; enforce the drag nudge each frame.
-                applyDragRightNudge();
                 
                 // ALWAYS do an immediate (non-throttled) calculation for first-drag feedback
                 // This ensures values show immediately, throttled version provides smooth updates
@@ -10977,16 +10961,6 @@ class OrderManager {
                 if (!isDragging) return;
                 isDragging = false;
                 lineData.line.attr('opacity', 0.7);
-                if (lineData?.labelGroup && dragXNudgeApplied) {
-                    const tr = lineData.labelGroup.attr('transform') || '';
-                    const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
-                    if (m) {
-                        const x = parseFloat(m[1]) || 0;
-                        const y = parseFloat(m[2]) || 0;
-                        lineData.labelGroup.attr('transform', `translate(${x - dragRightNudge}, ${y})`);
-                    }
-                    dragXNudgeApplied = false;
-                }
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
@@ -16310,42 +16284,10 @@ class OrderManager {
         // Make entry line draggable
         const self = this;
         let isDragging = false;
-        const pendingLineRecord = {
-            orderId: pendingOrder.id,
-            isPending: true,
-            line,
-            dragHitLine,
-            labelBox,
-            labelText,
-            priceBox,
-            closeBtn,
-            priceText,
-            chart,
-            pendingEntryDragging: false,
-            pendingEntryDragIntent: false
-        };
-        const bindEntryDragIntent = () => {
-            const lock = () => {
-                pendingLineRecord.pendingEntryDragIntent = true;
-                const onUp = () => {
-                    if (!pendingLineRecord.pendingEntryDragging) {
-                        pendingLineRecord.pendingEntryDragIntent = false;
-                    }
-                    window.removeEventListener('pointerup', onUp);
-                };
-                window.addEventListener('pointerup', onUp);
-            };
-            [line.node(), dragHitLine?.node(), labelBox?.node(), priceBox?.node()].filter(Boolean).forEach((el) => {
-                el.addEventListener('pointerdown', lock, { capture: true });
-            });
-        };
-        bindEntryDragIntent();
-
+        
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
-                pendingLineRecord.pendingEntryDragging = true;
-                pendingLineRecord.pendingEntryDragIntent = false;
                 line.attr('stroke-width', 1.6).attr('opacity', 1);
                 console.log(`🎯 Started dragging pending entry line`);
             })
@@ -16394,8 +16336,6 @@ class OrderManager {
             .on('end', function() {
                 if (!isDragging) return;
                 isDragging = false;
-                pendingLineRecord.pendingEntryDragging = false;
-                pendingLineRecord.pendingEntryDragIntent = false;
                 
                 line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
@@ -16415,7 +16355,18 @@ class OrderManager {
         labelBox.call(drag);
         if (priceBox) priceBox.call(drag);
         
-        this.orderLines.push(pendingLineRecord);
+        this.orderLines.push({
+            orderId: pendingOrder.id,
+            isPending: true,
+            line,
+            dragHitLine,
+            labelBox,
+            labelText,
+            priceBox,
+            closeBtn,
+            priceText,
+            chart
+        });
         
         console.log(`✅ Pending order line created (total lines: ${this.orderLines.length})`);
         
@@ -16572,35 +16523,6 @@ class OrderManager {
             entry.targets.forEach((target) => {
                 const y = ch.scales.yScale(target.price);
                 const isDraggable = (target.type === 'TP' || target.type === 'SL');
-                const bgColor = target.type === 'TP' ? '#22c55e'
-                    : target.type === 'SL' ? '#f23645'
-                    : '#f59e0b';
-
-                // updateOrderLines() calls this every tick — rebuilding the label wipes the DOM and
-                // re-measures width, which jumps X vs drag. Skip label rebuild while interacting.
-                if (target._pendingDragging || target._pendingDragIntent) {
-                    // Only sync Y; keep x1/x2 as set by drag (do not snap line to full width).
-                    target.line
-                        .attr('y1', y)
-                        .attr('y2', y)
-                        .style('cursor', isDraggable ? 'ns-resize' : 'default');
-                    if (target.hitLine) {
-                        target.hitLine
-                            .attr('y1', y)
-                            .attr('y2', y);
-                    }
-                    if (target.priceHighlight) {
-                        target.priceHighlight.remove();
-                    }
-                    target.priceHighlight = this.drawYAxisPriceHighlight(
-                        target.price,
-                        bgColor,
-                        `pending-${target.type.toLowerCase()}`,
-                        0,
-                        ch
-                    );
-                    return;
-                }
 
                 target.line
                     .attr('x1', 0)
@@ -16618,6 +16540,10 @@ class OrderManager {
 
                 const labelGroup = target.labelGroup;
                 labelGroup.selectAll('*').remove();
+
+                const bgColor = target.type === 'TP' ? '#22c55e'
+                    : target.type === 'SL' ? '#f23645'
+                    : '#f59e0b';
 
                 const labelRect = labelGroup.append('rect')
                     .attr('rx', 7)
@@ -16696,32 +16622,12 @@ class OrderManager {
         const self = this;
         const ch = dragChart || this.chart;
         let isDragging = false;
-        let dragLabelX = null;
         const marginRight = 90;
-        const bindPendingDragIntent = () => {
-            const lock = () => {
-                target._pendingDragIntent = true;
-                const onUp = () => {
-                    if (!target._pendingDragging) target._pendingDragIntent = false;
-                    window.removeEventListener('pointerup', onUp);
-                };
-                window.addEventListener('pointerup', onUp);
-            };
-            [target.line?.node(), target.hitLine?.node(), target.labelGroup?.node()].filter(Boolean).forEach((el) => {
-                el.addEventListener('pointerdown', lock, { capture: true });
-            });
-        };
-        bindPendingDragIntent();
 
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
-                target._pendingDragging = true;
-                target._pendingDragIntent = false;
                 target.line.attr('stroke-width', 1.6).attr('opacity', 1);
-                const tr = target.labelGroup?.attr('transform') || '';
-                const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
-                dragLabelX = m ? (parseFloat(m[1]) || 0) : null;
                 console.log(`🎯 Started dragging pending ${target.type}`);
             })
             .on('drag', function(event) {
@@ -16737,11 +16643,12 @@ class OrderManager {
                 }
                 
                 const dims = target.labelDimensions || { width: 80, height: 20 };
-                const translateX = Number.isFinite(dragLabelX) ? dragLabelX : (ch.w - dims.width - marginRight);
+                const translateX = ch.w - dims.width - marginRight;
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
-                const clipX = Math.max(0, translateX);
-                target.line.attr('x2', clipX);
-                if (target.hitLine) target.hitLine.attr('x2', clipX);
+                target.line.attr('x2', Math.max(0, translateX));
+                if (target.hitLine) {
+                    target.hitLine.attr('x1', 0).attr('x2', ch.w);
+                }
                 
                 if (target.priceHighlight) {
                     target.priceHighlight.remove();
@@ -16754,9 +16661,6 @@ class OrderManager {
             .on('end', function() {
                 if (!isDragging) return;
                 isDragging = false;
-                dragLabelX = null;
-                target._pendingDragging = false;
-                target._pendingDragIntent = false;
                 
                 target.line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
@@ -18459,21 +18363,7 @@ class OrderManager {
         if (lines.length > 0) {
             console.log(`📍 updateOrderLines: Updating ${lines.length} order lines`);
 
-            lines.forEach((lineRec) => {
-                const {
-                    orderId,
-                    isPending,
-                    line,
-                    dragHitLine,
-                    labelBox,
-                    labelText,
-                    arrow,
-                    priceBox,
-                    priceText,
-                    closeBtn,
-                    pendingEntryDragging,
-                    pendingEntryDragIntent
-                } = lineRec;
+            lines.forEach(({ orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn }) => {
                 let price, orderData;
 
                 if (isPending) {
@@ -18495,14 +18385,6 @@ class OrderManager {
                 const y = ch.scales.yScale(price);
 
                 console.log(`   ✅ ${isPending ? 'Pending' : 'Active'} Order #${orderId}: price=${price.toFixed(5)}, y=${y.toFixed(2)}, width=${ch.w}`);
-
-                if (isPending && (pendingEntryDragging || pendingEntryDragIntent)) {
-                    line.attr('y1', y).attr('y2', y);
-                    if (dragHitLine) dragHitLine.attr('y1', y).attr('y2', y);
-                    const highlightColor = orderData.direction === 'BUY' ? '#2962ff' : '#f23645';
-                    this.drawYAxisPriceHighlight(price, highlightColor, 'pending', 0, ch);
-                    return;
-                }
 
                 line
                     .attr('x1', 0)
