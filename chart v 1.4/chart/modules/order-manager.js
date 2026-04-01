@@ -16622,11 +16622,15 @@ class OrderManager {
         const self = this;
         const ch = dragChart || this.chart;
         let isDragging = false;
+        let dragLabelX = null;
         const marginRight = 90;
 
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
+                const tr = target.labelGroup?.attr('transform') || '';
+                const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
+                dragLabelX = m ? (parseFloat(m[1]) || 0) : null;
                 target.line.attr('stroke-width', 1.6).attr('opacity', 1);
                 console.log(`🎯 Started dragging pending ${target.type}`);
             })
@@ -16643,7 +16647,9 @@ class OrderManager {
                 }
                 
                 const dims = target.labelDimensions || { width: 80, height: 20 };
-                const translateX = ch.w - dims.width - marginRight;
+                const translateX = Number.isFinite(dragLabelX)
+                    ? dragLabelX
+                    : (ch.w - dims.width - marginRight);
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 target.line.attr('x2', Math.max(0, translateX));
                 if (target.hitLine) {
@@ -16661,6 +16667,7 @@ class OrderManager {
             .on('end', function() {
                 if (!isDragging) return;
                 isDragging = false;
+                dragLabelX = null;
                 
                 target.line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
