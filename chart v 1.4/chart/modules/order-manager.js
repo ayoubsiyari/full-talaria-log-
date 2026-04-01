@@ -10278,7 +10278,7 @@ class OrderManager {
                 // Make BE line more visible with distinct styling
                 this.previewLines.be.line
                     .attr('stroke-width', 1)
-                    .attr('stroke-dasharray', '5,3')
+                    .attr('stroke-dasharray', null)
                     .attr('opacity', 0.92);
             }
         }
@@ -10303,7 +10303,7 @@ class OrderManager {
             .attr('stroke', color)
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', '4,4')
+            .attr('stroke-dasharray', null)
             .attr('opacity', 0.88)
             .style('pointer-events', isDraggable ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
@@ -11314,7 +11314,7 @@ class OrderManager {
                     .attr('y2', initialLineY)
                     .attr('stroke', '#7c3aed')
                     .attr('stroke-width', 2)
-                    .attr('stroke-dasharray', '6,4')
+                    .attr('stroke-dasharray', null)
                     .attr('opacity', 0.8);
                 
                 // Create label showing "Split Entry" or "Split TP"
@@ -11440,7 +11440,7 @@ class OrderManager {
             .attr('stroke', color)
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', '4,4')
+            .attr('stroke-dasharray', null)
             .attr('opacity', 0.88)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
@@ -12147,7 +12147,7 @@ class OrderManager {
             .attr('stroke', connectorColor)
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', '4,4')
+            .attr('stroke-dasharray', null)
             .attr('opacity', 0.9);
 
         const dotStroke = '#0f172a';
@@ -16126,7 +16126,7 @@ class OrderManager {
             .attr('stroke', lineColor)
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', '4,4')
+            .attr('stroke-dasharray', null)
             .attr('opacity', 0.92)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
@@ -16345,7 +16345,7 @@ class OrderManager {
                 .attr('stroke', color)
                 .attr('stroke-width', 1)
                 .attr('stroke-linecap', 'butt')
-                .attr('stroke-dasharray', type === 'BE' ? '5,3' : '4,4')
+                .attr('stroke-dasharray', null)
                 .attr('opacity', type === 'BE' ? 0.92 : 0.92)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
@@ -17516,7 +17516,7 @@ class OrderManager {
                 .attr('class', `be-line be-${order.id}`)
                 .attr('stroke', '#f59e0b')
                 .attr('stroke-width', 1.5)
-                .attr('stroke-dasharray', '4,3')
+                .attr('stroke-dasharray', null)
                 .attr('opacity', 0.8)
                 .style('cursor', 'ns-resize');
             
