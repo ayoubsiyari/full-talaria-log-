@@ -7110,11 +7110,11 @@ class OrderManager {
                 <div class="order-section" id="entryPriceSection">
                     <div class="multi-entry-header">
                         <label class="order-label">Entry price</label>
-                        <button type="button" class="multi-entry-toggle active" id="multiEntryToggle">Single</button>
+                        <button type="button" class="multi-entry-toggle" id="multiEntryToggle">Multiple</button>
                     </div>
 
-                    <!-- Single entry mode (toggle to Multiple to show) -->
-                    <div id="singleEntryMode" style="display: none;">
+                    <!-- Single entry mode (default until multi is activated) -->
+                    <div id="singleEntryMode">
                         <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
                             <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                             <span class="order-input-suffix">USD</span>
@@ -7125,8 +7125,8 @@ class OrderManager {
                         </div>
                     </div>
 
-                    <!-- Multiple entry mode (default) -->
-                    <div id="multiEntryMode" style="display: block;">
+                    <!-- Multiple entry mode (hidden until activated) -->
+                    <div id="multiEntryMode" style="display: none;">
                         <div class="multi-entry-container">
                             <div class="multi-entry-columns">
                                 <span class="multi-entry-col-label">Price level</span>
@@ -12087,7 +12087,7 @@ class OrderManager {
      */
     _resetMultiEntryStateForNewOrder() {
         this.multiEntryLevels = [];
-        this.setEntryMode(true);
+        this.setEntryMode(false);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -12118,13 +12118,13 @@ class OrderManager {
             this.multiEntryLevels = [];
             this.multiEntryIdCounter = 1;
         }
-        // Default: multiple entry levels (button shows "Single" = click to switch to single price field)
-        this.setEntryMode(true);
+        // Default: single price field; multi-entry off until user clicks "Multiple"
+        this.setEntryMode(false);
     }
 
     /**
      * Single vs multi entry UI. Button label is the mode you switch TO when clicked
-     * (multi default: "Single"; single mode: "Multiple").
+     * (single default: "Multiple"; multi active: "Single").
      * @param {boolean} isMulti
      */
     setEntryMode(isMulti) {
@@ -12183,6 +12183,9 @@ class OrderManager {
             }
             if (singleMode) singleMode.style.display = 'block';
             if (multiMode) multiMode.style.display = 'none';
+
+            const multiRows = document.getElementById('multiEntryRows');
+            if (multiRows) multiRows.innerHTML = '';
 
             if (this.multiEntryLevels.length > 0) {
                 const avgPrice = this._calcMultiEntryAvgPrice();
@@ -12252,7 +12255,7 @@ class OrderManager {
             row.className = 'multi-entry-row';
             const lockFirstTwo = this.isMultiEntryMode && idx < 2;
             const deleteBtnHtml = lockFirstTwo
-                ? `<button type="button" class="multi-entry-delete-btn multi-entry-delete-btn--locked" data-level-id="${level.id}" title="Base levels — switch to Single to remove" disabled aria-disabled="true">✕</button>`
+                ? ''
                 : `<button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>`;
             row.innerHTML = `
                 <div class="multi-entry-row-inputs">
