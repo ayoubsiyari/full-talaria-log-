@@ -7771,8 +7771,10 @@ class OrderManager {
         const isBeLine = lineData.isBELine || (lineData.label && lineData.label.startsWith('BE'));
         const isBadge = lineData.isBadge;
         
-        // Only add split handle for non-badge Entry and TP lines (not SL or BE) when advanced order is enabled
-        if (!isBadge && (isEntryLine || isTpLine) && !isSlLine && !isBeLine && this.advancedOrderEnabled) {
+        // Add split handle for Entry when multi-entry mode is active, or for Entry/TP when advanced order is enabled
+        const showMultiEntryHandle = !isBadge && isEntryLine && !isSlLine && !isBeLine && this.isMultiEntryMode;
+        const showAdvancedHandle = !isBadge && (isEntryLine || isTpLine) && !isSlLine && !isBeLine && this.advancedOrderEnabled;
+        if (showMultiEntryHandle || showAdvancedHandle) {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }
 
@@ -12081,7 +12083,7 @@ class OrderManager {
                 
                 // Create label showing "Split Entry" or "Split TP"
                 const isTpLine = lineData.label && lineData.label.startsWith('TP');
-                const labelText = isTpLine ? 'New TP' : 'Split Entry';
+                const labelText = isTpLine ? 'New TP' : (self.isMultiEntryMode ? 'New Entry' : 'Split Entry');
                 
                 self.splitDragLabel = self.chart.svg.append('g')
                     .attr('class', 'split-drag-label');
@@ -12169,8 +12171,22 @@ class OrderManager {
                     return;
                 }
                 
-                if (isEntryLine) {
-                    // Add split entry
+                if (isEntryLine && self.isMultiEntryMode) {
+                    // Multi-entry mode: add new level to panel and sync
+                    const riskAmount = parseFloat(document.getElementById('riskAmount')?.value) || 0;
+                    const avgAmount = self.multiEntryLevels.length > 0
+                        ? Math.round(self.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0) / self.multiEntryLevels.length)
+                        : (riskAmount > 0 ? Math.round(riskAmount / 2) : 40);
+                    self.multiEntryLevels.push({
+                        id: Date.now(),
+                        price: parseFloat(newPrice.toFixed(5)),
+                        amount: avgAmount
+                    });
+                    self.renderMultiEntryRows();
+                    self.syncMultiEntryToSplitEntries();
+                    self.showNotification(`Entry level added at ${self.formatPrice(newPrice)}`, 'success');
+                } else if (isEntryLine) {
+                    // Legacy split entry
                     self.addSplitEntry(newPrice);
                     self.showNotification(`Split entry added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isTpLine) {
