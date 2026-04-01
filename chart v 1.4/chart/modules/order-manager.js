@@ -16543,7 +16543,7 @@ class OrderManager {
         ch.svg.selectAll('.y-axis-pending-tp-highlight').remove();
         ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
 
-        const marginRight = 90;
+        const marginRight = 72; // keep pending TP/SL labels closer to axis at rest
 
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
@@ -16666,9 +16666,8 @@ class OrderManager {
                 target.line.attr('y1', clampedY).attr('y2', clampedY);
                 
                 const dims = target.labelDimensions || { width: 80, height: 20 };
-                const marginRight = 90;
-                const dragRightNudge = 16;
-                const translateX = ch.w - dims.width - marginRight + dragRightNudge;
+                const marginRight = 72;
+                const translateX = ch.w - dims.width - marginRight;
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 target.line.attr('x2', Math.max(0, translateX));
                 
