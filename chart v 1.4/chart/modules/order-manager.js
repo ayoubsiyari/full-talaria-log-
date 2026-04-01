@@ -9978,6 +9978,12 @@ class OrderManager {
                     .attr('y2', entryY)
                     .attr('x2', this.chart.w);
             }
+            if (this.previewLines.entry.hitLine) {
+                this.previewLines.entry.hitLine
+                    .attr('y1', entryY)
+                    .attr('y2', entryY)
+                    .attr('x2', this.chart.w);
+            }
 
             updateLabelY(this.previewLines.entry, entryY);
             updateYAxisHighlight(this.previewLines.entry, entryY);
@@ -9994,6 +10000,12 @@ class OrderManager {
                     .attr('y2', tpY)
                     .attr('x2', this.chart.w);
             }
+            if (this.previewLines.tp.hitLine) {
+                this.previewLines.tp.hitLine
+                    .attr('y1', tpY)
+                    .attr('y2', tpY)
+                    .attr('x2', this.chart.w);
+            }
 
             updateLabelY(this.previewLines.tp, tpY);
             updateYAxisHighlight(this.previewLines.tp, tpY);
@@ -10006,6 +10018,12 @@ class OrderManager {
             // Update line if it exists (full line mode)
             if (this.previewLines.sl.line) {
                 this.previewLines.sl.line
+                    .attr('y1', slY)
+                    .attr('y2', slY)
+                    .attr('x2', this.chart.w);
+            }
+            if (this.previewLines.sl.hitLine) {
+                this.previewLines.sl.hitLine
                     .attr('y1', slY)
                     .attr('y2', slY)
                     .attr('x2', this.chart.w);
@@ -10028,6 +10046,12 @@ class OrderManager {
                             .attr('y2', tpY)
                             .attr('x2', this.chart.w);
                     }
+                    if (tpLine.hitLine) {
+                        tpLine.hitLine
+                            .attr('y1', tpY)
+                            .attr('y2', tpY)
+                            .attr('x2', this.chart.w);
+                    }
 
                     updateLabelY(tpLine, tpY);
                     updateYAxisHighlight(tpLine, tpY);
@@ -10042,6 +10066,12 @@ class OrderManager {
             // Update line if it exists
             if (this.previewLines.be.line) {
                 this.previewLines.be.line
+                    .attr('y1', beY)
+                    .attr('y2', beY)
+                    .attr('x2', this.chart.w);
+            }
+            if (this.previewLines.be.hitLine) {
+                this.previewLines.be.hitLine
                     .attr('y1', beY)
                     .attr('y2', beY)
                     .attr('x2', this.chart.w);
@@ -10293,6 +10323,7 @@ class OrderManager {
 
     drawPreviewLine(price, color, label, direction = null, isDraggable = false, targetIndex = undefined, targetId = undefined) {
         const y = this.chart.scales.yScale(price);
+        const hitStrokeWidth = 20;
 
         const line = this.chart.svg.append('line')
             .attr('class', 'preview-line')
@@ -10307,6 +10338,17 @@ class OrderManager {
             .attr('opacity', 0.88)
             .style('pointer-events', isDraggable ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
+        const hitLine = this.chart.svg.append('line')
+            .attr('class', 'preview-line-hit')
+            .attr('x1', 0)
+            .attr('x2', this.chart.w)
+            .attr('y1', y)
+            .attr('y2', y)
+            .attr('stroke', color)
+            .attr('stroke-width', hitStrokeWidth)
+            .attr('opacity', 0)
+            .style('pointer-events', isDraggable ? 'stroke' : 'none')
+            .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
         const labelGroup = this.chart.svg.append('g')
             .attr('class', 'preview-label-group')
@@ -10315,6 +10357,7 @@ class OrderManager {
 
         const lineData = {
             line,
+            hitLine,
             labelGroup,
             price,
             label,
@@ -10391,6 +10434,9 @@ class OrderManager {
 
                 lineData.price = newPrice;
                 lineData.line.attr('y1', clampedY).attr('y2', clampedY);
+                if (lineData.hitLine) {
+                    lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+                }
                 
                 // Update price text without full re-render for performance
                 const formattedPrice = self.formatPrice(newPrice);
@@ -10956,6 +11002,7 @@ class OrderManager {
             });
 
         lineData.line.call(drag);
+        if (lineData.hitLine) lineData.hitLine.call(drag);
         if (lineData.labelGroup) {
             lineData.labelGroup.call(drag);
         }
@@ -11933,6 +11980,7 @@ class OrderManager {
             };
             
             this.chart.svg.selectAll('.preview-line').remove();
+            this.chart.svg.selectAll('.preview-line-hit').remove();
             this.chart.svg.selectAll('.preview-label-group').remove();
             this.chart.svg.selectAll('.preview-badge-group').remove();
             this.chart.svg.selectAll('.y-axis-price-highlight').remove();
@@ -12056,6 +12104,11 @@ class OrderManager {
         lineData.line
             .attr('x1', 0)
             .attr('x2', lineEndX);
+        if (lineData.hitLine) {
+            lineData.hitLine
+                .attr('x1', 0)
+                .attr('x2', lineEndX);
+        }
     }
 
     _removePendingLimitStopConnector() {
@@ -12121,7 +12174,7 @@ class OrderManager {
         const mEntry = /translate\(([^,]+),/.exec(trEntry);
         const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
         // Keep connector on the right side near the entry tag.
-        const connectorPadRight = 5; // px past entry label — nudge toward axis, away from badges
+        const connectorPadRight = 35; // px past entry label — nudge toward axis, away from badges
         const anchorX = Number.isFinite(entryX)
             ? Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + connectorPadRight))
             : Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
