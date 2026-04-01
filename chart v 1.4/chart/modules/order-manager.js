@@ -12174,7 +12174,7 @@ class OrderManager {
         const mEntry = /translate\(([^,]+),/.exec(trEntry);
         const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
         // Keep connector on the right side near the entry tag.
-        const connectorPadRight = 65; // px past entry label — nudge toward axis, away from badges
+        const connectorPadRight = 85; // px past entry label — nudge toward axis, away from badges
         const anchorX = Number.isFinite(entryX)
             ? Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + connectorPadRight))
             : Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
