@@ -7110,11 +7110,11 @@ class OrderManager {
                 <div class="order-section" id="entryPriceSection">
                     <div class="multi-entry-header">
                         <label class="order-label">Entry price</label>
-                        <button type="button" class="multi-entry-toggle" id="multiEntryToggle">Single</button>
+                        <button type="button" class="multi-entry-toggle active" id="multiEntryToggle">Single</button>
                     </div>
 
-                    <!-- Single entry mode (default) -->
-                    <div id="singleEntryMode">
+                    <!-- Single entry mode (toggle to Multiple to show) -->
+                    <div id="singleEntryMode" style="display: none;">
                         <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
                             <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                             <span class="order-input-suffix">USD</span>
@@ -7125,8 +7125,8 @@ class OrderManager {
                         </div>
                     </div>
 
-                    <!-- Multiple entry mode -->
-                    <div id="multiEntryMode" style="display:none;">
+                    <!-- Multiple entry mode (default) -->
+                    <div id="multiEntryMode" style="display: block;">
                         <div class="multi-entry-container">
                             <div class="multi-entry-columns">
                                 <span class="multi-entry-col-label">Price level</span>
@@ -12087,18 +12087,7 @@ class OrderManager {
      */
     _resetMultiEntryStateForNewOrder() {
         this.multiEntryLevels = [];
-        this.isMultiEntryMode = false;
-        const toggleBtn = document.getElementById('multiEntryToggle');
-        const singleMode = document.getElementById('singleEntryMode');
-        const multiMode = document.getElementById('multiEntryMode');
-        if (toggleBtn) {
-            toggleBtn.textContent = 'Single';
-            toggleBtn.classList.remove('active');
-        }
-        if (singleMode) singleMode.style.display = 'block';
-        if (multiMode) multiMode.style.display = 'none';
-        const container = document.getElementById('multiEntryRows');
-        if (container) container.innerHTML = '';
+        this.setEntryMode(true);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -12125,30 +12114,33 @@ class OrderManager {
 
         this.updateMultiEntryColumnLabels();
 
-        // Initialize multi-entry levels array
         if (!this.multiEntryLevels) {
             this.multiEntryLevels = [];
             this.multiEntryIdCounter = 1;
-            this.isMultiEntryMode = false;
         }
+        // Default: multiple entry levels (button shows "Single" = click to switch to single price field)
+        this.setEntryMode(true);
     }
 
     /**
-     * Toggle between SINGLE and MULTIPLE entry mode
+     * Single vs multi entry UI. Button label is the mode you switch TO when clicked
+     * (multi default: "Single"; single mode: "Multiple").
+     * @param {boolean} isMulti
      */
-    toggleEntryMode() {
-        this.isMultiEntryMode = !this.isMultiEntryMode;
+    setEntryMode(isMulti) {
+        this.isMultiEntryMode = isMulti;
         const toggleBtn = document.getElementById('multiEntryToggle');
         const singleMode = document.getElementById('singleEntryMode');
         const multiMode = document.getElementById('multiEntryMode');
 
-        if (this.isMultiEntryMode) {
-            toggleBtn.textContent = 'Multiple';
-            toggleBtn.classList.add('active');
+        if (isMulti) {
+            if (toggleBtn) {
+                toggleBtn.textContent = 'Single';
+                toggleBtn.classList.add('active');
+            }
             if (singleMode) singleMode.style.display = 'none';
             if (multiMode) multiMode.style.display = 'block';
 
-            // If no levels yet, seed with the current entry price as level 1
             if (this.multiEntryLevels.length === 0) {
                 const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
                 const psMode = this.positionSizeMode || 'risk-usd';
@@ -12171,7 +12163,6 @@ class OrderManager {
                     price: currentPrice,
                     amount: amt1
                 });
-                // Add a second level offset slightly from main entry
                 const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
                 const secondPrice = currentPrice > 0
                     ? parseFloat((currentPrice * (1 + offsetDir * 0.001)).toFixed(5))
@@ -12184,14 +12175,15 @@ class OrderManager {
             }
             this._rebalanceLevelAmountsToTarget();
             this.renderMultiEntryRows();
-            this.syncMultiEntryToSplitEntries(); // Show levels on chart immediately
+            this.syncMultiEntryToSplitEntries();
         } else {
-            toggleBtn.textContent = 'Single';
-            toggleBtn.classList.remove('active');
+            if (toggleBtn) {
+                toggleBtn.textContent = 'Multiple';
+                toggleBtn.classList.remove('active');
+            }
             if (singleMode) singleMode.style.display = 'block';
             if (multiMode) multiMode.style.display = 'none';
 
-            // Sync the avg entry back to the single entry field
             if (this.multiEntryLevels.length > 0) {
                 const avgPrice = this._calcMultiEntryAvgPrice();
                 if (avgPrice > 0) {
@@ -12200,13 +12192,19 @@ class OrderManager {
                 }
             }
 
-            // Clear split entries from chart when switching back to single
             this.clearSplitEntries();
         }
 
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
         this.updatePlaceButtonText();
+    }
+
+    /**
+     * Toggle between SINGLE and MULTIPLE entry mode
+     */
+    toggleEntryMode() {
+        this.setEntryMode(!this.isMultiEntryMode);
     }
 
     /**
