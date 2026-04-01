@@ -7528,19 +7528,16 @@ class OrderManager {
             ];
         }
 
-        // Multi-entry weighted average (summary row): "AvgEntry:stop" — same badge style as Entry# legs
+        // Multi-entry weighted average (summary row): internal label "AvgEntry:limit" — shown as "AVG Entry"
         if (label && label.startsWith('AvgEntry:')) {
-            const ot = (label.split(':')[1] || this.orderType || 'limit').toUpperCase();
-            const sideUpper = (this.orderSide || 'BUY').toUpperCase();
-            const fullLabel = `${ot} ${sideUpper} AVG`;
             return [
                 {
-                    text: fullLabel,
+                    text: 'AVG Entry',
                     fill: color,
                     stroke: color,
                     textColor: '#ffffff',
                     fontWeight: '700',
-                    minWidth: 128
+                    minWidth: 96
                 },
                 {
                     text: priceText,
@@ -10710,8 +10707,27 @@ class OrderManager {
             }
         }
         
-        // Draw entry price preview line (dashed blue/red) - now draggable!
         const entryColor = this.orderSide === 'BUY' ? '#2962ff' : '#f23645';
+
+        // Weighted average entry — drawn first so it sits behind real entry legs (z-order)
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
+            const avgPx = this._calcMultiEntryAvgPrice();
+            if (avgPx > 0) {
+                const avgLabel = `AvgEntry:${this.orderType || 'limit'}`;
+                const avgLine = this.drawPreviewLine(avgPx, entryColor, avgLabel, this.orderSide, false);
+                if (avgLine) {
+                    avgLine.isMultiEntryAvg = true;
+                    if (avgLine.line) {
+                        avgLine.line
+                            .attr('stroke-dasharray', '7 5')
+                            .attr('opacity', 0.62);
+                    }
+                    this.previewLines.multiEntryAvg = avgLine;
+                }
+            }
+        }
+
+        // Draw entry price preview line — draggable; rendered above AVG Entry
         const mainEntryPercent = this.getMainEntryPercentage();
         let mainEntryLabel = 'Entry';
         if (this.isMultiEntryMode && this.splitEntriesEnabled) {
@@ -10745,19 +10761,6 @@ class OrderManager {
                     }
                 }
             });
-        }
-
-        // Weighted average entry — same line/label style as legs; not draggable (derived only)
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
-            const avgPx = this._calcMultiEntryAvgPrice();
-            if (avgPx > 0) {
-                const avgLabel = `AvgEntry:${this.orderType || 'limit'}`;
-                const avgLine = this.drawPreviewLine(avgPx, entryColor, avgLabel, this.orderSide, false);
-                if (avgLine) {
-                    avgLine.isMultiEntryAvg = true;
-                    this.previewLines.multiEntryAvg = avgLine;
-                }
-            }
         }
         
         // Check if multiple TPs are enabled
@@ -12564,6 +12567,9 @@ class OrderManager {
         }
         this.renderPreviewLabel(m, avgY);
         this.adjustPreviewLineForLabel(m);
+        if (m.line) {
+            m.line.attr('stroke-dasharray', '7 5').attr('opacity', 0.62);
+        }
         if (m.yAxisHighlight) {
             const priceText = this.formatPrice(avgPx);
             const textSel = m.yAxisHighlight.select('.y-axis-price-text');
