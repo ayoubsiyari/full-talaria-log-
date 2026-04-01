@@ -6290,6 +6290,13 @@ class OrderManager {
                     background: var(--om-b2) !important;
                     color: var(--om-tx) !important;
                 }
+                /* Keeps −/+ flush: parent row uses gap for input↔suffix, not between the two buttons */
+                .order-panel .input-stepper-group {
+                    display: inline-flex;
+                    align-items: stretch;
+                    flex-shrink: 0;
+                    gap: 0;
+                }
                 .order-panel .input-stepper.input-stepper--tp {
                     width: 24px !important;
                     height: 28px !important;
@@ -7036,8 +7043,10 @@ class OrderManager {
                                     <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
                                         <input type="number" id="maxRiskPercent" value="0" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                                         <span class="order-input-suffix">%</span>
+                                        <span class="input-stepper-group">
                                         <button type="button" class="input-stepper" data-target="maxRiskPercent" data-step="-0.1">−</button>
                                         <button type="button" class="input-stepper" data-target="maxRiskPercent" data-step="0.1">+</button>
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="order-field">
@@ -7045,8 +7054,10 @@ class OrderManager {
                                     <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
                                         <input type="number" id="maxRiskAmount" value="0" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                                         <span class="order-input-suffix">USD</span>
+                                        <span class="input-stepper-group">
                                         <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="-10">−</button>
                                         <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="+10">+</button>
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -7068,20 +7079,26 @@ class OrderManager {
                     <div id="riskUSDInput" class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
                         <span class="order-input-prefix">$</span>
                         <input type="number" id="riskAmountUSD" value="100" min="1" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                        <span class="input-stepper-group">
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10">−</button>
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10">+</button>
+                        </span>
                     </div>
                     <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
                         <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                         <span class="order-input-suffix">%</span>
+                        <span class="input-stepper-group">
                         <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
                         <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
+                        </span>
                     </div>
                     <div id="lotSizeInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
                         <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                         <span class="order-input-suffix">Lots</span>
+                        <span class="input-stepper-group">
                         <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="-0.1">−</button>
                         <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="+0.1">+</button>
+                        </span>
                     </div>
                     <input type="hidden" id="orderQuantity" value="1">
                     <div id="calculatedPosition" class="order-calculation">
@@ -7101,8 +7118,10 @@ class OrderManager {
                         <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
                             <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                             <span class="order-input-suffix">USD</span>
+                            <span class="input-stepper-group">
                             <button type="button" class="input-stepper" data-target="orderEntryPrice" data-step-mode="pip" data-step="-1">−</button>
                             <button type="button" class="input-stepper" data-target="orderEntryPrice" data-step-mode="pip" data-step="1">+</button>
+                            </span>
                         </div>
                     </div>
 
@@ -7153,8 +7172,10 @@ class OrderManager {
                     <div id="slInputs" class="order-sl-card__body">
                         <div class="order-input-wrapper order-input-wrapper--sl" style="display: flex; gap: 6px; align-items: center;">
                             <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Stop loss price" style="flex: 1; min-width: 0;">
+                            <span class="input-stepper-group">
                             <button type="button" class="input-stepper" data-target="slPrice" data-step-mode="pip" data-step="-1">−</button>
                             <button type="button" class="input-stepper" data-target="slPrice" data-step-mode="pip" data-step="1">+</button>
+                            </span>
                         </div>
                         <div class="order-sl-stats">
                             <div class="order-sl-stat order-sl-stat--distance">
@@ -7198,16 +7219,20 @@ class OrderManager {
                                     <label class="order-tp-field__label" for="tpPrice">Price</label>
                                     <div class="order-input-wrapper order-input-wrapper--tp" style="display: flex; gap: 4px; align-items: center;">
                                         <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Take profit price" style="flex: 1; min-width: 0;">
+                                        <span class="input-stepper-group">
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpPrice" data-step-mode="pip" data-step="-1">−</button>
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpPrice" data-step-mode="pip" data-step="1">+</button>
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="order-tp-field" id="tpFieldRR">
                                     <label class="order-tp-field__label" for="tpRRInput">R : R</label>
                                     <div class="order-input-wrapper order-input-wrapper--tp-rr" style="display: flex; gap: 4px; align-items: center;">
                                         <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" aria-label="Risk to reward ratio" style="flex: 1; min-width: 0;">
+                                        <span class="input-stepper-group">
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpRRInput" data-step="-0.1">−</button>
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpRRInput" data-step="0.1">+</button>
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="order-tp-field" id="tpFieldTargetUsd">
@@ -7215,8 +7240,10 @@ class OrderManager {
                                     <div class="order-input-wrapper order-input-wrapper--tp-target" style="display: flex; gap: 4px; align-items: center;">
                                         <span class="order-input-prefix">$</span>
                                         <input type="number" id="tpTargetProfitUSD" value="300" min="0" step="1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit in dollars" style="flex: 1; min-width: 0;">
+                                        <span class="input-stepper-group">
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitUSD" data-step="-10">−</button>
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitUSD" data-step="+10">+</button>
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="order-tp-field is-hidden" id="tpFieldTargetPct">
@@ -7224,8 +7251,10 @@ class OrderManager {
                                     <div class="order-input-wrapper order-input-wrapper--tp-target" style="display: flex; gap: 4px; align-items: center;">
                                         <input type="number" id="tpTargetProfitPercent" value="3" min="0" step="0.1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit as percent of balance" style="flex: 1; min-width: 0;">
                                         <span class="order-input-suffix">%</span>
+                                        <span class="input-stepper-group">
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitPercent" data-step="-0.5">−</button>
                                         <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitPercent" data-step="0.5">+</button>
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -12231,14 +12260,18 @@ class OrderManager {
                 <div class="multi-entry-row-inputs">
                     <div style="display:flex; gap:4px; align-items:center; min-width:0;">
                         <input type="number" class="multi-entry-row-input" id="multiEntryPrice_${level.id}" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price" style="flex:1; min-width:0;">
+                        <span class="input-stepper-group">
                         <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="-1">−</button>
                         <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="1">+</button>
+                        </span>
                     </div>
                     <div class="multi-entry-amount-wrap">
                         <span class="multi-entry-amount-prefix">${amountPrefix}</span>
                         <input type="number" class="multi-entry-amount-input" id="multiEntryAmount_${level.id}" value="${amtVal}" step="${amountStep}" min="0" data-level-id="${level.id}" data-field="amount">
+                        <span class="input-stepper-group">
                         <button type="button" class="input-stepper" data-target="multiEntryAmount_${level.id}" data-step="${amountStepNeg}">−</button>
                         <button type="button" class="input-stepper" data-target="multiEntryAmount_${level.id}" data-step="${amountStepPos}">+</button>
+                        </span>
                     </div>
                     ${deleteBtnHtml}
                 </div>
