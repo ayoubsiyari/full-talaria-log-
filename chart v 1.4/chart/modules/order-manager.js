@@ -7945,6 +7945,11 @@ class OrderManager {
         document.body.classList.add('settings-open');
         if (_c && _c.resize) setTimeout(() => { _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
 
+        // New order draft: drop multi-entry rows from the last session (preview was cleared on close).
+        if (!this.editingPendingOrderId) {
+            this._resetMultiEntryStateForNewOrder();
+        }
+
         // Refresh header badge (symbol + market type) every time the drawer opens
         this.updateOrderPanel();
 
@@ -11944,6 +11949,26 @@ class OrderManager {
         this.updatePreviewLines();
     }
 
+    /**
+     * Reset multi-entry draft (levels + panel UI) so a new order session does not show the previous order's rows.
+     * Does not run when editing an existing pending order (editingPendingOrderId set).
+     */
+    _resetMultiEntryStateForNewOrder() {
+        this.multiEntryLevels = [];
+        this.isMultiEntryMode = false;
+        const toggleBtn = document.getElementById('multiEntryToggle');
+        const singleMode = document.getElementById('singleEntryMode');
+        const multiMode = document.getElementById('multiEntryMode');
+        if (toggleBtn) {
+            toggleBtn.textContent = 'Single';
+            toggleBtn.classList.remove('active');
+        }
+        if (singleMode) singleMode.style.display = 'block';
+        if (multiMode) multiMode.style.display = 'none';
+        const container = document.getElementById('multiEntryRows');
+        if (container) container.innerHTML = '';
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // MULTI-ENTRY UI SYSTEM — Panel-based multiple entry level management
     // ═══════════════════════════════════════════════════════════════════════
@@ -13952,6 +13977,7 @@ class OrderManager {
             this.showPositionsPanel();
             this.toggleOrderPanel();
             this.clearSplitEntries();
+            this._resetMultiEntryStateForNewOrder();
             return;
         }
         
