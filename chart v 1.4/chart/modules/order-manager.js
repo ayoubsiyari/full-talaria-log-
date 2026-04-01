@@ -9268,14 +9268,7 @@ class OrderManager {
      * Calculate position size from risk amount or percentage, or calculate risk from lot size
      */
     calculatePositionFromRisk() {
-        let entryPrice;
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            entryPrice = this._calcMultiEntryAvgPrice();
-            const hiddenInput = document.getElementById('orderEntryPriceMulti');
-            if (hiddenInput && entryPrice > 0) hiddenInput.value = entryPrice;
-        } else {
-            entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        }
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
         
@@ -11892,14 +11885,7 @@ class OrderManager {
                     } else {
                         level[field] = newVal;
                     }
-
-                    if (field === 'amount') {
-                        this._rebalanceLevelAmountsToTarget();
-                        this.renderMultiEntryRows();
-                        this.syncMultiEntryToSplitEntries();
-                        return;
-                    }
-
+                    
                     this.updateMultiEntrySummary();
                     this.syncMultiEntryToSplitEntries();
                     // Update info rows in-place (no DOM rebuild, keeps focus)
@@ -12003,7 +11989,6 @@ class OrderManager {
             : 40;
 
         this.multiEntryLevels.forEach(l => { l.amount = equalAmount; });
-        this._rebalanceLevelAmountsToTarget();
         this.renderMultiEntryRows();
         this.syncMultiEntryToSplitEntries();
     }
@@ -12017,46 +12002,6 @@ class OrderManager {
         const totalWeightedPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
         const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
         return totalAmount > 0 ? totalWeightedPrice / totalAmount : 0;
-    }
-
-    /**
-     * Scale level dollar amounts so they sum to the active risk target (risk-usd / risk-percent).
-     */
-    _rebalanceLevelAmountsToTarget() {
-        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length === 0) return;
-
-        let totalRiskTarget = 0;
-        const mode = this.positionSizeMode || 'risk-usd';
-        if (mode === 'risk-usd') {
-            totalRiskTarget = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
-        } else if (mode === 'risk-percent') {
-            const pct = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
-            const balType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-            const bal = balType === 'current' ? this.balance : this.initialBalance;
-            totalRiskTarget = (bal * pct) / 100;
-        } else {
-            return;
-        }
-
-        if (totalRiskTarget <= 0) return;
-
-        const currentSum = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
-        if (currentSum <= 0) {
-            const each = Math.round(totalRiskTarget / this.multiEntryLevels.length);
-            this.multiEntryLevels.forEach(l => { l.amount = each; });
-            return;
-        }
-
-        const scale = totalRiskTarget / currentSum;
-        this.multiEntryLevels.forEach(l => {
-            l.amount = Math.round((l.amount || 0) * scale);
-        });
-
-        const newSum = this.multiEntryLevels.reduce((s, l) => s + l.amount, 0);
-        const diff = Math.round(totalRiskTarget) - newSum;
-        if (diff !== 0 && this.multiEntryLevels.length > 0) {
-            this.multiEntryLevels[this.multiEntryLevels.length - 1].amount += diff;
-        }
     }
 
     /**
@@ -12084,14 +12029,6 @@ class OrderManager {
         const qtyEl = document.getElementById('multiEntryTotalQty');
         if (avgEl) avgEl.textContent = avgPrice > 0 ? this.formatPrice(avgPrice) : '0.00000';
         if (qtyEl) qtyEl.textContent = `${totalLots.toFixed(2)} ${posLabel}`;
-
-        if (this.isMultiEntryMode) {
-            const qtyInput = document.getElementById('orderQuantity');
-            if (qtyInput && Number.isFinite(totalLots) && totalLots > 0) {
-                qtyInput.value = totalLots.toFixed(2);
-            }
-            this.updatePlaceButtonText();
-        }
 
         // Sync avg price to the hidden field and the main orderEntryPrice
         const hiddenInput = document.getElementById('orderEntryPriceMulti');
@@ -12973,16 +12910,8 @@ class OrderManager {
         }
         
         const currentPrice = currentCandle.c;
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            this.updateMultiEntrySummary();
-        }
-        let quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const avgE = this._calcMultiEntryAvgPrice();
-            if (avgE > 0) entryPrice = avgE;
-            quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        }
+        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
         const activeTicker = this._getActiveTicker();
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
@@ -13283,166 +13212,6 @@ class OrderManager {
         if (window.propFirmTracker && window.propFirmTracker.tradingDisabled) {
             console.error('🚫 Trading is disabled due to prop firm rule violation');
             this.showNotification('❌ Trading Disabled - Challenge rule violated', 'error');
-            return;
-        }
-
-        // Multi-entry scale-in: one order per level; per-level lots from shared risk budget
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
-            const pipSz = this.pipSize || 0.0001;
-            const pipVal = this.pipValuePerLot || 10;
-
-            const cloneTpTargets = (targets) => {
-                if (!targets || targets.length === 0) return targets;
-                return targets.map(t => ({ ...t, hit: false }));
-            };
-            const cloneBreakevenSettings = (settings) => {
-                if (!settings) return settings;
-                return { ...settings, triggered: false };
-            };
-            const cloneTrailingStop = (ts) => {
-                if (!ts) return ts;
-                return { ...ts, activated: false, currentStep: 0 };
-            };
-
-            const validLevels = this.multiEntryLevels.filter(l => l.price > 0 && l.amount > 0);
-            if (validLevels.length === 0) {
-                this.showNotification('⚠️ No valid entry levels configured', 'warning');
-                return;
-            }
-
-            if (slEnabled && slPrice > 0) {
-                const slErrors = [];
-                validLevels.forEach((l, i) => {
-                    const slDist = Math.abs(l.price - slPrice);
-                    if (slDist < pipSz * 0.5) {
-                        slErrors.push(`Level ${i + 1} price too close to SL`);
-                    }
-                });
-                if (slErrors.length > 0) {
-                    this.showNotification(`⚠️ ${slErrors[0]}`, 'warning');
-                    return;
-                }
-            }
-
-            const splitGroupId = `split_${Date.now()}`;
-            let totalLots = 0;
-            let firstMarketOrder = null;
-            let scalingApplied = false;
-
-            validLevels.forEach((level, idx) => {
-                const slPips = slEnabled && slPrice > 0
-                    ? Math.abs(level.price - slPrice) / pipSz
-                    : 0;
-                const levelLots = slPips > 0
-                    ? (level.amount / (slPips * pipVal))
-                    : parseFloat(document.getElementById('lotSizeAmount')?.value || 1) / validLevels.length;
-
-                totalLots += levelLots;
-
-                const effectiveOrderType = (() => {
-                    if (this.orderType === 'market') return 'market';
-                    if (this.orderSide === 'BUY') return level.price > currentPrice ? 'stop' : 'limit';
-                    return level.price < currentPrice ? 'stop' : 'limit';
-                })();
-
-                if (effectiveOrderType === 'market') {
-                    const order = {
-                        id: this.orderIdCounter++,
-                        symbol: activeTicker,
-                        ticker: activeTicker,
-                        sourceFileId: this._chartSourceFileId(),
-                        instrument_settings: activeInstrumentSettings,
-                        type: this.orderSide,
-                        openPrice: level.price,
-                        openTime: currentCandle.t,
-                        quantity: parseFloat(levelLots.toFixed(2)),
-                        originalQuantity: parseFloat(levelLots.toFixed(2)),
-                        riskAmount: level.amount,
-                        originalRiskAmount: level.amount,
-                        status: 'OPEN',
-                        stopLoss: slEnabled && slPrice > 0 ? slPrice : null,
-                        takeProfit: tpEnabled && tpPrice > 0 ? tpPrice : null,
-                        autoBreakeven: autoBreakeven,
-                        breakevenSettings: breakevenSettings,
-                        highestPrice: level.price,
-                        lowestPrice: level.price,
-                        mfe: level.price,
-                        mae: level.price,
-                        mfeTime: currentCandle.t,
-                        maeTime: currentCandle.t,
-                        mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
-                        postExitTrackingMode: this.postExitTrackingMode,
-                        postExitTrackingCandles: this.postExitTrackingCandles,
-                        postExitProcessedCandles: 0,
-                        trailingStop: trailingStop,
-                        tpTargets: tpTargets,
-                        partialCloses: [],
-                        partialClosePnL: 0,
-                        splitGroupId,
-                        splitIndex: idx + 1,
-                        splitTotal: validLevels.length,
-                        isSplitEntry: true
-                    };
-
-                    if (this.enablePositionScaling && this.scaleNextOrder && !scalingApplied) {
-                        this.applyScaling(order);
-                        scalingApplied = true;
-                    }
-
-                    if (this.orderService) {
-                        this.orderService.registerOpenOrder(order);
-                    } else {
-                        this.openPositions.push(order);
-                        this.orders.push(order);
-                    }
-
-                    this.playOrderSound(this.orderSide.toLowerCase());
-                    this.drawOrderLine(order);
-                    this.drawSLTPLines(order);
-                    setTimeout(() => this.drawEntryMarker(order), 100);
-
-                    if (window.screenshotManager) {
-                        order.screenshotPromise = window.screenshotManager.captureChartSnapshot().then(screenshot => {
-                            if (screenshot) {
-                                order.entryScreenshot = screenshot;
-                                console.log('✅ Entry screenshot captured for order #' + order.id);
-                            }
-                            return screenshot;
-                        }).catch(err => {
-                            console.error('❌ Failed to capture entry screenshot:', err);
-                            return null;
-                        });
-                    }
-
-                    if (!firstMarketOrder) firstMarketOrder = order;
-                } else {
-                    this.placePendingOrderWithSplit(
-                        level.price, parseFloat(levelLots.toFixed(2)),
-                        tpEnabled && tpPrice > 0 ? tpPrice : 0,
-                        slEnabled && slPrice > 0 ? slPrice : 0,
-                        level.amount, autoBreakeven,
-                        cloneBreakevenSettings(breakevenSettings),
-                        cloneTrailingStop(trailingStop),
-                        cloneTpTargets(tpTargets),
-                        currentCandle.t, splitGroupId, idx + 1, validLevels.length,
-                        effectiveOrderType
-                    );
-                }
-            });
-
-            this.scaleNextOrder = false;
-
-            this.clearSplitEntries();
-            this.showNotification(
-                `✅ ${validLevels.length} entries placed | Total: ${totalLots.toFixed(2)} lots | Risk per level proportional to SL distance`,
-                'success'
-            );
-            this.updatePositionsPanel();
-            this.showPositionsPanel();
-            this.toggleOrderPanel();
-            if (firstMarketOrder) {
-                this.showTradeJournalModal(firstMarketOrder, false, null);
-            }
             return;
         }
         
