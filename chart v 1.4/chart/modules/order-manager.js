@@ -10389,7 +10389,7 @@ class OrderManager {
         let isDragging = false;
         let dragStartTime = 0;
         let frameId = null;
-        const dragRightNudge = 12;
+        const dragRightNudge = 22;
         let dragXNudgeApplied = false;
         
         // Throttle helper for calculations - limits execution to once per frame
@@ -16335,7 +16335,7 @@ class OrderManager {
                 // Position label box to the left of close button
                 const labelTextBbox = labelText.node().getBBox();
                 const labelBoxWidth = labelTextBbox.width + 20;
-                const dragRightNudge = 8;
+                const dragRightNudge = 16;
                 const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth + dragRightNudge;
                 
                 labelBox
@@ -16663,7 +16663,7 @@ class OrderManager {
                 
                 const dims = target.labelDimensions || { width: 80, height: 20 };
                 const marginRight = 90;
-                const dragRightNudge = 8;
+                const dragRightNudge = 16;
                 const translateX = ch.w - dims.width - marginRight + dragRightNudge;
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 target.line.attr('x2', Math.max(0, translateX));
