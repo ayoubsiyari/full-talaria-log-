@@ -6290,6 +6290,22 @@ class OrderManager {
                     background: var(--om-b2) !important;
                     color: var(--om-tx) !important;
                 }
+                .order-panel .input-stepper.input-stepper--tp {
+                    width: 24px !important;
+                    height: 28px !important;
+                    font-size: 12px !important;
+                }
+                .multi-entry-row-inputs .input-stepper {
+                    width: 22px !important;
+                    height: 26px !important;
+                    font-size: 11px !important;
+                }
+                .multi-entry-amount-wrap .input-stepper {
+                    width: 22px !important;
+                    height: 26px !important;
+                    font-size: 11px !important;
+                    border-left: 1px solid var(--om-b) !important;
+                }
                 .order-hint { font-size: 10px; color: var(--om-muted); line-height: 1.4; }
 
                 /* ── POSITION SIZE CALC ROW (ReadoutRow) ─────────────────────────── */
@@ -6683,7 +6699,7 @@ class OrderManager {
                 .multi-entry-row:last-child { border-bottom: none; }
                 .multi-entry-row-inputs {
                     display: grid;
-                    grid-template-columns: 1fr 80px 24px;
+                    grid-template-columns: minmax(0, 1.15fr) minmax(96px, 1fr) 24px;
                     gap: 6px;
                     align-items: center;
                 }
@@ -6718,6 +6734,7 @@ class OrderManager {
                     border: 1px solid var(--om-b);
                     border-radius: 4px;
                     overflow: hidden;
+                    min-width: 0;
                 }
                 .multi-entry-amount-prefix {
                     padding: 0 0 0 6px;
@@ -7016,16 +7033,20 @@ class OrderManager {
                             <div class="order-grid-two">
                                 <div class="order-field">
                                     <label class="order-label" for="maxRiskPercent">Max risk percent</label>
-                                    <div class="order-input-wrapper">
-                                        <input type="number" id="maxRiskPercent" value="0" step="0.1" class="order-input order-input--compact">
+                                    <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
+                                        <input type="number" id="maxRiskPercent" value="0" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                                         <span class="order-input-suffix">%</span>
+                                        <button type="button" class="input-stepper" data-target="maxRiskPercent" data-step="-0.1">−</button>
+                                        <button type="button" class="input-stepper" data-target="maxRiskPercent" data-step="0.1">+</button>
                                     </div>
                                 </div>
                                 <div class="order-field">
                                     <label class="order-label" for="maxRiskAmount">Max risk amount</label>
-                                    <div class="order-input-wrapper">
-                                        <input type="number" id="maxRiskAmount" value="0" step="1" class="order-input order-input--compact">
+                                    <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
+                                        <input type="number" id="maxRiskAmount" value="0" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                                         <span class="order-input-suffix">USD</span>
+                                        <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="-10">−</button>
+                                        <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="+10">+</button>
                                     </div>
                                 </div>
                             </div>
@@ -7077,9 +7098,11 @@ class OrderManager {
 
                     <!-- Single entry mode (default) -->
                     <div id="singleEntryMode">
-                        <div class="order-input-wrapper">
-                            <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact">
+                        <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
+                            <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                             <span class="order-input-suffix">USD</span>
+                            <button type="button" class="input-stepper" data-target="orderEntryPrice" data-step-mode="pip" data-step="-1">−</button>
+                            <button type="button" class="input-stepper" data-target="orderEntryPrice" data-step-mode="pip" data-step="1">+</button>
                         </div>
                     </div>
 
@@ -7128,8 +7151,10 @@ class OrderManager {
                         </label>
                     </div>
                     <div id="slInputs" class="order-sl-card__body">
-                        <div class="order-input-wrapper order-input-wrapper--sl">
-                            <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Stop loss price">
+                        <div class="order-input-wrapper order-input-wrapper--sl" style="display: flex; gap: 6px; align-items: center;">
+                            <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Stop loss price" style="flex: 1; min-width: 0;">
+                            <button type="button" class="input-stepper" data-target="slPrice" data-step-mode="pip" data-step="-1">−</button>
+                            <button type="button" class="input-stepper" data-target="slPrice" data-step-mode="pip" data-step="1">+</button>
                         </div>
                         <div class="order-sl-stats">
                             <div class="order-sl-stat order-sl-stat--distance">
@@ -7171,28 +7196,36 @@ class OrderManager {
                             <div class="order-tp-card__inputs-row order-tp-card__inputs-row--three" id="tpInputsRow">
                                 <div class="order-tp-field">
                                     <label class="order-tp-field__label" for="tpPrice">Price</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp">
-                                        <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Take profit price">
+                                    <div class="order-input-wrapper order-input-wrapper--tp" style="display: flex; gap: 4px; align-items: center;">
+                                        <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Take profit price" style="flex: 1; min-width: 0;">
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpPrice" data-step-mode="pip" data-step="-1">−</button>
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpPrice" data-step-mode="pip" data-step="1">+</button>
                                     </div>
                                 </div>
                                 <div class="order-tp-field" id="tpFieldRR">
                                     <label class="order-tp-field__label" for="tpRRInput">R : R</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp-rr">
-                                        <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" aria-label="Risk to reward ratio">
+                                    <div class="order-input-wrapper order-input-wrapper--tp-rr" style="display: flex; gap: 4px; align-items: center;">
+                                        <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" aria-label="Risk to reward ratio" style="flex: 1; min-width: 0;">
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpRRInput" data-step="-0.1">−</button>
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpRRInput" data-step="0.1">+</button>
                                     </div>
                                 </div>
                                 <div class="order-tp-field" id="tpFieldTargetUsd">
                                     <label class="order-tp-field__label" for="tpTargetProfitUSD">Target $</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp-target">
+                                    <div class="order-input-wrapper order-input-wrapper--tp-target" style="display: flex; gap: 4px; align-items: center;">
                                         <span class="order-input-prefix">$</span>
-                                        <input type="number" id="tpTargetProfitUSD" value="300" min="0" step="1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit in dollars">
+                                        <input type="number" id="tpTargetProfitUSD" value="300" min="0" step="1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit in dollars" style="flex: 1; min-width: 0;">
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitUSD" data-step="-10">−</button>
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitUSD" data-step="+10">+</button>
                                     </div>
                                 </div>
                                 <div class="order-tp-field is-hidden" id="tpFieldTargetPct">
                                     <label class="order-tp-field__label" for="tpTargetProfitPercent">Target %</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp-target">
-                                        <input type="number" id="tpTargetProfitPercent" value="3" min="0" step="0.1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit as percent of balance">
+                                    <div class="order-input-wrapper order-input-wrapper--tp-target" style="display: flex; gap: 4px; align-items: center;">
+                                        <input type="number" id="tpTargetProfitPercent" value="3" min="0" step="0.1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit as percent of balance" style="flex: 1; min-width: 0;">
                                         <span class="order-input-suffix">%</span>
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitPercent" data-step="-0.5">−</button>
+                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitPercent" data-step="0.5">+</button>
                                     </div>
                                 </div>
                             </div>
@@ -8744,54 +8777,84 @@ class OrderManager {
             };
         }
         
-        // Input stepper buttons (+/- controls)
-        document.querySelectorAll('.input-stepper').forEach(btn => {
-            btn.onclick = () => {
+        // Input stepper buttons (+/- controls) — delegation so multi-entry rows work after re-render
+        const orderPanelForSteppers = document.getElementById('orderPanel');
+        if (orderPanelForSteppers) {
+            orderPanelForSteppers.addEventListener('click', (e) => {
+                const btn = e.target.closest('.input-stepper');
+                if (!btn || !orderPanelForSteppers.contains(btn)) return;
+                e.preventDefault();
+
                 const targetId = btn.dataset.target;
-                const step = parseFloat(btn.dataset.step);
                 const input = document.getElementById(targetId);
-                
-                if (input) {
-                    let currentValue = parseFloat(input.value) || 0;
-                    let newValue = currentValue + step;
-                    
-                    // Apply min constraints
-                    if (targetId === 'riskAmountUSD') {
-                        newValue = Math.max(1, newValue);
-                    } else if (targetId === 'riskAmountPercent') {
-                        newValue = Math.max(0.1, newValue);
-                    } else if (targetId === 'lotSizeAmount') {
-                        newValue = Math.max(0.01, newValue);
-                    }
-                    
-                    // Round to appropriate decimal places
-                    if (targetId === 'riskAmountUSD') {
-                        newValue = Math.round(newValue);
-                    } else if (targetId === 'riskAmountPercent') {
-                        newValue = parseFloat(newValue.toFixed(1));
-                    } else if (targetId === 'lotSizeAmount') {
-                        newValue = parseFloat(newValue.toFixed(2));
-                    }
-                    
-                    input.value = newValue;
-                    
-                    // Trigger recalculation
-                    this.calculatePositionFromRisk();
-                    
-                    // Recalculate TP targets if multiple TPs enabled
-                    const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked;
-                    if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
-                        this.calculateTPTargetsFromNumber(this.tpTargets.length);
-                    }
-                    
-                    this.calculateAdvancedRiskReward();
-                    this.updatePreviewLines();
-                    this.updatePlaceButtonText();
-                    
-                    console.log(`📊 Adjusted ${targetId}: ${currentValue} → ${newValue}`);
+                if (!input) return;
+
+                let step;
+                if (btn.dataset.stepMode === 'pip') {
+                    const mult = parseFloat(btn.dataset.step);
+                    if (!Number.isFinite(mult)) return;
+                    const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+                    step = mult * pip;
+                } else {
+                    step = parseFloat(btn.dataset.step);
+                    if (!Number.isFinite(step)) return;
                 }
-            };
-        });
+
+                const currentValue = parseFloat(input.value) || 0;
+                let newValue = currentValue + step;
+
+                if (targetId === 'riskAmountUSD') {
+                    newValue = Math.max(1, newValue);
+                    newValue = Math.round(newValue);
+                } else if (targetId === 'riskAmountPercent') {
+                    newValue = Math.max(0.1, newValue);
+                    newValue = parseFloat(newValue.toFixed(1));
+                } else if (targetId === 'lotSizeAmount') {
+                    newValue = Math.max(0.01, newValue);
+                    newValue = parseFloat(newValue.toFixed(2));
+                } else if (targetId === 'maxRiskPercent') {
+                    newValue = Math.max(0, newValue);
+                    newValue = parseFloat(newValue.toFixed(1));
+                } else if (targetId === 'maxRiskAmount') {
+                    newValue = Math.max(0, newValue);
+                    newValue = Math.round(newValue);
+                } else if (targetId === 'tpRRInput') {
+                    newValue = Math.max(0, newValue);
+                    newValue = parseFloat(newValue.toFixed(1));
+                } else if (targetId === 'tpTargetProfitUSD') {
+                    newValue = Math.max(0, newValue);
+                    newValue = Math.round(newValue);
+                } else if (targetId === 'tpTargetProfitPercent') {
+                    newValue = Math.max(0, newValue);
+                    newValue = parseFloat(newValue.toFixed(1));
+                } else if (targetId.startsWith('multiEntryAmount_')) {
+                    const mode = this.positionSizeMode || 'risk-usd';
+                    if (mode === 'lot-size') {
+                        newValue = Math.max(0, newValue);
+                        newValue = parseFloat(newValue.toFixed(2));
+                    } else if (mode === 'risk-percent') {
+                        newValue = Math.max(0, newValue);
+                        newValue = parseFloat(newValue.toFixed(1));
+                    } else {
+                        newValue = Math.max(0, newValue);
+                        newValue = Math.round(newValue);
+                    }
+                } else if (targetId.startsWith('multiEntryPrice_') || ['orderEntryPrice', 'slPrice', 'tpPrice'].includes(targetId)) {
+                    const p = this.getPricePrecision();
+                    newValue = parseFloat(this.formatPrice(newValue, p));
+                }
+
+                input.value = newValue;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+
+                if (['riskAmountUSD', 'riskAmountPercent', 'lotSizeAmount'].includes(targetId)) {
+                    this.calculateAdvancedRiskReward();
+                    this.updatePlaceButtonText();
+                }
+
+                console.log(`📊 Adjusted ${targetId}: ${currentValue} → ${newValue}`);
+            });
+        }
 
         // Risk percentage buttons
         document.querySelectorAll('.risk-btn').forEach(btn => {
@@ -12129,12 +12192,18 @@ class OrderManager {
         const mode = this.positionSizeMode || 'risk-usd';
         let amountPrefix = '$';
         let amountStep = '1';
+        let amountStepNeg = '-10';
+        let amountStepPos = '+10';
         if (mode === 'risk-percent') {
             amountPrefix = '%';
             amountStep = '0.1';
+            amountStepNeg = '-0.5';
+            amountStepPos = '+0.5';
         } else if (mode === 'lot-size') {
             amountPrefix = 'L';
             amountStep = '0.01';
+            amountStepNeg = '-0.1';
+            amountStepPos = '+0.1';
         }
 
         const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
@@ -12160,10 +12229,16 @@ class OrderManager {
                 : `<button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>`;
             row.innerHTML = `
                 <div class="multi-entry-row-inputs">
-                    <input type="number" class="multi-entry-row-input" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price">
+                    <div style="display:flex; gap:4px; align-items:center; min-width:0;">
+                        <input type="number" class="multi-entry-row-input" id="multiEntryPrice_${level.id}" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price" style="flex:1; min-width:0;">
+                        <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="-1">−</button>
+                        <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="1">+</button>
+                    </div>
                     <div class="multi-entry-amount-wrap">
                         <span class="multi-entry-amount-prefix">${amountPrefix}</span>
-                        <input type="number" class="multi-entry-amount-input" value="${amtVal}" step="${amountStep}" min="0" data-level-id="${level.id}" data-field="amount">
+                        <input type="number" class="multi-entry-amount-input" id="multiEntryAmount_${level.id}" value="${amtVal}" step="${amountStep}" min="0" data-level-id="${level.id}" data-field="amount">
+                        <button type="button" class="input-stepper" data-target="multiEntryAmount_${level.id}" data-step="${amountStepNeg}">−</button>
+                        <button type="button" class="input-stepper" data-target="multiEntryAmount_${level.id}" data-step="${amountStepPos}">+</button>
                     </div>
                     ${deleteBtnHtml}
                 </div>
