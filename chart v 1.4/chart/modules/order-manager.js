@@ -16501,66 +16501,6 @@ class OrderManager {
         }
     }
 
-    /** Left edge X of pending entry label box (same chart) — TP/SL pack flush to the left of this. */
-    _getPendingEntryLabelLeftX(chart, orderId) {
-        const ol = (this.orderLines || []).find(
-            (o) => o.orderId === orderId && o.isPending && (o.chart || this.chart) === chart
-        );
-        if (!ol?.labelBox) return null;
-        const x = parseFloat(ol.labelBox.attr('x'));
-        return Number.isFinite(x) ? x : null;
-    }
-
-    /**
-     * Pack TP/SL immediately left of the STOP/LIMIT entry pill; BE left of that chain.
-     * Falls back to margin-right anchor when entry geometry is not available yet.
-     */
-    _computePendingPackTranslateXs(chart, entry, marginRight) {
-        const n = entry.targets.length;
-        const xs = new Array(n);
-        const entryLeft = this._getPendingEntryLabelLeftX(chart, entry.orderId);
-        const packGap = 6;
-
-        const packableIndices = [];
-        entry.targets.forEach((t, i) => {
-            if (t.type === 'TP' || t.type === 'SL') packableIndices.push(i);
-        });
-
-        if (entryLeft != null && packableIndices.length) {
-            let cursor = entryLeft - packGap;
-            for (let k = packableIndices.length - 1; k >= 0; k--) {
-                const i = packableIndices[k];
-                const w = entry.targets[i].labelDimensions?.width ?? 0;
-                cursor -= w;
-                xs[i] = cursor;
-                cursor -= packGap;
-            }
-        }
-
-        const beIndex = entry.targets.findIndex((t) => t.type === 'BE');
-        if (beIndex >= 0 && entryLeft != null && packableIndices.length) {
-            let leftmost = entryLeft - packGap;
-            for (let k = packableIndices.length - 1; k >= 0; k--) {
-                const i = packableIndices[k];
-                const w = entry.targets[i].labelDimensions?.width ?? 0;
-                leftmost -= w;
-                if (k > 0) leftmost -= packGap;
-            }
-            const bw = entry.targets[beIndex].labelDimensions?.width ?? 0;
-            xs[beIndex] = leftmost - packGap - bw;
-        }
-
-        for (let i = 0; i < n; i++) {
-            if (xs[i] == null) {
-                const t = entry.targets[i];
-                const w = t.labelDimensions?.width ?? 80;
-                xs[i] = chart.w - w - marginRight;
-            }
-            xs[i] = Math.max(0, xs[i]);
-        }
-        return xs;
-    }
-
     positionPendingOrderTargets(sourceChart) {
         if (sourceChart === undefined && this._isMultiPanelLayout()) {
             this._collectLayoutCharts().forEach((c) => {
@@ -16580,11 +16520,9 @@ class OrderManager {
 
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
-
             entry.targets.forEach((target) => {
                 const y = ch.scales.yScale(target.price);
                 const isDraggable = (target.type === 'TP' || target.type === 'SL');
-                target._layoutY = y;
 
                 target.line
                     .attr('x1', 0)
@@ -16649,27 +16587,13 @@ class OrderManager {
                     .attr('y', labelHeight / 2)
                     .attr('text-anchor', 'middle')
                     .attr('dy', '0.35em');
-            });
 
-            const translateXs = this._computePendingPackTranslateXs(ch, entry, marginRight);
-
-            entry.targets.forEach((target, ti) => {
-                const y = target._layoutY;
-                const isDraggable = (target.type === 'TP' || target.type === 'SL');
-                const translateX = translateXs[ti];
-                const labelHeight = target.labelDimensions.height;
+                const translateX = ch.w - labelWidth - marginRight;
                 const translateY = y - labelHeight / 2;
-                const bgColor = target.type === 'TP' ? '#22c55e'
-                    : target.type === 'SL' ? '#f23645'
-                    : '#f59e0b';
-
-                target.labelGroup
+                labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
                 target.line.attr('x2', Math.max(0, translateX));
-                if (target.hitLine) {
-                    target.hitLine.attr('x1', 0).attr('x2', ch.w);
-                }
 
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
                     this.makePendingTargetDraggable(target, entry.pendingOrder, ch);
