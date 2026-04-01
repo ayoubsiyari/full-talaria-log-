@@ -11570,6 +11570,13 @@ class OrderManager {
                     self.calculateAdvancedRiskReward();
                     self.updatePlaceButtonText();
                 });
+
+                // Weighted avg entry line: live sync when any Entry# leg moves (full redraw is skipped during drag)
+                if (self.isMultiEntryMode && self.multiEntryLevels && self.multiEntryLevels.length > 1 &&
+                    self.previewLines?.multiEntryAvg && lineData.label &&
+                    (lineData.label === 'Entry' || lineData.label.startsWith('Entry#'))) {
+                    self._syncMultiEntryAvgPreviewFromLevels();
+                }
                 
                 // ALWAYS do an immediate (non-throttled) calculation for first-drag feedback
                 // This ensures values show immediately, throttled version provides smooth updates
@@ -11583,6 +11590,13 @@ class OrderManager {
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
+
+                // Full preview refresh so Avg Entry line and all legs stay consistent after drag
+                if (self.isMultiEntryMode && self.multiEntryLevels && self.multiEntryLevels.length > 1 &&
+                    lineData.label &&
+                    (lineData.label === 'Entry' || lineData.label.startsWith('Entry#'))) {
+                    self.updatePreviewLines();
+                }
                 
                 // Clean up temporary indicators
                 if (lineData.pipIndicator) {
@@ -12528,6 +12542,46 @@ class OrderManager {
         const totalWeightedPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
         const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
         return totalAmount > 0 ? totalWeightedPrice / totalAmount : 0;
+    }
+
+    /**
+     * Move the multi-entry weighted-average preview line to match panel Avg Entry (live during drags).
+     * Full redraw is skipped while dragging; this keeps the avg line in sync with level moves.
+     */
+    _syncMultiEntryAvgPreviewFromLevels() {
+        if (!this.previewLines?.multiEntryAvg || !this.chart?.scales?.yScale) return;
+        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length < 2) return;
+        const avgPx = this._calcMultiEntryAvgPrice();
+        if (!avgPx || avgPx <= 0) return;
+        const m = this.previewLines.multiEntryAvg;
+        m.price = avgPx;
+        const avgY = this.chart.scales.yScale(avgPx);
+        if (m.line) {
+            m.line.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
+        }
+        if (m.hitLine) {
+            m.hitLine.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
+        }
+        this.renderPreviewLabel(m, avgY);
+        this.adjustPreviewLineForLabel(m);
+        if (m.yAxisHighlight) {
+            const priceText = this.formatPrice(avgPx);
+            const textSel = m.yAxisHighlight.select('.y-axis-price-text');
+            if (!textSel.empty()) textSel.text(priceText);
+            const textNode = textSel.node();
+            const height = 24;
+            let width = 60;
+            if (textNode && typeof textNode.getBBox === 'function') {
+                const textBBox = textNode.getBBox();
+                width = Math.max(textBBox.width + 20, 60);
+            }
+            m.yAxisHighlight.select('rect').attr('width', width);
+            textSel.attr('x', width / 2);
+            const rightMargin = this.chart.margin?.r || 70;
+            const x = this.chart.w - rightMargin + 2;
+            m.yAxisHighlight.attr('transform', `translate(${x}, ${avgY - height / 2})`);
+        }
+        this.scheduleAlignPreviewLabels();
     }
 
     /**
