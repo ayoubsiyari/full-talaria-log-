@@ -10506,7 +10506,13 @@ class OrderManager {
         // Draw entry price preview line (dashed blue/red) - now draggable!
         const entryColor = this.orderSide === 'BUY' ? '#2962ff' : '#f23645';
         const mainEntryPercent = this.getMainEntryPercentage();
-        const mainEntryLabel = this.splitEntriesEnabled ? `Entry (${mainEntryPercent}%)` : 'Entry';
+        let mainEntryLabel = 'Entry';
+        if (this.isMultiEntryMode && this.splitEntriesEnabled) {
+            // Multi-entry mode: main entry is #1, same style as other levels
+            mainEntryLabel = `Entry#1:${this.orderType || 'market'}`;
+        } else if (this.splitEntriesEnabled) {
+            mainEntryLabel = `Entry (${mainEntryPercent}%)`;
+        }
         this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true);
         
         // Draw split entry lines if any — using same style as main Entry
@@ -11823,10 +11829,8 @@ class OrderManager {
                     level[field] = parseFloat(e.target.value) || 0;
                     this.updateMultiEntrySummary();
                     this.syncMultiEntryToSplitEntries();
-                    // Re-render info rows (percentages change when amounts change)
-                    if (field === 'amount') {
-                        this.renderMultiEntryRows();
-                    }
+                    // Update info rows in-place (no DOM rebuild, keeps focus)
+                    this._updateMultiEntryInfoRows();
                 }
             });
         });
@@ -11839,6 +11843,23 @@ class OrderManager {
         });
 
         this.updateMultiEntrySummary();
+    }
+
+    /**
+     * Update info rows (percentages/contracts) in-place without rebuilding DOM
+     */
+    _updateMultiEntryInfoRows() {
+        const container = document.getElementById('multiEntryRows');
+        if (!container) return;
+        const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+        const infoEls = container.querySelectorAll('.multi-entry-row-info');
+        this.multiEntryLevels.forEach((level, idx) => {
+            if (infoEls[idx]) {
+                const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
+                const contracts = level.price > 0 ? (level.amount / (level.price * 100)).toFixed(2) : '0.00';
+                infoEls[idx].innerHTML = `<span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${contracts} Contracts`;
+            }
+        });
     }
 
     /**
@@ -11864,8 +11885,8 @@ class OrderManager {
             amount: avgAmount
         });
 
-        this.renderMultiEntryRows();
-        this.syncMultiEntryToSplitEntries();
+        // Auto-equalize amounts across all levels
+        this.equalizeMultiEntryAmounts();
     }
 
     /**
@@ -11878,8 +11899,8 @@ class OrderManager {
             return;
         }
         this.multiEntryLevels = this.multiEntryLevels.filter(l => l.id !== id);
-        this.renderMultiEntryRows();
-        this.syncMultiEntryToSplitEntries();
+        // Auto-equalize amounts across remaining levels
+        this.equalizeMultiEntryAmounts();
     }
 
     /**
@@ -12188,17 +12209,13 @@ class OrderManager {
                 
                 if (isEntryLine && self.isMultiEntryMode) {
                     // Multi-entry mode: add new level to panel and sync
-                    const riskAmount = parseFloat(document.getElementById('riskAmount')?.value) || 0;
-                    const avgAmount = self.multiEntryLevels.length > 0
-                        ? Math.round(self.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0) / self.multiEntryLevels.length)
-                        : (riskAmount > 0 ? Math.round(riskAmount / 2) : 40);
                     self.multiEntryLevels.push({
                         id: Date.now(),
                         price: parseFloat(newPrice.toFixed(5)),
-                        amount: avgAmount
+                        amount: 0
                     });
-                    self.renderMultiEntryRows();
-                    self.syncMultiEntryToSplitEntries();
+                    // Equalize amounts across all levels (includes render + sync)
+                    self.equalizeMultiEntryAmounts();
                     self.showNotification(`Entry level added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isEntryLine) {
                     // Legacy split entry
