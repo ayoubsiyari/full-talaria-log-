@@ -10389,7 +10389,7 @@ class OrderManager {
         let isDragging = false;
         let dragStartTime = 0;
         let frameId = null;
-        const dragRightNudge = 60;
+        const dragRightNudge = 80;
         let dragXNudgeApplied = false;
         const applyDragRightNudge = () => {
             if (!lineData?.labelGroup) return;
