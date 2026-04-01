@@ -143,6 +143,8 @@ class OrderManager {
         this.splitEntries = []; // Array of { id, price, percentage, lineData }
         this.splitEntryIdCounter = 1;
         this.splitEntriesEnabled = false; // Tracks if we have split entries active
+        /** Multi-entry: selected row shows per-level SL risk/lots; null = aggregate (order panel total). */
+        this.activeMultiEntryLevelId = null;
         this.isPopulatingOrderPanel = false;
         this.tpLastSyncedEntryPrice = null;
         this.tpDistributionMode = 'amount'; // percent, amount, or lots (synced with positionSizeMode: risk-usd)
@@ -6637,8 +6639,13 @@ class OrderManager {
                 .multi-entry-row {
                     padding: 6px 8px;
                     border-bottom: 1px solid var(--om-b);
+                    cursor: pointer;
                 }
                 .multi-entry-row:last-child { border-bottom: none; }
+                .multi-entry-row--active {
+                    background: rgba(38, 67, 247, 0.08);
+                    box-shadow: inset 3px 0 0 rgba(38, 67, 247, 0.55);
+                }
                 .multi-entry-row-inputs {
                     display: grid;
                     grid-template-columns: 1fr 80px 24px;
@@ -6836,6 +6843,10 @@ class OrderManager {
                     background: rgba(201, 168, 76, 0.12) !important;
                     border-color: rgba(201, 168, 76, 0.4) !important;
                     color: #b8922a !important;
+                }
+                body.light-mode .multi-entry-row--active {
+                    background: rgba(38, 67, 247, 0.06) !important;
+                    box-shadow: inset 3px 0 0 rgba(38, 67, 247, 0.45) !important;
                 }
                 body.light-mode .multi-entry-summary {
                     background: rgba(38, 67, 247, 0.05) !important;
@@ -9472,8 +9483,11 @@ class OrderManager {
         this._syncPipFromActiveSymbolIfNeeded();
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        
-        if (!entryPrice) {
+        const multiAvg = (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0)
+            ? this._calcMultiEntryAvgPrice()
+            : 0;
+
+        if (!entryPrice && !(multiAvg > 0)) {
             const spd = document.getElementById('slPipsDisplay');
             const sqd = document.getElementById('slQuantityDisplay');
             if (spd) spd.textContent = '—';
@@ -9513,24 +9527,96 @@ class OrderManager {
                 tpPrice = tpPriceInput;
             }
         }
+
+        let effectiveEntryForReward = entryPrice > 0 ? entryPrice : multiAvg;
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const activeLvl = this.activeMultiEntryLevelId != null
+                ? this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId)
+                : null;
+            if (activeLvl && activeLvl.price > 0) {
+                effectiveEntryForReward = activeLvl.price;
+            } else if (multiAvg > 0) {
+                effectiveEntryForReward = multiAvg;
+            }
+        }
         
         // Check if TP is actually set (different from entry price)
         // Use a small epsilon for floating point comparison
-        const tpDistance = Math.abs(entryPrice - tpPrice);
+        const tpDistance = Math.abs(effectiveEntryForReward - tpPrice);
         // Half-pip minimum, but cap the requirement so a mis-set pipSize (e.g. futures tick
         // left in localStorage while trading forex) does not make every TP/SL "invalid" and
         // force Reward/Risk to display as ∞.
         const halfPip = (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001) * 0.5;
-        const maxMinDistance = Math.max(Math.abs(entryPrice) * 1e-4, 1e-12);
+        const maxMinDistance = Math.max(Math.abs(effectiveEntryForReward) * 1e-4, 1e-12);
         const minDistance = Math.min(halfPip, maxMinDistance);
         const hasValidTP = tpEnabled && tpPrice > 0 && tpDistance > minDistance;
-        
-        const { hasValidSL, slDistance, risk } = this._getOrderPanelSlRiskContext(entryPrice, quantity, minDistance);
+
+        // Single-entry / fallback: use main entry field. Multi-entry: avg when nothing selected,
+        // selected leg price when a row is active (matches SL card + order risk after overrides below).
+        let slContextEntry = entryPrice || effectiveEntryForReward;
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const pickActive = this.activeMultiEntryLevelId != null
+                ? this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId)
+                : null;
+            if (pickActive && pickActive.price > 0) slContextEntry = pickActive.price;
+            else if (multiAvg > 0) slContextEntry = multiAvg;
+        }
+
+        let { hasValidSL, slDistance, risk } = this._getOrderPanelSlRiskContext(slContextEntry, quantity, minDistance);
+
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const slEn = document.getElementById('enableSL')?.checked;
+            const activeLvl = this.activeMultiEntryLevelId != null
+                ? this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId)
+                : null;
+            const refEntry = (activeLvl && activeLvl.price > 0)
+                ? activeLvl.price
+                : (multiAvg > 0 ? multiAvg : (entryPrice || 0));
+
+            if (refEntry > 0 && slEn && slPx > 0) {
+                const d = Math.abs(refEntry - slPx);
+                let dirOk = true;
+                if (this.orderSide === 'BUY') dirOk = slPx < refEntry;
+                else dirOk = slPx > refEntry;
+                hasValidSL = d > minDistance && dirOk;
+                slDistance = d;
+            } else {
+                hasValidSL = false;
+                slDistance = 0;
+            }
+
+            if (activeLvl && activeLvl.price > 0) {
+                risk = this._getMultiEntryLevelRiskUsd(activeLvl);
+            } else {
+                if (this.positionSizeMode === 'lot-size') {
+                    risk = this.multiEntryLevels.reduce((sum, l) => sum + this._getMultiEntryLevelRiskUsd(l), 0);
+                } else if (this.positionSizeMode === 'risk-usd') {
+                    risk = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+                } else if (this.positionSizeMode === 'risk-percent') {
+                    const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+                    const bt = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                    const bal = bt === 'current' ? this.balance : this.initialBalance;
+                    risk = (bal * rp) / 100;
+                }
+            }
+        }
         
         // Reward: use MarketCalculationEngine (same as chart TP/SL labels) so JPY / cross / tick
         // specs match position sizing; manual pipSize×pipValue can be wrong and inflate $ reward.
         let reward = 0;
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
+
+        let qtyForReward = quantity;
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0 && this.activeMultiEntryLevelId != null) {
+            const al = this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId);
+            if (al && al.price > 0) {
+                const slPxR = parseFloat(document.getElementById('slPrice')?.value || 0);
+                const pipR = this.pipSize || 0.0001;
+                const pvR = this.pipValuePerLot || 10;
+                qtyForReward = parseFloat(this._calcLevelLotSize(al, slPxR, pipR, pvR)) || 0;
+            }
+        }
         
         if (tpEnabled) {
             if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
@@ -9542,23 +9628,23 @@ class OrderManager {
                         const tpPx = Number.parseFloat(target.price);
                         let priceDiff;
                         if (this.orderSide === 'BUY') {
-                            priceDiff = tpPx - entryPrice;
+                            priceDiff = tpPx - effectiveEntryForReward;
                         } else {
-                            priceDiff = entryPrice - tpPx;
+                            priceDiff = effectiveEntryForReward - tpPx;
                         }
                         
                         if (priceDiff > 0) {
                             let partialReward = 0;
                             if (this.tpDistributionMode === 'percent') {
-                                const partialQuantity = quantity * (target.percentage / 100);
+                                const partialQuantity = qtyForReward * (target.percentage / 100);
                                 partialReward = Math.max(0, this.estimatePnLForPriceLevel(
-                                    this.orderSide, entryPrice, tpPx, partialQuantity));
+                                    this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
                             } else if (this.tpDistributionMode === 'amount') {
                                 partialReward = target.percentage;
                                 console.log(`      Amount mode: partialReward = ${partialReward}`);
                             } else if (this.tpDistributionMode === 'lots') {
                                 partialReward = Math.max(0, this.estimatePnLForPriceLevel(
-                                    this.orderSide, entryPrice, tpPx, target.percentage));
+                                    this.orderSide, effectiveEntryForReward, tpPx, target.percentage));
                             }
                             
                             reward += partialReward;
@@ -9570,14 +9656,14 @@ class OrderManager {
             } else if (tpPrice > 0) {
                 let priceDiff;
                 if (this.orderSide === 'BUY') {
-                    priceDiff = tpPrice - entryPrice;
+                    priceDiff = tpPrice - effectiveEntryForReward;
                 } else {
-                    priceDiff = entryPrice - tpPrice;
+                    priceDiff = effectiveEntryForReward - tpPrice;
                 }
                 
                 if (priceDiff > 0) {
                     reward = Math.max(0, this.estimatePnLForPriceLevel(
-                        this.orderSide, entryPrice, tpPrice, quantity));
+                        this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward));
                 }
             }
         }
@@ -9748,7 +9834,7 @@ class OrderManager {
                     distText = `${dist.toFixed(cfg.symbolPrecision ?? 5)} pts`;
                 }
                 slPipsDisplay.textContent = distText;
-                slQuantityDisplay.textContent = `${quantity.toFixed(2)} ${cfg.positionLabel}`;
+                slQuantityDisplay.textContent = `${qtyForReward.toFixed(2)} ${cfg.positionLabel}`;
                 if (modeSL === 'lot-size' && slRiskUsdDisplay && slRiskPctDisplay) {
                     const rOk = risk > 0 && Number.isFinite(risk);
                     slRiskUsdDisplay.textContent = rOk ? `$${risk.toFixed(2)}` : '$0.00';
@@ -11817,6 +11903,7 @@ class OrderManager {
             toggleBtn.classList.add('active');
             if (singleMode) singleMode.style.display = 'none';
             if (multiMode) multiMode.style.display = 'block';
+            this.activeMultiEntryLevelId = null;
 
             // If no levels yet, seed with the current entry price as level 1
             if (this.multiEntryLevels.length === 0) {
@@ -11860,6 +11947,7 @@ class OrderManager {
             toggleBtn.classList.remove('active');
             if (singleMode) singleMode.style.display = 'block';
             if (multiMode) multiMode.style.display = 'none';
+            this.activeMultiEntryLevelId = null;
 
             // Sync the avg entry back to the single entry field
             if (this.multiEntryLevels.length > 0) {
@@ -11915,7 +12003,7 @@ class OrderManager {
                 : level.amount || '';
 
             const row = document.createElement('div');
-            row.className = 'multi-entry-row';
+            row.className = 'multi-entry-row' + (this.activeMultiEntryLevelId === level.id ? ' multi-entry-row--active' : '');
             row.innerHTML = `
                 <div class="multi-entry-row-inputs">
                     <input type="number" class="multi-entry-row-input" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price">
@@ -11930,6 +12018,17 @@ class OrderManager {
                 </div>
             `;
             container.appendChild(row);
+
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('input') || e.target.closest('button')) return;
+                if (this.activeMultiEntryLevelId === level.id) {
+                    this.activeMultiEntryLevelId = null;
+                } else {
+                    this.activeMultiEntryLevelId = level.id;
+                }
+                this.renderMultiEntryRows();
+                this.calculateAdvancedRiskReward();
+            });
         });
 
         // Wire up events for new rows
@@ -12301,6 +12400,7 @@ class OrderManager {
             this.toggleEntryMode(); // Back to single
             return;
         }
+        if (this.activeMultiEntryLevelId === id) this.activeMultiEntryLevelId = null;
         this.multiEntryLevels = this.multiEntryLevels.filter(l => l.id !== id);
         // Auto-equalize amounts across remaining levels
         this.equalizeMultiEntryAmounts();
@@ -12340,6 +12440,7 @@ class OrderManager {
             this.multiEntryLevels.forEach(l => { l.amount = equalAmount; });
         }
 
+        this.activeMultiEntryLevelId = null;
         this._rebalanceLevelAmountsToTarget();
         this.renderMultiEntryRows();
         this.syncMultiEntryToSplitEntries();
