@@ -7474,7 +7474,7 @@ class OrderManager {
             }
         } else {
             // Entry line label - positioned left with more space from price axis
-            x = this.chart.w - bbox.width - 110; // Space from price axis to avoid overlap with price label
+            x = this.chart.w - bbox.width - 145; // Space from price axis to avoid overlap with price label
         }
         
         let yPixel;
@@ -12029,7 +12029,7 @@ class OrderManager {
 
         const orderPriority = { 'Entry': 0, 'SL': 1, 'TP': 2 };
         const gap = 28;
-        const marginRight = 110; // margin from right edge for preview labels
+        const marginRight = 145; // margin from right edge for preview labels
 
         buckets.forEach(bucket => {
             const items = bucket.items;
@@ -12174,7 +12174,7 @@ class OrderManager {
         const mEntry = /translate\(([^,]+),/.exec(trEntry);
         const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
         // Keep connector on the right side near the entry tag.
-        const connectorPadRight = 85; // px past entry label — nudge toward axis, away from badges
+        const connectorPadRight = 50; // px past entry label — nudge toward axis, away from badges
         const anchorX = Number.isFinite(entryX)
             ? Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + connectorPadRight))
             : Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
