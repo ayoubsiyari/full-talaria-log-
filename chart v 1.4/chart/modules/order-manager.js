@@ -11740,10 +11740,14 @@ class OrderManager {
                     price: currentPrice,
                     amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
                 });
-                // Add a second empty level
+                // Add a second level offset slightly from main entry
+                const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
+                const secondPrice = currentPrice > 0
+                    ? parseFloat((currentPrice * (1 + offsetDir * 0.001)).toFixed(5))
+                    : 0;
                 this.multiEntryLevels.push({
                     id: this.multiEntryIdCounter++,
-                    price: 0,
+                    price: secondPrice,
                     amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
                 });
             }
