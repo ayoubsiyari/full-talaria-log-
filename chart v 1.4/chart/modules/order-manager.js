@@ -11626,13 +11626,16 @@ class OrderManager {
                 // Final calculation and update
                 self.calculateAdvancedRiskReward();
                 self.updatePlaceButtonText();
-                
-                // Update Entry label one final time to ensure lot size is correct
-                if (self.previewLines.entry && (lineData.label === 'Entry' || lineData.label === 'SL')) {
+
+                // Full preview redraw after drag. While dragging, updatePreviewLines() is skipped, so
+                // multi-entry "below min lot" fade + place button state would stay stale; Entry#1 / Entry#N
+                // labels were also never covered by the old Entry-only renderPreviewLabel path.
+                if (typeof requestAnimationFrame === 'function') {
                     requestAnimationFrame(() => {
-                        const entryY = self.chart.scales.yScale(self.previewLines.entry.price);
-                        self.renderPreviewLabel(self.previewLines.entry, entryY);
+                        self.updatePreviewLines();
                     });
+                } else {
+                    self.updatePreviewLines();
                 }
                 
                 const dragDuration = Date.now() - dragStartTime;
@@ -12420,7 +12423,8 @@ class OrderManager {
             return true;
         }
         const lots = this._calcLevelLotSizeNumeric(level, slPrice, pipSize, pipValue);
-        return Number.isFinite(lots) && lots >= minLot - 1e-10;
+        // Loose epsilon so pip/risk division noise does not keep lines "invalid" after drag when UI shows e.g. 0.02
+        return Number.isFinite(lots) && lots >= minLot - 1e-6;
     }
 
     /** True if any priced level is below minimum lot (disables place + hides that level's chart line). */
