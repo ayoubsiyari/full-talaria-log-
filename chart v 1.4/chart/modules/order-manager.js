@@ -1387,171 +1387,6 @@ class OrderManager {
         lotRisk.classList.toggle('is-hidden', !isLot);
     }
 
-    /** Multi-entry column header + input adorners for current position sizing mode. */
-    _syncMultiEntryAmountColLabel() {
-        const el = document.getElementById('multiEntryAmountColLabel');
-        if (!el) return;
-        const mode = this.positionSizeMode || 'risk-usd';
-        if (mode === 'risk-usd') el.textContent = 'Amount ($)';
-        else if (mode === 'risk-percent') el.textContent = 'Risk %';
-        else el.textContent = 'Lots';
-    }
-
-    /**
-     * Dollar risk at a multi-entry level for the given mode (`level.amount` semantics differ per mode).
-     * @param {{ amount?: number, price?: number }} level
-     * @param {string} [mode]
-     * @returns {number}
-     */
-    _multiEntryRiskUsdForLevel(level, mode) {
-        const m = mode || this.positionSizeMode || 'risk-usd';
-        const pipSize = this.pipSize || 0.0001;
-        const pipValue = this.pipValuePerLot || 10;
-        const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const slPips = level.price > 0 && sl > 0 ? Math.abs(level.price - sl) / pipSize : 0;
-        if (m === 'risk-usd') {
-            return Math.max(0, level.amount || 0);
-        }
-        if (m === 'risk-percent') {
-            const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-            const balance = balanceType === 'current' ? this.balance : this.initialBalance;
-            return (Math.max(0, balance) * (level.amount || 0)) / 100;
-        }
-        if (m === 'lot-size') {
-            if (slPips <= 0) return 0;
-            return (level.amount || 0) * slPips * pipValue;
-        }
-        return 0;
-    }
-
-    /**
-     * Set `level.amount` from a target dollar risk for the active mode.
-     * @param {{ amount?: number, price?: number }} level
-     * @param {number} riskUsd
-     * @param {string} [mode]
-     */
-    _setLevelAmountFromRiskUsd(level, riskUsd, mode) {
-        const m = mode || this.positionSizeMode || 'risk-usd';
-        const r = Math.max(0, riskUsd);
-        if (m === 'risk-usd') {
-            level.amount = parseFloat(r.toFixed(2));
-            return;
-        }
-        if (m === 'risk-percent') {
-            const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-            const balance = balanceType === 'current' ? this.balance : this.initialBalance;
-            level.amount = balance > 0 ? parseFloat(((r / balance) * 100).toFixed(2)) : 0;
-            return;
-        }
-        if (m === 'lot-size') {
-            const pipSize = this.pipSize || 0.0001;
-            const pipValue = this.pipValuePerLot || 10;
-            const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
-            const slPips = level.price > 0 && sl > 0 ? Math.abs(level.price - sl) / pipSize : 0;
-            level.amount = slPips > 0 ? parseFloat((r / (slPips * pipValue)).toFixed(2)) : 0;
-        }
-    }
-
-    /** When switching Risk $ / % / Lot size, convert stored multi-entry amounts so risk stays consistent. */
-    _syncMultiEntryLevelsToPositionMode(prevMode) {
-        if (!this.multiEntryLevels || this.multiEntryLevels.length === 0) return;
-        const next = this.positionSizeMode || 'risk-usd';
-        if (!prevMode || prevMode === next) return;
-        this.multiEntryLevels.forEach((level) => {
-            const ru = this._multiEntryRiskUsdForLevel(level, prevMode);
-            this._setLevelAmountFromRiskUsd(level, ru, next);
-        });
-    }
-
-    _formatMultiEntryAmountCell(val, mode) {
-        const m = mode || this.positionSizeMode || 'risk-usd';
-        const v = Math.max(0, val);
-        if (m === 'risk-percent') return parseFloat(v.toFixed(2));
-        if (m === 'lot-size') return parseFloat(v.toFixed(2));
-        return parseFloat(v.toFixed(2));
-    }
-
-    /**
-     * Total size (lots/contracts) across multi-entry rows from each row's amount and distance to SL.
-     * Does not use a single entry-vs-SL distance for the whole order — panel amounts stay user-controlled.
-     */
-    _computeMultiEntryTotalLots() {
-        if (!this.multiEntryLevels || this.multiEntryLevels.length === 0) return 0;
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const pipSize = this.pipSize || 0.0001;
-        const pipValue = this.pipValuePerLot || 10;
-        const mode = this.positionSizeMode || 'risk-usd';
-        let totalLots = 0;
-        for (const l of this.multiEntryLevels) {
-            if (mode === 'lot-size') {
-                totalLots += (l.amount || 0);
-            } else if (l.price > 0 && slPrice > 0) {
-                const slPips = Math.abs(l.price - slPrice) / pipSize;
-                if (slPips > 0) {
-                    const ru = this._multiEntryRiskUsdForLevel(l, mode);
-                    totalLots += ru / (slPips * pipValue);
-                }
-            }
-        }
-        return totalLots;
-    }
-
-    /**
-     * Worst-case fill in the ladder for one shared SL beyond the whole cluster:
-     * BUY → lowest entry; SELL → highest entry.
-     */
-    _getMultiEntryEntryAnchorPrice() {
-        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length === 0) return null;
-        const prices = this.multiEntryLevels.map(l => l.price).filter(p => p > 0);
-        if (prices.length === 0) return null;
-        const side = (this.orderSide || 'BUY').toUpperCase();
-        return side === 'SELL' ? Math.max(...prices) : Math.min(...prices);
-    }
-
-    /**
-     * Single SL for all multiple entries: default SL = anchor ± 10 pips (same as single-entry defaults).
-     * Panel risk ($ / % / lots) still drives sizing; this only sets the shared SL price level.
-     */
-    _applyMultiEntryStopLossDefault() {
-        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length === 0) return;
-        if (!document.getElementById('enableSL')?.checked) return;
-        const anchor = this._getMultiEntryEntryAnchorPrice();
-        if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) return;
-        const slInput = document.getElementById('slPrice');
-        if (!slInput) return;
-
-        const side = (this.orderSide || 'BUY').toUpperCase();
-        const pipSize = this.pipSize || 0.0001;
-        const defaultSteps = 10;
-        const offset = pipSize * defaultSteps;
-        const slDefault = side === 'SELL' ? (anchor + offset) : (anchor - offset);
-        const precision = this.getPricePrecision(anchor);
-        slInput.value = slDefault.toFixed(precision);
-        this.slLastSyncedEntryPrice = null;
-    }
-
-    /**
-     * Pending orders in the same split-entry ladder (shared SL / targets on chart).
-     * @returns {Array|null} sorted by splitIndex, or null if not in a split group
-     */
-    _getPendingSplitGroupOrders(pendingOrder) {
-        if (!pendingOrder?.splitGroupId) return null;
-        const list = Array.isArray(this.pendingOrders) ? this.pendingOrders : [];
-        const group = list.filter((o) => o.splitGroupId === pendingOrder.splitGroupId);
-        if (group.length === 0) return null;
-        return group.sort((a, b) => (Number(a.splitIndex) || 0) - (Number(b.splitIndex) || 0));
-    }
-
-    /**
-     * Only the lowest splitIndex leg draws TP/SL/BE horizontals so multi-entry shows one SL for the whole ladder.
-     */
-    _isPrimarySplitPendingForChartTargets(pendingOrder) {
-        const group = this._getPendingSplitGroupOrders(pendingOrder);
-        if (!group || group.length <= 1) return true;
-        const minIdx = Math.min(...group.map((o) => Number(o.splitIndex) || 999));
-        return (Number(pendingOrder.splitIndex) || 999) === minIdx;
-    }
-
     /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
@@ -6849,13 +6684,6 @@ class OrderManager {
                     font-weight: 600;
                     flex-shrink: 0;
                 }
-                .multi-entry-amount-suffix {
-                    padding: 0 6px 0 2px;
-                    font-size: 10px;
-                    color: var(--om-dim);
-                    font-weight: 600;
-                    flex-shrink: 0;
-                }
                 .multi-entry-amount-input {
                     width: 100%;
                     background: transparent;
@@ -7204,7 +7032,7 @@ class OrderManager {
                         <div class="multi-entry-container">
                             <div class="multi-entry-columns">
                                 <span class="multi-entry-col-label">Price level</span>
-                                <span class="multi-entry-col-label" id="multiEntryAmountColLabel">Amount ($)</span>
+                                <span class="multi-entry-col-label">Amount</span>
                                 <span></span>
                             </div>
                             <div class="multi-entry-rows" id="multiEntryRows">
@@ -8632,14 +8460,7 @@ class OrderManager {
         document.querySelectorAll('.position-mode-tab').forEach(tab => {
             tab.onclick = () => {
                 const mode = tab.dataset.mode;
-                const prevMode = this.positionSizeMode;
                 this.positionSizeMode = mode;
-
-                if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-                    this._syncMultiEntryLevelsToPositionMode(prevMode);
-                    this.renderMultiEntryRows();
-                }
-                this._syncMultiEntryAmountColLabel();
                 
                 // Update tab styling
                 document.querySelectorAll('.position-mode-tab').forEach(t => {
@@ -9450,22 +9271,6 @@ class OrderManager {
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
-
-        // Multiple entry: quantity = sum of per-level lots from row amounts × each price vs SL (panel risk is fixed; amounts are not recomputed when prices move)
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const totalLots = this._computeMultiEntryTotalLots();
-            const qtyInput = document.getElementById('orderQuantity');
-            if (qtyInput) {
-                qtyInput.value = Number.isFinite(totalLots) ? totalLots.toFixed(2) : '0';
-            }
-            this._applyCalculatedReadout(this._getCalculatedReadoutParts());
-            requestAnimationFrame(() => {
-                this.updatePreviewLines();
-            });
-            this.updatePlaceButtonText();
-            this.calculateAdvancedRiskReward();
-            return;
-        }
         
         // For lot-size mode, we don't need SL to set position size
         if (this.positionSizeMode === 'lot-size') {
@@ -10431,7 +10236,9 @@ class OrderManager {
         const defaultSteps = 10;
         const offset = pipSize * defaultSteps;
         const tpDefault = side === 'SELL' ? (entryPrice - offset) : (entryPrice + offset);
+        const slDefault = side === 'SELL' ? (entryPrice + offset) : (entryPrice - offset);
         const tpFormatted = tpDefault.toFixed(precision);
+        const slFormatted = slDefault.toFixed(precision);
 
         // TP syncing: sync to sensible default if NOT manually positioned
         if (tpPriceInput && !this.tpManuallyPositioned) {
@@ -10441,17 +10248,10 @@ class OrderManager {
             }
         }
 
-        // SL: one shared stop for multiple entries — anchor to worst-case fill (min BUY / max SELL)
-        const meAnchor = this._getMultiEntryEntryAnchorPrice();
-        const priceForSl = (meAnchor != null && Number.isFinite(meAnchor) && meAnchor > 0) ? meAnchor : entryPrice;
-        const precisionSl = this.getPricePrecision(priceForSl);
-        const slDefault = side === 'SELL' ? (priceForSl + offset) : (priceForSl - offset);
-        const slFormatted = slDefault.toFixed(precisionSl);
-        const anchorFormatted = priceForSl.toFixed(precisionSl);
-
+        // SL syncing: sync to sensible default if NOT manually positioned
         if (slPriceInput && !this.slManuallyPositioned) {
             const existing = String(slPriceInput.value || '').trim();
-            if (!existing || existing === entryFormatted || existing === anchorFormatted) {
+            if (!existing || existing === entryFormatted) {
                 slPriceInput.value = slFormatted;
             }
         }
@@ -11392,57 +11192,50 @@ class OrderManager {
                     if ((self.positionSizeMode === 'risk-usd' || self.positionSizeMode === 'risk-percent') && 
                         enableSL && slPrice > 0 && entryPrice > 0 && slPrice !== entryPrice) {
                         
+                        // Set flag to prevent updatePreviewLines() during drag
                         const wasDragging = self.isDraggingPreviewLine;
                         self.isDraggingPreviewLine = true;
                         
+                        // Calculate lot size directly using current prices
                         const riskPips = Math.abs(entryPrice - slPrice) / self.pipSize;
-                        const useMulti = self.isMultiEntryMode && self.multiEntryLevels && self.multiEntryLevels.length > 0;
                         
                         if (riskPips > 0) {
-                            if (!useMulti) {
-                                let riskAmount;
-                                if (self.positionSizeMode === 'risk-usd') {
-                                    riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 50);
-                                } else {
-                                    const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 1);
-                                    const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-                                    const balance = balanceType === 'current' ? self.balance : self.initialBalance;
-                                    riskAmount = (Math.max(0, balance) * riskPercent) / 100;
-                                }
-                                const lotSize = riskAmount / (riskPips * self.pipValuePerLot);
-                                const roundedLotSize = Math.round(lotSize * 100) / 100;
-                                const quantityInput = document.getElementById('orderQuantity');
-                                if (quantityInput) {
-                                    quantityInput.value = roundedLotSize.toFixed(2);
-                                }
+                            let riskAmount;
+                            if (self.positionSizeMode === 'risk-usd') {
+                                riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 50);
+                            } else {
+                                const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 1);
+                                riskAmount = (self.accountBalance || 100000) * (riskPercent / 100);
+                            }
+                            
+                            const lotSize = riskAmount / (riskPips * self.pipValuePerLot);
+                            const roundedLotSize = Math.round(lotSize * 100) / 100;
+                            
+                            // Update quantity input
+                            const quantityInput = document.getElementById('orderQuantity');
+                            if (quantityInput) {
+                                quantityInput.value = roundedLotSize.toFixed(2);
                             }
                             
                             self.calculatePositionFromRisk();
                         }
                         
+                        // Restore flag
                         self.isDraggingPreviewLine = wasDragging;
                         
+                        // Manually update Entry label to show new lot size
                         if (self.previewLines.entry) {
                             const entryY = self.chart.scales.yScale(self.previewLines.entry.price);
                             self.renderPreviewLabel(self.previewLines.entry, entryY);
                         }
                         
+                        // Update SL pips display
                         const slPipsDisplay = document.getElementById('slPipsDisplay');
                         if (slPipsDisplay) slPipsDisplay.textContent = `${riskPips.toFixed(1)} pips`;
                         
+                        // Update SL amount display
                         const slAmountDisplay = document.getElementById('slAmountDisplay');
-                        if (slAmountDisplay && riskPips > 0) {
-                            let riskAmount;
-                            if (self.positionSizeMode === 'risk-usd') {
-                                riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
-                            } else {
-                                const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
-                                const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-                                const balance = balanceType === 'current' ? self.balance : self.initialBalance;
-                                riskAmount = (Math.max(0, balance) * riskPercent) / 100;
-                            }
-                            slAmountDisplay.textContent = `$${riskAmount.toFixed(2)}`;
-                        }
+                        if (slAmountDisplay) slAmountDisplay.textContent = `$${riskAmount.toFixed(2)}`;
                     }
                     
                     // Also update TP calculations when Entry is dragged
@@ -11965,7 +11758,6 @@ class OrderManager {
             this.multiEntryIdCounter = 1;
             this.isMultiEntryMode = false;
         }
-        this._syncMultiEntryAmountColLabel();
     }
 
     /**
@@ -11985,51 +11777,24 @@ class OrderManager {
 
             // If no levels yet, seed with the current entry price as level 1
             if (this.multiEntryLevels.length === 0) {
-                const mode = this.positionSizeMode || 'risk-usd';
                 const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-                let totalRiskUsd = 0;
-                if (mode === 'risk-usd') {
-                    totalRiskUsd = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
-                } else if (mode === 'risk-percent') {
-                    const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || 1);
-                    const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-                    const balance = balanceType === 'current' ? this.balance : this.initialBalance;
-                    totalRiskUsd = (Math.max(0, balance) * rp) / 100;
-                } else {
-                    const lots = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
-                    const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
-                    const pipSize = this.pipSize || 0.0001;
-                    const pipValue = this.pipValuePerLot || 10;
-                    const slPips = currentPrice > 0 && sl > 0 ? Math.abs(currentPrice - sl) / pipSize : 0;
-                    totalRiskUsd = slPips > 0 ? lots * slPips * pipValue : 0;
-                }
-                const halfUsd = totalRiskUsd > 0 ? totalRiskUsd / 2 : 0;
+                const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
+                this.multiEntryLevels.push({
+                    id: this.multiEntryIdCounter++,
+                    price: currentPrice,
+                    amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
+                });
+                // Add a second level offset slightly from main entry
                 const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
                 const secondPrice = currentPrice > 0
                     ? parseFloat((currentPrice * (1 + offsetDir * 0.001)).toFixed(5))
                     : 0;
-                const lvl1 = { id: this.multiEntryIdCounter++, price: currentPrice, amount: 0 };
-                const lvl2 = { id: this.multiEntryIdCounter++, price: secondPrice, amount: 0 };
-                if (halfUsd > 0) {
-                    this._setLevelAmountFromRiskUsd(lvl1, halfUsd, mode);
-                    this._setLevelAmountFromRiskUsd(lvl2, halfUsd, mode);
-                } else if (mode === 'lot-size') {
-                    const lots = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
-                    const each = lots > 0 ? parseFloat((lots / 2).toFixed(2)) : 0.5;
-                    lvl1.amount = each;
-                    lvl2.amount = each;
-                } else if (mode === 'risk-percent') {
-                    lvl1.amount = 0.5;
-                    lvl2.amount = 0.5;
-                } else {
-                    lvl1.amount = 40;
-                    lvl2.amount = 40;
-                }
-                this.multiEntryLevels.push(lvl1, lvl2);
+                this.multiEntryLevels.push({
+                    id: this.multiEntryIdCounter++,
+                    price: secondPrice,
+                    amount: riskAmount > 0 ? Math.round(riskAmount / 2) : 40
+                });
             }
-            // One SL for all entries: refresh default stop from cluster anchor (panel risk unchanged)
-            this.slManuallyPositioned = false;
-            this._applyMultiEntryStopLossDefault();
             this.renderMultiEntryRows();
             this.syncMultiEntryToSplitEntries(); // Show levels on chart immediately
         } else {
@@ -12063,29 +11828,16 @@ class OrderManager {
         const container = document.getElementById('multiEntryRows');
         if (!container) return;
 
-        this._syncMultiEntryAmountColLabel();
-
-        const mode = this.positionSizeMode || 'risk-usd';
-        const totalWeighted = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+        const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
 
-        const step = mode === 'risk-percent' ? '0.1' : (mode === 'lot-size' ? '0.01' : '1');
-        const prefixHtml = mode === 'risk-usd'
-            ? '<span class="multi-entry-amount-prefix">$</span>'
-            : '';
-        const suffixHtml = mode === 'risk-percent'
-            ? '<span class="multi-entry-amount-suffix">%</span>'
-            : (mode === 'lot-size'
-                ? `<span class="multi-entry-amount-suffix">${posLabel}</span>`
-                : '');
-
         container.innerHTML = '';
         this.multiEntryLevels.forEach((level, idx) => {
-            const pct = totalWeighted > 0 ? ((level.amount / totalWeighted) * 100) : 0;
+            const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
             const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
 
             const row = document.createElement('div');
@@ -12094,9 +11846,8 @@ class OrderManager {
                 <div class="multi-entry-row-inputs">
                     <input type="number" class="multi-entry-row-input" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price">
                     <div class="multi-entry-amount-wrap">
-                        ${prefixHtml}
-                        <input type="number" class="multi-entry-amount-input" value="${level.amount || ''}" step="${step}" min="0" data-level-id="${level.id}" data-field="amount">
-                        ${suffixHtml}
+                        <span class="multi-entry-amount-prefix">$</span>
+                        <input type="number" class="multi-entry-amount-input" value="${level.amount || ''}" step="1" min="0" data-level-id="${level.id}" data-field="amount">
                     </div>
                     <button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>
                 </div>
@@ -12115,20 +11866,20 @@ class OrderManager {
                 const level = this.multiEntryLevels.find(l => l.id === id);
                 if (level) {
                     const newVal = parseFloat(e.target.value) || 0;
-                    const m = this.positionSizeMode || 'risk-usd';
                     
                     if (field === 'amount') {
                         // Auto-redistribute: keep total constant, split remainder across others
                         const total = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
-                        level.amount = this._formatMultiEntryAmountCell(newVal, m);
+                        level.amount = newVal;
                         const remaining = Math.max(0, total - newVal);
                         const others = this.multiEntryLevels.filter(l => l.id !== id);
                         if (others.length > 0) {
-                            const eachRaw = remaining / others.length;
+                            const each = Math.round(remaining / others.length);
                             others.forEach(l => {
-                                l.amount = this._formatMultiEntryAmountCell(eachRaw, m);
+                                l.amount = each;
+                                // Update other amount inputs in-place
                                 const inp = container.querySelector(`.multi-entry-amount-input[data-level-id="${l.id}"]`);
-                                if (inp) inp.value = l.amount;
+                                if (inp) inp.value = each;
                             });
                         }
                     } else {
@@ -12158,15 +11909,10 @@ class OrderManager {
      * lotSize = riskAmount / (slPips * pipValuePerLot)
      */
     _calcLevelLotSize(level, slPrice, pipSize, pipValue) {
-        const mode = this.positionSizeMode || 'risk-usd';
-        if (mode === 'lot-size') {
-            return (level.amount || 0).toFixed(2);
-        }
         if (!level.price || level.price <= 0 || !slPrice || slPrice <= 0) return '0.00';
         const slPips = Math.abs(level.price - slPrice) / pipSize;
         if (slPips === 0) return '0.00';
-        const ru = this._multiEntryRiskUsdForLevel(level, mode);
-        return (ru / (slPips * pipValue)).toFixed(2);
+        return ((level.amount || 0) / (slPips * pipValue)).toFixed(2);
     }
 
     /**
@@ -12175,7 +11921,7 @@ class OrderManager {
     _updateMultiEntryInfoRows() {
         const container = document.getElementById('multiEntryRows');
         if (!container) return;
-        const totalWeighted = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
+        const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
@@ -12184,7 +11930,7 @@ class OrderManager {
         const infoEls = container.querySelectorAll('.multi-entry-row-info');
         this.multiEntryLevels.forEach((level, idx) => {
             if (infoEls[idx]) {
-                const pct = totalWeighted > 0 ? ((level.amount / totalWeighted) * 100) : 0;
+                const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
                 const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
                 infoEls[idx].innerHTML = `<span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${lots} ${posLabel}`;
             }
@@ -12195,6 +11941,10 @@ class OrderManager {
      * Add a new entry level
      */
     addMultiEntryLevel() {
+        const avgAmount = this.multiEntryLevels.length > 0
+            ? Math.round(this.multiEntryLevels.reduce((s, l) => s + l.amount, 0) / this.multiEntryLevels.length)
+            : 40;
+
         // Default price: offset from the lowest (BUY) or highest (SELL) existing level
         const existingPrices = this.multiEntryLevels.filter(l => l.price > 0).map(l => l.price);
         let newPrice = 0;
@@ -12207,14 +11957,11 @@ class OrderManager {
         this.multiEntryLevels.push({
             id: this.multiEntryIdCounter++,
             price: newPrice,
-            amount: 0
+            amount: avgAmount
         });
 
+        // Auto-equalize amounts across all levels
         this.equalizeMultiEntryAmounts();
-        if (!this.slManuallyPositioned) {
-            this._applyMultiEntryStopLossDefault();
-            this.calculatePositionFromRisk();
-        }
     }
 
     /**
@@ -12229,10 +11976,6 @@ class OrderManager {
         this.multiEntryLevels = this.multiEntryLevels.filter(l => l.id !== id);
         // Auto-equalize amounts across remaining levels
         this.equalizeMultiEntryAmounts();
-        if (!this.slManuallyPositioned) {
-            this._applyMultiEntryStopLossDefault();
-            this.calculatePositionFromRisk();
-        }
     }
 
     /**
@@ -12240,20 +11983,12 @@ class OrderManager {
      */
     equalizeMultiEntryAmounts() {
         if (this.multiEntryLevels.length === 0) return;
-        const mode = this.positionSizeMode || 'risk-usd';
-        const n = this.multiEntryLevels.length;
-        const totalUsd = this.multiEntryLevels.reduce((s, l) => s + this._multiEntryRiskUsdForLevel(l, mode), 0);
-        if (totalUsd > 0) {
-            const perUsd = totalUsd / n;
-            this.multiEntryLevels.forEach(l => this._setLevelAmountFromRiskUsd(l, perUsd, mode));
-        } else if (mode === 'lot-size') {
-            const lots = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
-            const each = lots > 0 ? parseFloat((lots / n).toFixed(2)) : 0.5;
-            this.multiEntryLevels.forEach(l => { l.amount = each; });
-        } else {
-            const fb = mode === 'risk-usd' ? 40 : 0.5;
-            this.multiEntryLevels.forEach(l => { l.amount = fb; });
-        }
+        const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
+        const equalAmount = totalAmount > 0
+            ? Math.round(totalAmount / this.multiEntryLevels.length)
+            : 40;
+
+        this.multiEntryLevels.forEach(l => { l.amount = equalAmount; });
         this.renderMultiEntryRows();
         this.syncMultiEntryToSplitEntries();
     }
@@ -12274,9 +12009,21 @@ class OrderManager {
      */
     updateMultiEntrySummary() {
         const avgPrice = this._calcMultiEntryAvgPrice();
+        const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
+
+        // Calculate total lots using correct formula: sum of each level's lotSize
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
-        const totalLots = this._computeMultiEntryTotalLots();
+        let totalLots = 0;
+        this.multiEntryLevels.forEach(l => {
+            if (l.price > 0 && slPrice > 0) {
+                const slPips = Math.abs(l.price - slPrice) / pipSize;
+                if (slPips > 0) totalLots += (l.amount || 0) / (slPips * pipValue);
+            }
+        });
 
         const avgEl = document.getElementById('multiEntryAvgPrice');
         const qtyEl = document.getElementById('multiEntryTotalQty');
@@ -12294,10 +12041,6 @@ class OrderManager {
             if (mainInput && avgPrice > 0) {
                 mainInput.value = this.formatPrice(avgPrice);
             }
-        }
-
-        if (this.isMultiEntryMode) {
-            this.calculatePositionFromRisk();
         }
     }
 
@@ -12318,8 +12061,8 @@ class OrderManager {
                 const mainInput = document.getElementById('orderEntryPrice');
                 if (mainInput) mainInput.value = this.formatPrice(validLevels[0].price);
             }
-            this.calculatePositionFromRisk();
             this.updatePreviewLines();
+            this.calculateAdvancedRiskReward();
             this.updatePlaceButtonText();
             return;
         }
@@ -12367,6 +12110,7 @@ class OrderManager {
 
         this.updateMultiEntrySummary();
         this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
         this.updatePlaceButtonText();
     }
 
@@ -12556,10 +12300,6 @@ class OrderManager {
                     });
                     // Equalize amounts across all levels (includes render + sync)
                     self.equalizeMultiEntryAmounts();
-                    if (!self.slManuallyPositioned) {
-                        self._applyMultiEntryStopLossDefault();
-                        self.calculatePositionFromRisk();
-                    }
                     self.showNotification(`Entry level added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isEntryLine) {
                     // Legacy split entry
@@ -13438,29 +13178,10 @@ class OrderManager {
                 pendingOrder.autoBreakeven = autoBreakeven;
                 pendingOrder.breakevenSettings = autoBreakeven ? breakevenSettings : null;
 
-                const splitSiblings = this._getPendingSplitGroupOrders(pendingOrder);
-                if (splitSiblings && splitSiblings.length > 1) {
-                    splitSiblings.forEach((o) => {
-                        o.stopLoss = pendingOrder.stopLoss;
-                        o.takeProfit = pendingOrder.takeProfit;
-                        if (pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0) {
-                            o.tpTargets = pendingOrder.tpTargets.map((t) => ({ ...t }));
-                        }
-                    });
-                }
-
                 this.removePendingOrderLine(pendingOrder.id);
                 this.removePendingSLTPLines(pendingOrder.id);
                 this.drawPendingOrderLine(pendingOrder);
                 this.drawPendingOrderTargets(pendingOrder);
-
-                if (splitSiblings && splitSiblings.length > 1) {
-                    const primary = splitSiblings[0];
-                    if (primary && primary.id !== pendingOrder.id) {
-                        this.removePendingSLTPLines(primary.id);
-                        this.drawPendingOrderTargets(primary);
-                    }
-                }
 
                 const orderTypeLabel = this.orderType === 'limit' ? 'Limit' : 'Stop';
                 this.showNotification(`✏️ ${orderTypeLabel} ${this.orderSide} Order #${pendingOrder.id} updated`, 'info');
@@ -17274,10 +16995,6 @@ class OrderManager {
         const pendingSym = pendingOrder.ticker || pendingOrder.symbol || this._getSymbol();
 
         const self = this;
-
-        const splitGroup = this._getPendingSplitGroupOrders(pendingOrder);
-        const isSplitLadder = splitGroup && splitGroup.length > 1;
-        const drawSharedTargets = !isSplitLadder || this._isPrimarySplitPendingForChartTargets(pendingOrder);
         
         const createLine = (price, type, labelText = null, pnl = null, targetId = null, percentage = null) => {
             if (!price) return null;
@@ -17311,26 +17028,15 @@ class OrderManager {
             return { price, type, line, hitLine, labelGroup, labelText, pnl, orderId: pendingOrder.id, targetId, percentage };
         };
 
-        // TP / SL / BE: one set per split ladder (avoid N duplicate lines for N entries)
-        if (drawSharedTargets) {
         // Check if we have multiple TP targets
         if (pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0) {
             // Draw multiple TP lines with P&L calculated from THIS pending order's entry
             pendingOrder.tpTargets.forEach((target, index) => {
                 if (target.hit) return; // Skip already hit targets
                 
-                let tpPnL;
-                if (isSplitLadder && splitGroup) {
-                    tpPnL = splitGroup.reduce((sum, o) => {
-                        const closeQty = o.quantity * (target.percentage / 100);
-                        return sum + this.estimatePnLForPriceLevel(
-                            o.direction, o.entryPrice, target.price, closeQty, pendingSym
-                        );
-                    }, 0);
-                } else {
-                    const closeQty = quantity * (target.percentage / 100);
-                    tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
-                }
+                // Calculate P&L for this TP target based on pending order's entry
+                const closeQty = quantity * (target.percentage / 100);
+                const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
                 
                 const labelText = `TP${index + 1} (${target.percentage.toFixed(0)}%) , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage);
@@ -17339,30 +17045,16 @@ class OrderManager {
                 }
             });
         } else if (pendingOrder.takeProfit) {
-            // Single TP - calculate P&L (split ladder: primary leg only; %/qty match full position on primary)
-            let tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
-            if (isSplitLadder && splitGroup) {
-                tpPnL = splitGroup.reduce((sum, o) => {
-                    return sum + this.estimatePnLForPriceLevel(
-                        o.direction, o.entryPrice, pendingOrder.takeProfit, o.quantity, pendingSym
-                    );
-                }, 0);
-            }
+            // Single TP - calculate P&L
+            const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
             const labelText = `TP , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.takeProfit, 'TP', labelText, tpPnL);
             if (item) entries.push(item);
         }
         
-        // Draw SL with P&L — aggregate at shared stop for split ladders
+        // Draw SL with P&L calculated from THIS pending order's entry
         if (pendingOrder.stopLoss) {
-            let slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
-            if (isSplitLadder && splitGroup) {
-                slPnL = splitGroup.reduce((sum, o) => {
-                    return sum + this.estimatePnLForPriceLevel(
-                        o.direction, o.entryPrice, pendingOrder.stopLoss, o.quantity, pendingSym
-                    );
-                }, 0);
-            }
+            const slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
             const labelText = `SL , P&L: ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.stopLoss, 'SL', labelText, slPnL);
             if (item) entries.push(item);
@@ -17395,7 +17087,6 @@ class OrderManager {
                 entries.push(beItem);
             }
         }
-        } // drawSharedTargets
 
         if (entries.length === 0) return;
 
@@ -17587,12 +17278,7 @@ class OrderManager {
                         pendingOrder.takeProfit = parseFloat(formattedPrice);
                     }
                 } else if (target.type === 'SL') {
-                    const newSl = parseFloat(formattedPrice);
-                    pendingOrder.stopLoss = newSl;
-                    const splitSiblings = self._getPendingSplitGroupOrders(pendingOrder);
-                    if (splitSiblings && splitSiblings.length > 1) {
-                        splitSiblings.forEach((o) => { o.stopLoss = newSl; });
-                    }
+                    pendingOrder.stopLoss = parseFloat(formattedPrice);
                 }
                 
                 self.removePendingSLTPLines(pendingOrder.id);
