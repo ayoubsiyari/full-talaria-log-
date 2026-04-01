@@ -7528,29 +7528,6 @@ class OrderManager {
             ];
         }
 
-        // Multi-entry weighted average (summary row): internal label "AvgEntry:limit" — shown as "AVG Entry"
-        if (label && label.startsWith('AvgEntry:')) {
-            return [
-                {
-                    text: 'AVG Entry',
-                    fill: color,
-                    stroke: color,
-                    textColor: '#ffffff',
-                    fontWeight: '700',
-                    minWidth: 96
-                },
-                {
-                    text: priceText,
-                    fill: '#0f172a',
-                    stroke: color,
-                    textColor: '#ffffff',
-                    fontWeight: '700',
-                    minWidth: 74,
-                    role: 'price'
-                }
-            ];
-        }
-
         if (label === 'TP') {
             return [
                 {
@@ -10605,19 +10582,6 @@ class OrderManager {
             });
         }
 
-        if (this.previewLines.multiEntryAvg && this.previewLines.multiEntryAvg.price) {
-            const avgY = this.chart.scales.yScale(this.previewLines.multiEntryAvg.price);
-            const m = this.previewLines.multiEntryAvg;
-            if (m.line) {
-                m.line.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
-            }
-            if (m.hitLine) {
-                m.hitLine.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
-            }
-            updateLabelY(m, avgY);
-            updateYAxisHighlight(m, avgY);
-        }
-
         // Reflow horizontal preview label alignment after width changes
         if (widthChanged) {
             this.alignPreviewLabels();
@@ -10637,7 +10601,6 @@ class OrderManager {
             if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
                 this.previewLines.splitEntries.forEach(clipPreviewToLabel);
             }
-            clipPreviewToLabel(this.previewLines.multiEntryAvg);
         }
 
         this._syncPendingLimitStopConnector();
@@ -10676,8 +10639,7 @@ class OrderManager {
             sl: null,
             be: null, // Breakeven trigger line
             multipleTPs: [], // Array for multiple TP lines
-            splitEntries: [], // Array for split entry lines
-            multiEntryAvg: null // Weighted avg entry (multi-entry only; non-draggable)
+            splitEntries: [] // Array for split entry lines
         };
         
         // Track if TP/SL have been manually positioned (dragged away from entry)
@@ -10707,27 +10669,8 @@ class OrderManager {
             }
         }
         
+        // Draw entry price preview line (dashed blue/red) - now draggable!
         const entryColor = this.orderSide === 'BUY' ? '#2962ff' : '#f23645';
-
-        // Weighted average entry — drawn first so it sits behind real entry legs (z-order)
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
-            const avgPx = this._calcMultiEntryAvgPrice();
-            if (avgPx > 0) {
-                const avgLabel = `AvgEntry:${this.orderType || 'limit'}`;
-                const avgLine = this.drawPreviewLine(avgPx, entryColor, avgLabel, this.orderSide, false);
-                if (avgLine) {
-                    avgLine.isMultiEntryAvg = true;
-                    if (avgLine.line) {
-                        avgLine.line
-                            .attr('stroke-dasharray', '7 5')
-                            .attr('opacity', 0.62);
-                    }
-                    this.previewLines.multiEntryAvg = avgLine;
-                }
-            }
-        }
-
-        // Draw entry price preview line — draggable; rendered above AVG Entry
         const mainEntryPercent = this.getMainEntryPercentage();
         let mainEntryLabel = 'Entry';
         if (this.isMultiEntryMode && this.splitEntriesEnabled) {
@@ -10944,7 +10887,7 @@ class OrderManager {
         this.adjustPreviewLineForLabel(lineData);
         
         // Add Y-axis price highlight for all order lines (Entry, TP, SL, BE, etc.)
-        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0, null, true);
+        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0);
 
         if (isDraggable) {
             this.makePreviewLineDraggable(lineData);
@@ -11573,13 +11516,6 @@ class OrderManager {
                     self.calculateAdvancedRiskReward();
                     self.updatePlaceButtonText();
                 });
-
-                // Weighted avg entry line: live sync when any Entry# leg moves (full redraw is skipped during drag)
-                if (self.isMultiEntryMode && self.multiEntryLevels && self.multiEntryLevels.length > 1 &&
-                    self.previewLines?.multiEntryAvg && lineData.label &&
-                    (lineData.label === 'Entry' || lineData.label.startsWith('Entry#'))) {
-                    self._syncMultiEntryAvgPreviewFromLevels();
-                }
                 
                 // ALWAYS do an immediate (non-throttled) calculation for first-drag feedback
                 // This ensures values show immediately, throttled version provides smooth updates
@@ -11593,13 +11529,6 @@ class OrderManager {
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
-
-                // Full preview refresh so Avg Entry line and all legs stay consistent after drag
-                if (self.isMultiEntryMode && self.multiEntryLevels && self.multiEntryLevels.length > 1 &&
-                    lineData.label &&
-                    (lineData.label === 'Entry' || lineData.label.startsWith('Entry#'))) {
-                    self.updatePreviewLines();
-                }
                 
                 // Clean up temporary indicators
                 if (lineData.pipIndicator) {
@@ -12548,49 +12477,6 @@ class OrderManager {
     }
 
     /**
-     * Move the multi-entry weighted-average preview line to match panel Avg Entry (live during drags).
-     * Full redraw is skipped while dragging; this keeps the avg line in sync with level moves.
-     */
-    _syncMultiEntryAvgPreviewFromLevels() {
-        if (!this.previewLines?.multiEntryAvg || !this.chart?.scales?.yScale) return;
-        if (!this.isMultiEntryMode || !this.multiEntryLevels || this.multiEntryLevels.length < 2) return;
-        const avgPx = this._calcMultiEntryAvgPrice();
-        if (!avgPx || avgPx <= 0) return;
-        const m = this.previewLines.multiEntryAvg;
-        m.price = avgPx;
-        const avgY = this.chart.scales.yScale(avgPx);
-        if (m.line) {
-            m.line.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
-        }
-        if (m.hitLine) {
-            m.hitLine.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
-        }
-        this.renderPreviewLabel(m, avgY);
-        this.adjustPreviewLineForLabel(m);
-        if (m.line) {
-            m.line.attr('stroke-dasharray', '7 5').attr('opacity', 0.62);
-        }
-        if (m.yAxisHighlight) {
-            const priceText = this.formatPrice(avgPx);
-            const textSel = m.yAxisHighlight.select('.y-axis-price-text');
-            if (!textSel.empty()) textSel.text(priceText);
-            const textNode = textSel.node();
-            const height = 24;
-            let width = 60;
-            if (textNode && typeof textNode.getBBox === 'function') {
-                const textBBox = textNode.getBBox();
-                width = Math.max(textBBox.width + 20, 60);
-            }
-            m.yAxisHighlight.select('rect').attr('width', width);
-            textSel.attr('x', width / 2);
-            const rightMargin = this.chart.margin?.r || 70;
-            const x = this.chart.w - rightMargin + 2;
-            m.yAxisHighlight.attr('transform', `translate(${x}, ${avgY - height / 2})`);
-        }
-        this.scheduleAlignPreviewLabels();
-    }
-
-    /**
      * Update the Avg Entry and Total Qty summary display
      */
     updateMultiEntrySummary() {
@@ -13033,22 +12919,18 @@ class OrderManager {
         this.calculateAdvancedRiskReward();
     }
 
-    drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null, isOrderPanelPreview = false) {
+    drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null) {
         const hChart = targetChart || this.chart;
         if (!hChart?.scales?.yScale || !hChart?.svg) return null;
 
         const y = hChart.scales.yScale(price);
         const priceText = this.formatPrice(price);
-        const labelSlug = String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-');
         
         // Create highlight group on the Y-axis with high z-index
         const highlightGroup = hChart.svg.append('g')
-            .attr('class', `y-axis-price-highlight y-axis-${labelSlug}-highlight`)
+            .attr('class', `y-axis-price-highlight y-axis-${label.toLowerCase()}-highlight`)
             .style('pointer-events', 'none')
             .style('isolation', 'isolate');
-        if (isOrderPanelPreview) {
-            highlightGroup.classed('om-preview-y-axis', true);
-        }
 
         const paddingH = 10; // Horizontal padding
         const paddingV = 4;  // Vertical padding
@@ -13150,26 +13032,11 @@ class OrderManager {
                         if (splitLine.labelGroup) {
                             splitLine.labelGroup.remove();
                         }
-                        if (splitLine.yAxisHighlight) {
-                            splitLine.yAxisHighlight.remove();
-                        }
                         console.log(`   ✅ Removed split entry #${index + 1} preview line`);
                     } catch (e) {
                         console.warn(`   ⚠️ Error removing split entry #${index + 1}:`, e);
                     }
                 });
-            }
-
-            if (this.previewLines.multiEntryAvg) {
-                try {
-                    const m = this.previewLines.multiEntryAvg;
-                    if (m.line) m.line.remove();
-                    if (m.labelGroup) m.labelGroup.remove();
-                    if (m.yAxisHighlight) m.yAxisHighlight.remove();
-                    console.log('   ✅ Removed multi-entry avg preview line');
-                } catch (e) {
-                    console.warn('   ⚠️ Error removing multi-entry avg preview:', e);
-                }
             }
             
             this.previewLines = null;
@@ -13194,7 +13061,7 @@ class OrderManager {
                 lines: this.chart.svg.selectAll('.preview-line').size(),
                 labelGroups: this.chart.svg.selectAll('.preview-label-group').size(),
                 badgeGroups: this.chart.svg.selectAll('.preview-badge-group').size(),
-                yAxisHighlights: this.chart.svg.selectAll('.om-preview-y-axis').size(),
+                yAxisHighlights: this.chart.svg.selectAll('.y-axis-price-highlight').size(),
                 splitEntryLines: this.chart.svg.selectAll('.split-entry-line').size(),
                 splitEntryLabels: this.chart.svg.selectAll('.split-entry-label-group').size(),
                 splitDragGhosts: this.chart.svg.selectAll('.split-drag-ghost').size()
@@ -13204,8 +13071,7 @@ class OrderManager {
             this.chart.svg.selectAll('.preview-line-hit').remove();
             this.chart.svg.selectAll('.preview-label-group').remove();
             this.chart.svg.selectAll('.preview-badge-group').remove();
-            // Only strip order-panel preview axis tags — pending/open positions use y-axis-price-highlight without this class
-            this.chart.svg.selectAll('.om-preview-y-axis').remove();
+            this.chart.svg.selectAll('.y-axis-price-highlight').remove();
             this.chart.svg.selectAll('.split-entry-line').remove();
             this.chart.svg.selectAll('.split-entry-label-group').remove();
             this.chart.svg.selectAll('.split-drag-ghost').remove();
@@ -13318,8 +13184,7 @@ class OrderManager {
         const isEntryTpSl = lineData.label === 'SL'
             || lineData.label === 'TP'
             || lineData.label === 'Entry'
-            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')))
-            || (typeof lineData.label === 'string' && lineData.label.startsWith('AvgEntry'));
+            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
         if (isPreviewOrder && isEntryTpSl) {
             lineEndX = this.chart.w;
         }
