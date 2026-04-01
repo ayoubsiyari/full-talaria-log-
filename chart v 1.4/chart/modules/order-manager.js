@@ -12029,7 +12029,7 @@ class OrderManager {
 
         const orderPriority = { 'Entry': 0, 'SL': 1, 'TP': 2 };
         const gap = 28;
-        const marginRight = 175; // Increased margin to match badge spacing and avoid Y-axis overlap
+        const marginRight = 120; // margin from right edge for preview labels
 
         buckets.forEach(bucket => {
             const items = bucket.items;
@@ -16308,13 +16308,12 @@ class OrderManager {
                 const yAxisWidth = 70;
                 
                 // Position close button (rightmost, before Y-axis area)
-                const labelRightNudge = 35;
-                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15 + labelRightNudge}, ${clampedY})`);
+                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${clampedY})`);
                 
                 // Position label box to the left of close button
                 const labelTextBbox = labelText.node().getBBox();
                 const labelBoxWidth = labelTextBbox.width + 20;
-                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge;
+                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
                 
                 labelBox
                     .attr('x', labelBoxX)
@@ -18414,7 +18413,7 @@ class OrderManager {
                     const boxHeight = 18;
                     const boxY = y - boxHeight / 2;
                     const yAxisWidth = 70;
-                    const labelRightNudge = isPending ? 35 : 18;
+                    const labelRightNudge = isPending ? 0 : 18;
 
                     closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
 
