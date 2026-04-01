@@ -12059,13 +12059,12 @@ class OrderManager {
     }
 
     /**
-     * Limit/stop preview only: vertical dashed guide through Entry + TP + SL label column (TradingView-style).
+     * Pre-place preview: vertical dashed guide through Entry + TP + SL (TradingView-style).
      * Does not replace horizontal TP/SL lines — those stay full width to the label edge.
      */
     _syncPendingLimitStopConnector() {
         this._removePendingLimitStopConnector();
         if (!this.chart?.svg || !this.chart.scales?.yScale) return;
-        if (this.orderType !== 'limit' && this.orderType !== 'stop') return;
         if (!this.previewLines?.entry) return;
 
         const tpOn = document.getElementById('enableTP')?.checked;
@@ -12084,19 +12083,13 @@ class OrderManager {
         const yBot = Math.max(...ys);
         if (!Number.isFinite(yTop) || !Number.isFinite(yBot) || Math.abs(yBot - yTop) < 0.5) return;
 
-        const lefts = [];
-        const pushLeft = (ld) => {
-            if (!ld?.labelGroup) return;
-            const tr = ld.labelGroup.attr('transform') || '';
-            const m = /translate\(([^,]+),/.exec(tr);
-            if (m) lefts.push(parseFloat(m[1]));
-        };
-        pushLeft(this.previewLines.entry);
-        if (tpOn) pushLeft(this.previewLines.tp);
-        if (slOn) pushLeft(this.previewLines.sl);
-        if (!lefts.length) return;
-
-        const anchorX = Math.max(0, Math.min(this.chart.w - 1, Math.min(...lefts) - 10));
+        const entryGroup = this.previewLines.entry?.labelGroup;
+        const entryW = this.previewLines.entry?.labelDimensions?.width || 0;
+        const tr = entryGroup?.attr('transform') || '';
+        const m = /translate\(([^,]+),/.exec(tr);
+        const entryX = m ? parseFloat(m[1]) : NaN;
+        if (!Number.isFinite(entryX)) return;
+        const anchorX = Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + 10));
         const strokeCol = this.orderSide === 'SELL' ? '#f23645' : '#2962ff';
 
         this._pendingPreviewConnector = this.chart.svg.append('line')
@@ -12109,7 +12102,7 @@ class OrderManager {
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
             .attr('stroke-dasharray', '4,4')
-            .attr('opacity', 0.5)
+            .attr('opacity', 0.82)
             .style('pointer-events', 'none');
         try {
             this._pendingPreviewConnector.lower();
