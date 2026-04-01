@@ -7772,7 +7772,8 @@ class OrderManager {
         const isBadge = lineData.isBadge;
         
         // Add split handle for Entry when multi-entry mode is active, or for Entry/TP when advanced order is enabled
-        const showMultiEntryHandle = !isBadge && isEntryLine && !isSlLine && !isBeLine && this.isMultiEntryMode;
+        const isSplitEntryLine = lineData.label && lineData.label.startsWith('Entry#');
+        const showMultiEntryHandle = !isBadge && (isEntryLine || isSplitEntryLine) && !isSlLine && !isBeLine && this.isMultiEntryMode;
         const showAdvancedHandle = !isBadge && (isEntryLine || isTpLine) && !isSlLine && !isBeLine && this.advancedOrderEnabled;
         if (showMultiEntryHandle || showAdvancedHandle) {
             this.drawSplitHandle(lineData, lineData.labelGroup);
@@ -11848,9 +11849,18 @@ class OrderManager {
             ? Math.round(this.multiEntryLevels.reduce((s, l) => s + l.amount, 0) / this.multiEntryLevels.length)
             : 40;
 
+        // Default price: offset from the lowest (BUY) or highest (SELL) existing level
+        const existingPrices = this.multiEntryLevels.filter(l => l.price > 0).map(l => l.price);
+        let newPrice = 0;
+        if (existingPrices.length > 0) {
+            const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
+            const basePrice = offsetDir === -1 ? Math.min(...existingPrices) : Math.max(...existingPrices);
+            newPrice = parseFloat((basePrice * (1 + offsetDir * 0.001)).toFixed(5));
+        }
+
         this.multiEntryLevels.push({
             id: this.multiEntryIdCounter++,
-            price: 0,
+            price: newPrice,
             amount: avgAmount
         });
 
