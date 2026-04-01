@@ -12044,8 +12044,11 @@ class OrderManager {
         // End at label edge by default; preview TP/SL extends to right axis price.
         let lineEndX = Math.max(0, x);
         const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
-        const isTpOrSl = lineData.label === 'SL' || lineData.label === 'TP' || (typeof lineData.label === 'string' && lineData.label.startsWith('TP'));
-        if (isPreviewOrder && isTpOrSl) {
+        const isEntryTpSl = lineData.label === 'SL'
+            || lineData.label === 'TP'
+            || lineData.label === 'Entry'
+            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
+        if (isPreviewOrder && isEntryTpSl) {
             lineEndX = this.chart.w;
         }
 
