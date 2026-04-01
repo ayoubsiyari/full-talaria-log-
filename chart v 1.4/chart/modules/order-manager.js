@@ -1531,6 +1531,28 @@ class OrderManager {
     }
 
     /**
+     * Pending orders in the same split-entry ladder (shared SL / targets on chart).
+     * @returns {Array|null} sorted by splitIndex, or null if not in a split group
+     */
+    _getPendingSplitGroupOrders(pendingOrder) {
+        if (!pendingOrder?.splitGroupId) return null;
+        const list = Array.isArray(this.pendingOrders) ? this.pendingOrders : [];
+        const group = list.filter((o) => o.splitGroupId === pendingOrder.splitGroupId);
+        if (group.length === 0) return null;
+        return group.sort((a, b) => (Number(a.splitIndex) || 0) - (Number(b.splitIndex) || 0));
+    }
+
+    /**
+     * Only the lowest splitIndex leg draws TP/SL/BE horizontals so multi-entry shows one SL for the whole ladder.
+     */
+    _isPrimarySplitPendingForChartTargets(pendingOrder) {
+        const group = this._getPendingSplitGroupOrders(pendingOrder);
+        if (!group || group.length <= 1) return true;
+        const minIdx = Math.min(...group.map((o) => Number(o.splitIndex) || 999));
+        return (Number(pendingOrder.splitIndex) || 999) === minIdx;
+    }
+
+    /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
      * @param {number} entry
@@ -13416,10 +13438,29 @@ class OrderManager {
                 pendingOrder.autoBreakeven = autoBreakeven;
                 pendingOrder.breakevenSettings = autoBreakeven ? breakevenSettings : null;
 
+                const splitSiblings = this._getPendingSplitGroupOrders(pendingOrder);
+                if (splitSiblings && splitSiblings.length > 1) {
+                    splitSiblings.forEach((o) => {
+                        o.stopLoss = pendingOrder.stopLoss;
+                        o.takeProfit = pendingOrder.takeProfit;
+                        if (pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0) {
+                            o.tpTargets = pendingOrder.tpTargets.map((t) => ({ ...t }));
+                        }
+                    });
+                }
+
                 this.removePendingOrderLine(pendingOrder.id);
                 this.removePendingSLTPLines(pendingOrder.id);
                 this.drawPendingOrderLine(pendingOrder);
                 this.drawPendingOrderTargets(pendingOrder);
+
+                if (splitSiblings && splitSiblings.length > 1) {
+                    const primary = splitSiblings[0];
+                    if (primary && primary.id !== pendingOrder.id) {
+                        this.removePendingSLTPLines(primary.id);
+                        this.drawPendingOrderTargets(primary);
+                    }
+                }
 
                 const orderTypeLabel = this.orderType === 'limit' ? 'Limit' : 'Stop';
                 this.showNotification(`✏️ ${orderTypeLabel} ${this.orderSide} Order #${pendingOrder.id} updated`, 'info');
@@ -17233,6 +17274,10 @@ class OrderManager {
         const pendingSym = pendingOrder.ticker || pendingOrder.symbol || this._getSymbol();
 
         const self = this;
+
+        const splitGroup = this._getPendingSplitGroupOrders(pendingOrder);
+        const isSplitLadder = splitGroup && splitGroup.length > 1;
+        const drawSharedTargets = !isSplitLadder || this._isPrimarySplitPendingForChartTargets(pendingOrder);
         
         const createLine = (price, type, labelText = null, pnl = null, targetId = null, percentage = null) => {
             if (!price) return null;
@@ -17266,15 +17311,26 @@ class OrderManager {
             return { price, type, line, hitLine, labelGroup, labelText, pnl, orderId: pendingOrder.id, targetId, percentage };
         };
 
+        // TP / SL / BE: one set per split ladder (avoid N duplicate lines for N entries)
+        if (drawSharedTargets) {
         // Check if we have multiple TP targets
         if (pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0) {
             // Draw multiple TP lines with P&L calculated from THIS pending order's entry
             pendingOrder.tpTargets.forEach((target, index) => {
                 if (target.hit) return; // Skip already hit targets
                 
-                // Calculate P&L for this TP target based on pending order's entry
-                const closeQty = quantity * (target.percentage / 100);
-                const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
+                let tpPnL;
+                if (isSplitLadder && splitGroup) {
+                    tpPnL = splitGroup.reduce((sum, o) => {
+                        const closeQty = o.quantity * (target.percentage / 100);
+                        return sum + this.estimatePnLForPriceLevel(
+                            o.direction, o.entryPrice, target.price, closeQty, pendingSym
+                        );
+                    }, 0);
+                } else {
+                    const closeQty = quantity * (target.percentage / 100);
+                    tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
+                }
                 
                 const labelText = `TP${index + 1} (${target.percentage.toFixed(0)}%) , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage);
@@ -17283,16 +17339,30 @@ class OrderManager {
                 }
             });
         } else if (pendingOrder.takeProfit) {
-            // Single TP - calculate P&L
-            const tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
+            // Single TP - calculate P&L (split ladder: primary leg only; %/qty match full position on primary)
+            let tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
+            if (isSplitLadder && splitGroup) {
+                tpPnL = splitGroup.reduce((sum, o) => {
+                    return sum + this.estimatePnLForPriceLevel(
+                        o.direction, o.entryPrice, pendingOrder.takeProfit, o.quantity, pendingSym
+                    );
+                }, 0);
+            }
             const labelText = `TP , P&L: ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.takeProfit, 'TP', labelText, tpPnL);
             if (item) entries.push(item);
         }
         
-        // Draw SL with P&L calculated from THIS pending order's entry
+        // Draw SL with P&L — aggregate at shared stop for split ladders
         if (pendingOrder.stopLoss) {
-            const slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
+            let slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
+            if (isSplitLadder && splitGroup) {
+                slPnL = splitGroup.reduce((sum, o) => {
+                    return sum + this.estimatePnLForPriceLevel(
+                        o.direction, o.entryPrice, pendingOrder.stopLoss, o.quantity, pendingSym
+                    );
+                }, 0);
+            }
             const labelText = `SL , P&L: ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.stopLoss, 'SL', labelText, slPnL);
             if (item) entries.push(item);
@@ -17325,6 +17395,7 @@ class OrderManager {
                 entries.push(beItem);
             }
         }
+        } // drawSharedTargets
 
         if (entries.length === 0) return;
 
@@ -17516,7 +17587,12 @@ class OrderManager {
                         pendingOrder.takeProfit = parseFloat(formattedPrice);
                     }
                 } else if (target.type === 'SL') {
-                    pendingOrder.stopLoss = parseFloat(formattedPrice);
+                    const newSl = parseFloat(formattedPrice);
+                    pendingOrder.stopLoss = newSl;
+                    const splitSiblings = self._getPendingSplitGroupOrders(pendingOrder);
+                    if (splitSiblings && splitSiblings.length > 1) {
+                        splitSiblings.forEach((o) => { o.stopLoss = newSl; });
+                    }
                 }
                 
                 self.removePendingSLTPLines(pendingOrder.id);
