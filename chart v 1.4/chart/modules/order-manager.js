@@ -1267,7 +1267,7 @@ class OrderManager {
      * Solve for TP price so estimated $ profit matches target (single TP, current quantity).
      */
     _solveTpPriceForTargetRewardUsd(targetUsd) {
-        const entry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const entry = this._getReferenceEntryForOrderMath();
         const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
         const dir = this.orderSide === 'SELL' ? 'SELL' : 'BUY';
         if (!entry || !qty || targetUsd <= 0) return null;
@@ -1354,7 +1354,7 @@ class OrderManager {
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked;
         if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) return null;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const entryPrice = this._getReferenceEntryForOrderMath();
         if (!entryPrice || !desiredRR || !Number.isFinite(desiredRR) || desiredRR <= 0) return null;
         if (!document.getElementById('enableTP')?.checked) return null;
         const halfPip = (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001) * 0.5;
@@ -9477,7 +9477,7 @@ class OrderManager {
         const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
         const balance = balanceType === 'current' ? this.balance : this.initialBalance;
         
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const entryPrice = this._getReferenceEntryForOrderMath();
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         
         if (!entryPrice || !slPrice || slPrice === 0) {
@@ -9565,16 +9565,10 @@ class OrderManager {
             }
         }
 
+        // Multi-entry: TP/SL distances, profit $, and R:R are measured from weighted Avg Entry (not a single leg).
         let effectiveEntryForReward = entryPrice > 0 ? entryPrice : multiAvg;
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const activeLvl = this.activeMultiEntryLevelId != null
-                ? this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId)
-                : null;
-            if (activeLvl && activeLvl.price > 0) {
-                effectiveEntryForReward = activeLvl.price;
-            } else if (multiAvg > 0) {
-                effectiveEntryForReward = multiAvg;
-            }
+        if (this.isMultiEntryMode && multiAvg > 0) {
+            effectiveEntryForReward = multiAvg;
         }
         
         // Check if TP is actually set (different from entry price)
@@ -9588,15 +9582,9 @@ class OrderManager {
         const minDistance = Math.min(halfPip, maxMinDistance);
         const hasValidTP = tpEnabled && tpPrice > 0 && tpDistance > minDistance;
 
-        // Single-entry / fallback: use main entry field. Multi-entry: avg when nothing selected,
-        // selected leg price when a row is active (matches SL card + order risk after overrides below).
         let slContextEntry = entryPrice || effectiveEntryForReward;
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const pickActive = this.activeMultiEntryLevelId != null
-                ? this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId)
-                : null;
-            if (pickActive && pickActive.price > 0) slContextEntry = pickActive.price;
-            else if (multiAvg > 0) slContextEntry = multiAvg;
+        if (this.isMultiEntryMode && multiAvg > 0) {
+            slContextEntry = multiAvg;
         }
 
         let { hasValidSL, slDistance, risk } = this._getOrderPanelSlRiskContext(slContextEntry, quantity, minDistance);
@@ -9604,12 +9592,7 @@ class OrderManager {
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
             const slEn = document.getElementById('enableSL')?.checked;
-            const activeLvl = this.activeMultiEntryLevelId != null
-                ? this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId)
-                : null;
-            const refEntry = (activeLvl && activeLvl.price > 0)
-                ? activeLvl.price
-                : (multiAvg > 0 ? multiAvg : (entryPrice || 0));
+            const refEntry = multiAvg > 0 ? multiAvg : (entryPrice || 0);
 
             if (refEntry > 0 && slEn && slPx > 0) {
                 const d = Math.abs(refEntry - slPx);
@@ -9623,19 +9606,15 @@ class OrderManager {
                 slDistance = 0;
             }
 
-            if (activeLvl && activeLvl.price > 0) {
-                risk = this._getMultiEntryLevelRiskUsd(activeLvl);
-            } else {
-                if (this.positionSizeMode === 'lot-size') {
-                    risk = this.multiEntryLevels.reduce((sum, l) => sum + this._getMultiEntryLevelRiskUsd(l), 0);
-                } else if (this.positionSizeMode === 'risk-usd') {
-                    risk = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
-                } else if (this.positionSizeMode === 'risk-percent') {
-                    const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
-                    const bt = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-                    const bal = bt === 'current' ? this.balance : this.initialBalance;
-                    risk = (bal * rp) / 100;
-                }
+            if (this.positionSizeMode === 'lot-size') {
+                risk = this.multiEntryLevels.reduce((sum, l) => sum + this._getMultiEntryLevelRiskUsd(l), 0);
+            } else if (this.positionSizeMode === 'risk-usd') {
+                risk = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+            } else if (this.positionSizeMode === 'risk-percent') {
+                const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+                const bt = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                const bal = bt === 'current' ? this.balance : this.initialBalance;
+                risk = (bal * rp) / 100;
             }
         }
         
@@ -9644,16 +9623,8 @@ class OrderManager {
         let reward = 0;
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
 
-        let qtyForReward = quantity;
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0 && this.activeMultiEntryLevelId != null) {
-            const al = this.multiEntryLevels.find((l) => l.id === this.activeMultiEntryLevelId);
-            if (al && al.price > 0) {
-                const slPxR = parseFloat(document.getElementById('slPrice')?.value || 0);
-                const pipR = this.pipSize || 0.0001;
-                const pvR = this.pipValuePerLot || 10;
-                qtyForReward = parseFloat(this._calcLevelLotSize(al, slPxR, pipR, pvR)) || 0;
-            }
-        }
+        // Multi-entry: profit $ at TP uses total position size with PnL measured from Avg Entry.
+        const qtyForReward = quantity;
         
         if (tpEnabled) {
             if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
@@ -9950,8 +9921,8 @@ class OrderManager {
     calculateTPTargetsFromNumber(numTargets) {
         this.tpTargets = [];
         
-        // Get entry and original TP price
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        // Get entry and original TP price (multi-entry: anchor from weighted Avg Entry)
+        const entryPrice = this._getReferenceEntryForOrderMath();
         const originalTP = parseFloat(document.getElementById('tpPrice')?.value || 0);
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         
@@ -10145,7 +10116,7 @@ class OrderManager {
         if (!this.tpTargets || this.tpTargets.length === 0) return [];
         
         const errors = [];
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const entryPrice = this._getReferenceEntryForOrderMath();
         
         if (!entryPrice || entryPrice <= 0) {
             return ['⚠️ Set entry price first'];
@@ -12553,6 +12524,18 @@ class OrderManager {
         const totalWeightedPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
         const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
         return totalAmount > 0 ? totalWeightedPrice / totalAmount : 0;
+    }
+
+    /**
+     * TP/SL distances, R:R, and $ profit on the order panel use weighted average entry when multi-entry is on.
+     */
+    _getReferenceEntryForOrderMath() {
+        const main = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const avg = this._calcMultiEntryAvgPrice();
+            if (avg > 0) return avg;
+        }
+        return main;
     }
 
     /**
