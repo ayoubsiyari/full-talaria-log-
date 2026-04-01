@@ -1088,6 +1088,34 @@ class OrderManager {
     }
 
     /**
+     * Forex header row: spread (pips) and commission ($/lot/side) from session instrument for active pair.
+     */
+    _updateOrderPanelInstrumentCosts() {
+        const el = document.getElementById('orderPanelInstrumentCosts');
+        if (!el) return;
+        if (this.marketType !== 'forex') {
+            el.style.display = 'none';
+            el.innerHTML = '';
+            return;
+        }
+        const cfg = this.getMarketConfig();
+        const inst = this._getActiveInstrumentSettings();
+        const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? 0);
+        const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+        const pipUnit = cfg.showTicks ? 'pts' : 'pips';
+        const spreadStr = Number.isFinite(spread)
+            ? (Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2))
+            : '—';
+        const commStr = Number.isFinite(comm) ? `$${comm.toFixed(2)}` : '—';
+        el.innerHTML = `
+            <span title="Typical spread for this pair (session instrument)">Spread: <strong>${spreadStr}</strong> ${pipUnit}</span>
+            <span style="opacity:0.45;margin:0 5px;">·</span>
+            <span title="Commission per lot per side (per fill)">Comm: <strong>${commStr}</strong> / lot / side</span>
+        `;
+        el.style.display = 'block';
+    }
+
+    /**
      * Auto-detect market type from the current chart symbol.
      * - If symbol is found in the engine registry → silently switch type, hide dropdown.
      * - If symbol is heuristically guessed (not exact registry match) → switch type, still hide dropdown.
@@ -4945,12 +4973,24 @@ class OrderManager {
                 .order-panel__header {
                     display: flex;
                     justify-content: space-between;
-                    align-items: center;
+                    align-items: flex-start;
                     padding: 10px 14px;
                     border-bottom: 1px solid var(--om-b);
                     background: var(--om-panel);
                     flex-shrink: 0;
                     user-select: none;
+                    gap: 10px;
+                }
+                .order-panel__instrument-costs {
+                    font-size: 10px;
+                    color: var(--om-dim);
+                    letter-spacing: 0.02em;
+                    line-height: 1.35;
+                    max-width: 100%;
+                }
+                .order-panel__instrument-costs strong {
+                    color: var(--om-tx);
+                    font-weight: 600;
                 }
                 .order-panel__title {
                     margin: 0;
@@ -5107,6 +5147,8 @@ class OrderManager {
                     background: #f7f8fa !important;
                 }
                 body.light-mode .order-panel__title { color: #131722 !important; }
+                body.light-mode .order-panel__instrument-costs { color: #787b86 !important; }
+                body.light-mode .order-panel__instrument-costs strong { color: #131722 !important; }
                 body.light-mode .order-panel__close {
                     color: #787b86 !important;
                     border-color: #e0e3eb !important;
@@ -6869,9 +6911,12 @@ class OrderManager {
 
             <!-- Fixed header — sits outside the scrollable content -->
             <div id="orderPanelHeader" class="order-panel__header">
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A84C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-                    <h3 class="order-panel__title">Place order</h3>
+                <div class="order-panel__header-titles" style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;align-items:flex-start;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A84C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                        <h3 class="order-panel__title">Place order</h3>
+                    </div>
+                    <div id="orderPanelInstrumentCosts" class="order-panel__instrument-costs" style="display:none;padding-left:24px;" aria-live="polite"></div>
                 </div>
                 <button id="closeOrderPanel" class="order-panel__close" type="button">&times;</button>
             </div>
@@ -8012,6 +8057,7 @@ class OrderManager {
             const mktBadge = `<span style="font-size:10px;opacity:0.6;margin-left:4px;padding:2px 6px;background:rgba(124,58,237,0.15);border-radius:4px;">${config.icon} ${config.name}</span>`;
             headerTitle.innerHTML = `Place order${symLabel}${mktBadge}`;
         }
+        this._updateOrderPanelInstrumentCosts();
         
         // Update position sizing label
         const positionLabel = document.getElementById('positionSizingLabel');
