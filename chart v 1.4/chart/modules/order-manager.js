@@ -143,8 +143,6 @@ class OrderManager {
         this.splitEntries = []; // Array of { id, price, percentage, lineData }
         this.splitEntryIdCounter = 1;
         this.splitEntriesEnabled = false; // Tracks if we have split entries active
-        /** Multi-entry: selected row shows per-level SL risk/lots; null = aggregate (order panel total). */
-        this.activeMultiEntryLevelId = null;
         this.isPopulatingOrderPanel = false;
         this.tpLastSyncedEntryPrice = null;
         this.tpDistributionMode = 'amount'; // percent, amount, or lots (synced with positionSizeMode: risk-usd)
@@ -6639,13 +6637,8 @@ class OrderManager {
                 .multi-entry-row {
                     padding: 6px 8px;
                     border-bottom: 1px solid var(--om-b);
-                    cursor: pointer;
                 }
                 .multi-entry-row:last-child { border-bottom: none; }
-                .multi-entry-row--active {
-                    background: rgba(38, 67, 247, 0.08);
-                    box-shadow: inset 3px 0 0 rgba(38, 67, 247, 0.55);
-                }
                 .multi-entry-row-inputs {
                     display: grid;
                     grid-template-columns: 1fr 80px 24px;
@@ -6854,10 +6847,6 @@ class OrderManager {
                     background: rgba(201, 168, 76, 0.12) !important;
                     border-color: rgba(201, 168, 76, 0.4) !important;
                     color: #b8922a !important;
-                }
-                body.light-mode .multi-entry-row--active {
-                    background: rgba(38, 67, 247, 0.06) !important;
-                    box-shadow: inset 3px 0 0 rgba(38, 67, 247, 0.45) !important;
                 }
                 body.light-mode .multi-entry-summary {
                     background: rgba(38, 67, 247, 0.05) !important;
@@ -11964,7 +11953,6 @@ class OrderManager {
             toggleBtn.classList.add('active');
             if (singleMode) singleMode.style.display = 'none';
             if (multiMode) multiMode.style.display = 'block';
-            this.activeMultiEntryLevelId = null;
 
             // If no levels yet, seed with the current entry price as level 1
             if (this.multiEntryLevels.length === 0) {
@@ -12008,7 +11996,6 @@ class OrderManager {
             toggleBtn.classList.remove('active');
             if (singleMode) singleMode.style.display = 'block';
             if (multiMode) multiMode.style.display = 'none';
-            this.activeMultiEntryLevelId = null;
 
             // Sync the avg entry back to the single entry field
             if (this.multiEntryLevels.length > 0) {
@@ -12064,7 +12051,7 @@ class OrderManager {
                 : level.amount || '';
 
             const row = document.createElement('div');
-            row.className = 'multi-entry-row' + (this.activeMultiEntryLevelId === level.id ? ' multi-entry-row--active' : '');
+            row.className = 'multi-entry-row';
             const lockFirstTwo = this.isMultiEntryMode && idx < 2;
             const deleteBtnHtml = lockFirstTwo
                 ? `<button type="button" class="multi-entry-delete-btn multi-entry-delete-btn--locked" data-level-id="${level.id}" title="Base levels — switch to Single to remove" disabled aria-disabled="true">✕</button>`
@@ -12083,17 +12070,6 @@ class OrderManager {
                 </div>
             `;
             container.appendChild(row);
-
-            row.addEventListener('click', (e) => {
-                if (e.target.closest('input') || e.target.closest('button')) return;
-                if (this.activeMultiEntryLevelId === level.id) {
-                    this.activeMultiEntryLevelId = null;
-                } else {
-                    this.activeMultiEntryLevelId = level.id;
-                }
-                this.renderMultiEntryRows();
-                this.calculateAdvancedRiskReward();
-            });
         });
 
         // Wire up events for new rows
@@ -12469,7 +12445,6 @@ class OrderManager {
             this.toggleEntryMode(); // Back to single
             return;
         }
-        if (this.activeMultiEntryLevelId === id) this.activeMultiEntryLevelId = null;
         this.multiEntryLevels = this.multiEntryLevels.filter(l => l.id !== id);
         // Auto-equalize amounts across remaining levels
         this.equalizeMultiEntryAmounts();
@@ -12509,7 +12484,6 @@ class OrderManager {
             this.multiEntryLevels.forEach(l => { l.amount = equalAmount; });
         }
 
-        this.activeMultiEntryLevelId = null;
         this._rebalanceLevelAmountsToTarget();
         this.renderMultiEntryRows();
         this.syncMultiEntryToSplitEntries();
