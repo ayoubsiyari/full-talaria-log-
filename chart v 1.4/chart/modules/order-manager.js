@@ -7528,6 +7528,32 @@ class OrderManager {
             ];
         }
 
+        // Multi-entry weighted average (summary row): "AvgEntry:stop" — same badge style as Entry# legs
+        if (label && label.startsWith('AvgEntry:')) {
+            const ot = (label.split(':')[1] || this.orderType || 'limit').toUpperCase();
+            const sideUpper = (this.orderSide || 'BUY').toUpperCase();
+            const fullLabel = `${ot} ${sideUpper} AVG`;
+            return [
+                {
+                    text: fullLabel,
+                    fill: color,
+                    stroke: color,
+                    textColor: '#ffffff',
+                    fontWeight: '700',
+                    minWidth: 128
+                },
+                {
+                    text: priceText,
+                    fill: '#0f172a',
+                    stroke: color,
+                    textColor: '#ffffff',
+                    fontWeight: '700',
+                    minWidth: 74,
+                    role: 'price'
+                }
+            ];
+        }
+
         if (label === 'TP') {
             return [
                 {
@@ -10582,6 +10608,19 @@ class OrderManager {
             });
         }
 
+        if (this.previewLines.multiEntryAvg && this.previewLines.multiEntryAvg.price) {
+            const avgY = this.chart.scales.yScale(this.previewLines.multiEntryAvg.price);
+            const m = this.previewLines.multiEntryAvg;
+            if (m.line) {
+                m.line.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
+            }
+            if (m.hitLine) {
+                m.hitLine.attr('y1', avgY).attr('y2', avgY).attr('x2', this.chart.w);
+            }
+            updateLabelY(m, avgY);
+            updateYAxisHighlight(m, avgY);
+        }
+
         // Reflow horizontal preview label alignment after width changes
         if (widthChanged) {
             this.alignPreviewLabels();
@@ -10601,6 +10640,7 @@ class OrderManager {
             if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
                 this.previewLines.splitEntries.forEach(clipPreviewToLabel);
             }
+            clipPreviewToLabel(this.previewLines.multiEntryAvg);
         }
 
         this._syncPendingLimitStopConnector();
@@ -10639,7 +10679,8 @@ class OrderManager {
             sl: null,
             be: null, // Breakeven trigger line
             multipleTPs: [], // Array for multiple TP lines
-            splitEntries: [] // Array for split entry lines
+            splitEntries: [], // Array for split entry lines
+            multiEntryAvg: null // Weighted avg entry (multi-entry only; non-draggable)
         };
         
         // Track if TP/SL have been manually positioned (dragged away from entry)
@@ -10704,6 +10745,19 @@ class OrderManager {
                     }
                 }
             });
+        }
+
+        // Weighted average entry — same line/label style as legs; not draggable (derived only)
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
+            const avgPx = this._calcMultiEntryAvgPrice();
+            if (avgPx > 0) {
+                const avgLabel = `AvgEntry:${this.orderType || 'limit'}`;
+                const avgLine = this.drawPreviewLine(avgPx, entryColor, avgLabel, this.orderSide, false);
+                if (avgLine) {
+                    avgLine.isMultiEntryAvg = true;
+                    this.previewLines.multiEntryAvg = avgLine;
+                }
+            }
         }
         
         // Check if multiple TPs are enabled
@@ -13032,11 +13086,26 @@ class OrderManager {
                         if (splitLine.labelGroup) {
                             splitLine.labelGroup.remove();
                         }
+                        if (splitLine.yAxisHighlight) {
+                            splitLine.yAxisHighlight.remove();
+                        }
                         console.log(`   ✅ Removed split entry #${index + 1} preview line`);
                     } catch (e) {
                         console.warn(`   ⚠️ Error removing split entry #${index + 1}:`, e);
                     }
                 });
+            }
+
+            if (this.previewLines.multiEntryAvg) {
+                try {
+                    const m = this.previewLines.multiEntryAvg;
+                    if (m.line) m.line.remove();
+                    if (m.labelGroup) m.labelGroup.remove();
+                    if (m.yAxisHighlight) m.yAxisHighlight.remove();
+                    console.log('   ✅ Removed multi-entry avg preview line');
+                } catch (e) {
+                    console.warn('   ⚠️ Error removing multi-entry avg preview:', e);
+                }
             }
             
             this.previewLines = null;
@@ -13184,7 +13253,8 @@ class OrderManager {
         const isEntryTpSl = lineData.label === 'SL'
             || lineData.label === 'TP'
             || lineData.label === 'Entry'
-            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
+            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')))
+            || (typeof lineData.label === 'string' && lineData.label.startsWith('AvgEntry'));
         if (isPreviewOrder && isEntryTpSl) {
             lineEndX = this.chart.w;
         }
