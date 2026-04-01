@@ -12128,44 +12128,43 @@ class OrderManager {
         const tpY = (tpOn && tpPx > 0) ? this.chart.scales.yScale(tpPx) : null;
         const slY = (slOn && slPx > 0) ? this.chart.scales.yScale(slPx) : null;
 
+        const isBuy = this.orderSide !== 'SELL';
+        const wrongSl = slOn && slPx > 0 && entryPx > 0 && (isBuy ? slPx >= entryPx : slPx <= entryPx);
+        const wrongTp = tpOn && tpPx > 0 && entryPx > 0 && (isBuy ? tpPx <= entryPx : tpPx >= entryPx);
+        const warnWrongDirection = wrongSl || wrongTp;
+        const connectorColor = warnWrongDirection ? '#f23645' : '#2962ff';
+
         const connectorGroup = this.chart.svg.append('g')
             .attr('class', 'preview-pending-connector')
             .style('pointer-events', 'none');
         this._pendingPreviewConnector = connectorGroup;
 
-        const drawSegment = (yTo, stroke) => {
-            if (!Number.isFinite(yTo)) return null;
-            return connectorGroup.append('line')
-                .attr('x1', anchorX)
-                .attr('x2', anchorX)
-                .attr('y1', entryY)
-                .attr('y2', yTo)
-                .attr('stroke', stroke)
-                .attr('stroke-width', 1)
-                .attr('stroke-linecap', 'butt')
-                .attr('stroke-dasharray', '4,4')
-                .attr('opacity', 0.9);
-        };
-
-        // Color by level role so the side color follows TP/SL location automatically.
-        drawSegment(tpY, '#22c55e'); // TP branch
-        drawSegment(slY, '#f23645'); // SL branch
+        connectorGroup.append('line')
+            .attr('x1', anchorX)
+            .attr('x2', anchorX)
+            .attr('y1', yTop)
+            .attr('y2', yBot)
+            .attr('stroke', connectorColor)
+            .attr('stroke-width', 1)
+            .attr('stroke-linecap', 'butt')
+            .attr('stroke-dasharray', '4,4')
+            .attr('opacity', 0.9);
 
         const dotStroke = '#0f172a';
-        const drawDot = (y, fill) => connectorGroup.append('circle')
+        const drawDot = (y) => connectorGroup.append('circle')
             .attr('class', 'preview-pending-connector-dot')
             .attr('cx', anchorX)
             .attr('cy', y)
             .attr('r', 2.5)
-            .attr('fill', fill)
+            .attr('fill', connectorColor)
             .attr('stroke', dotStroke)
             .attr('stroke-width', 1)
             .attr('opacity', 0.95);
 
         this._pendingPreviewConnectorDots = [];
-        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, '#2962ff'));
-        if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY, '#22c55e'));
-        if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY, '#f23645'));
+        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY));
+        if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY));
+        if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY));
         try {
             connectorGroup.lower();
         } catch (_e) { /* ignore */ }
