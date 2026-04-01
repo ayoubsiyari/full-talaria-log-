@@ -134,6 +134,7 @@ class OrderManager {
         this.mfeMaeMarkers = []; // Store MFE/MAE markers
         this.previewLines = null; // Store preview TP/SL lines before order placement
         this._pendingPreviewConnector = null; // Vertical limit/stop preview guide (SVG line)
+        this._pendingPreviewConnectorDots = []; // Intersection dots on entry/TP/SL levels
         this.entryMarkers = [];
         this.exitMarkers = [];
         this.editingPendingOrderId = null;
@@ -12064,6 +12065,12 @@ class OrderManager {
             } catch (_e) { /* ignore */ }
             this._pendingPreviewConnector = null;
         }
+        if (Array.isArray(this._pendingPreviewConnectorDots) && this._pendingPreviewConnectorDots.length) {
+            this._pendingPreviewConnectorDots.forEach((dot) => {
+                try { dot.remove(); } catch (_e) { /* ignore */ }
+            });
+        }
+        this._pendingPreviewConnectorDots = [];
     }
 
     /**
@@ -12134,6 +12141,23 @@ class OrderManager {
         try {
             this._pendingPreviewConnector.lower();
         } catch (_e) { /* ignore */ }
+
+        const dotFill = this.orderSide === 'SELL' ? '#f23645' : '#2962ff';
+        const dotStroke = '#0f172a';
+        const drawDot = (y) => this.chart.svg.append('circle')
+            .attr('class', 'preview-pending-connector-dot')
+            .attr('cx', anchorX)
+            .attr('cy', y)
+            .attr('r', 2.5)
+            .attr('fill', dotFill)
+            .attr('stroke', dotStroke)
+            .attr('stroke-width', 1)
+            .attr('opacity', 0.95)
+            .style('pointer-events', 'none');
+
+        this._pendingPreviewConnectorDots = ys
+            .map((y) => drawDot(y))
+            .filter(Boolean);
     }
 
     validateOrder(orderType, orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity = null, positionSizeMode = null, slEnabled = false) {
