@@ -10053,6 +10053,18 @@ class OrderManager {
         if (widthChanged) {
             this.alignPreviewLabels();
             this.scheduleAlignPreviewLabels();
+        } else {
+            // Vertical-only pan: x2 was reset to full width — clip back to label edge (no gap).
+            const clipPreviewToLabel = (ld) => {
+                if (ld && ld.line && ld.labelGroup && !ld.isBadge) this.adjustPreviewLineForLabel(ld);
+            };
+            clipPreviewToLabel(this.previewLines.entry);
+            clipPreviewToLabel(this.previewLines.tp);
+            clipPreviewToLabel(this.previewLines.sl);
+            clipPreviewToLabel(this.previewLines.be);
+            if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
+                this.previewLines.multipleTPs.forEach(clipPreviewToLabel);
+            }
         }
     }
 
@@ -10261,9 +10273,9 @@ class OrderManager {
                 
                 // Make BE line more visible with distinct styling
                 this.previewLines.be.line
-                    .attr('stroke-width', 2.5)
-                    .attr('stroke-dasharray', '6,3')
-                    .attr('opacity', 0.9);
+                    .attr('stroke-width', 1)
+                    .attr('stroke-dasharray', '5,3')
+                    .attr('opacity', 0.92);
             }
         }
     }
@@ -10278,9 +10290,10 @@ class OrderManager {
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
-            .attr('stroke-width', 2)
-            .attr('stroke-dasharray', '8,4')
-            .attr('opacity', 0.7)
+            .attr('stroke-width', 1)
+            .attr('stroke-linecap', 'butt')
+            .attr('stroke-dasharray', '4,4')
+            .attr('opacity', 0.88)
             .style('pointer-events', isDraggable ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
@@ -11413,9 +11426,10 @@ class OrderManager {
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
-            .attr('stroke-width', 2)
-            .attr('stroke-dasharray', '6,4')
-            .attr('opacity', 0.8)
+            .attr('stroke-width', 1)
+            .attr('stroke-linecap', 'butt')
+            .attr('stroke-dasharray', '4,4')
+            .attr('opacity', 0.88)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         
@@ -11568,6 +11582,7 @@ class OrderManager {
         const x = this.chart.w - bbox.width - 70; // Offset from right
         const translateY = y - height / 2;
         lineData.labelGroup.attr('transform', `translate(${x}, ${translateY})`);
+        this.adjustPreviewLineForLabel(lineData);
     }
     
     /**
@@ -11631,6 +11646,7 @@ class OrderManager {
                 const height = lineData.labelDimensions.height || 24;
                 const currentX = self.chart.w - lineData.labelDimensions.width - 70;
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${clampedY - height / 2})`);
+                self.adjustPreviewLineForLabel(lineData);
                 
                 // Update split entry data
                 self.updateSplitEntryPrice(lineData.entryId, newPrice);
@@ -12010,12 +12026,12 @@ class OrderManager {
             return match ? parseFloat(match[1]) : this.chart.w - width - 18;
         })();
 
-        const rightEdge = x;
-        const startX = rightEdge - 16; // leave gap before label stack
+        // End the stroke exactly at the label's left edge (no gap — TradingView-style continuity).
+        const lineEndX = Math.max(0, x);
 
         lineData.line
             .attr('x1', 0)
-            .attr('x2', Math.max(0, startX));
+            .attr('x2', lineEndX);
     }
 
     validateOrder(orderType, orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity = null, positionSizeMode = null, slEnabled = false) {
