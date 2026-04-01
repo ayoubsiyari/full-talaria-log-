@@ -7809,7 +7809,7 @@ class OrderManager {
         
         // Add split handle for Entry when multi-entry mode is active, or for Entry/TP when advanced order is enabled
         const isSplitEntryLine = lineData.label && lineData.label.startsWith('Entry#');
-        const showMultiEntryHandle = !isBadge && (isEntryLine || isSplitEntryLine) && !isSlLine && !isBeLine && this.isMultiEntryMode;
+        const showMultiEntryHandle = !isBadge && !lineData.disabled && (isEntryLine || isSplitEntryLine) && !isSlLine && !isBeLine && this.isMultiEntryMode;
         const showAdvancedHandle = !isBadge && (isEntryLine || isTpLine) && !isSlLine && !isBeLine && this.advancedOrderEnabled;
         if (showMultiEntryHandle || showAdvancedHandle) {
             this.drawSplitHandle(lineData, lineData.labelGroup);
@@ -10704,38 +10704,38 @@ class OrderManager {
         } else if (this.splitEntriesEnabled) {
             mainEntryLabel = `Entry (${mainEntryPercent}%)`;
         }
-        let drawMainEntryLine = true;
+        let mainEntryDraggable = true;
+        let mainEntryOpts = null;
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             const mainLv = this.multiEntryLevels.find(l => l.price > 0);
-            if (mainLv && !this._multiEntryLevelMeetsMinLot(mainLv, slPrice, pipSizePE, pipValuePE, minLotPE)) {
-                drawMainEntryLine = false;
+            if (mainLv) {
+                const ok = this._multiEntryLevelMeetsMinLot(mainLv, slPrice, pipSizePE, pipValuePE, minLotPE);
+                mainEntryDraggable = ok;
+                if (!ok) mainEntryOpts = { disabled: true };
             }
         }
-        if (drawMainEntryLine) {
-            this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true);
-        }
+        this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, mainEntryDraggable, undefined, undefined, mainEntryOpts);
         
         // Draw split entry lines if any — using same style as main Entry
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach((splitEntry, index) => {
                 if (splitEntry.price > 0) {
-                    let skipLine = false;
+                    let splitDraggable = true;
+                    let splitOpts = null;
                     if (this.isMultiEntryMode && splitEntry.multiEntryLevelId != null && this.multiEntryLevels) {
                         const lvl = this.multiEntryLevels.find(l => l.id === splitEntry.multiEntryLevelId);
-                        if (lvl && !this._multiEntryLevelMeetsMinLot(lvl, slPrice, pipSizePE, pipValuePE, minLotPE)) {
-                            skipLine = true;
+                        if (lvl) {
+                            const ok = this._multiEntryLevelMeetsMinLot(lvl, slPrice, pipSizePE, pipValuePE, minLotPE);
+                            splitDraggable = ok;
+                            if (!ok) splitOpts = { disabled: true };
                         }
-                    }
-                    if (skipLine) {
-                        splitEntry.lineData = null;
-                        return;
                     }
                     const splitColor = entryColor; // Same color as main entry
                     const splitOrderType = splitEntry.orderType || this.orderType;
                     // Label format: "Entry#N:orderType" — parsed by composePreviewLabelSegments
                     const splitLabel = `Entry#${index + 2}:${splitOrderType}`;
                     
-                    const splitLine = this.drawPreviewLine(splitEntry.price, splitColor, splitLabel, this.orderSide, true);
+                    const splitLine = this.drawPreviewLine(splitEntry.price, splitColor, splitLabel, this.orderSide, splitDraggable, undefined, undefined, splitOpts);
                     if (splitLine) {
                         splitEntry.lineData = splitLine;
                         splitLine.isSplitEntry = true;
@@ -10902,9 +10902,11 @@ class OrderManager {
         const y = this.chart.scales.yScale(price);
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
+        const disabled = options?.disabled === true;
+        const lineOpacity = disabled ? 0.38 : 0.88;
 
         const line = this.chart.svg.append('line')
-            .attr('class', 'preview-line')
+            .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
             .attr('x1', 0)
             .attr('x2', this.chart.w)
             .attr('y1', y)
@@ -10913,7 +10915,7 @@ class OrderManager {
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
             .attr('stroke-dasharray', dash)
-            .attr('opacity', 0.88)
+            .attr('opacity', lineOpacity)
             .style('pointer-events', isDraggable ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
         const hitLine = this.chart.svg.append('line')
@@ -10930,9 +10932,10 @@ class OrderManager {
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
         const labelGroup = this.chart.svg.append('g')
-            .attr('class', 'preview-label-group')
+            .attr('class', disabled ? 'preview-label-group preview-label-group--disabled' : 'preview-label-group')
             .style('pointer-events', isDraggable ? 'all' : 'none')
-            .style('cursor', isDraggable ? 'ns-resize' : 'default');
+            .style('cursor', isDraggable ? 'ns-resize' : 'default')
+            .style('opacity', disabled ? 0.55 : 1);
 
         const lineData = {
             line,
@@ -10948,7 +10951,8 @@ class OrderManager {
             targetIndex: targetIndex,  // Add targetIndex for multiple TPs
             targetId: targetId,          // Add targetId for multiple TPs
             smallLabel: !!options?.smallLabel,
-            isAvgEntryLine: !!options?.isAvgEntryLine
+            isAvgEntryLine: !!options?.isAvgEntryLine,
+            disabled: disabled
         };
 
         this.renderPreviewLabel(lineData, y);
@@ -10956,6 +10960,9 @@ class OrderManager {
         
         // Add Y-axis price highlight for all order lines (Entry, TP, SL, BE, etc.)
         lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0);
+        if (disabled && lineData.yAxisHighlight) {
+            lineData.yAxisHighlight.style('opacity', 0.45);
+        }
 
         if (isDraggable) {
             this.makePreviewLineDraggable(lineData);
