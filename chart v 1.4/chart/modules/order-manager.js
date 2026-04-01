@@ -10944,7 +10944,7 @@ class OrderManager {
         this.adjustPreviewLineForLabel(lineData);
         
         // Add Y-axis price highlight for all order lines (Entry, TP, SL, BE, etc.)
-        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0);
+        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0, null, true);
 
         if (isDraggable) {
             this.makePreviewLineDraggable(lineData);
@@ -13033,18 +13033,22 @@ class OrderManager {
         this.calculateAdvancedRiskReward();
     }
 
-    drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null) {
+    drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null, isOrderPanelPreview = false) {
         const hChart = targetChart || this.chart;
         if (!hChart?.scales?.yScale || !hChart?.svg) return null;
 
         const y = hChart.scales.yScale(price);
         const priceText = this.formatPrice(price);
+        const labelSlug = String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-');
         
         // Create highlight group on the Y-axis with high z-index
         const highlightGroup = hChart.svg.append('g')
-            .attr('class', `y-axis-price-highlight y-axis-${label.toLowerCase()}-highlight`)
+            .attr('class', `y-axis-price-highlight y-axis-${labelSlug}-highlight`)
             .style('pointer-events', 'none')
             .style('isolation', 'isolate');
+        if (isOrderPanelPreview) {
+            highlightGroup.classed('om-preview-y-axis', true);
+        }
 
         const paddingH = 10; // Horizontal padding
         const paddingV = 4;  // Vertical padding
@@ -13190,7 +13194,7 @@ class OrderManager {
                 lines: this.chart.svg.selectAll('.preview-line').size(),
                 labelGroups: this.chart.svg.selectAll('.preview-label-group').size(),
                 badgeGroups: this.chart.svg.selectAll('.preview-badge-group').size(),
-                yAxisHighlights: this.chart.svg.selectAll('.y-axis-price-highlight').size(),
+                yAxisHighlights: this.chart.svg.selectAll('.om-preview-y-axis').size(),
                 splitEntryLines: this.chart.svg.selectAll('.split-entry-line').size(),
                 splitEntryLabels: this.chart.svg.selectAll('.split-entry-label-group').size(),
                 splitDragGhosts: this.chart.svg.selectAll('.split-drag-ghost').size()
@@ -13200,7 +13204,8 @@ class OrderManager {
             this.chart.svg.selectAll('.preview-line-hit').remove();
             this.chart.svg.selectAll('.preview-label-group').remove();
             this.chart.svg.selectAll('.preview-badge-group').remove();
-            this.chart.svg.selectAll('.y-axis-price-highlight').remove();
+            // Only strip order-panel preview axis tags — pending/open positions use y-axis-price-highlight without this class
+            this.chart.svg.selectAll('.om-preview-y-axis').remove();
             this.chart.svg.selectAll('.split-entry-line').remove();
             this.chart.svg.selectAll('.split-entry-label-group').remove();
             this.chart.svg.selectAll('.split-drag-ghost').remove();
