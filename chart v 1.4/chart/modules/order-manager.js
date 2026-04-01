@@ -7383,12 +7383,6 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-section" style="margin-top: 8px; margin-bottom: 6px;">
-                    <button type="button" id="mfeMaeSettingsBtn" class="order-utility-btn">
-                        ⚙ MFE/MAE Post-Exit Settings
-                    </button>
-                </div>
-
                 <!-- Position Scaling Control -->
                 <div class="order-section" id="scalePositionSection" style="margin-top: 8px; margin-bottom: 8px;">
                     <div class="order-toggle-wrapper">
