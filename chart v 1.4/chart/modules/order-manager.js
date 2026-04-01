@@ -11752,6 +11752,7 @@ class OrderManager {
                 });
             }
             this.renderMultiEntryRows();
+            this.syncMultiEntryToSplitEntries(); // Show levels on chart immediately
         } else {
             toggleBtn.textContent = 'Single';
             toggleBtn.classList.remove('active');
