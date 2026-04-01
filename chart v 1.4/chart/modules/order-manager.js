@@ -7459,7 +7459,7 @@ class OrderManager {
         if (lineData.isBadge) {
             // Badges positioned horizontally to the left of entry badge
             const gap = 8; // Gap between badges
-            const rightMargin = 70; // Space from price axis (avoid overlap with price label)
+            const rightMargin = 65; // Space from price axis (avoid overlap with price label)
             
             // Get widths of all badges for proper spacing
             const slWidth = this.previewLines?.sl?.labelDimensions?.width || 40;
