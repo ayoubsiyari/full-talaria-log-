@@ -16339,8 +16339,7 @@ class OrderManager {
                 // Position label box to the left of close button
                 const labelTextBbox = labelText.node().getBBox();
                 const labelBoxWidth = labelTextBbox.width + 20;
-                const dragRightNudge = 16;
-                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth + dragRightNudge;
+                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
                 
                 labelBox
                     .attr('x', labelBoxX)
@@ -16543,7 +16542,7 @@ class OrderManager {
         ch.svg.selectAll('.y-axis-pending-tp-highlight').remove();
         ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
 
-        const marginRight = 72; // keep pending TP/SL labels closer to axis at rest
+        const marginRight = 90;
 
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
@@ -16670,7 +16669,7 @@ class OrderManager {
                 target.line.attr('y1', clampedY).attr('y2', clampedY);
                 
                 const dims = target.labelDimensions || { width: 80, height: 20 };
-                const marginRight = 72;
+                const marginRight = 90;
                 const translateX = Number.isFinite(dragLabelX) ? dragLabelX : (ch.w - dims.width - marginRight);
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 target.line.attr('x2', Math.max(0, translateX));
@@ -18432,7 +18431,7 @@ class OrderManager {
                     const boxHeight = 18;
                     const boxY = y - boxHeight / 2;
                     const yAxisWidth = 70;
-                    const labelRightNudge = 18;
+                    const labelRightNudge = isPending ? 0 : 18;
 
                     closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
 
