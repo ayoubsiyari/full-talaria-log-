@@ -10389,6 +10389,8 @@ class OrderManager {
         let isDragging = false;
         let dragStartTime = 0;
         let frameId = null;
+        const dragRightNudge = 12;
+        let dragXNudgeApplied = false;
         
         // Throttle helper for calculations - limits execution to once per frame
         const throttledCalculate = (fn) => {
@@ -10404,6 +10406,16 @@ class OrderManager {
                 isDragging = true;
                 dragStartTime = Date.now();
                 lineData.line.attr('opacity', 1);
+                if (lineData?.labelGroup && !dragXNudgeApplied) {
+                    const tr = lineData.labelGroup.attr('transform') || '';
+                    const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
+                    if (m) {
+                        const x = parseFloat(m[1]) || 0;
+                        const y = parseFloat(m[2]) || 0;
+                        lineData.labelGroup.attr('transform', `translate(${x + dragRightNudge}, ${y})`);
+                        dragXNudgeApplied = true;
+                    }
+                }
                 
                 // Set flag to prevent full redraw during drag
                 self.isDraggingPreviewLine = true;
@@ -10961,6 +10973,16 @@ class OrderManager {
                 if (!isDragging) return;
                 isDragging = false;
                 lineData.line.attr('opacity', 0.7);
+                if (lineData?.labelGroup && dragXNudgeApplied) {
+                    const tr = lineData.labelGroup.attr('transform') || '';
+                    const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
+                    if (m) {
+                        const x = parseFloat(m[1]) || 0;
+                        const y = parseFloat(m[2]) || 0;
+                        lineData.labelGroup.attr('transform', `translate(${x - dragRightNudge}, ${y})`);
+                    }
+                    dragXNudgeApplied = false;
+                }
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
@@ -16313,7 +16335,8 @@ class OrderManager {
                 // Position label box to the left of close button
                 const labelTextBbox = labelText.node().getBBox();
                 const labelBoxWidth = labelTextBbox.width + 20;
-                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
+                const dragRightNudge = 8;
+                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth + dragRightNudge;
                 
                 labelBox
                     .attr('x', labelBoxX)
@@ -16640,7 +16663,8 @@ class OrderManager {
                 
                 const dims = target.labelDimensions || { width: 80, height: 20 };
                 const marginRight = 90;
-                const translateX = ch.w - dims.width - marginRight;
+                const dragRightNudge = 8;
+                const translateX = ch.w - dims.width - marginRight + dragRightNudge;
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 target.line.attr('x2', Math.max(0, translateX));
                 
