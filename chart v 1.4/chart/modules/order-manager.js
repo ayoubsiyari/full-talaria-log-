@@ -6730,6 +6730,17 @@ class OrderManager {
                 .multi-entry-delete-btn:hover {
                     background: rgba(239, 68, 68, 0.15);
                 }
+                .multi-entry-delete-btn--locked,
+                .multi-entry-delete-btn:disabled {
+                    color: var(--om-dim);
+                    opacity: 0.45;
+                    cursor: not-allowed;
+                    pointer-events: none;
+                }
+                .multi-entry-delete-btn--locked:hover,
+                .multi-entry-delete-btn:disabled:hover {
+                    background: transparent;
+                }
                 .multi-entry-row-info {
                     display: flex;
                     gap: 8px;
@@ -12004,6 +12015,10 @@ class OrderManager {
 
             const row = document.createElement('div');
             row.className = 'multi-entry-row' + (this.activeMultiEntryLevelId === level.id ? ' multi-entry-row--active' : '');
+            const lockFirstTwo = this.isMultiEntryMode && idx < 2;
+            const deleteBtnHtml = lockFirstTwo
+                ? `<button type="button" class="multi-entry-delete-btn multi-entry-delete-btn--locked" data-level-id="${level.id}" title="Base levels — switch to Single to remove" disabled aria-disabled="true">✕</button>`
+                : `<button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>`;
             row.innerHTML = `
                 <div class="multi-entry-row-inputs">
                     <input type="number" class="multi-entry-row-input" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price">
@@ -12011,7 +12026,7 @@ class OrderManager {
                         <span class="multi-entry-amount-prefix">${amountPrefix}</span>
                         <input type="number" class="multi-entry-amount-input" value="${amtVal}" step="${amountStep}" min="0" data-level-id="${level.id}" data-field="amount">
                     </div>
-                    <button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>
+                    ${deleteBtnHtml}
                 </div>
                 <div class="multi-entry-row-info">
                     <span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${lots} ${posLabel}
@@ -12395,6 +12410,10 @@ class OrderManager {
      * Remove an entry level by ID
      */
     removeMultiEntryLevel(id) {
+        const ix = this.multiEntryLevels.findIndex((l) => l.id === id);
+        if (this.isMultiEntryMode && ix >= 0 && ix < 2) {
+            return;
+        }
         // Don't allow removing if only 1 level left — switch back to single
         if (this.multiEntryLevels.length <= 1) {
             this.toggleEntryMode(); // Back to single
