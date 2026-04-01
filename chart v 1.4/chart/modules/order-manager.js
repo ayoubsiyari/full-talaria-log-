@@ -133,6 +133,7 @@ class OrderManager {
         this.orderLines = [];
         this.mfeMaeMarkers = []; // Store MFE/MAE markers
         this.previewLines = null; // Store preview TP/SL lines before order placement
+        this._pendingPreviewConnector = null; // Vertical limit/stop preview guide (SVG line)
         this.entryMarkers = [];
         this.exitMarkers = [];
         this.editingPendingOrderId = null;
@@ -10066,6 +10067,8 @@ class OrderManager {
                 this.previewLines.multipleTPs.forEach(clipPreviewToLabel);
             }
         }
+
+        this._syncPendingLimitStopConnector();
     }
 
     updatePreviewLines() {
@@ -10278,6 +10281,13 @@ class OrderManager {
                     .attr('opacity', 0.92);
             }
         }
+
+        // After all preview geometry is in the DOM (incl. badges), sync limit/stop vertical guide.
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => this._syncPendingLimitStopConnector());
+        } else {
+            this._syncPendingLimitStopConnector();
+        }
     }
 
     drawPreviewLine(price, color, label, direction = null, isDraggable = false, targetIndex = undefined, targetId = undefined) {
@@ -10416,6 +10426,7 @@ class OrderManager {
                 const translateY = clampedY - height / 2;
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
                 self.adjustPreviewLineForLabel(lineData);
+                self._syncPendingLimitStopConnector();
                 
                 // Update Y-axis price highlight for ALL lines (Entry, TP, SL, BE, etc.)
                 if (lineData.yAxisHighlight) {
@@ -11830,6 +11841,7 @@ class OrderManager {
      */
     removePreviewLines() {
         console.log('🗑️ Removing preview lines...');
+        this._removePendingLimitStopConnector();
 
         if (this.previewLines) {
             ['entry', 'tp', 'sl'].forEach(key => {
@@ -11927,6 +11939,7 @@ class OrderManager {
             this.chart.svg.selectAll('.split-entry-label-group').remove();
             this.chart.svg.selectAll('.split-drag-ghost').remove();
             this.chart.svg.selectAll('.split-drag-label').remove();
+            this.chart.svg.selectAll('.preview-pending-connector').remove();
             
             const totalRemoved = Object.values(removed).reduce((a, b) => a + b, 0);
             if (totalRemoved > 0) {
@@ -12011,6 +12024,8 @@ class OrderManager {
                 currentX += width + gap;
             });
         });
+
+        this._syncPendingLimitStopConnector();
     }
 
     adjustPreviewLineForLabel(lineData, labelX = null, labelWidth = null, labelHeight = null) {
@@ -12028,28 +12043,77 @@ class OrderManager {
 
         // End the stroke exactly at the label's left edge (no gap — TradingView-style continuity).
         const lineEndX = Math.max(0, x);
-        let lineStartX = 0;
-
-        // Pending-order preview (limit/stop): show short Entry->TP/SL connectors near the right side.
-        const isPendingPreview = this.orderType === 'limit' || this.orderType === 'stop';
-        const isTpOrSl = lineData.label === 'SL' || lineData.label === 'TP' || (typeof lineData.label === 'string' && lineData.label.startsWith('TP'));
-        if (isPendingPreview && isTpOrSl) {
-            const entryGroup = this.previewLines?.entry?.labelGroup;
-            const entryWidth = this.previewLines?.entry?.labelDimensions?.width || 0;
-            const entryTransform = entryGroup?.attr('transform') || '';
-            const match = /translate\(([^,]+),/.exec(entryTransform);
-            const entryX = match ? parseFloat(match[1]) : NaN;
-            if (Number.isFinite(entryX)) {
-                lineStartX = Math.max(0, Math.min(lineEndX, entryX + entryWidth + 8));
-            } else {
-                // Fallback: keep only a compact segment near the right-side label stack.
-                lineStartX = Math.max(0, lineEndX - 200);
-            }
-        }
 
         lineData.line
-            .attr('x1', lineStartX)
+            .attr('x1', 0)
             .attr('x2', lineEndX);
+    }
+
+    _removePendingLimitStopConnector() {
+        if (this._pendingPreviewConnector) {
+            try {
+                this._pendingPreviewConnector.remove();
+            } catch (_e) { /* ignore */ }
+            this._pendingPreviewConnector = null;
+        }
+    }
+
+    /**
+     * Limit/stop preview only: vertical dashed guide through Entry + TP + SL label column (TradingView-style).
+     * Does not replace horizontal TP/SL lines — those stay full width to the label edge.
+     */
+    _syncPendingLimitStopConnector() {
+        this._removePendingLimitStopConnector();
+        if (!this.chart?.svg || !this.chart.scales?.yScale) return;
+        if (this.orderType !== 'limit' && this.orderType !== 'stop') return;
+        if (!this.previewLines?.entry) return;
+
+        const tpOn = document.getElementById('enableTP')?.checked;
+        const slOn = document.getElementById('enableSL')?.checked;
+        const entryPx = parseFloat(document.getElementById('orderEntryPrice')?.value || 0) || Number(this.previewLines.entry.price) || 0;
+        const tpPx = tpOn ? parseFloat(document.getElementById('tpPrice')?.value || 0) : 0;
+        const slPx = slOn ? parseFloat(document.getElementById('slPrice')?.value || 0) : 0;
+
+        const ys = [];
+        if (entryPx > 0) ys.push(this.chart.scales.yScale(entryPx));
+        if (tpOn && tpPx > 0) ys.push(this.chart.scales.yScale(tpPx));
+        if (slOn && slPx > 0) ys.push(this.chart.scales.yScale(slPx));
+        if (ys.length < 2) return;
+
+        const yTop = Math.min(...ys);
+        const yBot = Math.max(...ys);
+        if (!Number.isFinite(yTop) || !Number.isFinite(yBot) || Math.abs(yBot - yTop) < 0.5) return;
+
+        const lefts = [];
+        const pushLeft = (ld) => {
+            if (!ld?.labelGroup) return;
+            const tr = ld.labelGroup.attr('transform') || '';
+            const m = /translate\(([^,]+),/.exec(tr);
+            if (m) lefts.push(parseFloat(m[1]));
+        };
+        pushLeft(this.previewLines.entry);
+        if (tpOn) pushLeft(this.previewLines.tp);
+        if (slOn) pushLeft(this.previewLines.sl);
+        if (!lefts.length) return;
+
+        const anchorX = Math.max(0, Math.min(this.chart.w - 1, Math.min(...lefts) - 10));
+        const strokeCol = this.orderSide === 'SELL' ? '#f23645' : '#2962ff';
+
+        this._pendingPreviewConnector = this.chart.svg.append('line')
+            .attr('class', 'preview-pending-connector')
+            .attr('x1', anchorX)
+            .attr('x2', anchorX)
+            .attr('y1', yTop)
+            .attr('y2', yBot)
+            .attr('stroke', strokeCol)
+            .attr('stroke-width', 1)
+            .attr('stroke-linecap', 'butt')
+            .attr('stroke-dasharray', '4,4')
+            .attr('opacity', 0.5)
+            .style('pointer-events', 'none');
+        try {
+            this._pendingPreviewConnector.lower();
+        } catch (_e) { /* ignore */ }
     }
 
     validateOrder(orderType, orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity = null, positionSizeMode = null, slEnabled = false) {
