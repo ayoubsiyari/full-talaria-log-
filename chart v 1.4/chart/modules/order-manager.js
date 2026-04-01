@@ -12028,9 +12028,27 @@ class OrderManager {
 
         // End the stroke exactly at the label's left edge (no gap — TradingView-style continuity).
         const lineEndX = Math.max(0, x);
+        let lineStartX = 0;
+
+        // Pending-order preview (limit/stop): show short Entry->TP/SL connectors near the right side.
+        const isPendingPreview = this.orderType === 'limit' || this.orderType === 'stop';
+        const isTpOrSl = lineData.label === 'SL' || lineData.label === 'TP' || (typeof lineData.label === 'string' && lineData.label.startsWith('TP'));
+        if (isPendingPreview && isTpOrSl) {
+            const entryGroup = this.previewLines?.entry?.labelGroup;
+            const entryWidth = this.previewLines?.entry?.labelDimensions?.width || 0;
+            const entryTransform = entryGroup?.attr('transform') || '';
+            const match = /translate\(([^,]+),/.exec(entryTransform);
+            const entryX = match ? parseFloat(match[1]) : NaN;
+            if (Number.isFinite(entryX)) {
+                lineStartX = Math.max(0, Math.min(lineEndX, entryX + entryWidth + 8));
+            } else {
+                // Fallback: keep only a compact segment near the right-side label stack.
+                lineStartX = Math.max(0, lineEndX - 200);
+            }
+        }
 
         lineData.line
-            .attr('x1', 0)
+            .attr('x1', lineStartX)
             .attr('x2', lineEndX);
     }
 
