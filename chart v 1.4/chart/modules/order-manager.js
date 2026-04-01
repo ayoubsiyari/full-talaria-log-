@@ -7809,7 +7809,7 @@ class OrderManager {
         
         // Add split handle for Entry when multi-entry mode is active, or for Entry/TP when advanced order is enabled
         const isSplitEntryLine = lineData.label && lineData.label.startsWith('Entry#');
-        const showMultiEntryHandle = !isBadge && !lineData.disabled && (isEntryLine || isSplitEntryLine) && !isSlLine && !isBeLine && this.isMultiEntryMode;
+        const showMultiEntryHandle = !isBadge && (isEntryLine || isSplitEntryLine) && !isSlLine && !isBeLine && this.isMultiEntryMode;
         const showAdvancedHandle = !isBadge && (isEntryLine || isTpLine) && !isSlLine && !isBeLine && this.advancedOrderEnabled;
         if (showMultiEntryHandle || showAdvancedHandle) {
             this.drawSplitHandle(lineData, lineData.labelGroup);
@@ -10704,30 +10704,26 @@ class OrderManager {
         } else if (this.splitEntriesEnabled) {
             mainEntryLabel = `Entry (${mainEntryPercent}%)`;
         }
-        let mainEntryDraggable = true;
+        // Always draggable so levels below min lot can be moved back; { disabled: true } is visual-only (faded).
         let mainEntryOpts = null;
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             const mainLv = this.multiEntryLevels.find(l => l.price > 0);
             if (mainLv) {
                 const ok = this._multiEntryLevelMeetsMinLot(mainLv, slPrice, pipSizePE, pipValuePE, minLotPE);
-                mainEntryDraggable = ok;
                 if (!ok) mainEntryOpts = { disabled: true };
             }
         }
-        this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, mainEntryDraggable, undefined, undefined, mainEntryOpts);
+        this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true, undefined, undefined, mainEntryOpts);
         
         // Draw split entry lines if any — using same style as main Entry
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach((splitEntry, index) => {
                 if (splitEntry.price > 0) {
-                    let splitDraggable = true;
                     let splitOpts = null;
                     if (this.isMultiEntryMode && splitEntry.multiEntryLevelId != null && this.multiEntryLevels) {
                         const lvl = this.multiEntryLevels.find(l => l.id === splitEntry.multiEntryLevelId);
-                        if (lvl) {
-                            const ok = this._multiEntryLevelMeetsMinLot(lvl, slPrice, pipSizePE, pipValuePE, minLotPE);
-                            splitDraggable = ok;
-                            if (!ok) splitOpts = { disabled: true };
+                        if (lvl && !this._multiEntryLevelMeetsMinLot(lvl, slPrice, pipSizePE, pipValuePE, minLotPE)) {
+                            splitOpts = { disabled: true };
                         }
                     }
                     const splitColor = entryColor; // Same color as main entry
@@ -10735,7 +10731,7 @@ class OrderManager {
                     // Label format: "Entry#N:orderType" — parsed by composePreviewLabelSegments
                     const splitLabel = `Entry#${index + 2}:${splitOrderType}`;
                     
-                    const splitLine = this.drawPreviewLine(splitEntry.price, splitColor, splitLabel, this.orderSide, splitDraggable, undefined, undefined, splitOpts);
+                    const splitLine = this.drawPreviewLine(splitEntry.price, splitColor, splitLabel, this.orderSide, true, undefined, undefined, splitOpts);
                     if (splitLine) {
                         splitEntry.lineData = splitLine;
                         splitLine.isSplitEntry = true;
