@@ -10522,11 +10522,10 @@ class OrderManager {
             }
         }
 
-        // SL syncing: only fill the very first time (empty field). Once it has any value, leave it alone
-        // until the user explicitly drags or types. This prevents entry drags from "auto-setting" SL.
+        // SL syncing: mirror TP logic — track entry until user explicitly drags SL
         if (slPriceInput && !this.slManuallyPositioned) {
             const existing = String(slPriceInput.value || '').trim();
-            if (!existing || existing === '0') {
+            if (!existing || existing === mainFormatted) {
                 slPriceInput.value = slFormatted;
             }
         }
@@ -10834,11 +10833,6 @@ class OrderManager {
             }
         }
 
-        const precisionPE = this.getPricePrecision(entryPrice) || 5;
-        const slEntryEpsilon = Math.pow(10, -(precisionPE + 1));
-        const slDistinctFromEntry =
-            entryPrice > 0 && slPrice > 0 && Math.abs(slPrice - entryPrice) > slEntryEpsilon;
-
         let tpBadgeAnchorPrice = entryPrice;
         if (this.isMultiEntryMode && this.splitEntriesEnabled && this.multiEntryLevels
             && this.multiEntryLevels.filter(l => l.price > 0).length > 1) {
@@ -10963,13 +10957,13 @@ class OrderManager {
             }
         }
         
-        // Draw SL: use a full line when price is off-entry (typed, steppers, multi-entry default) or user dragged; badge only when SL is still "at" entry
-        if (slEnabled && slPrice > 0 && (this.slManuallyPositioned || slDistinctFromEntry)) {
+        // Draw SL: full line only when user has explicitly dragged it; otherwise badge on entry (like TP)
+        if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
             this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
             if (this.previewLines.sl) {
                 this.previewLines.sl.targetPrice = slPrice;
             }
-        } else if (slEnabled && !this.slManuallyPositioned && (!slPrice || slPrice <= 0 || !slDistinctFromEntry)) {
+        } else if (slEnabled && !this.slManuallyPositioned) {
             this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
         }
         
