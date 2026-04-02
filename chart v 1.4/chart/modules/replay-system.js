@@ -2744,19 +2744,23 @@ class ReplaySystem {
             // Preserve existing animating candle state if flag is set
             
             if (!this._preserveTickProgress || !this.animatingCandle) {
-                // Create new animating candle from scratch
+                // Pre-fetch the tick path so the very first render already
+                // shows a small movement from open (avoids a flat doji flash).
+                const prePath = this.getTickPath(targetCandle);
+                const seed0 = (prePath && prePath.length > 0) ? prePath[0] : targetCandle.o;
                 this.animatingCandle = {
                     target: targetCandle,
                     open: targetCandle.o,
-                    high: targetCandle.o,
-                    low: targetCandle.o,
-                    close: targetCandle.o,
+                    high: Math.max(targetCandle.o, seed0),
+                    low: Math.min(targetCandle.o, seed0),
+                    close: seed0,
                     targetHigh: targetCandle.h,
                     targetLow: targetCandle.l,
                     targetClose: targetCandle.c,
                     volume: 0,
                     targetVolume: targetCandle.v || 0,
-                    t: targetCandle.t
+                    t: targetCandle.t,
+                    cachedPath: prePath
                 };
                 this.tickProgress = 0;
                 this.tickElapsedMs = 0;
@@ -2987,9 +2991,23 @@ class ReplaySystem {
             target.high = Math.max(target.high, currentPrice);
             target.low = Math.min(target.low, currentPrice);
             
-            // Update volume progressively (use seeded random for consistency)
-            const seededRandom = this.createSeededRandom(tc.t + this.tickProgress);
-            target.volume = target.targetVolume * progress * (0.8 + seededRandom() * 0.4);
+            // Volume arrives in bursts, not linearly. A cumulative curve
+            // is generated once per candle so the profile is deterministic.
+            if (!target._volumeCurve) {
+                const vRng = this.createSeededRandom(tc.t + 7919);
+                const curve = new Array(ticksNeeded);
+                let sum = 0;
+                for (let vi = 0; vi < ticksNeeded; vi++) {
+                    let tickVol = 0.5 + vRng() * 1.0;
+                    if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
+                    sum += tickVol;
+                    curve[vi] = sum;
+                }
+                for (let vi = 0; vi < ticksNeeded; vi++) curve[vi] /= sum;
+                target._volumeCurve = curve;
+            }
+            const volIdx = Math.min(this.tickProgress - 1, ticksNeeded - 1);
+            target.volume = target.targetVolume * target._volumeCurve[volIdx];
             
         } else {
             // Final tick: set exact target values
@@ -3293,37 +3311,32 @@ class ReplaySystem {
      * @param {number} seed - Seed for deterministic random (use candle timestamp)
      */
     generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
-        // Create seeded random function for deterministic output
         const random = this.createSeededRandom(seed);
-        
+
         const path = [];
         const range = high - low;
         const isBullish = close >= open;
         const body = Math.abs(close - open);
         const upperWick = high - Math.max(open, close);
         const lowerWick = Math.min(open, close) - low;
-        
-        // Dynamic volatility based on candle characteristics
+        const bodyRatio = body / (range || 1);
+        const isDoji = bodyRatio < 0.15;
+
         const baseVolatility = range / numTicks * (1.5 + random() * 2);
-        
-        // Track if we've touched high/low (must happen naturally)
+
         let touchedHigh = false;
         let touchedLow = false;
-        
-        // Random walk state
+
         let price = open;
         let velocity = 0;
-        let acceleration = 0;
-        
-        // Market microstructure simulation
-        const tickSize = range * 0.001; // Minimum price movement
+
+        const tickSize = range * 0.001;
         let lastDirection = 0;
         let directionStreak = 0;
         let inMomentumBurst = false;
         let burstDirection = 0;
         let burstTicksRemaining = 0;
-        
-        // Generate random "event" times (news spikes, order flow bursts)
+
         const numEvents = 2 + Math.floor(random() * 4);
         const eventTicks = [];
         for (let i = 0; i < numEvents; i++) {
@@ -3333,18 +3346,16 @@ class ReplaySystem {
                 direction: random() > 0.5 ? 1 : -1
             });
         }
-        
+
         for (let t = 0; t < numTicks; t++) {
             const progress = t / (numTicks - 1);
             const remainingTicks = numTicks - t;
-            
-            // FINAL TICK: Must close at exact close price
+
             if (t === numTicks - 1) {
                 path.push(close);
                 continue;
             }
-            
-            // Check for event triggers (sudden volatility spikes)
+
             const event = eventTicks.find(e => e.tick === t);
             if (event) {
                 inMomentumBurst = true;
@@ -3352,92 +3363,112 @@ class ReplaySystem {
                 burstTicksRemaining = 3 + Math.floor(random() * 5);
                 velocity += event.magnitude * range * 0.1 * event.direction;
             }
-            
-            // Decay momentum burst
+
             if (inMomentumBurst) {
                 burstTicksRemaining--;
-                if (burstTicksRemaining <= 0) {
-                    inMomentumBurst = false;
-                }
+                if (burstTicksRemaining <= 0) inMomentumBurst = false;
             }
-            
+
             // === PRICE PHYSICS ===
-            
-            // 1. Mean reversion towards eventual close (stronger near end)
-            const closeAttraction = progress > 0.7 ? 
-                (close - price) / remainingTicks * (1 + (progress - 0.7) * 3) :
-                (close - price) / (remainingTicks + 20) * 0.3;
-            
-            // 2. Random acceleration (Brownian motion)
-            const randomAccel = (random() - 0.5) * baseVolatility * 0.5;
-            
-            // 3. Momentum (velocity persistence with decay)
-            velocity = velocity * 0.85 + randomAccel;
-            
-            // 4. Direction streak logic (markets tend to move in bursts)
+
+            // 1. Mean reversion towards close (stronger near end)
+            const closeAttraction = progress > 0.7
+                ? (close - price) / remainingTicks * (1 + (progress - 0.7) * 3)
+                : (close - price) / (remainingTicks + 20) * 0.3;
+
+            // 2. Brownian motion — boosted noise during opening range
+            const noiseScale = progress < 0.15 ? 1.6 : 1.0;
+            const randomAccel = (random() - 0.5) * baseVolatility * 0.5 * noiseScale;
+
+            // 3. Momentum — faster decay during opening range (indecision)
+            const decay = progress < 0.15 ? 0.6 : 0.85;
+            velocity = velocity * decay + randomAccel;
+
+            // 4. Direction streak reversal
             const currentDir = velocity > 0 ? 1 : -1;
             if (currentDir === lastDirection) {
                 directionStreak++;
-                // Longer streaks have higher chance of reversal
                 if (directionStreak > 3 && random() < directionStreak * 0.08) {
-                    velocity *= -0.5; // Reversal
+                    velocity *= -0.5;
                     directionStreak = 0;
                 }
             } else {
                 directionStreak = 1;
             }
             lastDirection = currentDir;
-            
-            // 5. Boundary awareness (natural pull towards high/low if not touched)
-            if (!touchedHigh && progress > 0.3 && random() < 0.15) {
-                velocity += (high - price) * 0.05;
+
+            // 5. Direction-aware wick exploration
+            //    Bullish: price tends to dip toward low (lower wick) first,
+            //             then rally toward high before settling at close.
+            //    Bearish: price tends to spike toward high (upper wick) first,
+            //             then drop toward low before settling at close.
+            //    Doji:    equal random pull toward both extremes.
+            if (!isDoji) {
+                const firstWick  = isBullish ? low  : high;
+                const secondWick = isBullish ? high : low;
+                const firstDone  = isBullish ? touchedLow : touchedHigh;
+                const secondDone = isBullish ? touchedHigh : touchedLow;
+
+                if (!firstDone && progress > 0.08 && progress < 0.50) {
+                    if (random() < 0.25) velocity += (firstWick - price) * 0.07;
+                } else if (firstDone && !secondDone && progress > 0.30) {
+                    if (random() < 0.25) velocity += (secondWick - price) * 0.07;
+                }
+            } else {
+                if (!touchedHigh && progress > 0.15 && random() < 0.18) {
+                    velocity += (high - price) * 0.05;
+                }
+                if (!touchedLow && progress > 0.15 && random() < 0.18) {
+                    velocity += (low - price) * 0.05;
+                }
             }
-            if (!touchedLow && progress > 0.3 && random() < 0.15) {
-                velocity += (low - price) * 0.05;
-            }
-            
+
             // 6. Apply forces
             let newPrice = price + velocity + closeAttraction;
-            
-            // 7. Add micro-noise (bid-ask bounce simulation)
+
+            // 7. Micro-noise (bid-ask bounce)
             const microNoise = (random() - 0.5) * tickSize * 10;
             newPrice += microNoise;
-            
-            // 8. Enforce high/low boundaries with bounce
+
+            // 8. Hard boundary bounce
             if (newPrice >= high) {
                 newPrice = high - random() * range * 0.02;
                 touchedHigh = true;
-                velocity = -Math.abs(velocity) * 0.3; // Bounce down
+                velocity = -Math.abs(velocity) * 0.3;
             }
             if (newPrice <= low) {
                 newPrice = low + random() * range * 0.02;
                 touchedLow = true;
-                velocity = Math.abs(velocity) * 0.3; // Bounce up
+                velocity = Math.abs(velocity) * 0.3;
             }
-            
-            // 9. Force touch high/low before candle ends if not yet touched
-            if (!touchedHigh && remainingTicks < 10 && remainingTicks > 2) {
-                if (random() < 0.3) {
-                    newPrice = high - random() * range * 0.01;
+
+            // 9. Graduated force-touch — velocity ramp first, teleport only
+            //    in the last few ticks if still untouched.
+            if (!touchedHigh && remainingTicks < 12 && remainingTicks > 1) {
+                const urgency = 1 - (remainingTicks - 1) / 11;
+                velocity += (high - price) * 0.12 * urgency;
+                if (remainingTicks < 4) {
+                    newPrice = high - random() * range * 0.005;
                     touchedHigh = true;
                 }
             }
-            if (!touchedLow && remainingTicks < 10 && remainingTicks > 2) {
-                if (random() < 0.3) {
-                    newPrice = low + random() * range * 0.01;
+            if (!touchedLow && remainingTicks < 12 && remainingTicks > 1) {
+                const urgency = 1 - (remainingTicks - 1) / 11;
+                velocity += (low - price) * 0.12 * urgency;
+                if (remainingTicks < 4) {
+                    newPrice = low + random() * range * 0.005;
                     touchedLow = true;
                 }
             }
-            
+
             // 10. Final clamp
             newPrice = Math.max(low, Math.min(high, newPrice));
-            
+
             price = newPrice;
             path.push(price);
         }
-        
-        // Post-process: ensure high and low were actually touched
-        // Use seeded random for deterministic placement
+
+        // Safety net: deterministic placement if natural walk never reached extremes
         if (!touchedHigh) {
             const highIdx = Math.floor(numTicks * (0.2 + random() * 0.5));
             if (highIdx < path.length - 1) path[highIdx] = high;
@@ -3446,7 +3477,7 @@ class ReplaySystem {
             const lowIdx = Math.floor(numTicks * (0.2 + random() * 0.5));
             if (lowIdx < path.length - 1 && lowIdx !== path.indexOf(high)) path[lowIdx] = low;
         }
-        
+
         return path;
     }
     
