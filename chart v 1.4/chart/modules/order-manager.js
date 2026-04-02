@@ -11174,6 +11174,56 @@ class OrderManager {
         return Math.min(p, slP - pad);
     }
 
+    /**
+     * While dragging entry lines, updatePreviewLines() is skipped — keep SL/TP graphics at #slPrice / #tpPrice
+     * so they do not look frozen until mouseup (then snap).
+     */
+    _syncProtectionPreviewYFromInputs() {
+        if (!this.chart?.scales?.yScale || !this.previewLines) return;
+        const yScale = this.chart.scales.yScale;
+        const rightMargin = this.chart.margin?.r || 70;
+        const highlightHeight = 22;
+
+        const moveLd = (ld, px) => {
+            if (!ld || !(px > 0) || !Number.isFinite(px)) return;
+            ld.price = px;
+            const y = yScale(px);
+            if (ld.line) {
+                ld.line.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
+            }
+            if (ld.hitLine) {
+                ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
+            }
+            if (ld.labelGroup) {
+                const h = ld.labelDimensions?.height || 0;
+                const tr = ld.labelGroup.attr('transform');
+                const x = parseFloat(tr?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                ld.labelGroup.attr('transform', `translate(${x}, ${y - h / 2})`);
+            }
+            if (ld.yAxisHighlight) {
+                const hx = this.chart.w - rightMargin + 2;
+                ld.yAxisHighlight.attr('transform', `translate(${hx}, ${y - highlightHeight / 2})`);
+                const pt = ld.yAxisHighlight.select('.y-axis-price-text');
+                if (pt.size()) pt.text(this.formatPrice(px));
+            }
+            if (ld.priceText) ld.priceText.text(this.formatPrice(px));
+            this.adjustPreviewLineForLabel(ld);
+        };
+
+        if (document.getElementById('enableSL')?.checked) {
+            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            if (slPx > 0 && this.previewLines.sl) moveLd(this.previewLines.sl, slPx);
+        }
+
+        // Multi-entry TP badge is anchored to avg — _syncTpBadgeYToMultiEntryAvg handles it; do not overwrite here.
+        const pricedLv = (this.multiEntryLevels || []).filter(l => l.price > 0);
+        const tpIsAvgAnchoredBadge = this.isMultiEntryMode && pricedLv.length > 1 && this.previewLines.tp?.isBadge;
+        if (document.getElementById('enableTP')?.checked && !tpIsAvgAnchoredBadge) {
+            const tpPx = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            if (tpPx > 0 && this.previewLines.tp) moveLd(this.previewLines.tp, tpPx);
+        }
+    }
+
     makePreviewLineDraggable(lineData) {
         const self = this;
         let isDragging = false;
@@ -11582,6 +11632,7 @@ class OrderManager {
                     // Do not move SL badge or write #slPrice when dragging entry — that looked like SL was
                     // "set" to the entry price without the user touching SL. SL position stays from input / prior drag.
 
+                    self._syncProtectionPreviewYFromInputs();
                     // Recalculate risk/reward since TP may still sync to entry (single-entry TP badge)
                     self.calculateAdvancedRiskReward();
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
@@ -11627,6 +11678,7 @@ class OrderManager {
                         }
                     }
                     
+                    self._syncProtectionPreviewYFromInputs();
                     self.calculateAdvancedRiskReward();
                 }
 
