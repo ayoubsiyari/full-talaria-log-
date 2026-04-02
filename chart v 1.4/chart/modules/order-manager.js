@@ -12479,7 +12479,10 @@ class OrderManager {
             }
             if (singleMode) singleMode.style.display = 'none';
             if (multiMode) multiMode.style.display = 'block';
-            if (orderTypeSection) orderTypeSection.style.display = 'none';
+            if (orderTypeSection) {
+                orderTypeSection.style.opacity = '0.4';
+                orderTypeSection.style.pointerEvents = 'none';
+            }
 
             if (this.multiEntryLevels.length === 0) {
                 const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
@@ -12523,7 +12526,10 @@ class OrderManager {
             }
             if (singleMode) singleMode.style.display = 'block';
             if (multiMode) multiMode.style.display = 'none';
-            if (orderTypeSection) orderTypeSection.style.display = '';
+            if (orderTypeSection) {
+                orderTypeSection.style.opacity = '';
+                orderTypeSection.style.pointerEvents = '';
+            }
 
             const multiRows = document.getElementById('multiEntryRows');
             if (multiRows) multiRows.innerHTML = '';
