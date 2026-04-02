@@ -12265,6 +12265,7 @@ class OrderManager {
      * @param {boolean} isMulti
      */
     setEntryMode(isMulti) {
+        const wasMulti = this.isMultiEntryMode;
         this.isMultiEntryMode = isMulti;
         const toggleBtn = document.getElementById('multiEntryToggle');
         const singleMode = document.getElementById('singleEntryMode');
@@ -12313,6 +12314,10 @@ class OrderManager {
             this._rebalanceLevelAmountsToTarget();
             this.renderMultiEntryRows();
             this.syncMultiEntryToSplitEntries();
+            // Default SL for the ladder only when turning multi-entry on — not on every level price move
+            if (!wasMulti) {
+                this._applyDefaultSlWhenEnablingMultiEntry();
+            }
         } else {
             if (toggleBtn) {
                 toggleBtn.textContent = 'Multiple';
@@ -13067,6 +13072,19 @@ class OrderManager {
     }
 
     /**
+     * Run once when switching from single → multi-entry: place a sensible SL for the ladder if SL is enabled.
+     * Clears the manual-SL flag so the default can apply; moving legs afterward does not re-trigger this.
+     */
+    _applyDefaultSlWhenEnablingMultiEntry() {
+        if (!this.isMultiEntryMode) return;
+        const validLevels = this.multiEntryLevels.filter(l => l.price > 0);
+        if (validLevels.length < 2) return;
+        if (!document.getElementById('enableSL')?.checked) return;
+        this.slManuallyPositioned = false;
+        this._ensureDefaultSlForMultiEntry();
+    }
+
+    /**
      * Sync multi-entry levels to the existing splitEntries system for chart preview lines
      */
     syncMultiEntryToSplitEntries() {
@@ -13130,7 +13148,6 @@ class OrderManager {
         const mainPct = totalAmount > 0 ? Math.round((mainLevel.amount / totalAmount) * 100) : Math.round(100 / validLevels.length);
         // Main entry percentage is implicit (100 - sum of split percentages)
 
-        this._ensureDefaultSlForMultiEntry();
         this.updateMultiEntrySummary();
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
