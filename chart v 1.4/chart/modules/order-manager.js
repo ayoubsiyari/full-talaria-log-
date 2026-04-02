@@ -10021,9 +10021,11 @@ class OrderManager {
                         const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
                         const ps = this.pipSize || 0.0001;
                         const pv = this.pipValuePerLot || 10;
+                        const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
                         reward = 0;
                         for (const l of this.multiEntryLevels) {
                             if (!(l.price > 0)) continue;
+                            if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
                             const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
                             if (lots > 0) {
                                 reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
@@ -12919,7 +12921,10 @@ class OrderManager {
     }
 
     /**
-     * Multi-entry: level is valid for preview / submit when implied size is at least minLot (default 0.01).
+     * Multi-entry: level is valid for preview / submit when:
+     *  1. Implied lot size >= minLot (e.g. 0.01)
+     *  2. Entry is on correct side of SL (BUY entry > SL, SELL entry < SL)
+     *  3. Entry is not so close to SL that its lot size becomes excessively large
      * Risk modes without SL price skip this rule (cannot size per level).
      */
     _multiEntryLevelMeetsMinLot(level, slPrice, pipSize, pipValue, minLot = 0.01) {
@@ -12927,9 +12932,46 @@ class OrderManager {
         if (mode !== 'lot-size' && (!slPrice || slPrice <= 0)) {
             return true;
         }
+        if (!level || !level.price || level.price <= 0) return false;
+
+        // Check entry is on correct side of SL
+        if (slPrice > 0) {
+            const side = (this.orderSide || 'BUY').toUpperCase();
+            if (side === 'BUY' && level.price <= slPrice) return false;
+            if (side === 'SELL' && level.price >= slPrice) return false;
+        }
+
         const lots = this._calcLevelLotSizeNumeric(level, slPrice, pipSize, pipValue);
-        // Loose epsilon so pip/risk division noise does not keep lines "invalid" after drag when UI shows e.g. 0.02
-        return Number.isFinite(lots) && lots >= minLot - 1e-6;
+        if (!Number.isFinite(lots) || lots < minLot - 1e-6) return false;
+
+        // Guard: if entry is so close to SL that lot size is huge, check if this single
+        // level's risk exceeds the total intended risk — if so, disable it
+        if (mode !== 'lot-size' && slPrice > 0) {
+            const ps = pipSize || this.pipSize || 0.0001;
+            const pv = pipValue || this.pipValuePerLot || 10;
+            const slPips = Math.abs(level.price - slPrice) / ps;
+            const levelRiskUsd = slPips * lots * pv;
+            const totalIntendedRisk = this._getMultiEntryTotalIntendedRisk();
+            if (totalIntendedRisk > 0 && levelRiskUsd > totalIntendedRisk * 1.05) return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get the total intended risk $ from the position sizing inputs.
+     */
+    _getMultiEntryTotalIntendedRisk() {
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode === 'risk-usd') {
+            return parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+        } else if (mode === 'risk-percent') {
+            const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+            const bt = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+            const bal = bt === 'current' ? this.balance : this.initialBalance;
+            return (bal * rp) / 100;
+        }
+        return 0;
     }
 
     /** True if any priced level is below minimum lot (disables place + hides that level's chart line). */
@@ -13082,8 +13124,10 @@ class OrderManager {
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const ps = this.pipSize || 0.0001;
         const pv = this.pipValuePerLot || 10;
+        const minLot = this.getMarketConfig()?.minSize ?? 0.01;
         let totalWeighted = 0, totalLots = 0;
         for (const l of levels) {
+            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, ps, pv, minLot)) continue;
             const lots = this._calcLevelLotSizeNumeric(l, slPrice, ps, pv);
             if (lots > 0) {
                 totalWeighted += l.price * lots;
@@ -13106,15 +13150,17 @@ class OrderManager {
         if (!(price > 0) || !(qty > 0)) return fallback;
         const side = (this.orderSide || 'BUY').toUpperCase();
 
-        // Multi-entry: sum each level's individual PnL (correct even when avg entry is risk-weighted)
+        // Multi-entry: sum each valid level's individual PnL (skip disabled levels)
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
             const ps = this.pipSize || 0.0001;
             const pv = this.pipValuePerLot || 10;
+            const minLot = this.getMarketConfig()?.minSize ?? 0.01;
             let totalPnl = 0;
             let totalLots = 0;
             for (const level of this.multiEntryLevels) {
                 if (!(level.price > 0)) continue;
+                if (!this._multiEntryLevelMeetsMinLot(level, slPx, ps, pv, minLot)) continue;
                 const lots = parseFloat(this._calcLevelLotSize(level, slPx, ps, pv)) || 0;
                 if (lots <= 0) continue;
                 totalLots += lots;
@@ -13215,25 +13261,19 @@ class OrderManager {
         const avgPrice = this._calcMultiEntryAvgPrice();
         const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
 
-        // Calculate total lots using correct formula: sum of each level's lotSize
+        // Calculate total lots: sum of each valid level's lotSize (skip invalid levels)
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
-        const psMode = this.positionSizeMode || 'risk-usd';
+        const minLotS = config?.minSize ?? 0.01;
         let totalLots = 0;
         this.multiEntryLevels.forEach(l => {
-            if (l.price > 0 && slPrice > 0) {
-                const slPips = Math.abs(l.price - slPrice) / pipSize;
-                if (slPips > 0) {
-                    if (psMode === 'lot-size') {
-                        totalLots += (l.amount || 0);
-                    } else {
-                        totalLots += this._getMultiEntryLevelRiskUsd(l) / (slPips * pipValue);
-                    }
-                }
-            }
+            if (!(l.price > 0)) return;
+            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, pipSize, pipValue, minLotS)) return;
+            const lots = this._calcLevelLotSizeNumeric(l, slPrice, pipSize, pipValue);
+            if (lots > 0) totalLots += lots;
         });
 
         const avgEl = document.getElementById('multiEntryAvgPrice');
