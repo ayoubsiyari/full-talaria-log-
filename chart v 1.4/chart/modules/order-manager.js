@@ -7969,9 +7969,16 @@ class OrderManager {
                 x = this.chart.w - rightMargin - tpWidth - gap;
             }
         } else {
-            // Entry line label - positioned left with more space from price axis
             const pad = lineData.isAvgEntryLine ? 200 : 145;
-            x = this.chart.w - bbox.width - pad;
+            // Align all non-badge labels to the same left-edge X by using the widest label's width
+            let maxW = bbox.width;
+            for (const key of ['entry', 'tp', 'sl']) {
+                const dim = this.previewLines?.[key]?.labelDimensions;
+                if (dim && dim.width > maxW && !this.previewLines[key].isBadge) {
+                    maxW = dim.width;
+                }
+            }
+            x = this.chart.w - maxW - pad;
         }
         
         let yPixel;
@@ -13638,20 +13645,15 @@ class OrderManager {
         const gap = 28;
         const marginRight = 145; // margin from right edge for preview labels
 
+        // Refresh dimensions for all items first
         buckets.forEach(bucket => {
-            const items = bucket.items;
-            if (!items.length) return;
-
-            items.sort((a, b) => {
+            bucket.items.sort((a, b) => {
                 const pa = previewLabelSortKey(a.label);
                 const pb = previewLabelSortKey(b.label);
-                if (pa === pb) {
-                    return (a.label || '').localeCompare(b.label || '');
-                }
+                if (pa === pb) return (a.label || '').localeCompare(b.label || '');
                 return pa - pb;
             });
-
-            const widths = items.map(lineData => {
+            bucket.widths = bucket.items.map(lineData => {
                 const bbox = lineData.labelGroup?.node()?.getBBox?.();
                 if (bbox) {
                     const paddedWidth = bbox.width + 10;
@@ -13663,14 +13665,24 @@ class OrderManager {
                 }
                 return 0;
             });
+        });
 
-            const totalGap = gap * (items.length > 1 ? (items.length - 1) : 0);
-            const totalWidth = widths.reduce((sum, width) => sum + width, 0) + totalGap;
-            const baseX = this.chart.w - totalWidth - marginRight;
+        // Compute shared left-edge X: max total-row-width across all buckets
+        let maxRowWidth = 0;
+        buckets.forEach(bucket => {
+            const totalGap = gap * (bucket.items.length > 1 ? (bucket.items.length - 1) : 0);
+            const totalWidth = bucket.widths.reduce((s, w) => s + w, 0) + totalGap;
+            if (totalWidth > maxRowWidth) maxRowWidth = totalWidth;
+        });
+        const sharedBaseX = this.chart.w - maxRowWidth - marginRight;
 
-            let currentX = baseX;
+        buckets.forEach(bucket => {
+            const items = bucket.items;
+            if (!items.length) return;
+
+            let currentX = sharedBaseX;
             items.forEach((lineData, index) => {
-                const width = widths[index] ?? 0;
+                const width = bucket.widths[index] ?? 0;
                 const bbox = lineData.labelDimensions;
                 const height = bbox?.height || 0;
                 const yPixel = this.chart.scales.yScale(lineData.price);
