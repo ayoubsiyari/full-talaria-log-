@@ -11152,8 +11152,51 @@ class OrderManager {
 
                 const chartHeightRaw = self.chart.h ?? self.chart.height ?? self.chart.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
-                const clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                const newPrice = self.chart.scales.yScale.invert(clampedY);
+                let clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                let newPrice = self.chart.scales.yScale.invert(clampedY);
+
+                // BUY: entries must stay above SL; SELL: entries must stay below SL
+                const enableSL = document.getElementById('enableSL')?.checked;
+                const pip = self.pipSize || 0.0001;
+                const slPad = Math.max(pip * 0.5, 1e-12);
+                const isEntryLineDrag =
+                    (lineData.label === 'Entry' || (lineData.label && String(lineData.label).startsWith('Entry#')))
+                    && !lineData.isAvgEntryLine;
+                if (isEntryLineDrag && enableSL) {
+                    let slP = parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const slPrev = self.previewLines.sl;
+                    if (slPrev && !slPrev.isBadge && Number.isFinite(slPrev.price) && slPrev.price > 0) {
+                        slP = slPrev.price;
+                    }
+                    if (slP > 0) {
+                        let allowClamp = self.slManuallyPositioned;
+                        if (!allowClamp && self.isMultiEntryMode && self.multiEntryLevels?.length) {
+                            const priced = self.multiEntryLevels.filter(l => l.price > 0).map(l => l.price);
+                            if (priced.length) {
+                                const lo = Math.min(...priced);
+                                const hi = Math.max(...priced);
+                                if (self.orderSide === 'BUY' && slP < lo - slPad) allowClamp = true;
+                                else if (self.orderSide === 'SELL' && slP > hi + slPad) allowClamp = true;
+                            }
+                        }
+                        if (!allowClamp) {
+                            const refEntry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                            if (refEntry > 0) {
+                                if (self.orderSide === 'BUY' && slP < refEntry - slPad) allowClamp = true;
+                                else if (self.orderSide === 'SELL' && slP > refEntry + slPad) allowClamp = true;
+                            }
+                        }
+                        if (allowClamp) {
+                            if (self.orderSide === 'BUY' && newPrice <= slP + slPad) {
+                                newPrice = slP + slPad;
+                            } else if (self.orderSide === 'SELL' && newPrice >= slP - slPad) {
+                                newPrice = slP - slPad;
+                            }
+                            clampedY = self.chart.scales.yScale(newPrice);
+                            clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                        }
+                    }
+                }
 
                 lineData.price = newPrice;
                 lineData.line.attr('y1', clampedY).attr('y2', clampedY);
@@ -12870,6 +12913,40 @@ class OrderManager {
     }
 
     /**
+     * Multi-entry: if SL is on but the trader has not placed SL on the chart yet, set a default
+     * stop (below lowest BUY level / above highest SELL level) so risk math and clamps work.
+     */
+    _ensureDefaultSlForMultiEntry() {
+        if (!this.isMultiEntryMode) return;
+        const validLevels = this.multiEntryLevels.filter(l => l.price > 0);
+        if (validLevels.length < 2) return;
+        if (!document.getElementById('enableSL')?.checked) return;
+        if (this.slManuallyPositioned) return;
+
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        const pad = pip * 0.5;
+        const offsetPips = 20;
+        const low = Math.min(...validLevels.map(l => l.price));
+        const high = Math.max(...validLevels.map(l => l.price));
+        const slInput = document.getElementById('slPrice');
+        const slVal = parseFloat(slInput?.value || 0);
+
+        if (this.orderSide === 'BUY') {
+            const need = !(slVal > 0) || slVal >= low - pad;
+            if (!need) return;
+            const proposed = parseFloat((low - offsetPips * pip).toFixed(5));
+            if (slInput) slInput.value = this.formatPrice(proposed);
+        } else {
+            const need = !(slVal > 0) || slVal <= high + pad;
+            if (!need) return;
+            const proposed = parseFloat((high + offsetPips * pip).toFixed(5));
+            if (slInput) slInput.value = this.formatPrice(proposed);
+        }
+        this.slManuallyPositioned = true;
+        console.log(`📍 Default SL set for multi-entry (${offsetPips} pips beyond ladder)`);
+    }
+
+    /**
      * Sync multi-entry levels to the existing splitEntries system for chart preview lines
      */
     syncMultiEntryToSplitEntries() {
@@ -12933,6 +13010,7 @@ class OrderManager {
         const mainPct = totalAmount > 0 ? Math.round((mainLevel.amount / totalAmount) * 100) : Math.round(100 / validLevels.length);
         // Main entry percentage is implicit (100 - sum of split percentages)
 
+        this._ensureDefaultSlForMultiEntry();
         this.updateMultiEntrySummary();
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
