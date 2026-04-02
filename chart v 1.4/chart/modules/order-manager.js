@@ -7645,17 +7645,7 @@ class OrderManager {
         }
 
         if (label === 'TP') {
-            const entryPx = this._getReferenceEntryForOrderMath();
-            const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
-            const pip = this.pipSize || 0.0001;
-            const pv = this.pipValuePerLot || 10;
-            let infoText = priceText;
-            if (entryPx > 0 && price > 0 && price !== entryPx && qty > 0) {
-                const dist = Math.abs(price - entryPx);
-                const pips = dist / pip;
-                const profit = pips * qty * pv;
-                infoText = `+$${profit.toFixed(2)}  (${pips.toFixed(1)}p)`;
-            }
+            const infoText = this._formatTpSlInfoText('TP', price);
             return [
                 {
                     text: 'TP',
@@ -7678,17 +7668,7 @@ class OrderManager {
         }
 
         if (label === 'SL') {
-            const entryPx = this._getReferenceEntryForOrderMath();
-            const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
-            const pip = this.pipSize || 0.0001;
-            const pv = this.pipValuePerLot || 10;
-            let infoText = priceText;
-            if (entryPx > 0 && price > 0 && price !== entryPx && qty > 0) {
-                const dist = Math.abs(price - entryPx);
-                const pips = dist / pip;
-                const loss = pips * qty * pv;
-                infoText = `-$${loss.toFixed(2)}  (${pips.toFixed(1)}p)`;
-            }
+            const infoText = this._formatTpSlInfoText('SL', price);
             return [
                 {
                     text: 'SL',
@@ -11365,7 +11345,8 @@ class OrderManager {
                 // Update price text without full re-render for performance
                 const formattedPrice = self.formatPrice(newPrice);
                 if (lineData.priceText) {
-                    lineData.priceText.text(formattedPrice);
+                    const isTpOrSl = lineData.label === 'TP' || lineData.label === 'SL';
+                    lineData.priceText.text(isTpOrSl ? self._formatTpSlInfoText(lineData.label, newPrice) : formattedPrice);
                 }
                 
                 // Calculate and display pip distance in real-time
@@ -12963,6 +12944,20 @@ class OrderManager {
     /**
      * TP/SL distances, R:R, and $ profit on the order panel use weighted average entry when multi-entry is on.
      */
+    _formatTpSlInfoText(label, price) {
+        const entryPx = this._getReferenceEntryForOrderMath();
+        const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        const pip = this.pipSize || 0.0001;
+        const pv = this.pipValuePerLot || 10;
+        const fallback = this.formatPrice(price);
+        if (!(entryPx > 0) || !(price > 0) || price === entryPx || !(qty > 0)) return fallback;
+        const dist = Math.abs(price - entryPx);
+        const pips = dist / pip;
+        const dollarAmount = pips * qty * pv;
+        const sign = label === 'SL' ? '-' : '+';
+        return `${sign}$${dollarAmount.toFixed(2)}  (${this.formatQuantity(qty)})`;
+    }
+
     _getReferenceEntryForOrderMath() {
         const main = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
