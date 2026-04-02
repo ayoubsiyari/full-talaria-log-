@@ -10726,6 +10726,7 @@ class OrderManager {
         if (!this.chart || !this.chart.scales || !this.previewLines) {
             return;
         }
+        if (this._orderPlacedAwaitingReset) return;
 
         const widthChanged = this._lastPreviewChartWidth !== this.chart.w;
         this._lastPreviewChartWidth = this.chart.w;
@@ -10947,6 +10948,11 @@ class OrderManager {
         // Otherwise scheduled rAF callbacks (e.g. from calculatePositionFromRisk) redraw a ghost line after place + close.
         const orderPanelEl = document.getElementById('orderPanel');
         if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) {
+            return;
+        }
+
+        // Order was placed via ✓ badge — wait for "Make new order" before drawing anything
+        if (this._orderPlacedAwaitingReset) {
             return;
         }
         
