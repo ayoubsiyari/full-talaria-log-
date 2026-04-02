@@ -12983,15 +12983,13 @@ class OrderManager {
     _formatTpSlInfoText(label, price) {
         const entryPx = this._getReferenceEntryForOrderMath();
         const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
-        const pip = this.pipSize || 0.0001;
-        const pv = this.pipValuePerLot || 10;
         const fallback = this.formatPrice(price);
         if (!(entryPx > 0) || !(price > 0) || price === entryPx || !(qty > 0)) return fallback;
-        const dist = Math.abs(price - entryPx);
-        const pips = dist / pip;
-        const dollarAmount = pips * qty * pv;
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, qty);
+        const absPnl = Math.abs(pnl);
         const sign = label === 'SL' ? '-' : '+';
-        return `${sign}$${dollarAmount.toFixed(2)}  (${this.formatQuantity(qty)})`;
+        return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(qty)})`;
     }
 
     _getReferenceEntryForOrderMath() {
