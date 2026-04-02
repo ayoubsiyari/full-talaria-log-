@@ -8191,30 +8191,9 @@ class OrderManager {
     }
 
     /**
-     * Reset the panel for a new order without closing it (used by the ✓ badge on chart).
+     * After placing via ✓ badge: just show "Make new order" button. No new entry or preview lines.
      */
     _resetPanelForNewOrder() {
-        // Remove old preview lines
-        this.removePreviewLines();
-        this.clearPendingOrderEditingState();
-
-        // Reset positioning flags
-        this.tpManuallyPositioned = false;
-        this.slManuallyPositioned = false;
-
-        // Reset multi-entry
-        this._resetMultiEntryStateForNewOrder();
-
-        // Reset multiple TP
-        const multipleTPToggle = document.getElementById('multipleTPToggle');
-        const multipleTPSettings = document.getElementById('multipleTPSettings');
-        if (multipleTPToggle) multipleTPToggle.checked = false;
-        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
-
-        // Refresh entry price to current market
-        this.updateOrderPanelPrice();
-
-        // Show "Make new order" on the place button — no preview lines yet
         const placeBtn = document.getElementById('placeOrderButton');
         if (placeBtn) {
             this._orderPlacedAwaitingReset = true;
@@ -9408,10 +9387,22 @@ class OrderManager {
         
         // Place order button
         placeBtn.onclick = () => {
-            // "Make new order" state: initialize a fresh order with preview lines
+            // "Make new order" state: full reset + draw preview lines for new order
             if (this._orderPlacedAwaitingReset) {
                 this._orderPlacedAwaitingReset = false;
                 placeBtn.style.background = '';
+
+                this.removePreviewLines();
+                this.clearPendingOrderEditingState();
+                this.tpManuallyPositioned = false;
+                this.slManuallyPositioned = false;
+                this._resetMultiEntryStateForNewOrder();
+
+                const multipleTPToggle = document.getElementById('multipleTPToggle');
+                const multipleTPSettings = document.getElementById('multipleTPSettings');
+                if (multipleTPToggle) multipleTPToggle.checked = false;
+                if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+
                 this.updateOrderPanelPrice();
                 setTimeout(() => {
                     this.syncDefaultTargetsToEntry();
