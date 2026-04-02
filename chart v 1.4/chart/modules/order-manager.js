@@ -11174,58 +11174,6 @@ class OrderManager {
         return Math.min(p, slP - pad);
     }
 
-    /**
-     * While dragging entry lines, updatePreviewLines() is skipped — keep SL/TP graphics at #slPrice / #tpPrice
-     * so they do not look frozen until mouseup (then snap).
-     */
-    _syncProtectionPreviewYFromInputs() {
-        if (!this.chart?.scales?.yScale || !this.previewLines) return;
-        const yScale = this.chart.scales.yScale;
-        const rightMargin = this.chart.margin?.r || 70;
-        const highlightHeight = 22;
-
-        const moveLd = (ld, px) => {
-            if (!ld || !(px > 0) || !Number.isFinite(px)) return;
-            ld.price = px;
-            const y = yScale(px);
-            if (ld.line) {
-                ld.line.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
-            }
-            if (ld.hitLine) {
-                ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
-            }
-            if (ld.labelGroup) {
-                const h = ld.labelDimensions?.height || 0;
-                const tr = ld.labelGroup.attr('transform');
-                const x = parseFloat(tr?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                ld.labelGroup.attr('transform', `translate(${x}, ${y - h / 2})`);
-            }
-            if (ld.yAxisHighlight) {
-                const hx = this.chart.w - rightMargin + 2;
-                ld.yAxisHighlight.attr('transform', `translate(${hx}, ${y - highlightHeight / 2})`);
-                const pt = ld.yAxisHighlight.select('.y-axis-price-text');
-                if (pt.size()) pt.text(this.formatPrice(px));
-            }
-            if (ld.priceText) ld.priceText.text(this.formatPrice(px));
-            if (ld.line) this.adjustPreviewLineForLabel(ld);
-        };
-
-        if (document.getElementById('enableSL')?.checked) {
-            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
-            if (slPx > 0 && this.previewLines.sl) moveLd(this.previewLines.sl, slPx);
-        }
-
-        // Multi-entry TP badge is anchored to avg — _syncTpBadgeYToMultiEntryAvg handles it; do not overwrite here.
-        const pricedLv = (this.multiEntryLevels || []).filter(l => l.price > 0);
-        const tpIsAvgAnchoredBadge = this.isMultiEntryMode && pricedLv.length > 1 && this.previewLines.tp?.isBadge;
-        if (document.getElementById('enableTP')?.checked && !tpIsAvgAnchoredBadge) {
-            const tpPx = parseFloat(document.getElementById('tpPrice')?.value || 0);
-            if (tpPx > 0 && this.previewLines.tp) moveLd(this.previewLines.tp, tpPx);
-        }
-
-        this._syncPendingLimitStopConnector();
-    }
-
     makePreviewLineDraggable(lineData) {
         const self = this;
         let isDragging = false;
@@ -11252,24 +11200,6 @@ class OrderManager {
                 
                 // Store initial values for comparison
                 lineData.dragStartPrice = lineData.price;
-
-                // Main entry drag: couple SL to the same price delta as entry (preserve stop distance on chart)
-                const isMainEntryDrag = lineData.label === 'Entry'
-                    || (lineData.label && lineData.label.startsWith('Entry#1:'));
-                if (isMainEntryDrag && document.getElementById('enableSL')?.checked) {
-                    const e0 = lineData.dragStartPrice;
-                    const s0 = parseFloat(document.getElementById('slPrice')?.value || 0);
-                    if (e0 > 0 && s0 > 0) {
-                        self._entryDragSlCoupleAnchorEntry = e0;
-                        self._entryDragSlCoupleAnchorSl = s0;
-                    } else {
-                        self._entryDragSlCoupleAnchorEntry = null;
-                        self._entryDragSlCoupleAnchorSl = null;
-                    }
-                } else {
-                    self._entryDragSlCoupleAnchorEntry = null;
-                    self._entryDragSlCoupleAnchorSl = null;
-                }
                 
                 // Create R:R indicator on Entry line for live feedback
                 if (lineData.label === 'Entry' && !lineData.rrIndicator) {
@@ -11649,18 +11579,21 @@ class OrderManager {
                             if (tpInput) tpInput.value = formattedPrice;
                         }
                     }
-                    // Move SL by the same Δ as entry so the stop tracks while dragging (distance preserved).
-                    if (self._entryDragSlCoupleAnchorEntry != null && self._entryDragSlCoupleAnchorSl != null
-                        && document.getElementById('enableSL')?.checked) {
-                        const delta = newPrice - self._entryDragSlCoupleAnchorEntry;
-                        let newSl = self._entryDragSlCoupleAnchorSl + delta;
-                        newSl = self._clampSlDragPrice(newSl);
+                    if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
+                        self.previewLines.sl.price = newPrice;
+                        // Update only Y position, preserve X
+                        const slBbox = self.previewLines.sl.labelDimensions;
+                        const slHeight = slBbox?.height || 0;
+                        const slTransform = self.previewLines.sl.labelGroup.attr('transform');
+                        const slX = parseFloat(slTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                        const slY = clampedY - slHeight / 2;
+                        self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
+                        // Also update the SL input field to match entry
                         const slInput = document.getElementById('slPrice');
-                        if (slInput) slInput.value = self.formatPrice(newSl);
+                        if (slInput) slInput.value = formattedPrice;
                     }
-
-                    self._syncProtectionPreviewYFromInputs();
-                    // Recalculate risk/reward since TP may still sync to entry (single-entry TP badge)
+                    
+                    // Recalculate risk/reward since TP/SL are synced to entry
                     self.calculateAdvancedRiskReward();
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
@@ -11705,7 +11638,6 @@ class OrderManager {
                         }
                     }
                     
-                    self._syncProtectionPreviewYFromInputs();
                     self.calculateAdvancedRiskReward();
                 }
 
@@ -11934,12 +11866,6 @@ class OrderManager {
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
-
-                if (self._entryDragSlCoupleAnchorEntry != null) {
-                    self.slManuallyPositioned = true;
-                }
-                self._entryDragSlCoupleAnchorEntry = null;
-                self._entryDragSlCoupleAnchorSl = null;
                 
                 // Clean up temporary indicators
                 if (lineData.pipIndicator) {
@@ -12339,7 +12265,6 @@ class OrderManager {
      * @param {boolean} isMulti
      */
     setEntryMode(isMulti) {
-        const wasMulti = this.isMultiEntryMode;
         this.isMultiEntryMode = isMulti;
         const toggleBtn = document.getElementById('multiEntryToggle');
         const singleMode = document.getElementById('singleEntryMode');
@@ -12388,10 +12313,6 @@ class OrderManager {
             this._rebalanceLevelAmountsToTarget();
             this.renderMultiEntryRows();
             this.syncMultiEntryToSplitEntries();
-            // Default SL for the ladder only when turning multi-entry on — not on every level price move
-            if (!wasMulti) {
-                this._applyDefaultSlWhenEnablingMultiEntry();
-            }
         } else {
             if (toggleBtn) {
                 toggleBtn.textContent = 'Multiple';
@@ -13146,19 +13067,6 @@ class OrderManager {
     }
 
     /**
-     * Run once when switching from single → multi-entry: place a sensible SL for the ladder if SL is enabled.
-     * Clears the manual-SL flag so the default can apply; moving legs afterward does not re-trigger this.
-     */
-    _applyDefaultSlWhenEnablingMultiEntry() {
-        if (!this.isMultiEntryMode) return;
-        const validLevels = this.multiEntryLevels.filter(l => l.price > 0);
-        if (validLevels.length < 2) return;
-        if (!document.getElementById('enableSL')?.checked) return;
-        this.slManuallyPositioned = false;
-        this._ensureDefaultSlForMultiEntry();
-    }
-
-    /**
      * Sync multi-entry levels to the existing splitEntries system for chart preview lines
      */
     syncMultiEntryToSplitEntries() {
@@ -13222,6 +13130,7 @@ class OrderManager {
         const mainPct = totalAmount > 0 ? Math.round((mainLevel.amount / totalAmount) * 100) : Math.round(100 / validLevels.length);
         // Main entry percentage is implicit (100 - sum of split percentages)
 
+        this._ensureDefaultSlForMultiEntry();
         this.updateMultiEntrySummary();
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
