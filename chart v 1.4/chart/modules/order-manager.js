@@ -124,6 +124,7 @@ class OrderManager {
         
         // Order visualization
         this.orderLines = [];
+        this.splitGroupAvgLines = [];
         this.mfeMaeMarkers = []; // Store MFE/MAE markers
         this.previewLines = null; // Store preview TP/SL lines before order placement
         this._pendingPreviewConnector = null; // Vertical limit/stop preview guide (SVG line)
@@ -356,6 +357,7 @@ class OrderManager {
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
         s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
+        s.selectAll('[class*="split-avg-"]').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
         s.selectAll('g[class*="entry-marker-"]').remove();
         s.selectAll('text[class*="pip-indicator"]').remove();
@@ -419,6 +421,7 @@ class OrderManager {
         charts.forEach((c) => this._stripOrderDrawingLayersFromChart(c));
 
         this.orderLines = [];
+        this.splitGroupAvgLines = [];
         this.slLines = [];
         this.tpLines = [];
         this.beLines = [];
@@ -1609,6 +1612,7 @@ class OrderManager {
 
         // Remove old runtime visuals before rebuilding from restored state.
         this.orderLines = [];
+        this.splitGroupAvgLines = [];
         this.slLines = [];
         this.tpLines = [];
         this.beLines = [];
@@ -1623,6 +1627,7 @@ class OrderManager {
             this.drawPendingOrderLine(order);
             this.drawPendingOrderTargets(order);
         });
+        this._rebuildSplitGroupAvgLines();
 
         if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
@@ -14533,6 +14538,9 @@ class OrderManager {
 
             const splitGroupId = `split_${Date.now()}`;
             let placedCount = 0;
+            const placedOrderIds = [];
+            let weightedPriceSum = 0;
+            let lotsSum = 0;
 
             validLevels.forEach((level, idx) => {
                 const slPips = slEnabled && slPrice > 0
@@ -14604,8 +14612,12 @@ class OrderManager {
                     this.drawOrderLine(order);
                     this.drawSLTPLines(order);
                     setTimeout(() => this.drawEntryMarker(order), 100);
+                    placedOrderIds.push(order.id);
+                    weightedPriceSum += level.price * qtyRounded;
+                    lotsSum += qtyRounded;
                     placedCount++;
                 } else {
+                    const pendingId = this.orderIdCounter; // will be used by placePendingOrderWithSplit
                     this.placePendingOrderWithSplit(
                         level.price,
                         qtyRounded,
@@ -14622,6 +14634,9 @@ class OrderManager {
                         validLevels.length,
                         effectiveOrderType
                     );
+                    placedOrderIds.push(pendingId);
+                    weightedPriceSum += level.price * qtyRounded;
+                    lotsSum += qtyRounded;
                     placedCount++;
                 }
             });
@@ -14629,6 +14644,11 @@ class OrderManager {
             if (placedCount === 0) {
                 this.showNotification('⚠️ Position size must be greater than 0 lots', 'warning');
                 return;
+            }
+
+            if (placedOrderIds.length > 1 && lotsSum > 0) {
+                const avgPx = weightedPriceSum / lotsSum;
+                this.drawSplitGroupAvgLine(splitGroupId, avgPx, lotsSum, this.orderSide, placedOrderIds);
             }
 
             this.showNotification(
@@ -18357,6 +18377,210 @@ class OrderManager {
     }
     
     /**
+     * Draw a persistent Avg Entry line for a split-group after multi-entry placement.
+     * Shows total lot size and live aggregated P&L across all orders in the group.
+     */
+    drawSplitGroupAvgLine(splitGroupId, avgPrice, totalLots, side, orderIds) {
+        const chart = this.chart;
+        if (!chart?.svg) return;
+
+        const accent = '#ca8a04';
+        const line = chart.svg.append('line')
+            .attr('class', `split-avg-line split-avg-${splitGroupId}`)
+            .attr('stroke', accent)
+            .attr('stroke-width', 1)
+            .attr('stroke-dasharray', '7 5')
+            .attr('opacity', 0.85)
+            .style('pointer-events', 'none');
+
+        const labelGroup = chart.svg.append('g')
+            .attr('class', `split-avg-label split-avg-${splitGroupId}`)
+            .style('pointer-events', 'none');
+
+        const avgBox = labelGroup.append('rect')
+            .attr('fill', 'rgba(234, 179, 8, 0.12)')
+            .attr('stroke', accent)
+            .attr('stroke-width', 1)
+            .attr('rx', 3);
+        const avgText = labelGroup.append('text')
+            .attr('fill', '#fbbf24')
+            .attr('font-size', '11px')
+            .attr('font-weight', '600')
+            .text('Avg Entry');
+
+        const lotsBox = labelGroup.append('rect')
+            .attr('fill', '#0f172a')
+            .attr('stroke', accent)
+            .attr('stroke-width', 1)
+            .attr('rx', 3);
+        const lotsText = labelGroup.append('text')
+            .attr('fill', '#fde68a')
+            .attr('font-size', '11px')
+            .attr('font-weight', '600')
+            .text(this.formatQuantity(totalLots));
+
+        const pnlBox = labelGroup.append('rect')
+            .attr('fill', '#0f172a')
+            .attr('stroke', accent)
+            .attr('stroke-width', 1)
+            .attr('rx', 3);
+        const pnlText = labelGroup.append('text')
+            .attr('fill', '#fde68a')
+            .attr('font-size', '11px')
+            .attr('font-weight', '700')
+            .text('$0.00');
+
+        this.splitGroupAvgLines.push({
+            splitGroupId,
+            avgPrice,
+            totalLots,
+            side,
+            orderIds: [...orderIds],
+            line,
+            labelGroup,
+            avgBox, avgText,
+            lotsBox, lotsText,
+            pnlBox, pnlText,
+            chart
+        });
+
+        if (chart.renderPending !== undefined) {
+            chart.renderPending = true;
+            chart.render();
+        }
+    }
+
+    /**
+     * Remove a split-group avg line (when all orders in the group are closed).
+     */
+    removeSplitGroupAvgLine(splitGroupId) {
+        const idx = this.splitGroupAvgLines.findIndex(g => g.splitGroupId === splitGroupId);
+        if (idx === -1) return;
+        const g = this.splitGroupAvgLines[idx];
+        if (g.line) g.line.remove();
+        if (g.labelGroup) g.labelGroup.remove();
+        this.splitGroupAvgLines.splice(idx, 1);
+    }
+
+    /**
+     * Rebuild split-group avg lines from current open/pending positions (e.g. after restore).
+     */
+    _rebuildSplitGroupAvgLines() {
+        const allOrders = [...(this.openPositions || []), ...(this.pendingOrders || [])];
+        const groups = new Map();
+        for (const o of allOrders) {
+            if (!o.splitGroupId || !o.isSplitEntry) continue;
+            if (!groups.has(o.splitGroupId)) groups.set(o.splitGroupId, []);
+            groups.get(o.splitGroupId).push(o);
+        }
+        for (const [gid, orders] of groups) {
+            if (orders.length < 2) continue;
+            const alreadyDrawn = this.splitGroupAvgLines.some(g => g.splitGroupId === gid);
+            if (alreadyDrawn) continue;
+            let wSum = 0, lSum = 0;
+            for (const o of orders) {
+                const px = o.openPrice || o.entryPrice || 0;
+                const qty = o.quantity || 0;
+                wSum += px * qty;
+                lSum += qty;
+            }
+            if (lSum <= 0) continue;
+            const side = orders[0].type || orders[0].direction || 'BUY';
+            this.drawSplitGroupAvgLine(gid, wSum / lSum, lSum, side, orders.map(o => o.id));
+        }
+    }
+
+    /**
+     * Position and update live P&L for all split-group avg lines.
+     */
+    _updateSplitGroupAvgLines(ch) {
+        if (!this.splitGroupAvgLines || !this.splitGroupAvgLines.length) return;
+        const yScale = ch?.scales?.yScale;
+        if (!yScale) return;
+        const currentCandle = this.getCurrentCandle();
+        const currentPrice = currentCandle ? currentCandle.c : 0;
+        const yAxisWidth = ch.margin?.r || 70;
+
+        const toRemove = [];
+        for (const g of this.splitGroupAvgLines) {
+            if (g.chart !== ch) continue;
+
+            const openOrders = g.orderIds
+                .map(id => this.openPositions.find(p => p.id === id) || this.pendingOrders.find(p => p.id === id))
+                .filter(Boolean);
+            if (openOrders.length === 0) {
+                toRemove.push(g.splitGroupId);
+                continue;
+            }
+
+            const totalLots = openOrders.reduce((s, o) => s + (o.quantity || 0), 0);
+            const avgPrice = totalLots > 0
+                ? openOrders.reduce((s, o) => s + (o.openPrice || o.entryPrice || 0) * (o.quantity || 0), 0) / totalLots
+                : g.avgPrice;
+
+            const y = yScale(avgPrice);
+            if (!Number.isFinite(y)) continue;
+
+            g.line
+                .attr('x1', 0)
+                .attr('x2', ch.w)
+                .attr('y1', y)
+                .attr('y2', y);
+
+            const boxH = 18;
+            const gap = 4;
+            const pad = 8;
+
+            g.avgText.text('Avg Entry');
+            const avgTW = g.avgText.node().getBBox().width;
+            const avgBW = avgTW + pad * 2;
+
+            g.lotsText.text(this.formatQuantity(totalLots));
+            const lotsTW = g.lotsText.node().getBBox().width;
+            const lotsBW = lotsTW + pad * 2;
+
+            let totalPnl = 0;
+            if (currentPrice > 0) {
+                for (const o of openOrders) {
+                    if (o.status === 'OPEN') {
+                        const sym = o.ticker || o.symbol || this._getSymbol();
+                        totalPnl += this.estimatePnLForPriceLevel(o.type, o.openPrice, currentPrice, o.quantity, sym);
+                    }
+                }
+            }
+            const sign = totalPnl >= 0 ? '+' : '';
+            const pnlColor = totalPnl >= 0 ? '#26a69a' : '#f23645';
+            g.pnlText.text(`${sign}$${totalPnl.toFixed(2)}`).attr('fill', pnlColor);
+            const pnlTW = g.pnlText.node().getBBox().width;
+            const pnlBW = pnlTW + pad * 2;
+
+            const totalW = avgBW + gap + lotsBW + gap + pnlBW;
+            const startX = ch.w - yAxisWidth - 30 - totalW;
+
+            let cx = startX;
+            g.avgBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', avgBW).attr('height', boxH);
+            g.avgText.attr('x', cx + pad).attr('y', y + 4);
+            cx += avgBW + gap;
+
+            g.lotsBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', lotsBW).attr('height', boxH);
+            g.lotsText.attr('x', cx + pad).attr('y', y + 4);
+            cx += lotsBW + gap;
+
+            g.pnlBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', pnlBW).attr('height', boxH)
+                .attr('stroke', pnlColor);
+            g.pnlText.attr('x', cx + pad).attr('y', y + 4);
+
+            g.line.attr('x2', Math.max(0, startX));
+
+            this.drawYAxisPriceHighlight(avgPrice, '#ca8a04', 'entry', 0, ch);
+        }
+
+        for (const gid of toRemove) {
+            this.removeSplitGroupAvgLine(gid);
+        }
+    }
+
+    /**
      * Draw pending order line on chart (dashed line)
      * @param {object} pendingOrder
      * @param {object|null} targetChart — when null in multi-panel, draws on every chart whose symbol matches the order
@@ -20945,6 +21169,7 @@ class OrderManager {
             console.log(`✅ Order lines updated. DOM count: ${orderLinesInDom.length}`);
         }
 
+        this._updateSplitGroupAvgLines(ch);
         this.updateSLTPLines(ch);
         this.updateBELines(ch);
 
