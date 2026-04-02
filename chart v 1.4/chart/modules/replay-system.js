@@ -3325,8 +3325,8 @@ class ReplaySystem {
         }
 
         const isBullish = close >= open;
-        const maxStep = range / (n * 0.16);
-        const vol = range * 0.06;
+        const maxStep = range / (n * 0.13);
+        const vol = range * 0.09;
 
         // Randomised anchor order (not always O→L→H→C)
         const visitLowFirst = isBullish ? (rng() < 0.60) : (rng() < 0.40);
@@ -3362,39 +3362,43 @@ class ReplaySystem {
                 const rem = ticks - i;
                 const targetDrift = (end - px) / rem;
 
-                // State transitions
                 stateDur++;
                 const r = rng();
                 if (state === 0) {
-                    if      (r < 0.09 && rem > 5) { state = 1; stateDur = 0; }
-                    else if (r < 0.16 && rem > 4) { state = 2; stateDur = 0; }
-                    else if (r < 0.22 && rem > 6 && progress > 0.12) { state = 3; stateDur = 0; }
-                } else if (state === 1 && stateDur > 2 + r * 4) {
-                    state = r < 0.35 ? 2 : 0; stateDur = 0;
-                } else if (state === 2 && stateDur > 2 + r * 3) {
-                    state = r < 0.4 ? 1 : 0; stateDur = 0;
-                } else if (state === 3 && stateDur > 3 + r * 4) {
-                    state = 0; stateDur = 0;
+                    if      (r < 0.12 && rem > 4) { state = 1; stateDur = 0; }
+                    else if (r < 0.20 && rem > 3) { state = 2; stateDur = 0; }
+                    else if (r < 0.28 && rem > 5 && progress > 0.08) { state = 3; stateDur = 0; }
+                } else if (state === 1 && stateDur > 2 + r * 3) {
+                    state = r < 0.35 ? 2 : (r < 0.55 ? 3 : 0); stateDur = 0;
+                } else if (state === 2 && stateDur > 1 + r * 3) {
+                    state = r < 0.45 ? 1 : 0; stateDur = 0;
+                } else if (state === 3 && stateDur > 2 + r * 3) {
+                    state = r < 0.3 ? 1 : 0; stateDur = 0;
                 }
 
                 const noise = (rng() - 0.5) * 2;
                 let delta = 0;
 
-                if (state === 0) {        // CHOP
-                    mom = mom * 0.3 + noise * 0.7;
-                    delta = targetDrift * 0.35 + mom * vol * 0.6 + noise * vol * 0.45;
-                } else if (state === 1) { // BURST
-                    mom = mom * 0.7 + direction * 0.3;
-                    delta = direction * vol * (0.9 + rng() * 1.3) + targetDrift * 0.25;
-                } else if (state === 2) { // STALL
-                    mom *= 0.1;
-                    delta = noise * range * 0.003 * (0.5 + rng());
-                } else if (state === 3) { // PULLBACK
-                    mom = mom * 0.5 - direction * 0.5;
-                    delta = -direction * vol * (0.4 + rng() * 0.9) + noise * vol * 0.3;
+                if (state === 0) {        // CHOP — heavier two-sided noise
+                    mom = mom * 0.25 + noise * 0.75;
+                    delta = targetDrift * 0.30 + mom * vol * 0.8 + noise * vol * 0.65;
+                    if (rng() < 0.12) delta += (rng() - 0.5) * vol * 1.4;
+                } else if (state === 1) { // BURST — more aggressive
+                    mom = mom * 0.75 + direction * 0.35;
+                    delta = direction * vol * (1.1 + rng() * 1.6) + targetDrift * 0.20;
+                    delta += noise * vol * 0.25;
+                } else if (state === 2) { // STALL — small but alive
+                    mom *= 0.08;
+                    delta = noise * vol * 0.18 * (0.5 + rng());
+                    if (rng() < 0.15) delta += (rng() - 0.5) * vol * 0.5;
+                } else if (state === 3) { // PULLBACK — wilder counter-trend
+                    mom = mom * 0.45 - direction * 0.55;
+                    delta = -direction * vol * (0.6 + rng() * 1.2) + noise * vol * 0.5;
                 }
 
-                // Gravity toward segment end ramps quadratically
+                // Random micro-spikes on any state (bid/ask bounce)
+                if (rng() < 0.08) delta += (rng() - 0.5) * vol * 1.8;
+
                 delta += targetDrift * progress * progress * 1.6;
 
                 // Repel from candle boundaries to prevent vibration at edges
