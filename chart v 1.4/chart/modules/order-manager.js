@@ -19530,6 +19530,24 @@ class OrderManager {
     }
 
     /**
+     * Ensure an SVG glow filter exists for marker hover effects.
+     */
+    _ensureMarkerGlowFilter(svg, filterId, color) {
+        if (svg.select(`#${filterId}`).empty()) {
+            const defs = svg.select('defs').empty() ? svg.append('defs') : svg.select('defs');
+            const filter = defs.append('filter')
+                .attr('id', filterId)
+                .attr('x', '-50%').attr('y', '-50%')
+                .attr('width', '200%').attr('height', '200%');
+            filter.append('feDropShadow')
+                .attr('dx', 0).attr('dy', 0)
+                .attr('stdDeviation', 2.5)
+                .attr('flood-color', color)
+                .attr('flood-opacity', 0.8);
+        }
+    }
+
+    /**
      * Draw entry marker on chart (TradingView style — arrow + tick + hover tooltip)
      */
     drawEntryMarker(order, targetChart = null) {
@@ -19576,7 +19594,9 @@ class OrderManager {
             ? this._arrowUpPath(x, arrowCY, sz)
             : this._arrowDownPath(x, arrowCY, sz);
 
-        markerGroup.append('path')
+        this._ensureMarkerGlowFilter(chart.svg, `entry-glow-${order.id}`, color);
+
+        const arrowEl = markerGroup.append('path')
             .attr('data-role', 'entry-arrow')
             .attr('d', arrowPath)
             .attr('fill', color)
@@ -19616,9 +19636,16 @@ class OrderManager {
                 .text(txt);
         });
 
+        const glowId = `entry-glow-${order.id}`;
         markerGroup
-            .on('mouseenter', function() { ttGroup.style('display', null); })
-            .on('mouseleave', function() { ttGroup.style('display', 'none'); });
+            .on('mouseenter', function() {
+                ttGroup.style('display', null);
+                arrowEl.attr('filter', `url(#${glowId})`).attr('stroke', color).attr('stroke-width', 1);
+            })
+            .on('mouseleave', function() {
+                ttGroup.style('display', 'none');
+                arrowEl.attr('filter', null).attr('stroke', 'none').attr('stroke-width', 0);
+            });
 
         if (!this.entryMarkers) this.entryMarkers = [];
         this.entryMarkers.push({
@@ -19654,7 +19681,13 @@ class OrderManager {
 
         if (existingMarker) {
             existingMarker.totalPnL += closeData.pnl;
+            existingMarker.totalQuantity += order.quantity;
             existingMarker.count++;
+            const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
+            if (!lotsTxt.empty()) {
+                lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots (${existingMarker.count} entries)`);
+            }
+            this._drawTradeConnector(order, closeData);
             return;
         }
 
@@ -19691,7 +19724,9 @@ class OrderManager {
             ? this._arrowDownPath(x, arrowCY, sz)
             : this._arrowUpPath(x, arrowCY, sz);
 
-        markerGroup.append('path')
+        this._ensureMarkerGlowFilter(this.chart.svg, `exit-glow-${order.id}`, color);
+
+        const exitArrowEl = markerGroup.append('path')
             .attr('data-role', 'exit-arrow')
             .attr('d', arrowPath)
             .attr('fill', color)
@@ -19702,13 +19737,8 @@ class OrderManager {
             .style('display', 'none')
             .style('pointer-events', 'none');
 
-        const lines = [
-            `${closeData.closePrice.toFixed(5)}`,
-            `${order.quantity.toFixed(2)} lots`,
-        ];
-
-        const lineH = 15, ttPad = 5, ttW = 100;
-        const ttH = lines.length * lineH + ttPad * 2;
+        const lineH = 15, ttPad = 5, ttW = 130;
+        const ttH = 2 * lineH + ttPad * 2;
         const ttX = x + 14;
         const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
 
@@ -19719,20 +19749,35 @@ class OrderManager {
             .attr('fill', 'rgba(15, 23, 42, 0.92)')
             .attr('stroke', color).attr('stroke-width', 1);
 
-        lines.forEach((txt, i) => {
-            ttGroup.append('text')
-                .attr('x', ttX + ttPad + 2)
-                .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
-                .attr('fill', i === 0 ? color : '#e2e8f0')
-                .attr('font-size', '10px')
-                .attr('font-weight', i === 0 ? '700' : '400')
-                .attr('font-family', 'Roboto, sans-serif')
-                .text(txt);
-        });
+        ttGroup.append('text')
+            .attr('x', ttX + ttPad + 2)
+            .attr('y', ttY + ttPad + lineH - 3)
+            .attr('fill', color)
+            .attr('font-size', '10px')
+            .attr('font-weight', '700')
+            .attr('font-family', 'Roboto, sans-serif')
+            .text(closeData.closePrice.toFixed(5));
 
+        ttGroup.append('text')
+            .attr('data-role', 'exit-lots-text')
+            .attr('x', ttX + ttPad + 2)
+            .attr('y', ttY + ttPad + 2 * lineH - 3)
+            .attr('fill', '#e2e8f0')
+            .attr('font-size', '10px')
+            .attr('font-weight', '400')
+            .attr('font-family', 'Roboto, sans-serif')
+            .text(`${order.quantity.toFixed(2)} lots`);
+
+        const exitGlowId = `exit-glow-${order.id}`;
         markerGroup
-            .on('mouseenter', function() { ttGroup.style('display', null); })
-            .on('mouseleave', function() { ttGroup.style('display', 'none'); });
+            .on('mouseenter', function() {
+                ttGroup.style('display', null);
+                exitArrowEl.attr('filter', `url(#${exitGlowId})`).attr('stroke', color).attr('stroke-width', 1);
+            })
+            .on('mouseleave', function() {
+                ttGroup.style('display', 'none');
+                exitArrowEl.attr('filter', null).attr('stroke', 'none').attr('stroke-width', 0);
+            });
 
         this.exitMarkers.push({
             orderId: order.id,
@@ -19741,6 +19786,7 @@ class OrderManager {
             price: closeData.closePrice,
             priceKey: priceKey,
             totalPnL: closeData.pnl,
+            totalQuantity: order.quantity,
             count: 1,
             isBuyExit
         });
@@ -19771,7 +19817,8 @@ class OrderManager {
             .attr('x2', x2).attr('y2', y2)
             .attr('stroke', 'rgba(150, 150, 150, 0.4)')
             .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '4 3')
+            .attr('stroke-dasharray', '1 3')
+            .attr('stroke-linecap', 'round')
             .style('pointer-events', 'none');
 
         if (!this.tradeConnectors) this.tradeConnectors = [];
