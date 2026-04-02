@@ -10016,8 +10016,24 @@ class OrderManager {
                 }
                 
                 if (priceDiff > 0) {
-                    reward = Math.max(0, this.estimatePnLForPriceLevel(
-                        this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward));
+                    // Multi-entry: sum individual level P&Ls for accurate reward
+                    if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+                        const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+                        const ps = this.pipSize || 0.0001;
+                        const pv = this.pipValuePerLot || 10;
+                        reward = 0;
+                        for (const l of this.multiEntryLevels) {
+                            if (!(l.price > 0)) continue;
+                            const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
+                            if (lots > 0) {
+                                reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
+                            }
+                        }
+                        reward = Math.max(0, reward);
+                    } else {
+                        reward = Math.max(0, this.estimatePnLForPriceLevel(
+                            this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward));
+                    }
                 }
             }
         }
@@ -13063,20 +13079,56 @@ class OrderManager {
     _calcMultiEntryAvgPrice() {
         const levels = this.multiEntryLevels.filter(l => l.price > 0 && l.amount > 0);
         if (levels.length === 0) return 0;
-        const totalWeightedPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const ps = this.pipSize || 0.0001;
+        const pv = this.pipValuePerLot || 10;
+        let totalWeighted = 0, totalLots = 0;
+        for (const l of levels) {
+            const lots = this._calcLevelLotSizeNumeric(l, slPrice, ps, pv);
+            if (lots > 0) {
+                totalWeighted += l.price * lots;
+                totalLots += lots;
+            }
+        }
+        if (totalLots > 0) return totalWeighted / totalLots;
+        // Fallback: weight by raw amount when lot sizes unavailable (e.g. no SL set)
         const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
-        return totalAmount > 0 ? totalWeightedPrice / totalAmount : 0;
+        const totalWPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
+        return totalAmount > 0 ? totalWPrice / totalAmount : 0;
     }
 
     /**
      * TP/SL distances, R:R, and $ profit on the order panel use weighted average entry when multi-entry is on.
      */
     _formatTpSlInfoText(label, price) {
-        const entryPx = this._getReferenceEntryForOrderMath();
         const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
         const fallback = this.formatPrice(price);
-        if (!(entryPx > 0) || !(price > 0) || price === entryPx || !(qty > 0)) return fallback;
+        if (!(price > 0) || !(qty > 0)) return fallback;
         const side = (this.orderSide || 'BUY').toUpperCase();
+
+        // Multi-entry: sum each level's individual PnL (correct even when avg entry is risk-weighted)
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const ps = this.pipSize || 0.0001;
+            const pv = this.pipValuePerLot || 10;
+            let totalPnl = 0;
+            let totalLots = 0;
+            for (const level of this.multiEntryLevels) {
+                if (!(level.price > 0)) continue;
+                const lots = parseFloat(this._calcLevelLotSize(level, slPx, ps, pv)) || 0;
+                if (lots <= 0) continue;
+                totalLots += lots;
+                totalPnl += this.estimatePnLForPriceLevel(side, level.price, price, lots);
+            }
+            if (totalLots <= 0) return fallback;
+            const absPnl = Math.abs(totalPnl);
+            const sign = label === 'SL' ? '-' : '+';
+            return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(totalLots)})`;
+        }
+
+        // Single entry
+        const entryPx = this._getReferenceEntryForOrderMath();
+        if (!(entryPx > 0) || price === entryPx) return fallback;
         const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, qty);
         const absPnl = Math.abs(pnl);
         const sign = label === 'SL' ? '-' : '+';
