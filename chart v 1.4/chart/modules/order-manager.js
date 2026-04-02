@@ -18901,6 +18901,64 @@ class OrderManager {
     }
     
     /**
+     * Find the candle index that contains a given timestamp (works across timeframe changes).
+     * Falls back to nearest candle if no exact/containing match.
+     */
+    _findCandleIndexForTime(chartData, timestamp) {
+        // Exact match first
+        let idx = chartData.findIndex(d => d.t === timestamp);
+        if (idx !== -1) return idx;
+
+        // Find the candle whose period contains the timestamp (handles TF changes)
+        for (let i = 0; i < chartData.length; i++) {
+            const nextT = i < chartData.length - 1 ? chartData[i + 1].t : Infinity;
+            if (timestamp >= chartData[i].t && timestamp < nextT) return i;
+        }
+
+        // Nearest candle fallback
+        let closest = -1, minD = Infinity;
+        chartData.forEach((d, i) => {
+            const diff = Math.abs(d.t - timestamp);
+            if (diff < minD) { minD = diff; closest = i; }
+        });
+        return closest;
+    }
+
+    /**
+     * Build an SVG arrow-up path (like ↑) centered at (cx, cy).
+     */
+    _arrowUpPath(cx, cy, size) {
+        const hw = size * 0.45; // half-width of head
+        const hh = size * 0.45; // head height
+        const sw = size * 0.15; // shaft half-width
+        const sh = size * 0.55; // shaft height
+        return `M${cx},${cy - hh}` +
+               `L${cx + hw},${cy}` +
+               `L${cx + sw},${cy}` +
+               `L${cx + sw},${cy + sh}` +
+               `L${cx - sw},${cy + sh}` +
+               `L${cx - sw},${cy}` +
+               `L${cx - hw},${cy}Z`;
+    }
+
+    /**
+     * Build an SVG arrow-down path (like ↓) centered at (cx, cy).
+     */
+    _arrowDownPath(cx, cy, size) {
+        const hw = size * 0.45;
+        const hh = size * 0.45;
+        const sw = size * 0.15;
+        const sh = size * 0.55;
+        return `M${cx},${cy + hh}` +
+               `L${cx + hw},${cy}` +
+               `L${cx + sw},${cy}` +
+               `L${cx + sw},${cy - sh}` +
+               `L${cx - sw},${cy - sh}` +
+               `L${cx - sw},${cy}` +
+               `L${cx - hw},${cy}Z`;
+    }
+
+    /**
      * Draw entry marker on chart (TradingView style — arrow + tick + hover tooltip)
      */
     drawEntryMarker(order, targetChart = null) {
@@ -18910,16 +18968,8 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        let dataIndex = chart.data.findIndex((d) => d.t === order.openTime);
-        if (dataIndex === -1) {
-            let closestIndex = -1, minDiff = Infinity;
-            chart.data.forEach((candle, i) => {
-                const diff = Math.abs(candle.t - order.openTime);
-                if (diff < minDiff) { minDiff = diff; closestIndex = i; }
-            });
-            if (closestIndex === -1) return;
-            dataIndex = closestIndex;
-        }
+        const dataIndex = this._findCandleIndexForTime(chart.data, order.openTime);
+        if (dataIndex === -1) return;
 
         const candleSpacing = chart.getCandleSpacing();
         const m = chart.margin;
@@ -18927,9 +18977,11 @@ class OrderManager {
         const y = yScale(order.openPrice);
         const isBuy = order.type === 'BUY';
         const color = isBuy ? '#2962ff' : '#ef4444';
-        const arrowSize = 10;
+        const sz = 12;
         const tickW = Math.max(candleSpacing * 0.6, 8);
-        const self = this;
+
+        // Arrow offset: BUY arrow sits below price, SELL arrow sits above price
+        const arrowCY = isBuy ? y + sz + 6 : y - sz - 6;
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `entry-marker entry-marker-${order.id}`)
@@ -18945,11 +18997,10 @@ class OrderManager {
             .attr('y1', y).attr('y2', y)
             .attr('stroke', color).attr('stroke-width', 2);
 
-        // Arrow below candle (BUY ▲) or above candle (SELL ▼)
-        const arrowY = isBuy ? y + arrowSize + 4 : y - arrowSize - 4;
+        // Arrow shape (↑ for BUY, ↓ for SELL)
         const arrowPath = isBuy
-            ? `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
-            : `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+            ? this._arrowUpPath(x, arrowCY, sz)
+            : this._arrowDownPath(x, arrowCY, sz);
 
         markerGroup.append('path')
             .attr('data-role', 'entry-arrow')
@@ -18963,9 +19014,6 @@ class OrderManager {
             .style('display', 'none')
             .style('pointer-events', 'none');
 
-        const ttX = x + 14;
-        const ttY = isBuy ? arrowY + 8 : arrowY - 80;
-
         const riskAmt = order.riskAmount || order.originalRiskAmount || 0;
         const lines = [
             `${order.type} @ ${order.openPrice.toFixed(5)}`,
@@ -18975,10 +19023,10 @@ class OrderManager {
             order.takeProfit ? `TP: ${order.takeProfit.toFixed(5)}` : null,
         ].filter(Boolean);
 
-        const lineH = 15;
-        const ttPad = 6;
-        const ttW = 140;
+        const lineH = 15, ttPad = 6, ttW = 140;
         const ttH = lines.length * lineH + ttPad * 2;
+        const ttX = x + 14;
+        const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
 
         ttGroup.append('rect')
             .attr('x', ttX).attr('y', ttY)
@@ -18998,7 +19046,6 @@ class OrderManager {
                 .text(txt);
         });
 
-        // Hover events
         markerGroup
             .on('mouseenter', function() { ttGroup.style('display', null); })
             .on('mouseleave', function() { ttGroup.style('display', 'none'); });
@@ -19025,7 +19072,7 @@ class OrderManager {
         const { yScale } = this.chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this.chart.data.findIndex(d => d.t === closeData.closeTime);
+        const dataIndex = this._findCandleIndexForTime(this.chart.data, closeData.closeTime);
         if (dataIndex === -1) return;
 
         if (!this.exitMarkers) this.exitMarkers = [];
@@ -19042,17 +19089,16 @@ class OrderManager {
         }
 
         const candleSpacing = this.chart.getCandleSpacing();
-        const m = this.chart.margin;
-        const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+        const mg = this.chart.margin;
+        const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
         const y = yScale(closeData.closePrice);
         const isProfitable = closeData.pnl >= 0;
         const color = isProfitable ? '#22c55e' : '#ef4444';
-        const arrowSize = 10;
+        const sz = 12;
         const tickW = Math.max(candleSpacing * 0.6, 8);
 
-        // Exit arrow points opposite to entry: BUY exit = ▼ (sold), SELL exit = ▲ (bought back)
         const isBuyExit = order.type === 'BUY';
-        const arrowY = isBuyExit ? y - arrowSize - 4 : y + arrowSize + 4;
+        const arrowCY = isBuyExit ? y - sz - 6 : y + sz + 6;
 
         const markerGroup = this.chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
@@ -19061,17 +19107,15 @@ class OrderManager {
             .style('clip-path', 'none')
             .raise();
 
-        // Small horizontal tick at exit price
         markerGroup.append('line')
             .attr('data-role', 'exit-tick')
             .attr('x1', x - tickW / 2).attr('x2', x + tickW / 2)
             .attr('y1', y).attr('y2', y)
             .attr('stroke', color).attr('stroke-width', 2);
 
-        // Arrow (opposite direction from entry)
         const arrowPath = isBuyExit
-            ? `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
-            : `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+            ? this._arrowDownPath(x, arrowCY, sz)
+            : this._arrowUpPath(x, arrowCY, sz);
 
         markerGroup.append('path')
             .attr('data-role', 'exit-arrow')
@@ -19079,7 +19123,6 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        // Hover tooltip
         const ttGroup = markerGroup.append('g')
             .attr('data-role', 'exit-tooltip')
             .style('display', 'none')
@@ -19097,12 +19140,10 @@ class OrderManager {
             `Lots: ${order.quantity.toFixed(2)}`,
         ];
 
-        const lineH = 15;
-        const ttPad = 6;
-        const ttW = 140;
+        const lineH = 15, ttPad = 6, ttW = 140;
         const ttH = lines.length * lineH + ttPad * 2;
         const ttX = x + 14;
-        const ttY = isBuyExit ? arrowY - ttH - 4 : arrowY + 8;
+        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
 
         ttGroup.append('rect')
             .attr('x', ttX).attr('y', ttY)
@@ -19151,12 +19192,8 @@ class OrderManager {
         const { xScale, yScale } = this.chart.scales;
         if (!xScale || !yScale) return;
 
-        // Find the index of the candle with matching timestamp
-        const dataIndex = this.chart.data.findIndex(d => d.t === closeData.closeTime);
-        if (dataIndex === -1) {
-            console.error('❌ Cannot find partial close candle with timestamp:', closeData.closeTime);
-            return;
-        }
+        const dataIndex = this._findCandleIndexForTime(this.chart.data, closeData.closeTime);
+        if (dataIndex === -1) return;
 
         // Get candle spacing and margin
         const candleSpacing = this.chart.getCandleSpacing();
@@ -19259,39 +19296,36 @@ class OrderManager {
             const { marker, time, price, type } = markerData;
             const c = markerData.chart || this.chart;
             if (c !== ch) return;
-            if (!c?.scales?.xScale || !c.scales.yScale) return;
-            const { yScale } = c.scales;
-            const dataIndex = c.data.findIndex((d) => d.t === time);
+            if (!c?.scales?.yScale) return;
+
+            const dataIndex = this._findCandleIndexForTime(c.data, time);
             if (dataIndex === -1) return;
 
             const candleSpacing = c.getCandleSpacing();
             const m = c.margin;
             const x = m.l + (dataIndex * candleSpacing) + c.offsetX + (candleSpacing / 2);
-            const y = yScale(price);
+            const y = c.scales.yScale(price);
             const isBuy = type === 'BUY';
-            const arrowSize = 10;
+            const sz = 12;
             const tickW = Math.max(candleSpacing * 0.6, 8);
+            const arrowCY = isBuy ? y + sz + 6 : y - sz - 6;
 
-            // Update tick
             const tick = marker.select('[data-role="entry-tick"]');
             if (!tick.empty()) {
                 tick.attr('x1', x - tickW / 2).attr('x2', x + tickW / 2).attr('y1', y).attr('y2', y);
             }
 
-            // Update arrow
-            const arrowY = isBuy ? y + arrowSize + 4 : y - arrowSize - 4;
-            const arrowPath = isBuy
-                ? `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
-                : `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+            const arrowPath = isBuy ? this._arrowUpPath(x, arrowCY, sz) : this._arrowDownPath(x, arrowCY, sz);
             const arrow = marker.select('[data-role="entry-arrow"]');
             if (!arrow.empty()) arrow.attr('d', arrowPath);
 
-            // Update tooltip position
             const tt = marker.select('[data-role="entry-tooltip"]');
             if (!tt.empty()) {
                 const ttX = x + 14;
-                const ttY = isBuy ? arrowY + 8 : arrowY - 80;
-                tt.select('rect').attr('x', ttX).attr('y', ttY);
+                const ttRect = tt.select('rect');
+                const ttH = ttRect.empty() ? 80 : parseFloat(ttRect.attr('height'));
+                const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
+                if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
                 tt.selectAll('text').each(function(d, i) {
                     d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
                 });
@@ -19305,25 +19339,25 @@ class OrderManager {
         if (this.exitMarkers && this.exitMarkers.length > 0) {
             const { yScale: mainY } = this.chart.scales;
             this.exitMarkers.forEach(({ marker, time, price, isBuyExit }) => {
-                const dataIndex = this.chart.data.findIndex((d) => d.t === time);
+                const dataIndex = this._findCandleIndexForTime(this.chart.data, time);
                 if (dataIndex === -1) return;
 
                 const candleSpacing = this.chart.getCandleSpacing();
-                const m = this.chart.margin;
-                const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+                const mg = this.chart.margin;
+                const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
                 const y = mainY(price);
-                const arrowSize = 10;
+                const sz = 12;
                 const tickW = Math.max(candleSpacing * 0.6, 8);
+                const arrowCY = isBuyExit ? y - sz - 6 : y + sz + 6;
 
                 const tick = marker.select('[data-role="exit-tick"]');
                 if (!tick.empty()) {
                     tick.attr('x1', x - tickW / 2).attr('x2', x + tickW / 2).attr('y1', y).attr('y2', y);
                 }
 
-                const arrowY = isBuyExit ? y - arrowSize - 4 : y + arrowSize + 4;
                 const arrowPath = isBuyExit
-                    ? `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
-                    : `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+                    ? this._arrowDownPath(x, arrowCY, sz)
+                    : this._arrowUpPath(x, arrowCY, sz);
                 const arrow = marker.select('[data-role="exit-arrow"]');
                 if (!arrow.empty()) arrow.attr('d', arrowPath);
 
@@ -19332,7 +19366,7 @@ class OrderManager {
                     const ttX = x + 14;
                     const ttRect = tt.select('rect');
                     const ttH = ttRect.empty() ? 66 : parseFloat(ttRect.attr('height'));
-                    const ttY = isBuyExit ? arrowY - ttH - 4 : arrowY + 8;
+                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
                     if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
                     tt.selectAll('text').each(function(d, i) {
                         d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
@@ -19343,13 +19377,12 @@ class OrderManager {
 
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
             this.partialCloseMarkers.forEach(({ marker, time, price }) => {
-                const dataIndex = this.chart.data.findIndex((d) => d.t === time);
+                const dataIndex = this._findCandleIndexForTime(this.chart.data, time);
                 if (dataIndex === -1) return;
 
                 const candleSpacing = this.chart.getCandleSpacing();
-                const m = this.chart.margin;
-
-                const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+                const mg = this.chart.margin;
+                const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
                 const y = this.chart.scales.yScale(price);
 
                 const labelY = y - 10;
