@@ -354,8 +354,8 @@ class OrderManager {
         s.selectAll('.order-line,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
-        s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
-        s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
+        s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
+        s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
         s.selectAll('[class*="split-avg-"]').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
@@ -382,6 +382,8 @@ class OrderManager {
                 if (sl.line) sl.line.remove();
                 if (sl.labelBox) sl.labelBox.remove();
                 if (sl.labelText) sl.labelText.remove();
+                if (sl.pnlBox) sl.pnlBox.remove();
+                if (sl.pnlText) sl.pnlText.remove();
                 if (sl.closeBtn) sl.closeBtn.remove();
                 if (sl.priceBox) sl.priceBox.remove();
                 if (sl.priceText) sl.priceText.remove();
@@ -392,6 +394,8 @@ class OrderManager {
                 if (tp.line) tp.line.remove();
                 if (tp.labelBox) tp.labelBox.remove();
                 if (tp.labelText) tp.labelText.remove();
+                if (tp.pnlBox) tp.pnlBox.remove();
+                if (tp.pnlText) tp.pnlText.remove();
                 if (tp.closeBtn) tp.closeBtn.remove();
                 if (tp.priceBox) tp.priceBox.remove();
                 if (tp.priceText) tp.priceText.remove();
@@ -17882,24 +17886,44 @@ class OrderManager {
                 // Update line position
                 line.attr('y1', newY).attr('y2', newY);
                 
-                // Update label position
-                label.attr('y', newY - 5);
-                if (lineType === 'entry') {
-                    label.text(`${order.type} #${order.id} @ ${newPrice.toFixed(5)}`);
-                } else                 if (lineType === 'sl') {
-                    // Update SL label text with new price
-                    if (extraElements.labelText) {
+                if (lineType === 'sl' || lineType === 'tp') {
+                    if (extraElements.pnlText) {
                         const sym = order.ticker || order.symbol || self._getSymbol();
-                        const slPnL = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
-                        extraElements.labelText.text(`SL  ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
+                        const pnl = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
+                        extraElements.pnlText.text(`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
                     }
-                } else if (lineType === 'tp') {
-                    // Update TP label text with new price
-                    if (extraElements.labelText) {
-                        const sym = order.ticker || order.symbol || self._getSymbol();
-                        const tpPnL = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
-                        extraElements.labelText.text(`TP  ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
+                    const boxH = 18;
+                    const boxY = newY - boxH / 2;
+                    const gap = 4;
+                    const pad = 8;
+                    const yAxisWidth = 70;
+                    const closeBtnR = 10;
+                    const closeBtnGap = 6;
+                    const lt = extraElements.labelText;
+                    const pt = extraElements.pnlText;
+                    const pb = extraElements.pnlBox;
+                    if (lt) {
+                        const ltW = lt.node()?.getBBox()?.width || 0;
+                        const lBW = ltW + pad * 2;
+                        const ptW = pt?.node()?.getBBox()?.width || 0;
+                        const pBW = ptW > 0 ? ptW + pad * 2 : 0;
+                        const rE = ctx.w - yAxisWidth - 10;
+                        const cX = rE - closeBtnR;
+                        const sX = cX - closeBtnR - closeBtnGap - (pBW > 0 ? pBW + gap : 0) - lBW;
+                        let cx = sX;
+                        label.attr('x', cx).attr('y', boxY).attr('width', lBW).attr('height', boxH);
+                        lt.attr('x', cx + pad).attr('y', newY + 4);
+                        cx += lBW + gap;
+                        if (pb && pt && pBW > 0) {
+                            pb.attr('x', cx).attr('y', boxY).attr('width', pBW).attr('height', boxH);
+                            pt.attr('x', cx + pad).attr('y', newY + 4);
+                        }
+                        const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
+                        if (!clBtn.empty()) clBtn.attr('transform', `translate(${cX}, ${newY})`);
+                        line.attr('x2', Math.max(0, sX));
                     }
+                } else {
+                    label.attr('y', newY - 5);
                 }
                 
                 // Update price text element
@@ -18055,6 +18079,10 @@ class OrderManager {
         if (labelTextNode) labelTextNode.addEventListener('mousedown', onMouseDown);
         if (priceBoxNode) priceBoxNode.addEventListener('mousedown', onMouseDown);
         if (priceTextNode) priceTextNode.addEventListener('mousedown', onMouseDown);
+        const pnlBoxNode = extraElements.pnlBox?.node?.();
+        const pnlTextNode = extraElements.pnlText?.node?.();
+        if (pnlBoxNode) pnlBoxNode.addEventListener('mousedown', onMouseDown);
+        if (pnlTextNode) pnlTextNode.addEventListener('mousedown', onMouseDown);
     }
     
     /**
@@ -18274,8 +18302,7 @@ class OrderManager {
         const labelBox = chart.svg.append('rect')
             .attr('class', `order-label-box order-${order.id}`)
             .attr('fill', color)
-            .attr('stroke', '#e2e8f0')
-            .attr('stroke-opacity', 0.35)
+            .attr('stroke', color)
             .attr('stroke-width', 1)
             .attr('rx', 3)
             .style('cursor', 'ns-resize');
@@ -18591,10 +18618,10 @@ class OrderManager {
             for (const ml of memberLines) {
                 const od = this.openPositions.find(p => p.id === ml.orderId) || this.pendingOrders.find(p => p.id === ml.orderId);
                 const isPending = !!(od && od.status === 'PENDING');
-                const lbw = (ml.labelText?.node()?.getBBox()?.width || 0) + (ml.arrow?.node()?.getBBox()?.width || 0) + 20;
+                const lbw = (ml.labelText?.node()?.getBBox()?.width || 0) + (ml.arrow?.node()?.getBBox()?.width || 0) + pad * 2 + 4;
                 let pbw = 0;
                 if (!isPending && ml.pnlText?.node()) {
-                    pbw = ml.pnlText.node().getBBox().width + 14;
+                    pbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
                 const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2;
                 memberWidths.push({ ml, lbw, pbw, rowW, isPending, od });
@@ -18690,10 +18717,9 @@ class OrderManager {
                     }
                 }
 
-                // Recalculate pbw after text update
                 let actualPbw = 0;
                 if (!isPending && ml.pnlText?.node()) {
-                    actualPbw = ml.pnlText.node().getBBox().width + 14;
+                    actualPbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
 
                 // Close button at right edge
@@ -18709,10 +18735,9 @@ class OrderManager {
                     .attr('y', boxY)
                     .attr('width', lbw)
                     .attr('height', boxH);
-                ml.labelText?.attr('x', labelBoxX + 10).attr('y', oy + 4);
-                ml.arrow?.attr('x', labelBoxX + (ml.labelText?.node()?.getBBox()?.width || 0) + 12).attr('y', oy + 4);
+                ml.labelText?.attr('x', labelBoxX + pad).attr('y', oy + 4);
+                ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
 
-                // P&L box between label and close button
                 if (!isPending && ml.pnlBox && ml.pnlText && actualPbw > 0) {
                     const pnlX = labelBoxX + lbw + gap;
                     ml.pnlBox
@@ -18722,9 +18747,9 @@ class OrderManager {
                         .attr('height', boxH)
                         .style('display', null);
                     ml.pnlText
-                        .attr('x', pnlX + actualPbw / 2)
+                        .attr('x', pnlX + pad)
                         .attr('y', oy + 4)
-                        .attr('text-anchor', 'middle')
+                        .attr('text-anchor', 'start')
                         .style('display', null);
                     ml.line?.attr('x2', Math.max(0, alignX));
                     ml.dragHitLine?.attr('x2', Math.max(0, alignX));
@@ -18795,10 +18820,9 @@ class OrderManager {
         const labelBox = chart.svg.append('rect')
             .attr('class', `pending-order-label-box pending-${pendingOrder.id}`)
             .attr('fill', lineColor)
-            .attr('stroke', '#e2e8f0')
-            .attr('stroke-opacity', 0.35)
+            .attr('stroke', lineColor)
             .attr('stroke-width', 1)
-            .attr('rx', 7)
+            .attr('rx', 3)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         
@@ -18823,8 +18847,8 @@ class OrderManager {
                 .attr('class', `pending-order-price-box pending-${pendingOrder.id}`)
                 .attr('fill', '#0f172a')
                 .attr('stroke', lineColor)
-                .attr('stroke-width', 1.1)
-                .attr('rx', 7)
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
@@ -20124,17 +20148,15 @@ class OrderManager {
             const slLine = chart.svg.append('line')
                 .attr('class', `sl-line sl-${order.id}`)
                 .attr('stroke', '#f23645')
-                .attr('stroke-width', 2)
+                .attr('stroke-width', 1)
                 .attr('opacity', 1)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
-            // Left side label box (red background)
             const slLabelBox = chart.svg.append('rect')
                 .attr('class', `sl-label-box sl-${order.id}`)
                 .attr('fill', '#f23645')
-                .attr('stroke', '#e2e8f0')
-                .attr('stroke-opacity', 0.25)
+                .attr('stroke', '#f23645')
                 .attr('stroke-width', 1)
                 .attr('rx', 3)
                 .style('pointer-events', 'all')
@@ -20145,10 +20167,27 @@ class OrderManager {
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
-                .attr('letter-spacing', '0.01em')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
-                .text(`SL  ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
+                .text('SL');
+
+            const slPnlBox = chart.svg.append('rect')
+                .attr('class', `sl-pnl-box sl-${order.id}`)
+                .attr('fill', '#0f172a')
+                .attr('stroke', '#f23645')
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
+
+            const slPnlText = chart.svg.append('text')
+                .attr('class', `sl-pnl-text sl-${order.id}`)
+                .attr('fill', '#fca5a5')
+                .attr('font-size', '11px')
+                .attr('font-weight', '700')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
+                .text(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
             
             // Close button (removes only SL, not the entire position)
             const slCloseBtn = chart.svg.append('g')
@@ -20211,6 +20250,8 @@ class OrderManager {
             // Make SL line draggable (pass all elements for full drag area)
             this.makeLineDraggable(slLine, slLabelBox, order, 'sl', {
                 labelText: slLabelText,
+                pnlBox: slPnlBox,
+                pnlText: slPnlText,
                 priceBox: slPriceBox,
                 priceText: slPriceText
             }, chart);
@@ -20220,6 +20261,8 @@ class OrderManager {
                 line: slLine, 
                 labelBox: slLabelBox, 
                 labelText: slLabelText,
+                pnlBox: slPnlBox,
+                pnlText: slPnlText,
                 closeBtn: slCloseBtn,
                 priceBox: slPriceBox,
                 priceText: slPriceText,
@@ -20253,7 +20296,7 @@ class OrderManager {
                     const tpLine = chart.svg.append('line')
                         .attr('class', `tp-line tp-${order.id} tp-target-${target.id || index}`)
                         .attr('stroke', color)
-                        .attr('stroke-width', 2)
+                        .attr('stroke-width', 1)
                         .attr('opacity', 1)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
@@ -20261,7 +20304,9 @@ class OrderManager {
                     const tpLabelBox = chart.svg.append('rect')
                         .attr('class', `tp-label-box tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', color)
-                        .attr('rx', 2)
+                        .attr('stroke', color)
+                        .attr('stroke-width', 1)
+                        .attr('rx', 3)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
@@ -20269,10 +20314,28 @@ class OrderManager {
                         .attr('class', `tp-label-text tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', '#ffffff')
                         .attr('font-size', '11px')
-                        .attr('font-weight', '600')
+                        .attr('font-weight', '700')
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
-                        .text(`TP${index + 1} (${target.percentage.toFixed(0)}%)  ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
+                        .text(`TP${index + 1} (${target.percentage.toFixed(0)}%)`);
+
+                    const tpPnlBox = chart.svg.append('rect')
+                        .attr('class', `tp-pnl-box tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('fill', '#0f172a')
+                        .attr('stroke', color)
+                        .attr('stroke-width', 1)
+                        .attr('rx', 3)
+                        .style('pointer-events', 'all')
+                        .style('cursor', 'ns-resize');
+
+                    const tpPnlText = chart.svg.append('text')
+                        .attr('class', `tp-pnl-text tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('fill', '#86efac')
+                        .attr('font-size', '11px')
+                        .attr('font-weight', '700')
+                        .style('pointer-events', 'all')
+                        .style('cursor', 'ns-resize')
+                        .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
                     
                     const tpPriceBox = chart.svg.append('rect')
                         .attr('class', `tp-price-box tp-${order.id} tp-target-${target.id || index}`)
@@ -20300,6 +20363,8 @@ class OrderManager {
                         line: tpLine, 
                         labelBox: tpLabelBox, 
                         labelText: tpLabelText,
+                        pnlBox: tpPnlBox,
+                        pnlText: tpPnlText,
                         priceBox: tpPriceBox,
                         priceText: tpPriceText,
                         type: 'TP',
@@ -20323,7 +20388,7 @@ class OrderManager {
             const tpLine = chart.svg.append('line')
                 .attr('class', `tp-line tp-${order.id}`)
                 .attr('stroke', '#22c55e')
-                .attr('stroke-width', 2)
+                .attr('stroke-width', 1)
                 .attr('opacity', 1)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
@@ -20332,8 +20397,7 @@ class OrderManager {
             const tpLabelBox = chart.svg.append('rect')
                 .attr('class', `tp-label-box tp-${order.id}`)
                 .attr('fill', '#22c55e')
-                .attr('stroke', '#e2e8f0')
-                .attr('stroke-opacity', 0.25)
+                .attr('stroke', '#22c55e')
                 .attr('stroke-width', 1)
                 .attr('rx', 3)
                 .style('pointer-events', 'all')
@@ -20344,10 +20408,27 @@ class OrderManager {
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
-                .attr('letter-spacing', '0.01em')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
-                .text(`TP  ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
+                .text('TP');
+
+            const tpPnlBox = chart.svg.append('rect')
+                .attr('class', `tp-pnl-box tp-${order.id}`)
+                .attr('fill', '#0f172a')
+                .attr('stroke', '#22c55e')
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
+
+            const tpPnlText = chart.svg.append('text')
+                .attr('class', `tp-pnl-text tp-${order.id}`)
+                .attr('fill', '#86efac')
+                .attr('font-size', '11px')
+                .attr('font-weight', '700')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
+                .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
             
             const tpCloseBtn = chart.svg.append('g')
                 .attr('class', `tp-close-btn tp-${order.id}`)
@@ -20409,6 +20490,8 @@ class OrderManager {
             // Make TP line draggable (pass all elements for full drag area)
             this.makeLineDraggable(tpLine, tpLabelBox, order, 'tp', {
                 labelText: tpLabelText,
+                pnlBox: tpPnlBox,
+                pnlText: tpPnlText,
                 priceBox: tpPriceBox,
                 priceText: tpPriceText
             }, chart);
@@ -20418,6 +20501,8 @@ class OrderManager {
                 line: tpLine, 
                 labelBox: tpLabelBox, 
                 labelText: tpLabelText,
+                pnlBox: tpPnlBox,
+                pnlText: tpPnlText,
                 closeBtn: tpCloseBtn,
                 priceBox: tpPriceBox,
                 priceText: tpPriceText,
@@ -20543,6 +20628,8 @@ class OrderManager {
                     if (slLine.line) slLine.line.remove();
                     if (slLine.labelBox) slLine.labelBox.remove();
                     if (slLine.labelText) slLine.labelText.remove();
+                    if (slLine.pnlBox) slLine.pnlBox.remove();
+                    if (slLine.pnlText) slLine.pnlText.remove();
                     if (slLine.closeBtn) slLine.closeBtn.remove();
                     if (slLine.priceBox) slLine.priceBox.remove();
                     if (slLine.priceText) slLine.priceText.remove();
@@ -20560,6 +20647,8 @@ class OrderManager {
                     if (tpLine.line) tpLine.line.remove();
                     if (tpLine.labelBox) tpLine.labelBox.remove();
                     if (tpLine.labelText) tpLine.labelText.remove();
+                    if (tpLine.pnlBox) tpLine.pnlBox.remove();
+                    if (tpLine.pnlText) tpLine.pnlText.remove();
                     if (tpLine.closeBtn) tpLine.closeBtn.remove();
                     if (tpLine.priceBox) tpLine.priceBox.remove();
                     if (tpLine.priceText) tpLine.priceText.remove();
@@ -20864,86 +20953,78 @@ class OrderManager {
             // Track which SL prices have been updated (to avoid duplicate labels)
             const updatedSLPrices = new Set();
             
-            slForChart.forEach(({ orderId, line, labelBox, labelText, closeBtn, priceBox, priceText }, slIndex) => {
+            slForChart.forEach(({ orderId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }, slIndex) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position || !position.stopLoss) {
-                    console.log(`     ⚠️ Position #${orderId} has no SL: position=${!!position}, stopLoss=${position?.stopLoss}`);
                     return;
                 }
                 
                 const priceKey = position.stopLoss.toFixed(5);
                 const positionsAtThisSL = slPriceGroups[priceKey] || [position];
                 
-                // Calculate COMBINED P&L for ALL positions at this SL price
                 let totalSlPnL = 0;
                 positionsAtThisSL.forEach(pos => {
-                    let priceDiff;
-                    if (pos.type === 'BUY') {
-                        priceDiff = pos.stopLoss - pos.openPrice;
-                    } else {
-                        priceDiff = pos.openPrice - pos.stopLoss;
-                    }
-                    const pipsMove = priceDiff / this.pipSize;
-                    totalSlPnL += pipsMove * pos.quantity * this.pipValuePerLot;
+                    const priceDiff = pos.type === 'BUY' ? pos.stopLoss - pos.openPrice : pos.openPrice - pos.stopLoss;
+                    totalSlPnL += (priceDiff / this.pipSize) * pos.quantity * this.pipValuePerLot;
                 });
                 
-                // Only show label on the first line at this price level
                 if (updatedSLPrices.has(priceKey)) {
-                    // Hide duplicate labels - just update line position
                     if (labelBox) labelBox.style('display', 'none');
                     if (labelText) labelText.style('display', 'none');
+                    if (pnlBox) pnlBox.style('display', 'none');
+                    if (pnlText) pnlText.style('display', 'none');
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                     if (closeBtn) closeBtn.style('display', 'none');
                 } else {
                     updatedSLPrices.add(priceKey);
-                    // Show combined P&L
                     const numPositions = positionsAtThisSL.length;
                     const labelPrefix = numPositions > 1 ? `SL (${numPositions}×)` : 'SL';
-                    labelText.text(`${labelPrefix}  ${totalSlPnL >= 0 ? '+' : ''}$${totalSlPnL.toFixed(2)}`);
-                    // Ensure label visible
+                    if (labelText) labelText.text(labelPrefix);
+                    if (pnlText) pnlText.text(`${totalSlPnL >= 0 ? '+' : ''}$${totalSlPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
                     if (labelText) labelText.style('display', null);
+                    if (pnlBox) pnlBox.style('display', null);
+                    if (pnlText) pnlText.style('display', null);
                     if (closeBtn) closeBtn.style('display', null);
-                    // HIDE inline price box - price is shown on Y-axis instead
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                 }
                 
                 const y = ch.scales.yScale(position.stopLoss);
-                console.log(`     ✅ SL #${orderId}: price=${position.stopLoss.toFixed(5)}, y=${y.toFixed(2)}, totalP&L=${totalSlPnL.toFixed(2)}`);
                 
-                line
-                    .attr('x1', 0)
-                    .attr('x2', ch.w)
-                    .attr('y1', y)
-                    .attr('y2', y);
+                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 
-                // Position elements on the right side of the line (before Y-axis)
-                if (labelText && closeBtn && labelBox) {
-                    const boxHeight = 18;
-                    const boxY = y - boxHeight / 2;
-                    const spacing = 5;
-                    const yAxisWidth = 70; // Space for Y-axis price highlight
-                    const labelRightNudge = 18;
+                if (labelText && labelBox) {
+                    const boxH = 18;
+                    const boxY = y - boxH / 2;
+                    const gap = 4;
+                    const pad = 8;
+                    const yAxisWidth = 70;
+                    const closeBtnR = 10;
+                    const closeBtnGap = 6;
                     
-                    // Position close button (rightmost, before Y-axis area)
-                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
+                    const labelTW = labelText.node()?.getBBox()?.width || 0;
+                    const labelBW = labelTW + pad * 2;
+                    const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
+                    const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
                     
-                    // Position label box to the left of close button
-                    const labelBoxWidth = labelText.node().getBBox().width + 20;
-                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge;
+                    const rightEdge = ch.w - yAxisWidth - 10;
+                    const closeBtnX = rightEdge - closeBtnR;
+                    const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
                     
-                    labelBox
-                        .attr('x', labelBoxX)
-                        .attr('y', boxY)
-                        .attr('width', labelBoxWidth)
-                        .attr('height', boxHeight);
+                    let cx = startX;
+                    labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
+                    labelText.attr('x', cx + pad).attr('y', y + 4);
+                    cx += labelBW + gap;
                     
-                    labelText
-                        .attr('x', labelBoxX + 10)
-                        .attr('y', y + 4);
-                    line.attr('x2', Math.max(0, labelBoxX));
+                    if (pnlBox && pnlText && pnlBW > 0) {
+                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
+                        pnlText.attr('x', cx + pad).attr('y', y + 4);
+                    }
+                    
+                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    line.attr('x2', Math.max(0, startX));
                 }
                 
                 // Track this SL price for Y-axis highlight
@@ -20998,51 +21079,37 @@ class OrderManager {
             // Track which TP prices have been updated
             const updatedTPPrices = new Set();
             
-            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, closeBtn, priceBox, priceText }) => {
+            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }) => {
                 const position = this.openPositions.find(p => p.id === orderId);
-                if (!position) {
-                    console.log(`     ⚠️ Position #${orderId} not found`);
-                    return;
-                }
+                if (!position) return;
                 
-                let tpPrice, labelTextContent;
+                let tpPrice;
                 let targetIndex = -1;
                 let percentage = 100;
                 
-                // Check if this is a multiple TP target
                 if (targetId !== undefined && position.tpTargets && position.tpTargets.length > 0) {
                     let target = null;
                     for (let i = 0; i < position.tpTargets.length; i++) {
                         const t = position.tpTargets[i];
-                        if (t.id === targetId || i === targetId) {
-                            target = t;
-                            targetIndex = i;
-                            break;
-                        }
+                        if (t.id === targetId || i === targetId) { target = t; targetIndex = i; break; }
                     }
-                    
-                    if (!target || target.hit) {
-                        console.log(`     ⚠️ TP target #${targetId} not found or already hit for order #${orderId}`);
-                        return;
-                    }
-                    
+                    if (!target || target.hit) return;
                     tpPrice = target.price;
                     percentage = target.percentage;
                 } else if (position.takeProfit) {
                     tpPrice = position.takeProfit;
                 } else {
-                    console.log(`     ⚠️ Position #${orderId} has no TP`);
                     return;
                 }
                 
                 const priceKey = tpPrice.toFixed(5);
                 const groupData = tpPriceGroups[priceKey];
                 
-                // Only show label on first line at this price level
                 if (updatedTPPrices.has(priceKey)) {
-                    // Hide duplicate labels
                     if (labelBox) labelBox.style('display', 'none');
                     if (labelText) labelText.style('display', 'none');
+                    if (pnlBox) pnlBox.style('display', 'none');
+                    if (pnlText) pnlText.style('display', 'none');
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                     if (closeBtn) closeBtn.style('display', 'none');
@@ -21051,61 +21118,57 @@ class OrderManager {
                     const numPositions = groupData ? groupData.positions.length : 1;
                     const totalPnL = groupData ? groupData.totalPnL : 0;
                     
+                    let labelStr;
                     if (targetIndex >= 0) {
-                        const labelPrefix = numPositions > 1 ? `TP${targetIndex + 1} (${percentage.toFixed(0)}%, ${numPositions}×)` : `TP${targetIndex + 1} (${percentage.toFixed(0)}%)`;
-                        labelTextContent = `${labelPrefix}  ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`;
+                        labelStr = numPositions > 1 ? `TP${targetIndex + 1} (${percentage.toFixed(0)}%, ${numPositions}×)` : `TP${targetIndex + 1} (${percentage.toFixed(0)}%)`;
                     } else {
-                        const labelPrefix = numPositions > 1 ? `TP (${numPositions}×)` : 'TP';
-                        labelTextContent = `${labelPrefix}  ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`;
+                        labelStr = numPositions > 1 ? `TP (${numPositions}×)` : 'TP';
                     }
-                    
-                    if (labelText) labelText.text(labelTextContent);
-                    // Ensure label visible
+                    if (labelText) labelText.text(labelStr);
+                    if (pnlText) pnlText.text(`${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
                     if (labelText) labelText.style('display', null);
+                    if (pnlBox) pnlBox.style('display', null);
+                    if (pnlText) pnlText.style('display', null);
                     if (closeBtn) closeBtn.style('display', null);
-                    // HIDE inline price box - price is shown on Y-axis instead
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                 }
                 
                 const y = ch.scales.yScale(tpPrice);
-                console.log(`     ✅ TP #${orderId}${targetId !== undefined ? ` target ${targetId}` : ''}: price=${tpPrice.toFixed(5)}, y=${y.toFixed(2)}`);
                 
-                line
-                    .attr('x1', 0)
-                    .attr('x2', ch.w)
-                    .attr('y1', y)
-                    .attr('y2', y);
+                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 
-                // Position elements on the right side of the line (before Y-axis)
                 if (labelText && labelBox) {
-                    const boxHeight = 18;
-                    const boxY = y - boxHeight / 2;
-                    const yAxisWidth = 70; // Space for Y-axis price highlight
-                    const labelRightNudge = 18;
+                    const boxH = 18;
+                    const boxY = y - boxH / 2;
+                    const gap = 4;
+                    const pad = 8;
+                    const yAxisWidth = 70;
+                    const closeBtnR = 10;
+                    const closeBtnGap = 6;
                     
-                    // Position close button if it exists (rightmost, before Y-axis area)
-                    if (closeBtn) {
-                        closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
+                    const labelTW = labelText.node()?.getBBox()?.width || 0;
+                    const labelBW = labelTW + pad * 2;
+                    const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
+                    const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
+                    
+                    const rightEdge = ch.w - yAxisWidth - 10;
+                    const closeBtnX = rightEdge - closeBtnR;
+                    const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
+                    
+                    let cx = startX;
+                    labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
+                    labelText.attr('x', cx + pad).attr('y', y + 4);
+                    cx += labelBW + gap;
+                    
+                    if (pnlBox && pnlText && pnlBW > 0) {
+                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
+                        pnlText.attr('x', cx + pad).attr('y', y + 4);
                     }
                     
-                    // Position label box to the left of close button (or at right edge)
-                    const labelBoxWidth = labelText.node().getBBox().width + 20;
-                    const labelBoxX = closeBtn 
-                        ? ch.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge
-                        : ch.w - yAxisWidth - 10 - labelBoxWidth + labelRightNudge;
-                    
-                    labelBox
-                        .attr('x', labelBoxX)
-                        .attr('y', boxY)
-                        .attr('width', labelBoxWidth)
-                        .attr('height', boxHeight);
-                    
-                    labelText
-                        .attr('x', labelBoxX + 10)
-                        .attr('y', y + 4);
-                    line.attr('x2', Math.max(0, labelBoxX));
+                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    line.attr('x2', Math.max(0, startX));
                 }
                 
                 // Track this TP price for Y-axis highlight
@@ -21276,59 +21339,42 @@ class OrderManager {
                 if (isPending && pnlText) pnlText.style('display', 'none');
 
                 if (labelText && closeBtn && labelBox) {
-                    const boxHeight = 18;
-                    const boxY = y - boxHeight / 2;
+                    const boxH = 18;
+                    const boxY = y - boxH / 2;
+                    const gap = 4;
+                    const pad = 8;
                     const yAxisWidth = 70;
-                    const labelRightNudge = isPending ? 0 : 18;
+                    const closeBtnR = 10;
+                    const closeBtnGap = 6;
 
-                    closeBtn.attr('transform', `translate(${ch.w - yAxisWidth - 15 + labelRightNudge}, ${y})`);
+                    const arrowW = arrow ? (arrow.node()?.getBBox()?.width || 0) : 0;
+                    const labelTW = (labelText.node()?.getBBox()?.width || 0) + arrowW + 6;
+                    const labelBW = labelTW + pad * 2;
 
-                    const arrowWidth = arrow ? arrow.node().getBBox().width : 0;
-                    const labelBoxWidth = labelText.node().getBBox().width + arrowWidth + 20;
-
-                    // P&L badge sits to the left of the main label
-                    let pnlBoxWidth = 0;
-                    const pnlGap = 4;
-                    if (!isPending && pnlText && pnlText.node()) {
-                        const pnlBBox = pnlText.node().getBBox();
-                        pnlBoxWidth = pnlBBox.width + 14;
+                    let pnlBW = 0;
+                    if (!isPending && pnlText?.node()) {
+                        const pw = pnlText.node().getBBox().width || 0;
+                        pnlBW = pw + pad * 2;
                     }
 
-                    const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge;
-                    const pnlBoxX = labelBoxX - pnlGap - pnlBoxWidth;
+                    const rightEdge = ch.w - yAxisWidth - 10;
+                    const closeBtnX = rightEdge - closeBtnR;
+                    const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
-                    labelBox
-                        .attr('x', labelBoxX)
-                        .attr('y', boxY)
-                        .attr('width', labelBoxWidth)
-                        .attr('height', boxHeight);
+                    let cx = startX;
+                    labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
+                    labelText.attr('x', cx + pad).attr('y', y + 4);
+                    if (arrow) arrow.attr('x', cx + pad + (labelText.node()?.getBBox()?.width || 0) + 4).attr('y', y + 4);
+                    cx += labelBW + gap;
 
-                    labelText
-                        .attr('x', labelBoxX + 10)
-                        .attr('y', y + 4);
-
-                    if (!isPending && pnlBox && pnlText && pnlBoxWidth > 0) {
-                        pnlBox
-                            .attr('x', pnlBoxX)
-                            .attr('y', boxY)
-                            .attr('width', pnlBoxWidth)
-                            .attr('height', boxHeight)
-                            .style('display', null);
-                        pnlText
-                            .attr('x', pnlBoxX + pnlBoxWidth / 2)
-                            .attr('y', y + 4)
-                            .attr('text-anchor', 'middle')
-                            .style('display', null);
+                    if (!isPending && pnlBox && pnlText && pnlBW > 0) {
+                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH).style('display', null);
+                        pnlText.attr('x', cx + pad).attr('y', y + 4).attr('text-anchor', 'start').style('display', null);
                     }
 
-                    line.attr('x2', Math.max(0, pnlBoxWidth > 0 ? pnlBoxX : labelBoxX));
-                    if (dragHitLine) dragHitLine.attr('x2', Math.max(0, pnlBoxWidth > 0 ? pnlBoxX : labelBoxX));
-
-                    if (arrow) {
-                        arrow
-                            .attr('x', labelBoxX + labelText.node().getBBox().width + 12)
-                            .attr('y', y + 4);
-                    }
+                    closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    line.attr('x2', Math.max(0, startX));
+                    if (dragHitLine) dragHitLine.attr('x2', Math.max(0, startX));
                 }
 
                 const highlightColor = isPending
