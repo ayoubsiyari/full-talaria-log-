@@ -7081,6 +7081,10 @@ class OrderManager {
                 <div class="order-section">
                     <div class="order-position-sizing-head">
                         <label class="order-label" id="positionSizingLabel" for="riskAmountUSD">Position sizing</label>
+                        <div id="balanceSourceToggle" style="display: none; gap: 0; margin-left: auto;">
+                            <button class="balance-source-tab active" type="button" data-balance="current" style="font-size: 9px; padding: 2px 8px; border-radius: 4px 0 0 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569; cursor: pointer; white-space: nowrap;">Current</button>
+                            <button class="balance-source-tab" type="button" data-balance="initial" style="font-size: 9px; padding: 2px 8px; border-radius: 0 4px 4px 0; background: transparent; color: #94a3b8; border: 1px solid #475569; border-left: none; cursor: pointer; white-space: nowrap;">Initial</button>
+                        </div>
                         <div class="order-button-group order-button-group--inline order-button-group--position-mode">
                             <button class="position-mode-tab active" type="button" data-mode="risk-usd">Risk $</button>
                             <button class="position-mode-tab" type="button" data-mode="risk-percent">Risk %</button>
@@ -7096,19 +7100,13 @@ class OrderManager {
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10">+</button>
                         </span>
                     </div>
-                    <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; flex-direction: column; gap: 6px;">
-                        <div style="display: flex; gap: 6px; align-items: center;">
-                            <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
-                            <span class="order-input-suffix">%</span>
-                            <span class="input-stepper-group">
-                            <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
-                            <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
-                            </span>
-                        </div>
-                        <div id="balanceSourceToggle" class="order-button-group order-button-group--inline" style="justify-content: flex-start; gap: 0;">
-                            <button class="balance-source-tab active" type="button" data-balance="current" style="font-size: 10px; padding: 3px 10px; border-radius: 4px 0 0 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569; cursor: pointer;">Current Bal</button>
-                            <button class="balance-source-tab" type="button" data-balance="initial" style="font-size: 10px; padding: 3px 10px; border-radius: 0 4px 4px 0; background: transparent; color: #94a3b8; border: 1px solid #475569; border-left: none; cursor: pointer;">Initial Bal</button>
-                        </div>
+                    <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
+                        <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                        <span class="order-input-suffix">%</span>
+                        <span class="input-stepper-group">
+                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
+                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
+                        </span>
                     </div>
                     <div id="lotSizeInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
                         <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
@@ -8731,18 +8729,22 @@ class OrderManager {
                 const riskPercentInput = document.getElementById('riskPercentInput');
                 const lotSizeInput = document.getElementById('lotSizeInput');
                 
+                const balToggle = document.getElementById('balanceSourceToggle');
                 if (mode === 'risk-usd') {
                     riskUSDInput.classList.remove('is-hidden');
                     riskPercentInput.classList.add('is-hidden');
                     lotSizeInput.classList.add('is-hidden');
+                    if (balToggle) balToggle.style.display = 'none';
                 } else if (mode === 'risk-percent') {
                     riskUSDInput.classList.add('is-hidden');
                     riskPercentInput.classList.remove('is-hidden');
                     lotSizeInput.classList.add('is-hidden');
+                    if (balToggle) balToggle.style.display = 'flex';
                 } else if (mode === 'lot-size') {
                     riskUSDInput.classList.add('is-hidden');
                     riskPercentInput.classList.add('is-hidden');
                     lotSizeInput.classList.remove('is-hidden');
+                    if (balToggle) balToggle.style.display = 'none';
                 }
                 
                 // Auto-switch TP distribution mode to match position sizing mode
