@@ -7580,7 +7580,8 @@ class OrderManager {
 
             if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
                 const level = this.multiEntryLevels[0];
-                const lotSize = level ? this.formatQuantity(level.amount || 0) : '0';
+                const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+                const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
                 const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} #1`;
                 return [
                     {
@@ -7656,7 +7657,8 @@ class OrderManager {
             const sideUpper = (this.orderSide || 'BUY').toUpperCase();
             const levelIndex = parseInt(levelNum, 10) - 1;
             const level = (this.multiEntryLevels || [])[levelIndex];
-            const lotSize = level ? this.formatQuantity(level.amount || 0) : '0';
+            const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
             
             const fullLabel = `${splitOrderType} ${sideUpper} #${levelNum}`;
             
@@ -8071,13 +8073,22 @@ class OrderManager {
                 x = this.chart.w - rightMargin - tpWidth - gap;
             }
         } else {
-            const pad = lineData.isAvgEntryLine ? 200 : 145;
+            const pad = 145;
             // Align all non-badge labels to the same left-edge X by using the widest label's width
             let maxW = bbox.width;
-            for (const key of ['entry', 'tp', 'sl']) {
+            const keysToCheck = ['entry', 'tp', 'sl', 'avgEntry'];
+            for (const key of keysToCheck) {
                 const dim = this.previewLines?.[key]?.labelDimensions;
                 if (dim && dim.width > maxW && !this.previewLines[key].isBadge) {
                     maxW = dim.width;
+                }
+            }
+            // Also check split entry lines
+            if (this.previewLines?.splitEntries) {
+                for (const se of this.previewLines.splitEntries) {
+                    if (se?.labelDimensions?.width > maxW && !se.isBadge) {
+                        maxW = se.labelDimensions.width;
+                    }
                 }
             }
             x = this.chart.w - maxW - pad;
@@ -11283,9 +11294,10 @@ class OrderManager {
             .style('pointer-events', isDraggable ? 'stroke' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
+        const needsPointerEvents = isDraggable || options?.isAvgEntryLine;
         const labelGroup = this.chart.svg.append('g')
             .attr('class', disabled ? 'preview-label-group preview-label-group--disabled' : 'preview-label-group')
-            .style('pointer-events', isDraggable ? 'all' : 'none')
+            .style('pointer-events', needsPointerEvents ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default')
             .style('opacity', disabled ? 0.55 : 1);
 
