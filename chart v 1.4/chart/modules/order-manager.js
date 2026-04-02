@@ -7645,6 +7645,17 @@ class OrderManager {
         }
 
         if (label === 'TP') {
+            const entryPx = this._getReferenceEntryForOrderMath();
+            const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+            const pip = this.pipSize || 0.0001;
+            const pv = this.pipValuePerLot || 10;
+            let infoText = priceText;
+            if (entryPx > 0 && price > 0 && price !== entryPx && qty > 0) {
+                const dist = Math.abs(price - entryPx);
+                const pips = dist / pip;
+                const profit = pips * qty * pv;
+                infoText = `+$${profit.toFixed(2)}  (${pips.toFixed(1)}p)`;
+            }
             return [
                 {
                     text: 'TP',
@@ -7655,10 +7666,10 @@ class OrderManager {
                     minWidth: 34
                 },
                 {
-                    text: priceText,
+                    text: infoText,
                     fill: '#0f172a',
                     stroke: '#22c55e',
-                    textColor: '#ffffff',
+                    textColor: '#22c55e',
                     fontWeight: '700',
                     minWidth: 74,
                     role: 'price'
@@ -7667,6 +7678,17 @@ class OrderManager {
         }
 
         if (label === 'SL') {
+            const entryPx = this._getReferenceEntryForOrderMath();
+            const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+            const pip = this.pipSize || 0.0001;
+            const pv = this.pipValuePerLot || 10;
+            let infoText = priceText;
+            if (entryPx > 0 && price > 0 && price !== entryPx && qty > 0) {
+                const dist = Math.abs(price - entryPx);
+                const pips = dist / pip;
+                const loss = pips * qty * pv;
+                infoText = `-$${loss.toFixed(2)}  (${pips.toFixed(1)}p)`;
+            }
             return [
                 {
                     text: 'SL',
@@ -7677,10 +7699,10 @@ class OrderManager {
                     minWidth: 34
                 },
                 {
-                    text: priceText,
+                    text: infoText,
                     fill: '#0f172a',
                     stroke: '#ef4444',
-                    textColor: '#ffffff',
+                    textColor: '#ef4444',
                     fontWeight: '700',
                     minWidth: 74,
                     role: 'price'
