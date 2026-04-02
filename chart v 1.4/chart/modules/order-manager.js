@@ -16616,6 +16616,11 @@ class OrderManager {
             // Move to closed positions first
             this.openPositions = this.openPositions.filter(p => p.id !== orderId);
             this.closedPositions.push(position);
+
+            // Multi-entry ladder: one leg filled and closed → remove remaining unfilled limits/stops in the same group
+            if (position.splitGroupId && position.isSplitEntry && !position.tradeGroupId) {
+                this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
+            }
             
             // Log with breakdown if there were partial closes
             if (partialPnL !== 0) {
@@ -18445,26 +18450,58 @@ class OrderManager {
     
     /**
      * Cancel a pending order
+     * @param {number} orderId
+     * @param {{ silent?: boolean }} [options] — silent: no toast (e.g. batch cancel)
      */
-    cancelPendingOrder(orderId) {
-        const pendingOrder = this.pendingOrders.find(o => o.id === orderId);
+    cancelPendingOrder(orderId, options = {}) {
+        const silent = options.silent === true;
+        let pendingOrder = (this.pendingOrders || []).find(o => o.id === orderId);
+        if (!pendingOrder && this.orderService) {
+            pendingOrder = (this.orderService.pendingOrders || []).find(o => o.id === orderId);
+        }
         if (!pendingOrder) return;
-        
-        // Remove from pending orders
+
         if (this.orderService) {
             this.orderService.removePendingOrder(orderId);
-        } else {
+        }
+        if (this.pendingOrders?.length) {
             this.pendingOrders = this.pendingOrders.filter(o => o.id !== orderId);
         }
-        
+
         this.removePendingOrderLine(orderId);
         this.removePendingSLTPLines(orderId);
-        
+
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'Limit' : 'Stop';
         console.log(`❌ Cancelled ${orderTypeLabel} ${pendingOrder.direction} order #${orderId}`);
-        this.showNotification(`❌ ${orderTypeLabel} ${pendingOrder.direction} Order #${orderId} cancelled`, 'info');
-        
+        if (!silent) {
+            this.showNotification(`❌ ${orderTypeLabel} ${pendingOrder.direction} Order #${orderId} cancelled`, 'info');
+        }
+
         this.updatePositionsPanel();
+    }
+
+    /**
+     * When a filled multi-entry leg fully closes (TP/SL), cancel unfilled limit/stop siblings in the same splitGroupId.
+     */
+    _cancelPendingOrdersInSplitGroup(splitGroupId) {
+        if (!splitGroupId) return;
+        const seen = new Set();
+        const pendings = [];
+        const scan = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+        for (const p of scan) {
+            if (!p || seen.has(p.id)) continue;
+            if (p.splitGroupId === splitGroupId && p.isSplitEntry) {
+                seen.add(p.id);
+                pendings.push(p);
+            }
+        }
+        if (pendings.length === 0) return;
+        console.log(`🧹 Cancelling ${pendings.length} pending multi-entry sibling(s) in group ${splitGroupId}`);
+        pendings.forEach((p) => this.cancelPendingOrder(p.id, { silent: true }));
+        this.showNotification(
+            `Cancelled ${pendings.length} unfilled multi-entry order(s) (filled leg closed)`,
+            'info'
+        );
     }
     
     /**
