@@ -9533,11 +9533,10 @@ class OrderManager {
                     reason = 'Set Position Size';
                 }
             }
-            // Multi-entry: each level must imply at least min lot (e.g. 0.01) after SL distance
+            // Multi-entry: each level must be valid (min lot, correct side, min distance from SL)
             else if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0 && this._multiEntryAnyLevelBelowMinLot()) {
                 canPlace = false;
-                const minSz = this.getMarketConfig()?.minSize ?? 0.01;
-                reason = `Min ${minSz} ${positionLabel} per level`;
+                reason = `Entry too close to SL or invalid`;
             }
             
             // Update button state
@@ -12922,9 +12921,11 @@ class OrderManager {
 
     /**
      * Multi-entry: level is valid for preview / submit when:
-     *  1. Implied lot size >= minLot (e.g. 0.01)
-     *  2. Entry is on correct side of SL (BUY entry > SL, SELL entry < SL)
-     *  3. Entry is not so close to SL that its lot size becomes excessively large
+     *  1. Entry is on correct side of SL (BUY entry > SL, SELL entry < SL)
+     *  2. Entry is far enough from SL (min 2 pips) to avoid absurd lot sizes
+     *  3. Implied lot size >= minLot (e.g. 0.01)
+     *  4. Single level's lot size doesn't exceed what the total risk would produce at
+     *     the full avg-entry distance (prevents 10 lots on $50 with 0.5 pip room)
      * Risk modes without SL price skip this rule (cannot size per level).
      */
     _multiEntryLevelMeetsMinLot(level, slPrice, pipSize, pipValue, minLot = 0.01) {
@@ -12933,26 +12934,39 @@ class OrderManager {
             return true;
         }
         if (!level || !level.price || level.price <= 0) return false;
+        const ps = pipSize || this.pipSize || 0.0001;
+        const pv = pipValue || this.pipValuePerLot || 10;
 
-        // Check entry is on correct side of SL
+        // 1. Entry must be on correct side of SL
         if (slPrice > 0) {
             const side = (this.orderSide || 'BUY').toUpperCase();
             if (side === 'BUY' && level.price <= slPrice) return false;
             if (side === 'SELL' && level.price >= slPrice) return false;
         }
 
+        // 2. Minimum distance: entry must be at least 2 pips from SL
+        if (slPrice > 0) {
+            const distPips = Math.abs(level.price - slPrice) / ps;
+            if (distPips < 2) return false;
+        }
+
         const lots = this._calcLevelLotSizeNumeric(level, slPrice, pipSize, pipValue);
+
+        // 3. Must meet minimum lot size
         if (!Number.isFinite(lots) || lots < minLot - 1e-6) return false;
 
-        // Guard: if entry is so close to SL that lot size is huge, check if this single
-        // level's risk exceeds the total intended risk — if so, disable it
+        // 4. Single level lot size must not exceed what the full risk would produce at a
+        //    reasonable distance — prevents one close-to-SL entry from dominating the position
         if (mode !== 'lot-size' && slPrice > 0) {
-            const ps = pipSize || this.pipSize || 0.0001;
-            const pv = pipValue || this.pipValuePerLot || 10;
-            const slPips = Math.abs(level.price - slPrice) / ps;
-            const levelRiskUsd = slPips * lots * pv;
-            const totalIntendedRisk = this._getMultiEntryTotalIntendedRisk();
-            if (totalIntendedRisk > 0 && levelRiskUsd > totalIntendedRisk * 1.05) return false;
+            const totalRisk = this._getMultiEntryTotalIntendedRisk();
+            if (totalRisk > 0) {
+                // Max lots = what the TOTAL risk would produce if all of it were at THIS entry's distance
+                const distPips = Math.abs(level.price - slPrice) / ps;
+                if (distPips > 0) {
+                    const maxLotsAtThisDistance = totalRisk / (distPips * pv);
+                    if (lots > maxLotsAtThisDistance * 1.05) return false;
+                }
+            }
         }
 
         return true;
