@@ -11111,6 +11111,36 @@ class OrderManager {
         return lineData;
     }
 
+    /**
+     * Keep SL on the loss side of every entry: BUY → strictly below lowest entry; SELL → strictly above highest.
+     */
+    _clampSlDragPrice(price) {
+        let p = Number(price);
+        if (!Number.isFinite(p)) return price;
+        const pip = this.pipSize || 0.0001;
+        const slPad = Math.max(pip * 0.5, 1e-12);
+        let priced = [];
+        if (this.isMultiEntryMode && this.multiEntryLevels?.length) {
+            priced = this.multiEntryLevels.filter(l => l.price > 0).map(l => l.price);
+        }
+        if (priced.length === 0) {
+            const main = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            if (main > 0) priced = [main];
+        }
+        if (priced.length === 0 && this.previewLines?.entry?.price > 0) {
+            priced = [this.previewLines.entry.price];
+        }
+        if (priced.length === 0) return p;
+
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        if (side === 'BUY') {
+            const low = Math.min(...priced);
+            return Math.min(p, low - slPad);
+        }
+        const high = Math.max(...priced);
+        return Math.max(p, high + slPad);
+    }
+
     makePreviewLineDraggable(lineData) {
         const self = this;
         let isDragging = false;
@@ -11200,6 +11230,12 @@ class OrderManager {
                             clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                         }
                     }
+                }
+
+                if (lineData.label === 'SL' && enableSL) {
+                    newPrice = self._clampSlDragPrice(newPrice);
+                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
 
                 lineData.price = newPrice;
@@ -11871,8 +11907,13 @@ class OrderManager {
 
                 const chartHeightRaw = self.chart.h ?? self.chart.height ?? self.chart.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
-                const clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                const newPrice = self.chart.scales.yScale.invert(clampedY);
+                let clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                let newPrice = self.chart.scales.yScale.invert(clampedY);
+                if (label === 'SL' && document.getElementById('enableSL')?.checked) {
+                    newPrice = self._clampSlDragPrice(newPrice);
+                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                }
 
                 // Mark as manually positioned and convert to full line
                 if (label === 'TP') {
