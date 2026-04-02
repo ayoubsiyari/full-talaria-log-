@@ -18975,13 +18975,16 @@ class OrderManager {
         const m = chart.margin;
         const x = m.l + (dataIndex * candleSpacing) + chart.offsetX + (candleSpacing / 2);
         const y = yScale(order.openPrice);
+        const candle = chart.data[dataIndex];
         const isBuy = order.type === 'BUY';
         const color = isBuy ? '#2962ff' : '#ef4444';
         const sz = 12;
+        const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
 
-        // Arrow offset: BUY arrow sits below price, SELL arrow sits above price
-        const arrowCY = isBuy ? y + sz + 6 : y - sz - 6;
+        // Arrow at the wick: BUY below candle low, SELL above candle high
+        const wickY = isBuy ? yScale(candle.l) : yScale(candle.h);
+        const arrowCY = isBuy ? wickY + sz + gap : wickY - sz - gap;
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `entry-marker entry-marker-${order.id}`)
@@ -18997,7 +19000,7 @@ class OrderManager {
             .attr('y1', y).attr('y2', y)
             .attr('stroke', color).attr('stroke-width', 2);
 
-        // Arrow shape (↑ for BUY, ↓ for SELL)
+        // Arrow at the wick end (↑ for BUY below low, ↓ for SELL above high)
         const arrowPath = isBuy
             ? this._arrowUpPath(x, arrowCY, sz)
             : this._arrowDownPath(x, arrowCY, sz);
@@ -19092,13 +19095,17 @@ class OrderManager {
         const mg = this.chart.margin;
         const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
         const y = yScale(closeData.closePrice);
+        const candle = this.chart.data[dataIndex];
         const isProfitable = closeData.pnl >= 0;
         const color = isProfitable ? '#22c55e' : '#ef4444';
         const sz = 12;
+        const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
 
+        // Exit: BUY exit arrow above candle high, SELL exit arrow below candle low
         const isBuyExit = order.type === 'BUY';
-        const arrowCY = isBuyExit ? y - sz - 6 : y + sz + 6;
+        const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
+        const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
 
         const markerGroup = this.chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
@@ -19305,10 +19312,13 @@ class OrderManager {
             const m = c.margin;
             const x = m.l + (dataIndex * candleSpacing) + c.offsetX + (candleSpacing / 2);
             const y = c.scales.yScale(price);
+            const candle = c.data[dataIndex];
             const isBuy = type === 'BUY';
             const sz = 12;
+            const gap = 4;
             const tickW = Math.max(candleSpacing * 0.6, 8);
-            const arrowCY = isBuy ? y + sz + 6 : y - sz - 6;
+            const wickY = isBuy ? c.scales.yScale(candle.l) : c.scales.yScale(candle.h);
+            const arrowCY = isBuy ? wickY + sz + gap : wickY - sz - gap;
 
             const tick = marker.select('[data-role="entry-tick"]');
             if (!tick.empty()) {
@@ -19342,13 +19352,16 @@ class OrderManager {
                 const dataIndex = this._findCandleIndexForTime(this.chart.data, time);
                 if (dataIndex === -1) return;
 
+                const candle = this.chart.data[dataIndex];
                 const candleSpacing = this.chart.getCandleSpacing();
                 const mg = this.chart.margin;
                 const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
                 const y = mainY(price);
                 const sz = 12;
+                const gap = 4;
                 const tickW = Math.max(candleSpacing * 0.6, 8);
-                const arrowCY = isBuyExit ? y - sz - 6 : y + sz + 6;
+                const wickY = isBuyExit ? mainY(candle.h) : mainY(candle.l);
+                const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
 
                 const tick = marker.select('[data-role="exit-tick"]');
                 if (!tick.empty()) {
