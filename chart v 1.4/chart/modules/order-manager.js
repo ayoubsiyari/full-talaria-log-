@@ -18901,78 +18901,107 @@ class OrderManager {
     }
     
     /**
-     * Draw entry marker on chart (TradingView style)
+     * Draw entry marker on chart (TradingView style — arrow + tick + hover tooltip)
      */
     drawEntryMarker(order, targetChart = null) {
         const chart = targetChart || this.chart;
-        console.log('🎯 drawEntryMarker called for order:', order.id, order.type);
-
-        if (!chart || !chart.svg || !chart.scales) {
-            console.error('❌ Cannot draw entry marker - chart not ready');
-            return;
-        }
-        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) {
-            return;
-        }
-
-        const { xScale, yScale } = chart.scales;
-        if (!xScale || !yScale) {
-            console.error('❌ xScale or yScale not available');
-            return;
-        }
+        if (!chart || !chart.svg || !chart.scales) return;
+        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) return;
+        const { yScale } = chart.scales;
+        if (!yScale) return;
 
         let dataIndex = chart.data.findIndex((d) => d.t === order.openTime);
-
         if (dataIndex === -1) {
-            let closestIndex = -1;
-            let minDiff = Infinity;
-
+            let closestIndex = -1, minDiff = Infinity;
             chart.data.forEach((candle, i) => {
                 const diff = Math.abs(candle.t - order.openTime);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    closestIndex = i;
-                }
+                if (diff < minDiff) { minDiff = diff; closestIndex = i; }
             });
-
-            if (closestIndex !== -1) {
-                dataIndex = closestIndex;
-            } else {
-                console.error('❌ Cannot find any candle near timestamp:', order.openTime);
-                return;
-            }
+            if (closestIndex === -1) return;
+            dataIndex = closestIndex;
         }
 
         const candleSpacing = chart.getCandleSpacing();
         const m = chart.margin;
-
         const x = m.l + (dataIndex * candleSpacing) + chart.offsetX + (candleSpacing / 2);
         const y = yScale(order.openPrice);
-
         const isBuy = order.type === 'BUY';
-        const color = isBuy ? '#22c55e' : '#ef4444';
-        const labelText = isBuy ? 'BUY' : 'SELL';
+        const color = isBuy ? '#2962ff' : '#ef4444';
+        const arrowSize = 10;
+        const tickW = Math.max(candleSpacing * 0.6, 8);
+        const self = this;
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `entry-marker entry-marker-${order.id}`)
             .attr('data-order-id', order.id)
-            .style('pointer-events', 'none')
-            .style('clip-path', 'none') // Disable clipping
-            .raise(); // Bring to front
-        
-        const priceText = `${labelText} ${order.openPrice.toFixed(5)}`;
-        const labelY = isBuy ? y + 18 : y - 10;
+            .style('pointer-events', 'all')
+            .style('cursor', 'pointer')
+            .raise();
 
-        markerGroup.append('text')
-            .attr('data-role', 'entry-label-text')
-            .attr('x', x)
-            .attr('y', labelY)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
+        // Small horizontal tick at entry price on the candle
+        markerGroup.append('line')
+            .attr('data-role', 'entry-tick')
+            .attr('x1', x - tickW / 2).attr('x2', x + tickW / 2)
+            .attr('y1', y).attr('y2', y)
+            .attr('stroke', color).attr('stroke-width', 2);
+
+        // Arrow below candle (BUY ▲) or above candle (SELL ▼)
+        const arrowY = isBuy ? y + arrowSize + 4 : y - arrowSize - 4;
+        const arrowPath = isBuy
+            ? `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
+            : `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+
+        markerGroup.append('path')
+            .attr('data-role', 'entry-arrow')
+            .attr('d', arrowPath)
             .attr('fill', color)
-            .attr('font-size', '11px')
-            .attr('font-weight', '600')
-            .attr('font-family', 'Roboto, sans-serif').text(priceText);
+            .attr('stroke', 'none');
+
+        // Hover tooltip group (hidden by default)
+        const ttGroup = markerGroup.append('g')
+            .attr('data-role', 'entry-tooltip')
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
+        const ttX = x + 14;
+        const ttY = isBuy ? arrowY + 8 : arrowY - 80;
+
+        const riskAmt = order.riskAmount || order.originalRiskAmount || 0;
+        const lines = [
+            `${order.type} @ ${order.openPrice.toFixed(5)}`,
+            `Lots: ${order.quantity.toFixed(2)}`,
+            riskAmt > 0 ? `Risk: $${riskAmt.toFixed(2)}` : null,
+            order.stopLoss ? `SL: ${order.stopLoss.toFixed(5)}` : null,
+            order.takeProfit ? `TP: ${order.takeProfit.toFixed(5)}` : null,
+        ].filter(Boolean);
+
+        const lineH = 15;
+        const ttPad = 6;
+        const ttW = 140;
+        const ttH = lines.length * lineH + ttPad * 2;
+
+        ttGroup.append('rect')
+            .attr('x', ttX).attr('y', ttY)
+            .attr('width', ttW).attr('height', ttH)
+            .attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)')
+            .attr('stroke', color).attr('stroke-width', 1);
+
+        lines.forEach((txt, i) => {
+            ttGroup.append('text')
+                .attr('x', ttX + ttPad + 2)
+                .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
+                .attr('fill', i === 0 ? color : '#e2e8f0')
+                .attr('font-size', '10px')
+                .attr('font-weight', i === 0 ? '700' : '400')
+                .attr('font-family', 'Roboto, sans-serif')
+                .text(txt);
+        });
+
+        // Hover events
+        markerGroup
+            .on('mouseenter', function() { ttGroup.style('display', null); })
+            .on('mouseleave', function() { ttGroup.style('display', 'none'); });
 
         if (!this.entryMarkers) this.entryMarkers = [];
         this.entryMarkers.push({
@@ -18982,110 +19011,121 @@ class OrderManager {
             orderId: order.id,
             type: order.type,
             hasPriceElements: true,
-            chart
+            chart,
+            order
         });
     }
     
     /**
-     * Draw exit marker on chart (TradingView style)
+     * Draw exit marker on chart (TradingView style — arrow + tick + hover tooltip)
      * Aggregates P&L for markers at the same price level (for split entries)
      */
     drawExitMarker(order, closeData) {
-        if (!this.chart || !this.chart.svg || !this.chart.scales) {
-            console.warn('⚠️ Cannot draw exit marker - chart not ready');
-            return;
-        }
+        if (!this.chart || !this.chart.svg || !this.chart.scales) return;
+        const { yScale } = this.chart.scales;
+        if (!yScale) return;
 
-        const { xScale, yScale } = this.chart.scales;
-        if (!xScale || !yScale) return;
-
-        // Find the index of the candle with matching timestamp
         const dataIndex = this.chart.data.findIndex(d => d.t === closeData.closeTime);
-        if (dataIndex === -1) {
-            console.error('❌ Cannot find exit candle with timestamp:', closeData.closeTime);
-            return;
-        }
+        if (dataIndex === -1) return;
 
-        // Get candle spacing and margin
-        const candleSpacing = this.chart.getCandleSpacing();
-        const m = this.chart.margin;
-
-        // Use same formula as candle rendering
-        const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
-        const y = yScale(closeData.closePrice);
-        
-        console.log('   Exit Position: x=', x, 'y=', y, 'data index=', dataIndex);
-        
-        // Check if there's already an exit marker at this price level (for aggregation)
         if (!this.exitMarkers) this.exitMarkers = [];
-        
+
         const priceKey = closeData.closePrice.toFixed(5);
-        const existingMarker = this.exitMarkers.find(m => 
+        const existingMarker = this.exitMarkers.find(m =>
             m.priceKey === priceKey && m.time === closeData.closeTime
         );
-        
+
         if (existingMarker) {
-            // Aggregate P&L to existing marker
             existingMarker.totalPnL += closeData.pnl;
             existingMarker.count++;
-            
-            // Update the existing marker's text
-            const isProfitable = existingMarker.totalPnL >= 0;
-            const color = isProfitable ? '#22c55e' : '#ef4444';
-            const pnlText = `${isProfitable ? '+' : ''}$${existingMarker.totalPnL.toFixed(2)}`;
-            
-            existingMarker.marker.select('[data-role="exit-pnl-text"]')
-                .attr('fill', color)
-                .text(pnlText);
-            
-            console.log(`   📊 Aggregated exit: ${existingMarker.count} positions, total P&L: ${existingMarker.totalPnL.toFixed(2)}`);
             return;
         }
-        
+
+        const candleSpacing = this.chart.getCandleSpacing();
+        const m = this.chart.margin;
+        const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+        const y = yScale(closeData.closePrice);
         const isProfitable = closeData.pnl >= 0;
         const color = isProfitable ? '#22c55e' : '#ef4444';
-        
-        // Append directly to main SVG to avoid clip-path
+        const arrowSize = 10;
+        const tickW = Math.max(candleSpacing * 0.6, 8);
+
+        // Exit arrow points opposite to entry: BUY exit = ▼ (sold), SELL exit = ▲ (bought back)
+        const isBuyExit = order.type === 'BUY';
+        const arrowY = isBuyExit ? y - arrowSize - 4 : y + arrowSize + 4;
+
         const markerGroup = this.chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
-            .style('pointer-events', 'none')
+            .style('pointer-events', 'all')
+            .style('cursor', 'pointer')
             .style('clip-path', 'none')
-            .raise(); // Bring to front
-        
-        setTimeout(() => markerGroup.raise(), 50);
-        
-        // Simple text: "+$345.94" or "-$100.00" with close price
-        const pnlText = `${isProfitable ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
-        const priceText = closeData.closePrice.toFixed(5);
-        const labelY = y - 10;
-        
-        // P&L text with drop shadow for visibility
-        markerGroup.append('text')
-            .attr('data-role', 'exit-pnl-text')
-            .attr('x', x)
-            .attr('y', labelY)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
+            .raise();
+
+        // Small horizontal tick at exit price
+        markerGroup.append('line')
+            .attr('data-role', 'exit-tick')
+            .attr('x1', x - tickW / 2).attr('x2', x + tickW / 2)
+            .attr('y1', y).attr('y2', y)
+            .attr('stroke', color).attr('stroke-width', 2);
+
+        // Arrow (opposite direction from entry)
+        const arrowPath = isBuyExit
+            ? `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
+            : `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+
+        markerGroup.append('path')
+            .attr('data-role', 'exit-arrow')
+            .attr('d', arrowPath)
             .attr('fill', color)
-            .attr('font-size', '11px')
-            .attr('font-weight', '600')
-            .attr('font-family', 'Roboto, sans-serif')
-            .text(pnlText);
-        
-        // Close price below P&L
-        markerGroup.append('text')
-            .attr('data-role', 'exit-price-text')
-            .attr('x', x)
-            .attr('y', labelY + 14)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
-            .attr('fill', '#9ca3af')
-            .attr('font-size', '10px')
-            .attr('font-weight', '400')
-            .attr('font-family', 'Roboto, sans-serif')
-            .text(priceText);
-        
-        // Store marker reference with aggregation data
+            .attr('stroke', 'none');
+
+        // Hover tooltip
+        const ttGroup = markerGroup.append('g')
+            .attr('data-role', 'exit-tooltip')
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
+        const pnlText = `${isProfitable ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
+        const holdMs = closeData.closeTime - order.openTime;
+        const holdMins = Math.floor(holdMs / 60000);
+        const holdStr = holdMins >= 60 ? `${Math.floor(holdMins / 60)}h ${holdMins % 60}m` : `${holdMins}m`;
+
+        const lines = [
+            `Close @ ${closeData.closePrice.toFixed(5)}`,
+            `P&L: ${pnlText}`,
+            `Duration: ${holdStr}`,
+            `Lots: ${order.quantity.toFixed(2)}`,
+        ];
+
+        const lineH = 15;
+        const ttPad = 6;
+        const ttW = 140;
+        const ttH = lines.length * lineH + ttPad * 2;
+        const ttX = x + 14;
+        const ttY = isBuyExit ? arrowY - ttH - 4 : arrowY + 8;
+
+        ttGroup.append('rect')
+            .attr('x', ttX).attr('y', ttY)
+            .attr('width', ttW).attr('height', ttH)
+            .attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)')
+            .attr('stroke', color).attr('stroke-width', 1);
+
+        lines.forEach((txt, i) => {
+            ttGroup.append('text')
+                .attr('x', ttX + ttPad + 2)
+                .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
+                .attr('fill', i === 1 ? color : '#e2e8f0')
+                .attr('font-size', '10px')
+                .attr('font-weight', i <= 1 ? '700' : '400')
+                .attr('font-family', 'Roboto, sans-serif')
+                .text(txt);
+        });
+
+        markerGroup
+            .on('mouseenter', function() { ttGroup.style('display', null); })
+            .on('mouseleave', function() { ttGroup.style('display', 'none'); });
+
         this.exitMarkers.push({
             orderId: order.id,
             marker: markerGroup,
@@ -19093,10 +19133,9 @@ class OrderManager {
             price: closeData.closePrice,
             priceKey: priceKey,
             totalPnL: closeData.pnl,
-            count: 1
+            count: 1,
+            isBuyExit
         });
-        
-        console.log(`✅ Exit marker drawn for order #${order.id} (P&L: ${pnlText})`);
     }
     
     /**
@@ -19227,16 +19266,35 @@ class OrderManager {
 
             const candleSpacing = c.getCandleSpacing();
             const m = c.margin;
-
             const x = m.l + (dataIndex * candleSpacing) + c.offsetX + (candleSpacing / 2);
             const y = yScale(price);
-
             const isBuy = type === 'BUY';
-            const labelY = isBuy ? y + 18 : y - 10;
+            const arrowSize = 10;
+            const tickW = Math.max(candleSpacing * 0.6, 8);
 
-            const labelText = marker.select('[data-role="entry-label-text"]');
-            if (!labelText.empty()) {
-                labelText.attr('x', x).attr('y', labelY);
+            // Update tick
+            const tick = marker.select('[data-role="entry-tick"]');
+            if (!tick.empty()) {
+                tick.attr('x1', x - tickW / 2).attr('x2', x + tickW / 2).attr('y1', y).attr('y2', y);
+            }
+
+            // Update arrow
+            const arrowY = isBuy ? y + arrowSize + 4 : y - arrowSize - 4;
+            const arrowPath = isBuy
+                ? `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
+                : `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+            const arrow = marker.select('[data-role="entry-arrow"]');
+            if (!arrow.empty()) arrow.attr('d', arrowPath);
+
+            // Update tooltip position
+            const tt = marker.select('[data-role="entry-tooltip"]');
+            if (!tt.empty()) {
+                const ttX = x + 14;
+                const ttY = isBuy ? arrowY + 8 : arrowY - 80;
+                tt.select('rect').attr('x', ttX).attr('y', ttY);
+                tt.selectAll('text').each(function(d, i) {
+                    d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+                });
             }
         });
     }
@@ -19246,26 +19304,39 @@ class OrderManager {
 
         if (this.exitMarkers && this.exitMarkers.length > 0) {
             const { yScale: mainY } = this.chart.scales;
-            this.exitMarkers.forEach(({ marker, time, price }) => {
+            this.exitMarkers.forEach(({ marker, time, price, isBuyExit }) => {
                 const dataIndex = this.chart.data.findIndex((d) => d.t === time);
                 if (dataIndex === -1) return;
 
                 const candleSpacing = this.chart.getCandleSpacing();
                 const m = this.chart.margin;
-
                 const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
                 const y = mainY(price);
+                const arrowSize = 10;
+                const tickW = Math.max(candleSpacing * 0.6, 8);
 
-                const labelY = y - 10;
-
-                const pnlText = marker.select('[data-role="exit-pnl-text"]');
-                if (!pnlText.empty()) {
-                    pnlText.attr('x', x).attr('y', labelY);
+                const tick = marker.select('[data-role="exit-tick"]');
+                if (!tick.empty()) {
+                    tick.attr('x1', x - tickW / 2).attr('x2', x + tickW / 2).attr('y1', y).attr('y2', y);
                 }
 
-                const priceText = marker.select('[data-role="exit-price-text"]');
-                if (!priceText.empty()) {
-                    priceText.attr('x', x).attr('y', labelY + 14);
+                const arrowY = isBuyExit ? y - arrowSize - 4 : y + arrowSize + 4;
+                const arrowPath = isBuyExit
+                    ? `M${x},${arrowY + arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`
+                    : `M${x},${arrowY - arrowSize} L${x - arrowSize * 0.6},${arrowY} L${x + arrowSize * 0.6},${arrowY} Z`;
+                const arrow = marker.select('[data-role="exit-arrow"]');
+                if (!arrow.empty()) arrow.attr('d', arrowPath);
+
+                const tt = marker.select('[data-role="exit-tooltip"]');
+                if (!tt.empty()) {
+                    const ttX = x + 14;
+                    const ttRect = tt.select('rect');
+                    const ttH = ttRect.empty() ? 66 : parseFloat(ttRect.attr('height'));
+                    const ttY = isBuyExit ? arrowY - ttH - 4 : arrowY + 8;
+                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
+                    tt.selectAll('text').each(function(d, i) {
+                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+                    });
                 }
             });
         }
