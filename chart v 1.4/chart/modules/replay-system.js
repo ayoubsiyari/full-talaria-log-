@@ -31,13 +31,14 @@ class ReplaySystem {
         this.tickInterval = null;
         this.animatingCandle = null;
         this.tickProgress = 0;
-        this.ticksPerCandle = 60; // 60 ticks = 60 frames for real-time (1 frame per second at 1x)
+        // More steps = smaller price jumps per frame (smoother wicks, same wall-clock per candle)
+        this.ticksPerCandle = 72;
         this.realTimeMode = true; // Real-time mode: 1min candle = 60 seconds at 1x speed
         
         // === DETERMINISTIC TICK PATH CACHE ===
         // Pre-generated tick paths for each candle, keyed by timestamp
         // This ensures consistent tick animation across all timeframes
-        this.tickPathCache = {};  // { timestamp: [price0, price1, ...price59] }
+        this.tickPathCache = {};  // { timestamp: [price0, ... priceN-1] } length === ticksPerCandle
         this.tickPathCacheBuilt = false;
         this._prngSeed = 12345; // Seeded PRNG state
         this._nextCandleTimer = null; // Tracks the between-candle timer so it can be cancelled
@@ -2770,8 +2771,7 @@ class ReplaySystem {
             
             this._preserveTickProgress = false;
             
-            // Use 60 ticks for smooth animation
-            this.currentTicksPerCandle = 60;
+            this.currentTicksPerCandle = this.ticksPerCandle || 72;
             
             // Base tick interval = candle duration / ticks
             const baseTickInterval = Math.max(16, realTimeCandleDuration / this.currentTicksPerCandle);
@@ -2792,7 +2792,7 @@ class ReplaySystem {
                     baseInterval: baseTickInterval,
                     volumeMultiplier: volumeMultiplier,
                     candleVolume: targetCandle.v || 0,
-                    tickVolumes: this.generateVolumeDistribution(60, volumeMultiplier, targetCandle.t)
+                    tickVolumes: this.generateVolumeDistribution(this.currentTicksPerCandle || 72, volumeMultiplier, targetCandle.t)
                 };
             }
         }
@@ -2925,7 +2925,7 @@ class ReplaySystem {
             
             // Schedule next tick if still animating
             if (this.isPlaying && this.animatingCandle && 
-                this.tickProgress < (this.currentTicksPerCandle || 60)) {
+                this.tickProgress < (this.currentTicksPerCandle || this.ticksPerCandle || 72)) {
                 this.scheduleNextTick();
             }
         }, tickInterval);
@@ -3021,7 +3021,7 @@ class ReplaySystem {
         this.updateChartWithAnimatedCandle();
         
         // Check if animation is complete (ticksNeeded already defined above)
-        if (this.tickProgress >= (this.currentTicksPerCandle || this.ticksPerCandle)) {
+        if (this.tickProgress >= (this.currentTicksPerCandle || this.ticksPerCandle || 72)) {
             this.completeTickAnimation();
         }
     }
@@ -3207,9 +3207,9 @@ class ReplaySystem {
         
         this.tickPathCache = {};
         
+        const n = this.ticksPerCandle || 72;
         for (const candle of this.fullRawData) {
-            // Use candle timestamp as seed for deterministic generation
-            const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, 60, candle.t);
+            const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
             this.tickPathCache[candle.t] = path;
         }
         
@@ -3220,18 +3220,16 @@ class ReplaySystem {
     /**
      * Get tick path for a candle, using cache if available
      * @param {object} candle - The candle object with o,h,l,c,t
-     * @returns {array} Array of 60 price values representing tick animation
+     * @returns {array} Price samples for tick animation (length === ticksPerCandle)
      */
     getTickPath(candle) {
         if (!candle || !candle.t) return null;
-        
-        // Check cache first
-        if (this.tickPathCache[candle.t]) {
-            return this.tickPathCache[candle.t];
-        }
-        
-        // Generate and cache if not found
-        const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, 60, candle.t);
+
+        const n = this.ticksPerCandle || 72;
+        const cached = this.tickPathCache[candle.t];
+        if (cached && cached.length === n) return cached;
+
+        const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
         this.tickPathCache[candle.t] = path;
         return path;
     }
@@ -3266,7 +3264,7 @@ class ReplaySystem {
         return {
             path: aggregatedPath,
             rawCandles: rawCandles,
-            ticksPerRawCandle: 60,
+            ticksPerRawCandle: this.ticksPerCandle || 72,
             totalTicks: aggregatedPath.length
         };
     }
@@ -3300,183 +3298,122 @@ class ReplaySystem {
     }
     
     /**
-     * Generate a REALISTIC random price path with natural market volatility
-     * Uses SEEDED random for deterministic output based on candle timestamp
-     * Simulates real tick-by-tick movement with momentum, reversals, and noise
-     * @param {number} open - Candle open price
-     * @param {number} high - Candle high price  
-     * @param {number} low - Candle low price
-     * @param {number} close - Candle close price
-     * @param {number} numTicks - Number of ticks to generate (default 60)
-     * @param {number} seed - Seed for deterministic random (use candle timestamp)
+     * Deterministic intra-candle price path that respects OHLC and moves in a
+     * logical order (wick → opposite extreme → close). Uses smooth easing on
+     * polyline segments so wicks do not snap or jitter like the old random walk.
+     * @param {number} numTicks - Path length (must match ticksPerCandle for cache hits)
      */
     generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
         const random = this.createSeededRandom(seed);
+        const smoothstep = (t) => {
+            const x = Math.max(0, Math.min(1, t));
+            return x * x * (3 - 2 * x);
+        };
 
-        const path = [];
+        if (![open, high, low, close].every(Number.isFinite)) {
+            const n = Math.max(2, Math.floor(numTicks) || 2);
+            return new Array(n).fill(open);
+        }
+
+        const n = Math.max(2, Math.floor(numTicks));
         const range = high - low;
+        const eps = Math.max(1e-12, range * 1e-9);
+
+        if (range <= eps) {
+            const path = [];
+            for (let i = 0; i < n; i++) {
+                const u = n === 1 ? 0 : i / (n - 1);
+                path.push(open + (close - open) * u);
+            }
+            path[n - 1] = close;
+            return path;
+        }
+
+        const upperBody = Math.max(open, close);
+        const lowerBody = Math.min(open, close);
+        const upperWick = high - upperBody;
+        const lowerWick = lowerBody - low;
         const isBullish = close >= open;
-        const body = Math.abs(close - open);
-        const upperWick = high - Math.max(open, close);
-        const lowerWick = Math.min(open, close) - low;
-        const bodyRatio = body / (range || 1);
-        const isDoji = bodyRatio < 0.15;
 
-        const baseVolatility = range / numTicks * (1.5 + random() * 2);
-
-        let touchedHigh = false;
-        let touchedLow = false;
-
-        let price = open;
-        let velocity = 0;
-
-        const tickSize = range * 0.001;
-        let lastDirection = 0;
-        let directionStreak = 0;
-        let inMomentumBurst = false;
-        let burstDirection = 0;
-        let burstTicksRemaining = 0;
-
-        const numEvents = 2 + Math.floor(random() * 4);
-        const eventTicks = [];
-        for (let i = 0; i < numEvents; i++) {
-            eventTicks.push({
-                tick: Math.floor(random() * (numTicks - 5)) + 2,
-                magnitude: 0.3 + random() * 0.7,
-                direction: random() > 0.5 ? 1 : -1
-            });
+        let visitLowFirst;
+        if (lowerWick > upperWick * 1.12) {
+            visitLowFirst = true;
+        } else if (upperWick > lowerWick * 1.12) {
+            visitLowFirst = false;
+        } else {
+            visitLowFirst = isBullish ? (random() < 0.52) : (random() < 0.48);
         }
 
-        for (let t = 0; t < numTicks; t++) {
-            const progress = t / (numTicks - 1);
-            const remainingTicks = numTicks - t;
+        const waypoints = [open];
+        const pushPt = (p) => {
+            const last = waypoints[waypoints.length - 1];
+            if (Math.abs(p - last) > eps) waypoints.push(p);
+        };
+        if (visitLowFirst) {
+            pushPt(low);
+            pushPt(high);
+        } else {
+            pushPt(high);
+            pushPt(low);
+        }
+        pushPt(close);
 
-            if (t === numTicks - 1) {
-                path.push(close);
-                continue;
+        const segs = [];
+        for (let i = 0; i < waypoints.length - 1; i++) {
+            segs.push(Math.abs(waypoints[i + 1] - waypoints[i]));
+        }
+        const totalArc = segs.reduce((a, b) => a + b, 0) || 1;
+        const cum = [0];
+        for (let i = 0; i < segs.length; i++) cum.push(cum[i] + segs[i]);
+
+        const slots = n - 1;
+        const path = new Array(n);
+        const noiseMag = range * 0.0028;
+
+        for (let j = 0; j < slots; j++) {
+            const target = ((j + 1) / slots) * totalArc;
+            let s = 0;
+            while (s < segs.length - 1 && cum[s + 1] < target - eps) s++;
+            const segStart = cum[s];
+            const segLen = segs[s];
+            const local = segLen < eps ? 1 : Math.max(0, Math.min(1, (target - segStart) / segLen));
+            const e = smoothstep(local);
+            const from = waypoints[s];
+            const to = waypoints[s + 1];
+            let px = from + (to - from) * e;
+            px += (random() - 0.5) * noiseMag;
+            path[j] = Math.max(low, Math.min(high, px));
+        }
+        path[n - 1] = close;
+
+        let minV = path[0];
+        let maxV = path[0];
+        let minI = 0;
+        let maxI = 0;
+        for (let i = 0; i < n - 1; i++) {
+            if (path[i] < minV) {
+                minV = path[i];
+                minI = i;
             }
-
-            const event = eventTicks.find(e => e.tick === t);
-            if (event) {
-                inMomentumBurst = true;
-                burstDirection = event.direction;
-                burstTicksRemaining = 3 + Math.floor(random() * 5);
-                velocity += event.magnitude * range * 0.1 * event.direction;
+            if (path[i] > maxV) {
+                maxV = path[i];
+                maxI = i;
             }
-
-            if (inMomentumBurst) {
-                burstTicksRemaining--;
-                if (burstTicksRemaining <= 0) inMomentumBurst = false;
-            }
-
-            // === PRICE PHYSICS ===
-
-            // 1. Mean reversion towards close (stronger near end)
-            const closeAttraction = progress > 0.7
-                ? (close - price) / remainingTicks * (1 + (progress - 0.7) * 3)
-                : (close - price) / (remainingTicks + 20) * 0.3;
-
-            // 2. Brownian motion — boosted noise during opening range
-            const noiseScale = progress < 0.15 ? 1.6 : 1.0;
-            const randomAccel = (random() - 0.5) * baseVolatility * 0.5 * noiseScale;
-
-            // 3. Momentum — faster decay during opening range (indecision)
-            const decay = progress < 0.15 ? 0.6 : 0.85;
-            velocity = velocity * decay + randomAccel;
-
-            // 4. Direction streak reversal
-            const currentDir = velocity > 0 ? 1 : -1;
-            if (currentDir === lastDirection) {
-                directionStreak++;
-                if (directionStreak > 3 && random() < directionStreak * 0.08) {
-                    velocity *= -0.5;
-                    directionStreak = 0;
-                }
-            } else {
-                directionStreak = 1;
-            }
-            lastDirection = currentDir;
-
-            // 5. Direction-aware wick exploration
-            //    Bullish: price tends to dip toward low (lower wick) first,
-            //             then rally toward high before settling at close.
-            //    Bearish: price tends to spike toward high (upper wick) first,
-            //             then drop toward low before settling at close.
-            //    Doji:    equal random pull toward both extremes.
-            if (!isDoji) {
-                const firstWick  = isBullish ? low  : high;
-                const secondWick = isBullish ? high : low;
-                const firstDone  = isBullish ? touchedLow : touchedHigh;
-                const secondDone = isBullish ? touchedHigh : touchedLow;
-
-                if (!firstDone && progress > 0.08 && progress < 0.50) {
-                    if (random() < 0.25) velocity += (firstWick - price) * 0.07;
-                } else if (firstDone && !secondDone && progress > 0.30) {
-                    if (random() < 0.25) velocity += (secondWick - price) * 0.07;
-                }
-            } else {
-                if (!touchedHigh && progress > 0.15 && random() < 0.18) {
-                    velocity += (high - price) * 0.05;
-                }
-                if (!touchedLow && progress > 0.15 && random() < 0.18) {
-                    velocity += (low - price) * 0.05;
-                }
-            }
-
-            // 6. Apply forces
-            let newPrice = price + velocity + closeAttraction;
-
-            // 7. Micro-noise (bid-ask bounce)
-            const microNoise = (random() - 0.5) * tickSize * 10;
-            newPrice += microNoise;
-
-            // 8. Hard boundary bounce
-            if (newPrice >= high) {
-                newPrice = high - random() * range * 0.02;
-                touchedHigh = true;
-                velocity = -Math.abs(velocity) * 0.3;
-            }
-            if (newPrice <= low) {
-                newPrice = low + random() * range * 0.02;
-                touchedLow = true;
-                velocity = Math.abs(velocity) * 0.3;
-            }
-
-            // 9. Graduated force-touch — velocity ramp first, teleport only
-            //    in the last few ticks if still untouched.
-            if (!touchedHigh && remainingTicks < 12 && remainingTicks > 1) {
-                const urgency = 1 - (remainingTicks - 1) / 11;
-                velocity += (high - price) * 0.12 * urgency;
-                if (remainingTicks < 4) {
-                    newPrice = high - random() * range * 0.005;
-                    touchedHigh = true;
-                }
-            }
-            if (!touchedLow && remainingTicks < 12 && remainingTicks > 1) {
-                const urgency = 1 - (remainingTicks - 1) / 11;
-                velocity += (low - price) * 0.12 * urgency;
-                if (remainingTicks < 4) {
-                    newPrice = low + random() * range * 0.005;
-                    touchedLow = true;
-                }
-            }
-
-            // 10. Final clamp
-            newPrice = Math.max(low, Math.min(high, newPrice));
-
-            price = newPrice;
-            path.push(price);
+        }
+        if (minV > low + eps) {
+            const inject = Math.min(slots - 1, Math.max(0, Math.floor((n - 1) * (0.18 + random() * 0.22))));
+            if (inject !== maxI || minV > low + range * 0.02) path[inject] = low;
+        }
+        if (maxV < high - eps) {
+            let inject = Math.min(slots - 1, Math.max(0, Math.floor((n - 1) * (0.42 + random() * 0.22))));
+            if (inject === minI && inject < slots - 1) inject++;
+            path[inject] = high;
         }
 
-        // Safety net: deterministic placement if natural walk never reached extremes
-        if (!touchedHigh) {
-            const highIdx = Math.floor(numTicks * (0.2 + random() * 0.5));
-            if (highIdx < path.length - 1) path[highIdx] = high;
+        for (let i = 0; i < n; i++) {
+            path[i] = Math.max(low, Math.min(high, path[i]));
         }
-        if (!touchedLow) {
-            const lowIdx = Math.floor(numTicks * (0.2 + random() * 0.5));
-            if (lowIdx < path.length - 1 && lowIdx !== path.indexOf(high)) path[lowIdx] = low;
-        }
+        path[n - 1] = close;
 
         return path;
     }
@@ -3505,13 +3442,11 @@ class ReplaySystem {
         this.chart.rawData = slicedRaw;
         this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
         
-        // Only recalculate indicators every 10th tick to reduce lag
-        if (this.tickProgress % 10 === 0 && this.chart.recalculateAllIndicators) {
+        if (this.tickProgress % 12 === 0 && this.chart.recalculateAllIndicators) {
             this.chart.recalculateAllIndicators();
         }
-        
-        // Auto-scroll if enabled (only check occasionally)
-        if (this.autoScrollEnabled && this.tickProgress % 5 === 0) {
+
+        if (this.autoScrollEnabled && this.tickProgress % 6 === 0) {
             this.chart.fitToView();
         }
         
@@ -3520,9 +3455,7 @@ class ReplaySystem {
             this.chart.render();
         }
         
-        // SYNC ANIMATED CANDLE TO ALL PANEL CHARTS
-        // Update every 2nd tick to reduce lag while keeping panels in sync
-        if (this.tickProgress % 2 === 0) {
+        if (this.tickProgress % 3 === 0) {
             this.syncPanelChartsWithAnimatedCandle(slicedRaw, animatedCandle);
         }
         
@@ -3620,11 +3553,11 @@ class ReplaySystem {
                     pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
                 }
                 
-                if (this.tickProgress % 10 === 0 && typeof pc.recalculateIndicators === 'function') {
+                if (this.tickProgress % 12 === 0 && typeof pc.recalculateIndicators === 'function') {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
-                
-                if (this.autoScrollEnabled && this.tickProgress % 5 === 0) {
+
+                if (this.autoScrollEnabled && this.tickProgress % 6 === 0) {
                     if (pc.fitToView) {
                         pc.fitToView();
                     } else {
@@ -4410,7 +4343,7 @@ class ReplaySystem {
                     targetHigh: nextCandle.h,
                     targetLow: nextCandle.l,
                     targetClose: nextCandle.c,
-                    volume: (nextCandle.v || 0) * (savedTickProgress / 60),
+                    volume: (nextCandle.v || 0) * (savedTickProgress / (this.ticksPerCandle || 72)),
                     targetVolume: nextCandle.v || 0,
                     t: nextCandle.t,
                     cachedPath: tickPath

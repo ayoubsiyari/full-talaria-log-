@@ -11318,7 +11318,7 @@ class Chart {
             }
             
             // Calculate total progress: completed raw candles + current tick progress
-            const ticksPerCandle = this.replaySystem.currentTicksPerCandle || this.replaySystem.ticksPerCandle || 60;
+            const ticksPerCandle = this.replaySystem.currentTicksPerCandle || this.replaySystem.ticksPerCandle || 72;
             const currentRawProgress = this.replaySystem.tickProgress / ticksPerCandle;
             const progress = (completedRawCandles - 1 + currentRawProgress) / rawCandlesPerDisplay;
             

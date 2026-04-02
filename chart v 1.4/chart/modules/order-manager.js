@@ -872,7 +872,7 @@ class OrderManager {
      */
     _miTickPathForBarCached(bar, rs) {
         if (!bar || !rs || typeof rs.generateRandomPath !== 'function') return null;
-        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 60) || 60;
+        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 72) || 72;
         const o = Number.parseFloat(bar.o);
         const h = Number.parseFloat(bar.h);
         const l = Number.parseFloat(bar.l);
@@ -902,7 +902,7 @@ class OrderManager {
         if (Number(anim.t) !== Number(tMs)) return null;
         if (Number(bgBar.t) !== Number(tMs)) return null;
         const tickProg = Number(rs.tickProgress) || 0;
-        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 60) || 60;
+        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 72) || 72;
         const o = Number.parseFloat(bgBar.o);
         const h = Number.parseFloat(bgBar.h);
         const l = Number.parseFloat(bgBar.l);
@@ -989,7 +989,7 @@ class OrderManager {
         const rs = this.replaySystem;
         const anim = rs && rs.animatingCandle;
         if (!anim || rs.fastMode) return false;
-        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 60) || 60;
+        const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 72) || 72;
         const tp = Number(rs.tickProgress) || 0;
         if (!(tp < ticksNeeded)) return false;
         const bgT = Number(bgBar.t);
