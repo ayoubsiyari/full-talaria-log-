@@ -741,17 +741,35 @@ class OrderManager {
     }
 
     /**
+     * Gap-aware fill price: if the candle open already gapped past the level,
+     * fill at the open (slippage) instead of the exact SL/TP price.
+     */
+    _gapFill(level, candleOpen, isBuy, isTP) {
+        if (isBuy) {
+            return isTP
+                ? (candleOpen > level ? candleOpen : level)   // BUY TP: open gapped above TP
+                : (candleOpen < level ? candleOpen : level);  // BUY SL: open gapped below SL
+        }
+        return isTP
+            ? (candleOpen < level ? candleOpen : level)       // SELL TP: open gapped below TP
+            : (candleOpen > level ? candleOpen : level);      // SELL SL: open gapped above SL
+    }
+
+    /**
      * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
      * Does not use beJustTriggered — that flag is tied to the visible chart candle.
      */
     _collectBackgroundSLTPTouches(position, bar, positionsToClose) {
         if (!position || !bar) return;
+        const bgOpen = Number.parseFloat(bar.o);
         const high = Number.parseFloat(bar.h);
         const low = Number.parseFloat(bar.l);
         if (![high, low].every(Number.isFinite)) return;
         const barTime = Number(bar.t) || undefined;
+        const hasOpen = Number.isFinite(bgOpen);
+        const isBuy = position.type === 'BUY';
 
-        if (position.type === 'BUY') {
+        if (isBuy) {
             if (position.tpTargets && position.tpTargets.length > 0) {
                 position.tpTargets.forEach((target) => {
                     if (!target || target.hit) return;
@@ -761,9 +779,10 @@ class OrderManager {
                     const closePercentage = target.percentage / 100;
                     const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
                     const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                    const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
                     positionsToClose.push({
                         id: position.id,
-                        closePrice: tp,
+                        closePrice: fillPx,
                         type: closeType,
                         percentage: allTargetsHit ? null : closePercentage,
                         targetId: target.id,
@@ -772,16 +791,19 @@ class OrderManager {
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && low <= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
+                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, true, false) : sl;
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && low <= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
+                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, true, false) : sl;
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     if (Number.isFinite(tp) && high >= tp) {
-                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP', bgCloseTime: barTime });
+                        const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
+                        positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
                 }
             }
@@ -795,9 +817,10 @@ class OrderManager {
                     const closePercentage = target.percentage / 100;
                     const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
                     const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                    const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
                     positionsToClose.push({
                         id: position.id,
-                        closePrice: tp,
+                        closePrice: fillPx,
                         type: closeType,
                         percentage: allTargetsHit ? null : closePercentage,
                         targetId: target.id,
@@ -806,16 +829,19 @@ class OrderManager {
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && high >= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
+                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, false, false) : sl;
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && high >= sl) {
-                    positionsToClose.push({ id: position.id, closePrice: sl, type: 'SL', bgCloseTime: barTime });
+                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, false, false) : sl;
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     if (Number.isFinite(tp) && low <= tp) {
-                        positionsToClose.push({ id: position.id, closePrice: tp, type: 'TP', bgCloseTime: barTime });
+                        const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
+                        positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
                 }
             }
@@ -16572,6 +16598,7 @@ class OrderManager {
         }
         
         const currentPrice = currentCandle.c;
+        const open = currentCandle.o;
         const high = currentCandle.h;
         const low = currentCandle.l;
         
@@ -16769,18 +16796,17 @@ class OrderManager {
                         if (!target.hit && high >= target.price) {
                             target.hit = true;
                             const closePercentage = target.percentage / 100;
-                            
-                            // Check if this is the LAST target to be hit
                             const allTargetsHit = position.tpTargets.every(t => t.hit);
                             const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                            const fillPx = this._gapFill(target.price, open, true, true);
                             
-                            console.log(`   🎯 TP TARGET #${target.id} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${target.price.toFixed(5)} for BUY #${position.id}`);
+                            console.log(`   🎯 TP TARGET #${target.id} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for BUY #${position.id}`);
                             console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
                             positionsToClose.push({ 
                                 id: position.id, 
-                                closePrice: target.price, 
+                                closePrice: fillPx, 
                                 type: closeType,
-                                percentage: allTargetsHit ? null : closePercentage, // null for full close
+                                percentage: allTargetsHit ? null : closePercentage,
                                 targetId: target.id
                             });
                         }
@@ -16793,17 +16819,20 @@ class OrderManager {
                 if (!position.beJustTriggered) {
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && low <= position.stopLoss) {
-                            console.log(`   🛑 STOP LOSS HIT! Closing BUY #${position.id} at ${position.stopLoss.toFixed(5)}`);
-                            positionsToClose.push({ id: position.id, closePrice: position.stopLoss, type: 'SL' });
+                            const fillPx = this._gapFill(position.stopLoss, open, true, false);
+                            console.log(`   🛑 STOP LOSS HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         } else if (position.takeProfit && high >= position.takeProfit) {
-                            console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${position.takeProfit.toFixed(5)}`);
-                            positionsToClose.push({ id: position.id, closePrice: position.takeProfit, type: 'TP' });
+                            const fillPx = this._gapFill(position.takeProfit, open, true, true);
+                            console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
                         }
                     } else {
                         // For multiple TPs, still check SL
                         if (position.stopLoss && low <= position.stopLoss) {
-                            console.log(`   🛑 STOP LOSS HIT! Closing remaining position BUY #${position.id} at ${position.stopLoss.toFixed(5)}`);
-                            positionsToClose.push({ id: position.id, closePrice: position.stopLoss, type: 'SL' });
+                            const fillPx = this._gapFill(position.stopLoss, open, true, false);
+                            console.log(`   🛑 STOP LOSS HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         }
                     }
                 } else {
@@ -16959,18 +16988,17 @@ class OrderManager {
                         if (!target.hit && low <= target.price) {
                             target.hit = true;
                             const closePercentage = target.percentage / 100;
-                            
-                            // Check if this is the LAST target to be hit
                             const allTargetsHit = position.tpTargets.every(t => t.hit);
                             const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                            const fillPx = this._gapFill(target.price, open, false, true);
                             
-                            console.log(`   🎯 TP TARGET #${target.id} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${target.price.toFixed(5)} for SELL #${position.id}`);
+                            console.log(`   🎯 TP TARGET #${target.id} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for SELL #${position.id}`);
                             console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
                             positionsToClose.push({ 
                                 id: position.id, 
-                                closePrice: target.price, 
+                                closePrice: fillPx, 
                                 type: closeType,
-                                percentage: allTargetsHit ? null : closePercentage, // null for full close
+                                percentage: allTargetsHit ? null : closePercentage,
                                 targetId: target.id
                             });
                         }
@@ -16983,17 +17011,20 @@ class OrderManager {
                 if (!position.beJustTriggered) {
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && high >= position.stopLoss) {
-                            console.log(`   🛑 STOP LOSS HIT! Closing SELL #${position.id} at ${position.stopLoss.toFixed(5)}`);
-                            positionsToClose.push({ id: position.id, closePrice: position.stopLoss, type: 'SL' });
+                            const fillPx = this._gapFill(position.stopLoss, open, false, false);
+                            console.log(`   🛑 STOP LOSS HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         } else if (position.takeProfit && low <= position.takeProfit) {
-                            console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${position.takeProfit.toFixed(5)}`);
-                            positionsToClose.push({ id: position.id, closePrice: position.takeProfit, type: 'TP' });
+                            const fillPx = this._gapFill(position.takeProfit, open, false, true);
+                            console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
                         }
                     } else {
                         // For multiple TPs, still check SL
                         if (position.stopLoss && high >= position.stopLoss) {
-                            console.log(`   🛑 STOP LOSS HIT! Closing remaining position SELL #${position.id} at ${position.stopLoss.toFixed(5)}`);
-                            positionsToClose.push({ id: position.id, closePrice: position.stopLoss, type: 'SL' });
+                            const fillPx = this._gapFill(position.stopLoss, open, false, false);
+                            console.log(`   🛑 STOP LOSS HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         }
                     }
                 } else {
