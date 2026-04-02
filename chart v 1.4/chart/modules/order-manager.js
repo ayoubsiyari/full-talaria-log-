@@ -7940,6 +7940,89 @@ class OrderManager {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }
 
+        // Action badges on Entry line: Place (✓) and Cancel (✕)
+        if (isEntryLine && !isBadge) {
+            const currentBBox = lineData.labelGroup.node().getBBox();
+            let actX = currentBBox.x + currentBBox.width + gap;
+            const actSize = height;
+            const actRadius = 6;
+            const self = this;
+
+            // Place order badge (✓)
+            const placeGroup = lineData.labelGroup.append('g')
+                .attr('class', 'entry-action-btn entry-place-btn')
+                .attr('transform', `translate(${actX}, 0)`)
+                .style('cursor', 'pointer');
+
+            placeGroup.append('rect')
+                .attr('width', actSize)
+                .attr('height', actSize)
+                .attr('rx', actRadius)
+                .attr('fill', 'rgba(34, 197, 94, 0.15)')
+                .attr('stroke', '#22c55e')
+                .attr('stroke-width', 1.2);
+
+            placeGroup.append('text')
+                .attr('x', actSize / 2)
+                .attr('y', actSize / 2)
+                .attr('dy', '0.35em')
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#22c55e')
+                .attr('font-size', '13px')
+                .attr('font-weight', '700')
+                .text('✓');
+
+            placeGroup
+                .on('mouseenter', function() {
+                    d3.select(this).select('rect').attr('fill', 'rgba(34, 197, 94, 0.35)');
+                })
+                .on('mouseleave', function() {
+                    d3.select(this).select('rect').attr('fill', 'rgba(34, 197, 94, 0.15)');
+                })
+                .on('click', function(event) {
+                    event.stopPropagation();
+                    self.placeAdvancedOrder();
+                });
+
+            actX += actSize + gap;
+
+            // Cancel order badge (✕)
+            const cancelGroup = lineData.labelGroup.append('g')
+                .attr('class', 'entry-action-btn entry-cancel-btn')
+                .attr('transform', `translate(${actX}, 0)`)
+                .style('cursor', 'pointer');
+
+            cancelGroup.append('rect')
+                .attr('width', actSize)
+                .attr('height', actSize)
+                .attr('rx', actRadius)
+                .attr('fill', 'rgba(239, 68, 68, 0.15)')
+                .attr('stroke', '#ef4444')
+                .attr('stroke-width', 1.2);
+
+            cancelGroup.append('text')
+                .attr('x', actSize / 2)
+                .attr('y', actSize / 2)
+                .attr('dy', '0.35em')
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#ef4444')
+                .attr('font-size', '12px')
+                .attr('font-weight', '700')
+                .text('✕');
+
+            cancelGroup
+                .on('mouseenter', function() {
+                    d3.select(this).select('rect').attr('fill', 'rgba(239, 68, 68, 0.35)');
+                })
+                .on('mouseleave', function() {
+                    d3.select(this).select('rect').attr('fill', 'rgba(239, 68, 68, 0.15)');
+                })
+                .on('click', function(event) {
+                    event.stopPropagation();
+                    self.toggleOrderPanel();
+                });
+        }
+
         lineData.priceText = priceText;
         this.positionPreviewLabel(lineData, overrideY);
     }
