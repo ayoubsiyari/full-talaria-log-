@@ -10829,6 +10829,11 @@ class OrderManager {
             }
         }
 
+        const precisionPE = this.getPricePrecision(entryPrice) || 5;
+        const slEntryEpsilon = Math.pow(10, -(precisionPE + 1));
+        const slDistinctFromEntry =
+            entryPrice > 0 && slPrice > 0 && Math.abs(slPrice - entryPrice) > slEntryEpsilon;
+
         const pipSizePE = this.pipSize || 0.0001;
         const pipValuePE = this.pipValuePerLot || 10;
         const minLotPE = this.getMarketConfig()?.minSize ?? 0.01;
@@ -10946,14 +10951,13 @@ class OrderManager {
             }
         }
         
-        // Draw SL preview line (red, dashed) - ONLY if manually positioned
-        if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
+        // Draw SL: use a full line when price is off-entry (typed, steppers, multi-entry default) or user dragged; badge only when SL is still "at" entry
+        if (slEnabled && slPrice > 0 && (this.slManuallyPositioned || slDistinctFromEntry)) {
             this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
             if (this.previewLines.sl) {
                 this.previewLines.sl.targetPrice = slPrice;
             }
-        } else if (slEnabled && !this.slManuallyPositioned) {
-            // Draw draggable badge at entry for SL
+        } else if (slEnabled && !this.slManuallyPositioned && (!slPrice || slPrice <= 0 || !slDistinctFromEntry)) {
             this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
         }
         
@@ -12933,12 +12937,18 @@ class OrderManager {
 
         if (this.orderSide === 'BUY') {
             const need = !(slVal > 0) || slVal >= low - pad;
-            if (!need) return;
+            if (!need) {
+                if (slVal > 0) this.slManuallyPositioned = true;
+                return;
+            }
             const proposed = parseFloat((low - offsetPips * pip).toFixed(5));
             if (slInput) slInput.value = this.formatPrice(proposed);
         } else {
             const need = !(slVal > 0) || slVal <= high + pad;
-            if (!need) return;
+            if (!need) {
+                if (slVal > 0) this.slManuallyPositioned = true;
+                return;
+            }
             const proposed = parseFloat((high + offsetPips * pip).toFixed(5));
             if (slInput) slInput.value = this.formatPrice(proposed);
         }
