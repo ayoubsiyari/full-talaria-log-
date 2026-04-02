@@ -18262,14 +18262,18 @@ class OrderManager {
         const labelBox = chart.svg.append('rect')
             .attr('class', `order-label-box order-${order.id}`)
             .attr('fill', color)
-            .attr('rx', 2)
+            .attr('stroke', '#e2e8f0')
+            .attr('stroke-opacity', 0.35)
+            .attr('stroke-width', 1)
+            .attr('rx', 3)
             .style('cursor', 'ns-resize');
 
         const labelText = chart.svg.append('text')
             .attr('class', `order-label-text order-${order.id}`)
             .attr('fill', '#ffffff')
             .attr('font-size', '11px')
-            .attr('font-weight', '600')
+            .attr('font-weight', '700')
+            .attr('letter-spacing', '0.01em')
             .style('cursor', 'ns-resize')
             .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
 
@@ -18303,14 +18307,14 @@ class OrderManager {
 
         const closeBtnBg = closeBtn.append('circle')
             .attr('r', 10)
-            .attr('fill', color)
-            .attr('stroke', '#ffffff')
-            .attr('stroke-width', 1.5)
+            .attr('fill', '#0f172a')
+            .attr('stroke', '#e2e8f0')
+            .attr('stroke-width', 1.2)
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
 
         const closeBtnText = closeBtn.append('text')
-            .attr('fill', '#ffffff')
+            .attr('fill', '#e2e8f0')
             .attr('font-size', '14px')
             .attr('font-weight', '700')
             .attr('text-anchor', 'middle')
@@ -18327,20 +18331,19 @@ class OrderManager {
         });
 
         closeBtn.on('mouseover', function() {
-            closeBtnBg.attr('fill', '#ffffff');
-            closeBtnText.attr('fill', color);
-        }).on('mouseout', function() {
             closeBtnBg.attr('fill', color);
             closeBtnText.attr('fill', '#ffffff');
+        }).on('mouseout', function() {
+            closeBtnBg.attr('fill', '#0f172a');
+            closeBtnText.attr('fill', '#e2e8f0');
         });
 
-        // Live P&L badge (dark bg with colored text, sits to the left of the main label)
         const pnlBox = chart.svg.append('rect')
             .attr('class', `order-pnl-box order-${order.id}`)
             .attr('fill', '#0f172a')
             .attr('stroke', color)
             .attr('stroke-width', 1)
-            .attr('rx', 2)
+            .attr('rx', 3)
             .style('pointer-events', 'none');
 
         const pnlText = chart.svg.append('text')
@@ -18459,6 +18462,7 @@ class OrderManager {
         const g = this.splitGroupAvgLines[idx];
         if (g.line) g.line.remove();
         if (g.labelGroup) g.labelGroup.remove();
+        if (g._connector) { try { g._connector.remove(); } catch (_) {} }
         this.splitGroupAvgLines.splice(idx, 1);
     }
 
@@ -18491,7 +18495,8 @@ class OrderManager {
     }
 
     /**
-     * Position and update live P&L for all split-group avg lines.
+     * Position and update live P&L for all split-group avg lines,
+     * and align the individual order lines in each group to the same left edge.
      */
     _updateSplitGroupAvgLines(ch) {
         if (!this.splitGroupAvgLines || !this.splitGroupAvgLines.length) return;
@@ -18500,6 +18505,11 @@ class OrderManager {
         const currentCandle = this.getCurrentCandle();
         const currentPrice = currentCandle ? currentCandle.c : 0;
         const yAxisWidth = ch.margin?.r || 70;
+        const boxH = 18;
+        const gap = 4;
+        const pad = 8;
+        const closeBtnR = 10;
+        const closeBtnGap = 6;
 
         const toRemove = [];
         for (const g of this.splitGroupAvgLines) {
@@ -18521,23 +18531,12 @@ class OrderManager {
             const y = yScale(avgPrice);
             if (!Number.isFinite(y)) continue;
 
-            g.line
-                .attr('x1', 0)
-                .attr('x2', ch.w)
-                .attr('y1', y)
-                .attr('y2', y);
-
-            const boxH = 18;
-            const gap = 4;
-            const pad = 8;
-
+            // --- Avg Entry label widths ---
             g.avgText.text('Avg Entry');
-            const avgTW = g.avgText.node().getBBox().width;
-            const avgBW = avgTW + pad * 2;
+            const avgBW = g.avgText.node().getBBox().width + pad * 2;
 
             g.lotsText.text(this.formatQuantity(totalLots));
-            const lotsTW = g.lotsText.node().getBBox().width;
-            const lotsBW = lotsTW + pad * 2;
+            const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
             let totalPnl = 0;
             if (currentPrice > 0) {
@@ -18551,13 +18550,42 @@ class OrderManager {
             const sign = totalPnl >= 0 ? '+' : '';
             const pnlColor = totalPnl >= 0 ? '#26a69a' : '#f23645';
             g.pnlText.text(`${sign}$${totalPnl.toFixed(2)}`).attr('fill', pnlColor);
-            const pnlTW = g.pnlText.node().getBBox().width;
-            const pnlBW = pnlTW + pad * 2;
+            const pnlBW = g.pnlText.node().getBBox().width + pad * 2;
 
-            const totalW = avgBW + gap + lotsBW + gap + pnlBW;
-            const startX = ch.w - yAxisWidth - 30 - totalW;
+            const avgTotalW = avgBW + gap + lotsBW + gap + pnlBW;
 
-            let cx = startX;
+            // --- Collect individual order line widths for alignment ---
+            const memberLines = (this.orderLines || []).filter(ol => {
+                const od = this.openPositions.find(p => p.id === ol.orderId) || this.pendingOrders.find(p => p.id === ol.orderId);
+                return od && g.orderIds.includes(ol.orderId) && (ol.chart || this.chart) === ch;
+            });
+
+            let maxRowW = avgTotalW;
+            const memberWidths = [];
+            for (const ml of memberLines) {
+                const od = this.openPositions.find(p => p.id === ml.orderId) || this.pendingOrders.find(p => p.id === ml.orderId);
+                const isPending = !!(od && od.status === 'PENDING');
+                const lbw = (ml.labelText?.node()?.getBBox()?.width || 0) + (ml.arrow?.node()?.getBBox()?.width || 0) + 20;
+                let pbw = 0;
+                if (!isPending && ml.pnlText?.node()) {
+                    pbw = ml.pnlText.node().getBBox().width + 14;
+                }
+                const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2;
+                memberWidths.push({ ml, lbw, pbw, rowW, isPending, od });
+                if (rowW > maxRowW) maxRowW = rowW;
+            }
+
+            const rightEdge = ch.w - yAxisWidth - 10;
+            const alignX = rightEdge - maxRowW;
+
+            // --- Position Avg Entry label ---
+            g.line
+                .attr('x1', 0)
+                .attr('x2', Math.max(0, alignX))
+                .attr('y1', y)
+                .attr('y2', y);
+
+            let cx = alignX;
             g.avgBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', avgBW).attr('height', boxH);
             g.avgText.attr('x', cx + pad).attr('y', y + 4);
             cx += avgBW + gap;
@@ -18570,9 +18598,115 @@ class OrderManager {
                 .attr('stroke', pnlColor);
             g.pnlText.attr('x', cx + pad).attr('y', y + 4);
 
-            g.line.attr('x2', Math.max(0, startX));
-
             this.drawYAxisPriceHighlight(avgPrice, '#ca8a04', 'entry', 0, ch);
+
+            // --- Draw connector from Avg Entry to TP/SL ---
+            if (g._connector) { try { g._connector.remove(); } catch (_) {} }
+            const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
+            const tpPx = refOrder?.takeProfit || 0;
+            const slPx = refOrder?.stopLoss || 0;
+            if (tpPx > 0 || slPx > 0) {
+                const connGroup = ch.svg.append('g')
+                    .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
+                    .style('pointer-events', 'none');
+                g._connector = connGroup;
+                const connX = alignX - 8;
+                const tpY = tpPx > 0 ? yScale(tpPx) : null;
+                const slY = slPx > 0 ? yScale(slPx) : null;
+                if (Number.isFinite(tpY)) {
+                    connGroup.append('line')
+                        .attr('x1', connX).attr('x2', connX)
+                        .attr('y1', y).attr('y2', tpY)
+                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                    connGroup.append('circle')
+                        .attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
+                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                }
+                if (Number.isFinite(slY)) {
+                    connGroup.append('line')
+                        .attr('x1', connX).attr('x2', connX)
+                        .attr('y1', y).attr('y2', slY)
+                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
+                    connGroup.append('circle')
+                        .attr('cx', connX).attr('cy', slY).attr('r', 2.5)
+                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                }
+                connGroup.append('circle')
+                    .attr('cx', connX).attr('cy', y).attr('r', 2.5)
+                    .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                try { connGroup.lower(); } catch (_) {}
+            }
+
+            // --- Position individual order lines, aligned to same left edge ---
+            for (const { ml, lbw, pbw, isPending, od } of memberWidths) {
+                const price = isPending ? od.entryPrice : od.openPrice;
+                const oy = yScale(price);
+                if (!Number.isFinite(oy)) continue;
+                const boxY = oy - boxH / 2;
+
+                ml.line?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
+                ml.dragHitLine?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
+
+                if (ml.priceBox) ml.priceBox.style('display', 'none');
+                if (ml.priceText) ml.priceText.style('display', 'none');
+
+                // Live P&L
+                if (!isPending && ml.pnlBox && ml.pnlText && od) {
+                    if (currentPrice > 0) {
+                        const sym = od.ticker || od.symbol || this._getSymbol();
+                        const livePnl = this.estimatePnLForPriceLevel(od.type, od.openPrice, currentPrice, od.quantity, sym);
+                        const s = livePnl >= 0 ? '+' : '';
+                        const pc = livePnl >= 0 ? '#22c55e' : '#ef4444';
+                        ml.pnlText.text(`${s}$${livePnl.toFixed(2)}`).attr('fill', pc);
+                        ml.pnlBox.attr('stroke', pc);
+                    }
+                }
+
+                // Recalculate pbw after text update
+                let actualPbw = 0;
+                if (!isPending && ml.pnlText?.node()) {
+                    actualPbw = ml.pnlText.node().getBBox().width + 14;
+                }
+
+                // Close button at right edge
+                const closeBtnX = rightEdge - closeBtnR;
+                ml.closeBtn?.attr('transform', `translate(${closeBtnX}, ${oy})`);
+
+                // Label box right-aligned to close button
+                const labelEndX = closeBtnX - closeBtnR - closeBtnGap;
+                const labelBoxX = alignX;
+
+                ml.labelBox
+                    ?.attr('x', labelBoxX)
+                    .attr('y', boxY)
+                    .attr('width', lbw)
+                    .attr('height', boxH);
+                ml.labelText?.attr('x', labelBoxX + 10).attr('y', oy + 4);
+                ml.arrow?.attr('x', labelBoxX + (ml.labelText?.node()?.getBBox()?.width || 0) + 12).attr('y', oy + 4);
+
+                // P&L box between label and close button
+                if (!isPending && ml.pnlBox && ml.pnlText && actualPbw > 0) {
+                    const pnlX = labelBoxX + lbw + gap;
+                    ml.pnlBox
+                        .attr('x', pnlX)
+                        .attr('y', boxY)
+                        .attr('width', actualPbw)
+                        .attr('height', boxH)
+                        .style('display', null);
+                    ml.pnlText
+                        .attr('x', pnlX + actualPbw / 2)
+                        .attr('y', oy + 4)
+                        .attr('text-anchor', 'middle')
+                        .style('display', null);
+                    ml.line?.attr('x2', Math.max(0, alignX));
+                    ml.dragHitLine?.attr('x2', Math.max(0, alignX));
+                } else {
+                    ml.line?.attr('x2', Math.max(0, alignX));
+                    ml.dragHitLine?.attr('x2', Math.max(0, alignX));
+                }
+
+                ml._handledBySplitGroup = true;
+            }
         }
 
         for (const gid of toRemove) {
@@ -21048,7 +21182,13 @@ class OrderManager {
         if (lines.length > 0) {
             console.log(`📍 updateOrderLines: Updating ${lines.length} order lines`);
 
-            lines.forEach(({ orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn, pnlBox, pnlText }) => {
+            lines.forEach((olEntry) => {
+                const { orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn, pnlBox, pnlText } = olEntry;
+
+                // Skip orders that belong to a split group — they are positioned by _updateSplitGroupAvgLines
+                const inSplitGroup = (this.splitGroupAvgLines || []).some(g => g.orderIds.includes(orderId) && g.chart === ch);
+                if (inSplitGroup) return;
+
                 let price, orderData;
 
                 if (isPending) {
