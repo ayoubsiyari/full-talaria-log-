@@ -11579,21 +11579,10 @@ class OrderManager {
                             if (tpInput) tpInput.value = formattedPrice;
                         }
                     }
-                    if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
-                        self.previewLines.sl.price = newPrice;
-                        // Update only Y position, preserve X
-                        const slBbox = self.previewLines.sl.labelDimensions;
-                        const slHeight = slBbox?.height || 0;
-                        const slTransform = self.previewLines.sl.labelGroup.attr('transform');
-                        const slX = parseFloat(slTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                        const slY = clampedY - slHeight / 2;
-                        self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
-                        // Also update the SL input field to match entry
-                        const slInput = document.getElementById('slPrice');
-                        if (slInput) slInput.value = formattedPrice;
-                    }
-                    
-                    // Recalculate risk/reward since TP/SL are synced to entry
+                    // Do not move SL badge or write #slPrice when dragging entry — that looked like SL was
+                    // "set" to the entry price without the user touching SL. SL position stays from input / prior drag.
+
+                    // Recalculate risk/reward since TP may still sync to entry (single-entry TP badge)
                     self.calculateAdvancedRiskReward();
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
