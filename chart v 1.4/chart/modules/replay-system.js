@@ -3298,10 +3298,10 @@ class ReplaySystem {
     /**
      * Deterministic intra-candle price path that respects OHLC logic.
      *
-     * Guided random walk — price wanders freely with momentum and noise,
-     * gently pulled toward shifting attractors that ensure high/low are
-     * visited and close is reached. The visit order and timing are
-     * randomised per-candle so no two candles animate the same way.
+     * Heavy random walk with minimal guidance. Price bounces around freely
+     * inside the candle range — the only rules are: start at open, end at
+     * close, and touch high/low at some point. Everything else is noise,
+     * momentum bursts, and random direction changes.
      */
     generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
         const rng = this.createSeededRandom(seed);
@@ -3317,74 +3317,70 @@ class ReplaySystem {
             return p;
         }
 
-        const isBullish = close >= open;
-
-        // Randomly decide which extreme to visit first (biased by direction)
-        const visitLowFirst = isBullish ? (rng() < 0.62) : (rng() < 0.38);
-        const firstExtreme  = visitLowFirst ? low : high;
-        const secondExtreme = visitLowFirst ? high : low;
-
-        // Randomised timing for each phase — prevents predictable O→H→L→C feel
-        const t1 = 0.12 + rng() * 0.26;
-        const t2 = Math.max(t1 + 0.18, 0.45 + rng() * 0.22);
-        const tSettle = 0.82 + rng() * 0.08;
-
-        const maxStep = range / (n * 0.22);
-        const friction = 0.84 + rng() * 0.06;
-        const noiseAmp = range * 0.010;
+        const mid = (high + low) / 2;
+        const maxStep = range / (n * 0.18);
 
         const path = new Array(n);
         let price = open;
-        let velocity = 0;
+        let velocity = (rng() - 0.5) * range * 0.02;
+        let dir = rng() > 0.5 ? 1 : -1;
+        let streak = 0;
 
         for (let i = 0; i < n; i++) {
             if (i === n - 1) { path[i] = close; break; }
 
             const t = i / (n - 1);
+            const remaining = n - 1 - i;
 
-            // Shifting attractor + pull strength per phase
-            let attractor, pull;
-            if (t < t1) {
-                const p = t / t1;
-                attractor = open + (firstExtreme - open) * p;
-                pull = 0.05 + p * 0.10;
-            } else if (t < t2) {
-                const p = (t - t1) / (t2 - t1);
-                attractor = firstExtreme + (secondExtreme - firstExtreme) * p;
-                pull = 0.05 + p * 0.10;
-            } else if (t < tSettle) {
-                const p = (t - t2) / (tSettle - t2);
-                attractor = secondExtreme + (close - secondExtreme) * p;
-                pull = 0.08 + p * 0.14;
-            } else {
-                attractor = close;
-                const p = (t - tSettle) / (1 - tSettle);
-                pull = 0.22 + p * 0.58;
+            // --- dominant force: random noise + momentum ---
+            const noiseStr = range * 0.022;
+            const noise = (rng() - 0.5) * noiseStr;
+
+            // direction streaks: price tends to keep going the same way
+            // for a few ticks, then randomly reverses
+            streak++;
+            if (streak > 2 + Math.floor(rng() * 6)) {
+                if (rng() < 0.55) dir = -dir;
+                streak = 0;
+            }
+            const drift = dir * range * (0.003 + rng() * 0.008);
+
+            // momentum bursts (15% chance) — big random kicks
+            let burst = 0;
+            if (rng() < 0.15) {
+                burst = (rng() - 0.5) * range * 0.04;
+                if (rng() < 0.4) dir = -dir;
             }
 
-            // Random noise (dampened near candle end for clean close)
-            const nScale = t < 0.78 ? 1.0 : Math.max(0.15, 1.0 - (t - 0.78) / 0.22 * 0.85);
-            const noise = (rng() - 0.5) * noiseAmp * nScale;
+            // --- tiny close-pull only in the last ~15% of ticks ---
+            let closePull = 0;
+            if (t > 0.85) {
+                const urgency = (t - 0.85) / 0.15;
+                closePull = (close - price) * (0.04 + urgency * 0.35);
+            }
 
-            // Occasional momentum burst — adds randomness
-            if (rng() < 0.07) velocity += (rng() - 0.5) * range * 0.018;
+            // --- boundary bounce: if near edge, push back gently ---
+            let boundaryPush = 0;
+            const distToHigh = high - price;
+            const distToLow = price - low;
+            if (distToHigh < range * 0.05) boundaryPush -= range * 0.008;
+            if (distToLow < range * 0.05) boundaryPush += range * 0.008;
 
-            velocity = velocity * friction + (attractor - price) * pull + noise;
+            velocity = velocity * 0.72 + noise + drift + burst + closePull + boundaryPush;
             velocity = Math.max(-maxStep, Math.min(maxStep, velocity));
             price = Math.max(low, Math.min(high, price + velocity));
 
             path[i] = price;
         }
 
-        // Smooth post-process: if the walk didn't quite touch an extreme,
-        // gently push a neighbourhood of ticks toward it (no teleporting).
+        // --- ensure high and low are touched (smooth neighbourhood push) ---
         let pMin = path[0], pMax = path[0], minI = 0, maxI = 0;
         for (let i = 1; i < n - 1; i++) {
             if (path[i] < pMin) { pMin = path[i]; minI = i; }
             if (path[i] > pMax) { pMax = path[i]; maxI = i; }
         }
-        const spread = Math.max(3, Math.floor(n * 0.07));
-        if (pMin > low + range * 0.004) {
+        const spread = Math.max(4, Math.floor(n * 0.08));
+        if (pMin > low + range * 0.003) {
             const gap = low - pMin;
             for (let j = -spread; j <= spread; j++) {
                 const k = minI + j;
@@ -3392,7 +3388,7 @@ class ReplaySystem {
                 path[k] = Math.max(low, path[k] + gap * (1 - Math.abs(j) / (spread + 1)));
             }
         }
-        if (pMax < high - range * 0.004) {
+        if (pMax < high - range * 0.003) {
             const gap = high - pMax;
             for (let j = -spread; j <= spread; j++) {
                 const k = maxI + j;
