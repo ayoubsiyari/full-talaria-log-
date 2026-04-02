@@ -2265,6 +2265,15 @@ class ReplaySystem {
         const playbackMode = this.getPlaybackMode();
         const useTickAnimation = playbackMode === 'tick';
         
+        // Restore partial tick state saved during pause so animation continues
+        // from where it was instead of restarting the candle.
+        if (useTickAnimation && this._savedTickState) {
+            this.animatingCandle = this._savedTickState.animatingCandle;
+            this.tickProgress = this._savedTickState.tickProgress;
+            this.tickElapsedMs = this._savedTickState.tickElapsedMs;
+            this._savedTickState = null;
+        }
+
         // Tick mode can resume partial animation state. Candle mode always resumes on full candles.
         const isResumingTick = useTickAnimation && this.animatingCandle && this.tickProgress > 0;
         if (isResumingTick) {
@@ -3694,10 +3703,16 @@ class ReplaySystem {
             this.playInterval = null;
         }
 
-        // Discard partial intra-candle state on pause so timeframe switches
-        // always compare using the same finalized raw candle snapshot.
+        // Save partial tick state so resume can pick up where we left off.
+        // The chart display is rolled back to the last closed candle so timeframe
+        // switches still work against finalized data.
         const hadPartialState = this.tickProgress > 0 || !!this.animatingCandle;
         if (hadPartialState) {
+            this._savedTickState = {
+                animatingCandle: this.animatingCandle,
+                tickProgress: this.tickProgress,
+                tickElapsedMs: this.tickElapsedMs
+            };
             this.animatingCandle = null;
             this.tickProgress = 0;
             this.tickElapsedMs = 0;
@@ -3732,6 +3747,7 @@ class ReplaySystem {
         if (this.isPlaying) {
             this.pause();
         }
+        this._savedTickState = null;
         this.stepForward();
     }
 
@@ -3743,6 +3759,7 @@ class ReplaySystem {
         if (this.isPlaying) {
             this.pause();
         }
+        this._savedTickState = null;
         this.stepBackward();
     }
 

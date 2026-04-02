@@ -8252,9 +8252,8 @@ class OrderManager {
         const dash = (id) => { const el = document.getElementById(id); if (el) el.textContent = '—'; };
         const zeroText = (id) => { const el = document.getElementById(id); if (el) el.textContent = '$0'; };
 
-        zero('riskAmountUSD');
-        zero('riskAmountPercent');
-        zero('lotSizeAmount');
+        // Risk fields (riskAmountUSD, riskAmountPercent, lotSizeAmount) are
+        // intentionally NOT reset — they persist until the user changes them.
         zero('orderQuantity');
         zero('orderEntryPrice');
         zero('orderEntryPriceMulti');
