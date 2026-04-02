@@ -131,6 +131,7 @@ class OrderManager {
         this._pendingPreviewConnectorDots = []; // Intersection dots on entry/TP/SL levels
         this.entryMarkers = [];
         this.exitMarkers = [];
+        this.tradeConnectors = [];
         this.editingPendingOrderId = null;
         
         // SPLIT ENTRY SYSTEM - Multiple entry levels for pending orders
@@ -361,6 +362,8 @@ class OrderManager {
         s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
         s.selectAll('g[class*="entry-marker-"]').remove();
+        s.selectAll('.trade-connector').remove();
+        if (this.tradeConnectors) this.tradeConnectors = [];
         s.selectAll('text[class*="pip-indicator"]').remove();
         s.selectAll('text[class*="dollar-indicator"]').remove();
         s.selectAll('text[class*="rr-indicator"]').remove();
@@ -19741,8 +19744,47 @@ class OrderManager {
             count: 1,
             isBuyExit
         });
+
+        this._drawTradeConnector(order, closeData);
     }
     
+    /**
+     * Draw a soft gray dashed line from entry tick to exit tick
+     */
+    _drawTradeConnector(order, closeData) {
+        if (!this.chart || !this.chart.svg || !this.chart.scales) return;
+        const { yScale } = this.chart.scales;
+        if (!yScale) return;
+
+        const entryIdx = this._findCandleIndexForTime(this.chart.data, order.openTime);
+        const exitIdx = this._findCandleIndexForTime(this.chart.data, closeData.closeTime);
+        if (entryIdx === -1 || exitIdx === -1) return;
+
+        const x1 = this.chart.dataIndexToPixel(entryIdx);
+        const y1 = yScale(order.openPrice);
+        const x2 = this.chart.dataIndexToPixel(exitIdx);
+        const y2 = yScale(closeData.closePrice);
+
+        const line = this.chart.svg.append('line')
+            .attr('class', `trade-connector trade-connector-${order.id}`)
+            .attr('x1', x1).attr('y1', y1)
+            .attr('x2', x2).attr('y2', y2)
+            .attr('stroke', 'rgba(150, 150, 150, 0.4)')
+            .attr('stroke-width', 1)
+            .attr('stroke-dasharray', '4 3')
+            .style('pointer-events', 'none');
+
+        if (!this.tradeConnectors) this.tradeConnectors = [];
+        this.tradeConnectors.push({
+            orderId: order.id,
+            line,
+            entryTime: order.openTime,
+            entryPrice: order.openPrice,
+            exitTime: closeData.closeTime,
+            exitPrice: closeData.closePrice
+        });
+    }
+
     /**
      * Draw partial close marker on chart (for TP partial hits)
      * Aggregates P&L for markers at the same price level (for split entries)
@@ -19960,6 +20002,20 @@ class OrderManager {
                 }
             });
         }
+
+        if (this.tradeConnectors && this.tradeConnectors.length > 0) {
+            const { yScale: mainY } = this.chart.scales;
+            this.tradeConnectors.forEach((tc) => {
+                const eIdx = this._findCandleIndexForTime(this.chart.data, tc.entryTime);
+                const xIdx = this._findCandleIndexForTime(this.chart.data, tc.exitTime);
+                if (eIdx === -1 || xIdx === -1) return;
+                tc.line
+                    .attr('x1', this.chart.dataIndexToPixel(eIdx))
+                    .attr('y1', mainY(tc.entryPrice))
+                    .attr('x2', this.chart.dataIndexToPixel(xIdx))
+                    .attr('y2', mainY(tc.exitPrice));
+            });
+        }
     }
 
     /**
@@ -20009,6 +20065,15 @@ class OrderManager {
                 if (marker) {
                     marker.style('visibility', show ? 'visible' : 'hidden');
                     marker.style('opacity', show ? 1 : 0);
+                }
+            });
+        }
+
+        // Toggle trade connector lines
+        if (this.tradeConnectors && this.tradeConnectors.length > 0) {
+            this.tradeConnectors.forEach(({ line }) => {
+                if (line) {
+                    line.style('visibility', show ? 'visible' : 'hidden');
                 }
             });
         }
