@@ -1727,23 +1727,9 @@ class Chart {
                 }
             }
 
-            if (
-                this.orderManager
-                && typeof this.orderManager.restoreRuntimeOrderStateFromSession === 'function'
-                && (
-                    Array.isArray(state.pending_orders)
-                    || Array.isArray(state.open_positions)
-                    || (state.account_runtime && typeof state.account_runtime === 'object')
-                    || (state.order_counters && typeof state.order_counters === 'object')
-                )
-            ) {
-                this.orderManager.restoreRuntimeOrderStateFromSession({
-                    pending_orders: state.pending_orders,
-                    open_positions: state.open_positions,
-                    account_runtime: state.account_runtime,
-                    order_counters: state.order_counters
-                });
-            }
+            // Order state (pending_orders, open_positions, account_runtime,
+            // order_counters) is intentionally NOT restored on page load so
+            // that a refresh always starts with a clean order slate.
 
             if (state.replay && typeof state.replay === 'object') {
                 this._pendingReplayState = state.replay;

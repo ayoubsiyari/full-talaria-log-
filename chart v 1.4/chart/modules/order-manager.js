@@ -1518,43 +1518,9 @@ class OrderManager {
     }
 
     persistRuntimeOrderState() {
-        if (!this.chart) return;
-        const pendingOrders = Array.isArray(this.pendingOrders) ? this.pendingOrders : [];
-        const openPositions = Array.isArray(this.openPositions) ? this.openPositions : [];
-        const orderCounters = {
-            orderIdCounter: Number.parseInt(this.orderIdCounter, 10) || 1,
-            tradeGroupIdCounter: Number.parseInt(this.tradeGroupIdCounter, 10) || 1
-        };
-        const accountRuntime = {
-            balance: Number.parseFloat(this.balance) || 0,
-            equity: Number.parseFloat(this.equity) || 0,
-            initialBalance: Number.parseFloat(this.initialBalance) || 0,
-            session_current_time: Number.parseFloat(this.orderService?.multiInstrumentSession?.current_time)
-                || Number.parseFloat(this.chart?.replaySystem?.replayTimestamp)
-                || null
-        };
-
-        const snapshot = JSON.stringify({
-            pending_orders: pendingOrders,
-            open_positions: openPositions,
-            account_runtime: accountRuntime,
-            order_counters: orderCounters
-        });
-        if (snapshot === this._lastRuntimeStateSnapshot) return;
-        this._lastRuntimeStateSnapshot = snapshot;
-
-        const patch = {
-            pending_orders: pendingOrders,
-            open_positions: openPositions,
-            account_runtime: accountRuntime,
-            order_counters: orderCounters
-        };
-        if (typeof this.chart.scheduleSessionStateSave === 'function') {
-            this.chart.scheduleSessionStateSave(patch);
-        }
-        if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
-            this.chart.queueCriticalSessionStateSave(patch);
-        }
+        // Disabled: order state (pending orders, open positions) should not
+        // survive page refresh.  Users expect a clean slate after reload.
+        return;
     }
 
     restoreRuntimeOrderStateFromSession(state) {
@@ -8238,7 +8204,8 @@ class OrderManager {
     }
 
     /**
-     * After placing via ✓ badge: just show "Make new order" button. No new entry or preview lines.
+     * After placing via ✓ badge: zero-out every input/display in the order panel
+     * and show "Make new order" button. No new entry or preview lines.
      */
     _resetPanelForNewOrder() {
         const placeBtn = document.getElementById('placeOrderButton');
@@ -8251,6 +8218,44 @@ class OrderManager {
             placeBtn.classList.remove('sell-mode');
             placeBtn.style.background = '#3b82f6';
         }
+
+        const zero = (id) => { const el = document.getElementById(id); if (el) el.value = '0'; };
+        const dash = (id) => { const el = document.getElementById(id); if (el) el.textContent = '—'; };
+        const zeroText = (id) => { const el = document.getElementById(id); if (el) el.textContent = '$0'; };
+
+        zero('riskAmountUSD');
+        zero('riskAmountPercent');
+        zero('lotSizeAmount');
+        zero('orderQuantity');
+        zero('orderEntryPrice');
+        zero('orderEntryPriceMulti');
+        zero('slPrice');
+        zero('tpPrice');
+        zero('tpRRInput');
+        zero('tpTargetProfitUSD');
+        zero('tpTargetProfitPercent');
+
+        dash('slPipsDisplay');
+        dash('slQuantityDisplay');
+        dash('slRiskUsdDisplay');
+        dash('slRiskPctDisplay');
+        dash('tpDistanceDisplay');
+        dash('tpProfitDisplay');
+        dash('tpSummaryPctRisk');
+        dash('tpSummaryPctReward');
+        dash('tpSummaryRRDisplay');
+
+        zeroText('rewardAmount');
+        zeroText('riskAmount');
+        const marginBadge = document.getElementById('marginLevelBadge');
+        if (marginBadge) marginBadge.textContent = '--';
+
+        const calcLabel = document.getElementById('calculatedLabel');
+        const calcValue = document.getElementById('calculatedValue');
+        if (calcLabel) calcLabel.textContent = '';
+        if (calcValue) calcValue.textContent = '';
+
+        this.removePreviewLines();
     }
 
     /**
@@ -9495,6 +9500,8 @@ class OrderManager {
      * Update place button text with dynamic symbol
      */
     updatePlaceButtonText() {
+        if (this._orderPlacedAwaitingReset) return;
+
         const placeBtn = document.getElementById('placeOrderButton');
         const config = this.getMarketConfig();
         const positionLabel = config.positionLabel;
@@ -9685,6 +9692,8 @@ class OrderManager {
      * Calculate position size from risk amount or percentage, or calculate risk from lot size
      */
     calculatePositionFromRisk() {
+        if (this._orderPlacedAwaitingReset) return;
+
         let entryPrice;
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             entryPrice = this._calcMultiEntryAvgPrice();
@@ -9873,6 +9882,8 @@ class OrderManager {
      * Calculate advanced risk/reward with multiple input types
      */
     calculateAdvancedRiskReward() {
+        if (this._orderPlacedAwaitingReset) return;
+
         this._syncPipFromActiveSymbolIfNeeded();
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
