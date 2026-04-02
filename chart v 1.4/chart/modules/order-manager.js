@@ -13723,12 +13723,14 @@ class OrderManager {
         const tpOn = document.getElementById('enableTP')?.checked;
         const slOn = document.getElementById('enableSL')?.checked;
         const entryPx = Number(this.previewLines.entry?.price) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0) || 0;
-        // Use what is currently rendered on chart first (line/badge price), then fall back to inputs.
+        // Only include real lines (not badges) in the connector — badges sit on entry, no connector needed.
+        const tpPreview = this.previewLines.tp;
         const tpPx = tpOn
-            ? (Number(this.previewLines.tp?.price) || parseFloat(document.getElementById('tpPrice')?.value || 0))
+            ? (tpPreview && !tpPreview.isBadge ? (Number(tpPreview.price) || parseFloat(document.getElementById('tpPrice')?.value || 0)) : 0)
             : 0;
+        const slPreview = this.previewLines.sl;
         const slPx = slOn
-            ? (Number(this.previewLines.sl?.price) || parseFloat(document.getElementById('slPrice')?.value || 0))
+            ? (slPreview && !slPreview.isBadge ? (Number(slPreview.price) || parseFloat(document.getElementById('slPrice')?.value || 0)) : 0)
             : 0;
 
         const ys = [];
