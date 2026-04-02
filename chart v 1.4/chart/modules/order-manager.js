@@ -8214,7 +8214,7 @@ class OrderManager {
         // Refresh entry price to current market
         this.updateOrderPanelPrice();
 
-        // Show "Make new order" on the place button
+        // Show "Make new order" on the place button — no preview lines yet
         const placeBtn = document.getElementById('placeOrderButton');
         if (placeBtn) {
             this._orderPlacedAwaitingReset = true;
@@ -8225,20 +8225,6 @@ class OrderManager {
             placeBtn.classList.remove('sell-mode');
             placeBtn.style.background = '#3b82f6';
         }
-
-        // Recalculate defaults for the new order
-        setTimeout(() => {
-            this.syncDefaultTargetsToEntry();
-            this.calculatePositionFromRisk();
-            this.calculateAdvancedRiskReward();
-
-            requestAnimationFrame(() => {
-                this.updatePreviewLines();
-                if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
-                    this.chart.updateSVGPointerEvents();
-                }
-            });
-        }, 100);
     }
 
     /**
@@ -9422,11 +9408,23 @@ class OrderManager {
         
         // Place order button
         placeBtn.onclick = () => {
-            // "Make new order" state: just reset the button back to normal
+            // "Make new order" state: initialize a fresh order with preview lines
             if (this._orderPlacedAwaitingReset) {
                 this._orderPlacedAwaitingReset = false;
                 placeBtn.style.background = '';
-                this.updatePlaceButtonText();
+                this.updateOrderPanelPrice();
+                setTimeout(() => {
+                    this.syncDefaultTargetsToEntry();
+                    this.calculatePositionFromRisk();
+                    this.calculateAdvancedRiskReward();
+                    this.updatePlaceButtonText();
+                    requestAnimationFrame(() => {
+                        this.updatePreviewLines();
+                        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+                            this.chart.updateSVGPointerEvents();
+                        }
+                    });
+                }, 100);
                 return;
             }
 
