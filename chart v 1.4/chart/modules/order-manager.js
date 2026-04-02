@@ -10492,28 +10492,32 @@ class OrderManager {
         const entryInput = document.getElementById('orderEntryPrice');
         if (!entryInput) return;
 
-        const entryPrice = parseFloat(entryInput.value || '0');
-        if (!entryPrice || entryPrice <= 0) return;
+        const mainEntryPrice = parseFloat(entryInput.value || '0');
+        if (!mainEntryPrice || mainEntryPrice <= 0) return;
+
+        const refPrice = this._getReferenceEntryForOrderMath();
+        if (!refPrice || refPrice <= 0) return;
 
         const tpPriceInput = document.getElementById('tpPrice');
         const slPriceInput = document.getElementById('slPrice');
 
-        const precision = this.getPricePrecision(entryPrice);
-        const entryFormatted = entryPrice.toFixed(precision);
+        const precision = this.getPricePrecision(refPrice);
+        const refFormatted = refPrice.toFixed(precision);
+        const mainFormatted = mainEntryPrice.toFixed(precision);
 
         const side = (this.orderSide || 'BUY').toUpperCase();
         const pipSize = this.pipSize || 0.0001;
         const defaultSteps = 10;
         const offset = pipSize * defaultSteps;
-        const tpDefault = side === 'SELL' ? (entryPrice - offset) : (entryPrice + offset);
-        const slDefault = side === 'SELL' ? (entryPrice + offset) : (entryPrice - offset);
+        const tpDefault = side === 'SELL' ? (refPrice - offset) : (refPrice + offset);
+        const slDefault = side === 'SELL' ? (mainEntryPrice + offset) : (mainEntryPrice - offset);
         const tpFormatted = tpDefault.toFixed(precision);
         const slFormatted = slDefault.toFixed(precision);
 
-        // TP syncing: sync to sensible default if NOT manually positioned
+        // TP syncing: use weighted avg as reference when multi-entry (matches TP badge anchor)
         if (tpPriceInput && !this.tpManuallyPositioned) {
             const existing = String(tpPriceInput.value || '').trim();
-            if (!existing || existing === entryFormatted) {
+            if (!existing || existing === refFormatted) {
                 tpPriceInput.value = tpFormatted;
             }
         }
@@ -10521,7 +10525,7 @@ class OrderManager {
         // SL syncing: sync to sensible default if NOT manually positioned
         if (slPriceInput && !this.slManuallyPositioned) {
             const existing = String(slPriceInput.value || '').trim();
-            if (!existing || existing === entryFormatted) {
+            if (!existing || existing === mainFormatted) {
                 slPriceInput.value = slFormatted;
             }
         }
@@ -10834,6 +10838,13 @@ class OrderManager {
         const slDistinctFromEntry =
             entryPrice > 0 && slPrice > 0 && Math.abs(slPrice - entryPrice) > slEntryEpsilon;
 
+        let tpBadgeAnchorPrice = entryPrice;
+        if (this.isMultiEntryMode && this.splitEntriesEnabled && this.multiEntryLevels
+            && this.multiEntryLevels.filter(l => l.price > 0).length > 1) {
+            const avgTP = this._calcMultiEntryAvgPrice();
+            if (avgTP > 0) tpBadgeAnchorPrice = avgTP;
+        }
+
         const pipSizePE = this.pipSize || 0.0001;
         const pipValuePE = this.pipValuePerLot || 10;
         const minLotPE = this.getMarketConfig()?.minSize ?? 0.01;
@@ -10946,8 +10957,8 @@ class OrderManager {
                     this.previewLines.tp.targetPrice = tpPrice;
                 }
             } else if (tpEnabled && !this.tpManuallyPositioned) {
-                // Draw draggable badge at entry for TP
-                this.previewLines.tp = this.drawPreviewBadge(entryPrice, '#22c55e', 'TP', tpPrice);
+                // Multi-entry: anchor TP badge on weighted Avg Entry so it drags from the same reference as R:R math
+                this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#22c55e', 'TP', tpPrice);
             }
         }
         
@@ -11298,8 +11309,8 @@ class OrderManager {
                         tpInput.value = formattedPrice;
                     }
                     
-                    // Calculate TP pips/amount and R:R immediately
-                    const entryPrice = self.previewLines.entry?.price || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                    // Calculate TP pips/amount and R:R immediately (multi-entry: vs weighted avg)
+                    const entryPrice = self._getReferenceEntryForOrderMath();
                     const slPrice = self.previewLines.sl?.price || parseFloat(document.getElementById('slPrice')?.value || 0);
                     const enableSL = document.getElementById('enableSL')?.checked;
                     
@@ -11525,17 +11536,19 @@ class OrderManager {
                     // Update TP/SL badge positions if they haven't been manually positioned
                     // Only update Y position during drag to prevent horizontal jumping
                     if (self.previewLines.tp && !self.tpManuallyPositioned && self.previewLines.tp.isBadge) {
-                        self.previewLines.tp.price = newPrice;
-                        // Update only Y position, preserve X
-                        const tpBbox = self.previewLines.tp.labelDimensions;
-                        const tpHeight = tpBbox?.height || 0;
-                        const tpTransform = self.previewLines.tp.labelGroup.attr('transform');
-                        const tpX = parseFloat(tpTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                        const tpY = clampedY - tpHeight / 2;
-                        self.previewLines.tp.labelGroup.attr('transform', `translate(${tpX}, ${tpY})`);
-                        // Also update the TP input field to match entry
-                        const tpInput = document.getElementById('tpPrice');
-                        if (tpInput) tpInput.value = formattedPrice;
+                        const pricedLv = (self.multiEntryLevels || []).filter(l => l.price > 0);
+                        // Multi-entry: TP badge Y follows Avg Entry via _syncAvgEntryPreviewLineFromLevels (called above)
+                        if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
+                            self.previewLines.tp.price = newPrice;
+                            const tpBbox = self.previewLines.tp.labelDimensions;
+                            const tpHeight = tpBbox?.height || 0;
+                            const tpTransform = self.previewLines.tp.labelGroup.attr('transform');
+                            const tpX = parseFloat(tpTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                            const tpY = clampedY - tpHeight / 2;
+                            self.previewLines.tp.labelGroup.attr('transform', `translate(${tpX}, ${tpY})`);
+                            const tpInput = document.getElementById('tpPrice');
+                            if (tpInput) tpInput.value = formattedPrice;
+                        }
                     }
                     if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
                         self.previewLines.sl.price = newPrice;
@@ -11921,8 +11934,8 @@ class OrderManager {
                     const tpInput = document.getElementById('tpPrice');
                     if (tpInput) tpInput.value = self.formatPrice(newPrice);
                     
-                    // Calculate risk/reward immediately when TP badge is dragged
-                    const entryPrice = self.previewLines.entry?.price || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                    // Calculate risk/reward immediately when TP badge is dragged (multi-entry: vs weighted avg)
+                    const entryPrice = self._getReferenceEntryForOrderMath();
                     const slPrice = self.previewLines.sl?.price || parseFloat(document.getElementById('slPrice')?.value || 0);
                     const enableSL = document.getElementById('enableSL')?.checked;
                     
@@ -12856,6 +12869,27 @@ class OrderManager {
     }
 
     /**
+     * While dragging entry legs with TP still a badge, keep the TP badge vertically on weighted Avg Entry (multi-entry only).
+     */
+    _syncTpBadgeYToMultiEntryAvg() {
+        if (!this.previewLines?.tp || this.tpManuallyPositioned || !this.previewLines.tp.isBadge) return;
+        const priced = (this.multiEntryLevels || []).filter(l => l.price > 0);
+        if (!this.isMultiEntryMode || priced.length <= 1) return;
+        const avgP = this._calcMultiEntryAvgPrice();
+        if (!(avgP > 0) || !this.chart?.scales?.yScale) return;
+        this.previewLines.tp.price = avgP;
+        const avgY = this.chart.scales.yScale(avgP);
+        const tp = this.previewLines.tp;
+        const tpHeight = tp.labelDimensions?.height || 0;
+        const tr = tp.labelGroup?.attr('transform');
+        const tpX = parseFloat(tr?.match(/translate\(([\d.]+)/)?.[1] || 0);
+        if (tp.labelGroup) {
+            tp.labelGroup.attr('transform', `translate(${tpX}, ${avgY - tpHeight / 2})`);
+        }
+        this.adjustPreviewLineForLabel(tp);
+    }
+
+    /**
      * While dragging entry lines, updatePreviewLines() is skipped — move the Avg Entry dashed line in sync with panel math.
      */
     _syncAvgEntryPreviewLineFromLevels() {
@@ -12895,6 +12929,7 @@ class OrderManager {
         }
         this.scheduleAlignPreviewLabels();
         this._syncPendingLimitStopConnector();
+        this._syncTpBadgeYToMultiEntryAvg();
     }
 
     /**
