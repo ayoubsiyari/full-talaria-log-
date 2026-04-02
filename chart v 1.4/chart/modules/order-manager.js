@@ -7975,7 +7975,7 @@ class OrderManager {
                 })
                 .on('click', function(event) {
                     event.stopPropagation();
-                    self.placeAdvancedOrder();
+                    self.placeAdvancedOrder({ keepPanelOpen: true });
                 });
 
             actX += actSize + gap;
@@ -8180,6 +8180,57 @@ class OrderManager {
             this.calculatePositionFromRisk();
             this.calculateAdvancedRiskReward();
             this.updatePlaceButtonText();
+
+            requestAnimationFrame(() => {
+                this.updatePreviewLines();
+                if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+                    this.chart.updateSVGPointerEvents();
+                }
+            });
+        }, 100);
+    }
+
+    /**
+     * Reset the panel for a new order without closing it (used by the ✓ badge on chart).
+     */
+    _resetPanelForNewOrder() {
+        // Remove old preview lines
+        this.removePreviewLines();
+        this.clearPendingOrderEditingState();
+
+        // Reset positioning flags
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+
+        // Reset multi-entry
+        this._resetMultiEntryStateForNewOrder();
+
+        // Reset multiple TP
+        const multipleTPToggle = document.getElementById('multipleTPToggle');
+        const multipleTPSettings = document.getElementById('multipleTPSettings');
+        if (multipleTPToggle) multipleTPToggle.checked = false;
+        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+
+        // Refresh entry price to current market
+        this.updateOrderPanelPrice();
+
+        // Show "Make new order" on the place button
+        const placeBtn = document.getElementById('placeOrderButton');
+        if (placeBtn) {
+            this._orderPlacedAwaitingReset = true;
+            placeBtn.textContent = 'Make new order';
+            placeBtn.disabled = false;
+            placeBtn.style.opacity = '1';
+            placeBtn.style.cursor = 'pointer';
+            placeBtn.classList.remove('sell-mode');
+            placeBtn.style.background = '#3b82f6';
+        }
+
+        // Recalculate defaults for the new order
+        setTimeout(() => {
+            this.syncDefaultTargetsToEntry();
+            this.calculatePositionFromRisk();
+            this.calculateAdvancedRiskReward();
 
             requestAnimationFrame(() => {
                 this.updatePreviewLines();
@@ -9371,6 +9422,14 @@ class OrderManager {
         
         // Place order button
         placeBtn.onclick = () => {
+            // "Make new order" state: just reset the button back to normal
+            if (this._orderPlacedAwaitingReset) {
+                this._orderPlacedAwaitingReset = false;
+                placeBtn.style.background = '';
+                this.updatePlaceButtonText();
+                return;
+            }
+
             // Set scaling flag based on checkbox before placing order
             const scaleCheckbox = document.getElementById('scalePositionCheckbox');
             if (scaleCheckbox) {
@@ -14034,7 +14093,8 @@ class OrderManager {
     /**
      * Place advanced order from panel
      */
-    placeAdvancedOrder() {
+    placeAdvancedOrder(options = {}) {
+        const keepPanelOpen = options.keepPanelOpen || false;
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
             return;
@@ -14430,7 +14490,11 @@ class OrderManager {
             );
             this.updatePositionsPanel();
             this.showPositionsPanel();
-            this.toggleOrderPanel();
+            if (keepPanelOpen) {
+                this._resetPanelForNewOrder();
+            } else {
+                this.toggleOrderPanel();
+            }
             this.clearSplitEntries();
             this._resetMultiEntryStateForNewOrder();
             return;
@@ -14555,7 +14619,11 @@ class OrderManager {
                 this.showPositionsPanel();
             }
 
-            this.toggleOrderPanel();
+            if (keepPanelOpen) {
+                this._resetPanelForNewOrder();
+            } else {
+                this.toggleOrderPanel();
+            }
             return;
         }
 
@@ -14798,8 +14866,12 @@ class OrderManager {
         this.updatePositionsPanel();
         this.showPositionsPanel();
         
-        // Close panel
-        this.toggleOrderPanel();
+        if (keepPanelOpen) {
+            this._resetPanelForNewOrder();
+        } else {
+            // Close panel
+            this.toggleOrderPanel();
+        }
         
         // Show trade journal modal for entry notes
         this.showTradeJournalModal(order, false, null);
