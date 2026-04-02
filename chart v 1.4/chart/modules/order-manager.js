@@ -7009,7 +7009,7 @@ class OrderManager {
                     <button id="sellTab" type="button" class="order-tab order-tab--sell">SELL</button>
                 </div>
 
-                <div class="order-section">
+                <div class="order-section" id="orderTypeSection">
                     <div class="order-button-group">
                         <button class="order-type-btn active" type="button" data-type="market">Market</button>
                         <button class="order-type-btn" type="button" data-type="limit">Limit</button>
@@ -12470,6 +12470,7 @@ class OrderManager {
         const toggleBtn = document.getElementById('multiEntryToggle');
         const singleMode = document.getElementById('singleEntryMode');
         const multiMode = document.getElementById('multiEntryMode');
+        const orderTypeSection = document.getElementById('orderTypeSection');
 
         if (isMulti) {
             if (toggleBtn) {
@@ -12478,6 +12479,7 @@ class OrderManager {
             }
             if (singleMode) singleMode.style.display = 'none';
             if (multiMode) multiMode.style.display = 'block';
+            if (orderTypeSection) orderTypeSection.style.display = 'none';
 
             if (this.multiEntryLevels.length === 0) {
                 const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
@@ -12521,6 +12523,7 @@ class OrderManager {
             }
             if (singleMode) singleMode.style.display = 'block';
             if (multiMode) multiMode.style.display = 'none';
+            if (orderTypeSection) orderTypeSection.style.display = '';
 
             const multiRows = document.getElementById('multiEntryRows');
             if (multiRows) multiRows.innerHTML = '';
