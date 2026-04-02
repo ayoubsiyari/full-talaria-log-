@@ -1782,23 +1782,21 @@ class ReplaySystem {
         if (!candle) return;
         
         const targetTime = candle.t;
-        
-        // Map clicked timestamp to main replay series.
-        // Important for multi-symbol layouts: timestamps won't match 1:1 across pairs.
+
+        // Cut so the clicked candle is EXCLUDED (hidden). The replay resumes
+        // from the raw bar just before the clicked display candle's start.
         let newRawIndex = 0;
         if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
-            // Start from closest index, then clamp to candle at-or-before targetTime
             let idx = (typeof this._bsearchTimestamp === 'function')
                 ? this._bsearchTimestamp(this.fullRawData, targetTime)
                 : this.fullRawData.findIndex(c => (c && c.t) >= targetTime);
             if (idx < 0) idx = this.fullRawData.length - 1;
             idx = Math.max(0, Math.min(idx, this.fullRawData.length - 1));
             while (idx > 0 && (this.fullRawData[idx]?.t || 0) > targetTime) idx--;
+            // Step back so the clicked candle itself is the next to be revealed
+            if (idx > 0) idx--;
             newRawIndex = idx;
         }
-        
-        // Last included raw bar index = idx → slice(0, idx+1). Replay uses currentIndex as that
-        // last bar index (same convention as completeTickAnimation / updateChartData).
         
         
         const flashCutLines = () => {
