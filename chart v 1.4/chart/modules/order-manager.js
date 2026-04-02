@@ -18973,7 +18973,7 @@ class OrderManager {
 
         const candleSpacing = chart.getCandleSpacing();
         const m = chart.margin;
-        const x = m.l + (dataIndex * candleSpacing) + chart.offsetX + (candleSpacing / 2);
+        const x = chart.dataIndexToPixel(dataIndex);
         const y = yScale(order.openPrice);
         const candle = chart.data[dataIndex];
         const isBuy = order.type === 'BUY';
@@ -19093,7 +19093,7 @@ class OrderManager {
 
         const candleSpacing = this.chart.getCandleSpacing();
         const mg = this.chart.margin;
-        const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+        const x = this.chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
         const candle = this.chart.data[dataIndex];
         const isProfitable = closeData.pnl >= 0;
@@ -19203,11 +19203,7 @@ class OrderManager {
         if (dataIndex === -1) return;
 
         // Get candle spacing and margin
-        const candleSpacing = this.chart.getCandleSpacing();
-        const m = this.chart.margin;
-
-        // Use same formula as candle rendering
-        const x = m.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+        const x = this.chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
         
         console.log('   Partial Close Position: x=', x, 'y=', y, 'data index=', dataIndex);
@@ -19309,8 +19305,7 @@ class OrderManager {
             if (dataIndex === -1) return;
 
             const candleSpacing = c.getCandleSpacing();
-            const m = c.margin;
-            const x = m.l + (dataIndex * candleSpacing) + c.offsetX + (candleSpacing / 2);
+            const x = c.dataIndexToPixel(dataIndex);
             const y = c.scales.yScale(price);
             const candle = c.data[dataIndex];
             const isBuy = type === 'BUY';
@@ -19354,8 +19349,7 @@ class OrderManager {
 
                 const candle = this.chart.data[dataIndex];
                 const candleSpacing = this.chart.getCandleSpacing();
-                const mg = this.chart.margin;
-                const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+                const x = this.chart.dataIndexToPixel(dataIndex);
                 const y = mainY(price);
                 const sz = 12;
                 const gap = 4;
@@ -19393,9 +19387,7 @@ class OrderManager {
                 const dataIndex = this._findCandleIndexForTime(this.chart.data, time);
                 if (dataIndex === -1) return;
 
-                const candleSpacing = this.chart.getCandleSpacing();
-                const mg = this.chart.margin;
-                const x = mg.l + (dataIndex * candleSpacing) + this.chart.offsetX + (candleSpacing / 2);
+                const x = this.chart.dataIndexToPixel(dataIndex);
                 const y = this.chart.scales.yScale(price);
 
                 const labelY = y - 10;
