@@ -350,7 +350,7 @@ class OrderManager {
     _stripOrderDrawingLayersFromChart(chart) {
         if (!chart?.svg?.selectAll) return;
         const s = chart.svg;
-        s.selectAll('.order-line,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn').remove();
+        s.selectAll('.order-line,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
@@ -18055,6 +18055,23 @@ class OrderManager {
             closeBtnText.attr('fill', '#ffffff');
         });
 
+        // Live P&L badge (dark bg with colored text, sits to the left of the main label)
+        const pnlBox = chart.svg.append('rect')
+            .attr('class', `order-pnl-box order-${order.id}`)
+            .attr('fill', '#0f172a')
+            .attr('stroke', color)
+            .attr('stroke-width', 1)
+            .attr('rx', 2)
+            .style('pointer-events', 'none');
+
+        const pnlText = chart.svg.append('text')
+            .attr('class', `order-pnl-text order-${order.id}`)
+            .attr('fill', color)
+            .attr('font-size', '11px')
+            .attr('font-weight', '700')
+            .style('pointer-events', 'none')
+            .text('$0.00');
+
         this.makeLineDraggable(line, labelBox, order, 'entry', {}, chart);
 
         this.orderLines.push({
@@ -18066,6 +18083,8 @@ class OrderManager {
             priceBox,
             priceText,
             closeBtn,
+            pnlBox,
+            pnlText,
             chart
         });
 
@@ -19247,6 +19266,8 @@ class OrderManager {
             if (orderLine.priceBox) orderLine.priceBox.remove();
             if (orderLine.priceText) orderLine.priceText.remove();
             if (orderLine.closeBtn) orderLine.closeBtn.remove();
+            if (orderLine.pnlBox) orderLine.pnlBox.remove();
+            if (orderLine.pnlText) orderLine.pnlText.remove();
         });
         
         // Remove from array
@@ -20446,7 +20467,7 @@ class OrderManager {
         if (lines.length > 0) {
             console.log(`📍 updateOrderLines: Updating ${lines.length} order lines`);
 
-            lines.forEach(({ orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn }) => {
+            lines.forEach(({ orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn, pnlBox, pnlText }) => {
                 let price, orderData;
 
                 if (isPending) {
@@ -20485,6 +20506,22 @@ class OrderManager {
                 if (priceBox) priceBox.style('display', 'none');
                 if (priceText) priceText.style('display', 'none');
 
+                // Live P&L for open (non-pending) positions
+                if (!isPending && pnlBox && pnlText && orderData) {
+                    const currentCandle = this.getCurrentCandle();
+                    const currentPrice = currentCandle ? currentCandle.c : 0;
+                    if (currentPrice > 0) {
+                        const orderSym = orderData.ticker || orderData.symbol || this._getSymbol();
+                        const livePnl = this.estimatePnLForPriceLevel(orderData.type, orderData.openPrice, currentPrice, orderData.quantity, orderSym);
+                        const sign = livePnl >= 0 ? '+' : '';
+                        const pnlColor = livePnl >= 0 ? '#22c55e' : '#ef4444';
+                        pnlText.text(`${sign}$${livePnl.toFixed(2)}`).attr('fill', pnlColor);
+                        pnlBox.attr('stroke', pnlColor);
+                    }
+                }
+                if (isPending && pnlBox) pnlBox.style('display', 'none');
+                if (isPending && pnlText) pnlText.style('display', 'none');
+
                 if (labelText && closeBtn && labelBox) {
                     const boxHeight = 18;
                     const boxY = y - boxHeight / 2;
@@ -20495,7 +20532,17 @@ class OrderManager {
 
                     const arrowWidth = arrow ? arrow.node().getBBox().width : 0;
                     const labelBoxWidth = labelText.node().getBBox().width + arrowWidth + 20;
+
+                    // P&L badge sits to the left of the main label
+                    let pnlBoxWidth = 0;
+                    const pnlGap = 4;
+                    if (!isPending && pnlText && pnlText.node()) {
+                        const pnlBBox = pnlText.node().getBBox();
+                        pnlBoxWidth = pnlBBox.width + 14;
+                    }
+
                     const labelBoxX = ch.w - yAxisWidth - 30 - labelBoxWidth + labelRightNudge;
+                    const pnlBoxX = labelBoxX - pnlGap - pnlBoxWidth;
 
                     labelBox
                         .attr('x', labelBoxX)
@@ -20506,8 +20553,23 @@ class OrderManager {
                     labelText
                         .attr('x', labelBoxX + 10)
                         .attr('y', y + 4);
-                    line.attr('x2', Math.max(0, labelBoxX));
-                    if (dragHitLine) dragHitLine.attr('x2', Math.max(0, labelBoxX));
+
+                    if (!isPending && pnlBox && pnlText && pnlBoxWidth > 0) {
+                        pnlBox
+                            .attr('x', pnlBoxX)
+                            .attr('y', boxY)
+                            .attr('width', pnlBoxWidth)
+                            .attr('height', boxHeight)
+                            .style('display', null);
+                        pnlText
+                            .attr('x', pnlBoxX + pnlBoxWidth / 2)
+                            .attr('y', y + 4)
+                            .attr('text-anchor', 'middle')
+                            .style('display', null);
+                    }
+
+                    line.attr('x2', Math.max(0, pnlBoxWidth > 0 ? pnlBoxX : labelBoxX));
+                    if (dragHitLine) dragHitLine.attr('x2', Math.max(0, pnlBoxWidth > 0 ? pnlBoxX : labelBoxX));
 
                     if (arrow) {
                         arrow
