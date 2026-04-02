@@ -19500,6 +19500,82 @@ class OrderManager {
             'info'
         );
     }
+
+    /**
+     * Immediately close all open positions, cancel all pending orders,
+     * and remove every trade visual (order lines, SL/TP, entry/exit markers,
+     * connectors). Called when the user rewinds via "Go back".
+     */
+    forceCloseAllOrders() {
+        const hadPositions = (this.openPositions || []).length > 0;
+        const hadPending = [
+            ...(this.pendingOrders || []),
+            ...(this.orderService?.pendingOrders || [])
+        ].length > 0;
+
+        // 1. Cancel every pending order (removes pending visuals too)
+        const pendingIds = [
+            ...(this.pendingOrders || []),
+            ...(this.orderService?.pendingOrders || [])
+        ].map(p => p.id);
+        const seen = new Set();
+        pendingIds.forEach(id => {
+            if (seen.has(id)) return;
+            seen.add(id);
+            this.cancelPendingOrder(id, { silent: true });
+        });
+
+        // 2. Force-remove open position visuals and clear the array
+        (this.openPositions || []).forEach(pos => {
+            try { this.removeOrderLine(pos.id); } catch (e) { /* */ }
+            try { this.removeSLTPLines(pos.id); } catch (e) { /* */ }
+            try { this.removeEntryMarker(pos.id); } catch (e) { /* */ }
+        });
+        this.openPositions = [];
+        if (this.orderService) this.orderService.openPositions = [];
+
+        // 3. Clear closed-positions list so old markers don't linger
+        this.closedPositions = [];
+        if (this.orderService) this.orderService.closedPositions = [];
+
+        // 4. Wipe all SVG drawing layers (entry/exit markers, connectors, etc.)
+        if (this.chart?.svg) {
+            this._stripOrderDrawingLayersFromChart(this.chart);
+            this.chart.svg.selectAll('.exit-marker, [class*="exit-marker-"]').remove();
+        }
+        const layoutCharts = typeof this._collectLayoutCharts === 'function'
+            ? this._collectLayoutCharts() : [];
+        layoutCharts.forEach(c => {
+            this._stripOrderDrawingLayersFromChart(c);
+            if (c?.svg) c.svg.selectAll('.exit-marker, [class*="exit-marker-"]').remove();
+        });
+
+        // 5. Reset in-memory visual arrays
+        this.orderLines = [];
+        this.splitGroupAvgLines = [];
+        this.slLines = [];
+        this.tpLines = [];
+        this.beLines = [];
+        this.pendingTargetLines = [];
+        this.entryMarkers = [];
+        this.exitMarkers = [];
+        this.tradeConnectors = [];
+        this.mfeMaeMarkers = [];
+
+        // 6. Clear scaled/split trade maps
+        if (this.scaledTrades) this.scaledTrades.clear();
+        if (this.splitTrades) this.splitTrades.clear();
+
+        // 7. Reset panel to fresh state
+        this._resetPanelForNewOrder();
+        this.updatePositionsPanel();
+
+        if (hadPositions || hadPending) {
+            this.showNotification('All orders closed & cleared (Go Back)', 'info');
+        }
+
+        console.log('🧹 forceCloseAllOrders: all positions, pending orders, and trade visuals removed');
+    }
     
     /**
      * Find the candle index that contains a given timestamp (works across timeframe changes).

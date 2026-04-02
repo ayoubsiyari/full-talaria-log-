@@ -1812,6 +1812,11 @@ class ReplaySystem {
         };
         flashCutLines();
         
+        // Immediately close/cancel all orders and remove trade visuals
+        if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
+            this.chart.orderManager.forceCloseAllOrders();
+        }
+
         // Brief delay for visual feedback then update
         setTimeout(() => {
             // Exit go back mode
