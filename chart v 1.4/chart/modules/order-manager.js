@@ -10522,10 +10522,11 @@ class OrderManager {
             }
         }
 
-        // SL syncing: sync to sensible default if NOT manually positioned
+        // SL syncing: only fill the very first time (empty field). Once it has any value, leave it alone
+        // until the user explicitly drags or types. This prevents entry drags from "auto-setting" SL.
         if (slPriceInput && !this.slManuallyPositioned) {
             const existing = String(slPriceInput.value || '').trim();
-            if (!existing || existing === mainFormatted) {
+            if (!existing || existing === '0') {
                 slPriceInput.value = slFormatted;
             }
         }
@@ -11551,17 +11552,14 @@ class OrderManager {
                         }
                     }
                     if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
-                        self.previewLines.sl.price = newPrice;
-                        // Update only Y position, preserve X
+                        // Move the SL badge visually with entry but do NOT write #slPrice —
+                        // writing the input made it look like SL was "set" to the entry price.
                         const slBbox = self.previewLines.sl.labelDimensions;
                         const slHeight = slBbox?.height || 0;
                         const slTransform = self.previewLines.sl.labelGroup.attr('transform');
                         const slX = parseFloat(slTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
                         const slY = clampedY - slHeight / 2;
                         self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
-                        // Also update the SL input field to match entry
-                        const slInput = document.getElementById('slPrice');
-                        if (slInput) slInput.value = formattedPrice;
                     }
                     
                     // Recalculate risk/reward since TP/SL are synced to entry
