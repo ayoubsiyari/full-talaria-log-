@@ -3388,7 +3388,7 @@ class ReplaySystem {
                     delta = direction * vol * (0.9 + rng() * 1.3) + targetDrift * 0.25;
                 } else if (state === 2) { // STALL
                     mom *= 0.1;
-                    delta = noise * range * 0.002 * (0.5 + rng());
+                    delta = noise * range * 0.003 * (0.5 + rng());
                 } else if (state === 3) { // PULLBACK
                     mom = mom * 0.5 - direction * 0.5;
                     delta = -direction * vol * (0.4 + rng() * 0.9) + noise * vol * 0.3;
@@ -3397,7 +3397,13 @@ class ReplaySystem {
                 // Gravity toward segment end ramps quadratically
                 delta += targetDrift * progress * progress * 1.6;
 
-                // Clamp step
+                // Repel from candle boundaries to prevent vibration at edges
+                const edgeDist = range * 0.04;
+                if (px - low < edgeDist && delta < 0)  delta *= 0.15;
+                if (high - px < edgeDist && delta > 0)  delta *= 0.15;
+                if (px <= low + range * 0.005) delta += range * 0.006;
+                if (px >= high - range * 0.005) delta -= range * 0.006;
+
                 delta = Math.max(-maxStep, Math.min(maxStep, delta));
                 px = Math.max(low, Math.min(high, px + delta));
                 seg.push(px);
