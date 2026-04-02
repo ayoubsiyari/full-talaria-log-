@@ -3298,10 +3298,10 @@ class ReplaySystem {
     /**
      * Deterministic intra-candle price path that respects OHLC logic.
      *
-     * Strategy: Build waypoints [open → first wick → opposite wick → close],
-     * allocate tick-budget proportionally, then fill each segment with a
-     * simple linear walk plus gentle random wobble. This gives even pacing
-     * (no sudden jumps) while keeping the candle shape logical.
+     * Guided random walk — price wanders freely with momentum and noise,
+     * gently pulled toward shifting attractors that ensure high/low are
+     * visited and close is reached. The visit order and timing are
+     * randomised per-candle so no two candles animate the same way.
      */
     generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
         const rng = this.createSeededRandom(seed);
@@ -3317,65 +3317,92 @@ class ReplaySystem {
             return p;
         }
 
-        // --- decide visit order based on wick proportions ---
         const isBullish = close >= open;
-        const upperWick = high - Math.max(open, close);
-        const lowerWick = Math.min(open, close) - low;
 
-        let visitLowFirst;
-        if (isBullish) {
-            visitLowFirst = lowerWick >= upperWick * 0.4 ? true : (rng() < 0.3);
-        } else {
-            visitLowFirst = lowerWick > upperWick * 2.0 ? true : (rng() < 0.7 ? false : true);
-        }
+        // Randomly decide which extreme to visit first (biased by direction)
+        const visitLowFirst = isBullish ? (rng() < 0.62) : (rng() < 0.38);
+        const firstExtreme  = visitLowFirst ? low : high;
+        const secondExtreme = visitLowFirst ? high : low;
 
-        // --- build waypoint list ---
-        const wp = [open];
-        const push = (v) => { if (Math.abs(v - wp[wp.length - 1]) > range * 1e-9) wp.push(v); };
-        if (visitLowFirst) { push(low); push(high); }
-        else               { push(high); push(low); }
-        push(close);
+        // Randomised timing for each phase — prevents predictable O→H→L→C feel
+        const t1 = 0.12 + rng() * 0.26;
+        const t2 = Math.max(t1 + 0.18, 0.45 + rng() * 0.22);
+        const tSettle = 0.82 + rng() * 0.08;
 
-        // --- allocate ticks proportionally to segment length ---
-        const segLen = [];
-        for (let i = 0; i < wp.length - 1; i++) segLen.push(Math.abs(wp[i + 1] - wp[i]));
-        const totalLen = segLen.reduce((a, b) => a + b, 0) || 1;
-        const budget = n - 1;
+        const maxStep = range / (n * 0.22);
+        const friction = 0.84 + rng() * 0.06;
+        const noiseAmp = range * 0.010;
 
-        const alloc = segLen.map(l => Math.max(2, Math.round((l / totalLen) * budget)));
-        let allocSum = alloc.reduce((a, b) => a + b, 0);
-        while (allocSum > budget) {
-            let best = 0;
-            for (let i = 1; i < alloc.length; i++) if (alloc[i] > alloc[best]) best = i;
-            alloc[best]--;
-            allocSum--;
-        }
-        while (allocSum < budget) {
-            let best = 0;
-            for (let i = 1; i < alloc.length; i++) if (alloc[i] < alloc[best]) best = i;
-            alloc[best]++;
-            allocSum++;
-        }
-
-        // --- fill path: linear walk with small wobble per segment ---
         const path = new Array(n);
-        let idx = 0;
-        const wobble = range * 0.003;
+        let price = open;
+        let velocity = 0;
 
-        for (let s = 0; s < segLen.length; s++) {
-            const from = wp[s];
-            const to   = wp[s + 1];
-            const cnt  = alloc[s];
-            for (let k = 0; k < cnt; k++) {
-                const t = (k + 1) / cnt;
-                let px = from + (to - from) * t;
-                px += (rng() - 0.5) * wobble;
-                path[idx++] = Math.max(low, Math.min(high, px));
+        for (let i = 0; i < n; i++) {
+            if (i === n - 1) { path[i] = close; break; }
+
+            const t = i / (n - 1);
+
+            // Shifting attractor + pull strength per phase
+            let attractor, pull;
+            if (t < t1) {
+                const p = t / t1;
+                attractor = open + (firstExtreme - open) * p;
+                pull = 0.05 + p * 0.10;
+            } else if (t < t2) {
+                const p = (t - t1) / (t2 - t1);
+                attractor = firstExtreme + (secondExtreme - firstExtreme) * p;
+                pull = 0.05 + p * 0.10;
+            } else if (t < tSettle) {
+                const p = (t - t2) / (tSettle - t2);
+                attractor = secondExtreme + (close - secondExtreme) * p;
+                pull = 0.08 + p * 0.14;
+            } else {
+                attractor = close;
+                const p = (t - tSettle) / (1 - tSettle);
+                pull = 0.22 + p * 0.58;
+            }
+
+            // Random noise (dampened near candle end for clean close)
+            const nScale = t < 0.78 ? 1.0 : Math.max(0.15, 1.0 - (t - 0.78) / 0.22 * 0.85);
+            const noise = (rng() - 0.5) * noiseAmp * nScale;
+
+            // Occasional momentum burst — adds randomness
+            if (rng() < 0.07) velocity += (rng() - 0.5) * range * 0.018;
+
+            velocity = velocity * friction + (attractor - price) * pull + noise;
+            velocity = Math.max(-maxStep, Math.min(maxStep, velocity));
+            price = Math.max(low, Math.min(high, price + velocity));
+
+            path[i] = price;
+        }
+
+        // Smooth post-process: if the walk didn't quite touch an extreme,
+        // gently push a neighbourhood of ticks toward it (no teleporting).
+        let pMin = path[0], pMax = path[0], minI = 0, maxI = 0;
+        for (let i = 1; i < n - 1; i++) {
+            if (path[i] < pMin) { pMin = path[i]; minI = i; }
+            if (path[i] > pMax) { pMax = path[i]; maxI = i; }
+        }
+        const spread = Math.max(3, Math.floor(n * 0.07));
+        if (pMin > low + range * 0.004) {
+            const gap = low - pMin;
+            for (let j = -spread; j <= spread; j++) {
+                const k = minI + j;
+                if (k < 0 || k >= n - 1) continue;
+                path[k] = Math.max(low, path[k] + gap * (1 - Math.abs(j) / (spread + 1)));
             }
         }
-        while (idx < n - 1) { path[idx] = path[idx - 1] ?? close; idx++; }
-        path[n - 1] = close;
+        if (pMax < high - range * 0.004) {
+            const gap = high - pMax;
+            for (let j = -spread; j <= spread; j++) {
+                const k = maxI + j;
+                if (k < 0 || k >= n - 1) continue;
+                path[k] = Math.min(high, path[k] + gap * (1 - Math.abs(j) / (spread + 1)));
+            }
+        }
 
+        for (let i = 0; i < n; i++) path[i] = Math.max(low, Math.min(high, path[i]));
+        path[n - 1] = close;
         return path;
     }
     
