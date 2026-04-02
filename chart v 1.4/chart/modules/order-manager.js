@@ -11152,6 +11152,28 @@ class OrderManager {
         return Math.max(p, high + slPad);
     }
 
+    /**
+     * TP must stay on the profit side of SL: long → TP above SL; short → TP below SL.
+     */
+    _clampTpDragPrice(price) {
+        let p = Number(price);
+        if (!Number.isFinite(p)) return price;
+        if (!document.getElementById('enableSL')?.checked) return p;
+        let slP = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const slPrev = this.previewLines?.sl;
+        if (slPrev && !slPrev.isBadge && Number.isFinite(slPrev.price) && slPrev.price > 0) {
+            slP = slPrev.price;
+        }
+        if (!(slP > 0)) return p;
+        const pip = this.pipSize || 0.0001;
+        const pad = Math.max(pip * 0.5, 1e-12);
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        if (side === 'BUY') {
+            return Math.max(p, slP + pad);
+        }
+        return Math.min(p, slP - pad);
+    }
+
     makePreviewLineDraggable(lineData) {
         const self = this;
         let isDragging = false;
@@ -11245,6 +11267,13 @@ class OrderManager {
 
                 if (lineData.label === 'SL' && enableSL) {
                     newPrice = self._clampSlDragPrice(newPrice);
+                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                }
+
+                const isTpDrag = lineData.label && String(lineData.label).startsWith('TP');
+                if (isTpDrag && enableSL) {
+                    newPrice = self._clampTpDragPrice(newPrice);
                     clampedY = self.chart.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
@@ -11924,6 +11953,11 @@ class OrderManager {
                 let newPrice = self.chart.scales.yScale.invert(clampedY);
                 if (label === 'SL' && document.getElementById('enableSL')?.checked) {
                     newPrice = self._clampSlDragPrice(newPrice);
+                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                }
+                if (label === 'TP' && document.getElementById('enableSL')?.checked) {
+                    newPrice = self._clampTpDragPrice(newPrice);
                     clampedY = self.chart.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
@@ -13683,12 +13717,14 @@ class OrderManager {
             return match ? parseFloat(match[1]) : this.chart.w - width - 18;
         })();
 
-        // End at label edge by default; preview TP/SL extends to right axis price.
+        // End at label edge by default; preview TP/SL/entry/avg extend to the right edge like other order lines.
         let lineEndX = Math.max(0, x);
         const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
         const isEntryTpSl = lineData.label === 'SL'
             || lineData.label === 'TP'
             || lineData.label === 'Entry'
+            || lineData.label === 'Avg Entry'
+            || !!lineData.isAvgEntryLine
             || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
         if (isPreviewOrder && isEntryTpSl) {
             lineEndX = this.chart.w;
