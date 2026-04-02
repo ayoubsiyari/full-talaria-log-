@@ -18517,7 +18517,6 @@ class OrderManager {
      */
     _updateSplitGroupAvgLines(ch) {
         if (!this.splitGroupAvgLines || !this.splitGroupAvgLines.length) return;
-        if (this._isDraggingOrderLine) return;
         const yScale = ch?.scales?.yScale;
         if (!yScale) return;
         const currentCandle = this.getCurrentCandle();
@@ -18656,6 +18655,8 @@ class OrderManager {
             }
 
             // --- Position individual order lines, aligned to same left edge ---
+            // Skip individual line repositioning during active drag to avoid fighting the drag handler
+            if (this._isDraggingOrderLine) continue;
             for (const { ml, lbw, pbw, isPending, od } of memberWidths) {
                 const price = isPending ? od.entryPrice : od.openPrice;
                 const oy = yScale(price);
