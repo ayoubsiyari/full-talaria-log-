@@ -7628,6 +7628,7 @@ class OrderManager {
         // Weighted average across multi-entry levels (chart preview)
         if (label === 'Avg Entry') {
             const accent = '#eab308';
+            const totalLots = parseFloat(document.getElementById('orderQuantity')?.value || 0);
             return [
                 {
                     text: 'Avg Entry',
@@ -7638,12 +7639,12 @@ class OrderManager {
                     minWidth: 64
                 },
                 {
-                    text: priceText,
+                    text: this.formatQuantity(totalLots),
                     fill: '#0f172a',
                     stroke: accent,
                     textColor: '#fde68a',
                     fontWeight: '600',
-                    minWidth: 56,
+                    minWidth: 44,
                     role: 'price'
                 }
             ];
@@ -13245,7 +13246,8 @@ class OrderManager {
             ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
         }
         if (ld.priceText) {
-            ld.priceText.text(formatted);
+            const totalLots = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+            ld.priceText.text(this.formatQuantity(totalLots));
         }
         const bbox = ld.labelDimensions;
         const h = bbox?.height || 0;
@@ -14024,6 +14026,7 @@ class OrderManager {
         const isEntryTpSl = lineData.label === 'SL'
             || lineData.label === 'TP'
             || lineData.label === 'Entry'
+            || lineData.label === 'Avg Entry'
             || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
         if (isPreviewOrder && isEntryTpSl) {
             lineEndX = this.chart.w;
@@ -14065,7 +14068,11 @@ class OrderManager {
 
         const tpOn = document.getElementById('enableTP')?.checked;
         const slOn = document.getElementById('enableSL')?.checked;
-        const entryPx = Number(this.previewLines.entry?.price) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0) || 0;
+        let entryPx = Number(this.previewLines.entry?.price) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0) || 0;
+        if (this.isMultiEntryMode && this.previewLines.avgEntry) {
+            const avgPx = Number(this.previewLines.avgEntry.price) || 0;
+            if (avgPx > 0) entryPx = avgPx;
+        }
         // Only include real lines (not badges) in the connector — badges sit on entry, no connector needed.
         const tpPreview = this.previewLines.tp;
         const tpPx = tpOn
@@ -14094,12 +14101,13 @@ class OrderManager {
             const lx = m ? parseFloat(m[1]) : NaN;
             if (Number.isFinite(lx)) leftXs.push(lx);
         };
-        pushLeftX(this.previewLines.entry);
+        const anchorLine = (this.isMultiEntryMode && this.previewLines.avgEntry) ? this.previewLines.avgEntry : this.previewLines.entry;
+        pushLeftX(anchorLine);
         if (tpOn) pushLeftX(this.previewLines.tp);
         if (slOn) pushLeftX(this.previewLines.sl);
         if (!leftXs.length) return;
-        const entryGroup = this.previewLines.entry?.labelGroup;
-        const entryW = this.previewLines.entry?.labelDimensions?.width || 0;
+        const entryGroup = anchorLine?.labelGroup;
+        const entryW = anchorLine?.labelDimensions?.width || 0;
         const trEntry = entryGroup?.attr('transform') || '';
         const mEntry = /translate\(([^,]+),/.exec(trEntry);
         const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
@@ -14112,43 +14120,44 @@ class OrderManager {
         const tpY = (tpOn && tpPx > 0) ? this.chart.scales.yScale(tpPx) : null;
         const slY = (slOn && slPx > 0) ? this.chart.scales.yScale(slPx) : null;
 
-        const isBuy = this.orderSide !== 'SELL';
-        const wrongSl = slOn && slPx > 0 && entryPx > 0 && (isBuy ? slPx >= entryPx : slPx <= entryPx);
-        const wrongTp = tpOn && tpPx > 0 && entryPx > 0 && (isBuy ? tpPx <= entryPx : tpPx >= entryPx);
-        const warnWrongDirection = wrongSl || wrongTp;
-        const connectorColor = warnWrongDirection ? '#f23645' : '#2962ff';
-
         const connectorGroup = this.chart.svg.append('g')
             .attr('class', 'preview-pending-connector')
             .style('pointer-events', 'none');
         this._pendingPreviewConnector = connectorGroup;
 
-        connectorGroup.append('line')
-            .attr('x1', anchorX)
-            .attr('x2', anchorX)
-            .attr('y1', yTop)
-            .attr('y2', yBot)
-            .attr('stroke', connectorColor)
-            .attr('stroke-width', 1)
-            .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', null)
-            .attr('opacity', 0.9);
-
+        const tpColor = '#26a69a';
+        const slColor = '#f23645';
         const dotStroke = '#0f172a';
-        const drawDot = (y) => connectorGroup.append('circle')
+
+        const drawSegment = (y1, y2, color) => {
+            connectorGroup.append('line')
+                .attr('x1', anchorX).attr('x2', anchorX)
+                .attr('y1', y1).attr('y2', y2)
+                .attr('stroke', color)
+                .attr('stroke-width', 1)
+                .attr('stroke-linecap', 'butt')
+                .attr('opacity', 0.9);
+        };
+        const drawDot = (y, color) => connectorGroup.append('circle')
             .attr('class', 'preview-pending-connector-dot')
-            .attr('cx', anchorX)
-            .attr('cy', y)
+            .attr('cx', anchorX).attr('cy', y)
             .attr('r', 2.5)
-            .attr('fill', connectorColor)
+            .attr('fill', color)
             .attr('stroke', dotStroke)
             .attr('stroke-width', 1)
             .attr('opacity', 0.95);
 
         this._pendingPreviewConnectorDots = [];
-        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY));
-        if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY));
-        if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY));
+
+        if (Number.isFinite(entryY) && Number.isFinite(tpY)) {
+            drawSegment(entryY, tpY, tpColor);
+        }
+        if (Number.isFinite(entryY) && Number.isFinite(slY)) {
+            drawSegment(entryY, slY, slColor);
+        }
+        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, '#eab308'));
+        if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY, tpColor));
+        if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY, slColor));
         try {
             connectorGroup.lower();
         } catch (_e) { /* ignore */ }
