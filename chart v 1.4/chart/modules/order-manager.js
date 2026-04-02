@@ -7604,26 +7604,29 @@ class OrderManager {
             ];
         }
 
-        // Weighted average across multi-entry levels (chart preview)
+        // Weighted average across multi-entry levels — same style as single Entry
         if (label === 'Avg Entry') {
-            const accent = '#eab308';
+            const quantity = document.getElementById('orderQuantity')?.value || '0';
+            const orderTypeRaw = this.orderType || 'market';
+            const sideUpper = (this.orderSide || 'BUY').toUpperCase();
+            const arrow = direction === 'BUY' ? '↑' : direction === 'SELL' ? '↓' : '↕';
+            const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this.formatQuantity(quantity)}`;
             return [
                 {
-                    text: 'Avg Entry',
-                    fill: 'rgba(234, 179, 8, 0.12)',
-                    stroke: accent,
-                    textColor: '#fbbf24',
-                    fontWeight: '600',
-                    minWidth: 64
+                    text: fullLabel,
+                    fill: color,
+                    stroke: color,
+                    textColor: '#ffffff',
+                    fontWeight: '700',
+                    minWidth: 104
                 },
                 {
-                    text: priceText,
+                    text: arrow,
                     fill: '#0f172a',
-                    stroke: accent,
-                    textColor: '#fde68a',
-                    fontWeight: '600',
-                    minWidth: 56,
-                    role: 'price'
+                    stroke: color,
+                    textColor: color,
+                    fontWeight: '700',
+                    minWidth: 28
                 }
             ];
         }
@@ -7934,8 +7937,10 @@ class OrderManager {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }
 
-        // Action badges on Entry line: Place (✓) and Cancel (✕)
-        if (isEntryLine && !isBadge) {
+        // Action badges: on Avg Entry in multi-entry mode, or on Entry in single-entry mode
+        const isAvgEntryLine = lineData.label === 'Avg Entry';
+        const showActionBadges = isAvgEntryLine || (isEntryLine && !this.isMultiEntryMode);
+        if (showActionBadges && !isBadge) {
             const currentBBox = lineData.labelGroup.node().getBBox();
             let actX = currentBBox.x + currentBBox.width + gap;
             const actSize = height;
@@ -8046,7 +8051,7 @@ class OrderManager {
                 x = this.chart.w - rightMargin - tpWidth - gap;
             }
         } else {
-            const pad = lineData.isAvgEntryLine ? 200 : 145;
+            const pad = 145;
             // Align all non-badge labels to the same left-edge X by using the widest label's width
             let maxW = bbox.width;
             for (const key of ['entry', 'tp', 'sl']) {
@@ -11084,7 +11089,7 @@ class OrderManager {
             && this.multiEntryLevels.filter(l => l.price > 0).length > 1) {
             const avgPrice = this._calcMultiEntryAvgPrice();
             if (avgPrice > 0) {
-                const avgLineColor = '#ca8a04';
+                const avgLineColor = (this.orderSide || 'BUY').toUpperCase() === 'BUY' ? '#2962ff' : '#ef4444';
                 this.previewLines.avgEntry = this.drawPreviewLine(
                     avgPrice,
                     avgLineColor,
@@ -11093,7 +11098,7 @@ class OrderManager {
                     false,
                     undefined,
                     undefined,
-                    { strokeDasharray: '7 5', smallLabel: true, isAvgEntryLine: true }
+                    { strokeDasharray: '7 5', isAvgEntryLine: true }
                 );
             }
         }
@@ -19017,16 +19022,12 @@ class OrderManager {
             .style('display', 'none')
             .style('pointer-events', 'none');
 
-        const riskAmt = order.riskAmount || order.originalRiskAmount || 0;
         const lines = [
-            `${order.type} @ ${order.openPrice.toFixed(5)}`,
-            `Lots: ${order.quantity.toFixed(2)}`,
-            riskAmt > 0 ? `Risk: $${riskAmt.toFixed(2)}` : null,
-            order.stopLoss ? `SL: ${order.stopLoss.toFixed(5)}` : null,
-            order.takeProfit ? `TP: ${order.takeProfit.toFixed(5)}` : null,
-        ].filter(Boolean);
+            `${order.openPrice.toFixed(5)}`,
+            `${order.quantity.toFixed(2)} lots`,
+        ];
 
-        const lineH = 15, ttPad = 6, ttW = 140;
+        const lineH = 15, ttPad = 5, ttW = 100;
         const ttH = lines.length * lineH + ttPad * 2;
         const ttX = x + 14;
         const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
@@ -19135,19 +19136,12 @@ class OrderManager {
             .style('display', 'none')
             .style('pointer-events', 'none');
 
-        const pnlText = `${isProfitable ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
-        const holdMs = closeData.closeTime - order.openTime;
-        const holdMins = Math.floor(holdMs / 60000);
-        const holdStr = holdMins >= 60 ? `${Math.floor(holdMins / 60)}h ${holdMins % 60}m` : `${holdMins}m`;
-
         const lines = [
-            `Close @ ${closeData.closePrice.toFixed(5)}`,
-            `P&L: ${pnlText}`,
-            `Duration: ${holdStr}`,
-            `Lots: ${order.quantity.toFixed(2)}`,
+            `${closeData.closePrice.toFixed(5)}`,
+            `${order.quantity.toFixed(2)} lots`,
         ];
 
-        const lineH = 15, ttPad = 6, ttW = 140;
+        const lineH = 15, ttPad = 5, ttW = 100;
         const ttH = lines.length * lineH + ttPad * 2;
         const ttX = x + 14;
         const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
@@ -19163,9 +19157,9 @@ class OrderManager {
             ttGroup.append('text')
                 .attr('x', ttX + ttPad + 2)
                 .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
-                .attr('fill', i === 1 ? color : '#e2e8f0')
+                .attr('fill', i === 0 ? color : '#e2e8f0')
                 .attr('font-size', '10px')
-                .attr('font-weight', i <= 1 ? '700' : '400')
+                .attr('font-weight', i === 0 ? '700' : '400')
                 .attr('font-family', 'Roboto, sans-serif')
                 .text(txt);
         });
