@@ -14732,10 +14732,19 @@ class OrderManager {
                 
                 // Show positions panel and close order panel
                 this.showPositionsPanel();
-                this.toggleOrderPanel();
+                if (keepPanelOpen) {
+                    this._resetPanelForNewOrder();
+                } else {
+                    this.toggleOrderPanel();
+                }
             } else {
                 // No splits - place single order as normal
                 this.placePendingOrder(entryPrice, quantity, tpPrice, slPrice, actualRisk, autoBreakeven, breakevenSettings, trailingStop, tpTargets, currentCandle.t);
+                if (keepPanelOpen) {
+                    this._resetPanelForNewOrder();
+                } else {
+                    this.toggleOrderPanel();
+                }
             }
             return;
         }
@@ -14929,9 +14938,6 @@ class OrderManager {
 
         this.updatePositionsPanel();
         this.showPositionsPanel();
-        
-        // Close panel
-        this.toggleOrderPanel();
     }
     
     /**
