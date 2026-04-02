@@ -3704,8 +3704,7 @@ class ReplaySystem {
         }
 
         // Save partial tick state so resume can pick up where we left off.
-        // The chart display is rolled back to the last closed candle so timeframe
-        // switches still work against finalized data.
+        // The animated candle stays visible on screen (frozen in place).
         const hadPartialState = this.tickProgress > 0 || !!this.animatingCandle;
         if (hadPartialState) {
             this._savedTickState = {
@@ -3713,15 +3712,10 @@ class ReplaySystem {
                 tickProgress: this.tickProgress,
                 tickElapsedMs: this.tickElapsedMs
             };
-            this.animatingCandle = null;
+            // Keep animatingCandle alive so the chart keeps showing the
+            // partial candle.  Only clear the timer-driven fields.
             this.tickProgress = 0;
             this.tickElapsedMs = 0;
-            if (this.fullRawData && this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-            }
-            if (this.isActive) {
-                this.updateChartData(false);
-            }
         }
         
         // Hide tick progress indicator
