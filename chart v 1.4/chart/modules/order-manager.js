@@ -7577,13 +7577,33 @@ class OrderManager {
             const orderTypeRaw = this.orderType || 'market';
             const sideUpper = (this.orderSide || 'BUY').toUpperCase();
             const arrow = direction === 'BUY' ? '↑' : direction === 'SELL' ? '↓' : '↕';
-            
-            console.log(`📝 Creating Entry label: quantity from input = "${quantity}"`);
-            
-            // Combine everything in one label: "LIMIT BUY 100"
+
+            if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
+                const level = this.multiEntryLevels[0];
+                const lotSize = level ? this.formatQuantity(level.amount || 0) : '0';
+                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} #1`;
+                return [
+                    {
+                        text: fullLabel,
+                        fill: color,
+                        stroke: color,
+                        textColor: '#ffffff',
+                        fontWeight: '700',
+                        minWidth: 104
+                    },
+                    {
+                        text: lotSize,
+                        fill: '#0f172a',
+                        stroke: color,
+                        textColor: '#ffffff',
+                        fontWeight: '700',
+                        minWidth: 44,
+                        role: 'price'
+                    }
+                ];
+            }
+
             const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this.formatQuantity(quantity)}`;
-            console.log(`📝 Entry label text will be: "${fullLabel}"`);
-            
             return [
                 {
                     text: fullLabel,
@@ -7604,39 +7624,39 @@ class OrderManager {
             ];
         }
 
-        // Weighted average across multi-entry levels — same style as single Entry
+        // Weighted average across multi-entry levels (chart preview)
         if (label === 'Avg Entry') {
-            const quantity = document.getElementById('orderQuantity')?.value || '0';
-            const orderTypeRaw = this.orderType || 'market';
-            const sideUpper = (this.orderSide || 'BUY').toUpperCase();
-            const arrow = direction === 'BUY' ? '↑' : direction === 'SELL' ? '↓' : '↕';
-            const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this.formatQuantity(quantity)}`;
+            const accent = '#eab308';
             return [
                 {
-                    text: fullLabel,
-                    fill: color,
-                    stroke: color,
-                    textColor: '#ffffff',
-                    fontWeight: '700',
-                    minWidth: 104
+                    text: 'Avg Entry',
+                    fill: 'rgba(234, 179, 8, 0.12)',
+                    stroke: accent,
+                    textColor: '#fbbf24',
+                    fontWeight: '600',
+                    minWidth: 64
                 },
                 {
-                    text: arrow,
+                    text: priceText,
                     fill: '#0f172a',
-                    stroke: color,
-                    textColor: color,
-                    fontWeight: '700',
-                    minWidth: 28
+                    stroke: accent,
+                    textColor: '#fde68a',
+                    fontWeight: '600',
+                    minWidth: 56,
+                    role: 'price'
                 }
             ];
         }
 
-        // Split entry labels: "Entry#2:limit", "Entry#3:stop", etc. — same style as main Entry
+        // Split entry labels: "Entry#2:limit", "Entry#3:stop", etc.
         if (label && label.startsWith('Entry#')) {
             const parts = label.replace('Entry#', '').split(':');
             const levelNum = parts[0];
             const splitOrderType = (parts[1] || this.orderType || 'limit').toUpperCase();
             const sideUpper = (this.orderSide || 'BUY').toUpperCase();
+            const levelIndex = parseInt(levelNum, 10) - 1;
+            const level = (this.multiEntryLevels || [])[levelIndex];
+            const lotSize = level ? this.formatQuantity(level.amount || 0) : '0';
             
             const fullLabel = `${splitOrderType} ${sideUpper} #${levelNum}`;
             
@@ -7650,12 +7670,12 @@ class OrderManager {
                     minWidth: 104
                 },
                 {
-                    text: priceText,
+                    text: lotSize,
                     fill: '#0f172a',
                     stroke: color,
                     textColor: '#ffffff',
                     fontWeight: '700',
-                    minWidth: 74,
+                    minWidth: 44,
                     role: 'price'
                 }
             ];
@@ -8051,7 +8071,7 @@ class OrderManager {
                 x = this.chart.w - rightMargin - tpWidth - gap;
             }
         } else {
-            const pad = 145;
+            const pad = lineData.isAvgEntryLine ? 200 : 145;
             // Align all non-badge labels to the same left-edge X by using the widest label's width
             let maxW = bbox.width;
             for (const key of ['entry', 'tp', 'sl']) {
@@ -11089,7 +11109,7 @@ class OrderManager {
             && this.multiEntryLevels.filter(l => l.price > 0).length > 1) {
             const avgPrice = this._calcMultiEntryAvgPrice();
             if (avgPrice > 0) {
-                const avgLineColor = (this.orderSide || 'BUY').toUpperCase() === 'BUY' ? '#2962ff' : '#ef4444';
+                const avgLineColor = '#ca8a04';
                 this.previewLines.avgEntry = this.drawPreviewLine(
                     avgPrice,
                     avgLineColor,
@@ -11098,7 +11118,7 @@ class OrderManager {
                     false,
                     undefined,
                     undefined,
-                    { strokeDasharray: '7 5', isAvgEntryLine: true }
+                    { strokeDasharray: '7 5', smallLabel: true, isAvgEntryLine: true }
                 );
             }
         }
