@@ -11207,7 +11207,7 @@ class OrderManager {
                 if (pt.size()) pt.text(this.formatPrice(px));
             }
             if (ld.priceText) ld.priceText.text(this.formatPrice(px));
-            this.adjustPreviewLineForLabel(ld);
+            if (ld.line) this.adjustPreviewLineForLabel(ld);
         };
 
         if (document.getElementById('enableSL')?.checked) {
@@ -11222,6 +11222,8 @@ class OrderManager {
             const tpPx = parseFloat(document.getElementById('tpPrice')?.value || 0);
             if (tpPx > 0 && this.previewLines.tp) moveLd(this.previewLines.tp, tpPx);
         }
+
+        this._syncPendingLimitStopConnector();
     }
 
     makePreviewLineDraggable(lineData) {
@@ -11250,6 +11252,24 @@ class OrderManager {
                 
                 // Store initial values for comparison
                 lineData.dragStartPrice = lineData.price;
+
+                // Main entry drag: couple SL to the same price delta as entry (preserve stop distance on chart)
+                const isMainEntryDrag = lineData.label === 'Entry'
+                    || (lineData.label && lineData.label.startsWith('Entry#1:'));
+                if (isMainEntryDrag && document.getElementById('enableSL')?.checked) {
+                    const e0 = lineData.dragStartPrice;
+                    const s0 = parseFloat(document.getElementById('slPrice')?.value || 0);
+                    if (e0 > 0 && s0 > 0) {
+                        self._entryDragSlCoupleAnchorEntry = e0;
+                        self._entryDragSlCoupleAnchorSl = s0;
+                    } else {
+                        self._entryDragSlCoupleAnchorEntry = null;
+                        self._entryDragSlCoupleAnchorSl = null;
+                    }
+                } else {
+                    self._entryDragSlCoupleAnchorEntry = null;
+                    self._entryDragSlCoupleAnchorSl = null;
+                }
                 
                 // Create R:R indicator on Entry line for live feedback
                 if (lineData.label === 'Entry' && !lineData.rrIndicator) {
@@ -11629,8 +11649,15 @@ class OrderManager {
                             if (tpInput) tpInput.value = formattedPrice;
                         }
                     }
-                    // Do not move SL badge or write #slPrice when dragging entry — that looked like SL was
-                    // "set" to the entry price without the user touching SL. SL position stays from input / prior drag.
+                    // Move SL by the same Δ as entry so the stop tracks while dragging (distance preserved).
+                    if (self._entryDragSlCoupleAnchorEntry != null && self._entryDragSlCoupleAnchorSl != null
+                        && document.getElementById('enableSL')?.checked) {
+                        const delta = newPrice - self._entryDragSlCoupleAnchorEntry;
+                        let newSl = self._entryDragSlCoupleAnchorSl + delta;
+                        newSl = self._clampSlDragPrice(newSl);
+                        const slInput = document.getElementById('slPrice');
+                        if (slInput) slInput.value = self.formatPrice(newSl);
+                    }
 
                     self._syncProtectionPreviewYFromInputs();
                     // Recalculate risk/reward since TP may still sync to entry (single-entry TP badge)
@@ -11907,6 +11934,12 @@ class OrderManager {
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
+
+                if (self._entryDragSlCoupleAnchorEntry != null) {
+                    self.slManuallyPositioned = true;
+                }
+                self._entryDragSlCoupleAnchorEntry = null;
+                self._entryDragSlCoupleAnchorSl = null;
                 
                 // Clean up temporary indicators
                 if (lineData.pipIndicator) {
