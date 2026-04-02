@@ -3298,136 +3298,103 @@ class ReplaySystem {
     }
     
     /**
-     * Deterministic intra-candle price path that respects OHLC and moves in a
-     * logical order (wick → opposite extreme → close). Uses smooth easing on
-     * polyline segments so wicks do not snap or jitter like the old random walk.
-     * @param {number} numTicks - Path length (must match ticksPerCandle for cache hits)
+     * Deterministic intra-candle price path that respects OHLC logic.
+     *
+     * Strategy: Build waypoints [open → first wick → opposite wick → close],
+     * allocate tick-budget proportionally, then fill each segment with a
+     * simple linear walk plus gentle random wobble. This gives even pacing
+     * (no sudden jumps) while keeping the candle shape logical.
      */
     generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
-        const random = this.createSeededRandom(seed);
-        const smoothstep = (t) => {
-            const x = Math.max(0, Math.min(1, t));
-            return x * x * (3 - 2 * x);
-        };
+        const rng = this.createSeededRandom(seed);
+        const n = Math.max(2, Math.floor(numTicks) || 2);
 
-        if (![open, high, low, close].every(Number.isFinite)) {
-            const n = Math.max(2, Math.floor(numTicks) || 2);
-            return new Array(n).fill(open);
-        }
+        if (![open, high, low, close].every(Number.isFinite)) return new Array(n).fill(open || 0);
 
-        const n = Math.max(2, Math.floor(numTicks));
         const range = high - low;
-        const eps = Math.max(1e-12, range * 1e-9);
-
-        if (range <= eps) {
-            const path = [];
-            for (let i = 0; i < n; i++) {
-                const u = n === 1 ? 0 : i / (n - 1);
-                path.push(open + (close - open) * u);
-            }
-            path[n - 1] = close;
-            return path;
+        if (range <= 0) {
+            const p = new Array(n);
+            for (let i = 0; i < n; i++) p[i] = open + (close - open) * (i / (n - 1));
+            p[n - 1] = close;
+            return p;
         }
 
-        const upperBody = Math.max(open, close);
-        const lowerBody = Math.min(open, close);
-        const upperWick = high - upperBody;
-        const lowerWick = lowerBody - low;
+        // --- decide visit order based on wick proportions ---
         const isBullish = close >= open;
+        const upperWick = high - Math.max(open, close);
+        const lowerWick = Math.min(open, close) - low;
 
         let visitLowFirst;
-        if (lowerWick > upperWick * 1.12) {
-            visitLowFirst = true;
-        } else if (upperWick > lowerWick * 1.12) {
-            visitLowFirst = false;
+        if (isBullish) {
+            visitLowFirst = lowerWick >= upperWick * 0.4 ? true : (rng() < 0.3);
         } else {
-            visitLowFirst = isBullish ? (random() < 0.52) : (random() < 0.48);
+            visitLowFirst = lowerWick > upperWick * 2.0 ? true : (rng() < 0.7 ? false : true);
         }
 
-        const waypoints = [open];
-        const pushPt = (p) => {
-            const last = waypoints[waypoints.length - 1];
-            if (Math.abs(p - last) > eps) waypoints.push(p);
-        };
-        if (visitLowFirst) {
-            pushPt(low);
-            pushPt(high);
-        } else {
-            pushPt(high);
-            pushPt(low);
-        }
-        pushPt(close);
+        // --- build waypoint list ---
+        const wp = [open];
+        const push = (v) => { if (Math.abs(v - wp[wp.length - 1]) > range * 1e-9) wp.push(v); };
+        if (visitLowFirst) { push(low); push(high); }
+        else               { push(high); push(low); }
+        push(close);
 
-        const segs = [];
-        for (let i = 0; i < waypoints.length - 1; i++) {
-            segs.push(Math.abs(waypoints[i + 1] - waypoints[i]));
-        }
-        const totalArc = segs.reduce((a, b) => a + b, 0) || 1;
-        const cum = [0];
-        for (let i = 0; i < segs.length; i++) cum.push(cum[i] + segs[i]);
+        // --- allocate ticks proportionally to segment length ---
+        const segLen = [];
+        for (let i = 0; i < wp.length - 1; i++) segLen.push(Math.abs(wp[i + 1] - wp[i]));
+        const totalLen = segLen.reduce((a, b) => a + b, 0) || 1;
+        const budget = n - 1;
 
-        const slots = n - 1;
+        const alloc = segLen.map(l => Math.max(2, Math.round((l / totalLen) * budget)));
+        let allocSum = alloc.reduce((a, b) => a + b, 0);
+        while (allocSum > budget) {
+            let best = 0;
+            for (let i = 1; i < alloc.length; i++) if (alloc[i] > alloc[best]) best = i;
+            alloc[best]--;
+            allocSum--;
+        }
+        while (allocSum < budget) {
+            let best = 0;
+            for (let i = 1; i < alloc.length; i++) if (alloc[i] < alloc[best]) best = i;
+            alloc[best]++;
+            allocSum++;
+        }
+
+        // --- fill path: linear walk with small wobble per segment ---
         const path = new Array(n);
-        const noiseMag = range * 0.0028;
+        let idx = 0;
+        const wobble = range * 0.003;
 
-        for (let j = 0; j < slots; j++) {
-            const target = ((j + 1) / slots) * totalArc;
-            let s = 0;
-            while (s < segs.length - 1 && cum[s + 1] < target - eps) s++;
-            const segStart = cum[s];
-            const segLen = segs[s];
-            const local = segLen < eps ? 1 : Math.max(0, Math.min(1, (target - segStart) / segLen));
-            const e = smoothstep(local);
-            const from = waypoints[s];
-            const to = waypoints[s + 1];
-            let px = from + (to - from) * e;
-            px += (random() - 0.5) * noiseMag;
-            path[j] = Math.max(low, Math.min(high, px));
-        }
-        path[n - 1] = close;
-
-        let minV = path[0];
-        let maxV = path[0];
-        let minI = 0;
-        let maxI = 0;
-        for (let i = 0; i < n - 1; i++) {
-            if (path[i] < minV) {
-                minV = path[i];
-                minI = i;
-            }
-            if (path[i] > maxV) {
-                maxV = path[i];
-                maxI = i;
+        for (let s = 0; s < segLen.length; s++) {
+            const from = wp[s];
+            const to   = wp[s + 1];
+            const cnt  = alloc[s];
+            for (let k = 0; k < cnt; k++) {
+                const t = (k + 1) / cnt;
+                let px = from + (to - from) * t;
+                px += (rng() - 0.5) * wobble;
+                path[idx++] = Math.max(low, Math.min(high, px));
             }
         }
-        if (minV > low + eps) {
-            const inject = Math.min(slots - 1, Math.max(0, Math.floor((n - 1) * (0.18 + random() * 0.22))));
-            if (inject !== maxI || minV > low + range * 0.02) path[inject] = low;
-        }
-        if (maxV < high - eps) {
-            let inject = Math.min(slots - 1, Math.max(0, Math.floor((n - 1) * (0.42 + random() * 0.22))));
-            if (inject === minI && inject < slots - 1) inject++;
-            path[inject] = high;
-        }
-
-        for (let i = 0; i < n; i++) {
-            path[i] = Math.max(low, Math.min(high, path[i]));
-        }
+        while (idx < n - 1) { path[idx] = path[idx - 1] ?? close; idx++; }
         path[n - 1] = close;
 
         return path;
     }
     
     /**
-     * Update chart display with the currently animating candle
+     * Update chart display with the currently animating candle.
+     * Uses a cached slice to avoid copying fullRawData on every tick.
      */
     updateChartWithAnimatedCandle() {
         if (!this.animatingCandle || !this.chart) return;
-        
-        // Create animated data up to current index plus the forming candle
-        const slicedRaw = this.fullRawData.slice(0, this.currentIndex + 1);
-        
-        // Add the animated candle
+
+        // Build the base slice once; reuse on subsequent ticks of the same candle.
+        if (!this._animSlice || this._animSliceIdx !== this.currentIndex) {
+            this._animSlice = this.fullRawData.slice(0, this.currentIndex + 1);
+            this._animSlice.push(null); // placeholder for animated candle
+            this._animSliceIdx = this.currentIndex;
+        }
+
         const animatedCandle = {
             t: this.animatingCandle.t,
             o: this.animatingCandle.open,
@@ -3436,30 +3403,39 @@ class ReplaySystem {
             c: this.animatingCandle.close,
             v: this.animatingCandle.volume
         };
-        slicedRaw.push(animatedCandle);
-        
-        // Update chart data
-        this.chart.rawData = slicedRaw;
-        this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
-        
-        if (this.tickProgress % 12 === 0 && this.chart.recalculateAllIndicators) {
+        this._animSlice[this._animSlice.length - 1] = animatedCandle;
+
+        this.chart.rawData = this._animSlice;
+
+        // Fast-path: only update the last resampled candle instead of
+        // re-running the full resample loop on every single tick.
+        const chartData = this.chart.data;
+        if (chartData && chartData.length > 0 && this.tickProgress > 1) {
+            const last = chartData[chartData.length - 1];
+            last.h = Math.max(last.h, animatedCandle.h);
+            last.l = Math.min(last.l, animatedCandle.l);
+            last.c = animatedCandle.c;
+            last.v = animatedCandle.v;
+        } else {
+            this.chart.data = this.chart.resampleData(this._animSlice, this.chart.currentTimeframe);
+        }
+
+        if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
             this.chart.recalculateAllIndicators();
         }
 
-        if (this.autoScrollEnabled && this.tickProgress % 6 === 0) {
+        if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
             this.chart.fitToView();
         }
-        
-        // Render immediately without scheduling for smoother animation
+
         if (this.chart.render) {
             this.chart.render();
         }
-        
-        if (this.tickProgress % 3 === 0) {
-            this.syncPanelChartsWithAnimatedCandle(slicedRaw, animatedCandle);
+
+        if (this.tickProgress % 4 === 0) {
+            this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
         }
-        
-        // Floating PnL must track every displayed tick (user expectation: live with the chart).
+
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();
         }
@@ -3553,11 +3529,11 @@ class ReplaySystem {
                     pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
                 }
                 
-                if (this.tickProgress % 12 === 0 && typeof pc.recalculateIndicators === 'function') {
+                if (this.tickProgress % 18 === 0 && typeof pc.recalculateIndicators === 'function') {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
 
-                if (this.autoScrollEnabled && this.tickProgress % 6 === 0) {
+                if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
                     if (pc.fitToView) {
                         pc.fitToView();
                     } else {
@@ -3565,7 +3541,7 @@ class ReplaySystem {
                         if (st) pc.offsetX = st.offsetX;
                     }
                 }
-                
+
                 if (pc.render) pc.render();
             } catch (error) {
                 // Silent fail during animation to prevent lag
@@ -3626,23 +3602,20 @@ class ReplaySystem {
      * If _preserveTickProgress is set, keeps animatingCandle and tickProgress intact
      */
     stopTickAnimation() {
-        
         if (this.tickInterval) {
-            clearTimeout(this.tickInterval); // Changed to clearTimeout for volume-weighted scheduling
+            clearTimeout(this.tickInterval);
             this.tickInterval = null;
         }
-        
-        // Only clear animation state if NOT preserving for timeframe change
+
         if (!this._preserveTickProgress) {
             this.animatingCandle = null;
             this.tickProgress = 0;
             this.tickElapsedMs = 0;
-        } else {
         }
-        
-        this.volumeTickData = null; // Clear volume data
-        
-        // Reset tick progress indicator
+
+        this._animSlice = null;
+        this._animSliceIdx = -1;
+        this.volumeTickData = null;
         this.updateTickProgress(0);
     }
 
