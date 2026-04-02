@@ -1406,6 +1406,16 @@ class OrderManager {
         row.classList.toggle('order-tp-card__inputs-row--two', mode === 'lot-size');
     }
 
+    _syncBalanceSourceToggle() {
+        const val = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+        document.querySelectorAll('.balance-source-tab').forEach(b => {
+            const isActive = b.dataset.balance === val;
+            b.classList.toggle('active', isActive);
+            b.style.background = isActive ? '#334155' : 'transparent';
+            b.style.color = isActive ? '#e2e8f0' : '#94a3b8';
+        });
+    }
+
     /** Lot-size mode: SL card shows Risk $ / Risk % instead of contract quantity. */
     _syncSlCardSecondaryRows() {
         const mode = this.positionSizeMode || 'risk-usd';
@@ -7086,13 +7096,19 @@ class OrderManager {
                         <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10">+</button>
                         </span>
                     </div>
-                    <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
-                        <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
-                        <span class="order-input-suffix">%</span>
-                        <span class="input-stepper-group">
-                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
-                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
-                        </span>
+                    <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                            <span class="order-input-suffix">%</span>
+                            <span class="input-stepper-group">
+                            <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
+                            <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
+                            </span>
+                        </div>
+                        <div id="balanceSourceToggle" class="order-button-group order-button-group--inline" style="justify-content: flex-start; gap: 0;">
+                            <button class="balance-source-tab active" type="button" data-balance="current" style="font-size: 10px; padding: 3px 10px; border-radius: 4px 0 0 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569; cursor: pointer;">Current Bal</button>
+                            <button class="balance-source-tab" type="button" data-balance="initial" style="font-size: 10px; padding: 3px 10px; border-radius: 0 4px 4px 0; background: transparent; color: #94a3b8; border: 1px solid #475569; border-left: none; cursor: pointer;">Initial Bal</button>
+                        </div>
                     </div>
                     <div id="lotSizeInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
                         <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
@@ -9006,6 +9022,24 @@ class OrderManager {
                 }
                 this.calculateAdvancedRiskReward();
                 this.updatePreviewLines();
+                this._syncBalanceSourceToggle();
+            };
+        });
+
+        // Balance source toggle buttons (compact, inside Risk % row)
+        document.querySelectorAll('.balance-source-tab').forEach(btn => {
+            btn.onclick = () => {
+                const val = btn.dataset.balance;
+                // Update hidden radio
+                const radio = document.querySelector(`input[name="balanceType"][value="${val}"]`);
+                if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
+                // Update active state
+                document.querySelectorAll('.balance-source-tab').forEach(b => {
+                    const isActive = b.dataset.balance === val;
+                    b.classList.toggle('active', isActive);
+                    b.style.background = isActive ? '#334155' : 'transparent';
+                    b.style.color = isActive ? '#e2e8f0' : '#94a3b8';
+                });
             };
         });
         
