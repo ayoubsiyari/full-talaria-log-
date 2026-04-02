@@ -110,13 +110,6 @@ class OrderManager {
         // Trade journal helpers
         this.currentTradeNote = null; // Currently active trade note form
 
-        // Replay behavior on automatic closes (TP/SL).
-        // Default is to continue replay; opt-in to legacy auto-pause via:
-        // localStorage.setItem('replayAutoPauseOnClose', '1')
-        this.autoPauseReplayOnAutoClose = false;
-        try {
-            this.autoPauseReplayOnAutoClose = localStorage.getItem('replayAutoPauseOnClose') === '1';
-        } catch (e) {}
         this.postExitTrackingMode = 'hours';
         this.postExitTrackingCandles = 50;
         
@@ -965,6 +958,15 @@ class OrderManager {
         const bgT = Number(bgBar.t);
         const animT = Number(anim.t);
         return Number.isFinite(bgT) && Number.isFinite(animT) && bgT === animT;
+    }
+
+    /** Pause replay playback when limit/stop fills or TP/SL fires so the chart does not keep advancing. */
+    _pauseReplayIfPlaying(reason) {
+        const rs = this.replaySystem;
+        if (rs && rs.isActive && rs.isPlaying) {
+            console.log(`⏸️ Pausing replay${reason ? ` (${reason})` : ''}`);
+            rs.pause();
+        }
     }
 
     _getPositionPipSize(position) {
@@ -15976,6 +15978,8 @@ class OrderManager {
         } else if (order.createdFromTool) {
             this.showTradeJournalModal(order, false, null);
         }
+
+        this._pauseReplayIfPlaying('pending order filled');
         
         this.updatePositionsPanel();
     }
@@ -16449,12 +16453,8 @@ class OrderManager {
         // Continue tracking MFE/MAE for closed positions
         this.updateMfeMaeTracking(currentCandle, high, low);
         
-        // Optional legacy behavior: pause replay after auto-close events.
-        if (positionsToClose.length > 0 && this.replaySystem && this.replaySystem.isPlaying) {
-            if (this.autoPauseReplayOnAutoClose) {
-                console.log('⏸️ Pausing replay due to TP/SL hit (autoPauseReplayOnAutoClose=1)');
-                this.replaySystem.pause();
-            }
+        if (positionsToClose.length > 0) {
+            this._pauseReplayIfPlaying('TP/SL hit');
         }
         
         this.equity = this.balance + totalPnL;
