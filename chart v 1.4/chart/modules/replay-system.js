@@ -3298,10 +3298,17 @@ class ReplaySystem {
     /**
      * Deterministic intra-candle price path that respects OHLC logic.
      *
-     * Heavy random walk with minimal guidance. Price bounces around freely
-     * inside the candle range — the only rules are: start at open, end at
-     * close, and touch high/low at some point. Everything else is noise,
-     * momentum bursts, and random direction changes.
+     * State-machine microstructure tick path.
+     *
+     * Four market states cycle randomly each candle:
+     *   CHOP     – two-sided noise, indecisive
+     *   BURST    – aggressive directional push
+     *   STALL    – absorption / consolidation (tiny moves)
+     *   PULLBACK – counter-trend retrace
+     *
+     * The candle is split into 3 segments between randomised anchors
+     * (e.g. O→L→H→C or O→H→L→C). Each segment runs its own state
+     * machine walk. Seeded RNG keeps it deterministic for pause/resume.
      */
     generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
         const rng = this.createSeededRandom(seed);
@@ -3317,83 +3324,125 @@ class ReplaySystem {
             return p;
         }
 
-        const mid = (high + low) / 2;
-        const maxStep = range / (n * 0.18);
+        const isBullish = close >= open;
+        const maxStep = range / (n * 0.16);
+        const vol = range * 0.06;
 
-        const path = new Array(n);
-        let price = open;
-        let velocity = (rng() - 0.5) * range * 0.02;
-        let dir = rng() > 0.5 ? 1 : -1;
-        let streak = 0;
+        // Randomised anchor order (not always O→L→H→C)
+        const visitLowFirst = isBullish ? (rng() < 0.60) : (rng() < 0.40);
+        const anchors = visitLowFirst ? [open, low, high, close] : [open, high, low, close];
 
-        for (let i = 0; i < n; i++) {
-            if (i === n - 1) { path[i] = close; break; }
+        // Budget per segment — proportional to distance with random jitter
+        const dists = [];
+        let totalDist = 0;
+        for (let i = 0; i < anchors.length - 1; i++) {
+            const d = Math.abs(anchors[i + 1] - anchors[i]) || range * 0.05;
+            dists.push(d);
+            totalDist += d;
+        }
+        const raw = dists.map(d => (d / totalDist) * n * (0.7 + rng() * 0.6));
+        const rawSum = raw.reduce((a, b) => a + b, 0);
+        const budgets = raw.map(b => Math.max(4, Math.round((b / rawSum) * (n - 1))));
+        let budgetSum = budgets.reduce((a, b) => a + b, 0);
+        while (budgetSum > n - 1) { budgets[budgets.indexOf(Math.max(...budgets))]--; budgetSum--; }
+        while (budgetSum < n - 1) { budgets[budgets.indexOf(Math.min(...budgets))]++; budgetSum++; }
 
-            const t = i / (n - 1);
-            const remaining = n - 1 - i;
+        // State-machine segment generator
+        const segment = (start, end, ticks) => {
+            if (ticks <= 1) return [start, end];
+            const direction = end > start ? 1 : -1;
+            const seg = [start];
+            let px = start;
+            let mom = 0;
+            let state = 0;     // 0=CHOP 1=BURST 2=STALL 3=PULLBACK
+            let stateDur = 0;
 
-            // --- dominant force: random noise + momentum ---
-            const noiseStr = range * 0.022;
-            const noise = (rng() - 0.5) * noiseStr;
+            for (let i = 1; i < ticks; i++) {
+                const progress = i / ticks;
+                const rem = ticks - i;
+                const targetDrift = (end - px) / rem;
 
-            // direction streaks: price tends to keep going the same way
-            // for a few ticks, then randomly reverses
-            streak++;
-            if (streak > 2 + Math.floor(rng() * 6)) {
-                if (rng() < 0.55) dir = -dir;
-                streak = 0;
+                // State transitions
+                stateDur++;
+                const r = rng();
+                if (state === 0) {
+                    if      (r < 0.09 && rem > 5) { state = 1; stateDur = 0; }
+                    else if (r < 0.16 && rem > 4) { state = 2; stateDur = 0; }
+                    else if (r < 0.22 && rem > 6 && progress > 0.12) { state = 3; stateDur = 0; }
+                } else if (state === 1 && stateDur > 2 + r * 4) {
+                    state = r < 0.35 ? 2 : 0; stateDur = 0;
+                } else if (state === 2 && stateDur > 2 + r * 3) {
+                    state = r < 0.4 ? 1 : 0; stateDur = 0;
+                } else if (state === 3 && stateDur > 3 + r * 4) {
+                    state = 0; stateDur = 0;
+                }
+
+                const noise = (rng() - 0.5) * 2;
+                let delta = 0;
+
+                if (state === 0) {        // CHOP
+                    mom = mom * 0.3 + noise * 0.7;
+                    delta = targetDrift * 0.35 + mom * vol * 0.6 + noise * vol * 0.45;
+                } else if (state === 1) { // BURST
+                    mom = mom * 0.7 + direction * 0.3;
+                    delta = direction * vol * (0.9 + rng() * 1.3) + targetDrift * 0.25;
+                } else if (state === 2) { // STALL
+                    mom *= 0.1;
+                    delta = noise * range * 0.002 * (0.5 + rng());
+                } else if (state === 3) { // PULLBACK
+                    mom = mom * 0.5 - direction * 0.5;
+                    delta = -direction * vol * (0.4 + rng() * 0.9) + noise * vol * 0.3;
+                }
+
+                // Gravity toward segment end ramps quadratically
+                delta += targetDrift * progress * progress * 1.6;
+
+                // Clamp step
+                delta = Math.max(-maxStep, Math.min(maxStep, delta));
+                px = Math.max(low, Math.min(high, px + delta));
+                seg.push(px);
             }
-            const drift = dir * range * (0.003 + rng() * 0.008);
+            seg.push(end);
+            return seg;
+        };
 
-            // momentum bursts (15% chance) — big random kicks
-            let burst = 0;
-            if (rng() < 0.15) {
-                burst = (rng() - 0.5) * range * 0.04;
-                if (rng() < 0.4) dir = -dir;
+        // Build full path from segments
+        const path = [];
+        for (let s = 0; s < anchors.length - 1; s++) {
+            const sub = segment(anchors[s], anchors[s + 1], budgets[s]);
+            if (s === 0) {
+                for (let j = 0; j < sub.length; j++) path.push(sub[j]);
+            } else {
+                for (let j = 1; j < sub.length; j++) path.push(sub[j]);
             }
-
-            // --- tiny close-pull only in the last ~15% of ticks ---
-            let closePull = 0;
-            if (t > 0.85) {
-                const urgency = (t - 0.85) / 0.15;
-                closePull = (close - price) * (0.04 + urgency * 0.35);
-            }
-
-            // --- boundary bounce: if near edge, push back gently ---
-            let boundaryPush = 0;
-            const distToHigh = high - price;
-            const distToLow = price - low;
-            if (distToHigh < range * 0.05) boundaryPush -= range * 0.008;
-            if (distToLow < range * 0.05) boundaryPush += range * 0.008;
-
-            velocity = velocity * 0.72 + noise + drift + burst + closePull + boundaryPush;
-            velocity = Math.max(-maxStep, Math.min(maxStep, velocity));
-            price = Math.max(low, Math.min(high, price + velocity));
-
-            path[i] = price;
         }
 
-        // --- ensure high and low are touched (smooth neighbourhood push) ---
+        // Pad or trim to exact length n
+        while (path.length < n) path.push(close);
+        if (path.length > n) path.length = n;
+        path[n - 1] = close;
+
+        // Smooth ensure high/low are touched
         let pMin = path[0], pMax = path[0], minI = 0, maxI = 0;
         for (let i = 1; i < n - 1; i++) {
             if (path[i] < pMin) { pMin = path[i]; minI = i; }
             if (path[i] > pMax) { pMax = path[i]; maxI = i; }
         }
-        const spread = Math.max(4, Math.floor(n * 0.08));
+        const sp = Math.max(4, Math.floor(n * 0.07));
         if (pMin > low + range * 0.003) {
             const gap = low - pMin;
-            for (let j = -spread; j <= spread; j++) {
+            for (let j = -sp; j <= sp; j++) {
                 const k = minI + j;
                 if (k < 0 || k >= n - 1) continue;
-                path[k] = Math.max(low, path[k] + gap * (1 - Math.abs(j) / (spread + 1)));
+                path[k] = Math.max(low, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
             }
         }
         if (pMax < high - range * 0.003) {
             const gap = high - pMax;
-            for (let j = -spread; j <= spread; j++) {
+            for (let j = -sp; j <= sp; j++) {
                 const k = maxI + j;
                 if (k < 0 || k >= n - 1) continue;
-                path[k] = Math.min(high, path[k] + gap * (1 - Math.abs(j) / (spread + 1)));
+                path[k] = Math.min(high, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
             }
         }
 
