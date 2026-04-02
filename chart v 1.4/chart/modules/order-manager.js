@@ -358,6 +358,7 @@ class OrderManager {
         s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
         s.selectAll('[class*="split-avg-"]').remove();
+        s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
         s.selectAll('g[class*="entry-marker-"]').remove();
         s.selectAll('text[class*="pip-indicator"]').remove();
@@ -17920,7 +17921,6 @@ class OrderManager {
                         }
                         const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
                         if (!clBtn.empty()) clBtn.attr('transform', `translate(${cX}, ${newY})`);
-                        line.attr('x2', Math.max(0, sX));
                     }
                 } else {
                     label.attr('y', newY - 5);
@@ -18634,7 +18634,7 @@ class OrderManager {
             // --- Position Avg Entry label ---
             g.line
                 .attr('x1', 0)
-                .attr('x2', Math.max(0, alignX))
+                .attr('x2', ch.w)
                 .attr('y1', y)
                 .attr('y2', y);
 
@@ -18653,7 +18653,7 @@ class OrderManager {
 
             this.drawYAxisPriceHighlight(avgPrice, '#ca8a04', 'entry', 0, ch);
 
-            // --- Draw connector from Avg Entry to TP/SL ---
+            // --- Draw connector on the right side (after close button, before Y-axis) ---
             if (g._connector) { try { g._connector.remove(); } catch (_) {} }
             const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
             const tpPx = refOrder?.takeProfit || 0;
@@ -18663,7 +18663,7 @@ class OrderManager {
                     .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
                     .style('pointer-events', 'none');
                 g._connector = connGroup;
-                const connX = alignX - 8;
+                const connX = rightEdge + 4;
                 const tpY = tpPx > 0 ? yScale(tpPx) : null;
                 const slY = slPx > 0 ? yScale(slPx) : null;
                 if (Number.isFinite(tpY)) {
@@ -18699,8 +18699,8 @@ class OrderManager {
                 if (!Number.isFinite(oy)) continue;
                 const boxY = oy - boxH / 2;
 
-                ml.line?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
-                ml.dragHitLine?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
+                ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
+                ml.dragHitLine?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
 
                 if (ml.priceBox) ml.priceBox.style('display', 'none');
                 if (ml.priceText) ml.priceText.style('display', 'none');
@@ -18751,11 +18751,6 @@ class OrderManager {
                         .attr('y', oy + 4)
                         .attr('text-anchor', 'start')
                         .style('display', null);
-                    ml.line?.attr('x2', Math.max(0, alignX));
-                    ml.dragHitLine?.attr('x2', Math.max(0, alignX));
-                } else {
-                    ml.line?.attr('x2', Math.max(0, alignX));
-                    ml.dragHitLine?.attr('x2', Math.max(0, alignX));
                 }
 
                 ml._handledBySplitGroup = true;
@@ -18836,7 +18831,7 @@ class OrderManager {
             .attr('font-weight', '700')
             .attr('letter-spacing', '0.01em')
             .style('cursor', 'pointer')
-            .text(`${orderTypeLabel} ${directionLabel}`);
+            .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
         
         // Right side price box (skip if created from position tool - it already shows the price)
         let priceBox = null;
@@ -19197,10 +19192,9 @@ class OrderManager {
                     : '#f59e0b';
 
                 const labelRect = labelGroup.append('rect')
-                    .attr('rx', 7)
+                    .attr('rx', 3)
                     .attr('fill', bgColor)
-                    .attr('stroke', '#e2e8f0')
-                    .attr('stroke-opacity', 0.28)
+                    .attr('stroke', bgColor)
                     .attr('stroke-width', 1);
 
                 let displayLabel = '';
@@ -19244,8 +19238,6 @@ class OrderManager {
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
-                target.line.attr('x2', Math.max(0, translateX));
-
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
                     this.makePendingTargetDraggable(target, entry.pendingOrder, ch);
                     target.dragApplied = true;
@@ -21024,10 +21016,8 @@ class OrderManager {
                     }
                     
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
-                    line.attr('x2', Math.max(0, startX));
                 }
                 
-                // Track this SL price for Y-axis highlight
                 yAxisHighlightPrices.sl.add(position.stopLoss);
             });
             
@@ -21168,10 +21158,8 @@ class OrderManager {
                     }
                     
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
-                    line.attr('x2', Math.max(0, startX));
                 }
                 
-                // Track this TP price for Y-axis highlight
                 yAxisHighlightPrices.tp.add(tpPrice);
             });
             
@@ -21373,8 +21361,6 @@ class OrderManager {
                     }
 
                     closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
-                    line.attr('x2', Math.max(0, startX));
-                    if (dragHitLine) dragHitLine.attr('x2', Math.max(0, startX));
                 }
 
                 const highlightColor = isPending
@@ -21390,11 +21376,85 @@ class OrderManager {
         this._updateSplitGroupAvgLines(ch);
         this.updateSLTPLines(ch);
         this.updateBELines(ch);
+        this._drawExecutedOrderConnectors(ch);
 
         if (ch === this.chart) {
             this.updatePreviewLinePositions();
         }
         this.positionPendingOrderTargets(ch);
+    }
+
+    _drawExecutedOrderConnectors(ch) {
+        if (!ch?.svg || !ch?.scales?.yScale) return;
+        ch.svg.selectAll('.exec-order-connector').remove();
+        const yScale = ch.scales.yScale;
+        const yAxisWidth = ch.margin?.r || 70;
+        const connX = ch.w - yAxisWidth + 4;
+
+        for (const pos of this.openPositions) {
+            if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
+            if (pos.isSplitEntry) continue;
+            const tpPx = pos.takeProfit || 0;
+            const slPx = pos.stopLoss || 0;
+            if (tpPx <= 0 && slPx <= 0) continue;
+            const entryY = yScale(pos.openPrice);
+            if (!Number.isFinite(entryY)) continue;
+            const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
+            if (tpPx > 0) {
+                const tpY = yScale(tpPx);
+                if (Number.isFinite(tpY)) {
+                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
+                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                    cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
+                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                }
+            }
+            if (slPx > 0) {
+                const slY = yScale(slPx);
+                if (Number.isFinite(slY)) {
+                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
+                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
+                    cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
+                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                }
+            }
+            const eColor = pos.type === 'BUY' ? '#2962ff' : '#f23645';
+            cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
+                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
+            try { cg.lower(); } catch (_) {}
+        }
+
+        for (const po of this.pendingOrders) {
+            if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
+            const tpPx = po.takeProfit || 0;
+            const slPx = po.stopLoss || 0;
+            if (tpPx <= 0 && slPx <= 0) continue;
+            const entryY = yScale(po.entryPrice);
+            if (!Number.isFinite(entryY)) continue;
+            const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
+            if (tpPx > 0) {
+                const tpY = yScale(tpPx);
+                if (Number.isFinite(tpY)) {
+                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
+                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                    cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
+                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                }
+            }
+            if (slPx > 0) {
+                const slY = yScale(slPx);
+                if (Number.isFinite(slY)) {
+                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
+                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
+                    cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
+                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                }
+            }
+            const eColor = po.direction === 'BUY' ? '#3b82f6' : '#ef4444';
+            cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
+                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
+            try { cg.lower(); } catch (_) {}
+        }
     }
 
     removeEntryMarker(orderId) {
