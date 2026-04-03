@@ -37,7 +37,7 @@ export default function SubscriptionSuccess() {
           const storedUser = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
           storedUser.has_journal_access = true;
           localStorage.setItem('talaria_current_user', JSON.stringify(storedUser));
-        } catch {}
+        } catch (e) {}
       }
     } catch (err) {
       console.error('Error verifying session:', err);

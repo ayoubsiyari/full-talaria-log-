@@ -5,9 +5,13 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from models import db, User, Subscription, SubscriptionPlan, Payment, WebhookLog
 from datetime import datetime, timedelta
+from collections import defaultdict
 from functools import wraps
+import threading
+import time
 import os
 import json
+import re
 
 try:
     import stripe
@@ -17,6 +21,90 @@ except ImportError:
     print("Warning: stripe not available. Subscription features will be disabled.")
 
 subscription_bp = Blueprint('subscriptions', __name__)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  RATE LIMITING & BRUTE-FORCE PROTECTION
+# ═══════════════════════════════════════════════════════════════════
+
+_rate_lock = threading.Lock()
+_coupon_attempts = defaultdict(list)     # ip -> [timestamp, ...]
+_coupon_blocks = {}                      # ip -> unblock_timestamp
+_checkout_attempts = defaultdict(list)   # ip -> [timestamp, ...]
+
+COUPON_MAX_ATTEMPTS = 5                  # max tries before soft-block
+COUPON_WINDOW_SECONDS = 600              # 10-minute sliding window
+COUPON_BLOCK_AFTER = 15                  # hard-block IP after N total fails
+COUPON_BLOCK_DURATION = 3600             # 1-hour hard-block
+CHECKOUT_MAX_PER_MINUTE = 3              # max checkout creates per IP per minute
+
+
+def _get_client_ip():
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    return forwarded.split(',')[0].strip() if forwarded else (request.remote_addr or '127.0.0.1')
+
+
+def _is_coupon_blocked(ip):
+    with _rate_lock:
+        if ip in _coupon_blocks:
+            if time.time() < _coupon_blocks[ip]:
+                return True
+            del _coupon_blocks[ip]
+    return False
+
+
+def _record_coupon_attempt(ip, success=False):
+    """Track coupon validation attempts per IP. Returns (allowed, remaining_attempts)."""
+    now = time.time()
+    with _rate_lock:
+        if ip in _coupon_blocks and now < _coupon_blocks[ip]:
+            return False, 0
+
+        cutoff = now - COUPON_WINDOW_SECONDS
+        _coupon_attempts[ip] = [t for t in _coupon_attempts[ip] if t > cutoff]
+
+        if success:
+            _coupon_attempts[ip].clear()
+            return True, COUPON_MAX_ATTEMPTS
+
+        _coupon_attempts[ip].append(now)
+        count = len(_coupon_attempts[ip])
+
+        if count >= COUPON_BLOCK_AFTER:
+            _coupon_blocks[ip] = now + COUPON_BLOCK_DURATION
+            try:
+                current_app.logger.warning(
+                    f"SECURITY: Coupon brute-force detected — blocked IP {ip} "
+                    f"for {COUPON_BLOCK_DURATION}s ({count} attempts in {COUPON_WINDOW_SECONDS}s)"
+                )
+            except RuntimeError:
+                pass
+            return False, 0
+
+        remaining = max(0, COUPON_MAX_ATTEMPTS - count)
+        return count <= COUPON_MAX_ATTEMPTS, remaining
+
+
+def _checkout_rate_ok(ip):
+    """Enforce checkout rate limit. Returns True if allowed."""
+    now = time.time()
+    with _rate_lock:
+        cutoff = now - 60
+        _checkout_attempts[ip] = [t for t in _checkout_attempts[ip] if t > cutoff]
+        if len(_checkout_attempts[ip]) >= CHECKOUT_MAX_PER_MINUTE:
+            return False
+        _checkout_attempts[ip].append(now)
+        return True
+
+
+def _sanitize_coupon_code(raw):
+    """Strip and validate coupon code format — alphanumeric, dashes, underscores, 3-50 chars."""
+    if not raw or not isinstance(raw, str):
+        return None
+    code = raw.strip().upper()
+    if not re.match(r'^[A-Z0-9_\-]{3,50}$', code):
+        return None
+    return code
 
 
 def _parse_features(raw):
@@ -32,6 +120,7 @@ def _parse_features(raw):
     except (json.JSONDecodeError, TypeError):
         pass
     return [s.strip() for s in raw.split(',') if s.strip()]
+
 
 # Initialize Stripe
 if STRIPE_AVAILABLE:
@@ -553,6 +642,122 @@ def create_coupon():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@subscription_bp.route('/coupons/<coupon_id>', methods=['DELETE'])
+@jwt_required()
+@admin_required
+def delete_coupon(coupon_id):
+    """Deactivate a coupon + its promotion codes in Stripe"""
+    try:
+        if not STRIPE_AVAILABLE or not stripe.api_key:
+            return jsonify({'error': 'Stripe not configured'}), 503
+
+        stripe.Coupon.delete(coupon_id)
+
+        return jsonify({'success': True, 'message': 'Coupon deleted'}), 200
+
+    except stripe.error.StripeError as e:
+        return jsonify({'error': f'Stripe error: {str(e)}'}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error deleting coupon: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# ─── SECURE COUPON VALIDATION (rate-limited, brute-force protected) ──────────
+
+@subscription_bp.route('/validate-coupon', methods=['POST'])
+@jwt_required()
+def validate_coupon():
+    """
+    Validate a promotion code before checkout.
+    Rate-limited per IP: 5 attempts per 10 min, hard-block after 15 fails.
+    """
+    ip = _get_client_ip()
+
+    if _is_coupon_blocked(ip):
+        return jsonify({
+            'error': 'Too many attempts. Please try again later.',
+            'blocked': True
+        }), 429
+
+    if not STRIPE_AVAILABLE or not stripe.api_key:
+        return jsonify({'error': 'Payment system not configured'}), 503
+
+    data = request.get_json() or {}
+    raw_code = data.get('code', '')
+    code = _sanitize_coupon_code(raw_code)
+
+    if not code:
+        return jsonify({'error': 'Invalid coupon code format'}), 400
+
+    allowed, remaining = _record_coupon_attempt(ip, success=False)
+    if not allowed:
+        return jsonify({
+            'error': 'Too many attempts. Please try again later.',
+            'blocked': True
+        }), 429
+
+    try:
+        promo_codes = stripe.PromotionCode.list(code=code, active=True, limit=1)
+
+        if not promo_codes.data:
+            return jsonify({
+                'valid': False,
+                'error': 'Invalid or expired coupon code',
+                'remaining_attempts': remaining
+            }), 200
+
+        promo = promo_codes.data[0]
+        coupon = promo.coupon
+
+        if not coupon.valid:
+            return jsonify({
+                'valid': False,
+                'error': 'This coupon has expired',
+                'remaining_attempts': remaining
+            }), 200
+
+        if promo.max_redemptions and promo.times_redeemed >= promo.max_redemptions:
+            return jsonify({
+                'valid': False,
+                'error': 'This coupon has reached its usage limit',
+                'remaining_attempts': remaining
+            }), 200
+
+        # Success — clear the attempt counter for this IP
+        _record_coupon_attempt(ip, success=True)
+
+        discount_info = {
+            'promo_id': promo.id,
+            'code': promo.code,
+            'coupon_id': coupon.id,
+        }
+        if coupon.percent_off:
+            discount_info['type'] = 'percent'
+            discount_info['percent_off'] = coupon.percent_off
+            discount_info['label'] = f'{coupon.percent_off}% off'
+        elif coupon.amount_off:
+            discount_info['type'] = 'amount'
+            discount_info['amount_off'] = coupon.amount_off / 100
+            discount_info['currency'] = coupon.currency or 'usd'
+            discount_info['label'] = f'${coupon.amount_off / 100:.2f} off'
+
+        discount_info['duration'] = coupon.duration
+        if coupon.duration == 'repeating' and coupon.duration_in_months:
+            discount_info['duration_in_months'] = coupon.duration_in_months
+
+        return jsonify({
+            'valid': True,
+            'discount': discount_info
+        }), 200
+
+    except stripe.error.StripeError as e:
+        current_app.logger.error(f"Stripe error validating coupon: {e}")
+        return jsonify({'valid': False, 'error': 'Could not validate coupon'}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error validating coupon: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 # ─── WEBHOOK LOGS ──────────────────────────────────────────────────────────
 
 @subscription_bp.route('/webhooks/logs', methods=['GET'])
@@ -597,10 +802,10 @@ def get_webhook_logs():
 
 @subscription_bp.route('/webhook', methods=['POST'])
 def stripe_webhook():
-    """Handle Stripe webhooks"""
+    """Handle Stripe webhooks with signature verification and idempotency."""
     if not STRIPE_AVAILABLE:
         return jsonify({'error': 'Stripe not available'}), 400
-    
+
     payload = request.get_data(as_text=True)
     sig_header = request.headers.get('Stripe-Signature')
     webhook_secret = (os.environ.get('STRIPE_WEBHOOK_SECRET') or '').strip()
@@ -611,59 +816,63 @@ def stripe_webhook():
 
     if not sig_header:
         return jsonify({'error': 'Missing Stripe-Signature header'}), 400
-    
+
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, webhook_secret
-        )
-        
-        # Log the webhook
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+
+        event_id = event.get('id', '')
+        event_type = event.get('type', 'unknown')
+
+        # ── Idempotency: skip if we already processed this exact event ──
+        if event_id:
+            existing = WebhookLog.query.filter_by(event_id=event_id, status='processed').first()
+            if existing:
+                return jsonify({'received': True, 'duplicate': True}), 200
+
         log = WebhookLog(
-            event_type=event.get('type', 'unknown'),
-            event_id=event.get('id', ''),
-            payload=payload[:5000],  # Truncate payload
+            event_type=event_type,
+            event_id=event_id,
+            payload=payload[:5000],
             status='received'
         )
         db.session.add(log)
-        
-        # Handle specific events
-        event_type = event.get('type', '')
-        
+
         if event_type == 'customer.subscription.created':
             handle_subscription_created(event['data']['object'])
             log.status = 'processed'
-            
+
         elif event_type == 'customer.subscription.updated':
             handle_subscription_updated(event['data']['object'])
             log.status = 'processed'
-            
+
         elif event_type == 'customer.subscription.deleted':
             handle_subscription_deleted(event['data']['object'])
             log.status = 'processed'
-            
+
         elif event_type == 'invoice.payment_succeeded':
             handle_payment_succeeded(event['data']['object'])
             log.status = 'processed'
-            
+
         elif event_type == 'invoice.payment_failed':
             handle_payment_failed(event['data']['object'])
             log.status = 'processed'
-        
+
         elif event_type == 'checkout.session.completed':
             handle_checkout_completed(event['data']['object'])
             log.status = 'processed'
-        
+
         db.session.commit()
-        
+
         return jsonify({'received': True}), 200
-        
-    except ValueError as e:
+
+    except ValueError:
         return jsonify({'error': 'Invalid payload'}), 400
-    except stripe.error.SignatureVerificationError as e:
+    except stripe.error.SignatureVerificationError:
         return jsonify({'error': 'Invalid signature'}), 400
     except Exception as e:
         current_app.logger.error(f"Webhook error: {e}")
-        return jsonify({'error': str(e)}), 500
+        db.session.rollback()
+        return jsonify({'error': 'Internal error'}), 500
 
 
 def handle_subscription_created(sub_data):
@@ -1110,29 +1319,35 @@ def get_my_subscription():
 @subscription_bp.route('/checkout', methods=['POST'])
 @jwt_required()
 def create_checkout_session():
-    """Create a Stripe Checkout session for subscription"""
+    """Create a Stripe Checkout session for subscription.
+    Rate-limited per IP. Accepts optional coupon_code (must be pre-validated via /validate-coupon)."""
+    ip = _get_client_ip()
+    if not _checkout_rate_ok(ip):
+        return jsonify({'error': 'Too many checkout attempts. Please wait a moment.'}), 429
+
     try:
         if not STRIPE_AVAILABLE or not stripe.api_key:
             return jsonify({'error': 'Payment system not configured'}), 503
-        
+
         user_id = get_jwt_identity()
         user = User.query.get(user_id)
-        
+
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
+
         data = request.get_json() or {}
         plan_id = data.get('plan_id')
+        coupon_code = _sanitize_coupon_code(data.get('coupon_code', ''))
         success_url = data.get('success_url', os.environ.get('FRONTEND_URL', 'http://localhost:3001') + '/subscription/success')
         cancel_url = data.get('cancel_url', os.environ.get('FRONTEND_URL', 'http://localhost:3001') + '/pricing')
-        
+
         if not plan_id:
             return jsonify({'error': 'Plan ID is required'}), 400
-        
+
         plan = SubscriptionPlan.query.get(plan_id)
         if not plan or not plan.is_active:
             return jsonify({'error': 'Invalid plan'}), 400
-        
+
         # Auto-create Stripe product/price if not yet linked
         if not plan.stripe_price_id:
             try:
@@ -1153,7 +1368,7 @@ def create_checkout_session():
             except stripe.error.StripeError as e:
                 current_app.logger.error(f"Failed to auto-create Stripe price for plan {plan.id}: {e}")
                 return jsonify({'error': 'Failed to configure plan for payments'}), 500
-        
+
         # Get or create Stripe customer
         if not user.stripe_customer_id:
             customer = stripe.Customer.create(
@@ -1163,8 +1378,8 @@ def create_checkout_session():
             )
             user.stripe_customer_id = customer.id
             db.session.commit()
-        
-        # Create checkout session
+
+        # Build checkout session
         session_params = {
             'customer': user.stripe_customer_id,
             'payment_method_types': ['card'],
@@ -1185,21 +1400,32 @@ def create_checkout_session():
                     'plan_id': plan.id
                 }
             },
-            'allow_promotion_codes': True,
         }
-        
-        # Add trial period if plan has one
-        if plan.trial_days > 0:
+
+        # Apply server-validated coupon instead of open allow_promotion_codes
+        if coupon_code:
+            try:
+                promo_list = stripe.PromotionCode.list(code=coupon_code, active=True, limit=1)
+                if promo_list.data and promo_list.data[0].coupon.valid:
+                    session_params['discounts'] = [{'promotion_code': promo_list.data[0].id}]
+                else:
+                    return jsonify({'error': 'Invalid or expired coupon code'}), 400
+            except stripe.error.StripeError:
+                return jsonify({'error': 'Could not apply coupon'}), 400
+        # No allow_promotion_codes — users must use /validate-coupon first
+
+        # Add trial period if plan has one (only if no coupon applied — avoid stacking)
+        if plan.trial_days > 0 and 'discounts' not in session_params:
             session_params['subscription_data']['trial_period_days'] = plan.trial_days
-        
+
         session = stripe.checkout.Session.create(**session_params)
-        
+
         return jsonify({
             'success': True,
             'checkout_url': session.url,
             'session_id': session.id
         }), 200
-        
+
     except stripe.error.StripeError as e:
         current_app.logger.error(f"Stripe error creating checkout: {e}")
         return jsonify({'error': str(e)}), 400

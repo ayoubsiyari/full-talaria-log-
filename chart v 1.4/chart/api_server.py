@@ -4131,6 +4131,104 @@ async def admin_cancel_subscription(sub_id: int, request: Request):
         db.close()
 
 # ═══════════════════════════════════════════════════════════════════
+#  ADMIN — Coupons & Promo Codes (Stripe direct)
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/admin/subscriptions/coupons")
+async def admin_list_coupons(request: Request):
+    _require_admin(request)
+    try:
+        import stripe as _stripe
+        _stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        if not _stripe.api_key:
+            return {"coupons": [], "message": "Stripe not configured"}
+
+        coupons = _stripe.Coupon.list(limit=100)
+        promo_codes = _stripe.PromotionCode.list(limit=100)
+        coupon_promos = {}
+        for pc in promo_codes.data:
+            cid = pc.coupon.id if pc.coupon else None
+            if cid:
+                coupon_promos.setdefault(cid, []).append(pc.code)
+
+        return {"coupons": [{
+            "id": c.id,
+            "name": c.name,
+            "percent_off": c.percent_off,
+            "amount_off": c.amount_off,
+            "duration": c.duration,
+            "duration_in_months": c.duration_in_months,
+            "max_redemptions": c.max_redemptions,
+            "times_redeemed": c.times_redeemed,
+            "valid": c.valid,
+            "promotion_codes": coupon_promos.get(c.id, []),
+        } for c in coupons.data]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/subscriptions/coupons")
+async def admin_create_coupon(request: Request):
+    _require_admin(request)
+    try:
+        import stripe as _stripe
+        _stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        if not _stripe.api_key:
+            raise HTTPException(status_code=503, detail="Stripe not configured")
+
+        body = await request.json()
+        coupon_params = {"name": body.get("name", "Discount"), "duration": body.get("duration", "once")}
+
+        if body.get("percent_off"):
+            coupon_params["percent_off"] = body["percent_off"]
+        elif body.get("amount_off"):
+            coupon_params["amount_off"] = int(float(body["amount_off"]) * 100)
+            coupon_params["currency"] = "usd"
+        else:
+            raise HTTPException(status_code=400, detail="Must provide percent_off or amount_off")
+
+        if body.get("duration_in_months"):
+            coupon_params["duration_in_months"] = body["duration_in_months"]
+        if body.get("max_redemptions"):
+            coupon_params["max_redemptions"] = body["max_redemptions"]
+
+        coupon = _stripe.Coupon.create(**coupon_params)
+
+        promo_code_str = (body.get("code") or "").strip().upper()
+        promo = None
+        if promo_code_str:
+            promo_params = {"coupon": coupon.id, "code": promo_code_str}
+            if body.get("max_redemptions"):
+                promo_params["max_redemptions"] = body["max_redemptions"]
+            promo = _stripe.PromotionCode.create(**promo_params)
+
+        return {
+            "success": True,
+            "coupon": {"id": coupon.id, "name": coupon.name},
+            "promotion_code": {"id": promo.id, "code": promo.code} if promo else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/admin/subscriptions/coupons/{coupon_id}")
+async def admin_delete_coupon(coupon_id: str, request: Request):
+    _require_admin(request)
+    try:
+        import stripe as _stripe
+        _stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        if not _stripe.api_key:
+            raise HTTPException(status_code=503, detail="Stripe not configured")
+
+        _stripe.Coupon.delete(coupon_id)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  ADMIN — Payments & Revenue
 # ═══════════════════════════════════════════════════════════════════
 

@@ -885,6 +885,38 @@ select { cursor: pointer; }
   </div>
 </div>
 
+<!-- Create Coupon Modal -->
+<div class="modal-overlay" id="couponModal">
+  <div class="modal">
+    <h2>Create Coupon</h2>
+    <div class="form-grid">
+      <div class="field"><label>Promo Code</label><input type="text" id="couponCode" placeholder="e.g. SAVE20" style="text-transform:uppercase" maxlength="50"></div>
+      <div class="field"><label>Discount Type</label>
+        <select id="couponType" onchange="toggleCouponFields()">
+          <option value="percent">Percent Off</option>
+          <option value="amount">Fixed Amount Off</option>
+        </select>
+      </div>
+      <div class="field" id="couponPercentField"><label>Percent Off (%)</label><input type="number" id="couponPercent" min="1" max="100" value="20"></div>
+      <div class="field" id="couponAmountField" style="display:none"><label>Amount Off ($)</label><input type="number" id="couponAmount" min="1" step="0.01" value="10"></div>
+      <div class="field"><label>Duration</label>
+        <select id="couponDuration">
+          <option value="once">Once</option>
+          <option value="repeating">Repeating</option>
+          <option value="forever">Forever</option>
+        </select>
+      </div>
+      <div class="field"><label>Duration (months)</label><input type="number" id="couponDurationMonths" min="1" value="3" placeholder="Only for repeating"></div>
+      <div class="field"><label>Max Redemptions</label><input type="number" id="couponMaxRedemptions" min="0" value="" placeholder="0 = unlimited"></div>
+      <div class="field"><label>Coupon Name</label><input type="text" id="couponName" placeholder="e.g. Summer Sale 20%"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="$('couponModal').classList.remove('open')">Cancel</button>
+      <button class="btn primary" onclick="saveCoupon()">Create Coupon</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── App Shell ──────────────────────────────── -->
 <div class="app" id="appShell" style="display:none">
   <!-- Sidebar -->
@@ -1221,6 +1253,28 @@ select { cursor: pointer; }
             <div class="empty-state" id="emptyPlans" style="display:none">
               <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H5"/></svg></div>
               <p>No subscription plans yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Coupon Management -->
+        <div class="card">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <div class="card-title">Coupons &amp; Promo Codes</div>
+            <button class="btn sm primary" onclick="openCreateCouponModal()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New Coupon
+            </button>
+          </div>
+          <div class="card-body" style="padding:0;max-height:400px;overflow-y:auto">
+            <table>
+              <thead><tr><th>Code</th><th>Discount</th><th>Duration</th><th>Uses</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="couponsBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyCoupons" style="display:none">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></div>
+              <p>No coupons yet. Create one to offer discounts.</p>
             </div>
           </div>
         </div>
@@ -1944,7 +1998,7 @@ async function waitForDukascopyJob(jobId) {
 //  SUBSCRIPTIONS & PLANS
 // ═══════════════════════════════════════════════════════════
 async function loadSubscriptionData() {
-  await Promise.all([loadPlans(), loadSubscriptions(), loadSubStats()]);
+  await Promise.all([loadPlans(), loadSubscriptions(), loadSubStats(), loadCoupons()]);
 }
 
 async function loadPlans() {
@@ -2138,6 +2192,101 @@ async function cancelSubscription(id, name) {
   if (!confirm(`Cancel subscription for ${name}?`)) return;
   try { await api(`/api/admin/subscriptions/${id}/cancel`, { method: 'POST' }); toast('Subscription canceled', 'ok'); await loadSubscriptionData(); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+// ─── Coupon Management ───────────────────────────────────────
+let allCoupons = [];
+
+async function loadCoupons() {
+  try {
+    const data = await api('/api/admin/subscriptions/coupons');
+    allCoupons = data.coupons || [];
+    renderCoupons();
+  } catch (e) { console.warn('Could not load coupons:', e.message); allCoupons = []; renderCoupons(); }
+}
+
+function renderCoupons() {
+  const tbody = $('couponsBody');
+  const empty = $('emptyCoupons');
+  if (!tbody) return;
+  empty.style.display = allCoupons.length === 0 ? '' : 'none';
+  if (!allCoupons.length) { tbody.innerHTML = ''; return; }
+  tbody.innerHTML = allCoupons.map(c => {
+    const codes = (c.promotion_codes || []).join(', ') || '—';
+    const discount = c.percent_off ? `${c.percent_off}%` : c.amount_off ? `$${(c.amount_off / 100).toFixed(2)}` : '—';
+    const dur = c.duration === 'repeating' ? `${c.duration_in_months}mo` : c.duration;
+    const uses = `${c.times_redeemed || 0}${c.max_redemptions ? '/' + c.max_redemptions : ''}`;
+    const valid = c.valid;
+    const statusCls = valid ? 'badge-active' : 'badge-expired';
+    const statusTxt = valid ? 'Active' : 'Expired';
+    return `<tr>
+      <td><div style="font-weight:600;font-family:monospace;letter-spacing:0.5px">${esc(codes)}</div><div style="font-size:10px;color:var(--text-muted)">${esc(c.name || '')}</div></td>
+      <td style="font-weight:600">${discount}</td>
+      <td style="font-size:12px">${dur}</td>
+      <td style="font-size:12px">${uses}</td>
+      <td><span class="badge ${statusCls}">${statusTxt}</span></td>
+      <td>${valid ? `<button class="btn sm danger" onclick="deleteCoupon('${esc(c.id)}','${esc(codes)}')">Delete</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleCouponFields() {
+  const type = $('couponType').value;
+  $('couponPercentField').style.display = type === 'percent' ? '' : 'none';
+  $('couponAmountField').style.display = type === 'amount' ? '' : 'none';
+}
+
+function openCreateCouponModal() {
+  $('couponCode').value = '';
+  $('couponType').value = 'percent';
+  $('couponPercent').value = '20';
+  $('couponAmount').value = '10';
+  $('couponDuration').value = 'once';
+  $('couponDurationMonths').value = '3';
+  $('couponMaxRedemptions').value = '';
+  $('couponName').value = '';
+  toggleCouponFields();
+  $('couponModal').classList.add('open');
+}
+
+async function saveCoupon() {
+  const code = $('couponCode').value.trim().toUpperCase();
+  if (!code) return toast('Promo code is required', 'err');
+  if (!/^[A-Z0-9_\-]{3,50}$/.test(code)) return toast('Code must be 3-50 chars: letters, numbers, dashes, underscores', 'err');
+  const type = $('couponType').value;
+  const body = {
+    code,
+    name: $('couponName').value.trim() || code,
+    duration: $('couponDuration').value,
+  };
+  if (type === 'percent') {
+    body.percent_off = parseFloat($('couponPercent').value) || 0;
+    if (body.percent_off < 1 || body.percent_off > 100) return toast('Percent must be 1-100', 'err');
+  } else {
+    body.amount_off = parseFloat($('couponAmount').value) || 0;
+    if (body.amount_off < 0.5) return toast('Amount must be at least $0.50', 'err');
+  }
+  if (body.duration === 'repeating') {
+    body.duration_in_months = parseInt($('couponDurationMonths').value) || 3;
+  }
+  const maxR = parseInt($('couponMaxRedemptions').value);
+  if (maxR > 0) body.max_redemptions = maxR;
+
+  try {
+    await api('/api/admin/subscriptions/coupons', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('Coupon created: ' + code, 'ok');
+    $('couponModal').classList.remove('open');
+    await loadCoupons();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteCoupon(id, name) {
+  if (!confirm(`Delete coupon "${name}"? This will deactivate it in Stripe.`)) return;
+  try {
+    await api(`/api/admin/subscriptions/coupons/${id}`, { method: 'DELETE' });
+    toast('Coupon deleted', 'ok');
+    await loadCoupons();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 function openAssignSubModal(userId, userName) {

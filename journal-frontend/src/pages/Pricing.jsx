@@ -15,6 +15,8 @@ import {
   Brain,
   BookOpen,
   Layers,
+  Tag,
+  X,
 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 import logo from '../assets/logo4.jpg';
@@ -26,7 +28,7 @@ function parseFeatures(raw) {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed;
-    } catch {
+    } catch (e) {
       return raw.split(',').map(s => s.trim()).filter(Boolean);
     }
   }
@@ -41,6 +43,9 @@ export default function Pricing() {
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [openFaq, setOpenFaq] = useState(null);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponValidating, setCouponValidating] = useState(false);
+  const [couponResult, setCouponResult] = useState(null);  // { valid, discount, error }
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -85,6 +90,50 @@ export default function Pricing() {
     }
   };
 
+  const handleValidateCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) return;
+    if (!isLoggedIn) {
+      setCouponResult({ valid: false, error: 'Please log in first' });
+      return;
+    }
+    setCouponValidating(true);
+    setCouponResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/subscriptions/validate-coupon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ code })
+      });
+
+      if (res.status === 429) {
+        setCouponResult({ valid: false, error: 'Too many attempts. Please try again later.' });
+        return;
+      }
+
+      const data = await res.json();
+      if (data.valid) {
+        setCouponResult({ valid: true, discount: data.discount });
+      } else {
+        setCouponResult({
+          valid: false,
+          error: data.error || 'Invalid coupon code',
+          remaining: data.remaining_attempts
+        });
+      }
+    } catch (e) {
+      setCouponResult({ valid: false, error: 'Could not validate coupon' });
+    } finally {
+      setCouponValidating(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponCode('');
+    setCouponResult(null);
+  };
+
   const handleSubscribe = async (planId) => {
     if (!isLoggedIn) {
       navigate('/login');
@@ -100,17 +149,21 @@ export default function Pricing() {
     setCheckoutLoading(planId);
     try {
       const token = localStorage.getItem('token');
+      const body = {
+        plan_id: planId,
+        success_url: window.location.origin + '/journal/onboarding',
+        cancel_url: window.location.origin + '/journal/pricing'
+      };
+      if (couponResult?.valid && couponResult.discount?.code) {
+        body.coupon_code = couponResult.discount.code;
+      }
       const res = await fetch(`${API_BASE_URL}/subscriptions/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          plan_id: planId,
-          success_url: window.location.origin + '/journal/onboarding',
-          cancel_url: window.location.origin + '/journal/pricing'
-        })
+        body: JSON.stringify(body)
       });
 
       const data = await res.json();
@@ -329,6 +382,68 @@ export default function Pricing() {
                 </span>
               </button>
             </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Coupon code */}
+      <section className="relative z-10 pb-8">
+        <div className="max-w-md mx-auto px-4 sm:px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            {couponResult?.valid ? (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/20">
+                <Tag className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-emerald-400">
+                    {couponResult.discount.code}
+                  </span>
+                  <span className="text-xs text-emerald-400/60 ml-2">
+                    {couponResult.discount.label}
+                  </span>
+                </div>
+                <button onClick={handleRemoveCoupon} className="text-white/30 hover:text-white/60 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => {
+                      setCouponCode(e.target.value.toUpperCase());
+                      if (couponResult) setCouponResult(null);
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleValidateCoupon()}
+                    placeholder="Coupon code"
+                    maxLength={50}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-white/20 transition-colors"
+                  />
+                </div>
+                <button
+                  onClick={handleValidateCoupon}
+                  disabled={!couponCode.trim() || couponValidating}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white/60 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {couponValidating ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  Apply
+                </button>
+              </div>
+            )}
+            {couponResult && !couponResult.valid && (
+              <p className="text-xs text-red-400/70 mt-2 pl-1">
+                {couponResult.error}
+                {couponResult.remaining != null && couponResult.remaining > 0 && (
+                  <span className="text-white/20 ml-1">({couponResult.remaining} attempts left)</span>
+                )}
+              </p>
+            )}
           </motion.div>
         </div>
       </section>
