@@ -180,48 +180,7 @@ export default function Pricing() {
     }
   };
 
-  const defaultPlans = [
-    {
-      id: 'pro',
-      name: 'Pro Trader',
-      description: 'For serious traders ready to level up',
-      price: 29,
-      price_monthly: 29,
-      price_yearly: 261,
-      interval: 'month',
-      features: [
-        'Unlimited trade journaling',
-        'Full analytics & reports',
-        'AI Trading Assistant',
-        'Strategy Builder',
-        'Backtesting tools',
-        'Priority support',
-      ],
-      is_popular: true,
-      trial_days: 14,
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      description: 'For trading teams & prop firms',
-      price: 99,
-      price_monthly: 99,
-      price_yearly: 891,
-      interval: 'month',
-      features: [
-        'Everything in Pro',
-        'Multi-user team access',
-        'Custom integrations',
-        'Dedicated account manager',
-        'White-label options',
-        'API access',
-      ],
-      is_popular: false,
-      trial_days: 0,
-    },
-  ];
-
-  const displayPlans = plans.length > 0 ? plans : defaultPlans;
+  const displayPlans = plans;
 
   const getPrice = (plan) => {
     if (billingCycle === 'yearly') {
@@ -454,6 +413,14 @@ export default function Pricing() {
           {loading ? (
             <div className="flex justify-center py-24">
               <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+            </div>
+          ) : displayPlans.length === 0 ? (
+            <div className="text-center py-20">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.08] mb-5">
+                <Sparkles className="w-7 h-7 text-white/20" />
+              </div>
+              <h3 className="text-lg font-semibold text-white/60 mb-2">No plans available yet</h3>
+              <p className="text-sm text-white/30">Please check back soon. Plans are being configured.</p>
             </div>
           ) : (
             <div className={`grid gap-5 sm:gap-6 ${

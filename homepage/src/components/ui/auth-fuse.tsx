@@ -224,6 +224,7 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
       }
 
       // Also log into journal backend so the journal app works without a separate login
+      let hasAccess = false;
       try {
         const journalRes = await fetch("/journal/api/auth/login", {
           method: "POST",
@@ -236,8 +237,14 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
             localStorage.setItem("token", journalData.token);
             if (journalData.refresh_token) localStorage.setItem("refresh_token", journalData.refresh_token);
           }
+          if (journalData?.user) {
+            localStorage.setItem("talaria_current_user", JSON.stringify(journalData.user));
+            hasAccess = !!journalData.user.has_journal_access;
+          }
         }
-      } catch {}
+      } catch (e) { /* journal login is best-effort */ }
+
+      const isAdmin = body?.user?.role === "admin";
 
       const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
       if (safeNext) {
@@ -245,8 +252,13 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
         return;
       }
 
-      const isAdmin = body?.user?.role === "admin";
-      window.location.href = isAdmin ? "/dashboard/admin/" : "/";
+      if (isAdmin) {
+        window.location.href = "/dashboard/admin/";
+      } else if (!hasAccess) {
+        window.location.href = "/journal/pricing";
+      } else {
+        window.location.href = "/";
+      }
     } finally {
       setLoading(false);
     }

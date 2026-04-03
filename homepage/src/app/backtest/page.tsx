@@ -55,9 +55,14 @@ export default function BacktestSessions() {
           window.location.href = `/login/?next=${encodeURIComponent(target)}`;
           return;
         }
-        const body = (await res.json().catch(() => null)) as { user?: { role?: string } } | null;
+        const body = (await res.json().catch(() => null)) as { user?: { role?: string; has_journal_access?: boolean } } | null;
         if (mounted) {
-          setIsAdmin(body?.user?.role === "admin");
+          const role = body?.user?.role;
+          setIsAdmin(role === "admin");
+          if (role !== "admin" && !body?.user?.has_journal_access) {
+            window.location.href = "/journal/pricing";
+            return;
+          }
         }
       } catch {
         const target = `${window.location.pathname}${window.location.search || ""}`;

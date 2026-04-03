@@ -444,7 +444,6 @@ function ProtectedLayout() {
   }
 
   if (!activeProfile) {
-    // If no active profile, allow access only to the selection page.
     return (
       <Routes>
         <Route path="/select-profile" element={<ProfileSelectionPage />} />
@@ -452,6 +451,20 @@ function ProtectedLayout() {
       </Routes>
     );
   }
+
+  // Gate: require active subscription (or admin role) to access protected pages
+  try {
+    const stored = localStorage.getItem('talaria_current_user');
+    if (stored) {
+      const cu = JSON.parse(stored);
+      if (!cu.has_journal_access && cu.role !== 'admin') {
+        if (typeof window !== 'undefined') {
+          window.location.replace('/journal/pricing');
+        }
+        return null;
+      }
+    }
+  } catch (e) { /* ignore parse errors */ }
 
   return <LayoutWithSidebar />;
 }

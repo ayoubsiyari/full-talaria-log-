@@ -757,6 +757,11 @@ async def auth_middleware(request: Request, call_next):
 
     user = _get_user_from_request(request)
     if user is not None:
+        # Gate backtest pages behind active subscription (admins bypass)
+        backtest_paths = ("/chart/backtesting.html", "/chart/propfirm-backtest.html")
+        if path in backtest_paths or path.startswith("/backtest"):
+            if user.role != "admin" and not getattr(user, "has_journal_access", False):
+                return RedirectResponse(url="/journal/pricing")
         return await call_next(request)
 
     if path.startswith("/api/"):
@@ -3344,7 +3349,11 @@ async def auth_me(request: Request):
     user = _get_user_from_request(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"user": _user_public_dict(user)}
+    db = SessionLocal()
+    try:
+        return {"user": _user_public_dict(user, db=db)}
+    finally:
+        db.close()
 
 @app.get("/api/admin/users")
 async def admin_list_users(request: Request):
@@ -4347,6 +4356,8 @@ async def list_trading_sessions(request: Request):
 @app.post("/api/sessions")
 async def create_trading_session(payload: TradingSessionCreateIn, request: Request):
     user = _require_user(request)
+    if user.role != "admin" and not getattr(user, "has_journal_access", False):
+        raise HTTPException(status_code=403, detail="Active subscription required to create backtest sessions")
     name = (payload.name or "").strip()
     session_type = (payload.session_type or "").strip().lower()
     if not name:
