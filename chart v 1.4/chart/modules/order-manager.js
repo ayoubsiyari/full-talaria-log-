@@ -18701,14 +18701,20 @@ class OrderManager {
             const filledOrders = openOrders.filter((o) => o.status === 'OPEN');
             const filledLots = filledOrders.reduce((s, o) => s + (o.quantity || 0), 0);
 
+            // Line position: weighted avg of ALL legs (filled @ openPrice + pending @ entryPrice).
+            // Using filled-only here made the Avg jump after place vs initial drawSplitGroupAvgLine().
+            const allLots = openOrders.reduce((s, o) => s + (o.quantity || 0), 0);
             let avgPrice;
-            if (filledLots > 0) {
-                avgPrice = filledOrders.reduce((s, o) => s + (o.openPrice || 0) * (o.quantity || 0), 0) / filledLots;
+            if (allLots > 0) {
+                const wSum = openOrders.reduce((s, o) => {
+                    const px = o.status === 'OPEN'
+                        ? (o.openPrice || 0)
+                        : (o.entryPrice || 0);
+                    return s + px * (o.quantity || 0);
+                }, 0);
+                avgPrice = wSum / allLots;
             } else {
-                const pendLots = openOrders.reduce((s, o) => s + (o.quantity || 0), 0);
-                avgPrice = pendLots > 0
-                    ? openOrders.reduce((s, o) => s + (o.entryPrice || 0) * (o.quantity || 0), 0) / pendLots
-                    : g.avgPrice;
+                avgPrice = g.avgPrice;
             }
 
             const y = yScale(avgPrice);
