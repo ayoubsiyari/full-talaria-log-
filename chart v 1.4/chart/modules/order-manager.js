@@ -12505,6 +12505,42 @@ class OrderManager {
     }
 
     /**
+     * Clamp a proposed ladder price so it stays on the correct side of stop loss:
+     * BUY — every entry must be strictly above SL; SELL — strictly below SL.
+     * @param {number} proposedPrice
+     * @param {number[]} siblingPrices - priced levels already on the ladder (BUY: new step is below min; SELL: above max)
+     */
+    _clampMultiEntryPriceForStop(proposedPrice, siblingPrices) {
+        if (!Number.isFinite(proposedPrice) || proposedPrice <= 0) return proposedPrice;
+        const slOn = document.getElementById('enableSL')?.checked;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (!slOn || !Number.isFinite(slPrice) || slPrice <= 0) {
+            return parseFloat(proposedPrice.toFixed(5));
+        }
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        const sep = Math.max(pip * 0.5, 1e-12);
+        const sibs = (siblingPrices || []).filter((p) => Number.isFinite(p) && p > 0);
+
+        if (this.orderSide === 'BUY') {
+            const ceiling = sibs.length ? Math.min(...sibs) : Infinity;
+            if (!(slPrice < ceiling)) return parseFloat(proposedPrice.toFixed(5));
+            let p = Math.max(proposedPrice, slPrice + sep);
+            if (Number.isFinite(ceiling) && p >= ceiling - sep) {
+                p = Math.max(slPrice + sep, ceiling - Math.max(sep, pip));
+            }
+            return parseFloat(p.toFixed(5));
+        }
+
+        const floor = sibs.length ? Math.max(...sibs) : -Infinity;
+        if (!(slPrice > floor)) return parseFloat(proposedPrice.toFixed(5));
+        let p = Math.min(proposedPrice, slPrice - sep);
+        if (Number.isFinite(floor) && p <= floor + sep) {
+            p = Math.min(slPrice - sep, floor + Math.max(sep, pip));
+        }
+        return parseFloat(p.toFixed(5));
+    }
+
+    /**
      * Single vs multi entry UI. Button label is the mode you switch TO when clicked
      * (single default: "Multiple"; multi active: "Single").
      * @param {boolean} isMulti
@@ -12551,8 +12587,11 @@ class OrderManager {
                     amount: amt1
                 });
                 const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
+                const rawSecond = currentPrice > 0
+                    ? currentPrice * (1 + offsetDir * 0.001)
+                    : 0;
                 const secondPrice = currentPrice > 0
-                    ? parseFloat((currentPrice * (1 + offsetDir * 0.001)).toFixed(5))
+                    ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
                     : 0;
                 this.multiEntryLevels.push({
                     id: this.multiEntryIdCounter++,
@@ -13118,7 +13157,8 @@ class OrderManager {
         if (existingPrices.length > 0) {
             const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
             const basePrice = offsetDir === -1 ? Math.min(...existingPrices) : Math.max(...existingPrices);
-            newPrice = parseFloat((basePrice * (1 + offsetDir * 0.001)).toFixed(5));
+            const raw = basePrice * (1 + offsetDir * 0.001);
+            newPrice = this._clampMultiEntryPriceForStop(raw, existingPrices);
         }
 
         this.multiEntryLevels.push({
