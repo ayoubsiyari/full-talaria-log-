@@ -22327,15 +22327,22 @@ class OrderManager {
                 if (slLine.line) slLine.line.remove();
                 if (slLine.labelBox) slLine.labelBox.remove();
                 if (slLine.labelText) slLine.labelText.remove();
+                if (slLine.pnlBox) slLine.pnlBox.remove();
+                if (slLine.pnlText) slLine.pnlText.remove();
                 if (slLine.closeBtn) slLine.closeBtn.remove();
                 if (slLine.priceBox) slLine.priceBox.remove();
                 if (slLine.priceText) slLine.priceText.remove();
             });
             this.slLines = this.slLines.filter((sl) => sl.orderId !== orderId);
         }
+
+        // Clean up Y-axis highlights
+        const ch = this.chart;
+        if (ch?.svg) ch.svg.selectAll('.y-axis-sl-highlight').remove();
         
         console.log(`✅ Stop Loss removed from order #${orderId}`);
         this.showNotification(`Stop Loss removed from order #${orderId}`, 'info');
+        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
     }
     
     /**
@@ -22361,15 +22368,22 @@ class OrderManager {
                 if (tpLine.line) tpLine.line.remove();
                 if (tpLine.labelBox) tpLine.labelBox.remove();
                 if (tpLine.labelText) tpLine.labelText.remove();
+                if (tpLine.pnlBox) tpLine.pnlBox.remove();
+                if (tpLine.pnlText) tpLine.pnlText.remove();
                 if (tpLine.closeBtn) tpLine.closeBtn.remove();
                 if (tpLine.priceBox) tpLine.priceBox.remove();
                 if (tpLine.priceText) tpLine.priceText.remove();
             });
             this.tpLines = this.tpLines.filter((tp) => tp.orderId !== orderId);
         }
+
+        // Clean up Y-axis highlights
+        const ch = this.chart;
+        if (ch?.svg) ch.svg.selectAll('.y-axis-tp-highlight').remove();
         
         console.log(`✅ Take Profit removed from order #${orderId}`);
         this.showNotification(`Take Profit removed from order #${orderId}`, 'info');
+        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
     }
     
     /**
