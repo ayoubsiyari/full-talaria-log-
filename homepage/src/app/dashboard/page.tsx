@@ -732,9 +732,9 @@ export default function GlobalDashboard() {
                         fontSize: "12px",
                         color: "#fff",
                       }}
-                      formatter={(v: number) => [fmt(v), "Balance"]}
-                      labelFormatter={(d: string) =>
-                        new Date(d).toLocaleDateString("en-US", {
+                      formatter={(v: unknown) => [fmt(Number(v)), "Balance"]}
+                      labelFormatter={(d: unknown) =>
+                        new Date(String(d)).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
                           year: "numeric",
@@ -902,9 +902,9 @@ export default function GlobalDashboard() {
                     fontSize: "12px",
                     color: "#fff",
                   }}
-                  formatter={(v: number) => [fmt(v), "P&L"]}
-                  labelFormatter={(d: string) =>
-                    new Date(d).toLocaleDateString("en-US", {
+                  formatter={(v: unknown) => [fmt(Number(v)), "P&L"]}
+                  labelFormatter={(d: unknown) =>
+                    new Date(String(d)).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                     })
