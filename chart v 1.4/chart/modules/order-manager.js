@@ -18690,11 +18690,26 @@ class OrderManager {
                 toRemove.push(g.splitGroupId);
                 continue;
             }
+            // Single leg left (deleted/cancelled sibling): no multi-entry — remove Avg line.
+            if (openOrders.length < 2) {
+                toRemove.push(g.splitGroupId);
+                continue;
+            }
 
-            const totalLots = openOrders.reduce((s, o) => s + (o.quantity || 0), 0);
-            const avgPrice = totalLots > 0
-                ? openOrders.reduce((s, o) => s + (o.openPrice || o.entryPrice || 0) * (o.quantity || 0), 0) / totalLots
-                : g.avgPrice;
+            g.orderIds = openOrders.map((o) => o.id);
+
+            const filledOrders = openOrders.filter((o) => o.status === 'OPEN');
+            const filledLots = filledOrders.reduce((s, o) => s + (o.quantity || 0), 0);
+
+            let avgPrice;
+            if (filledLots > 0) {
+                avgPrice = filledOrders.reduce((s, o) => s + (o.openPrice || 0) * (o.quantity || 0), 0) / filledLots;
+            } else {
+                const pendLots = openOrders.reduce((s, o) => s + (o.quantity || 0), 0);
+                avgPrice = pendLots > 0
+                    ? openOrders.reduce((s, o) => s + (o.entryPrice || 0) * (o.quantity || 0), 0) / pendLots
+                    : g.avgPrice;
+            }
 
             const y = yScale(avgPrice);
             if (!Number.isFinite(y)) continue;
@@ -18703,7 +18718,7 @@ class OrderManager {
             g.avgText.text('Avg Entry');
             const avgBW = g.avgText.node().getBBox().width + pad * 2;
 
-            g.lotsText.text(this.formatQuantity(totalLots));
+            g.lotsText.text(this.formatQuantity(filledLots));
             const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
             let totalPnl = 0;
@@ -19546,6 +19561,9 @@ class OrderManager {
         }
 
         this.updatePositionsPanel();
+        if (typeof this.updateOrderLines === 'function') {
+            this.updateOrderLines();
+        }
     }
 
     /**
