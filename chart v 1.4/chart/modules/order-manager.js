@@ -8674,9 +8674,15 @@ class OrderManager {
         // Refresh header badge (symbol + market type) every time the drawer opens
         this.updateOrderPanel();
 
-        // Reset TP/SL positioning flags for new order
+        // Reset TP/SL positioning flags and values for new order
         this.tpManuallyPositioned = false;
         this.slManuallyPositioned = false;
+        if (!this.editingPendingOrderId) {
+            const tpIn = document.getElementById('tpPrice');
+            const slIn = document.getElementById('slPrice');
+            if (tpIn) tpIn.value = 0;
+            if (slIn) slIn.value = 0;
+        }
 
         // Reset multiple TP UI to avoid stale state
         const multipleTPToggle = document.getElementById('multipleTPToggle');
@@ -11392,17 +11398,8 @@ class OrderManager {
         const tpFormatted = tpDefault.toFixed(precision);
         const slFormatted = slDefault.toFixed(precision);
 
-        const isUnset = (v) => !v || parseFloat(v) === 0;
-
         // TP: leave at 0 until user explicitly drags it (no auto-fill)
-
-        // SL syncing: auto-set from risk on first open, then track entry
-        if (slPriceInput && !this.slManuallyPositioned) {
-            const existing = String(slPriceInput.value || '').trim();
-            if (isUnset(existing) || existing === mainFormatted) {
-                slPriceInput.value = slFormatted;
-            }
-        }
+        // SL: leave at 0 until user explicitly drags it (no auto-fill)
     }
 
     /**
@@ -11897,9 +11894,8 @@ class OrderManager {
             }
         }
         
-        // Draw SL as a full line when it has a valid price away from entry
-        // (risk-based calculation gives a real price even before the user drags)
-        if (slEnabled && slPrice > 0 && Math.abs(slPrice - entryPrice) > 1e-8) {
+        // Draw SL: full line only after user drags it, badge otherwise
+        if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
             this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
             if (this.previewLines.sl) {
                 this.previewLines.sl.targetPrice = slPrice;
@@ -19893,8 +19889,10 @@ class OrderManager {
                     }
                 }
 
-                // If price has already passed the entry while we were dragging, execute now
-                if (curCandle) {
+                // Only auto-execute on release if replay is actively playing
+                // (otherwise, wait for the next candle tick to check activation normally)
+                const replayPlaying = self.replaySystem && self.replaySystem.isActive && self.replaySystem.isPlaying;
+                if (replayPlaying && curCandle) {
                     const high = Number.parseFloat(curCandle.h);
                     const low = Number.parseFloat(curCandle.l);
                     let shouldExec = false;
