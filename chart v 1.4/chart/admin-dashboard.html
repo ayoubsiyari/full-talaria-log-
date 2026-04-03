@@ -830,6 +830,61 @@ select { cursor: pointer; }
   </div>
 </div>
 
+<!-- Plan Modal (Create/Edit) -->
+<div class="modal-overlay" id="planModal">
+  <div class="modal">
+    <h2 id="planModalTitle">Create Plan</h2>
+    <input type="hidden" id="planModalId">
+    <div class="form-grid">
+      <div class="field"><label>Plan Name</label><input type="text" id="planName" placeholder="e.g. Pro, Premium"></div>
+      <div class="field"><label>Monthly Price ($)</label><input type="number" id="planPriceMonthly" step="0.01" min="0" value="0"></div>
+      <div class="field fg-full"><label>Description</label><textarea id="planDescription" rows="2" placeholder="What this plan includes..."></textarea></div>
+      <div class="field"><label>Yearly Price ($)</label><input type="number" id="planPriceYearly" step="0.01" min="0" value="0"></div>
+      <div class="field"><label>Trial Days</label><input type="number" id="planTrialDays" min="0" value="0"></div>
+      <div class="field"><label>Stripe Price ID (Monthly)</label><input type="text" id="planStripePriceId" placeholder="price_..."></div>
+      <div class="field"><label>Stripe Price ID (Yearly)</label><input type="text" id="planStripePriceIdYearly" placeholder="price_..."></div>
+      <div class="field"><label>Stripe Product ID</label><input type="text" id="planStripeProductId" placeholder="prod_..."></div>
+      <div class="field"><label>Status</label>
+        <select id="planIsActive"><option value="1">Active</option><option value="0">Inactive</option></select>
+      </div>
+      <div class="field fg-full"><label>Features (one per line)</label><textarea id="planFeatures" rows="4" placeholder="Unlimited backtesting&#10;Priority support&#10;Advanced analytics"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closePlanModal()">Cancel</button>
+      <button class="btn primary" onclick="savePlan()">Save Plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Subscription Modal -->
+<div class="modal-overlay" id="assignSubModal">
+  <div class="modal">
+    <h2>Assign Manual Subscription</h2>
+    <input type="hidden" id="assignSubUserId">
+    <div class="form-grid">
+      <div class="field"><label>User</label><input type="text" id="assignSubUserDisplay" disabled></div>
+      <div class="field"><label>Plan</label>
+        <select id="assignSubPlan"><option value="">— No plan (manual) —</option></select>
+      </div>
+      <div class="field"><label>Duration (days)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" id="assignSubDays" min="0" value="30" style="width:100px" placeholder="0 = unlimited">
+          <div class="quick-btns">
+            <button class="btn sm" onclick="$('assignSubDays').value=30">30d</button>
+            <button class="btn sm" onclick="$('assignSubDays').value=90">90d</button>
+            <button class="btn sm" onclick="$('assignSubDays').value=365">1y</button>
+            <button class="btn sm" onclick="$('assignSubDays').value=0">∞</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="$('assignSubModal').classList.remove('open')">Cancel</button>
+      <button class="btn primary" onclick="assignSubscription()">Assign Subscription</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── App Shell ──────────────────────────────── -->
 <div class="app" id="appShell" style="display:none">
   <!-- Sidebar -->
@@ -855,6 +910,15 @@ select { cursor: pointer; }
       <a class="nav-item" data-section="datasets" onclick="navigate('datasets')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         Datasets
+      </a>
+      <div class="nav-sep"></div>
+      <a class="nav-item" data-section="subscriptions" onclick="navigate('subscriptions')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H5"/><path d="M16 16H8"/><path d="M13 20h-2"/></svg>
+        Subscriptions
+      </a>
+      <a class="nav-item" data-section="payments" onclick="navigate('payments')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Payments
       </a>
       <div class="nav-sep"></div>
       <a class="nav-item" data-section="settings" onclick="navigate('settings')">
@@ -996,6 +1060,7 @@ select { cursor: pointer; }
                   <th onclick="sortBy('name')">Name</th>
                   <th onclick="sortBy('role')">Role</th>
                   <th onclick="sortBy('status')">Status</th>
+                  <th>Subscription</th>
                   <th onclick="sortBy('access_expires_at')">Access Expires</th>
                   <th onclick="sortBy('last_active_at')">Last Active</th>
                   <th onclick="sortBy('session_count')">Sessions</th>
@@ -1134,6 +1199,81 @@ select { cursor: pointer; }
         </div>
       </div>
 
+      <!-- ════════ SUBSCRIPTIONS SECTION ════════ -->
+      <div class="section" id="sec-subscriptions">
+        <div class="stat-cards" id="subStats"></div>
+
+        <!-- Plans Management -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H5"/><path d="M16 16H8"/><path d="M13 20h-2"/></svg>
+            <div class="card-title">Subscription Plans</div>
+            <button class="btn sm primary" onclick="openCreatePlanModal()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New Plan
+            </button>
+          </div>
+          <div class="card-body" style="padding:0">
+            <table>
+              <thead><tr><th>Plan</th><th>Monthly</th><th>Yearly</th><th>Trial</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="plansBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyPlans" style="display:none">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H5"/></svg></div>
+              <p>No subscription plans yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Subscriptions -->
+        <div class="card">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            <div class="card-title">Subscriptions</div>
+            <span class="card-badge" id="subCountBadge">0</span>
+            <select id="subStatusFilter" onchange="renderSubscriptions()" style="margin-left:8px;padding:4px 8px;font-size:11px">
+              <option value="">All</option>
+              <option value="active">Active</option>
+              <option value="trialing">Trialing</option>
+              <option value="canceled">Canceled</option>
+              <option value="past_due">Past Due</option>
+            </select>
+          </div>
+          <div class="card-body" style="padding:0;max-height:500px;overflow-y:auto">
+            <table>
+              <thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Type</th><th>Period End</th><th>Actions</th></tr></thead>
+              <tbody id="subsBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptySubs" style="display:none">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+              <p>No subscriptions</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════ PAYMENTS SECTION ════════ -->
+      <div class="section" id="sec-payments">
+        <div class="stat-cards" id="paymentStats"></div>
+        <div class="card">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <div class="card-title">Payment History</div>
+            <span class="card-badge" id="payCountBadge">0</span>
+          </div>
+          <div class="card-body" style="padding:0;max-height:calc(100vh - 300px);overflow-y:auto">
+            <table>
+              <thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Status</th><th>Provider</th><th>Description</th><th>Actions</th></tr></thead>
+              <tbody id="paymentsBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyPayments" style="display:none">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
+              <p>No payment history</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SETTINGS SECTION ════════ -->
       <div class="section" id="sec-settings">
         <div class="card">
@@ -1221,6 +1361,8 @@ const sectionTitles = {
   users: 'User Management',
   sessions: 'Live Sessions',
   datasets: 'Dataset Management',
+  subscriptions: 'Subscriptions',
+  payments: 'Payments',
   settings: 'Settings'
 };
 
@@ -1234,6 +1376,8 @@ function navigate(section) {
   $('pageTitle').textContent = sectionTitles[section] || section;
   window.location.hash = section;
   if (section === 'sessions') loadSessions();
+  if (section === 'subscriptions') loadSubscriptionData();
+  if (section === 'payments') loadPayments();
   if (section === 'settings') updateSettingsPage();
 }
 
@@ -1243,6 +1387,10 @@ function navigate(section) {
 let allUsers = [];
 let allSessions = [];
 let allDatasets = [];
+let allPlans = [];
+let allSubscriptions = [];
+let allPayments = [];
+let subStats = {};
 let currentUser = null;
 let sortField = 'name';
 let sortDir = 1;
@@ -1267,7 +1415,7 @@ let dsPollTimer = null;
     $('topbarName').textContent = currentUser.name;
     $('topbarAvatar').textContent = (currentUser.name || 'A')[0].toUpperCase();
 
-    await Promise.all([loadUsers(), loadSessions(), loadDatasets()]);
+    await Promise.all([loadUsers(), loadSessions(), loadDatasets(), loadSubStats()]);
     renderOverview();
 
     setInterval(loadSessions, 10000);
@@ -1337,6 +1485,16 @@ function renderOverview() {
       <div class="label">Datasets</div>
       <div class="value">${allDatasets.length}</div>
     </div>
+    <div class="stat-card ok">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+      <div class="label">Revenue (MTD)</div>
+      <div class="value">$${(subStats.mrr || 0).toLocaleString()}</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+      <div class="label">Active Subs</div>
+      <div class="value">${subStats.active_subscriptions || 0}</div>
+    </div>
   `;
 
   const recent = allSessions.slice(0, 8);
@@ -1401,16 +1559,22 @@ function renderUsers() {
     const banBtn = u.status === 'banned'
       ? `<button class="btn sm ok" onclick="unbanUser(${u.id})">Unban</button>`
       : `<button class="btn sm warn" onclick="banUser(${u.id},'${esc(u.name)}')">Ban</button>`;
+    const sub = u.subscription;
+    const subBadge = sub
+      ? `<span class="badge badge-active" style="font-size:10px">${esc(sub.plan_name)}</span>`
+      : (u.has_journal_access ? '<span class="badge badge-admin" style="font-size:10px">Access</span>' : '<span style="font-size:11px;color:var(--text-muted)">None</span>');
     return `<tr>
       <td><div style="font-weight:600">${esc(u.name)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(u.email)}</div></td>
       <td>${roleBadge}</td>
       <td>${statusBadge}</td>
+      <td style="font-size:12px">${subBadge}</td>
       <td style="font-size:12px;color:var(--text-secondary)">${expires}</td>
       <td style="font-size:12px;color:var(--text-muted)">${lastActive}</td>
       <td style="text-align:center;font-weight:600;font-size:12px">${u.session_count || 0}<span style="color:var(--text-muted);font-weight:400">/${u.max_sessions || 1}</span></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn sm" onclick="openEditModal(${u.id})">Edit</button>
         <button class="btn sm primary" onclick="kickUser(${u.id},'${esc(u.name)}')" ${u.session_count ? '' : 'disabled'}>Kick</button>
+        ${!sub ? `<button class="btn sm" style="border-color:rgba(139,92,246,.3);color:var(--accent)" onclick="openAssignSubModal(${u.id},'${esc(u.name)}')">Sub</button>` : ''}
         ${banBtn}
         <button class="btn sm danger" onclick="deleteUser(${u.id},'${esc(u.name)}')">Del</button>
       </div></td>
@@ -1774,6 +1938,310 @@ async function waitForDukascopyJob(jobId) {
       label.textContent = status.message || status.state || 'Processing...';
     } catch (e) { break; }
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SUBSCRIPTIONS & PLANS
+// ═══════════════════════════════════════════════════════════
+async function loadSubscriptionData() {
+  await Promise.all([loadPlans(), loadSubscriptions(), loadSubStats()]);
+}
+
+async function loadPlans() {
+  try {
+    const data = await api('/api/admin/subscriptions/plans');
+    allPlans = data.plans || [];
+    renderPlans();
+  } catch (e) { toast('Failed to load plans: ' + e.message, 'err'); }
+}
+
+async function loadSubscriptions() {
+  try {
+    const data = await api('/api/admin/subscriptions');
+    allSubscriptions = data.subscriptions || [];
+    $('subCountBadge').textContent = allSubscriptions.length;
+    renderSubscriptions();
+  } catch (e) { toast('Failed to load subscriptions: ' + e.message, 'err'); }
+}
+
+async function loadSubStats() {
+  try {
+    subStats = await api('/api/admin/subscriptions/stats');
+    renderSubStats();
+  } catch (e) {}
+}
+
+function renderSubStats() {
+  const s = subStats;
+  $('subStats').innerHTML = `
+    <div class="stat-card accent">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+      <div class="label">Active Subs</div>
+      <div class="value">${s.active_subscriptions || 0}</div>
+    </div>
+    <div class="stat-card ok">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+      <div class="label">Revenue (MTD)</div>
+      <div class="value">$${(s.mrr || 0).toLocaleString()}</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+      <div class="label">Total Revenue</div>
+      <div class="value">$${(s.total_revenue || 0).toLocaleString()}</div>
+    </div>
+    <div class="stat-card danger">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>
+      <div class="label">Canceled</div>
+      <div class="value">${s.canceled_subscriptions || 0}</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H5"/></svg></div>
+      <div class="label">Active Plans</div>
+      <div class="value">${s.active_plans || 0}</div>
+    </div>
+    <div class="stat-card ok">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+      <div class="label">Journal Users</div>
+      <div class="value">${s.journal_access_users || 0}</div>
+    </div>
+  `;
+}
+
+function renderPlans() {
+  const tbody = $('plansBody');
+  $('emptyPlans').style.display = allPlans.length === 0 ? '' : 'none';
+  if (!allPlans.length) { tbody.innerHTML = ''; return; }
+  tbody.innerHTML = allPlans.map(p => {
+    const statusCls = p.is_active ? 'badge-active' : 'badge-expired';
+    const statusTxt = p.is_active ? 'Active' : 'Inactive';
+    return `<tr>
+      <td><div style="font-weight:600">${esc(p.name)}</div><div style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description || '')}</div></td>
+      <td style="font-weight:600">$${(p.price_monthly || 0).toFixed(2)}</td>
+      <td style="font-size:12px;color:var(--text-secondary)">$${(p.price_yearly || 0).toFixed(2)}</td>
+      <td style="font-size:12px">${p.trial_days || 0}d</td>
+      <td style="text-align:center;font-weight:600">${p.subscriber_count || 0}</td>
+      <td><span class="badge ${statusCls}">${statusTxt}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn sm" onclick="openEditPlanModal(${p.id})">Edit</button>
+        <button class="btn sm danger" onclick="deletePlan(${p.id},'${esc(p.name)}')">Del</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSubscriptions() {
+  const filter = ($('subStatusFilter') || {}).value || '';
+  let filtered = allSubscriptions;
+  if (filter) filtered = filtered.filter(s => s.status === filter);
+
+  const tbody = $('subsBody');
+  $('emptySubs').style.display = filtered.length === 0 ? '' : 'none';
+  if (!filtered.length) { tbody.innerHTML = ''; return; }
+
+  tbody.innerHTML = filtered.map(s => {
+    const statusMap = {
+      active: 'badge-active', trialing: 'badge-admin',
+      canceled: 'badge-banned', past_due: 'badge-expired'
+    };
+    const statusCls = statusMap[s.status] || 'badge-user';
+    const typeBadge = s.is_manual
+      ? '<span class="badge badge-admin" style="background:var(--warn-subtle);color:var(--warn)">Manual</span>'
+      : '<span class="badge badge-user">Stripe</span>';
+    const periodEnd = s.current_period_end
+      ? new Date(s.current_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '∞';
+    const canCancel = s.status === 'active' || s.status === 'trialing';
+    return `<tr>
+      <td><div style="font-weight:600">${esc(s.user_name)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(s.user_email)}</div></td>
+      <td style="font-size:12px;font-weight:500">${esc(s.plan_name)}</td>
+      <td><span class="badge ${statusCls}">${esc(s.status)}</span></td>
+      <td>${typeBadge}</td>
+      <td style="font-size:12px;color:var(--text-secondary)">${periodEnd}</td>
+      <td><div style="display:flex;gap:4px">
+        ${canCancel ? `<button class="btn sm danger" onclick="cancelSubscription(${s.id},'${esc(s.user_name)}')">Cancel</button>` : ''}
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+// Plan modal
+function openCreatePlanModal() {
+  $('planModalTitle').textContent = 'Create Plan';
+  $('planModalId').value = '';
+  $('planName').value = '';
+  $('planDescription').value = '';
+  $('planPriceMonthly').value = '0';
+  $('planPriceYearly').value = '0';
+  $('planTrialDays').value = '0';
+  $('planStripePriceId').value = '';
+  $('planStripePriceIdYearly').value = '';
+  $('planStripeProductId').value = '';
+  $('planIsActive').value = '1';
+  $('planFeatures').value = '';
+  $('planModal').classList.add('open');
+}
+
+function openEditPlanModal(planId) {
+  const plan = allPlans.find(p => p.id === planId);
+  if (!plan) return;
+  $('planModalTitle').textContent = `Edit: ${plan.name}`;
+  $('planModalId').value = planId;
+  $('planName').value = plan.name;
+  $('planDescription').value = plan.description || '';
+  $('planPriceMonthly').value = plan.price_monthly || 0;
+  $('planPriceYearly').value = plan.price_yearly || 0;
+  $('planTrialDays').value = plan.trial_days || 0;
+  $('planStripePriceId').value = plan.stripe_price_id || '';
+  $('planStripePriceIdYearly').value = plan.stripe_price_id_yearly || '';
+  $('planStripeProductId').value = plan.stripe_product_id || '';
+  $('planIsActive').value = plan.is_active ? '1' : '0';
+  const feats = Array.isArray(plan.features) ? plan.features.join('\n') : '';
+  $('planFeatures').value = feats;
+  $('planModal').classList.add('open');
+}
+
+function closePlanModal() { $('planModal').classList.remove('open'); }
+
+async function savePlan() {
+  const id = $('planModalId').value;
+  const features = $('planFeatures').value.split('\n').map(l => l.trim()).filter(Boolean);
+  const body = {
+    name: $('planName').value.trim(),
+    description: $('planDescription').value.trim(),
+    price_monthly: parseFloat($('planPriceMonthly').value) || 0,
+    price_yearly: parseFloat($('planPriceYearly').value) || 0,
+    trial_days: parseInt($('planTrialDays').value) || 0,
+    stripe_price_id: $('planStripePriceId').value.trim() || null,
+    stripe_price_id_yearly: $('planStripePriceIdYearly').value.trim() || null,
+    stripe_product_id: $('planStripeProductId').value.trim() || null,
+    is_active: $('planIsActive').value === '1',
+    features,
+  };
+  if (!body.name) return toast('Plan name is required', 'err');
+  const url = id ? `/api/admin/subscriptions/plans/${id}` : '/api/admin/subscriptions/plans';
+  const method = id ? 'PUT' : 'POST';
+  try {
+    await api(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast(id ? 'Plan updated' : 'Plan created', 'ok');
+    closePlanModal();
+    await loadPlans();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function deletePlan(id, name) {
+  if (!confirm(`Delete plan "${name}"? This cannot be undone.`)) return;
+  try { await api(`/api/admin/subscriptions/plans/${id}`, { method: 'DELETE' }); toast('Plan deleted', 'ok'); await loadPlans(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function cancelSubscription(id, name) {
+  if (!confirm(`Cancel subscription for ${name}?`)) return;
+  try { await api(`/api/admin/subscriptions/${id}/cancel`, { method: 'POST' }); toast('Subscription canceled', 'ok'); await loadSubscriptionData(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+function openAssignSubModal(userId, userName) {
+  $('assignSubUserId').value = userId;
+  $('assignSubUserDisplay').value = userName;
+  $('assignSubDays').value = '30';
+  const sel = $('assignSubPlan');
+  sel.innerHTML = '<option value="">— No plan (manual) —</option>' +
+    allPlans.filter(p => p.is_active).map(p => `<option value="${p.id}">${esc(p.name)} ($${p.price_monthly}/mo)</option>`).join('');
+  $('assignSubModal').classList.add('open');
+}
+
+async function assignSubscription() {
+  const userId = $('assignSubUserId').value;
+  const planId = $('assignSubPlan').value;
+  const days = parseInt($('assignSubDays').value) || 0;
+  const body = { status: 'active' };
+  if (planId) body.plan_id = parseInt(planId);
+  if (days > 0) body.days = days;
+  try {
+    await api(`/api/admin/users/${userId}/subscription`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('Subscription assigned', 'ok');
+    $('assignSubModal').classList.remove('open');
+    await Promise.all([loadUsers(), loadSubscriptionData()]);
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PAYMENTS
+// ═══════════════════════════════════════════════════════════
+async function loadPayments() {
+  try {
+    const data = await api('/api/admin/payments');
+    allPayments = data.payments || [];
+    $('payCountBadge').textContent = allPayments.length;
+    renderPayments();
+    renderPaymentStats();
+  } catch (e) { toast('Failed to load payments: ' + e.message, 'err'); }
+}
+
+function renderPaymentStats() {
+  const succeeded = allPayments.filter(p => p.status === 'succeeded' && !p.refunded);
+  const totalRevenue = succeeded.reduce((s, p) => s + (p.amount || 0), 0);
+  const refunded = allPayments.filter(p => p.refunded);
+  const totalRefunded = refunded.reduce((s, p) => s + (p.refund_amount || p.amount || 0), 0);
+  const failed = allPayments.filter(p => p.status === 'failed').length;
+
+  $('paymentStats').innerHTML = `
+    <div class="stat-card ok">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+      <div class="label">Total Revenue</div>
+      <div class="value">$${totalRevenue.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg></div>
+      <div class="label">Refunded</div>
+      <div class="value">$${totalRefunded.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+      <div class="label">Successful</div>
+      <div class="value">${succeeded.length}</div>
+    </div>
+    <div class="stat-card danger">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+      <div class="label">Failed</div>
+      <div class="value">${failed}</div>
+    </div>
+  `;
+}
+
+function renderPayments() {
+  const tbody = $('paymentsBody');
+  $('emptyPayments').style.display = allPayments.length === 0 ? '' : 'none';
+  if (!allPayments.length) { tbody.innerHTML = ''; return; }
+
+  tbody.innerHTML = allPayments.map(p => {
+    const date = p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+    const statusMap = {
+      succeeded: 'badge-active', failed: 'badge-banned',
+      pending: 'badge-expired', refunded: 'badge-admin'
+    };
+    const st = p.refunded ? 'refunded' : p.status;
+    const statusCls = statusMap[st] || 'badge-user';
+    const canRefund = p.status === 'succeeded' && !p.refunded;
+    return `<tr>
+      <td style="font-size:12px;white-space:nowrap">${date}</td>
+      <td><div style="font-weight:600;font-size:12px">${esc(p.user_name)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(p.user_email)}</div></td>
+      <td style="font-weight:700">$${(p.amount || 0).toFixed(2)} <span style="font-size:10px;color:var(--text-muted);font-weight:400">${p.currency}</span></td>
+      <td><span class="badge ${statusCls}">${esc(st)}</span></td>
+      <td style="font-size:12px;color:var(--text-secondary)">${esc(p.provider)}</td>
+      <td style="font-size:12px;color:var(--text-muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description || '—')}</td>
+      <td><div style="display:flex;gap:4px">
+        ${canRefund ? `<button class="btn sm warn" onclick="refundPayment(${p.id})">Refund</button>` : ''}
+        ${p.invoice_url ? `<a href="${esc(p.invoice_url)}" target="_blank" class="btn sm">Invoice</a>` : ''}
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function refundPayment(id) {
+  if (!confirm('Refund this payment? This marks it as refunded.')) return;
+  try { await api(`/api/admin/payments/${id}/refund`, { method: 'POST' }); toast('Payment refunded', 'ok'); await loadPayments(); }
+  catch (e) { toast(e.message, 'err'); }
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -300,6 +300,65 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     access_expires_at = Column(DateTime, nullable=True)
     max_sessions = Column(Integer, default=1, nullable=False, server_default="1")
+    has_journal_access = Column(Boolean, default=False)
+    stripe_customer_id = Column(String, nullable=True)
+
+class SubscriptionPlan(Base):
+    """Maps to journal-backend's subscription_plans table (read/write for admin)."""
+    __tablename__ = "subscription_plans"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    price = Column(Float, default=0)
+    price_monthly = Column(Float, default=0)
+    price_yearly = Column(Float, default=0)
+    interval = Column(String, default="month")
+    stripe_price_id = Column(String, nullable=True)
+    stripe_price_id_yearly = Column(String, nullable=True)
+    stripe_product_id = Column(String, nullable=True)
+    features = Column(Text, nullable=True)
+    trial_days = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Subscription(Base):
+    """Maps to journal-backend's subscriptions table (read/write for admin)."""
+    __tablename__ = "subscriptions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    plan_id = Column(Integer, nullable=True)
+    stripe_subscription_id = Column(String, nullable=True)
+    stripe_customer_id = Column(String, nullable=True)
+    status = Column(String, default="active")
+    started_at = Column(DateTime, nullable=True)
+    ends_at = Column(DateTime, nullable=True)
+    current_period_start = Column(DateTime, nullable=True)
+    current_period_end = Column(DateTime, nullable=True)
+    cancel_at_period_end = Column(Boolean, default=False)
+    cancelled_at = Column(DateTime, nullable=True)
+    is_manual = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Payment(Base):
+    """Maps to journal-backend's payments table (read for admin)."""
+    __tablename__ = "payments"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=True)
+    subscription_id = Column(Integer, nullable=True)
+    provider = Column(String, default="stripe")
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="usd")
+    status = Column(String, nullable=False)
+    invoice_url = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    stripe_payment_id = Column(String, nullable=True)
+    stripe_invoice_id = Column(String, nullable=True)
+    refunded = Column(Boolean, default=False)
+    refund_amount = Column(Float, nullable=True)
+    refunded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
@@ -347,6 +406,8 @@ try:
     with engine.connect() as _conn:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_sessions INTEGER NOT NULL DEFAULT 1"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_journal_access BOOLEAN DEFAULT FALSE"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)"))
         _conn.commit()
 except Exception:
     pass
@@ -3142,10 +3203,29 @@ def _append_bootcamp_registration_to_google_sheet(payload: BootcampRegistrationI
         body={"values": [row]},
     ).execute()
 
-def _user_public_dict(user: User):
+def _user_public_dict(user: User, db=None):
     created = getattr(user, 'created_at', None)
     updated = getattr(user, 'updated_at', created)
     expires = getattr(user, 'access_expires_at', None)
+    sub_info = None
+    if db:
+        try:
+            active_sub = db.query(Subscription).filter(
+                Subscription.user_id == user.id,
+                Subscription.status.in_(["active", "trialing"])
+            ).first()
+            if active_sub:
+                plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == active_sub.plan_id).first() if active_sub.plan_id else None
+                period_end = active_sub.current_period_end or active_sub.ends_at
+                sub_info = {
+                    "id": active_sub.id,
+                    "plan_name": plan.name if plan else ("Manual" if active_sub.is_manual else "—"),
+                    "status": active_sub.status,
+                    "is_manual": bool(active_sub.is_manual),
+                    "period_end": period_end.isoformat() if period_end else None,
+                }
+        except Exception:
+            pass
     return {
         "id": user.id,
         "name": user.name,
@@ -3154,8 +3234,10 @@ def _user_public_dict(user: User):
         "timezone": getattr(user, 'timezone', 'UTC'),
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
+        "has_journal_access": bool(getattr(user, 'has_journal_access', False)),
         "access_expires_at": expires.isoformat() if expires else None,
         "max_sessions": getattr(user, 'max_sessions', 1) or 1,
+        "subscription": sub_info,
         "created_at": created.isoformat() if created else None,
         "updated_at": updated.isoformat() if updated else None,
     }
@@ -3279,7 +3361,7 @@ async def admin_list_users(request: Request):
         result = []
         now = datetime.utcnow()
         for u in users:
-            d = _user_public_dict(u)
+            d = _user_public_dict(u, db)
             info = session_map.get(u.id, {})
             d["session_count"] = info.get("count", 0)
             la = info.get("last_active")
@@ -3777,6 +3859,377 @@ async def admin_delete_dataset(file_id: int, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
+
+# ═══════════════════════════════════════════════════════════════════
+#  ADMIN — Subscription Plans
+# ═══════════════════════════════════════════════════════════════════
+
+def _plan_public_dict(p):
+    feats = []
+    if p.features:
+        try:
+            feats = json.loads(p.features) if isinstance(p.features, str) else p.features
+        except Exception:
+            feats = []
+    return {
+        "id": p.id,
+        "name": p.name,
+        "description": p.description,
+        "price_monthly": p.price_monthly or p.price or 0,
+        "price_yearly": p.price_yearly or 0,
+        "interval": p.interval or "month",
+        "stripe_price_id": p.stripe_price_id,
+        "stripe_price_id_yearly": p.stripe_price_id_yearly,
+        "stripe_product_id": p.stripe_product_id,
+        "features": feats,
+        "trial_days": p.trial_days or 0,
+        "is_active": bool(p.is_active),
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+@app.get("/api/admin/subscriptions/plans")
+async def admin_list_plans(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        plans = db.query(SubscriptionPlan).order_by(SubscriptionPlan.id).all()
+        result = []
+        for p in plans:
+            d = _plan_public_dict(p)
+            d["subscriber_count"] = db.query(Subscription).filter(
+                Subscription.plan_id == p.id,
+                Subscription.status.in_(["active", "trialing"])
+            ).count()
+            result.append(d)
+        return {"plans": result}
+    finally:
+        db.close()
+
+class _CreatePlanIn(BaseModel):
+    name: str
+    description: str | None = None
+    price_monthly: float = 0
+    price_yearly: float = 0
+    interval: str = "month"
+    stripe_price_id: str | None = None
+    stripe_price_id_yearly: str | None = None
+    stripe_product_id: str | None = None
+    features: list | None = None
+    trial_days: int = 0
+    is_active: bool = True
+
+@app.post("/api/admin/subscriptions/plans")
+async def admin_create_plan(payload: _CreatePlanIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        plan = SubscriptionPlan(
+            name=payload.name,
+            description=payload.description,
+            price=payload.price_monthly,
+            price_monthly=payload.price_monthly,
+            price_yearly=payload.price_yearly,
+            interval=payload.interval,
+            stripe_price_id=payload.stripe_price_id,
+            stripe_price_id_yearly=payload.stripe_price_id_yearly,
+            stripe_product_id=payload.stripe_product_id,
+            features=json.dumps(payload.features or []),
+            trial_days=payload.trial_days,
+            is_active=payload.is_active,
+        )
+        db.add(plan)
+        db.commit()
+        db.refresh(plan)
+        return {"plan": _plan_public_dict(plan)}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+class _UpdatePlanIn(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    price_monthly: float | None = None
+    price_yearly: float | None = None
+    interval: str | None = None
+    stripe_price_id: str | None = None
+    stripe_price_id_yearly: str | None = None
+    stripe_product_id: str | None = None
+    features: list | None = None
+    trial_days: int | None = None
+    is_active: bool | None = None
+
+@app.put("/api/admin/subscriptions/plans/{plan_id}")
+async def admin_update_plan(plan_id: int, payload: _UpdatePlanIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == plan_id).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        if payload.name is not None: plan.name = payload.name
+        if payload.description is not None: plan.description = payload.description
+        if payload.price_monthly is not None:
+            plan.price_monthly = payload.price_monthly
+            plan.price = payload.price_monthly
+        if payload.price_yearly is not None: plan.price_yearly = payload.price_yearly
+        if payload.interval is not None: plan.interval = payload.interval
+        if payload.stripe_price_id is not None: plan.stripe_price_id = payload.stripe_price_id
+        if payload.stripe_price_id_yearly is not None: plan.stripe_price_id_yearly = payload.stripe_price_id_yearly
+        if payload.stripe_product_id is not None: plan.stripe_product_id = payload.stripe_product_id
+        if payload.features is not None: plan.features = json.dumps(payload.features)
+        if payload.trial_days is not None: plan.trial_days = payload.trial_days
+        if payload.is_active is not None: plan.is_active = payload.is_active
+        db.commit()
+        return {"plan": _plan_public_dict(plan)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@app.delete("/api/admin/subscriptions/plans/{plan_id}")
+async def admin_delete_plan(plan_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == plan_id).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        active_subs = db.query(Subscription).filter(
+            Subscription.plan_id == plan_id,
+            Subscription.status.in_(["active", "trialing"])
+        ).count()
+        if active_subs > 0:
+            raise HTTPException(status_code=400, detail=f"Cannot delete plan with {active_subs} active subscribers")
+        db.delete(plan)
+        db.commit()
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+# ═══════════════════════════════════════════════════════════════════
+#  ADMIN — Subscriptions
+# ═══════════════════════════════════════════════════════════════════
+
+def _sub_public_dict(s, db):
+    user = db.query(User).filter(User.id == s.user_id).first()
+    plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == s.plan_id).first() if s.plan_id else None
+    period_end = s.current_period_end or s.ends_at
+    return {
+        "id": s.id,
+        "user_id": s.user_id,
+        "user_name": user.name if user else "Unknown",
+        "user_email": user.email if user else "",
+        "plan_id": s.plan_id,
+        "plan_name": plan.name if plan else ("Manual" if s.is_manual else "—"),
+        "stripe_subscription_id": s.stripe_subscription_id,
+        "status": s.status,
+        "is_manual": bool(s.is_manual),
+        "started_at": s.started_at.isoformat() if s.started_at else None,
+        "current_period_end": period_end.isoformat() if period_end else None,
+        "cancel_at_period_end": bool(s.cancel_at_period_end),
+        "cancelled_at": s.cancelled_at.isoformat() if s.cancelled_at else None,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+@app.get("/api/admin/subscriptions")
+async def admin_list_subscriptions(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        subs = db.query(Subscription).order_by(Subscription.created_at.desc()).all()
+        return {"subscriptions": [_sub_public_dict(s, db) for s in subs]}
+    finally:
+        db.close()
+
+class _ManualSubIn(BaseModel):
+    plan_id: int | None = None
+    status: str = "active"
+    days: int | None = None
+
+@app.post("/api/admin/users/{user_id}/subscription")
+async def admin_assign_subscription(user_id: int, payload: _ManualSubIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        now = datetime.utcnow()
+        ends = now + timedelta(days=payload.days) if payload.days and payload.days > 0 else None
+
+        sub = Subscription(
+            user_id=user_id,
+            plan_id=payload.plan_id,
+            status=payload.status,
+            is_manual=True,
+            started_at=now,
+            current_period_start=now,
+            ends_at=ends,
+            current_period_end=ends,
+        )
+        db.add(sub)
+
+        user.has_journal_access = True
+        if ends:
+            user.access_expires_at = ends
+
+        db.commit()
+        return {"success": True, "subscription": _sub_public_dict(sub, db)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@app.post("/api/admin/subscriptions/{sub_id}/cancel")
+async def admin_cancel_subscription(sub_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+        if not sub:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+        sub.status = "canceled"
+        sub.cancelled_at = datetime.utcnow()
+        sub.cancel_at_period_end = False
+
+        user = db.query(User).filter(User.id == sub.user_id).first()
+        if user:
+            active = db.query(Subscription).filter(
+                Subscription.user_id == user.id,
+                Subscription.id != sub.id,
+                Subscription.status.in_(["active", "trialing"])
+            ).count()
+            if active == 0:
+                user.has_journal_access = False
+
+        db.commit()
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+# ═══════════════════════════════════════════════════════════════════
+#  ADMIN — Payments & Revenue
+# ═══════════════════════════════════════════════════════════════════
+
+def _payment_public_dict(p, db):
+    user = db.query(User).filter(User.id == p.user_id).first() if p.user_id else None
+    return {
+        "id": p.id,
+        "user_id": p.user_id,
+        "user_name": user.name if user else "Unknown",
+        "user_email": user.email if user else "",
+        "subscription_id": p.subscription_id,
+        "provider": p.provider or "stripe",
+        "amount": p.amount,
+        "currency": (p.currency or "usd").upper(),
+        "status": p.status,
+        "description": p.description,
+        "invoice_url": p.invoice_url,
+        "stripe_payment_id": p.stripe_payment_id,
+        "refunded": bool(p.refunded),
+        "refund_amount": p.refund_amount,
+        "refunded_at": p.refunded_at.isoformat() if p.refunded_at else None,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+@app.get("/api/admin/payments")
+async def admin_list_payments(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        payments = db.query(Payment).order_by(Payment.created_at.desc()).limit(200).all()
+        return {"payments": [_payment_public_dict(p, db) for p in payments]}
+    finally:
+        db.close()
+
+@app.post("/api/admin/payments/{payment_id}/refund")
+async def admin_refund_payment(payment_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        pay = db.query(Payment).filter(Payment.id == payment_id).first()
+        if not pay:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        if pay.refunded:
+            raise HTTPException(status_code=400, detail="Already refunded")
+        pay.refunded = True
+        pay.refund_amount = pay.amount
+        pay.refunded_at = datetime.utcnow()
+        pay.status = "refunded"
+        db.commit()
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@app.get("/api/admin/subscriptions/stats")
+async def admin_subscription_stats(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        total_subs = db.query(Subscription).count()
+        active_subs = db.query(Subscription).filter(Subscription.status.in_(["active", "trialing"])).count()
+        canceled_subs = db.query(Subscription).filter(Subscription.status == "canceled").count()
+        manual_subs = db.query(Subscription).filter(Subscription.is_manual == True).count()
+
+        total_revenue = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+            Payment.status == "succeeded", Payment.refunded == False
+        ).scalar() or 0
+        total_refunded = db.query(func.coalesce(func.sum(Payment.refund_amount), 0)).filter(
+            Payment.refunded == True
+        ).scalar() or 0
+        payment_count = db.query(Payment).filter(Payment.status == "succeeded").count()
+
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        mrr_payments = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+            Payment.status == "succeeded",
+            Payment.refunded == False,
+            Payment.created_at >= month_start
+        ).scalar() or 0
+
+        plan_count = db.query(SubscriptionPlan).filter(SubscriptionPlan.is_active == True).count()
+        journal_users = db.query(User).filter(User.has_journal_access == True).count()
+
+        return {
+            "total_subscriptions": total_subs,
+            "active_subscriptions": active_subs,
+            "canceled_subscriptions": canceled_subs,
+            "manual_subscriptions": manual_subs,
+            "total_revenue": round(float(total_revenue), 2),
+            "total_refunded": round(float(total_refunded), 2),
+            "payment_count": payment_count,
+            "mrr": round(float(mrr_payments), 2),
+            "active_plans": plan_count,
+            "journal_access_users": journal_users,
+        }
+    finally:
+        db.close()
+
+# ═══════════════════════════════════════════════════════════════════
 
 @app.get("/api/sessions")
 async def list_trading_sessions(request: Request):
