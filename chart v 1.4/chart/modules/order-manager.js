@@ -14707,6 +14707,7 @@ class OrderManager {
                         this.openPositions.push(order);
                         this.orders.push(order);
                     }
+                    this._registerSplitTradeGroupEntry(order);
                     this.drawOrderLine(order);
                     this.drawSLTPLines(order);
                     setTimeout(() => this.drawEntryMarker(order), 100);
@@ -16563,27 +16564,10 @@ class OrderManager {
         }
         
         // ═══ SPLIT ENTRY GROUP TRACKING ═══
-        // Track split entries for aggregate journal entry when all close
-        // ONLY if not being scaled (scaling takes priority and uses its own grouping)
-        if (order.splitGroupId && order.isSplitEntry && !order.tradeGroupId) {
-            let splitGroup = this.splitTrades.get(order.splitGroupId);
-            if (!splitGroup) {
-                splitGroup = {
-                    groupId: order.splitGroupId,
-                    entries: [],
-                    side: order.type,
-                    status: 'OPEN',
-                    totalQuantity: 0,
-                    totalPnL: 0,
-                    splitTotal: order.splitTotal || 2
-                };
-                this.splitTrades.set(order.splitGroupId, splitGroup);
-            }
-            splitGroup.entries.push(order);
-            splitGroup.totalQuantity += order.quantity;
-            console.log(`📊 Split entry #${order.id} added to group ${order.splitGroupId} (${splitGroup.entries.length}/${splitGroup.splitTotal})`);
-        } else if (order.tradeGroupId) {
+        if (order.tradeGroupId) {
             console.log(`📊 Split entry #${order.id} is being scaled - using tradeGroupId ${order.tradeGroupId} instead of splitGroupId`);
+        } else {
+            this._registerSplitTradeGroupEntry(order);
         }
         
         // Remove pending order line AND pending SL/TP lines, then draw active versions
@@ -18517,6 +18501,31 @@ class OrderManager {
             chart.render();
             console.log('🎨 Chart render triggered - lines will be positioned automatically');
         }
+    }
+
+    /**
+     * Track an open leg in splitTrades so aggregate journal / split metadata matches
+     * panel multi-entry (market legs skip pending execution, so they must register here).
+     */
+    _registerSplitTradeGroupEntry(order) {
+        if (!order?.splitGroupId || !order.isSplitEntry || order.tradeGroupId) return;
+        let splitGroup = this.splitTrades.get(order.splitGroupId);
+        if (!splitGroup) {
+            splitGroup = {
+                groupId: order.splitGroupId,
+                entries: [],
+                side: order.type,
+                status: 'OPEN',
+                totalQuantity: 0,
+                totalPnL: 0,
+                splitTotal: order.splitTotal || 2
+            };
+            this.splitTrades.set(order.splitGroupId, splitGroup);
+        }
+        if (splitGroup.entries.some((e) => e && e.id === order.id)) return;
+        splitGroup.entries.push(order);
+        splitGroup.totalQuantity += order.quantity || 0;
+        console.log(`📊 Split entry #${order.id} added to group ${order.splitGroupId} (${splitGroup.entries.length}/${splitGroup.splitTotal})`);
     }
     
     /**
