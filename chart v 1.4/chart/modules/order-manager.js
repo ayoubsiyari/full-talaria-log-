@@ -11801,13 +11801,14 @@ class OrderManager {
             }
         }
         
-        // Draw SL: full line only when user has explicitly dragged it; otherwise badge on entry (like TP)
-        if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
+        // Draw SL as a full line when it has a valid price away from entry
+        // (risk-based calculation gives a real price even before the user drags)
+        if (slEnabled && slPrice > 0 && Math.abs(slPrice - entryPrice) > 1e-8) {
             this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
             if (this.previewLines.sl) {
                 this.previewLines.sl.targetPrice = slPrice;
             }
-        } else if (slEnabled && !this.slManuallyPositioned) {
+        } else if (slEnabled) {
             this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
         }
         
