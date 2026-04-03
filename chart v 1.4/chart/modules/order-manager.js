@@ -14653,12 +14653,17 @@ class OrderManager {
                 if (qtyRounded <= 0) return;
 
                 const effectiveOrderType = (() => {
-                    if (this.orderType === 'market') return 'market';
+                    // Panel "Market" must only fill legs at/near spot; other ladder prices stay limit/stop.
+                    const pip = pipSz || this.pipSize || 0.0001;
+                    const atMarket = Number.isFinite(level.price) && Number.isFinite(currentPrice)
+                        && Math.abs(level.price - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
+                    if (this.orderType === 'market' && atMarket) return 'market';
                     if (this.orderSide === 'BUY') return level.price > currentPrice ? 'stop' : 'limit';
                     return level.price < currentPrice ? 'stop' : 'limit';
                 })();
 
                 if (effectiveOrderType === 'market') {
+                    const fillPx = currentPrice;
                     const order = {
                         id: this.orderIdCounter++,
                         symbol: activeTicker,
@@ -14666,7 +14671,7 @@ class OrderManager {
                         sourceFileId: this._chartSourceFileId(),
                         instrument_settings: activeInstrumentSettings,
                         type: this.orderSide,
-                        openPrice: level.price,
+                        openPrice: fillPx,
                         openTime: currentCandle.t,
                         quantity: qtyRounded,
                         originalQuantity: qtyRounded,
@@ -14677,10 +14682,10 @@ class OrderManager {
                         takeProfit: tpEnabled && tpPrice > 0 ? tpPrice : null,
                         autoBreakeven: autoBreakeven,
                         breakevenSettings: breakevenSettings,
-                        highestPrice: level.price,
-                        lowestPrice: level.price,
-                        mfe: level.price,
-                        mae: level.price,
+                        highestPrice: fillPx,
+                        lowestPrice: fillPx,
+                        mfe: fillPx,
+                        mae: fillPx,
                         mfeTime: currentCandle.t,
                         maeTime: currentCandle.t,
                         mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
@@ -14706,7 +14711,7 @@ class OrderManager {
                     this.drawSLTPLines(order);
                     setTimeout(() => this.drawEntryMarker(order), 100);
                     placedOrderIds.push(order.id);
-                    weightedPriceSum += level.price * qtyRounded;
+                    weightedPriceSum += fillPx * qtyRounded;
                     lotsSum += qtyRounded;
                     placedCount++;
                 } else {
@@ -16164,6 +16169,9 @@ class OrderManager {
 
         this.removeOrderLine(orderId);
         this.removeSLTPLines(orderId);
+        if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
+            this.removeSplitGroupAvgLine(position.splitGroupId);
+        }
         
         // Clean up any preview lines that might be lingering
         this.removePreviewLines();
@@ -17376,6 +17384,9 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeEntryMarker(orderId);
+                if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
+                    this.removeSplitGroupAvgLine(position.splitGroupId);
+                }
                 this.updatePositionsPanel();
                 return;
             }
@@ -17705,6 +17716,9 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeEntryMarker(orderId);
+                if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
+                    this.removeSplitGroupAvgLine(position.splitGroupId);
+                }
                 this.updatePositionsPanel();
                 return;
             }
@@ -17792,6 +17806,9 @@ class OrderManager {
         if (!isPartialClose) {
             this.removeOrderLine(orderId);
             this.removeSLTPLines(orderId);
+            if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
+                this.removeSplitGroupAvgLine(position.splitGroupId);
+            }
         }
         
         // Clean up any preview lines that might be lingering
@@ -18607,7 +18624,12 @@ class OrderManager {
      * Rebuild split-group avg lines from current open/pending positions (e.g. after restore).
      */
     _rebuildSplitGroupAvgLines() {
-        const allOrders = [...(this.openPositions || []), ...(this.pendingOrders || [])];
+        const allOrders = [
+            ...(this.openPositions || []),
+            ...(this.pendingOrders || []),
+            ...(this.orderService?.openPositions || []),
+            ...(this.orderService?.pendingOrders || [])
+        ];
         const groups = new Map();
         for (const o of allOrders) {
             if (!o.splitGroupId || !o.isSplitEntry) continue;
@@ -18653,7 +18675,7 @@ class OrderManager {
             if (g.chart !== ch) continue;
 
             const openOrders = g.orderIds
-                .map(id => this.openPositions.find(p => p.id === id) || this.pendingOrders.find(p => p.id === id))
+                .map((id) => this._findOpenPositionById(id) || this._findPendingOrderById(id))
                 .filter(Boolean);
             if (openOrders.length === 0) {
                 toRemove.push(g.splitGroupId);
@@ -18693,14 +18715,14 @@ class OrderManager {
 
             // --- Collect individual order line widths for alignment ---
             const memberLines = (this.orderLines || []).filter(ol => {
-                const od = this.openPositions.find(p => p.id === ol.orderId) || this.pendingOrders.find(p => p.id === ol.orderId);
+                const od = this._findOpenPositionById(ol.orderId) || this._findPendingOrderById(ol.orderId);
                 return od && g.orderIds.includes(ol.orderId) && (ol.chart || this.chart) === ch;
             });
 
             let maxRowW = avgTotalW;
             const memberWidths = [];
             for (const ml of memberLines) {
-                const od = this.openPositions.find(p => p.id === ml.orderId) || this.pendingOrders.find(p => p.id === ml.orderId);
+                const od = this._findOpenPositionById(ml.orderId) || this._findPendingOrderById(ml.orderId);
                 const isPending = !!(od && od.status === 'PENDING');
                 const lbw = (ml.labelText?.node()?.getBBox()?.width || 0) + (ml.arrow?.node()?.getBBox()?.width || 0) + pad * 2 + 4;
                 let pbw = 0;
@@ -20342,6 +20364,21 @@ class OrderManager {
         const a = this.openPositions?.find((p) => p.id === orderId);
         if (a) return a;
         return this.orderService?.openPositions?.find((p) => p.id === orderId) || null;
+    }
+
+    _findPendingOrderById(orderId) {
+        const a = this.pendingOrders?.find((p) => p.id === orderId);
+        if (a) return a;
+        return this.orderService?.pendingOrders?.find((p) => p.id === orderId) || null;
+    }
+
+    /** True if any multi-entry / split leg for this group is still open or pending (legacy + orderService). */
+    _splitGroupHasAnyOpenLeg(splitGroupId) {
+        if (!splitGroupId) return false;
+        const open = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])];
+        const pend = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+        const match = (o) => o && o.splitGroupId === splitGroupId && o.isSplitEntry;
+        return open.some(match) || pend.some(match);
     }
 
     _syncSplitGroupProtectionPrices(order, kind, price) {
