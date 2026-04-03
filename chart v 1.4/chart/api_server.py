@@ -686,7 +686,7 @@ async def auth_middleware(request: Request, call_next):
         protected = True
     if path.startswith("/dashboard"):
         protected = True
-    if path in {"/index.html", "/sessions.html", "/backtesting.html"}:
+    if path in {"/index.html", "/backtesting.html"}:
         protected = True
     if path.startswith("/api/") and not (path == "/api/status" or path.startswith("/api/auth/")):
         protected = True
@@ -4716,10 +4716,6 @@ async def talaria_chart_image():
 async def talaria_chart_image_with_space():
     return file_response_if_exists("homepage/out/talaria chart.png")
 
-@app.get("/sessions.html")
-async def sessions_page():
-    return RedirectResponse(url="/chart/sessions.html")
-
 @app.get("/dashboard/sessions/{session_id}/analytics")
 @app.get("/dashboard/sessions/{session_id}/analytics/")
 async def dashboard_session_analytics_redirect(session_id: int):
@@ -4754,10 +4750,9 @@ if next_static_dir.exists():
 # Chart UI (static HTML/JS/CSS) served under /chart
 CHART_ROOT_FILES = {
     "index.html",
-    "sessions.html",
     "backtesting.html",
-    "backtesting-clean.html",
     "propfirm-backtest.html",
+    "admin-dashboard.html",
     "styles.css",
     "propfirm-styles.css",
     "chart.js",

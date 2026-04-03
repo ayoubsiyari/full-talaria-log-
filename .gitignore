@@ -5,7 +5,7 @@
 
 # VS Code IDE
 .vscode/
-
+.cursor/skills/ui-ux-pro-max/
 # Temporary / scratch files
 .tmp_drawing_tools_ui_accent_hits.txt
 color.text
