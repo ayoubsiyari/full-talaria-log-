@@ -11184,6 +11184,84 @@ class OrderManager {
     }
 
     /**
+     * Keep preview order lines in sync with current price during replay.
+     * For market orders: entry tracks close price, TP/SL/multi-TP shift by the same delta.
+     * Called from updatePositions() on every replay tick.
+     */
+    _syncPreviewToReplayPrice() {
+        if (!this.replaySystem || !this.replaySystem.isActive) return;
+        if (this.orderType !== 'market') return;
+
+        const orderPanelEl = document.getElementById('orderPanel');
+        if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) return;
+        if (this._orderPlacedAwaitingReset) return;
+        if (this.isDraggingPreviewLine) return;
+
+        const currentCandle = this.getCurrentCandle();
+        if (!currentCandle) return;
+
+        const newPrice = currentCandle.c;
+        const priceInput = document.getElementById('orderEntryPrice');
+        if (!priceInput) return;
+
+        const oldPrice = parseFloat(priceInput.value || 0);
+        if (!(oldPrice > 0) || !(newPrice > 0)) return;
+
+        const delta = newPrice - oldPrice;
+        if (Math.abs(delta) < 1e-10) return;
+
+        const now = performance.now();
+        if (this._lastPreviewSyncTs && (now - this._lastPreviewSyncTs) < 80) return;
+        this._lastPreviewSyncTs = now;
+
+        const precision = this.getPricePrecision(newPrice);
+
+        priceInput.value = newPrice.toFixed(precision);
+
+        if (this.tpManuallyPositioned) {
+            const tpInput = document.getElementById('tpPrice');
+            if (tpInput) {
+                const oldTP = parseFloat(tpInput.value || 0);
+                if (oldTP > 0) tpInput.value = (oldTP + delta).toFixed(precision);
+            }
+        }
+
+        if (this.slManuallyPositioned) {
+            const slInput = document.getElementById('slPrice');
+            if (slInput) {
+                const oldSL = parseFloat(slInput.value || 0);
+                if (oldSL > 0) slInput.value = (oldSL + delta).toFixed(precision);
+            }
+        }
+
+        const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
+        if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+            this.tpTargets.forEach(target => {
+                if (target.price > 0) {
+                    target.price = parseFloat((target.price + delta).toFixed(precision));
+                }
+            });
+        }
+
+        if (this.splitEntries && this.splitEntries.length > 0) {
+            this.splitEntries.forEach(se => {
+                if (se.price > 0) se.price = parseFloat((se.price + delta).toFixed(precision));
+            });
+        }
+
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            this.multiEntryLevels.forEach(lv => {
+                if (lv.price > 0) lv.price = parseFloat((lv.price + delta).toFixed(precision));
+            });
+        }
+
+        this.syncDefaultTargetsToEntry();
+        this.calculatePositionFromRisk();
+        this.calculateAdvancedRiskReward();
+        this.updatePreviewLines();
+    }
+
+    /**
      * Simulate the placeOrder conversion+normalization so the panel preview
      * matches the ACTUAL percentages that will be used when the order executes.
      * Returns an array of effective percentages (one per tpTarget, summing to 100).
@@ -17128,6 +17206,9 @@ class OrderManager {
         
         // Check and execute pending orders
         this.checkPendingOrders(currentCandle);
+
+        // Keep preview order lines tracking the current price during replay
+        this._syncPreviewToReplayPrice();
         
         // If no open positions but have MFE/MAE tracking, still continue
         if (this.openPositions.length === 0) {
