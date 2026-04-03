@@ -57302,7 +57302,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         rowCvAlign('Crosshair', crosshairLineBtnCv, crosshairSwatchBtnCv)+
 
-        rowCvAlign('Price line', swCv('cv_plClr', plC)));
+        rowCvAlign('Price line', '<div class="settings-checkbox-item'+(cs.showPriceLine!==false?' checked':'')+'" id="ck_showPL" style="cursor:pointer;padding:0;gap:0;"><div class="settings-checkbox" style="width:14px;height:14px;">'+CSV+'</div></div>', swCv('cv_plClr', plC)));
 
     var fontOptsSc=[['8','8'],['9','9'],['10','10'],['11','11'],['12','12'],['13','13'],['14','14']];
 
@@ -57378,8 +57378,6 @@ P['symbol']={title:'Symbol',build:function(){
 
     wClr('volDn',function(v){set('volumeDownColor',v);});
 
-    wChk('showPL',function(v){set('showPriceLine',v);});
-
     wClr('plClr',function(v){set('priceLineColor',v);});
 
     wClr('areaLC',function(v){set('areaLineColor',v);});
@@ -57451,6 +57449,8 @@ P['symbol']={title:'Symbol',build:function(){
     });
 
     wClr('cv_gridClr',function(v){set('gridColor',v);spClearActiveTplSelection();});
+
+    wChk('showPL',function(v){set('showPriceLine',v);spClearActiveTplSelection();var peer=document.getElementById('ck_sc_priceLine');if(peer)peer.classList.toggle('checked',v);});
 
     wClr('cv_plClr',function(v){set('priceLineColor',v);spClearActiveTplSelection();});
 
@@ -57539,7 +57539,7 @@ P['scales']={title:'Scales and lines',build:function(){
 
     wSel('sc_mode',function(v){var c=ch();if(!c)return;c.priceScale=c.priceScale||{};c.priceScale.mode=v;set('priceScaleMode',v);});
 
-    wChk('sc_priceLine',function(v){set('showPriceLine',v);});wClr('sc_priceClr',function(v){set('priceLineColor',v);});
+    wChk('sc_priceLine',function(v){set('showPriceLine',v);var peer=document.getElementById('ck_showPL');if(peer)peer.classList.toggle('checked',v);});wClr('sc_priceClr',function(v){set('priceLineColor',v);});
 
     wChk('sc_grid',function(v){set('showGrid',v);});wClr('sc_gridClr',function(v){set('gridColor',v);});
 
