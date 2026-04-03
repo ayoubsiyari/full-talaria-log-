@@ -4725,31 +4725,26 @@ async def sessions_page():
 async def dashboard_session_analytics_redirect(session_id: int):
     return RedirectResponse(url=f"/dashboard/sessions/analytics/?id={session_id}")
 
+@app.get("/dashboard/admin")
+@app.get("/dashboard/admin/")
+@app.get("/chart/admin-dashboard.html")
+async def admin_dashboard_page(request: Request):
+    _require_admin(request)
+    return file_response_if_exists("admin-dashboard.html")
+
 @app.get("/dashboard/admin/datasets")
 @app.get("/dashboard/admin/datasets/")
-async def dashboard_admin_datasets_page(request: Request):
-    _require_admin(request)
-    return file_response_if_exists("admin-datasets.html")
-
 @app.get("/chart/admin-datasets.html")
-async def chart_admin_datasets_page(request: Request):
+async def dashboard_admin_datasets_redirect(request: Request):
     _require_admin(request)
-    return file_response_if_exists("admin-datasets.html")
+    return RedirectResponse(url="/chart/admin-dashboard.html#datasets")
 
 @app.get("/dashboard/admin/users")
+@app.get("/dashboard/admin/users/")
+@app.get("/chart/admin-users.html")
 async def dashboard_admin_users_redirect(request: Request):
     _require_admin(request)
-    return file_response_if_exists("admin-users.html")
-
-@app.get("/dashboard/admin/users/")
-async def dashboard_admin_users_page(request: Request):
-    _require_admin(request)
-    return file_response_if_exists("admin-users.html")
-
-@app.get("/chart/admin-users.html")
-async def chart_admin_users_page(request: Request):
-    _require_admin(request)
-    return file_response_if_exists("admin-users.html")
+    return RedirectResponse(url="/chart/admin-dashboard.html#users")
 
 # Mount Next.js static assets (_next folder)
 next_static_dir = Path("homepage/out/_next")

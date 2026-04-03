@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talaria — Admin Dashboard</title>
+<style>
+:root{--bg:#060c1a;--surface:#0c1328;--surface2:#111c3a;--surface3:#162046;--border:#1a2850;--border2:#253460;--text:#e4eafc;--muted:#7b8db8;--accent:#4e8cff;--accent2:#7ea8ff;--ok:#22c07a;--warn:#f5a623;--danger:#ff4d6d;--sidebar-w:240px;--header-h:56px;--radius:10px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh}
+/* ── Layout ───────────────────────────────────────────── */
+.app{display:flex;height:100vh}
+.sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;z-index:10;transition:width .2s}
+.sidebar-logo{padding:18px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px;letter-spacing:.3px}
+.sidebar-logo img{height:28px}
+.sidebar-logo span{color:var(--accent)}
+.sidebar-nav{flex:1;padding:12px 10px;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;margin-bottom:2px;text-decoration:none}
+.nav-item:hover{background:rgba(78,140,255,.08);color:var(--text)}
+.nav-item.active{background:rgba(78,140,255,.14);color:var(--accent)}
+.nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.7}
+.nav-item.active svg{opacity:1}
+.nav-sep{height:1px;background:var(--border);margin:10px 14px}
+.sidebar-footer{padding:14px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.sidebar-footer .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:16px}
+.topbar-title{font-size:18px;font-weight:700;flex:1}
+.topbar-user{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.topbar-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px}
+.topbar-btn{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.topbar-btn:hover{background:rgba(78,140,255,.1);border-color:var(--accent);color:var(--accent)}
+.content{flex:1;overflow-y:auto;padding:24px 28px}
+/* ── Sections ─────────────────────────────────────────── */
+.section{display:none}
+.section.active{display:block}
+/* ── Cards ────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.card-hdr{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.card-title{font-size:14px;font-weight:700;flex:1}
+.card-badge{background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+.card-body{padding:16px 20px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:1100px){.grid-2,.grid-3{grid-template-columns:1fr}}
+/* ── Stats ────────────────────────────────────────────── */
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px}
+.stat-card .label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.stat-card .value{font-size:28px;font-weight:800}
+.stat-card .sub{font-size:11px;color:var(--muted);margin-top:4px}
+.stat-card.accent .value{color:var(--accent)}
+.stat-card.ok .value{color:var(--ok)}
+.stat-card.warn .value{color:var(--warn)}
+.stat-card.danger .value{color:var(--danger)}
+/* ── Tables ───────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:10px 14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;cursor:pointer;user-select:none;border-bottom:1px solid var(--border)}
+td{padding:10px 14px;font-size:13px;border-bottom:1px solid rgba(30,45,86,.4)}
+tr:hover td{background:rgba(78,140,255,.03)}
+/* ── Badges ───────────────────────────────────────────── */
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.badge-active{background:rgba(34,192,122,.12);color:var(--ok)}
+.badge-banned{background:rgba(255,77,109,.12);color:var(--danger)}
+.badge-expired{background:rgba(245,166,35,.12);color:var(--warn)}
+.badge-admin{background:rgba(78,140,255,.15);color:var(--accent)}
+.badge-user{background:rgba(123,141,184,.1);color:var(--muted)}
+/* ── Buttons ──────────────────────────────────────────── */
+.btn{padding:8px 16px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--accent);background:rgba(78,140,255,.1)}
+.btn.sm{padding:5px 10px;font-size:11px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent2)}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn.danger:hover{background:rgba(255,77,109,.12)}
+.btn.warn{border-color:var(--warn);color:var(--warn)}
+.btn.warn:hover{background:rgba(245,166,35,.1)}
+.btn.ok{border-color:var(--ok);color:var(--ok)}
+.btn.ok:hover{background:rgba(34,192,122,.1)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+/* ── Forms ────────────────────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+.fg-full{grid-column:1/-1}
+input,select,textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;transition:border .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:60px}
+/* ── Modal ────────────────────────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:100}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.modal h2{font-size:18px;margin-bottom:18px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+/* ── Access Mode Toggle ──────────────────────────────── */
+.access-mode{display:flex;gap:0;border:1px solid var(--border2);border-radius:8px;overflow:hidden}
+.access-mode button{background:var(--surface2);color:var(--muted);border:none;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.access-mode button.active{background:var(--accent);color:#fff}
+.quick-btns{display:flex;gap:4px}
+.quick-btns .btn{padding:4px 8px;font-size:10px}
+/* ── Search ───────────────────────────────────────────── */
+.search-bar{display:flex;gap:10px;margin-bottom:14px;align-items:center}
+.search-bar input{flex:1}
+.search-bar select{width:140px}
+/* ── Session Cards ────────────────────────────────────── */
+.session-row{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid rgba(30,45,86,.3);transition:background .15s}
+.session-row:hover{background:rgba(78,140,255,.03)}
+.session-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.session-dot.online{background:var(--ok)}
+.session-dot.idle{background:var(--warn)}
+.session-dot.stale{background:var(--muted)}
+.session-info{flex:1;min-width:0}
+.session-name{font-size:13px;font-weight:600}
+.session-meta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ── Upload / Datasets ────────────────────────────────── */
+.drop-zone{border:2px dashed var(--border2);border-radius:var(--radius);padding:32px;text-align:center;color:var(--muted);cursor:pointer;transition:all .2s}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:rgba(78,140,255,.05)}
+.pbar-wrap{margin-top:12px;display:none}
+.pbar-outer{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.pbar-inner{height:100%;background:var(--accent);border-radius:3px;width:0;transition:width .3s}
+.pbar-label{font-size:11px;color:var(--muted);margin-top:6px;text-align:center}
+.tf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin-top:12px}
+.tf-card{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center;font-size:12px;font-weight:600}
+.tf-card.ready{border-color:var(--ok);color:var(--ok)}
+.tf-card.pending{border-color:var(--warn);color:var(--warn)}
+.tf-card.missing{color:var(--muted)}
+.conv-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px}
+.act-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+/* ── Toast ────────────────────────────────────────────── */
+#toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;background:var(--surface2);border:1px solid var(--border);color:var(--text)}
+#toast.show{opacity:1}
+#toast.ok{border-color:var(--ok);color:var(--ok)}
+#toast.err{border-color:var(--danger);color:var(--danger)}
+/* ── Empty State ──────────────────────────────────────── */
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-state .icon{font-size:40px;margin-bottom:10px;opacity:.5}
+.empty-state p{font-size:13px}
+/* ── Activity Log ─────────────────────────────────────── */
+.activity-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid rgba(30,45,86,.3)}
+.activity-item:last-child{border-bottom:none}
+.activity-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.activity-icon.login{background:rgba(78,140,255,.12)}
+.activity-icon.create{background:rgba(34,192,122,.12)}
+.activity-icon.warn{background:rgba(245,166,35,.12)}
+.activity-text{flex:1;font-size:13px}
+.activity-time{font-size:11px;color:var(--muted);white-space:nowrap}
+/* ── Scrollbar ────────────────────────────────────────── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border2)}
+/* ── Access Denied ────────────────────────────────────── */
+#accessDenied{display:none;align-items:center;justify-content:center;height:100vh;text-align:center;flex-direction:column;gap:16px}
+#accessDenied .lock{font-size:60px;opacity:.4}
+#accessDenied h2{font-size:22px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- Access Denied -->
+<div id="accessDenied">
+  <div class="lock">🔒</div>
+  <h2>Admin Access Required</h2>
+  <p style="color:var(--muted)">You don't have permission to access this page.</p>
+  <a href="/" class="btn primary" style="margin-top:10px">Go Home</a>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay" id="editUserModal">
+  <div class="modal">
+    <h2 id="editModalTitle">Edit User</h2>
+    <input type="hidden" id="editUserId">
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input type="text" id="editName"></div>
+      <div class="field"><label>Email</label><input type="email" id="editEmail"></div>
+      <div class="field"><label>Role</label>
+        <select id="editRole"><option value="user">User</option><option value="admin">Admin</option></select>
+      </div>
+      <div class="field"><label>New Password</label><input type="password" id="editPassword" placeholder="Leave blank to keep"></div>
+      <div class="field"><label>Max Devices</label>
+        <input type="number" id="editMaxSessions" min="1" max="10" value="1" style="width:100px">
+      </div>
+      <div class="field"><label>Access Expiry</label>
+        <div class="access-mode" id="editAccessMode">
+          <button data-mode="unlimited" class="active">Unlimited</button>
+          <button data-mode="date">Set Date</button>
+          <button data-mode="days">Add Days</button>
+        </div>
+      </div>
+      <div class="field fg-full" id="editAccessDateField" style="display:none">
+        <label>Expiry Date</label><input type="datetime-local" id="editAccessDate">
+      </div>
+      <div class="field fg-full" id="editAccessDaysField" style="display:none">
+        <label>Days from now</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" id="editAccessDays" min="1" value="30" style="width:100px">
+          <div class="quick-btns">
+            <button class="btn sm" onclick="$('editAccessDays').value=7">7d</button>
+            <button class="btn sm" onclick="$('editAccessDays').value=30">30d</button>
+            <button class="btn sm" onclick="$('editAccessDays').value=90">90d</button>
+            <button class="btn sm" onclick="$('editAccessDays').value=365">1y</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeEditModal()">Cancel</button>
+      <button class="btn primary" onclick="saveUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── App Shell ─────────────────────────────────────── -->
+<div class="app" id="appShell" style="display:none">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <span>Talaria</span> Admin
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-section="overview" onclick="navigate('overview')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
+      </a>
+      <a class="nav-item" data-section="users" onclick="navigate('users')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Users
+      </a>
+      <a class="nav-item" data-section="sessions" onclick="navigate('sessions')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Live Sessions
+      </a>
+      <div class="nav-sep"></div>
+      <a class="nav-item" data-section="datasets" onclick="navigate('datasets')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        Datasets
+      </a>
+      <div class="nav-sep"></div>
+      <a class="nav-item" data-section="settings" onclick="navigate('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        Settings
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="dot"></div>
+      <span id="sidebarUser">Admin</span>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="pageTitle">Overview</div>
+      <button class="topbar-btn" onclick="window.location.href='/'">← Back to Chart</button>
+      <div class="topbar-user">
+        <div class="topbar-avatar" id="topbarAvatar">A</div>
+        <span id="topbarName">Admin</span>
+      </div>
+    </div>
+    <div class="content">
+
+      <!-- ════════ OVERVIEW SECTION ════════ -->
+      <div class="section active" id="sec-overview">
+        <div class="stat-cards" id="overviewStats"></div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Recent Sessions</div></div>
+            <div class="card-body" id="recentSessionsList" style="max-height:360px;overflow-y:auto">
+              <div class="empty-state"><div class="icon">📡</div><p>Loading...</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Quick Actions</div></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+              <button class="btn primary" onclick="navigate('users');setTimeout(()=>document.getElementById('newName').focus(),100)">+ Create New User</button>
+              <button class="btn" onclick="navigate('datasets')">Manage Datasets</button>
+              <button class="btn" onclick="navigate('sessions')">View Live Sessions</button>
+              <button class="btn warn" onclick="navigate('users')">Manage Users</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════ USERS SECTION ════════ -->
+      <div class="section" id="sec-users">
+        <!-- Create User -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr"><div class="card-title">Create New User</div></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field"><label>Name</label><input type="text" id="newName" placeholder="John Doe"></div>
+              <div class="field"><label>Email</label><input type="email" id="newEmail" placeholder="john@example.com"></div>
+              <div class="field"><label>Password</label><input type="password" id="newPassword" placeholder="Min 6 characters"></div>
+              <div class="field"><label>Role</label>
+                <select id="newRole"><option value="user">User</option><option value="admin">Admin</option></select>
+              </div>
+              <div class="field"><label>Max Devices</label>
+                <input type="number" id="newMaxSessions" min="1" max="10" value="1" style="width:100px">
+              </div>
+              <div class="field"><label>Access Duration</label>
+                <div class="access-mode" id="createAccessMode">
+                  <button data-mode="unlimited" class="active">Unlimited</button>
+                  <button data-mode="date">Date</button>
+                  <button data-mode="days">Days</button>
+                </div>
+              </div>
+              <div class="field" id="createAccessDateField" style="display:none">
+                <label>Expiry Date</label><input type="datetime-local" id="newAccessDate">
+              </div>
+              <div class="field" id="createAccessDaysField" style="display:none">
+                <label>Days</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input type="number" id="newAccessDays" min="1" value="30" style="width:100px">
+                  <div class="quick-btns">
+                    <button class="btn sm" onclick="$('newAccessDays').value=7">7d</button>
+                    <button class="btn sm" onclick="$('newAccessDays').value=30">30d</button>
+                    <button class="btn sm" onclick="$('newAccessDays').value=90">90d</button>
+                  </div>
+                </div>
+              </div>
+              <div class="fg-full" style="text-align:right;margin-top:4px">
+                <button class="btn primary" onclick="createUser()">Create User</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Users Table -->
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title">Users</div>
+            <span class="card-badge" id="userCountBadge">0</span>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="search-bar" style="padding:14px 20px 0">
+              <input type="text" id="searchInput" placeholder="Search by name or email..." oninput="renderUsers()">
+              <select id="filterStatus" onchange="renderUsers()">
+                <option value="">All</option>
+                <option value="active">Active</option>
+                <option value="banned">Banned</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr>
+                  <th onclick="sortBy('name')">Name</th>
+                  <th onclick="sortBy('role')">Role</th>
+                  <th onclick="sortBy('status')">Status</th>
+                  <th onclick="sortBy('access_expires_at')">Access Expires</th>
+                  <th onclick="sortBy('last_active_at')">Last Active</th>
+                  <th onclick="sortBy('session_count')">Sessions</th>
+                  <th>Actions</th>
+                </tr></thead>
+                <tbody id="usersBody"></tbody>
+              </table>
+            </div>
+            <div class="empty-state" id="emptyUsers" style="display:none">
+              <div class="icon">👤</div><p>No users found</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════ SESSIONS SECTION ════════ -->
+      <div class="section" id="sec-sessions">
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title">Live Sessions</div>
+            <span class="card-badge" id="sessionCountBadge">0</span>
+            <button class="btn sm" onclick="loadSessions()" style="margin-left:8px">↻ Refresh</button>
+          </div>
+          <div class="card-body" style="padding:0;max-height:calc(100vh - 200px);overflow-y:auto" id="sessionsPanel">
+            <div class="empty-state" id="emptySessions"><div class="icon">📡</div><p>No active sessions</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════ DATASETS SECTION ════════ -->
+      <div class="section" id="sec-datasets">
+        <!-- Upload -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr"><div class="card-title">Upload Dataset</div></div>
+          <div class="card-body">
+            <div class="drop-zone" id="dropZone">
+              <input type="file" id="fileInput" accept=".csv,.txt" style="display:none">
+              <p style="font-size:14px;font-weight:600;margin-bottom:6px">Drop CSV file here or click to browse</p>
+              <p style="font-size:12px">Supports .csv and .txt files</p>
+            </div>
+            <div class="pbar-wrap" id="uploadProgress">
+              <div class="pbar-outer"><div class="pbar-inner" id="pbar"></div></div>
+              <div class="pbar-label" id="pbarLabel"></div>
+            </div>
+            <!-- Dukascopy Section -->
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px">Fetch from Dukascopy</div>
+              <div class="form-grid">
+                <div class="field"><label>Pair</label><input id="dk_pair" type="text" value="EURUSD" style="text-transform:uppercase"></div>
+                <div class="field"><label>Timeframe</label><input disabled value="M1 (auto-aggregated)" style="opacity:.5"></div>
+                <div class="field"><label>From</label><input id="dk_from" type="date"></div>
+                <div class="field"><label>To</label><input id="dk_to" type="date"></div>
+                <div class="fg-full" style="display:flex;gap:10px;align-items:center">
+                  <button class="btn primary" id="dkFetchBtn" onclick="fetchDukascopy()">Fetch Data</button>
+                  <span id="dukaProgress" style="font-size:12px;color:var(--muted)"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Dataset List + Settings -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-hdr">
+              <div class="card-title">Datasets</div>
+              <span class="card-badge" id="datasetCountBadge">0</span>
+              <button class="btn sm" onclick="loadDatasets(true)" style="margin-left:8px">↻</button>
+            </div>
+            <div class="card-body" style="padding:0;max-height:500px;overflow-y:auto">
+              <table>
+                <thead><tr><th>ID</th><th>Name</th><th>Rows</th><th>Timeframes</th><th>State</th></tr></thead>
+                <tbody id="dsBody"></tbody>
+              </table>
+              <div class="empty-state" id="emptyDs" style="display:none"><div class="icon">📊</div><p>No datasets</p></div>
+            </div>
+          </div>
+          <div class="card" id="dsSettingsCard" style="display:none">
+            <div class="card-hdr"><div class="card-title" id="dsSettingsTitle">Dataset Settings</div></div>
+            <div class="card-body">
+              <form id="settingsForm" onsubmit="return saveDatasetSettings(event)">
+                <div class="form-grid">
+                  <div class="field"><label>Display Name</label><input id="ds_name" type="text"></div>
+                  <div class="field"><label>Delimiter</label>
+                    <select id="ds_delim"><option value=",">,</option><option value=";">;</option><option value="tab">Tab</option></select>
+                  </div>
+                  <div class="field"><label>Timezone</label>
+                    <select id="ds_tz"><option value="UTC">UTC</option><option value="US/Eastern">US/Eastern</option><option value="US/Central">US/Central</option><option value="US/Pacific">US/Pacific</option><option value="Europe/London">Europe/London</option><option value="Europe/Berlin">Europe/Berlin</option><option value="Asia/Tokyo">Asia/Tokyo</option><option value="Asia/Hong_Kong">Asia/Hong_Kong</option></select>
+                  </div>
+                  <div class="field"><label>Date Format</label>
+                    <select id="ds_dtfmt"><option value="">Auto</option><option value="%Y-%m-%d %H:%M:%S">YYYY-MM-DD HH:MM:SS</option><option value="%m/%d/%Y %H:%M">MM/DD/YYYY HH:MM</option><option value="%d.%m.%Y %H:%M:%S">DD.MM.YYYY HH:MM:SS</option><option value="unix_s">Unix (seconds)</option><option value="unix_ms">Unix (milliseconds)</option></select>
+                  </div>
+                  <div class="field"><label>Header Row</label>
+                    <select id="ds_header"><option value="1">Yes</option><option value="0">No</option></select>
+                  </div>
+                  <div class="field"><label>Active</label>
+                    <select id="ds_active"><option value="1">Yes</option><option value="0">No</option></select>
+                  </div>
+                  <div class="field fg-full"><label>Notes</label><textarea id="ds_notes" rows="2"></textarea></div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:14px">
+                  <button type="submit" class="btn primary">Save</button>
+                  <button type="button" class="btn warn" onclick="rebuildDataset()">Rebuild</button>
+                  <button type="button" class="btn danger" onclick="deleteDataset()">Delete</button>
+                </div>
+              </form>
+              <div id="tfGrid" class="tf-grid" style="margin-top:14px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════ SETTINGS SECTION ════════ -->
+      <div class="section" id="sec-settings">
+        <div class="card">
+          <div class="card-hdr"><div class="card-title">System Information</div></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field"><label>Platform</label><input disabled value="Talaria Trading Platform"></div>
+              <div class="field"><label>API Server</label><input disabled id="settApiUrl"></div>
+              <div class="field"><label>Total Users</label><input disabled id="settTotalUsers"></div>
+              <div class="field"><label>Total Datasets</label><input disabled id="settTotalDs"></div>
+              <div class="field"><label>Active Sessions</label><input disabled id="settActiveSess"></div>
+              <div class="field"><label>Server Time</label><input disabled id="settServerTime"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-hdr"><div class="card-title">Default New User Settings</div></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field"><label>Default Max Devices</label>
+                <input type="number" id="settDefaultMaxSessions" min="1" max="10" value="1" style="width:100px">
+              </div>
+              <div class="field"><label>Default Access Duration (days)</label>
+                <input type="number" id="settDefaultAccessDays" min="0" value="0" style="width:100px" placeholder="0 = unlimited">
+              </div>
+            </div>
+            <p style="font-size:11px;color:var(--muted);margin-top:10px">These defaults are used when creating new users. Set access days to 0 for unlimited.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  Helpers
+// ═══════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function fmtN(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+
+let toastTimer;
+function toast(msg, type) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show' + (type === 'ok' ? ' ok' : type === 'err' ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 3000);
+}
+
+async function api(url, opts = {}) {
+  opts.credentials = 'include';
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Error ${res.status}`);
+  }
+  return res.json();
+}
+
+function timeAgo(iso) {
+  if (!iso) return 'Never';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ═══════════════════════════════════════════════════════════
+//  Navigation
+// ═══════════════════════════════════════════════════════════
+const sectionTitles = {
+  overview: 'Overview',
+  users: 'User Management',
+  sessions: 'Live Sessions',
+  datasets: 'Dataset Management',
+  settings: 'Settings'
+};
+
+function navigate(section) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const sec = $('sec-' + section);
+  const nav = document.querySelector(`.nav-item[data-section="${section}"]`);
+  if (sec) sec.classList.add('active');
+  if (nav) nav.classList.add('active');
+  $('pageTitle').textContent = sectionTitles[section] || section;
+  window.location.hash = section;
+  if (section === 'sessions') loadSessions();
+  if (section === 'settings') updateSettingsPage();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Data stores
+// ═══════════════════════════════════════════════════════════
+let allUsers = [];
+let allSessions = [];
+let allDatasets = [];
+let currentUser = null;
+let sortField = 'name';
+let sortDir = 1;
+let createAccessModeVal = 'unlimited';
+let currentEditMode = 'unlimited';
+let selectedDsId = null;
+let dsPollTimer = null;
+
+// ═══════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════
+(async function init() {
+  try {
+    const data = await api('/api/auth/me');
+    if (!data || !data.user || data.user.role !== 'admin') {
+      $('accessDenied').style.display = 'flex';
+      return;
+    }
+    currentUser = data.user;
+    $('appShell').style.display = 'flex';
+    $('sidebarUser').textContent = currentUser.name;
+    $('topbarName').textContent = currentUser.name;
+    $('topbarAvatar').textContent = (currentUser.name || 'A')[0].toUpperCase();
+
+    await Promise.all([loadUsers(), loadSessions(), loadDatasets()]);
+    renderOverview();
+
+    setInterval(loadSessions, 10000);
+
+    const hash = window.location.hash.replace('#', '');
+    if (hash && sectionTitles[hash]) navigate(hash);
+  } catch (e) {
+    $('accessDenied').style.display = 'flex';
+  }
+})();
+
+// Access mode toggles
+function setupAccessMode(containerId, dateFieldId, daysFieldId, setter) {
+  const container = $(containerId);
+  if (!container) return;
+  container.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      container.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      $(dateFieldId).style.display = mode === 'date' ? '' : 'none';
+      $(daysFieldId).style.display = mode === 'days' ? '' : 'none';
+      setter(mode);
+    });
+  });
+}
+setupAccessMode('createAccessMode', 'createAccessDateField', 'createAccessDaysField', m => createAccessModeVal = m);
+setupAccessMode('editAccessMode', 'editAccessDateField', 'editAccessDaysField', m => currentEditMode = m);
+
+// ═══════════════════════════════════════════════════════════
+//  OVERVIEW
+// ═══════════════════════════════════════════════════════════
+function renderOverview() {
+  const total = allUsers.length;
+  const active = allUsers.filter(u => u.status === 'active').length;
+  const banned = allUsers.filter(u => u.status === 'banned').length;
+  const expired = allUsers.filter(u => u.status === 'expired').length;
+  const online = allUsers.filter(u => u.session_count > 0).length;
+
+  $('overviewStats').innerHTML = `
+    <div class="stat-card accent"><div class="label">Total Users</div><div class="value">${total}</div></div>
+    <div class="stat-card ok"><div class="label">Active</div><div class="value">${active}</div></div>
+    <div class="stat-card danger"><div class="label">Banned</div><div class="value">${banned}</div></div>
+    <div class="stat-card warn"><div class="label">Expired</div><div class="value">${expired}</div></div>
+    <div class="stat-card"><div class="label">Online Now</div><div class="value" style="color:var(--ok)">${online}</div></div>
+    <div class="stat-card"><div class="label">Datasets</div><div class="value">${allDatasets.length}</div></div>
+  `;
+
+  const recent = allSessions.slice(0, 8);
+  if (recent.length === 0) {
+    $('recentSessionsList').innerHTML = '<div class="empty-state"><div class="icon">📡</div><p>No active sessions</p></div>';
+  } else {
+    $('recentSessionsList').innerHTML = recent.map(s => {
+      const diff = (Date.now() - new Date(s.last_active_at).getTime()) / 1000;
+      const dotClass = diff < 120 ? 'online' : diff < 600 ? 'idle' : 'stale';
+      return `<div class="session-row">
+        <div class="session-dot ${dotClass}"></div>
+        <div class="session-info">
+          <div class="session-name">${esc(s.user_name || 'Unknown')}</div>
+          <div class="session-meta">${esc(s.ip_address || '—')} · ${timeAgo(s.last_active_at)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  USERS
+// ═══════════════════════════════════════════════════════════
+async function loadUsers() {
+  try {
+    const data = await api('/api/admin/users');
+    allUsers = data.users || [];
+    renderUsers();
+    renderOverview();
+  } catch (e) { toast('Failed to load users: ' + e.message, 'err'); }
+}
+
+function renderUsers() {
+  const search = ($('searchInput').value || '').toLowerCase();
+  const filter = $('filterStatus').value;
+  let filtered = allUsers.filter(u => {
+    if (filter && u.status !== filter) return false;
+    if (search && !u.name.toLowerCase().includes(search) && !u.email.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  filtered.sort((a, b) => {
+    let va = a[sortField], vb = b[sortField];
+    if (va == null) va = '';
+    if (vb == null) vb = '';
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    return va < vb ? -sortDir : va > vb ? sortDir : 0;
+  });
+
+  $('userCountBadge').textContent = allUsers.length;
+  const tbody = $('usersBody');
+  $('emptyUsers').style.display = filtered.length === 0 ? '' : 'none';
+  if (!filtered.length) { tbody.innerHTML = ''; return; }
+
+  tbody.innerHTML = filtered.map(u => {
+    const statusBadge = u.status === 'banned' ? '<span class="badge badge-banned">Banned</span>'
+      : u.status === 'expired' ? '<span class="badge badge-expired">Expired</span>'
+      : '<span class="badge badge-active">Active</span>';
+    const roleBadge = u.role === 'admin' ? '<span class="badge badge-admin">Admin</span>' : '<span class="badge badge-user">User</span>';
+    const expires = u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '∞';
+    const lastActive = u.last_active_at ? timeAgo(u.last_active_at) : 'Never';
+    const banBtn = u.status === 'banned'
+      ? `<button class="btn sm ok" onclick="unbanUser(${u.id})">Unban</button>`
+      : `<button class="btn sm warn" onclick="banUser(${u.id},'${esc(u.name)}')">Ban</button>`;
+    return `<tr>
+      <td><div style="font-weight:600">${esc(u.name)}</div><div style="font-size:11px;color:var(--muted)">${esc(u.email)}</div></td>
+      <td>${roleBadge}</td>
+      <td>${statusBadge}</td>
+      <td style="font-size:12px">${expires}</td>
+      <td style="font-size:12px;color:var(--muted)">${lastActive}</td>
+      <td style="text-align:center">${u.session_count || 0}/${u.max_sessions || 1}</td>
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn sm" onclick="openEditModal(${u.id})">Edit</button>
+        <button class="btn sm primary" onclick="kickUser(${u.id},'${esc(u.name)}')" ${u.session_count ? '' : 'disabled'}>Kick</button>
+        ${banBtn}
+        <button class="btn sm danger" onclick="deleteUser(${u.id},'${esc(u.name)}')">Del</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function sortBy(field) {
+  if (sortField === field) sortDir *= -1;
+  else { sortField = field; sortDir = 1; }
+  renderUsers();
+}
+
+async function createUser() {
+  const name = $('newName').value.trim();
+  const email = $('newEmail').value.trim();
+  const password = $('newPassword').value;
+  const role = $('newRole').value;
+  if (!name || !email || !password) return toast('Fill in all fields', 'err');
+  if (password.length < 6) return toast('Password must be at least 6 characters', 'err');
+  const maxSess = parseInt($('newMaxSessions').value) || 1;
+  const body = { name, email, password, role, max_sessions: Math.max(1, maxSess) };
+  if (createAccessModeVal === 'date') {
+    const d = $('newAccessDate').value;
+    if (d) body.access_expires_at = new Date(d).toISOString();
+  } else if (createAccessModeVal === 'days') {
+    const d = parseInt($('newAccessDays').value);
+    if (d > 0) body.access_days = d;
+  }
+  try {
+    await api('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('User created', 'ok');
+    $('newName').value = ''; $('newEmail').value = ''; $('newPassword').value = '';
+    await loadUsers();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function kickUser(id, name) {
+  if (!confirm(`Kick all sessions for ${name}?`)) return;
+  try { await api(`/api/admin/users/${id}/kick`, { method: 'POST' }); toast('User kicked', 'ok'); await Promise.all([loadUsers(), loadSessions()]); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function banUser(id, name) {
+  if (!confirm(`Ban ${name}?`)) return;
+  try { await api(`/api/admin/users/${id}/ban`, { method: 'POST' }); toast('User banned', 'ok'); await Promise.all([loadUsers(), loadSessions()]); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function unbanUser(id) {
+  try { await api(`/api/admin/users/${id}/unban`, { method: 'POST' }); toast('User unbanned', 'ok'); await loadUsers(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+  try { await api(`/api/admin/users/${id}`, { method: 'DELETE' }); toast('User deleted', 'ok'); await Promise.all([loadUsers(), loadSessions()]); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+// Edit modal
+function openEditModal(userId) {
+  const user = allUsers.find(u => u.id === userId);
+  if (!user) return;
+  $('editUserId').value = userId;
+  $('editName').value = user.name;
+  $('editEmail').value = user.email;
+  $('editRole').value = user.role;
+  $('editPassword').value = '';
+  $('editMaxSessions').value = user.max_sessions || 1;
+  if (user.access_expires_at) {
+    setEditAccessMode('date');
+    $('editAccessDate').value = user.access_expires_at.slice(0, 16);
+  } else {
+    setEditAccessMode('unlimited');
+  }
+  $('editModalTitle').textContent = `Edit: ${user.name}`;
+  $('editUserModal').classList.add('open');
+}
+
+function closeEditModal() { $('editUserModal').classList.remove('open'); }
+
+function setEditAccessMode(mode) {
+  currentEditMode = mode;
+  document.querySelectorAll('#editAccessMode button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  $('editAccessDateField').style.display = mode === 'date' ? '' : 'none';
+  $('editAccessDaysField').style.display = mode === 'days' ? '' : 'none';
+}
+
+async function saveUser() {
+  const id = $('editUserId').value;
+  const body = {
+    name: $('editName').value.trim(),
+    email: $('editEmail').value.trim(),
+    role: $('editRole').value,
+    max_sessions: Math.max(1, parseInt($('editMaxSessions').value) || 1),
+  };
+  const pw = $('editPassword').value;
+  if (pw) body.password = pw;
+  if (currentEditMode === 'unlimited') {
+    body.access_expires_at = 'null';
+  } else if (currentEditMode === 'date') {
+    const d = $('editAccessDate').value;
+    if (d) body.access_expires_at = new Date(d).toISOString();
+  } else if (currentEditMode === 'days') {
+    const d = parseInt($('editAccessDays').value);
+    if (d > 0) body.access_days = d;
+  }
+  try {
+    await api(`/api/admin/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('User updated', 'ok');
+    closeEditModal();
+    await loadUsers();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SESSIONS
+// ═══════════════════════════════════════════════════════════
+async function loadSessions() {
+  try {
+    const data = await api('/api/admin/sessions');
+    allSessions = (data.sessions || []).sort((a, b) => new Date(b.last_active_at) - new Date(a.last_active_at));
+    renderSessions();
+    $('sessionCountBadge').textContent = allSessions.length;
+  } catch (e) {}
+}
+
+function renderSessions() {
+  const panel = $('sessionsPanel');
+  const empty = $('emptySessions');
+  if (!allSessions.length) { panel.innerHTML = ''; panel.appendChild(empty); empty.style.display = ''; return; }
+  empty.style.display = 'none';
+  panel.innerHTML = allSessions.map(s => {
+    const diff = (Date.now() - new Date(s.last_active_at).getTime()) / 1000;
+    const dotClass = diff < 120 ? 'online' : diff < 600 ? 'idle' : 'stale';
+    const device = (s.device || '').substring(0, 60);
+    return `<div class="session-row">
+      <div class="session-dot ${dotClass}"></div>
+      <div class="session-info">
+        <div class="session-name">${esc(s.user_name || 'Unknown')} <span style="font-weight:400;color:var(--muted);font-size:11px">${esc(s.user_email || '')}</span></div>
+        <div class="session-meta">${esc(s.ip_address || '—')} · ${esc(device)} · ${timeAgo(s.last_active_at)}</div>
+      </div>
+      <button class="btn sm danger" onclick="killSession('${esc(s.id)}')">Kick</button>
+    </div>`;
+  }).join('');
+}
+
+async function killSession(sid) {
+  try { await api(`/api/admin/sessions/${sid}`, { method: 'DELETE' }); toast('Session terminated', 'ok'); await Promise.all([loadSessions(), loadUsers()]); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DATASETS
+// ═══════════════════════════════════════════════════════════
+async function loadDatasets(keepSel) {
+  try {
+    const data = await api('/api/admin/datasets');
+    allDatasets = data.datasets || [];
+    $('datasetCountBadge').textContent = allDatasets.length;
+    renderDatasetTable();
+    if (keepSel && selectedDsId) {
+      const ds = allDatasets.find(d => d.id === selectedDsId);
+      if (ds) selectDs(ds);
+    }
+  } catch (e) { toast('Failed to load datasets: ' + e.message, 'err'); }
+}
+
+function renderDatasetTable() {
+  const tbody = $('dsBody');
+  $('emptyDs').style.display = allDatasets.length === 0 ? '' : 'none';
+  if (!allDatasets.length) { tbody.innerHTML = ''; return; }
+
+  tbody.innerHTML = allDatasets.map(ds => {
+    const s = ds.settings || {};
+    const name = s.display_name || ds.original_name || `File #${ds.id}`;
+    const rows = fmtN(ds.row_count);
+    const ready = ds.ready_timeframes || 0;
+    const total = ds.total_timeframes || 0;
+    const isActive = s.is_active !== false && s.is_active !== 0;
+    const stateColor = isActive ? 'var(--ok)' : 'var(--muted)';
+    const sel = ds.id === selectedDsId ? 'background:rgba(78,140,255,.08)' : '';
+    return `<tr style="cursor:pointer;${sel}" onclick="selectDs(allDatasets.find(d=>d.id===${ds.id}))">
+      <td>${ds.id}</td>
+      <td style="font-weight:600">${esc(name)}</td>
+      <td>${rows}</td>
+      <td>${ready}/${total}</td>
+      <td><span style="color:${stateColor};font-weight:700">${isActive ? '● Active' : '○ Inactive'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function selectDs(ds) {
+  if (!ds) return;
+  selectedDsId = ds.id;
+  renderDatasetTable();
+  const s = ds.settings || {};
+  $('dsSettingsCard').style.display = '';
+  $('dsSettingsTitle').textContent = s.display_name || ds.original_name || `Dataset #${ds.id}`;
+  $('ds_name').value = s.display_name || '';
+  $('ds_delim').value = s.csv_delimiter || ',';
+  $('ds_tz').value = s.csv_timezone || 'UTC';
+  $('ds_dtfmt').value = s.datetime_format || '';
+  $('ds_header').value = (s.csv_has_header === false || s.csv_has_header === 0) ? '0' : '1';
+  $('ds_active').value = (s.is_active === false || s.is_active === 0) ? '0' : '1';
+  $('ds_notes').value = s.notes || '';
+
+  const tfGrid = $('tfGrid');
+  const tfs = ds.timeframes || [];
+  if (tfs.length === 0) { tfGrid.innerHTML = '<span style="font-size:12px;color:var(--muted)">No timeframe data</span>'; return; }
+  tfGrid.innerHTML = tfs.map(tf => {
+    const cls = tf.ready ? 'ready' : (tf.row_count > 0 ? 'pending' : 'missing');
+    return `<div class="tf-card ${cls}">${tf.name || tf.timeframe}</div>`;
+  }).join('');
+}
+
+async function saveDatasetSettings(e) {
+  e.preventDefault();
+  if (!selectedDsId) return;
+  const body = {
+    display_name: $('ds_name').value.trim(),
+    csv_delimiter: $('ds_delim').value,
+    csv_timezone: $('ds_tz').value,
+    datetime_format: $('ds_dtfmt').value || null,
+    csv_has_header: $('ds_header').value === '1',
+    is_active: $('ds_active').value === '1',
+    notes: $('ds_notes').value.trim(),
+  };
+  try {
+    await api(`/api/admin/datasets/${selectedDsId}/settings`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('Settings saved', 'ok');
+    await loadDatasets(true);
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function rebuildDataset() {
+  if (!selectedDsId || !confirm('Rebuild binary data for this dataset?')) return;
+  try { await api(`/api/admin/datasets/${selectedDsId}/rebuild-binary`, { method: 'POST' }); toast('Rebuild started', 'ok'); startPolling(selectedDsId); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteDataset() {
+  if (!selectedDsId || !confirm('Delete this dataset permanently?')) return;
+  try { await api(`/api/admin/datasets/${selectedDsId}`, { method: 'DELETE' }); toast('Dataset deleted', 'ok'); selectedDsId = null; $('dsSettingsCard').style.display = 'none'; await loadDatasets(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+function startPolling(id) {
+  clearInterval(dsPollTimer);
+  dsPollTimer = setInterval(async () => {
+    await loadDatasets(true);
+    const ds = allDatasets.find(d => d.id === id);
+    if (!ds) { clearInterval(dsPollTimer); return; }
+    const ready = ds.ready_timeframes || 0;
+    const total = ds.total_timeframes || 0;
+    if (ready >= total && total > 0) clearInterval(dsPollTimer);
+  }, 3000);
+}
+
+// Upload
+const dropZone = $('dropZone');
+const fileInput = $('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+
+async function uploadFile(file) {
+  const prog = $('uploadProgress');
+  const pbar = $('pbar');
+  const label = $('pbarLabel');
+  prog.style.display = '';
+  pbar.style.width = '0%';
+  label.textContent = 'Uploading...';
+  const fd = new FormData();
+  fd.append('csvFile', file);
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/datasets/upload');
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        pbar.style.width = pct + '%';
+        label.textContent = `Uploading... ${pct}%`;
+      }
+    };
+    xhr.onload = async () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        pbar.style.width = '100%';
+        label.textContent = 'Upload complete! Processing...';
+        toast('File uploaded', 'ok');
+        await loadDatasets();
+        const data = JSON.parse(xhr.responseText);
+        if (data && data.file && data.file.id) startPolling(data.file.id);
+      } else {
+        const err = JSON.parse(xhr.responseText || '{}');
+        label.textContent = 'Upload failed';
+        toast(err.detail || 'Upload failed', 'err');
+      }
+    };
+    xhr.onerror = () => { label.textContent = 'Upload failed'; toast('Upload failed', 'err'); };
+    xhr.send(fd);
+  } catch (e) { label.textContent = 'Upload failed'; toast(e.message, 'err'); }
+}
+
+// Dukascopy
+function setDefaultDukascopyDates() {
+  const today = new Date();
+  const from = new Date(today);
+  from.setFullYear(from.getFullYear() - 1);
+  $('dk_from').value = from.toISOString().slice(0, 10);
+  $('dk_to').value = today.toISOString().slice(0, 10);
+}
+setDefaultDukascopyDates();
+
+async function fetchDukascopy() {
+  const instrument = $('dk_pair').value.trim().toUpperCase();
+  const fromDate = $('dk_from').value;
+  const toDate = $('dk_to').value;
+  if (!instrument || !fromDate || !toDate) return toast('Fill in all Dukascopy fields', 'err');
+  $('dkFetchBtn').disabled = true;
+  $('dukaProgress').textContent = 'Starting...';
+  try {
+    const data = await api('/api/admin/datasets/fetch-dukascopy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instrument, from_date: fromDate, to_date: toDate })
+    });
+    if (data.job_id) {
+      await waitForDukascopyJob(data.job_id);
+    } else {
+      toast('Fetch started', 'ok');
+      await loadDatasets();
+    }
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    $('dkFetchBtn').disabled = false;
+  }
+}
+
+async function waitForDukascopyJob(jobId) {
+  const label = $('dukaProgress');
+  for (let i = 0; i < 600; i++) {
+    await sleep(2000);
+    try {
+      const status = await api(`/api/admin/datasets/fetch-dukascopy/${jobId}/status`);
+      if (status.state === 'done' || status.state === 'completed') {
+        label.textContent = 'Done!';
+        toast('Dukascopy fetch complete', 'ok');
+        await loadDatasets();
+        return;
+      } else if (status.state === 'failed' || status.state === 'error') {
+        label.textContent = 'Failed: ' + (status.error || 'Unknown error');
+        toast('Dukascopy fetch failed', 'err');
+        return;
+      }
+      label.textContent = status.message || status.state || 'Processing...';
+    } catch (e) { break; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SETTINGS
+// ═══════════════════════════════════════════════════════════
+function updateSettingsPage() {
+  $('settApiUrl').value = window.location.origin;
+  $('settTotalUsers').value = allUsers.length;
+  $('settTotalDs').value = allDatasets.length;
+  $('settActiveSess').value = allSessions.length;
+  $('settServerTime').value = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+}
+</script>
+</body>
+</html>
