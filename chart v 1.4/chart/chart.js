@@ -10387,6 +10387,19 @@ class Chart {
 
             this._pendingChartViewSanityCheck = false;
         }
+
+        // Include effective last price in Y domain so the price line/label stay drawable after
+        // manual zoom, restored sessions, or when the right edge has no visible bars but
+        // the latest quote still matters (matches behavior users expect across devices).
+        if (this.chartSettings.showPriceLine !== false) {
+            const linePrice = this.resolveEffectiveCurrentPrice(visible);
+            if (Number.isFinite(linePrice)) {
+                const span = domainMax - domainMin;
+                const pad = Math.max(span * 0.02, Math.abs(linePrice) * 1e-9, 1e-10);
+                if (linePrice < domainMin) domainMin = linePrice - pad;
+                if (linePrice > domainMax) domainMax = linePrice + pad;
+            }
+        }
         
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
         this.xScale = d3.scaleLinear()
@@ -10608,13 +10621,11 @@ class Chart {
             // Still draw grid, axes, and drawings even when no candles are visible
             // This ensures drawings remain visible when scrolling past chart edges
             this.drawGrid();
+            const latestCandle = this.data[this.data.length - 1];
+            this.drawPriceLine([latestCandle]);
             this.drawAxes();
             
-            // Draw current price label using latest data candle
-            if (this.data.length > 0) {
-                const latestCandle = this.data[this.data.length - 1];
-                this.drawCurrentPriceLabel([latestCandle]);
-            }
+            this.drawCurrentPriceLabel([latestCandle]);
             
             // Redraw drawings even when no candles are visible
             this.redrawDrawings();
@@ -12092,7 +12103,12 @@ class Chart {
         if (!Number.isFinite(price)) return;
         const y = this.yScale(price);
         const m = this.margin;
-        if (!isFinite(y) || y < m.t || y > this.h - m.b) return;
+        const ch = this.h - m.t - m.b;
+        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
+        const volumeAreaHeight = ch * effectiveVolumeHeight;
+        const indPanelH = this.separateIndicatorPanelHeight || 0;
+        const yPlotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
+        if (!isFinite(y) || y < m.t || y > yPlotBottom) return;
 
         const color = this.chartSettings.priceLineColor || '#2962ff';
         const axisLeft = !!this.priceAxisLeft;
