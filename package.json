@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "dukascopy-node": "^1.46.3"
+    "dukascopy-node": "^1.46.3",
+    "framer-motion": "^12.38.0"
   }
 }

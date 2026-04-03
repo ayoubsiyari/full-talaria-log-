@@ -19748,13 +19748,12 @@ class OrderManager {
         }
     }
 
-    _tradeHitTypeLabel(hitType) {
+    /** Short label for trade marker tooltip: TP, SL, or closing side BUY / SELL. */
+    _tradeMarkerTooltipTag(hitType, order) {
         const t = String(hitType || 'MANUAL').toUpperCase();
-        if (t.includes('STOP_OUT')) return 'Stop out';
-        if (t.includes('TP-PARTIAL') || t === 'TP-PARTIAL') return 'Take Profit (partial)';
-        if (t === 'TP' || t.startsWith('TP')) return 'Take Profit';
-        if (t.includes('SL') || t === 'SL') return 'Stop Loss';
-        return 'Manual close';
+        if (t.includes('TP-PARTIAL') || t === 'TP-PARTIAL' || t === 'TP' || t.startsWith('TP')) return 'TP';
+        if (t.includes('STOP_OUT') || t.includes('SL') || t === 'SL') return 'SL';
+        return order && order.type === 'BUY' ? 'SELL' : 'BUY';
     }
 
     _findExitMarkerSelectionForOrder(orderId) {
@@ -19902,12 +19901,12 @@ class OrderManager {
 
         const sideLabel = isBuy ? 'BUY' : 'SELL';
         const lines = [
-            `Entry — ${sideLabel}`,
             `${order.openPrice.toFixed(5)}`,
             `${order.quantity.toFixed(2)} lots`,
+            sideLabel,
         ];
 
-        const lineH = 15, ttPad = 5, ttW = 128;
+        const lineH = 15, ttPad = 5, ttW = 118;
         const ttH = lines.length * lineH + ttPad * 2;
         const ttX = x + 14;
         const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
@@ -19920,12 +19919,13 @@ class OrderManager {
             .attr('stroke', color).attr('stroke-width', 1);
 
         lines.forEach((txt, i) => {
+            const tagLine = i === lines.length - 1;
             ttGroup.append('text')
                 .attr('x', ttX + ttPad + 2)
                 .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
-                .attr('fill', i === 0 ? color : '#e2e8f0')
+                .attr('fill', tagLine ? color : (i === 0 ? '#f8fafc' : '#cbd5e1'))
                 .attr('font-size', '10px')
-                .attr('font-weight', i === 0 ? '700' : '400')
+                .attr('font-weight', tagLine || i === 0 ? '700' : '400')
                 .attr('font-family', 'Roboto, sans-serif')
                 .text(txt);
         });
@@ -20010,11 +20010,7 @@ class OrderManager {
             existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
             const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
             if (!lotsTxt.empty()) {
-                lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots (${existingMarker.count} entries)`);
-            }
-            const pnlTxt = existingMarker.marker.select('[data-role="exit-pnl-text"]');
-            if (!pnlTxt.empty()) {
-                pnlTxt.text(`P&L ${existingMarker.totalPnL >= 0 ? '+' : ''}$${existingMarker.totalPnL.toFixed(2)}`);
+                lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots`);
             }
             this._drawTradeConnector(order, closeData);
             return;
@@ -20069,10 +20065,9 @@ class OrderManager {
             .style('display', 'none')
             .style('pointer-events', 'none');
 
-        const hitLabel = this._tradeHitTypeLabel(closeData.type);
-        const closeSide = order.type === 'BUY' ? 'SELL' : 'BUY';
-        const lineH = 15, ttPad = 5, ttW = 158;
-        const nLines = 5;
+        const tag = this._tradeMarkerTooltipTag(closeData.type, order);
+        const lineH = 15, ttPad = 5, ttW = 118;
+        const nLines = 3;
         const ttH = nLines * lineH + ttPad * 2;
         const ttX = x + 14;
         const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
@@ -20096,11 +20091,9 @@ class OrderManager {
             if (opts.role) t.attr('data-role', opts.role);
         };
 
-        ttLine(1, hitLabel, { role: 'exit-kind-text', fill: color, bold: true });
-        ttLine(2, `Close — ${closeSide}`, { role: 'exit-side-text', fill: '#cbd5e1', bold: true });
-        ttLine(3, closeData.closePrice.toFixed(5), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
-        ttLine(4, `${order.quantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
-        ttLine(5, `P&L ${closeData.pnl >= 0 ? '+' : ''}$${closeData.pnl.toFixed(2)}`, { role: 'exit-pnl-text' });
+        ttLine(1, closeData.closePrice.toFixed(5), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
+        ttLine(2, `${order.quantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
+        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
 
         const self = this;
         markerGroup
@@ -20363,7 +20356,7 @@ class OrderManager {
                 if (!tt.empty()) {
                     const ttX = x + 14;
                     const ttRect = tt.select('rect');
-                    const ttH = ttRect.empty() ? 85 : parseFloat(ttRect.attr('height'));
+                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
                     const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
                     if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
                     tt.selectAll('text').each(function(d, i) {
