@@ -19748,6 +19748,75 @@ class OrderManager {
         }
     }
 
+    _tradeHitTypeLabel(hitType) {
+        const t = String(hitType || 'MANUAL').toUpperCase();
+        if (t.includes('STOP_OUT')) return 'Stop out';
+        if (t.includes('TP-PARTIAL') || t === 'TP-PARTIAL') return 'Take Profit (partial)';
+        if (t === 'TP' || t.startsWith('TP')) return 'Take Profit';
+        if (t.includes('SL') || t === 'SL') return 'Stop Loss';
+        return 'Manual close';
+    }
+
+    _findExitMarkerSelectionForOrder(orderId) {
+        const svg = this.chart?.svg;
+        if (!svg || typeof svg.select !== 'function') return null;
+        const oid = String(orderId);
+        const direct = svg.select(`.exit-marker-${oid}`);
+        if (!direct.empty()) return direct;
+        let found = null;
+        svg.selectAll('g.exit-marker').each(function () {
+            if (found) return;
+            const ids = (this.getAttribute && this.getAttribute('data-linked-order-ids')) || '';
+            if (ids.split(',').map((s) => s.trim()).filter(Boolean).includes(oid)) found = this;
+        });
+        return found ? d3.select(found) : null;
+    }
+
+    _setConnectorHoverHighlight(orderId, active) {
+        const svg = this.chart?.svg;
+        if (!svg) return;
+        const line = svg.select(`.trade-connector-${orderId}`);
+        if (line.empty()) return;
+        if (active) {
+            this._ensureMarkerGlowFilter(svg, 'trade-connector-glow', '#94a3b8');
+            line.attr('stroke', 'rgba(200, 210, 230, 0.95)').attr('stroke-width', 2.5)
+                .attr('filter', 'url(#trade-connector-glow)');
+        } else {
+            line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null);
+        }
+    }
+
+    _setEntryArrowHoverGlow(orderId, active) {
+        const svg = this.chart?.svg;
+        if (!svg) return;
+        const g = svg.select(`.entry-marker-${orderId}`);
+        if (g.empty()) return;
+        const arrowEl = g.select('[data-role="entry-arrow"]');
+        if (arrowEl.empty()) return;
+        const c = arrowEl.attr('fill') || '#2962ff';
+        const glowId = `entry-glow-${orderId}`;
+        this._ensureMarkerGlowFilter(svg, glowId, c);
+        if (active) {
+            arrowEl.attr('filter', `url(#${glowId})`).attr('stroke', c).attr('stroke-width', 1);
+        } else {
+            arrowEl.attr('filter', null).attr('stroke', 'none').attr('stroke-width', 0);
+        }
+    }
+
+    _setExitArrowHoverGlowFromSelection(exitGroupSel, active) {
+        if (!exitGroupSel || exitGroupSel.empty() || !this.chart?.svg) return;
+        const exitArrowEl = exitGroupSel.select('[data-role="exit-arrow"]');
+        if (exitArrowEl.empty()) return;
+        const c = exitArrowEl.attr('fill') || '#22c55e';
+        const glowId = exitGroupSel.attr('data-exit-glow-id') || 'exit-glow-fallback';
+        this._ensureMarkerGlowFilter(this.chart.svg, glowId, c);
+        if (active) {
+            exitArrowEl.attr('filter', `url(#${glowId})`).attr('stroke', c).attr('stroke-width', 1);
+        } else {
+            exitArrowEl.attr('filter', null).attr('stroke', 'none').attr('stroke-width', 0);
+        }
+    }
+
     /**
      * Draw entry marker on chart (TradingView style — arrow + tick + hover tooltip)
      */
@@ -19809,12 +19878,14 @@ class OrderManager {
             .style('display', 'none')
             .style('pointer-events', 'none');
 
+        const sideLabel = isBuy ? 'BUY' : 'SELL';
         const lines = [
+            `Entry — ${sideLabel}`,
             `${order.openPrice.toFixed(5)}`,
             `${order.quantity.toFixed(2)} lots`,
         ];
 
-        const lineH = 15, ttPad = 5, ttW = 100;
+        const lineH = 15, ttPad = 5, ttW = 128;
         const ttH = lines.length * lineH + ttPad * 2;
         const ttX = x + 14;
         const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
@@ -19837,15 +19908,22 @@ class OrderManager {
                 .text(txt);
         });
 
-        const glowId = `entry-glow-${order.id}`;
+        const self = this;
+        const oid = order.id;
         markerGroup
             .on('mouseenter', function() {
                 ttGroup.style('display', null);
-                arrowEl.attr('filter', `url(#${glowId})`).attr('stroke', color).attr('stroke-width', 1);
+                self._setEntryArrowHoverGlow(oid, true);
+                self._setConnectorHoverHighlight(oid, true);
+                const ex = self._findExitMarkerSelectionForOrder(oid);
+                if (ex) self._setExitArrowHoverGlowFromSelection(ex, true);
             })
             .on('mouseleave', function() {
                 ttGroup.style('display', 'none');
-                arrowEl.attr('filter', null).attr('stroke', 'none').attr('stroke-width', 0);
+                self._setEntryArrowHoverGlow(oid, false);
+                self._setConnectorHoverHighlight(oid, false);
+                const ex = self._findExitMarkerSelectionForOrder(oid);
+                if (ex) self._setExitArrowHoverGlowFromSelection(ex, false);
             });
 
         if (!this.entryMarkers) this.entryMarkers = [];
@@ -19884,9 +19962,21 @@ class OrderManager {
             existingMarker.totalPnL += closeData.pnl;
             existingMarker.totalQuantity += order.quantity;
             existingMarker.count++;
+            if (!existingMarker.linkedOrderIds) {
+                existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
+            }
+            const nid = String(order.id);
+            if (!existingMarker.linkedOrderIds.includes(nid)) {
+                existingMarker.linkedOrderIds.push(nid);
+            }
+            existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
             const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
             if (!lotsTxt.empty()) {
                 lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots (${existingMarker.count} entries)`);
+            }
+            const pnlTxt = existingMarker.marker.select('[data-role="exit-pnl-text"]');
+            if (!pnlTxt.empty()) {
+                pnlTxt.text(`P&L ${existingMarker.totalPnL >= 0 ? '+' : ''}$${existingMarker.totalPnL.toFixed(2)}`);
             }
             this._drawTradeConnector(order, closeData);
             return;
@@ -19910,6 +20000,7 @@ class OrderManager {
 
         const markerGroup = this.chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
+            .attr('data-linked-order-ids', String(order.id))
             .style('pointer-events', 'all')
             .style('cursor', 'pointer')
             .style('clip-path', 'none')
@@ -19925,7 +20016,9 @@ class OrderManager {
             ? this._arrowDownPath(x, arrowCY, sz)
             : this._arrowUpPath(x, arrowCY, sz);
 
-        this._ensureMarkerGlowFilter(this.chart.svg, `exit-glow-${order.id}`, color);
+        const exitGlowId = `exit-glow-${order.id}`;
+        markerGroup.attr('data-exit-glow-id', exitGlowId);
+        this._ensureMarkerGlowFilter(this.chart.svg, exitGlowId, color);
 
         const exitArrowEl = markerGroup.append('path')
             .attr('data-role', 'exit-arrow')
@@ -19938,8 +20031,11 @@ class OrderManager {
             .style('display', 'none')
             .style('pointer-events', 'none');
 
-        const lineH = 15, ttPad = 5, ttW = 130;
-        const ttH = 2 * lineH + ttPad * 2;
+        const hitLabel = this._tradeHitTypeLabel(closeData.type);
+        const closeSide = order.type === 'BUY' ? 'SELL' : 'BUY';
+        const lineH = 15, ttPad = 5, ttW = 158;
+        const nLines = 5;
+        const ttH = nLines * lineH + ttPad * 2;
         const ttX = x + 14;
         const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
 
@@ -19950,34 +20046,43 @@ class OrderManager {
             .attr('fill', 'rgba(15, 23, 42, 0.92)')
             .attr('stroke', color).attr('stroke-width', 1);
 
-        ttGroup.append('text')
-            .attr('x', ttX + ttPad + 2)
-            .attr('y', ttY + ttPad + lineH - 3)
-            .attr('fill', color)
-            .attr('font-size', '10px')
-            .attr('font-weight', '700')
-            .attr('font-family', 'Roboto, sans-serif')
-            .text(closeData.closePrice.toFixed(5));
+        const ttLine = (i, text, opts = {}) => {
+            const t = ttGroup.append('text')
+                .attr('x', ttX + ttPad + 2)
+                .attr('y', ttY + ttPad + i * lineH - 3)
+                .attr('fill', opts.fill || '#e2e8f0')
+                .attr('font-size', '10px')
+                .attr('font-weight', opts.bold ? '700' : '400')
+                .attr('font-family', 'Roboto, sans-serif')
+                .text(text);
+            if (opts.role) t.attr('data-role', opts.role);
+        };
 
-        ttGroup.append('text')
-            .attr('data-role', 'exit-lots-text')
-            .attr('x', ttX + ttPad + 2)
-            .attr('y', ttY + ttPad + 2 * lineH - 3)
-            .attr('fill', '#e2e8f0')
-            .attr('font-size', '10px')
-            .attr('font-weight', '400')
-            .attr('font-family', 'Roboto, sans-serif')
-            .text(`${order.quantity.toFixed(2)} lots`);
+        ttLine(1, hitLabel, { role: 'exit-kind-text', fill: color, bold: true });
+        ttLine(2, `Close — ${closeSide}`, { role: 'exit-side-text', fill: '#cbd5e1', bold: true });
+        ttLine(3, closeData.closePrice.toFixed(5), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
+        ttLine(4, `${order.quantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
+        ttLine(5, `P&L ${closeData.pnl >= 0 ? '+' : ''}$${closeData.pnl.toFixed(2)}`, { role: 'exit-pnl-text' });
 
-        const exitGlowId = `exit-glow-${order.id}`;
+        const self = this;
         markerGroup
             .on('mouseenter', function() {
                 ttGroup.style('display', null);
-                exitArrowEl.attr('filter', `url(#${exitGlowId})`).attr('stroke', color).attr('stroke-width', 1);
+                self._setExitArrowHoverGlowFromSelection(markerGroup, true);
+                const raw = markerGroup.attr('data-linked-order-ids') || String(order.id);
+                raw.split(',').map((s) => s.trim()).filter(Boolean).forEach((lid) => {
+                    self._setConnectorHoverHighlight(lid, true);
+                    self._setEntryArrowHoverGlow(lid, true);
+                });
             })
             .on('mouseleave', function() {
                 ttGroup.style('display', 'none');
-                exitArrowEl.attr('filter', null).attr('stroke', 'none').attr('stroke-width', 0);
+                self._setExitArrowHoverGlowFromSelection(markerGroup, false);
+                const raw = markerGroup.attr('data-linked-order-ids') || String(order.id);
+                raw.split(',').map((s) => s.trim()).filter(Boolean).forEach((lid) => {
+                    self._setConnectorHoverHighlight(lid, false);
+                    self._setEntryArrowHoverGlow(lid, false);
+                });
             });
 
         this.exitMarkers.push({
@@ -19989,7 +20094,8 @@ class OrderManager {
             totalPnL: closeData.pnl,
             totalQuantity: order.quantity,
             count: 1,
-            isBuyExit
+            isBuyExit,
+            linkedOrderIds: [String(order.id)]
         });
 
         this._drawTradeConnector(order, closeData);
@@ -20175,7 +20281,7 @@ class OrderManager {
             if (!tt.empty()) {
                 const ttX = x + 14;
                 const ttRect = tt.select('rect');
-                const ttH = ttRect.empty() ? 80 : parseFloat(ttRect.attr('height'));
+                const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
                 const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
                 if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
                 tt.selectAll('text').each(function(d, i) {
@@ -20219,7 +20325,7 @@ class OrderManager {
                 if (!tt.empty()) {
                     const ttX = x + 14;
                     const ttRect = tt.select('rect');
-                    const ttH = ttRect.empty() ? 66 : parseFloat(ttRect.attr('height'));
+                    const ttH = ttRect.empty() ? 85 : parseFloat(ttRect.attr('height'));
                     const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
                     if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
                     tt.selectAll('text').each(function(d, i) {
