@@ -11218,7 +11218,9 @@ class OrderManager {
 
         priceInput.value = newPrice.toFixed(precision);
 
-        if (this.tpManuallyPositioned) {
+        // Always shift TP with entry to maintain pip distance (risk stays constant)
+        const tpEnabled = document.getElementById('enableTP')?.checked;
+        if (tpEnabled) {
             const tpInput = document.getElementById('tpPrice');
             if (tpInput) {
                 const oldTP = parseFloat(tpInput.value || 0);
@@ -11226,7 +11228,9 @@ class OrderManager {
             }
         }
 
-        if (this.slManuallyPositioned) {
+        // Always shift SL with entry to maintain pip distance (risk stays constant)
+        const slEnabled = document.getElementById('enableSL')?.checked;
+        if (slEnabled) {
             const slInput = document.getElementById('slPrice');
             if (slInput) {
                 const oldSL = parseFloat(slInput.value || 0);
@@ -11297,7 +11301,9 @@ class OrderManager {
     }
 
     /**
-     * Ensure TP/SL default to entry when not manually positioned
+     * Ensure TP/SL default to entry when not manually positioned.
+     * SL distance is derived from the risk amount and current lot size so the
+     * preview always reflects the user's intended risk (e.g. $100).
      */
     syncDefaultTargetsToEntry() {
         const entryInput = document.getElementById('orderEntryPrice');
@@ -11318,10 +11324,23 @@ class OrderManager {
 
         const side = (this.orderSide || 'BUY').toUpperCase();
         const pipSize = this.pipSize || 0.0001;
-        const defaultSteps = 10;
-        const offset = pipSize * defaultSteps;
-        const tpDefault = side === 'SELL' ? (refPrice - offset) : (refPrice + offset);
-        const slDefault = side === 'SELL' ? (mainEntryPrice + offset) : (mainEntryPrice - offset);
+        const pipValue = this.pipValuePerLot || 10;
+
+        // Calculate SL offset from risk amount + lot size when possible
+        let slOffset = pipSize * 10; // fallback: 10 pips
+        const enableSL = document.getElementById('enableSL')?.checked;
+        if (enableSL) {
+            const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+            const riskAmt = this._getPreviewRiskAmount();
+            if (riskAmt > 0 && quantity > 0) {
+                const slPips = riskAmt / (quantity * pipValue);
+                slOffset = slPips * pipSize;
+            }
+        }
+
+        const tpOffset = pipSize * 10;
+        const tpDefault = side === 'SELL' ? (refPrice - tpOffset) : (refPrice + tpOffset);
+        const slDefault = side === 'BUY' ? (mainEntryPrice - slOffset) : (mainEntryPrice + slOffset);
         const tpFormatted = tpDefault.toFixed(precision);
         const slFormatted = slDefault.toFixed(precision);
 
@@ -11333,13 +11352,31 @@ class OrderManager {
             }
         }
 
-        // SL syncing: mirror TP logic — track entry until user explicitly drags SL
+        // SL syncing: track entry until user explicitly drags SL
         if (slPriceInput && !this.slManuallyPositioned) {
             const existing = String(slPriceInput.value || '').trim();
             if (!existing || existing === mainFormatted) {
                 slPriceInput.value = slFormatted;
             }
         }
+    }
+
+    /**
+     * Return the risk amount in USD from whichever position-sizing mode is active.
+     * Used by syncDefaultTargetsToEntry to derive SL distance from risk.
+     */
+    _getPreviewRiskAmount() {
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode === 'risk-usd') {
+            return parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+        }
+        if (mode === 'risk-percent') {
+            const pct = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+            const balType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+            const bal = balType === 'current' ? this.balance : this.initialBalance;
+            return (bal * pct) / 100;
+        }
+        return 0;
     }
     
     /**
