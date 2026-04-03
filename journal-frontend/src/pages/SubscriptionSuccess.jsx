@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CheckCircle, ArrowRight, Sparkles, Loader2, BarChart3, Brain, BookOpen, Shield } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -8,6 +8,9 @@ import logo from '../assets/logo4.jpg';
 export default function SubscriptionSuccess() {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
+  const [verified, setVerified] = useState(false);
+  const [countdown, setCountdown] = useState(5);
+  const navigate = useNavigate();
   const sessionId = searchParams.get('session_id');
 
   useEffect(() => {
@@ -17,6 +20,22 @@ export default function SubscriptionSuccess() {
       setLoading(false);
     }
   }, [sessionId]);
+
+  // Auto-redirect to dashboard after verification
+  useEffect(() => {
+    if (!verified) return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          navigate('/dashboard', { replace: true });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [verified, navigate]);
 
   const verifySession = async (sid) => {
     try {
@@ -31,13 +50,12 @@ export default function SubscriptionSuccess() {
       });
       const data = await res.json();
       if (data.success) {
-        console.log('Subscription verified:', data.message);
-        // Update stored user data to reflect new access
         try {
           const storedUser = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
           storedUser.has_journal_access = true;
           localStorage.setItem('talaria_current_user', JSON.stringify(storedUser));
         } catch (e) {}
+        setVerified(true);
       }
     } catch (err) {
       console.error('Error verifying session:', err);
@@ -129,21 +147,22 @@ export default function SubscriptionSuccess() {
             </div>
 
             {/* CTAs */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mb-6">
               <Link
                 to="/dashboard"
                 className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:brightness-110 transition-all shadow-[0_0_24px_rgba(59,130,246,0.2)]"
               >
-                Go to Dashboard
+                Go to Dashboard Now
                 <ArrowRight className="w-4 h-4" />
               </Link>
-              <Link
-                to="/settings"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-medium text-white/60 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-all"
-              >
-                Manage Subscription
-              </Link>
             </div>
+
+            {/* Countdown */}
+            {verified && (
+              <p className="text-white/30 text-sm mb-6">
+                Redirecting to dashboard in <span className="text-white/60 font-medium">{countdown}s</span>...
+              </p>
+            )}
 
             {/* Help */}
             <p className="text-white/25 text-xs">
