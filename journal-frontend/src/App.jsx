@@ -528,26 +528,24 @@ function AppRoutes() {
   return (
     <TooltipProvider>
       {isPublicPath || location.pathname === '/' ? (
-        <div className="min-h-screen bg-slate-50">
-          <div className="pt-4 px-4 bg-white shadow-sm">
-            <Routes>
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/resend-verification" element={<ResendVerification />} />
-              <Route path="/features" element={<Features />} />
-              <Route path="/pricing" element={<Pricing />} />
-              <Route path="/subscription/success" element={<SubscriptionSuccess />} />
-              <Route path="/onboarding" element={<Onboarding />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-              <Route path="/refund-policy" element={<RefundPolicy />} />
-              <Route path="/terms" element={<TermsOfService />} />
-              <Route path="/cookie-policy" element={<CookiePolicy />} />
-              <Route path="/disclaimer" element={<Disclaimer />} />
-              <Route path="/legal" element={<Legal />} />
-              <Route path="/" element={<Home />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </div>
+        <div className="min-h-screen bg-[#060611]">
+          <Routes>
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/resend-verification" element={<ResendVerification />} />
+            <Route path="/features" element={<Features />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/subscription/success" element={<SubscriptionSuccess />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/refund-policy" element={<RefundPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/cookie-policy" element={<CookiePolicy />} />
+            <Route path="/disclaimer" element={<Disclaimer />} />
+            <Route path="/legal" element={<Legal />} />
+            <Route path="/" element={<Home />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </div>
       ) : (
         <SidebarProvider>

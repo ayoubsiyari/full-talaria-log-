@@ -103,7 +103,7 @@ export default function Pricing() {
       const token = localStorage.getItem('token');
       const body = {
         plan_id: planId,
-        success_url: window.location.origin + '/journal/onboarding',
+        success_url: window.location.origin + '/journal/subscription/success',
         cancel_url: window.location.origin + '/journal/pricing'
       };
       if (couponResult?.valid && couponResult.discount?.code) body.coupon_code = couponResult.discount.code;

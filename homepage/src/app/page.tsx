@@ -512,6 +512,22 @@ export default function HomePage() {
                             </div>
                           )}
                         </div>
+                        {(() => {
+                          try {
+                            const cu = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
+                            if (cu.has_journal_access || user?.role === "admin") {
+                              return (
+                                <a
+                                  href="/journal/dashboard"
+                                  className="w-full py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center justify-center gap-2 mb-2"
+                                >
+                                  {isArabic ? "لوحة التحكم" : "Go to Dashboard"}
+                                </a>
+                              );
+                            }
+                          } catch (e) { /* ignore */ }
+                          return null;
+                        })()}
                         <button
                           onClick={handleLogout}
                           className="w-full py-2 rounded-lg text-sm text-white bg-gradient-to-r from-red-600 via-pink-600 to-red-500 hover:from-red-500 hover:via-pink-500 hover:to-red-400 transition-all"
