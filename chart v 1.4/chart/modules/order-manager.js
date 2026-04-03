@@ -11355,13 +11355,7 @@ class OrderManager {
 
         const isUnset = (v) => !v || parseFloat(v) === 0;
 
-        // TP syncing: use weighted avg as reference when multi-entry (matches TP badge anchor)
-        if (tpPriceInput && !this.tpManuallyPositioned) {
-            const existing = String(tpPriceInput.value || '').trim();
-            if (isUnset(existing) || existing === refFormatted) {
-                tpPriceInput.value = tpFormatted;
-            }
-        }
+        // TP: leave at 0 until user explicitly drags it (no auto-fill)
 
         // SL syncing: auto-set from risk on first open, then track entry
         if (slPriceInput && !this.slManuallyPositioned) {
