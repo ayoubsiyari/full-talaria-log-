@@ -133,6 +133,7 @@ class OrderManager {
         this.exitMarkers = [];
         this.tradeConnectors = [];
         this.editingPendingOrderId = null;
+        this._draggingPendingOrderIds = new Set();
         
         // SPLIT ENTRY SYSTEM - Multiple entry levels for pending orders
         this.splitEntries = []; // Array of { id, price, percentage, lineData }
@@ -16369,6 +16370,12 @@ class OrderManager {
                 return;
             }
 
+            // While the trader is dragging this entry line, do NOT check for execution.
+            // The order will be evaluated on drag-end instead.
+            if (this._draggingPendingOrderIds && this._draggingPendingOrderIds.has(pendingOrder.id)) {
+                return;
+            }
+
             const poTicker = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol);
             const prefFile = pendingOrder.sourceFileId != null ? String(pendingOrder.sourceFileId) : null;
             let bar = this._getBackgroundBarForTicker(poTicker || '', tMs, prefFile);
@@ -18374,6 +18381,12 @@ class OrderManager {
             return;
         }
 
+        // Guard: skip if an active (non-pending) order line already exists on this chart
+        const alreadyDrawn = (this.orderLines || []).some(
+            (ol) => ol.orderId === order.id && !ol.isPending && (ol.chart || this.chart) === chart
+        );
+        if (alreadyDrawn) return;
+
         const color = order.type === 'BUY' ? '#2962ff' : '#f23645';
         const lineColor = order.type === 'BUY' ? '#2962ff' : '#f23645';
 
@@ -19043,8 +19056,10 @@ class OrderManager {
             .on('start', function() {
                 isDragging = true;
                 self._isDraggingOrderLine = true;
+                if (!self._draggingPendingOrderIds) self._draggingPendingOrderIds = new Set();
+                self._draggingPendingOrderIds.add(pendingOrder.id);
                 line.attr('stroke-width', 1.6).attr('opacity', 1);
-                console.log(`🎯 Started dragging pending entry line`);
+                console.log(`🎯 Started dragging pending entry line #${pendingOrder.id}`);
             })
             .on('drag', function(event) {
                 if (!isDragging || !chart?.scales?.yScale) return;
@@ -19087,16 +19102,69 @@ class OrderManager {
                 if (priceText) priceText.style('display', 'none');
                 
                 pendingOrder.entryPrice = newPrice;
+
+                // Live auto-detect order type while dragging
+                const curCandle = self.getCurrentCandle();
+                const curPrice = curCandle?.c || curCandle?.close || 0;
+                if (curPrice > 0) {
+                    let newType;
+                    if (pendingOrder.direction === 'BUY') {
+                        newType = newPrice > curPrice ? 'stop' : 'limit';
+                    } else {
+                        newType = newPrice < curPrice ? 'stop' : 'limit';
+                    }
+                    if (pendingOrder.orderType !== newType) {
+                        pendingOrder.orderType = newType;
+                        const typeLabel = `${newType} ${pendingOrder.direction.toLowerCase()} ${pendingOrder.quantity.toFixed(2)}`;
+                        labelText.text(typeLabel);
+                    }
+                }
             })
             .on('end', function() {
                 if (!isDragging) return;
                 isDragging = false;
                 self._isDraggingOrderLine = false;
+                if (self._draggingPendingOrderIds) self._draggingPendingOrderIds.delete(pendingOrder.id);
                 
                 line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
                 const formattedPrice = self.formatPrice(pendingOrder.entryPrice);
                 console.log(`📍 Pending entry moved to ${formattedPrice}`);
+                
+                // Auto-detect order type based on final position vs current price
+                const curCandle = self.getCurrentCandle();
+                const curPrice = curCandle?.c || curCandle?.close || 0;
+                if (curPrice > 0) {
+                    if (pendingOrder.direction === 'BUY') {
+                        pendingOrder.orderType = pendingOrder.entryPrice > curPrice ? 'stop' : 'limit';
+                    } else {
+                        pendingOrder.orderType = pendingOrder.entryPrice < curPrice ? 'stop' : 'limit';
+                    }
+                }
+
+                // If price has already passed the entry while we were dragging, execute now
+                if (curCandle) {
+                    const high = Number.parseFloat(curCandle.h);
+                    const low = Number.parseFloat(curCandle.l);
+                    let shouldExec = false;
+                    if (pendingOrder.orderType === 'limit') {
+                        if (pendingOrder.direction === 'BUY' && low <= pendingOrder.entryPrice) shouldExec = true;
+                        else if (pendingOrder.direction === 'SELL' && high >= pendingOrder.entryPrice) shouldExec = true;
+                    } else if (pendingOrder.orderType === 'stop') {
+                        if (pendingOrder.direction === 'BUY' && high >= pendingOrder.entryPrice) shouldExec = true;
+                        else if (pendingOrder.direction === 'SELL' && low <= pendingOrder.entryPrice) shouldExec = true;
+                    }
+                    if (shouldExec) {
+                        console.log(`⚡ Price already past entry — executing #${pendingOrder.id} on release`);
+                        if (self.orderService) {
+                            self.orderService.removePendingOrder(pendingOrder.id);
+                        } else {
+                            self.pendingOrders = self.pendingOrders.filter(o => o.id !== pendingOrder.id);
+                        }
+                        self.executePendingOrder(pendingOrder, curCandle);
+                        return;
+                    }
+                }
                 
                 // Redraw targets to update P&L
                 self.removePendingSLTPLines(pendingOrder.id);
@@ -20574,6 +20642,11 @@ class OrderManager {
         if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) > 1) {
             return;
         }
+
+        // Guard: remove any existing SL/TP/BE lines for this order first to prevent duplicates.
+        // Many call-sites invoke drawSLTPLines without a preceding removeSLTPLines, so we
+        // deduplicate here once rather than patching every caller.
+        this.removeSLTPLines(order.id);
 
         if (targetChart == null && this._isMultiPanelLayout()) {
             const charts = this._collectLayoutCharts();
