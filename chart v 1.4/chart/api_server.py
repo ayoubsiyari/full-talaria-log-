@@ -4156,7 +4156,8 @@ async def admin_list_coupons(request: Request):
         promo_codes = _stripe.PromotionCode.list(limit=100)
         coupon_promos = {}
         for pc in promo_codes.data:
-            cid = pc.coupon.id if pc.coupon else None
+            promo = getattr(pc, 'promotion', None)
+            cid = promo.coupon if promo else (pc.coupon.id if hasattr(pc, 'coupon') and pc.coupon else None)
             if cid:
                 coupon_promos.setdefault(cid, []).append(pc.code)
 
@@ -4206,10 +4207,14 @@ async def admin_create_coupon(request: Request):
         promo_code_str = (body.get("code") or "").strip().upper()
         promo = None
         if promo_code_str:
-            promo_params = {"coupon": coupon.id, "code": promo_code_str}
-            if body.get("max_redemptions"):
-                promo_params["max_redemptions"] = body["max_redemptions"]
-            promo = _stripe.PromotionCode.create(**promo_params)
+            extra = {"max_redemptions": body["max_redemptions"]} if body.get("max_redemptions") else {}
+            try:
+                promo = _stripe.PromotionCode.create(
+                    promotion={"type": "coupon", "coupon": coupon.id},
+                    code=promo_code_str, **extra)
+            except Exception:
+                promo = _stripe.PromotionCode.create(
+                    coupon=coupon.id, code=promo_code_str, **extra)
 
         return {
             "success": True,

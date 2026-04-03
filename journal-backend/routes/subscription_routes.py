@@ -549,7 +549,8 @@ def get_coupons():
         promo_codes = stripe.PromotionCode.list(limit=100)
         coupon_promos = {}
         for pc in promo_codes.data:
-            cid = pc.coupon.id if pc.coupon else None
+            promo = getattr(pc, 'promotion', None)
+            cid = promo.coupon if promo else (pc.coupon.id if hasattr(pc, 'coupon') and pc.coupon else None)
             if cid:
                 if cid not in coupon_promos:
                     coupon_promos[cid] = []
@@ -614,13 +615,14 @@ def create_coupon():
         promo_code_str = data.get('code', '').strip().upper()
         promo_code = None
         if promo_code_str:
-            promo_params = {
-                'coupon': coupon.id,
-                'code': promo_code_str,
-            }
-            if data.get('max_redemptions'):
-                promo_params['max_redemptions'] = data['max_redemptions']
-            promo_code = stripe.PromotionCode.create(**promo_params)
+            extra = {'max_redemptions': data['max_redemptions']} if data.get('max_redemptions') else {}
+            try:
+                promo_code = stripe.PromotionCode.create(
+                    promotion={'type': 'coupon', 'coupon': coupon.id},
+                    code=promo_code_str, **extra)
+            except (stripe.error.StripeError, Exception):
+                promo_code = stripe.PromotionCode.create(
+                    coupon=coupon.id, code=promo_code_str, **extra)
         
         return jsonify({
             'success': True,
@@ -707,7 +709,16 @@ def validate_coupon():
             }), 200
 
         promo = promo_codes.data[0]
-        coupon = promo.coupon
+        # New Stripe API nests coupon under promotion; retrieve full coupon object
+        promo_obj = getattr(promo, 'promotion', None)
+        coupon_id = promo_obj.coupon if promo_obj else (promo.coupon.id if hasattr(promo, 'coupon') and promo.coupon else None)
+        if not coupon_id:
+            return jsonify({
+                'valid': False,
+                'error': 'Invalid coupon structure',
+                'remaining_attempts': remaining
+            }), 200
+        coupon = stripe.Coupon.retrieve(coupon_id)
 
         if not coupon.valid:
             return jsonify({
@@ -1406,8 +1417,13 @@ def create_checkout_session():
         if coupon_code:
             try:
                 promo_list = stripe.PromotionCode.list(code=coupon_code, active=True, limit=1)
-                if promo_list.data and promo_list.data[0].coupon.valid:
-                    session_params['discounts'] = [{'promotion_code': promo_list.data[0].id}]
+                if promo_list.data:
+                    pc = promo_list.data[0]
+                    promo_info = getattr(pc, 'promotion', None)
+                    cid = promo_info.coupon if promo_info else (pc.coupon.id if hasattr(pc, 'coupon') and pc.coupon else None)
+                    coupon_obj = stripe.Coupon.retrieve(cid) if cid else None
+                    if coupon_obj and coupon_obj.valid:
+                        session_params['discounts'] = [{'promotion_code': pc.id}]
                 else:
                     return jsonify({'error': 'Invalid or expired coupon code'}), 400
             except stripe.error.StripeError:
