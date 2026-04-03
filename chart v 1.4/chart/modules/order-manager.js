@@ -82,7 +82,7 @@ class OrderManager {
             this.positionSizeMode = 'risk-usd';
             this._syncingTpTargetInputs = false;
             this._syncingTpRRInput = false;
-            this.breakevenMode = 'pips';
+            this.breakevenMode = 'rr';
             this.mfeMaeTrackingHours = 4;
             this.tradeJournal = [];
             this.mfeMaeTrackingPositions = [];
@@ -5534,6 +5534,19 @@ class OrderManager {
                     background: #f0f3fa !important;
                     border: 1px solid #e0e3eb !important;
                 }
+                body.light-mode .order-adv-card {
+                    background: #f8fafc !important;
+                    border-color: #e0e3eb !important;
+                    border-left: 3px solid #3b82f6 !important;
+                }
+                body.light-mode .order-adv-card__title { color: #2563eb !important; }
+                body.light-mode .order-adv-card__body { color: #64748b !important; }
+                body.light-mode .order-adv-card__body .adv-inline-input {
+                    background: #fff !important;
+                    border-color: #d1d5db !important;
+                    color: #1e293b !important;
+                }
+                body.light-mode .order-adv-card__summary { color: #64748b !important; }
 
                 /* ── Badges ── */
                 body.light-mode .order-panel .market-type-badge,
@@ -6625,6 +6638,68 @@ class OrderManager {
                     color: var(--op-text-muted);
                     margin-top: 2px;
                 }
+
+                /* ── Compact Advanced-Order Cards ── */
+                .order-adv-card {
+                    background: var(--om-panel2);
+                    border: 1px solid var(--om-b);
+                    border-left: 3px solid #3b82f6;
+                    border-radius: 6px;
+                    padding: 10px 12px;
+                    margin-bottom: 8px;
+                }
+                .order-adv-card__head {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                }
+                .order-adv-card__title {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #3b82f6;
+                }
+                .order-adv-card__body {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 5px;
+                    margin-top: 8px;
+                    font-size: 11px;
+                    color: var(--om-dim);
+                    font-weight: 500;
+                }
+                .order-adv-card__body .adv-inline-input {
+                    width: 46px;
+                    height: 24px;
+                    text-align: center;
+                    border-radius: 4px;
+                    border: 1px solid var(--om-b2);
+                    background: rgba(0,0,0,0.35);
+                    color: #e2e8f0;
+                    font-size: 11px;
+                    font-weight: 600;
+                    padding: 0 2px;
+                    font-family: 'DM Sans', monospace;
+                    -moz-appearance: textfield;
+                }
+                .order-adv-card__body .adv-inline-input::-webkit-inner-spin-button,
+                .order-adv-card__body .adv-inline-input::-webkit-outer-spin-button {
+                    -webkit-appearance: none;
+                    margin: 0;
+                }
+                .order-adv-card__body .adv-inline-unit {
+                    font-size: 10px;
+                    color: var(--om-dim);
+                    font-weight: 600;
+                }
+                .order-adv-card__summary {
+                    font-size: 10px;
+                    color: var(--om-dim);
+                    margin-top: 6px;
+                    font-style: italic;
+                    line-height: 1.4;
+                }
+
                 .order-inline-action {
                     margin-left: 8px;
                     padding: 6px 12px;
@@ -7755,132 +7830,76 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-collapse" data-collapse="protection-system" id="protectionSystemSection">
-                    <button type="button" class="order-collapse__header">
-                        <span>🛡️ Protection System</span>
-                        <span class="order-collapse__chevron">⌄</span>
-                    </button>
-                    <div class="order-collapse__content">
-                        <!-- Info Box -->
-                        <div class="order-info-card">
-                            <div class="order-info-title">
-                                <span style="font-size: 16px;">ℹ️</span>
-                                <span>Two-Stage Protection</span>
-                            </div>
-                            <div class="order-info-body">
-                                <div style="margin-bottom: 4px;">1️⃣ <strong>Breakeven</strong>: Moves SL to entry (risk-free)</div>
-                                <div>2️⃣ <strong>Trailing</strong>: Locks in profit as price moves</div>
-                            </div>
+                <!-- Hidden preset toolbar (IDs kept for save/load logic) -->
+                <div id="protectionPresetToolbar" style="display:none;">
+                    <button id="createNewProtectionSetting" type="button">+</button>
+                    <select id="savedProtectionSettings"><option value="">--</option></select>
+                    <button id="loadProtectionSetting" type="button"></button>
+                    <button id="deleteProtectionSetting" type="button"></button>
+                </div>
+
+                <!-- Move to Breakeven -->
+                <div class="order-adv-card" id="advBreakevenCard" style="display:none;">
+                    <div class="order-adv-card__head">
+                        <span class="order-adv-card__title">Move to Breakeven</span>
+                        <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="autoBreakevenToggle">
+                            <span class="toggle-switch__track"></span>
+                            <span class="toggle-switch__thumb"></span>
+                        </label>
+                    </div>
+                    <div id="breakevenSettings" class="is-hidden">
+                        <div class="order-adv-card__body">
+                            <span>After</span>
+                            <input type="number" id="breakevenPips" value="0.5" min="0.1" step="0.1" class="adv-inline-input">
+                            <span class="adv-inline-unit">R</span>
+                            <span>to entry +</span>
+                            <input type="number" id="breakevenPipOffset" value="0" min="-50" max="50" step="0.1" class="adv-inline-input">
+                            <span class="adv-inline-unit">pts</span>
                         </div>
+                        <div id="beSummaryText" class="order-adv-card__summary"></div>
+                    </div>
+                    <!-- Hidden elements kept for existing logic -->
+                    <div style="display:none;">
+                        <input type="number" id="breakevenAmount" value="50">
+                        <div id="breakevenPipsInput"></div>
+                        <div id="breakevenAmountInput"></div>
+                    </div>
+                </div>
 
-                        <!-- Custom Protection Settings -->
-                        <label class="order-label" style="font-size: 11px; margin-bottom: 8px;">My Protection Settings</label>
-                        <div class="order-protection-toolbar">
-                            <button id="createNewProtectionSetting" type="button" class="order-btn-icon order-btn-icon--accent" title="Create new protection preset">
-                                +
-                            </button>
-                            <select id="savedProtectionSettings" class="order-select">
-                                <option value="">-- Select Saved Setting --</option>
-                            </select>
-                            <button id="loadProtectionSetting" type="button" class="order-btn-icon" title="Load selected preset">
-                                📥
-                            </button>
-                            <button id="deleteProtectionSetting" type="button" class="order-btn-icon" title="Delete selected preset">
-                                🗑️
-                            </button>
+                <!-- Trailing Stop Loss -->
+                <div class="order-adv-card" id="advTrailingCard" style="display:none;">
+                    <div class="order-adv-card__head">
+                        <span class="order-adv-card__title">Trailing Stop Loss</span>
+                        <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="trailingSLToggle">
+                            <span class="toggle-switch__track"></span>
+                            <span class="toggle-switch__thumb"></span>
+                        </label>
+                    </div>
+                    <div id="trailingSLSettings" class="is-hidden">
+                        <div class="order-adv-card__body">
+                            <span>After</span>
+                            <input type="number" id="trailingActivateRR" value="1" min="0.1" step="0.1" class="adv-inline-input">
+                            <span class="adv-inline-unit">R</span>
+                            <span>trail</span>
+                            <input type="number" id="trailingStepSize" value="0.5" min="0.1" step="0.1" class="adv-inline-input">
+                            <span class="adv-inline-unit">R</span>
+                            <span>every</span>
+                            <input type="number" id="trailingActivatePips" value="0.25" min="0.01" step="0.01" class="adv-inline-input">
+                            <span class="adv-inline-unit">R</span>
                         </div>
-
-                        <!-- Stage 1: Breakeven -->
-                        <div class="order-card-soft order-stage-card">
-                            <div class="order-stage-head">
-                                <div class="order-stage-title">
-                                    <span class="order-stage-badge">STAGE 1</span>
-                                    <span>Breakeven</span>
-                                </div>
-                                <label class="toggle-switch" style="transform: scale(0.8);">
-                                    <input type="checkbox" id="autoBreakevenToggle">
-                                    <span class="toggle-switch__track"></span>
-                                    <span class="toggle-switch__thumb"></span>
-                                </label>
-                            </div>
-
-                            <div id="breakevenSettings" class="is-hidden">
-                                <label class="order-label order-field-stack" style="font-size: 10px; margin-bottom: 6px;">Trigger at</label>
-                                <div class="order-button-group order-button-group--inline order-field-stack" style="margin-bottom: 8px;">
-                                    <button class="breakeven-mode-tab active" type="button" data-mode="pips" style="font-size: 10px;">Pips</button>
-                                    <button class="breakeven-mode-tab" type="button" data-mode="amount" style="font-size: 10px;">Amount $</button>
-                                </div>
-
-                                <div id="breakevenPipsInput" class="order-input-wrapper">
-                                    <input type="number" id="breakevenPips" value="10" min="1" step="1" class="order-input order-input--compact">
-                                    <span class="order-input-suffix">Pips</span>
-                                </div>
-
-                                <div id="breakevenAmountInput" class="order-input-wrapper is-hidden">
-                                    <span class="order-input-prefix">$</span>
-                                    <input type="number" id="breakevenAmount" value="50" min="1" step="1" class="order-input order-input--compact">
-                                </div>
-
-                                <label class="order-label" style="font-size: 10px; margin-top: 12px; margin-bottom: 6px;">Move SL to Entry +</label>
-                                <div class="order-input-wrapper">
-                                    <input type="number" id="breakevenPipOffset" value="0" min="-50" max="50" step="0.1" class="order-input order-input--compact">
-                                    <span class="order-input-suffix">Pips</span>
-                                </div>
-                                <div class="order-note">
-                                    Tip: Use +2 for buffer above entry, 0 for exact entry, -2 for below entry
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Stage 2: Trailing SL -->
-                        <div class="order-card-soft">
-                            <div class="order-stage-head">
-                                <div class="order-stage-title">
-                                    <span class="order-stage-badge">STAGE 2</span>
-                                    <span>Trailing Stop</span>
-                                </div>
-                                <label class="toggle-switch" style="transform: scale(0.8);">
-                                    <input type="checkbox" id="trailingSLToggle">
-                                    <span class="toggle-switch__track"></span>
-                                    <span class="toggle-switch__thumb"></span>
-                                </label>
-                            </div>
-
-                            <div id="trailingSLSettings" class="is-hidden">
-                            <label class="order-label" style="font-size: 11px; margin-bottom: 8px;">Activate after</label>
-                            <div class="order-button-group order-button-group--inline" style="margin-bottom: 12px;">
-                                <button class="breakeven-mode-tab active" type="button" data-mode="trail-rr" id="trailActivateRRTab">R:R</button>
-                                <button class="breakeven-mode-tab" type="button" data-mode="trail-pips" id="trailActivatePipsTab">Pips</button>
-                            </div>
-
-                            <div id="trailingActivateRRInput" class="order-input-wrapper" style="margin-bottom: 12px;">
-                                <input type="number" id="trailingActivateRR" value="1" min="0.1" step="0.1" class="order-input order-input--compact">
-                                <span class="order-input-suffix">R:R</span>
-                            </div>
-
-                            <div id="trailingActivatePipsInput" class="order-input-wrapper is-hidden" style="margin-bottom: 12px;">
-                                <input type="number" id="trailingActivatePips" value="10" min="1" step="1" class="order-input order-input--compact">
-                                <span class="order-input-suffix">Pips</span>
-                            </div>
-                            
-                            <label class="order-label" style="font-size: 11px; margin-bottom: 8px;">Step size (pips)</label>
-                            <div class="order-input-wrapper" style="margin-bottom: 12px;">
-                                <input type="number" id="trailingStepSize" value="4" min="1" step="1" class="order-input order-input--compact">
-                                <span class="order-input-suffix">Pips</span>
-                            </div>
-                            
-                            <div id="trailingStatus" class="order-status-card">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span style="font-size: 16px;">⏳</span>
-                                    <div style="flex: 1;">
-                                        <div class="order-status-title">Waiting for Activation</div>
-                                        <div id="trailingStatusDetails" class="order-status-sub">Reach +10 pips to activate</div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <p class="order-hint" style="font-size: 10px; margin-top: 8px;">Waits for activation, then SL moves in 4-pip steps</p>
-                            </div>
+                        <div id="trailSummaryText" class="order-adv-card__summary"></div>
+                    </div>
+                    <!-- Hidden elements kept for existing logic -->
+                    <div style="display:none;">
+                        <div id="trailingActivateRRInput"></div>
+                        <div id="trailingActivatePipsInput"></div>
+                        <div id="trailActivateRRTab"></div>
+                        <div id="trailActivatePipsTab"></div>
+                        <div id="trailingStatus" class="order-status-card">
+                            <div class="order-status-title">Waiting</div>
+                            <div id="trailingStatusDetails" class="order-status-sub"></div>
                         </div>
                     </div>
                 </div>
@@ -8673,6 +8692,8 @@ class OrderManager {
             this.calculatePositionFromRisk();
             this.calculateAdvancedRiskReward();
             this.updatePlaceButtonText();
+            this._updateBreakevenSummary();
+            this._updateTrailingSummary();
 
             requestAnimationFrame(() => {
                 this.updatePreviewLines();
@@ -8975,10 +8996,10 @@ class OrderManager {
         }
 
         if (order.breakevenSettings) {
-            this.breakevenMode = order.breakevenSettings.mode || 'pips';
+            this.breakevenMode = order.breakevenSettings.mode || 'rr';
             const pipsInput = document.getElementById('breakevenPips');
-            if (pipsInput && this.breakevenMode === 'pips') {
-                pipsInput.value = order.breakevenSettings.value ?? 10;
+            if (pipsInput && (this.breakevenMode === 'pips' || this.breakevenMode === 'rr')) {
+                pipsInput.value = order.breakevenSettings.value ?? (this.breakevenMode === 'rr' ? 0.5 : 10);
             }
             const amountInput = document.getElementById('breakevenAmount');
             if (amountInput && this.breakevenMode === 'amount') {
@@ -9131,7 +9152,8 @@ class OrderManager {
         // Advanced Order Toggle - controls visibility of advanced features
         const advancedOrderToggle = document.getElementById('advancedOrderToggle');
         const advancedOptions = document.getElementById('advancedOptions');
-        const protectionSystemSection = document.getElementById('protectionSystemSection');
+        const advBreakevenCard = document.getElementById('advBreakevenCard');
+        const advTrailingCard = document.getElementById('advTrailingCard');
         const multipleTPSection = document.getElementById('multipleTPSection');
         const scalePositionSection = document.getElementById('scalePositionSection');
         
@@ -9144,7 +9166,8 @@ class OrderManager {
             
             // Toggle visibility of advanced sections (TP and SL stay visible always)
             if (advancedOptions) advancedOptions.style.display = isEnabled ? 'block' : 'none';
-            if (protectionSystemSection) protectionSystemSection.style.display = isEnabled ? 'block' : 'none';
+            if (advBreakevenCard) advBreakevenCard.style.display = isEnabled ? 'block' : 'none';
+            if (advTrailingCard) advTrailingCard.style.display = isEnabled ? 'block' : 'none';
             if (multipleTPSection) multipleTPSection.style.display = isEnabled ? 'block' : 'none';
             if (scalePositionSection) scalePositionSection.style.display = isEnabled ? 'block' : 'none';
             
@@ -9660,10 +9683,17 @@ class OrderManager {
                 
                 // Update preview lines to show/hide the breakeven line immediately
                 this.updatePreviewLines();
+                this._updateBreakevenSummary();
             };
             autoBreakevenToggle.onchange = updateBreakevenVisibility;
             updateBreakevenVisibility();
         }
+
+        // Wire breakeven inline inputs to summary updates
+        const bePipsIn = document.getElementById('breakevenPips');
+        const beOffsetIn = document.getElementById('breakevenPipOffset');
+        if (bePipsIn) bePipsIn.oninput = () => { this._updateBreakevenSummary(); this.updatePreviewLines(); };
+        if (beOffsetIn) beOffsetIn.oninput = () => { this._updateBreakevenSummary(); this.updatePreviewLines(); };
         
         // Custom Protection Settings System
         this.loadSavedProtectionSettings();
@@ -9793,8 +9823,17 @@ class OrderManager {
                 } else {
                     this.stopTrailingSL();
                 }
+                this._updateTrailingSummary();
             };
         }
+
+        // Wire trailing inline inputs to summary updates
+        const trActIn = document.getElementById('trailingActivateRR');
+        const trStepIn = document.getElementById('trailingStepSize');
+        const trEveryIn = document.getElementById('trailingActivatePips');
+        if (trActIn) trActIn.oninput = () => this._updateTrailingSummary();
+        if (trStepIn) trStepIn.oninput = () => this._updateTrailingSummary();
+        if (trEveryIn) trEveryIn.oninput = () => this._updateTrailingSummary();
         
         // Multiple TP toggle (button + hidden checkbox)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
@@ -11384,6 +11423,59 @@ class OrderManager {
         return 0;
     }
     
+    _updateBreakevenSummary() {
+        const el = document.getElementById('beSummaryText');
+        if (!el) return;
+        const beToggle = document.getElementById('autoBreakevenToggle');
+        if (!beToggle?.checked) { el.textContent = ''; return; }
+
+        const entry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (!entry || !sl) { el.textContent = ''; return; }
+
+        const riskDist = Math.abs(entry - sl);
+        if (riskDist < 1e-10) { el.textContent = ''; return; }
+
+        const rVal = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
+        const ptOffset = parseFloat(document.getElementById('breakevenPipOffset')?.value || 0);
+        const isBuy = this.orderSide === 'BUY';
+        const precision = this.getPricePrecision();
+
+        const triggerDist = rVal * riskDist;
+        const triggerPrice = isBuy ? entry + triggerDist : entry - triggerDist;
+        const offsetPrice = ptOffset * this.pipSize;
+        const bePrice = isBuy ? entry + offsetPrice : entry - offsetPrice;
+
+        el.textContent = `At ${triggerPrice.toFixed(precision)} \u2192 SL to ${bePrice.toFixed(precision)} (BE)`;
+    }
+
+    _updateTrailingSummary() {
+        const el = document.getElementById('trailSummaryText');
+        if (!el) return;
+        const trToggle = document.getElementById('trailingSLToggle');
+        if (!trToggle?.checked) { el.textContent = ''; return; }
+
+        const entry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (!entry || !sl) { el.textContent = ''; return; }
+
+        const riskDist = Math.abs(entry - sl);
+        if (riskDist < 1e-10) { el.textContent = ''; return; }
+
+        const activateR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
+        const trailR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+        const stepR = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
+        const isBuy = this.orderSide === 'BUY';
+        const precision = this.getPricePrecision();
+
+        const activateDist = activateR * riskDist;
+        const activatePrice = isBuy ? entry + activateDist : entry - activateDist;
+        const trailPts = (trailR * riskDist) / this.pipSize;
+        const stepPts = (stepR * riskDist) / this.pipSize;
+
+        el.textContent = `At ${activatePrice.toFixed(precision)} trails ${trailPts.toFixed(1)} pts, steps ${stepPts.toFixed(1)} pts`;
+    }
+
     /**
      * Calculate risk/reward
      * NOTE: This function appears to be UNUSED in favor of calculateAdvancedRiskReward()
@@ -11819,49 +11911,52 @@ class OrderManager {
         // Draw Breakeven trigger line if enabled
         const beEnabled = document.getElementById('autoBreakevenToggle')?.checked;
         if (beEnabled && slEnabled && slPrice > 0) {
-            const beMode = this.breakevenMode || 'pips';
-            let beValue = beMode === 'pips' 
-                ? parseFloat(document.getElementById('breakevenPips')?.value || 10)
-                : parseFloat(document.getElementById('breakevenAmount')?.value || 50);
+            const beMode = this.breakevenMode || 'rr';
+            let beValue;
+            if (beMode === 'rr') {
+                beValue = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
+            } else if (beMode === 'pips') {
+                beValue = parseFloat(document.getElementById('breakevenPips')?.value || 10);
+            } else {
+                beValue = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
+            }
             
-            // Calculate BE trigger price
             let beTriggerPrice = 0;
+            const riskDistance = Math.abs(entryPrice - slPrice);
             
-            // Auto-position BE between Entry and TP only on first enable (when not manually positioned)
             if (!this.beManuallyPositioned && tpEnabled && tpPrice > 0) {
                 const tpDistance = Math.abs(tpPrice - entryPrice);
-                const beDistance = tpDistance * 0.5; // 50% of the way to TP
-                
+                const beDistance = tpDistance * 0.5;
                 beTriggerPrice = this.orderSide === 'BUY' 
                     ? entryPrice + beDistance 
                     : entryPrice - beDistance;
                 
-                // Update the input value to match this position
-                const bePips = Math.round(beDistance / this.pipSize);
-                const pipsInput = document.getElementById('breakevenPips');
-                if (pipsInput && beMode === 'pips') {
-                    pipsInput.value = bePips;
-                    beValue = bePips;
-                }
-                if (beMode === 'amount') {
+                if (beMode === 'rr' && riskDistance > 0) {
+                    const rVal = beDistance / riskDistance;
+                    const rInput = document.getElementById('breakevenPips');
+                    if (rInput) { rInput.value = parseFloat(rVal.toFixed(2)); beValue = rVal; }
+                } else if (beMode === 'pips') {
+                    const bePips = Math.round(beDistance / this.pipSize);
+                    const pipsInput = document.getElementById('breakevenPips');
+                    if (pipsInput) { pipsInput.value = bePips; beValue = bePips; }
+                } else if (beMode === 'amount') {
+                    const bePips = Math.round(beDistance / this.pipSize);
                     const beAmount = bePips * quantity * this.pipValuePerLot;
                     const amountInput = document.getElementById('breakevenAmount');
-                    if (amountInput) {
-                        amountInput.value = Math.round(beAmount);
-                        beValue = Math.round(beAmount);
-                    }
+                    if (amountInput) { amountInput.value = Math.round(beAmount); beValue = Math.round(beAmount); }
                 }
-                
-                // Mark as initialized so we don't keep resetting it
                 this.beManuallyPositioned = true;
+            } else if (beMode === 'rr') {
+                const profitDistance = beValue * riskDistance;
+                beTriggerPrice = this.orderSide === 'BUY' 
+                    ? entryPrice + profitDistance 
+                    : entryPrice - profitDistance;
             } else if (beMode === 'pips') {
-                // Pips mode - use current input value
                 const profitPrice = beValue * this.pipSize;
                 beTriggerPrice = this.orderSide === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                // Amount mode - use current input value
                 const profitPips = beValue / (quantity * this.pipValuePerLot);
                 const profitPrice = profitPips * this.pipSize;
                 beTriggerPrice = this.orderSide === 'BUY' 
@@ -11869,14 +11964,17 @@ class OrderManager {
                     : entryPrice - profitPrice;
             }
             
-            // Draw orange dashed BE line (draggable)
-            const beLabel = beMode === 'pips' ? `BE @ ${beValue}p` : `BE @ $${beValue}`;
+            const pipOffset = parseFloat(document.getElementById('breakevenPipOffset')?.value || 0);
+            let beLabel;
+            if (beMode === 'rr') beLabel = `BE @ ${beValue}R`;
+            else if (beMode === 'pips') beLabel = `BE @ ${beValue}p`;
+            else beLabel = `BE @ $${beValue}`;
+            if (pipOffset !== 0) beLabel += ` +${pipOffset}pts`;
+            
             this.previewLines.be = this.drawPreviewLine(beTriggerPrice, '#f59e0b', beLabel, null, true);
             if (this.previewLines.be) {
                 this.previewLines.be.targetPrice = beTriggerPrice;
-                this.previewLines.be.isBELine = true; // Mark as BE line
-                
-                // Make BE line more visible with distinct styling
+                this.previewLines.be.isBELine = true;
                 this.previewLines.be.line
                     .attr('stroke-width', 1)
                     .attr('stroke-dasharray', null)
@@ -14981,11 +15079,13 @@ class OrderManager {
         let breakevenSettings = null;
         if (autoBreakeven) {
             breakevenSettings = {
-                mode: this.breakevenMode || 'pips',
-                triggered: false, // Track if breakeven has been activated
-                value: this.breakevenMode === 'pips' 
-                    ? parseFloat(document.getElementById('breakevenPips')?.value || 10)
-                    : parseFloat(document.getElementById('breakevenAmount')?.value || 50),
+                mode: this.breakevenMode || 'rr',
+                triggered: false,
+                value: this.breakevenMode === 'rr'
+                    ? parseFloat(document.getElementById('breakevenPips')?.value || 0.5)
+                    : this.breakevenMode === 'pips' 
+                        ? parseFloat(document.getElementById('breakevenPips')?.value || 10)
+                        : parseFloat(document.getElementById('breakevenAmount')?.value || 50),
                 pipOffset: parseFloat(document.getElementById('breakevenPipOffset')?.value || 0)
             };
         }
@@ -15095,7 +15195,7 @@ class OrderManager {
         if (autoBreakeven && trailingEnabled) {
             console.warn(`⚠️⚠️⚠️ WARNING: Both Auto Breakeven AND Trailing Stop are enabled!`);
             console.warn(`   Only the one that reaches its target FIRST will activate.`);
-            console.warn(`   Auto BE Target: ${breakevenSettings.mode === 'pips' ? breakevenSettings.value + ' pips' : '$' + breakevenSettings.value}`);
+            console.warn(`   Auto BE Target: ${breakevenSettings.mode === 'rr' ? breakevenSettings.value + 'R' : breakevenSettings.mode === 'pips' ? breakevenSettings.value + ' pips' : '$' + breakevenSettings.value}`);
             console.warn(`   Trailing Activation: ${trailingStop.activateMode === 'trail-rr' ? 'at profit level' : 'at pip distance'}`);
             console.warn(`   💡 TIP: For predictable behavior, enable only ONE breakeven system at a time.`);
             
@@ -15656,7 +15756,13 @@ class OrderManager {
         // Calculate and log BE trigger price for comparison
         if (autoBreakeven && breakevenSettings && slPrice > 0) {
             let beTriggerPrice = 0;
-            if (breakevenSettings.mode === 'pips') {
+            const beRiskDist = Math.abs(entryPrice - slPrice);
+            if (breakevenSettings.mode === 'rr') {
+                const profitDistance = breakevenSettings.value * beRiskDist;
+                beTriggerPrice = this.orderSide === 'BUY' 
+                    ? entryPrice + profitDistance 
+                    : entryPrice - profitDistance;
+            } else if (breakevenSettings.mode === 'pips') {
                 const profitPrice = breakevenSettings.value * this.pipSize;
                 beTriggerPrice = this.orderSide === 'BUY' 
                     ? entryPrice + profitPrice 
@@ -17315,7 +17421,11 @@ class OrderManager {
                     let shouldTrigger = false;
                     const posPipSize = this._getPositionPipSize(position);
                     
-                    if (position.breakevenSettings.mode === 'pips') {
+                    if (position.breakevenSettings.mode === 'rr') {
+                        const riskDist = Math.abs(position.openPrice - position.stopLoss);
+                        const triggerDist = position.breakevenSettings.value * riskDist;
+                        shouldTrigger = (high - position.openPrice) >= triggerDist;
+                    } else if (position.breakevenSettings.mode === 'pips') {
                         const currentPipsProfit = (high - position.openPrice) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
@@ -17332,26 +17442,24 @@ class OrderManager {
                         console.log(`      New SL = ${position.openPrice.toFixed(5)} + ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
                         position.breakevenSettings.triggered = true;
                         
-                        // If trailing stop exists but not activated yet, mark BE as the winner
                         if (position.trailingStop && !position.trailingStop.activated) {
                             position.trailingStop.beSupersedesTrailing = true;
                             console.log(`      📌 Auto BE triggered first - Trailing Stop will not activate`);
                         }
                         
-                        // Mark that BE was just triggered to skip TP checks this candle
                         position.beJustTriggered = true;
                         
-                        const triggerType = position.breakevenSettings.mode === 'pips' 
-                            ? `${position.breakevenSettings.value} pips`
-                            : `$${position.breakevenSettings.value}`;
+                        let triggerType;
+                        if (position.breakevenSettings.mode === 'rr') triggerType = `${position.breakevenSettings.value}R`;
+                        else if (position.breakevenSettings.mode === 'pips') triggerType = `${position.breakevenSettings.value} pips`;
+                        else triggerType = `$${position.breakevenSettings.value}`;
                         
-                        const offsetText = pipOffset !== 0 ? ` +${pipOffset} pips` : '';
+                        const offsetText = pipOffset !== 0 ? ` +${pipOffset} pts` : '';
                         console.log(`   ⚡ BREAKEVEN TRIGGERED! (${triggerType}) SL moved from ${oldSL.toFixed(5)} to ${position.stopLoss.toFixed(5)}${offsetText} for BUY #${position.id}`);
                         console.log(`   Position #${position.id} is STILL OPEN with quantity ${position.quantity}`);
                         console.log(`   ⚠️ Skipping TP checks for this candle to let BE take effect`);
                         this.showNotification(`⚡ Breakeven Hit! Order #${position.id} | SL moved to ${position.stopLoss.toFixed(5)}${offsetText}`, 'success');
                         
-                        // Update the SL line on chart
                         this.removeSLTPLines(position.id);
                         this.drawSLTPLines(position);
                     }
@@ -17507,7 +17615,11 @@ class OrderManager {
                     let shouldTrigger = false;
                     const posPipSize = this._getPositionPipSize(position);
                     
-                    if (position.breakevenSettings.mode === 'pips') {
+                    if (position.breakevenSettings.mode === 'rr') {
+                        const riskDist = Math.abs(position.openPrice - position.stopLoss);
+                        const triggerDist = position.breakevenSettings.value * riskDist;
+                        shouldTrigger = (position.openPrice - low) >= triggerDist;
+                    } else if (position.breakevenSettings.mode === 'pips') {
                         const currentPipsProfit = (position.openPrice - low) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
@@ -17524,26 +17636,24 @@ class OrderManager {
                         console.log(`      New SL = ${position.openPrice.toFixed(5)} - ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
                         position.breakevenSettings.triggered = true;
                         
-                        // If trailing stop exists but not activated yet, mark BE as the winner
                         if (position.trailingStop && !position.trailingStop.activated) {
                             position.trailingStop.beSupersedesTrailing = true;
                             console.log(`      📌 Auto BE triggered first - Trailing Stop will not activate`);
                         }
                         
-                        // Mark that BE was just triggered to skip TP checks this candle
                         position.beJustTriggered = true;
                         
-                        const triggerType = position.breakevenSettings.mode === 'pips' 
-                            ? `${position.breakevenSettings.value} pips`
-                            : `$${position.breakevenSettings.value}`;
+                        let triggerType;
+                        if (position.breakevenSettings.mode === 'rr') triggerType = `${position.breakevenSettings.value}R`;
+                        else if (position.breakevenSettings.mode === 'pips') triggerType = `${position.breakevenSettings.value} pips`;
+                        else triggerType = `$${position.breakevenSettings.value}`;
                         
-                        const offsetText = pipOffset !== 0 ? ` +${pipOffset} pips` : '';
+                        const offsetText = pipOffset !== 0 ? ` +${pipOffset} pts` : '';
                         console.log(`   ⚡ BREAKEVEN TRIGGERED! (${triggerType}) SL moved from ${oldSL.toFixed(5)} to ${position.stopLoss.toFixed(5)}${offsetText} for SELL #${position.id}`);
                         console.log(`   Position #${position.id} is STILL OPEN with quantity ${position.quantity}`);
                         console.log(`   ⚠️ Skipping TP checks for this candle to let BE take effect`);
                         this.showNotification(`⚡ Breakeven Hit! Order #${position.id} | SL moved to ${position.stopLoss.toFixed(5)}${offsetText}`, 'success');
                         
-                        // Update the SL line on chart
                         this.removeSLTPLines(position.id);
                         this.drawSLTPLines(position);
                     }
@@ -18524,7 +18634,13 @@ class OrderManager {
                 dragStartPrice = order.takeProfit;
             } else if (lineType === 'be') {
                 // For BE line, calculate current trigger price
-                if (order.breakevenSettings.mode === 'pips') {
+                if (order.breakevenSettings.mode === 'rr') {
+                    const riskDist = Math.abs(order.openPrice - order.stopLoss);
+                    const profitDistance = order.breakevenSettings.value * riskDist;
+                    startPrice = order.type === 'BUY'
+                        ? order.openPrice + profitDistance
+                        : order.openPrice - profitDistance;
+                } else if (order.breakevenSettings.mode === 'pips') {
                     const profitPrice = order.breakevenSettings.value * self.pipSize;
                     startPrice = order.type === 'BUY' 
                         ? order.openPrice + profitPrice 
@@ -19959,14 +20075,18 @@ class OrderManager {
             const entryPrice = pendingOrder.entryPrice;
             let beTriggerPrice = 0;
             
-            if (pendingOrder.breakevenSettings.mode === 'pips') {
-                // Pips mode - direct conversion
+            if (pendingOrder.breakevenSettings.mode === 'rr') {
+                const riskDist = Math.abs(entryPrice - pendingOrder.stopLoss);
+                const profitDistance = pendingOrder.breakevenSettings.value * riskDist;
+                beTriggerPrice = pendingOrder.direction === 'BUY' 
+                    ? entryPrice + profitDistance 
+                    : entryPrice - profitDistance;
+            } else if (pendingOrder.breakevenSettings.mode === 'pips') {
                 const profitPrice = pendingOrder.breakevenSettings.value * this.pipSize;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                // Amount mode
                 const profitPips = pendingOrder.breakevenSettings.value / (pendingOrder.quantity * this.pipValuePerLot);
                 const profitPrice = profitPips * this.pipSize;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
@@ -21842,14 +21962,18 @@ class OrderManager {
             const entryPrice = order.openPrice;
             let beTriggerPrice = 0;
             
-            if (order.breakevenSettings.mode === 'pips') {
-                // Pips mode - direct conversion
+            if (order.breakevenSettings.mode === 'rr') {
+                const riskDist = Math.abs(entryPrice - order.stopLoss);
+                const profitDistance = order.breakevenSettings.value * riskDist;
+                beTriggerPrice = order.type === 'BUY'
+                    ? entryPrice + profitDistance
+                    : entryPrice - profitDistance;
+            } else if (order.breakevenSettings.mode === 'pips') {
                 const profitPrice = order.breakevenSettings.value * this.pipSize;
                 beTriggerPrice = order.type === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                // Amount mode
                 const profitPips = order.breakevenSettings.value / (order.quantity * this.pipValuePerLot);
                 const profitPrice = profitPips * this.pipSize;
                 beTriggerPrice = order.type === 'BUY' 
@@ -21865,10 +21989,10 @@ class OrderManager {
                 .attr('opacity', 0.8)
                 .style('cursor', 'ns-resize');
             
-            // Left side label
-            const beLabel = order.breakevenSettings.mode === 'pips' 
-                ? `BE @ ${order.breakevenSettings.value}p`
-                : `BE @ $${order.breakevenSettings.value}`;
+            let beLabel;
+            if (order.breakevenSettings.mode === 'rr') beLabel = `BE @ ${order.breakevenSettings.value}R`;
+            else if (order.breakevenSettings.mode === 'pips') beLabel = `BE @ ${order.breakevenSettings.value}p`;
+            else beLabel = `BE @ $${order.breakevenSettings.value}`;
             
             const beLabelBox = chart.svg.append('rect')
                 .attr('class', `be-label-box be-${order.id}`)
@@ -23846,8 +23970,8 @@ class OrderManager {
         return {
             breakeven: {
                 enabled: document.getElementById('autoBreakevenToggle')?.checked || false,
-                mode: this.breakevenMode || 'pips',
-                pipsValue: parseFloat(document.getElementById('breakevenPips')?.value || 10),
+                mode: this.breakevenMode || 'rr',
+                pipsValue: parseFloat(document.getElementById('breakevenPips')?.value || 0.5),
                 amountValue: parseFloat(document.getElementById('breakevenAmount')?.value || 50),
                 pipOffset: parseFloat(document.getElementById('breakevenPipOffset')?.value || 0)
             },
