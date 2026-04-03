@@ -6949,12 +6949,7 @@ class OrderManager {
                 }
                 .order-panel__top-row .order-panel__type-group {
                     flex: 1;
-                    display: flex;
-                    gap: 0;
-                    padding: 2px;
-                    background: var(--om-seg-bg);
-                    border: 1px solid var(--om-seg-border);
-                    border-radius: 5px;
+                    margin-top: 0;
                     margin-bottom: 0;
                 }
 
@@ -7068,13 +7063,16 @@ class OrderManager {
                     font-weight: 600 !important;
                     padding: 8px 10px !important;
                     border-radius: 5px !important;
-                    background: var(--om-in-bg) !important;
-                    border: 1px solid var(--om-in-b) !important;
+                    background: var(--om-bg) !important;
+                    border: 1px solid var(--om-b) !important;
                     color: var(--om-tx) !important;
                     font-family: var(--om-mono) !important;
+                    box-sizing: border-box;
+                    transition: border-color 0.15s, box-shadow 0.15s;
                 }
                 .order-input--entry-sl:focus {
-                    border-color: var(--om-ot-gold) !important;
+                    border-color: rgba(38, 67, 247, 0.55) !important;
+                    box-shadow: 0 0 0 1px rgba(38, 67, 247, 0.22);
                     outline: none;
                 }
                 .order-section--entry-sl {
@@ -7105,6 +7103,10 @@ class OrderManager {
                     background: #f7f8fa !important;
                     border-color: #e0e3eb !important;
                     color: #131722 !important;
+                }
+                body.light-mode .order-input--entry-sl:focus {
+                    border-color: rgba(38, 67, 247, 0.55) !important;
+                    box-shadow: 0 0 0 1px rgba(38, 67, 247, 0.22);
                 }
 
                 /* ── MISC ────────────────────────────────────────────────────────── */
