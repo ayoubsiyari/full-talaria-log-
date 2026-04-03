@@ -19075,6 +19075,165 @@ class OrderManager {
     }
     
     /**
+     * TradingView-style drag from active order entry line to create TP or SL.
+     * BUY: drag up → TP, drag down → SL
+     * SELL: drag down → TP, drag up → SL
+     */
+    _setupEntryDragToCreateTPSL(order, line, labelBox, chart, extraElements = []) {
+        const self = this;
+        const ctx = chart || this.chart;
+        let isDragging = false;
+        let startY = 0;
+        let dragType = null; // 'tp' or 'sl'
+        let previewLine = null;
+        let previewLabel = null;
+        let previewLabelBg = null;
+        let previewPnlBg = null;
+        let previewPnlText = null;
+
+        const DEAD_ZONE = 4; // px before drag type is determined
+        const isBuy = order.type === 'BUY';
+
+        const onMouseDown = (e) => {
+            if (e.target.closest('.order-close-btn')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            startY = e.clientY;
+            dragType = null;
+            self._isDraggingOrderLine = true;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        };
+
+        const onMouseMove = (e) => {
+            if (!isDragging || !ctx.scales?.yScale) return;
+            const dy = e.clientY - startY;
+
+            if (!dragType) {
+                if (Math.abs(dy) < DEAD_ZONE) return;
+                const draggingUp = dy < 0;
+                if (isBuy) {
+                    dragType = draggingUp ? (order.takeProfit ? null : 'tp')
+                                          : (order.stopLoss ? null : 'sl');
+                } else {
+                    dragType = draggingUp ? (order.stopLoss ? null : 'sl')
+                                          : (order.takeProfit ? null : 'tp');
+                }
+                if (!dragType) {
+                    isDragging = false;
+                    self._isDraggingOrderLine = false;
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    return;
+                }
+                const color = dragType === 'tp' ? '#22c55e' : '#f23645';
+                previewLine = ctx.svg.append('line')
+                    .attr('stroke', color)
+                    .attr('stroke-width', 1.5)
+                    .attr('stroke-dasharray', '6 3')
+                    .attr('opacity', 0.9)
+                    .attr('x1', 0)
+                    .attr('x2', ctx.w - (ctx.margin?.r || 70))
+                    .style('pointer-events', 'none');
+                previewLabelBg = ctx.svg.append('rect')
+                    .attr('fill', color).attr('rx', 3).attr('height', 20)
+                    .style('pointer-events', 'none');
+                previewLabel = ctx.svg.append('text')
+                    .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('dy', '0.35em').style('pointer-events', 'none');
+                previewPnlBg = ctx.svg.append('rect')
+                    .attr('fill', '#0f172a').attr('stroke', color).attr('stroke-width', 1)
+                    .attr('rx', 3).attr('height', 20).style('pointer-events', 'none');
+                previewPnlText = ctx.svg.append('text')
+                    .attr('fill', color).attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('dy', '0.35em').style('pointer-events', 'none');
+            }
+
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+            const precision = self.getPricePrecision();
+            const priceStr = newPrice.toFixed(precision);
+            const label = dragType === 'tp' ? 'TP' : 'SL';
+            const sym = order.ticker || order.symbol || self._getSymbol();
+            const pnl = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
+            const pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+
+            previewLine.attr('y1', mouseY).attr('y2', mouseY);
+
+            const pad = 6;
+            const rightMargin = ctx.margin?.r || 70;
+            const xRight = ctx.w - rightMargin - 4;
+
+            const labelFullStr = `${label}  ${priceStr}`;
+            previewLabel.text(labelFullStr);
+            const labelW = (previewLabel.node()?.getBBox()?.width || 60) + pad * 2;
+            const pnlW = 80;
+            const totalW = labelW + 4 + pnlW;
+            const xStart = xRight - totalW;
+
+            previewLabelBg.attr('x', xStart).attr('y', mouseY - 10).attr('width', labelW);
+            previewLabel.attr('x', xStart + pad).attr('y', mouseY);
+            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 10).attr('width', pnlW);
+            previewPnlText.text(pnlStr).attr('x', xStart + labelW + 4 + pad).attr('y', mouseY);
+        };
+
+        const onMouseUp = (e) => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            if (!isDragging) return;
+            isDragging = false;
+            self._isDraggingOrderLine = false;
+
+            if (previewLine) previewLine.remove();
+            if (previewLabelBg) previewLabelBg.remove();
+            if (previewLabel) previewLabel.remove();
+            if (previewPnlBg) previewPnlBg.remove();
+            if (previewPnlText) previewPnlText.remove();
+
+            if (!dragType || !ctx.scales?.yScale) return;
+
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+
+            // Validate direction
+            if (dragType === 'tp') {
+                if (isBuy && newPrice <= order.openPrice) return;
+                if (!isBuy && newPrice >= order.openPrice) return;
+            } else {
+                if (isBuy && newPrice >= order.openPrice) return;
+                if (!isBuy && newPrice <= order.openPrice) return;
+            }
+
+            if (dragType === 'tp') {
+                order.takeProfit = newPrice;
+                console.log(`✅ TP set to ${newPrice.toFixed(5)} for order #${order.id}`);
+                self.showNotification(`TP set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
+            } else {
+                order.stopLoss = newPrice;
+                console.log(`✅ SL set to ${newPrice.toFixed(5)} for order #${order.id}`);
+                self.showNotification(`SL set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
+            }
+
+            self.removeSLTPLines(order.id);
+            self.drawSLTPLines(order);
+            self.updateSLTPLines();
+            if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
+        };
+
+        const lineNode = line.node();
+        const labelNode = labelBox.node();
+        if (lineNode) lineNode.addEventListener('mousedown', onMouseDown);
+        if (labelNode) labelNode.addEventListener('mousedown', onMouseDown);
+        for (const el of extraElements) {
+            const node = el?.node?.();
+            if (node) node.addEventListener('mousedown', onMouseDown);
+        }
+    }
+
+    /**
      * Draw order line on chart
      */
     drawOrderLine(order, targetChart = null) {
@@ -19211,7 +19370,8 @@ class OrderManager {
             .style('pointer-events', 'none')
             .text('$0.00');
 
-        this.makeLineDraggable(line, labelBox, order, 'entry', {}, chart);
+        this._setupEntryDragToCreateTPSL(order, line, labelBox, chart,
+            [labelText, arrow, priceBox, priceText]);
 
         this.orderLines.push({
             orderId: order.id,
@@ -22738,6 +22898,7 @@ class OrderManager {
         }
 
         ch.svg.selectAll('.y-axis-pending-highlight').remove();
+        ch.svg.selectAll('.y-axis-entry-highlight').remove();
 
         const lines = (this.orderLines || []).filter((ol) => (ol.chart || this.chart) === ch);
 
