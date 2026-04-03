@@ -32,23 +32,14 @@ import {
   CreditCard
 } from 'lucide-react';
 import { useProfile } from '../context/ProfileContext';
-import { useAuth } from '../context/AuthContext';
-import { useFeatureFlags } from '../context/FeatureFlagsContext';
 import NewProfileSelector from './NewProfileSelector';
 
 export default function Sidebar() {
   const [profileImage, setProfileImage] = useState('');
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const { activeProfile } = useProfile();
-  const { isAdmin } = useAuth();
-  const { isFeatureEnabled, isLoading, hasLoadedFromBackend } = useFeatureFlags();
   const { isCollapsed, setIsCollapsed } = useSidebar();
   const location = useLocation();
-
-  // Helper function to check if feature should be shown (admins bypass feature restrictions)
-  const shouldShowFeature = (featureName) => {
-    return isAdmin || isFeatureEnabled(featureName);
-  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -106,150 +97,117 @@ export default function Sidebar() {
         <div className="space-y-1">
           {!isCollapsed && <p className="px-3 text-xs font-semibold text-white/60 uppercase tracking-wider">Main</p>}
           {/* Dashboard */}
-          {shouldShowFeature('DASHBOARD') && (
-            isCollapsed ? (
-              <Tooltip content="Dashboard" position="right">
-                <NavLink to="/dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <Activity className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Dashboard" position="right">
+              <NavLink to="/dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <Activity className="h-5 w-5" />
-                <span className="font-medium ml-3">Dashboard</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <Activity className="h-5 w-5" />
+              <span className="font-medium ml-3">Dashboard</span>
+            </NavLink>
           )}
 
           {/* Journal */}
-          {shouldShowFeature('JOURNAL') && (
-            isCollapsed ? (
-              <Tooltip content="Journal" position="right">
-                <NavLink to="/journal" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <FileText className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/journal" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Journal" position="right">
+              <NavLink to="/journal" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <FileText className="h-5 w-5" />
-                <span className="font-medium ml-3">Journal</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/journal" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <FileText className="h-5 w-5" />
+              <span className="font-medium ml-3">Journal</span>
+            </NavLink>
           )}
 
           {/* AI Dashboard */}
-          {shouldShowFeature('AI_DASHBOARD') && (
-            isCollapsed ? (
-              <Tooltip content="AI Assistant" position="right">
-                <NavLink to="/ai-dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <Bot className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/ai-dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="AI Assistant" position="right">
+              <NavLink to="/ai-dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <Bot className="h-5 w-5" />
-                <span className="font-medium ml-3">AI Assistant</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/ai-dashboard" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <Bot className="h-5 w-5" />
+              <span className="font-medium ml-3">AI Assistant</span>
+            </NavLink>
           )}
 
           {/* Analytics */}
-          {shouldShowFeature('ANALYTICS') && (
-            !isCollapsed ? (
-              <button
-                onClick={() => setAnalyticsOpen(!analyticsOpen)}
-                className="w-full flex items-center justify-between px-3 py-2 text-white/70 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300"
-              >
-                <div className="flex items-center">
-                  <BarChart3 className="h-5 w-5" />
-                  <span className="font-medium ml-3">Analytics</span>
-                </div>
-                {analyticsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-            ) : (
-              <Tooltip content="Analytics" position="right">
-                <NavLink to="/analytics" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <BarChart3 className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            )
+          {!isCollapsed ? (
+            <button
+              onClick={() => setAnalyticsOpen(!analyticsOpen)}
+              className="w-full flex items-center justify-between px-3 py-2 text-white/70 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300"
+            >
+              <div className="flex items-center">
+                <BarChart3 className="h-5 w-5" />
+                <span className="font-medium ml-3">Analytics</span>
+              </div>
+              {analyticsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          ) : (
+            <Tooltip content="Analytics" position="right">
+              <NavLink to="/analytics" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
+                <BarChart3 className="h-5 w-5" />
+              </NavLink>
+            </Tooltip>
           )}
 
           {analyticsOpen && !isCollapsed && (
             <div className="ml-8 space-y-1">
-              {shouldShowFeature('ANALYTICS_EQUITY') && (
-                <NavLink to="/analytics/equity" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <LineChart className="h-3 w-3 mr-2 text-[#5FACF9]" />
-                  Equity Curve
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_CALENDAR') && (
-                <NavLink to="/analytics/calendar" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <Calendar className="h-3 w-3 mr-2 text-red-400" />
-                  Calendar
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_PERFORMANCE') && (
-                <NavLink to="/analytics/performance-analysis" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <TrendingUp className="h-3 w-3 mr-2 text-green-400" />
-                  Performance Analysis
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_STREAKS') && (
-                <NavLink to="/analytics/streaks" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <Zap className="h-3 w-3 mr-2 text-yellow-400" />
-                  Streak Analyzer
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_TRADE_DURATION') && (
-                <NavLink to="/analytics/trade-duration" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <Clock className="h-3 w-3 mr-2 text-purple-400" />
-                  Trade Duration
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_EXIT_ANALYSIS') && (
-                <NavLink to="/analytics/exitanalysis" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <Target className="h-3 w-3 mr-2 text-[#353089]" />
-                  Exit Analysis
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_EXIT_ANALYSIS') && (
-                <NavLink to="/analytics/exitanalysis-amelioration" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <Target className="h-3 w-3 mr-2 text-emerald-400" />
-                  Exit Analysis Amelioration
-                </NavLink>
-              )}
-
-              {shouldShowFeature('ANALYTICS_PNL_DISTRIBUTION') && (
-                <NavLink to="/analytics/pnl-distribution" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <PieChart className="h-3 w-3 mr-2 text-emerald-400" />
-                  P&L Distribution
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_PNL_DISTRIBUTION') && (
-                <NavLink to="/analytics/daily-limit-optimization" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <Target className="h-3 w-3 mr-2 text-orange-400" />
-                  Daily Limit Optimization
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_SYMBOL_ANALYSIS') && (
-                <NavLink to="/analytics/symbols" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <TargetIcon className="h-3 w-3 mr-2 text-[#1e3a8a]" />
-                  Symbol Analysis
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_VARIABLES') && (
-                <NavLink to="/analytics/variables" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <Database className="h-3 w-3 mr-2 text-cyan-400" />
-                  Variables Analysis
-                </NavLink>
-              )}
-              {shouldShowFeature('ANALYTICS_ALL_METRICS') && (
-                <NavLink to="/analytics/all-metrics" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
-                  <BarChart2 className="h-3 w-3 mr-2 text-[#3b82f6]" />
-                  All Metrics
-                </NavLink>
-              )}
+              <NavLink to="/analytics/equity" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <LineChart className="h-3 w-3 mr-2 text-[#5FACF9]" />
+                Equity Curve
+              </NavLink>
+              <NavLink to="/analytics/calendar" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <Calendar className="h-3 w-3 mr-2 text-red-400" />
+                Calendar
+              </NavLink>
+              <NavLink to="/analytics/performance-analysis" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <TrendingUp className="h-3 w-3 mr-2 text-green-400" />
+                Performance Analysis
+              </NavLink>
+              <NavLink to="/analytics/streaks" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <Zap className="h-3 w-3 mr-2 text-yellow-400" />
+                Streak Analyzer
+              </NavLink>
+              <NavLink to="/analytics/trade-duration" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <Clock className="h-3 w-3 mr-2 text-purple-400" />
+                Trade Duration
+              </NavLink>
+              <NavLink to="/analytics/exitanalysis" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <Target className="h-3 w-3 mr-2 text-[#353089]" />
+                Exit Analysis
+              </NavLink>
+              <NavLink to="/analytics/exitanalysis-amelioration" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <Target className="h-3 w-3 mr-2 text-emerald-400" />
+                Exit Analysis Amelioration
+              </NavLink>
+              <NavLink to="/analytics/pnl-distribution" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <PieChart className="h-3 w-3 mr-2 text-emerald-400" />
+                P&L Distribution
+              </NavLink>
+              <NavLink to="/analytics/daily-limit-optimization" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <Target className="h-3 w-3 mr-2 text-orange-400" />
+                Daily Limit Optimization
+              </NavLink>
+              <NavLink to="/analytics/symbols" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <TargetIcon className="h-3 w-3 mr-2 text-[#1e3a8a]" />
+                Symbol Analysis
+              </NavLink>
+              <NavLink to="/analytics/variables" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <Database className="h-3 w-3 mr-2 text-cyan-400" />
+                Variables Analysis
+              </NavLink>
+              <NavLink to="/analytics/all-metrics" className={({ isActive }) => `flex items-center text-sm py-1 hover:underline transition-colors ${isActive ? 'text-[#3b82f6] font-semibold' : 'text-white/70 hover:text-[#5FACF9]'}`}>
+                <BarChart2 className="h-3 w-3 mr-2 text-[#3b82f6]" />
+                All Metrics
+              </NavLink>
             </div>
           )}
         </div>
@@ -258,83 +216,73 @@ export default function Sidebar() {
           {!isCollapsed && <p className="px-3 text-xs font-semibold text-white/60 uppercase tracking-wider transition-all duration-500 ease-out opacity-100">Trades</p>}
           
           {/* Trades */}
-          {shouldShowFeature('TRADES') && (
-            isCollapsed ? (
-              <Tooltip content="Trades" position="right">
-                <NavLink to="/trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <DollarSign className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Trades" position="right">
+              <NavLink to="/trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <DollarSign className="h-5 w-5" />
-                <span className="font-medium ml-3 transition-all duration-500 ease-out opacity-100">Trades</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <DollarSign className="h-5 w-5" />
+              <span className="font-medium ml-3 transition-all duration-500 ease-out opacity-100">Trades</span>
+            </NavLink>
           )}
 
           {/* Import Trades */}
-          {shouldShowFeature('IMPORT_TRADES') && (
-            isCollapsed ? (
-              <Tooltip content="Import Trades" position="right">
-                <NavLink to="/import-trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <Upload className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/import-trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Import Trades" position="right">
+              <NavLink to="/import-trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <Upload className="h-5 w-5" />
-                <span className="font-medium ml-3">Import Trades</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/import-trades" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <Upload className="h-5 w-5" />
+              <span className="font-medium ml-3">Import Trades</span>
+            </NavLink>
           )}
 
           {/* Learn */}
-          {shouldShowFeature('LEARN') && (
-            isCollapsed ? (
-              <Tooltip content="Learn" position="right">
-                <NavLink to="/learn" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <GraduationCap className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/learn" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Learn" position="right">
+              <NavLink to="/learn" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <GraduationCap className="h-5 w-5" />
-                <span className="font-medium ml-3">Learn</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/learn" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <GraduationCap className="h-5 w-5" />
+              <span className="font-medium ml-3">Learn</span>
+            </NavLink>
           )}
 
           {/* Strategy Builder */}
-          {shouldShowFeature('STRATEGY_BUILDER') && (
-            isCollapsed ? (
-              <Tooltip content="Strategy Builder" position="right">
-                <NavLink to="/strategy-builder" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <ClipboardList className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/strategy-builder" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Strategy Builder" position="right">
+              <NavLink to="/strategy-builder" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <ClipboardList className="h-5 w-5" />
-                <span className="font-medium ml-3">Strategy Builder</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/strategy-builder" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <ClipboardList className="h-5 w-5" />
+              <span className="font-medium ml-3">Strategy Builder</span>
+            </NavLink>
           )}
 
           {/* Notes */}
-          {shouldShowFeature('NOTES') && (
-            isCollapsed ? (
-              <Tooltip content="Notes" position="right">
-                <NavLink to="/notes" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <FileText className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/notes" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Notes" position="right">
+              <NavLink to="/notes" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <FileText className="h-5 w-5" />
-                <span className="font-medium ml-3">Notes</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/notes" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <FileText className="h-5 w-5" />
+              <span className="font-medium ml-3">Notes</span>
+            </NavLink>
           )}
         </div>
 
@@ -342,35 +290,31 @@ export default function Sidebar() {
           {!isCollapsed && <p className="px-3 text-xs font-semibold text-white/60 uppercase tracking-wider">Settings</p>}
           
           {/* Settings */}
-          {shouldShowFeature('SETTINGS') && (
-            isCollapsed ? (
-              <Tooltip content="Settings" position="right">
-                <NavLink to="/settings" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <Settings className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/settings" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Settings" position="right">
+              <NavLink to="/settings" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <Settings className="h-5 w-5" />
-                <span className="font-medium ml-3">Settings</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/settings" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <Settings className="h-5 w-5" />
+              <span className="font-medium ml-3">Settings</span>
+            </NavLink>
           )}
 
           {/* Manage Profiles */}
-          {shouldShowFeature('PROFILE_MANAGEMENT') && (
-            isCollapsed ? (
-              <Tooltip content="Manage Profiles" position="right">
-                <NavLink to="/manage-profiles" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
-                  <User className="h-5 w-5" />
-                </NavLink>
-              </Tooltip>
-            ) : (
-              <NavLink to="/manage-profiles" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+          {isCollapsed ? (
+            <Tooltip content="Manage Profiles" position="right">
+              <NavLink to="/manage-profiles" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white transition-all duration-300`}>
                 <User className="h-5 w-5" />
-                <span className="font-medium ml-3">Manage Profiles</span>
               </NavLink>
-            )
+            </Tooltip>
+          ) : (
+            <NavLink to="/manage-profiles" className={({ isActive }) => `${isActive ? 'bg-gradient-to-r from-[#3b82f6]/20 to-[#1e3a8a]/10 border-l-3 border-[#3b82f6] text-white' : 'text-white/70'} flex items-center px-3 py-2 rounded-lg hover:bg-[#3b82f6]/10 hover:text-white hover:translate-x-1 transition-all duration-300`}>
+              <User className="h-5 w-5" />
+              <span className="font-medium ml-3">Manage Profiles</span>
+            </NavLink>
           )}
 
           {/* Pricing / Subscription */}
