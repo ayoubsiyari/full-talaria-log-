@@ -7093,6 +7093,89 @@ class OrderManager {
                     font-weight: 600;
                 }
 
+                /* ── INLINE MULTI-ENTRY (inside entry column) ───────────────── */
+                .multi-entry-inline {
+                    width: 100%;
+                }
+                .multi-entry-container--inline {
+                    border-radius: 5px;
+                    border: 1px solid var(--om-b);
+                    background: var(--om-bg);
+                    overflow: hidden;
+                }
+                .multi-entry-container--inline .multi-entry-columns {
+                    padding: 4px 6px 2px;
+                    gap: 4px;
+                }
+                .multi-entry-container--inline .multi-entry-col-label {
+                    font-size: 8px;
+                }
+                .multi-entry-rows--scroll {
+                    max-height: 120px;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(255,255,255,0.15) transparent;
+                }
+                .multi-entry-rows--scroll::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .multi-entry-rows--scroll::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .multi-entry-rows--scroll::-webkit-scrollbar-thumb {
+                    background: rgba(255,255,255,0.15);
+                    border-radius: 2px;
+                }
+                .multi-entry-rows--scroll::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255,255,255,0.25);
+                }
+                .multi-entry-container--inline .multi-entry-add-row {
+                    padding: 3px 6px;
+                    gap: 4px;
+                }
+                .multi-entry-container--inline .multi-entry-add-icon {
+                    font-size: 11px;
+                }
+                .multi-entry-container--inline .multi-entry-add-text {
+                    font-size: 9px;
+                }
+                .multi-entry-container--inline .multi-entry-footer {
+                    padding: 4px 6px;
+                }
+                .multi-entry-container--inline .multi-entry-equal-btn {
+                    font-size: 9px;
+                    padding: 2px 8px;
+                }
+                .multi-entry-summary--inline {
+                    margin-top: 4px;
+                    padding: 4px 8px;
+                    gap: 2px;
+                }
+                .multi-entry-summary--inline .multi-entry-summary-label {
+                    font-size: 9px;
+                }
+                .multi-entry-summary--inline .multi-entry-summary-value {
+                    font-size: 10px;
+                }
+
+                /* When multi is active, let entry column expand to fit the list */
+                .order-entry-sl-grid:has(.multi-entry-inline[style*="block"]) {
+                    grid-template-columns: 1.4fr 1fr;
+                }
+
+                /* Light mode overrides for inline multi-entry */
+                body.light-mode .multi-entry-container--inline {
+                    background: #f7f8fa;
+                    border-color: #e0e3eb;
+                }
+                body.light-mode .multi-entry-rows--scroll::-webkit-scrollbar-thumb {
+                    background: rgba(0,0,0,0.12);
+                }
+                body.light-mode .multi-entry-rows--scroll::-webkit-scrollbar-thumb:hover {
+                    background: rgba(0,0,0,0.22);
+                }
+
                 /* Light mode overrides for compact layout */
                 body.light-mode .order-label--compact { color: #131722; }
                 body.light-mode .order-label--sl { color: #f23645 !important; }
@@ -7309,6 +7392,36 @@ class OrderManager {
                             <div id="singleEntryMode">
                                 <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact order-input--entry-sl" style="width: 100%;">
                             </div>
+                            <div id="multiEntryMode" class="multi-entry-inline" style="display: none;">
+                                <div class="multi-entry-container multi-entry-container--inline">
+                                    <div class="multi-entry-columns">
+                                        <span class="multi-entry-col-label">Price</span>
+                                        <span class="multi-entry-col-label" id="multiEntryAmountColLabel">Risk ($)</span>
+                                        <span></span>
+                                    </div>
+                                    <div class="multi-entry-rows multi-entry-rows--scroll" id="multiEntryRows">
+                                        <!-- Rows rendered dynamically -->
+                                    </div>
+                                    <div class="multi-entry-add-row" id="multiEntryAddBtn">
+                                        <div class="multi-entry-add-icon">+</div>
+                                        <span class="multi-entry-add-text">Level</span>
+                                    </div>
+                                    <div class="multi-entry-footer">
+                                        <button type="button" class="multi-entry-equal-btn" id="multiEntryEqualBtn">Equal</button>
+                                    </div>
+                                </div>
+                                <div class="multi-entry-summary multi-entry-summary--inline" id="multiEntrySummary">
+                                    <div class="multi-entry-summary-row">
+                                        <span class="multi-entry-summary-label">Avg</span>
+                                        <span class="multi-entry-summary-value" id="multiEntryAvgPrice">0.00000</span>
+                                    </div>
+                                    <div class="multi-entry-summary-row">
+                                        <span class="multi-entry-summary-label">Qty</span>
+                                        <span class="multi-entry-summary-value" id="multiEntryTotalQty">0.00 Lots</span>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="orderEntryPriceMulti" value="0">
+                            </div>
                         </div>
                         <div class="order-entry-sl-col" id="slSection">
                             <div class="order-entry-sl-header">
@@ -7341,39 +7454,8 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div id="entryPriceSection" class="order-section" style="padding-top:0;">
+                <div id="entryPriceSection" style="display:none;">
                     <div class="multi-entry-header" style="display:none;"></div>
-                    <!-- Multiple entry mode (hidden until activated) -->
-                    <div id="multiEntryMode" style="display: none;">
-                        <div class="multi-entry-container">
-                            <div class="multi-entry-columns">
-                                <span class="multi-entry-col-label">Price level</span>
-                                <span class="multi-entry-col-label" id="multiEntryAmountColLabel">Risk ($)</span>
-                                <span></span>
-                            </div>
-                            <div class="multi-entry-rows" id="multiEntryRows">
-                                <!-- Rows rendered dynamically -->
-                            </div>
-                            <div class="multi-entry-add-row" id="multiEntryAddBtn">
-                                <div class="multi-entry-add-icon">+</div>
-                                <span class="multi-entry-add-text">Level</span>
-                            </div>
-                            <div class="multi-entry-footer">
-                                <button type="button" class="multi-entry-equal-btn" id="multiEntryEqualBtn">Equal</button>
-                            </div>
-                        </div>
-                        <div class="multi-entry-summary" id="multiEntrySummary">
-                            <div class="multi-entry-summary-row">
-                                <span class="multi-entry-summary-label">Avg Entry</span>
-                                <span class="multi-entry-summary-value" id="multiEntryAvgPrice">0.00000</span>
-                            </div>
-                            <div class="multi-entry-summary-row">
-                                <span class="multi-entry-summary-label">Total Qty</span>
-                                <span class="multi-entry-summary-value" id="multiEntryTotalQty">0.00 Lots</span>
-                            </div>
-                        </div>
-                        <input type="hidden" id="orderEntryPriceMulti" value="0">
-                    </div>
                 </div>
 
                 <div class="order-section order-tp-card" id="tpSection">
@@ -12714,6 +12796,9 @@ class OrderManager {
             }
             if (singleMode) singleMode.style.display = 'none';
             if (multiMode) multiMode.style.display = 'block';
+            // Scroll multi-entry rows to top when opened
+            const scrollRows = multiMode?.querySelector('.multi-entry-rows--scroll');
+            if (scrollRows) scrollRows.scrollTop = 0;
             if (orderTypeSection) {
                 orderTypeSection.style.opacity = '0.4';
                 orderTypeSection.style.pointerEvents = 'none';
@@ -12759,7 +12844,7 @@ class OrderManager {
             this.syncMultiEntryToSplitEntries();
         } else {
             if (toggleBtn) {
-                toggleBtn.textContent = 'Multiple';
+                toggleBtn.textContent = 'Multi';
                 toggleBtn.classList.remove('active');
             }
             if (singleMode) singleMode.style.display = 'block';
