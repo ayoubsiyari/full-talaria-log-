@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float, text, func
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timedelta
 import os
@@ -298,6 +298,7 @@ class User(Base):
     role = Column(String, default="user", nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    access_expires_at = Column(DateTime, nullable=True)
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
@@ -339,6 +340,14 @@ _CHART_TABLES = [
     TradingSessionState.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
+
+# Safe migration: add access_expires_at to users table if missing.
+try:
+    with engine.connect() as _conn:
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP"))
+        _conn.commit()
+except Exception:
+    pass
 
 def _normalize_password_for_bcrypt(password: str) -> str:
     b = password.encode("utf-8")
@@ -407,6 +416,11 @@ def _get_user_from_request(request: Request):
             return None
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
+            return None
+        # Enforce access expiry — auto-logout expired users (admins exempt)
+        if user.role != "admin" and user.access_expires_at and user.access_expires_at < datetime.utcnow():
+            db.query(UserSession).filter(UserSession.user_id == user.id).delete()
+            db.commit()
             return None
         sess.last_active_at = datetime.utcnow()
         db.commit()
@@ -3131,6 +3145,7 @@ def _append_bootcamp_registration_to_google_sheet(payload: BootcampRegistrationI
 def _user_public_dict(user: User):
     created = getattr(user, 'created_at', None)
     updated = getattr(user, 'updated_at', created)
+    expires = getattr(user, 'access_expires_at', None)
     return {
         "id": user.id,
         "name": user.name,
@@ -3139,6 +3154,7 @@ def _user_public_dict(user: User):
         "timezone": getattr(user, 'timezone', 'UTC'),
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
+        "access_expires_at": expires.isoformat() if expires else None,
         "created_at": created.isoformat() if created else None,
         "updated_at": updated.isoformat() if updated else None,
     }
@@ -3241,9 +3257,257 @@ async def admin_list_users(request: Request):
     db = SessionLocal()
     try:
         users = db.query(User).order_by(User.created_at.desc()).all()
-        return {"users": [_user_public_dict(u) for u in users]}
+        sessions = db.query(
+            UserSession.user_id,
+            func.count(UserSession.id).label("cnt"),
+            func.max(UserSession.last_active_at).label("last_active"),
+        ).group_by(UserSession.user_id).all()
+        session_map = {s.user_id: {"count": s.cnt, "last_active": s.last_active} for s in sessions}
+        result = []
+        now = datetime.utcnow()
+        for u in users:
+            d = _user_public_dict(u)
+            info = session_map.get(u.id, {})
+            d["session_count"] = info.get("count", 0)
+            la = info.get("last_active")
+            d["last_active_at"] = la.isoformat() if la else None
+            expired = u.access_expires_at and u.access_expires_at < now
+            d["status"] = "banned" if not u.is_active else ("expired" if expired else "active")
+            result.append(d)
+        return {"users": result}
     finally:
         db.close()
+
+
+class _CreateUserIn(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str = "user"
+    access_days: int | None = None
+    access_expires_at: str | None = None
+
+
+@app.post("/api/admin/users")
+async def admin_create_user(payload: _CreateUserIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.email == payload.email.strip().lower()).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Email already exists")
+        expires = None
+        if payload.access_expires_at:
+            try:
+                expires = datetime.fromisoformat(payload.access_expires_at.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid access_expires_at format")
+        elif payload.access_days and payload.access_days > 0:
+            expires = datetime.utcnow() + timedelta(days=payload.access_days)
+        user = User(
+            name=payload.name.strip(),
+            email=payload.email.strip().lower(),
+            password_hash=_hash_password(payload.password),
+            role=payload.role.strip().lower() if payload.role in ("user", "admin") else "user",
+            is_active=True,
+            access_expires_at=expires,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return {"user": _user_public_dict(user)}
+    finally:
+        db.close()
+
+
+class _UpdateUserIn(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    role: str | None = None
+    is_active: bool | None = None
+    access_expires_at: str | None = None
+    access_days: int | None = None
+    password: str | None = None
+
+
+@app.put("/api/admin/users/{user_id}")
+async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if payload.name is not None:
+            user.name = payload.name.strip()
+        if payload.email is not None:
+            dup = db.query(User).filter(User.email == payload.email.strip().lower(), User.id != user_id).first()
+            if dup:
+                raise HTTPException(status_code=409, detail="Email already taken")
+            user.email = payload.email.strip().lower()
+        if payload.role is not None and payload.role in ("user", "admin"):
+            user.role = payload.role
+        if payload.is_active is not None:
+            user.is_active = payload.is_active
+        if payload.password:
+            user.password_hash = _hash_password(payload.password)
+        if payload.access_expires_at is not None:
+            if payload.access_expires_at == "" or payload.access_expires_at.lower() == "null":
+                user.access_expires_at = None
+            else:
+                try:
+                    user.access_expires_at = datetime.fromisoformat(
+                        payload.access_expires_at.replace("Z", "+00:00")
+                    ).replace(tzinfo=None)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid date format")
+        elif payload.access_days is not None:
+            if payload.access_days <= 0:
+                user.access_expires_at = None
+            else:
+                user.access_expires_at = datetime.utcnow() + timedelta(days=payload.access_days)
+        db.commit()
+        db.refresh(user)
+        return {"user": _user_public_dict(user)}
+    finally:
+        db.close()
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(user_id: int, request: Request):
+    admin = _require_admin(request)
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        db.query(UserSession).filter(UserSession.user_id == user_id).delete()
+        db.delete(user)
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/users/{user_id}/kick")
+async def admin_kick_user(user_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        count = db.query(UserSession).filter(UserSession.user_id == user_id).delete()
+        db.commit()
+        return {"success": True, "sessions_removed": count}
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/users/{user_id}/ban")
+async def admin_ban_user(user_id: int, request: Request):
+    admin = _require_admin(request)
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot ban yourself")
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.is_active = False
+        db.query(UserSession).filter(UserSession.user_id == user_id).delete()
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/users/{user_id}/unban")
+async def admin_unban_user(user_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.is_active = True
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
+class _ExtendAccessIn(BaseModel):
+    days: int | None = None
+    expires_at: str | None = None
+
+
+@app.post("/api/admin/users/{user_id}/extend")
+async def admin_extend_access(user_id: int, payload: _ExtendAccessIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if payload.expires_at:
+            try:
+                user.access_expires_at = datetime.fromisoformat(
+                    payload.expires_at.replace("Z", "+00:00")
+                ).replace(tzinfo=None)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format")
+        elif payload.days and payload.days > 0:
+            base = user.access_expires_at if (user.access_expires_at and user.access_expires_at > datetime.utcnow()) else datetime.utcnow()
+            user.access_expires_at = base + timedelta(days=payload.days)
+        else:
+            user.access_expires_at = None
+        db.commit()
+        db.refresh(user)
+        return {"user": _user_public_dict(user)}
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/sessions")
+async def admin_list_sessions(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        sessions = db.query(UserSession).order_by(UserSession.last_active_at.desc()).all()
+        user_ids = list({s.user_id for s in sessions})
+        users_map = {}
+        if user_ids:
+            users = db.query(User).filter(User.id.in_(user_ids)).all()
+            users_map = {u.id: u for u in users}
+        result = []
+        for s in sessions:
+            u = users_map.get(s.user_id)
+            result.append({
+                "id": s.id,
+                "user_id": s.user_id,
+                "user_name": u.name if u else "Unknown",
+                "user_email": u.email if u else "Unknown",
+                "user_role": u.role if u else "user",
+                "ip_address": s.ip_address,
+                "device": s.device,
+                "last_active_at": s.last_active_at.isoformat() if s.last_active_at else None,
+            })
+        return {"sessions": result}
+    finally:
+        db.close()
+
+
+@app.delete("/api/admin/sessions/{session_id}")
+async def admin_kill_session(session_id: str, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        count = db.query(UserSession).filter(UserSession.id == session_id).delete()
+        db.commit()
+        return {"success": True, "deleted": count}
+    finally:
+        db.close()
+
 
 @app.get("/api/admin/datasets")
 async def admin_list_datasets(request: Request):
@@ -4455,6 +4719,21 @@ async def dashboard_admin_datasets_page(request: Request):
 async def chart_admin_datasets_page(request: Request):
     _require_admin(request)
     return file_response_if_exists("admin-datasets.html")
+
+@app.get("/dashboard/admin/users")
+async def dashboard_admin_users_redirect(request: Request):
+    _require_admin(request)
+    return file_response_if_exists("admin-users.html")
+
+@app.get("/dashboard/admin/users/")
+async def dashboard_admin_users_page(request: Request):
+    _require_admin(request)
+    return file_response_if_exists("admin-users.html")
+
+@app.get("/chart/admin-users.html")
+async def chart_admin_users_page(request: Request):
+    _require_admin(request)
+    return file_response_if_exists("admin-users.html")
 
 # Mount Next.js static assets (_next folder)
 next_static_dir = Path("homepage/out/_next")

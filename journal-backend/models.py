@@ -78,6 +78,7 @@ class User(db.Model):
     reset_token = db.Column(db.String(100), nullable=True)
     reset_token_expires = db.Column(db.DateTime, nullable=True)
     stripe_customer_id = db.Column(db.String(100), nullable=True)
+    access_expires_at = db.Column(db.DateTime, nullable=True)
     
     # Alias for compatibility with journal backend auth
     @property
