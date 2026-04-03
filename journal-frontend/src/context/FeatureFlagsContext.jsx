@@ -109,12 +109,11 @@ export const FeatureFlagsProvider = ({ children }) => {
       console.warn('⚠️ Could not fetch user-specific feature flags, using defaults:', error);
     }
     
-    // Fallback to defaults
+    // Fallback to defaults — treat as loaded so all features remain accessible
     const defaultFlags = getDefaultFlags();
     setFeatureFlags(defaultFlags);
-    setHasLoadedFromBackend(false);
+    setHasLoadedFromBackend(true);
     setUserInfo({ isAdmin: false, groupId: null });
-    console.log('⚠️ Using default feature flags');
     return defaultFlags;
   }, []);
 
@@ -141,36 +140,23 @@ export const FeatureFlagsProvider = ({ children }) => {
 
   // Helper function to check if a feature is enabled
   const isFeatureEnabled = useCallback((featureName) => {
-    // During loading or before backend flags are loaded, be more restrictive
+    // Use default flags (all true) as fallback while loading
     if (isLoading || !hasLoadedFromBackend) {
-      // Only allow core features during loading
-      const coreFeatures = ['DASHBOARD', 'JOURNAL', 'TRADES', 'SETTINGS'];
-      return coreFeatures.includes(featureName);
+      const defaults = getDefaultFlags();
+      return defaults[featureName] === true;
     }
-    
-    // After backend flags are loaded, use the actual flags
     return featureFlags[featureName] === true;
   }, [featureFlags, isLoading, hasLoadedFromBackend]);
 
   // Helper function to get all enabled features
   const getEnabledFeatures = useCallback(() => {
-    // During loading or before backend flags are loaded, only return core features
-    if (isLoading || !hasLoadedFromBackend) {
-      return ['DASHBOARD', 'JOURNAL', 'TRADES', 'SETTINGS'];
-    }
-    
-    return Object.keys(featureFlags).filter(key => featureFlags[key] === true);
+    const flags = (isLoading || !hasLoadedFromBackend) ? getDefaultFlags() : featureFlags;
+    return Object.keys(flags).filter(key => flags[key] === true);
   }, [featureFlags, isLoading, hasLoadedFromBackend]);
 
-  // Helper function to get all disabled features
   const getDisabledFeatures = useCallback(() => {
-    // During loading or before backend flags are loaded, return all non-core features
-    if (isLoading || !hasLoadedFromBackend) {
-      const coreFeatures = ['DASHBOARD', 'JOURNAL', 'TRADES', 'SETTINGS'];
-      return Object.keys(featureFlags).filter(key => !coreFeatures.includes(key));
-    }
-    
-    return Object.keys(featureFlags).filter(key => featureFlags[key] === false);
+    const flags = (isLoading || !hasLoadedFromBackend) ? getDefaultFlags() : featureFlags;
+    return Object.keys(flags).filter(key => flags[key] === false);
   }, [featureFlags, isLoading, hasLoadedFromBackend]);
 
   // Manual refresh function for admin use
