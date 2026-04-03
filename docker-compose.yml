@@ -75,6 +75,7 @@ services:
       BINARY_ONLY_RUNTIME: ${BINARY_ONLY_RUNTIME:-false}
       TILE_CDN_BASE_URL: ${TILE_CDN_BASE_URL:-}
       TILE_CDN_REDIRECT: ${TILE_CDN_REDIRECT:-false}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
     depends_on:
       db:
         condition: service_healthy

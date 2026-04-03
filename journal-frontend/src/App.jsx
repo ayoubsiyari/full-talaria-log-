@@ -494,12 +494,24 @@ function AppRoutes() {
 
   // Handle authenticated users visiting the home page or login page
   if (isInitialized && token && (location.pathname === '/' || location.pathname === '/login')) {
-    console.log('🔍 AppRoutes - Authenticated user on home/login page, redirecting based on profile status');
+    // Check subscription before deciding where to send the user
+    let hasAccess = false;
+    let userRole = null;
+    try {
+      const stored = localStorage.getItem('talaria_current_user');
+      if (stored) {
+        const cu = JSON.parse(stored);
+        hasAccess = !!cu.has_journal_access;
+        userRole = cu.role;
+      }
+    } catch (e) { /* ignore */ }
+
+    if (userRole !== 'admin' && !hasAccess) {
+      return <Navigate to="/pricing" replace />;
+    }
     if (activeProfile) {
-      console.log('🔍 AppRoutes - User has active profile, redirecting to dashboard');
       return <Navigate to="/dashboard" replace />;
     } else {
-      console.log('🔍 AppRoutes - User has no active profile, redirecting to profile selection');
       return <Navigate to="/select-profile" replace />;
     }
   }
