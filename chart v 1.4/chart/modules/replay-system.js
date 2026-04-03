@@ -3448,7 +3448,8 @@ class ReplaySystem {
             const gap = low - pMin;
             for (let j = -sp; j <= sp; j++) {
                 const k = minI + j;
-                if (k < 0 || k >= n - 1) continue;
+                // Never warp index 0: tick 1 reads path[0]; smoothing it off `open` caused a one-tick flicker at candle open.
+                if (k <= 0 || k >= n - 1) continue;
                 path[k] = Math.max(low, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
             }
         }
@@ -3456,13 +3457,14 @@ class ReplaySystem {
             const gap = high - pMax;
             for (let j = -sp; j <= sp; j++) {
                 const k = maxI + j;
-                if (k < 0 || k >= n - 1) continue;
+                if (k <= 0 || k >= n - 1) continue;
                 path[k] = Math.min(high, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
             }
         }
 
         for (let i = 0; i < n; i++) path[i] = Math.max(low, Math.min(high, path[i]));
         path[n - 1] = close;
+        path[0] = open;
         return path;
     }
     
