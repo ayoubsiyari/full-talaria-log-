@@ -10830,9 +10830,6 @@ class OrderManager {
             return;
         }
         if (this._orderPlacedAwaitingReset) return;
-        // During preview drag, handlers update SVG directly; replay/pan redraw would
-        // snap TP/SL badges back from stale previewLines.*.prices and stack duplicates.
-        if (this.isDraggingPreviewLine) return;
 
         const widthChanged = this._lastPreviewChartWidth !== this.chart.w;
         this._lastPreviewChartWidth = this.chart.w;
@@ -12117,6 +12114,9 @@ class OrderManager {
                 isDragging = false;
                 lineData.line.attr('opacity', 0.7);
                 
+                // Clear dragging flag
+                self.isDraggingPreviewLine = false;
+                
                 // Clean up temporary indicators
                 if (lineData.pipIndicator) {
                     lineData.pipIndicator.remove();
@@ -12146,18 +12146,10 @@ class OrderManager {
                 // labels were also never covered by the old Entry-only renderPreviewLabel path.
                 if (typeof requestAnimationFrame === 'function') {
                     requestAnimationFrame(() => {
-                        try {
-                            self.updatePreviewLines();
-                        } finally {
-                            self.isDraggingPreviewLine = false;
-                        }
+                        self.updatePreviewLines();
                     });
                 } else {
-                    try {
-                        self.updatePreviewLines();
-                    } finally {
-                        self.isDraggingPreviewLine = false;
-                    }
+                    self.updatePreviewLines();
                 }
                 
                 const dragDuration = Date.now() - dragStartTime;
@@ -12197,21 +12189,10 @@ class OrderManager {
         // Render the badge label
         this.renderPreviewLabel(badgeData, y);
 
-        let badgeDragRaf = null;
-        const scheduleBadgePreviewRefresh = () => {
-            if (badgeDragRaf != null) return;
-            badgeDragRaf = requestAnimationFrame(() => {
-                badgeDragRaf = null;
-                if (!self.chart?.svg) return;
-                self.updatePreviewLines();
-            });
-        };
-
         // Make badge draggable - when dragged, convert to full line
         const drag = d3.drag()
             .on('start', () => {
                 badgeGroup.style('opacity', 0.8);
-                self.isDraggingPreviewLine = true;
             })
             .on('drag', event => {
                 if (!self.chart?.scales?.yScale) return;
@@ -12313,8 +12294,8 @@ class OrderManager {
                     }
                 }
 
-                // One full refresh per animation frame (was: every mousemove → remove/redraw storm, lag, duplicates)
-                scheduleBadgePreviewRefresh();
+                // Refresh to convert badge to full line
+                self.updatePreviewLines();
                 
                 // Use requestAnimationFrame to ensure calculation happens after DOM updates
                 requestAnimationFrame(() => {
@@ -12329,18 +12310,7 @@ class OrderManager {
                 });
             })
             .on('end', () => {
-                try {
-                    if (badgeGroup.node()) badgeGroup.style('opacity', 1);
-                } catch (_) { /* badge DOM may have been replaced by full TP/SL line */ }
-                if (badgeDragRaf != null) {
-                    cancelAnimationFrame(badgeDragRaf);
-                    badgeDragRaf = null;
-                }
-                try {
-                    self.updatePreviewLines();
-                } finally {
-                    self.isDraggingPreviewLine = false;
-                }
+                badgeGroup.style('opacity', 1);
                 // Final calculation on drag end
                 requestAnimationFrame(() => {
                     self.calculateAdvancedRiskReward();
